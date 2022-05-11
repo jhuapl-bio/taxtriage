@@ -1,3 +1,26 @@
+
+
+
+# ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_light.png#gh-light-mode-only) ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_dark.png#gh-dark-mode-only)
+
+
+1. Get databases 
+
+`mkdir -p data/databases`
+
+- Flukraken2: `wget "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz" -O data/databases/flukraken2.tar.gz; tar -xvzf data/databases/flukraken2.tar.gz; mv -f flukraken2 data/databases/flukraken2; rm  data/databases/flukraken2.tar.gz`
+- `wget "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz";  tar -xvzf minikraken2_v2_8GB_201904.tgz; mv minikraken2* data/databases/; rm ./minikraken2.tar.gz`
+
+
+
+2. Running Kraken2 and FASTQC report with flukraken db
+
+nextflow run ./main.nf --input data/samplesheet.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment
+
+
+
+
+
 # ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_light.png#gh-light-mode-only) ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_dark.png#gh-dark-mode-only)
 
 [![GitHub Actions CI Status](https://github.com/nf-core/taxtriage/workflows/nf-core%20CI/badge.svg)](https://github.com/nf-core/taxtriage/actions?query=workflow%3A%22nf-core+CI%22)
