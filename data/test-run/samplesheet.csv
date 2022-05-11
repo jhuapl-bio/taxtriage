@@ -1,3 +1,3 @@
 sample,fastq_1,fastq_2
-Sample_1,data/ERR6913101_1.fastq.gz,data/ERR6913101_2.fastq.gz
-Sample_2,data/ERR6913102_1.fastq.gz,data/ERR6913102_2.fastq.gz
+Sample_1,data/test-run/ERR6913101_1.fastq.gz,data/test-run/ERR6913101_2.fastq.gz
+Sample_2,data/test-run/ERR6913102_1.fastq.gz,data/test-run/ERR6913102_2.fastq.gz
