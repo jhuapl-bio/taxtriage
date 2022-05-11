@@ -15,7 +15,7 @@
 
 2. Running Kraken2 and FASTQC report with flukraken db
 
-`nextflow run ./main.nf --input data/samplesheet.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment`
+`nextflow run ./main.nf --input data/test-run/samplesheet.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment`
 
 
 
