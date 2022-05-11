@@ -7,5 +7,5 @@ testing*
 *.pyc
 modules
 tmp
-
+data/*
 !data/test-run/*
