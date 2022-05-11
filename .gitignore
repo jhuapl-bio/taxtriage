@@ -9,3 +9,4 @@ testing*
 modules
 data 
 tmp
+!data/test-run
