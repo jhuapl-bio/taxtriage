@@ -9,3 +9,4 @@ modules
 tmp
 data/*
 !data/test-run/*
+bin/tmp-*
