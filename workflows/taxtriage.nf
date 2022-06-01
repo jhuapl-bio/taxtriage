@@ -19,6 +19,12 @@ for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
+if (params.assembly) {
+    ch_assembly_txt = file(params.assembly, checkIfExists: true)
+    if (ch_assembly_txt.isEmpty()) {exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"}
+} else {
+    ch_assembly_txt = false
+}
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     CONFIG FILES
@@ -115,7 +121,6 @@ workflow TAXTRIAGE {
     TOP_HITS (
         KRAKEN2_KRAKEN2.out.report
     )
-    ch_assembly_txt = Channel.fromPath(params.assembly)
     DOWNLOAD_ASSEMBLY (
         ch_assembly_txt
     )
