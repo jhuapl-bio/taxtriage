@@ -57,12 +57,11 @@ absolute_path_x="$(readlink -fn -- "$0"; echo x)"
 absolute_path_of_script="${absolute_path_x%x}"
 scriptdir=$(dirname "$absolute_path_of_script")
 runtime=$(date +"%Y%m%d%H%M%S%N")
-
 #	MAIN
 
 # get updated refseq assembly summary (ras)
 #	NOTE: delete the 'assembly_summary_refseq.txt' file at `$scriptdir/` to force download
-if [[ ! -f $ASSEMBLY ]]; then
+if [[  ! -s $ASSEMBLY ]]; then
 	>&2 echo "downloading `assembly_summary_refseq.txt`"
 	wget ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O $scriptdir/"assembly_summary_refseq.txt"
 	ASSEMBLY="$scriptdir/assembly_summary_refseq.txt"
@@ -72,13 +71,5 @@ else
 	>&2 echo "    $mod_datetime"
 fi
 
-echo "><<<<<"
-echo  $TAXID $ASSEMBLY $OUTPUT
-echo "><<<<<"
-awk -F'\t' -v taxid="$TAXID" '{if($6==taxid){printf("%s\n",$0)}}' $ASSEMBLY >> "$OUTPUT"
-# echo "done" > $OUTPUT
-
-
-
-
-exit 0
+awk -F'\t' -v taxid="$TAXID" '{if($6==taxid){printf("%s\n",$0)}}' $ASSEMBLY  > $OUTPUT
+echo "done"
