@@ -19,9 +19,16 @@ for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
+
+
 if (params.assembly) {
     ch_assembly_txt = file(params.assembly, checkIfExists: true)
+    ch_kraken_reference=false
     if (ch_assembly_txt.isEmpty()) {exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"}
+} else if (params.genomes) {
+    ch_assembly_genomes = file(params.genomes, checkIfExists: true)
+    ch_kraken_reference=true
+    if (ch_assembly_genomes.isEmpty()) {exit 1, "File provided with --genomes is empty: ${ch_assembly_genomes.getName()}!"}
 } else {
     ch_assembly_txt = false
 }
@@ -48,6 +55,7 @@ ch_multiqc_custom_config = params.multiqc_config ? Channel.fromPath(params.multi
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
+include { ALIGNMENT } from '../subworkflows/local/alignment'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -62,13 +70,12 @@ include { FASTQC                      } from '../modules/nf-core/modules/fastqc/
 include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/modules/kraken2/kraken2/main'
 include { MULTIQC                     } from '../modules/nf-core/modules/multiqc/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/modules/custom/dumpsoftwareversions/main'
-include { MINIMAP2_ALIGN } from '../modules/nf-core/modules/minimap2/align/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
 include { PULL_TAXID } from '../modules/local/pull_taxid'
 include { REFERENCE } from '../modules/local/download_reference'
 include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
+include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
-
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -92,7 +99,7 @@ workflow TAXTRIAGE {
     INPUT_CHECK (
         ch_input
     )
-
+    INPUT_CHECK.out.reads.view()
     
     //
     // MODULE: Run FastQC
@@ -102,44 +109,66 @@ workflow TAXTRIAGE {
     )
 
 
-    //
-    // MODULE: Run Kraken2
-    //
+    // //
+    // // MODULE: Run Kraken2
+    // //
     KRAKEN2_KRAKEN2(
         INPUT_CHECK.out.reads,
         ch_db,
         params.save_output_fastqs,
         params.save_reads_assignment
     )
-    // ch_reference = Channel.fromPath(params.reference, type: 'file')
-    ch_bam_format = false
-    ch_cigar_paf_format =  true
-    ch_cigar_bam = true
-    
-    
-    
+    // // ch_reference = Channel.fromPath(params.reference, type: 'file')
+
+    // ch_bam_format = false
+    // ch_cigar_paf_format =  true
+    // ch_cigar_bam = true
+
     TOP_HITS (
         KRAKEN2_KRAKEN2.out.report
     )
-    DOWNLOAD_ASSEMBLY (
-        ch_assembly_txt
-    )
-    REFERENCE (
-        TOP_HITS.out.tops,
-        DOWNLOAD_ASSEMBLY.out.assembly
+    TOP_HITS.out.tops
+        .splitCsv(header: true, sep: '\t')
+        .map {
+            meta, record -> [ meta,  record.taxid ]
+        }.groupTuple( by: [0,0] ).first().set{ ch_hits }
+
+    if (params.assembly){
+        DOWNLOAD_ASSEMBLY (
+            ch_assembly_txt
+        )
+        DOWNLOAD_ASSEMBLY.out.assembly.view()
+        ch_assembly_txt_2 = Channel.fromPath(ch_assembly_txt)
+
+        ch_assembly_txt_2
+        .splitCsv( skip:1, sep: '\t', header: true  ).first()
+        .view { row -> "${row.wgs_master} - ${row.taxid} - ${row.bioproject}" }
+    } else {
+
+        KRAKEN2_KRAKEN2.out.classified_reads_fastq
+        .map { meta, record -> 
+            record.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }
+        }
+        .set { classified_reads_fastq }
+
+        KRAKEN2_KRAKEN2.out.classified_reads_assignment.map {
+            meta, file  -> file
+        }
+        .set { ch_kraken2_assignments }
+        
+
+        PULL_FASTA (
+            ch_hits,
+            Channel.fromPath(ch_assembly_genomes),
+            classified_reads_fastq,
+            ch_kraken2_assignments
+        )
+    }
+    ALIGNMENT(
+        PULL_FASTA.out.fastq, 
+        PULL_FASTA.out.fasta
     )
     
-    // PULL_TAXID (
-    //     DOWNLOAD_REFERENCE.out.assembly_hits,
-    //     0
-    // )
-    // MINIMAP2_ALIGN (
-    //     INPUT_CHECK.out.reads,
-    //     PULL_TAXID.out.genome.first(),
-    //     ch_bam_format,
-    //     ch_cigar_paf_format,
-    //     ch_cigar_bam
-    // )
 
 
     // CONFIDENCE_METRIC (
@@ -151,11 +180,11 @@ workflow TAXTRIAGE {
 
 
     
-    // ch_versions = ch_versions.mix(FASTQC.out.versions.first())
+    ch_versions = ch_versions.mix(FASTQC.out.versions.first())
 
-    // CUSTOM_DUMPSOFTWAREVERSIONS (
-    //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    // )
+    CUSTOM_DUMPSOFTWAREVERSIONS (
+        ch_versions.unique().collectFile(name: 'collated_versions.yml')
+    )
 
 
 
@@ -163,22 +192,23 @@ workflow TAXTRIAGE {
     //
     // MODULE: MultiQC
     //
-    // workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-    // ch_workflow_summary = Channel.value(workflow_summary)
+    workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+    ch_workflow_summary = Channel.value(workflow_summary)
 
-    // ch_multiqc_files = Channel.empty()
-    // ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
-    // ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-    // ch_multiqc_files = ch_multiqc_files.mix(CUSTOM_DUMPSOFTWAREVERSIONS.out.mqc_yml.collect())
-    // ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = Channel.empty()
+    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    ch_multiqc_files = ch_multiqc_files.mix(CUSTOM_DUMPSOFTWAREVERSIONS.out.mqc_yml.collect())
+    ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2_KRAKEN2.out.report.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
 
-    // MULTIQC (
-    //     ch_multiqc_files.collect()
-    // )
+    MULTIQC (
+        ch_multiqc_files.collect()
+    )
 
-    // multiqc_report = MULTIQC.out.report.toList()
-    // ch_versions    = ch_versions.mix(MULTIQC.out.versions)
+    multiqc_report = MULTIQC.out.report.toList()
+    ch_versions    = ch_versions.mix(MULTIQC.out.versions)
 }
 
 /*
@@ -187,12 +217,12 @@ workflow TAXTRIAGE {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-workflow.onComplete {
-    if (params.email || params.email_on_fail) {
-        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
-    }
-    NfcoreTemplate.summary(workflow, params, log)
-}
+// workflow.onComplete {
+//     if (params.email || params.email_on_fail) {
+//         NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+//     }
+//     NfcoreTemplate.summary(workflow, params, log)
+// }
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
