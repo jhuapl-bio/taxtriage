@@ -15,6 +15,12 @@
             "bwa/mem": {
                 "git_sha": "4f5274c3de0c9521f5033893ff61057a74c45ba9"
             },
+            "bwamem2/index": {
+                "git_sha": "49b18b1639f4f7104187058866a8fab33332bdfe"
+            },
+            "bwamem2/mem": {
+                "git_sha": "4f5274c3de0c9521f5033893ff61057a74c45ba9"
+            },
             "cat/cat": {
                 "git_sha": "eeda4136c096688d04cc40bb3c70d948213ed641"
             },
