@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 
 """Provide a command line tool to validate and transform tabular samplesheets."""
@@ -35,6 +35,14 @@ def parse_args(argv=None):
         metavar="FILE_OUT",
         type=Path,
         help="Name of the output tsv file containing a mapping of top n organisms at individual taxa levels",
+    )
+    parser.add_argument(
+        "-t",
+        "--top_per_rank",
+        default=5,
+        metavar="TOP_PER_RANK",
+        type=int,
+        help="Max Top per rank code",
     )
     parser.add_argument(
         "-l",
@@ -91,25 +99,30 @@ def top_hit(mapping):
         mapping[rank] = sorted_specific_rank
     header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name']
     return mapping
-def make_files(mapping,outdir):
+def make_files(mapping,outdir,top):
     import json
-    try:
-        os.mkdir(outdir)
-    except OSError as e:
-        print(e)
+    # try:
+    #     os.mkdir(os.path.dirname(outdir))
+    # except OSError as e:
+    #     print(e)
     header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name']
-    
+    path = str(outdir)+"_top_report.tsv"
+    path  = open(path, "w")
+    writer = csv.writer(path, delimiter='\t')
+    writer.writerow(header )
     for rank_code, value in mapping.items():
-        path = os.path.join(outdir, rank_code+".tsv")
-        path  = open(path, "w")
-        writer = csv.writer(path, delimiter='\t')
-        writer.writerow(header)
+        i = 0
         for row in value:
             out = []
-            for head_item in header:
-                out.append(row[head_item])
-            writer.writerow(out)
-        path.close()
+            if i >= top:
+                break
+            else:
+                for head_item in header:
+                    out.append(row[head_item])
+                writer.writerow(out)
+            i = i + 1
+    path.close()
+    print("done")
     print("Done exporting files")
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
@@ -118,9 +131,12 @@ def main(argv=None):
     if not args.file_in.is_file():
         logger.error(f"The given input file {args.file_in} was not found!")
         sys.exit(2)
+    print("yes")
     args.file_out.parent.mkdir(parents=True, exist_ok=True)
+    print("yes")
     mapping = import_file(args.file_in)
+    print("yes")
     mapping = top_hit(mapping)
-    make_files(mapping, args.file_out)
+    make_files(mapping, args.file_out, args.top_per_rank)
 if __name__ == "__main__":
     sys.exit(main())
