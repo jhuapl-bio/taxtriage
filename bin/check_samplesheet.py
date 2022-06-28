@@ -34,6 +34,7 @@ class RowChecker:
         self,
         sample_col="sample",
         first_col="fastq_1",
+        bc_col="sample",
         second_col="fastq_2",
         single_col="single_end",
         **kwargs,
@@ -57,6 +58,7 @@ class RowChecker:
         self._sample_col = sample_col
         self._first_col = first_col
         self._second_col = second_col
+        self._bc_col = bc_col
         self._single_col = single_col
         self._seen = set()
         self.modified = []
@@ -71,10 +73,13 @@ class RowChecker:
 
         """
         self._validate_sample(row)
-        self._validate_first(row)
-        self._validate_second(row)
-        self._validate_pair(row)
-        self._seen.add((row[self._sample_col], row[self._first_col]))
+        if row['barcode'] != 'TRUE':
+            self._validate_first(row)
+            self._validate_second(row)
+            self._validate_pair(row)
+            self._seen.add((row[self._sample_col], row[self._first_col]))
+        else:
+            self._seen.add((row[self._sample_col], row[self._bc_col]))
         self.modified.append(row)
 
     def _validate_sample(self, row):
@@ -144,11 +149,11 @@ def sniff_format(handle):
         https://docs.python.org/3/glossary.html#term-text-file
 
     """
-    peek = handle.read(2048)
+    peek = handle.read(1024)
     sniffer = csv.Sniffer()
     if not sniffer.has_header(peek):
         logger.critical(f"The given sample sheet does not appear to contain a header.")
-        sys.exit(1)
+        # sys.exit(1)
     dialect = sniffer.sniff(peek)
     handle.seek(0)
     return dialect
@@ -180,7 +185,8 @@ def check_samplesheet(file_in, file_out):
         https://raw.githubusercontent.com/nf-core/test-datasets/viralrecon/samplesheet/samplesheet_test_illumina_amplicon.csv
 
     """
-    required_columns = {"sample", "fastq_1", "fastq_2"}
+    # required_columns = {"sample", "fastq_1", "fastq_2"}
+    required_columns = {"sample"}
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_in.open(newline="") as in_handle:
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))

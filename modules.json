@@ -3,6 +3,9 @@
     "homePage": "https://github.com/nf-core/taxtriage",
     "repos": {
         "nf-core/modules": {
+            "artic/guppyplex": {
+                "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            },
             "blast/blastn": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
@@ -54,9 +57,6 @@
             "metabat2/metabat2": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
-            "metaphlan3": {
-                "git_sha": "ed4dd1a928ebf4308efb720de878045f7773f8e2"
-            },
             "minimap2/align": {
                 "git_sha": "1a5a9e7b4009dcf34e6867dd1a5a1d9a718b027b"
             },
@@ -66,13 +66,16 @@
             "multiqc": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
-            "pangolin": {
+            "nanoplot": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
             "porechop": {
                 "git_sha": "e20e57f90b6787ac9a010a980cf6ea98bd990046"
             },
-            "quast": {
+            "pycoqc": {
+                "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            },
+            "rseqc/bamstat": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
             "samtools/bam2fq": {
@@ -81,14 +84,8 @@
             "samtools/sort": {
                 "git_sha": "897c33d5da084b61109500ee44c01da2d3e4e773"
             },
-            "snpeff": {
-                "git_sha": "40dd662fd26c3eb3160b7c8cbbe9bff80bbe2c30"
-            },
-            "spades": {
-                "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
-            },
-            "unicycler": {
-                "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            "trimgalore": {
+                "git_sha": "85ec13ff1fc2196c5a507ea497de468101baabed"
             }
         }
     }
