@@ -5,8 +5,7 @@ report_comment: >
 report_section_order:
   software_versions:
     order: -1000
-  "nf-core-taxtriage-summary":
-    order: -1001
-  "kraken":
-    order: -1002
 export_plots: true
+top_modules:
+  - "kraken"
+  - "nf-core-taxtriage-summary"

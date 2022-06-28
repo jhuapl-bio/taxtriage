@@ -19,6 +19,7 @@ logger = logging.getLogger()
 from Bio import SeqIO
 from mimetypes import guess_type
 from functools import partial
+from pathlib import Path
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -40,6 +41,7 @@ def parse_args(argv=None):
         nargs="+",
         help="Reference fasta files",
     )
+    
     parser.add_argument(
         "-s",
         "--taxid_header_sep",
@@ -105,7 +107,7 @@ def parse_args(argv=None):
 def import_taxids(filename):
     taxids = []
     with open(filename,"r") as f:
-        taxids = [line.strip() for line in f]
+        taxids = [line.strip().split("\t")[4] for line in f]
     return taxids
 def import_filter_fasta(taxids, fastafile, sep, pos):
     
@@ -121,6 +123,7 @@ def import_filter_fasta(taxids, fastafile, sep, pos):
                 else:
                     idx = grabbed[grabbed.index('kraken:taxid') + 1]
                 idx = str(idx)
+                print(idx,"<")
                 if idx in taxids and idx not in mapping:
                     mapping[idx] = seq_record.seq
         f.close()
@@ -142,7 +145,7 @@ def write_filtered(outfile, record_dict):
         
     except OSError as error:
         print(error)
-def get_fastq_filtered(filtered_taxids, reads, assignment_reads, file_reads_out):
+def get_fastq_filtered(filtered_taxids, reads, assignment_reads, output):
     
     classified_reads  = dict()
     with open(assignment_reads,"r") as f:
@@ -153,21 +156,27 @@ def get_fastq_filtered(filtered_taxids, reads, assignment_reads, file_reads_out)
     i=0
     for read in reads:
         encoding = guess_type(read)[1]  # uses file extension
+        sample_base = Path(read).stem.split(".")[0]
         _open = partial(gzip.open, mode='rt') if encoding == 'gzip' else open
-        filename = os.path.join(os.path.dirname(read), str(i)+"_filtered.fastq")
+        filename = os.path.join(os.path.dirname(output), sample_base+"_"+str(i+1)+"_filtered.fastq")
         with open(filename, "w") as w:
-            with _open(read) as f:
-                seen = dict()
-                g = 0
-                for seq_record in SeqIO.parse(f, "fastq"):
-                    if seq_record.id in classified_reads and str(classified_reads[seq_record.id]) in filtered_taxids:
-                        SeqIO.write(seq_record,w,"fastq")
-                        taxid = str(classified_reads[seq_record.id])
-                        if taxid not in seen:
-                            seen[taxid] = []
-                        seen[taxid].append(g)
-                        g = g + 1
-            f.close()
+            try:
+                with _open(read) as f:
+                    seen = dict()
+                    g = 0
+                    for seq_record in SeqIO.parse(f, "fastq"):
+                        if seq_record.id in classified_reads and str(classified_reads[seq_record.id]) in filtered_taxids:
+                            SeqIO.write(seq_record,w,"fastq")
+                            taxid = str(classified_reads[seq_record.id])
+                            if taxid not in seen:
+                                seen[taxid] = []
+                            seen[taxid].append(g)
+                            g = g + 1
+                f.close()
+            except Exception as ex:
+                print(ex, "failed with file", filename)
+                pass
+                
             # for taxid,value in seen.items():
             #     with open(os.path.join(file_reads_out[i], taxid+".fastq"), "w") as f:
             #         o = 0
@@ -186,10 +195,10 @@ def main(argv=None):
     """Coordinate argument parsing and program execut      ion."""
     args = parse_args(argv)   
     logging.basicConfig(level=args.log_level, format="[%(levelname)s] %(message)s")
-    if  args.type == 'file' and not args.input.is_file() :
-        logger.error(f"The given input file {args.input} was not found!")
-        sys.exit(2)
-    elif args.type == 'file' and args.input.is_file():
+    # if  args.type == 'file' and not args.input.is_file() :
+    #     logger.error(f"The given input file {args.input} was not found!")
+    #     sys.exit(2)
+    if args.type == 'file':
         logger.info("File exists, importing and filtering")
         taxids = import_taxids(args.input)
         filtered_taxids = import_filter_fasta(taxids, 
@@ -199,7 +208,7 @@ def main(argv=None):
         )
         write_filtered(args.file_out, filtered_taxids)
         if args.reads and args.assignment_reads:
-            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_reads_out)
+            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_out)
     elif args.type == 'list' and len(args.input) > 0:
         filtered_taxids = import_filter_fasta(
             args.input.split(" "), 
@@ -207,13 +216,12 @@ def main(argv=None):
             args.taxid_header_sep, 
             args.pos_taxid_header
         )
-        
         write_filtered(args.file_out, filtered_taxids)
         if args.reads and args.assignment_reads:
             get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_reads_out)
     elif not args.input and args.type == 'list':
         logger.error(f"The given input list of taxids: {args.input} was not found!")
         sys.exit(2)
-    
+    return 
 if __name__ == "__main__":
     sys.exit(main())
