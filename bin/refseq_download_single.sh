@@ -22,7 +22,7 @@ OPTIONS:
 	-o	DIR		full path to output directory
 
 USAGE:
-bash refseq_download_single.sh -i <file with single row from 'assembly_summary_refseq.txt'> -i </full/path/to/output.txt>
+bash refseq_download_single.sh -i <file with single row from 'assembly_summary_refseq.txt'> -o </full/path/to/output.txt>
 bash refseq_download_single.sh -i "/data/sandbox/test_output-1257079.txt" -o "/data/sandbox"
 
 
@@ -54,7 +54,6 @@ absolute_path_x="$(readlink -fn -- "$0"; echo x)"
 absolute_path_of_script="${absolute_path_x%x}"
 scriptdir=$(dirname "$absolute_path_of_script")
 runtime=$(date +"%Y%m%d%H%M%S%N")
-
 #	MAIN
 
 # pull ftp paths and download reference genomes for accessions in input tsv
@@ -74,7 +73,6 @@ release_type=$(cut -f13 "$REFROW")
 name=$(cut -f8 "$REFROW" | sed 's/ /_/g')
 path=$(cut -f20 "$REFROW")
 bn=$(basename "$path")
-
 >&2 echo "wgetting..."
 >&2 echo "    accession:      $acc"
 >&2 echo "    taxid:          $taxid"
@@ -82,6 +80,9 @@ bn=$(basename "$path")
 >&2 echo "    assembly_level: $assembly_level"
 >&2 echo "    release_type:   $release_type"
 >&2 echo "    org name:       $name"
+
+
+echo "$path/${bn}_genomic.fna.gz"
 wget "$path/${bn}_genomic.fna.gz" --output-document "$OUTDIR/${acc}-${taxid}-${version_status}-${assembly_level}-${release_type}-${name}.fasta.gz"
 # addend `2> /dev/null` if you want to suppress the progress stats
 
