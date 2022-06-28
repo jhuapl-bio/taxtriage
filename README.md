@@ -16,9 +16,10 @@
 2. Running Kraken2 and FASTQC report with flukraken db
 
 `nextflow run ./main.nf --input data/test-run/samplesheet.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment`
+ 
+or 
 
-
-
+`nextflow run ./main.nf --input data/test-run/samplesheet1.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment  --genomes data/databases/flukraken2/library/test2.fna -resume`
 
 
 # ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_light.png#gh-light-mode-only) ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_dark.png#gh-dark-mode-only)
