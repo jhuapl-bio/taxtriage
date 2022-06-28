@@ -1,4 +1,5 @@
 tmp*
+merged_mqc
 .nextflow*
 work/
 results/
@@ -11,3 +12,6 @@ tmp
 data/*
 !data/test-run/*
 bin/tmp-*
+multiqc*
+examples/*
+data

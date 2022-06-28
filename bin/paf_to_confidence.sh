@@ -70,7 +70,6 @@ tmp="$scriptdir/tmp-$runtime"
 mkdir -p "$tmp"
 #	MAIN
 
-
 # find single best alignment per read
 >&2 echo "finding best single alignment per read"
 #		based on MAPQ
@@ -89,7 +88,6 @@ awk -F'\t' '{
 		print(best[r]);
 	}
 }' "$PAF" > "$tmp/tmp1.paf"
-
 # include all alignments
 #cat "$outdir/newtarget_filtered.paf" > "$outdir/seeker.paf"
 bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1.paf")
@@ -99,8 +97,11 @@ bsa_acccount=$(cut -f6 "$tmp/tmp1.paf" | sort | uniq | awk 'END{print(NR)}')
 
 # get reads with a "block length"/"read length" greater than 80%
 >&2 echo "finding reads with a [block length]:[read length] ratio > 0.80"
-awk -F'\t' '{if(($10/$2)>0.80){print($0)}}' "$tmp/tmp1.paf" > "$tmp/tmp2.paf"
-awk -F'\t' '{if(($10/$2)>0.80){count[$1]++; a[$1]=$6}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1.paf" | sort | uniq -c | sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
+awk -F'\t' '{if(($10/$2)>0.0){print($0)}}' "$tmp/tmp1.paf" > "$tmp/tmp2.paf"
+
+
+awk -F'\t' '{if(($10/$2)>0.0){count[$1]++; a[$1]=$6}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1.paf" | sort | uniq -c | sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
+
 umseqs_count=$(awk -F'\t' '{x+=$1}END{print(x)}' "$tmp/uniq.refs")
 umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
@@ -110,7 +111,7 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 
 
 #>&2 echo "gathering alignment stats"
-awk -F'\t' -v total_reads="$total_reads" '{
+awk -F'\t'  '{
 	ilen[$6]=$7;
 	ireads[$6]+=1;
 	for(i=$8+1;i<=$9+1;i++){dep[$6][i]+=1};
@@ -136,7 +137,6 @@ awk -F'\t' -v total_reads="$total_reads" '{
 	# print output row per $6
 	for(i in dep){
 		o1=ireads[i];
-
 		o3=o1/aligned;
 		o4=(sum[i]/total_bases);
 		o5=(adjsum[i]/adjtotal);
@@ -147,6 +147,7 @@ awk -F'\t' -v total_reads="$total_reads" '{
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
 }' "$tmp/tmp2.paf" > $OUTPUT
+# > $OUTPUT
 
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]

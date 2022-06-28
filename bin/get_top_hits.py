@@ -39,7 +39,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "-t",
         "--top_per_rank",
-        default=5,
+        default=15,
         metavar="TOP_PER_RANK",
         type=int,
         help="Max Top per rank code",
