@@ -34,10 +34,11 @@ WorkflowMain.initialise(workflow, params, log)
 */
 
 include { TAXTRIAGE } from './workflows/taxtriage'
-
 //
 // WORKFLOW: Run main nf-core/taxtriage analysis pipeline
 //
+
+
 workflow NFCORE_TAXTRIAGE {
     TAXTRIAGE ()
 }
@@ -52,9 +53,12 @@ workflow NFCORE_TAXTRIAGE {
 // WORKFLOW: Execute a single named workflow for the pipeline
 // See: https://github.com/nf-core/rnaseq/issues/619
 //
+
 workflow {
     NFCORE_TAXTRIAGE ()
 }
+
+
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
