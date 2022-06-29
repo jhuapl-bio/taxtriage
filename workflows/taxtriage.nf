@@ -171,18 +171,22 @@ workflow TAXTRIAGE {
         )
         ch_reads = FILTER_READS.out.reads
     }
-    FASTQC (
-        ch_reads.filter { it[0].platform == 'ILLUMINA'}
-    )
-    NANOPLOT (
-        ch_reads.filter { it[0].platform == 'OXFORD'}
-    )
-    ch_nanoplot_files_reformatted = NANOPLOT.out.html.map{
-        meta, record -> [ meta, record.findAll{ !( it =~ /.*NanoPlot-report.html/) }  ]
+    if (!params.skip_plots){
+        FASTQC (
+            ch_reads.filter { it[0].platform == 'ILLUMINA'}
+        )
+        ch_versions = ch_versions.mix(FASTQC.out.versions.first())
+        NANOPLOT (
+            ch_reads.filter { it[0].platform == 'OXFORD'}
+        )
+        ch_nanoplot_files_reformatted = NANOPLOT.out.html.map{
+            meta, record -> [ meta, record.findAll{ !( it =~ /.*NanoPlot-report.html/) }  ]
+        }
+        MOVE_NANOPLOT(
+            ch_nanoplot_files_reformatted
+        )
     }
-    MOVE_NANOPLOT(
-        ch_nanoplot_files_reformatted
-    )
+    
     // // // // //
     // // // // // MODULE: Run Kraken2
     // // // // //
@@ -213,9 +217,11 @@ workflow TAXTRIAGE {
             DOWNLOAD_ASSEMBLY.out.fasta
         )
     } else {
+        ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
+            meta, report, classified_fastqs, reads_class -> [ meta, report, classified_fastqs, reads_class, ch_assembly_txt]
+        }
         PULL_FASTA (
-            ch_hit_to_kraken_report,
-            ch_assembly_txt
+            ch_hit_to_kraken_report
         )
     }
 
@@ -239,7 +245,7 @@ workflow TAXTRIAGE {
 
 
     
-    ch_versions = ch_versions.mix(FASTQC.out.versions.first())
+    
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
@@ -264,9 +270,10 @@ workflow TAXTRIAGE {
     if (params.trim){
         ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
     }
-    ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
-    
+    if (!params.skip_plots){
+        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
+    }
 
     MULTIQC (
         ch_multiqc_files.collect()
