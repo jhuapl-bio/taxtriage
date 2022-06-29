@@ -14,5 +14,5 @@ data/*
 !data/test-run/*
 bin/tmp-*
 multiqc*
-examples/*
 data
+!examples/data
