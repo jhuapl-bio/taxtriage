@@ -3,15 +3,38 @@
 
 # ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_light.png#gh-light-mode-only) ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_dark.png#gh-dark-mode-only)
 
+## Introduction
+
+Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). 
+
+Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) for the individual modules within it. Because these modules are separate from the soruce code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates. 
+
+[See Here for full usage details](docs/usage.md)
+
+## Quick Start
 
 1. Get databases 
 
 `mkdir -p data/databases`
 
-- Flukraken2: `wget "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz" -O data/databases/flukraken2.tar.gz; tar -xvzf data/databases/flukraken2.tar.gz; mv -f flukraken2 data/databases/flukraken2; rm  data/databases/flukraken2.tar.gz`
-- Minikraken2: `wget "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz";  tar -xvzf minikraken2_v2_8GB_201904.tgz; mv minikraken2* data/databases/; rm ./minikraken2.tar.gz`
+- Flukraken2
+
+```
+   wget "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz" -O data/databases/flukraken2.tar.gz; 
+   tar -xvzf data/databases/flukraken2.tar.gz; 
+   mv -f flukraken2 data/databases/flukraken2; 
+   rm  data/databases/flukraken2.tar.gz
+```
 
 
+- Minikraken2
+
+```
+   wget "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz";  
+   tar -xvzf minikraken2_v2_8GB_201904.tgz; 
+   mv minikraken2* data/databases/; 
+   rm ./minikraken2.tar.gz
+```
 
 2. Running Kraken2 and FASTQC report with flukraken db
 
@@ -19,22 +42,22 @@
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
-   --db $PWD/data/databases/flukraken2 \
+   --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
    --outdir tmp --max_memory 10GB --max_cpus 3 \
    -profile docker  -resume 
 
 ```
  
-or 
+or, using 
 
 ```
 
-nextflow run ./main.nf 
+nextflow run ./main.nf \
    --input examples/Samplesheet_single.csv \
    --db $PWD/data/databases/flukraken2 \
    --outdir tmp \
    --max_memory 10GB --max_cpus 3 -profile docker \
-   --assembly data/databases/flukraken2/library/influenza-fixed.fna \
+   --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
    -resume
 
 ```
