@@ -21,42 +21,27 @@ You will need to create a samplesheet with information about the samples you wou
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
 ```console
-sample,fastq_1,fastq_2,platform
-Sample_1,AEG588A1_S1_L001_R1_001.fastq.gz,AEG588A1_S1_L001_R2_001.fastq.gz,ILLUMINA
-Sample_2,AEG588A1_S2_L001_R1_001.fastq.gz,AEG588A1_S2_L001_R2_001.fastq.gz,ILLUMINA
-Sample_3,AEG588A1_S3_L001_R1_001.fastq.gz,AEG588A1_S3_L001_R2_001.fastq.gz,ILLUMINA
+sample,fastq_1,fastq_2,platform,from,trim,sequencing_summary,single_end,barcode
+Sample_1,AEG588A1_S1_L001_R1_001.fastq.gz,AEG588A1_S1_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
+Sample_2,AEG588A1_S2_L001_R1_001.fastq.gz,AEG588A1_S2_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
+Sample_3,AEG588A1_S3_L001_R1_001.fastq.gz,AEG588A1_S3_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
 ```
 
 ### Multiple Samples AND Platforms 
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
-```console
-sample,fastq_1,fastq_2,platform,barcode,from
-CONTROL_REP1,AEG588A1_S1_L002_R1_001.fastq.gz,AEG588A1_S1_L002_R2_001.fastq.gz,ILLUMINA
-Sample_2,,OXFORD,TRUE,NB01
-Sample_3,,OXFORD,TRUE,NB01
-Sample_4,OXFORD,FALSE,sample_metagenome.fastq
-```
 
-
-
-### Full samplesheet
-
-The pipeline will auto-detect whether a sample is single- or paired-end using the information provided in the samplesheet. The samplesheet can have as many columns as you desire, however, there is a strict requirement for the first 3 columns to match those defined in the table below.
-
-A final samplesheet file consisting of both single- and paired-end data may look something like the one below. This is for 6 samples, where `TREATMENT_REP3` has been sequenced twice.
 
 ```console
-sample,fastq_1,fastq_2
-CONTROL_REP1,AEG588A1_S1_L002_R1_001.fastq.gz,AEG588A1_S1_L002_R2_001.fastq.gz
-CONTROL_REP2,AEG588A2_S2_L002_R1_001.fastq.gz,AEG588A2_S2_L002_R2_001.fastq.gz
-CONTROL_REP3,AEG588A3_S3_L002_R1_001.fastq.gz,AEG588A3_S3_L002_R2_001.fastq.gz
-TREATMENT_REP1,AEG588A4_S4_L003_R1_001.fastq.gz,
-TREATMENT_REP2,AEG588A5_S5_L003_R1_001.fastq.gz,
-TREATMENT_REP3,AEG588A6_S6_L003_R1_001.fastq.gz,
-TREATMENT_REP3,AEG588A6_S6_L004_R1_001.fastq.gz,
+single_end,sample,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
+TRUE,NB01,data/test-run/fastq_demux/NB01,OXFORD,TRUE,,,data/test-run/sequencing_summarycovid.txt,
+TRUE,NB03,data/test-run/fastq_demux/NB03,OXFORD,TRUE,,,,
+TRUE,NB11,data/test-run/fastq_demux/NB11,OXFORD,TRUE,,,,
+TRUE,Sample_1,,OXFORD,FALSE,data/test-run/sample_metagenome.fastq.gz,,,
+FALSE,ERR6913101,,ILLUMINA,FALSE,data/test-run/ERR6913101_1.fastq.gz,data/test-run/ERR6913101_2.fastq.gz,,
 ```
+
 
 | Column     | Description                                                                                                                                                                            |
 | ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -66,8 +51,10 @@ TREATMENT_REP3,AEG588A6_S6_L004_R1_001.fastq.gz,
 | `barcode`  | TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
 | `from`     | Directory path of the barcode, only used with the column being set as TRUE in the barcode column                                                                                       |
 | `platform` | Platform used, [ILLUMINA, OXFORD]                                                            |
+| `trim` | TRUE/FALSE, do you want to run trimming on the sample?                                       |
+| `sequencing_summary` | If detected, output plots based on the the sequencing summary file for that sample | 
 
-An [example samplesheet](../assets/samplesheet.csv) has been provided with the pipeline.
+An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
 ## Running the pipeline
 
@@ -127,27 +114,12 @@ If `-profile` is not specified, the pipeline will run locally and expect all sof
   - A generic configuration profile to be used with [Docker](https://docker.com/)
 - `singularity`
   - A generic configuration profile to be used with [Singularity](https://sylabs.io/docs/)
-- `podman`
-  - A generic configuration profile to be used with [Podman](https://podman.io/)
-- `shifter`
-  - A generic configuration profile to be used with [Shifter](https://nersc.gitlab.io/development/shifter/how-to-use/)
-- `charliecloud`
-  - A generic configuration profile to be used with [Charliecloud](https://hpc.github.io/charliecloud/)
-- `conda`
-  - A generic configuration profile to be used with [Conda](https://conda.io/docs/). Please only use Conda as a last resort i.e. when it's not possible to run the pipeline with Docker, Singularity, Podman, Shifter or Charliecloud.
-- `test`
-  - A profile with a complete configuration for automated testing
-  - Includes links to test data so needs no other parameters
 
 ### `-resume`
 
 Specify this when restarting a pipeline. Nextflow will use cached results from any pipeline steps where the inputs are the same, continuing from where it got to previously. For input to be considered the same, not only the names must be identical but the files' contents as well. For more info about this parameter, see [this blog post](https://www.nextflow.io/blog/2019/demystifying-nextflow-resume.html).
 
 You can also supply a run name to resume a specific run: `-resume [run-name]`. Use the `nextflow log` command to show previous run names.
-
-### `-c`
-
-Specify the path to a specific config file (this is a core Nextflow command). See the [nf-core website documentation](https://nf-co.re/usage/configuration) for more information.
 
 ## Custom configuration
 
@@ -185,26 +157,6 @@ Work dir:
 
 Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
 ```
-
-To bypass this error you would need to find exactly which resources are set by the `STAR_ALIGN` process. The quickest way is to search for `process STAR_ALIGN` in the [nf-core/rnaseq Github repo](https://github.com/nf-core/rnaseq/search?q=process+STAR_ALIGN).
-We have standardised the structure of Nextflow DSL2 pipelines such that all module files will be present in the `modules/` directory and so, based on the search results, the file we want is `modules/nf-core/software/star/align/main.nf`.
-If you click on the link to that file you will notice that there is a `label` directive at the top of the module that is set to [`label process_high`](https://github.com/nf-core/rnaseq/blob/4c27ef5610c87db00c3c5a3eed10b1d161abf575/modules/nf-core/software/star/align/main.nf#L9).
-The [Nextflow `label`](https://www.nextflow.io/docs/latest/process.html#label) directive allows us to organise workflow processes in separate groups which can be referenced in a configuration file to select and configure subset of processes having similar computing requirements.
-The default values for the `process_high` label are set in the pipeline's [`base.config`](https://github.com/nf-core/rnaseq/blob/4c27ef5610c87db00c3c5a3eed10b1d161abf575/conf/base.config#L33-L37) which in this case is defined as 72GB.
-Providing you haven't set any other standard nf-core parameters to **cap** the [maximum resources](https://nf-co.re/usage/configuration#max-resources) used by the pipeline then we can try and bypass the `STAR_ALIGN` process failure by creating a custom config file that sets at least 72GB of memory, in this case increased to 100GB.
-The custom config below can then be provided to the pipeline via the [`-c`](#-c) parameter as highlighted in previous sections.
-
-```nextflow
-process {
-    withName: 'NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN' {
-        memory = 100.GB
-    }
-}
-```
-
-> **NB:** We specify the full process name i.e. `NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN` in the config file because this takes priority over the short name (`STAR_ALIGN`) and allows existing configuration using the full process name to be correctly overridden.
->
-> If you get a warning suggesting that the process selector isn't recognised check that the process name has been specified correctly.
 
 ### Updating containers
 
