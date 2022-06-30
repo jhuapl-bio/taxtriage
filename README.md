@@ -125,6 +125,21 @@ On release, automated continuous integration tests run the pipeline on a full-si
    nextflow run nf-core/taxtriage --input samplesheet.csv --outdir <OUTDIR> --genome GRCh37 -profile <docker/singularity/podman/shifter/charliecloud/conda/institute>
    ```
 
+## Modules
+
+1.	Guppyplex (Oxford Nanopore Only)
+2.	QC Plotting part 1 (pycoQC – Oxford Nanopore)
+3.	Trimming (Trimgalore – Illumina, Porechop – Oxford Nanopore)
+4.	Filtering ( Kraken2 – Illlumina, Oxford Nanopore)
+5.	QC Plotting part 2 (FastQC – Illlumina, Nanoplot – Oxford Nanopore)
+6.	Classification ( Kraken2 – Illumina, Oxford Nanopore)
+7.	Alignment for Stats ( BWAMEM2 – Illumina, Minimap2 – Oxford Nanopore)
+   - :warning:Currently, the only realignment is going to be based on a taxid call. For example, if there will not be a complete realignment of "order" despite there being multiple species all within that order. For the most part, this is limited to more specific ranks like species, strain, subspecies etc. 
+8.	Report Generation ( MultiQC – Illumina, Oxford Nanopore)
+
+
+
+
 ## Documentation
 
 The nf-core/taxtriage pipeline comes with documentation about the pipeline [usage](https://nf-co.re/taxtriage/usage), [parameters](https://nf-co.re/taxtriage/parameters) and [output](https://nf-co.re/taxtriage/output).
