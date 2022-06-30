@@ -9,17 +9,35 @@
 `mkdir -p data/databases`
 
 - Flukraken2: `wget "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz" -O data/databases/flukraken2.tar.gz; tar -xvzf data/databases/flukraken2.tar.gz; mv -f flukraken2 data/databases/flukraken2; rm  data/databases/flukraken2.tar.gz`
-- `wget "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz";  tar -xvzf minikraken2_v2_8GB_201904.tgz; mv minikraken2* data/databases/; rm ./minikraken2.tar.gz`
+- Minikraken2: `wget "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz";  tar -xvzf minikraken2_v2_8GB_201904.tgz; mv minikraken2* data/databases/; rm ./minikraken2.tar.gz`
 
 
 
 2. Running Kraken2 and FASTQC report with flukraken db
 
-`nextflow run ./main.nf --input data/test-run/samplesheet.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment`
+```
+
+nextflow run ./main.nf \
+   --input examples/Samplesheet_cli.csv \
+   --db $PWD/data/databases/flukraken2 \
+   --outdir tmp --max_memory 10GB --max_cpus 3 \
+   -profile docker  -resume 
+
+```
  
 or 
 
-`nextflow run ./main.nf --input data/test-run/samplesheet1.csv --db $PWD/data/databases/flukraken2 --outdir tmp --max_memory 10GB --max_cpus 3 -profile docker --save_output_fastqs --save_reads_assignment  --genomes data/databases/flukraken2/library/test2.fna -resume`
+```
+
+nextflow run ./main.nf 
+   --input examples/Samplesheet_single.csv \
+   --db $PWD/data/databases/flukraken2 \
+   --outdir tmp \
+   --max_memory 10GB --max_cpus 3 -profile docker \
+   --assembly data/databases/flukraken2/library/influenza-fixed.fna \
+   -resume
+
+```
 
 
 # ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_light.png#gh-light-mode-only) ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_dark.png#gh-dark-mode-only)
