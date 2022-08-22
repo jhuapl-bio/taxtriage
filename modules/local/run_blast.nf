@@ -14,42 +14,44 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process TOP_HITS {
+process RUN_BLAST_REMOTE {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
+    conda (params.enable_conda ? 'bioconda::blast=2.12.0' : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/python:3.8.3' :
-        'quay.io/biocontainers/python:3.8.3' }"
+        'https://depot.galaxyproject.org/singularity/blast:2.12.0--pl5262h3289130_0' :
+        'quay.io/biocontainers/blast:2.12.0--pl5262h3289130_0' }"
 
     input:
-    tuple val(meta), path(report)
-    val(top_hits_count)
+    tuple val(meta), path(assembly)
 
     output:
+    tuple val(meta), path("*blast.txt"), optional: false, emit: txt
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*_top_report.tsv"), optional:false, emit: tops
-
-
 
     when:
     task.ext.when == null || task.ext.when
 
 
+    
+
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def id = "${meta.id}"
+    
+    def output = "${meta.id}.blast.txt"
+
+    
+
+
     """
-    echo ${meta.id} "-----------------META variable------------------"
-    get_top_hits.py \\
-        -i $report \\
-        -o $id \\
-        -t $top_hits_count
+    
+
+    bash run_blast.py ${assembly} ${output}
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python --version | sed 's/Python //g')
+        blast: \$(blast --version )
     END_VERSIONS
 
     """
 }
-

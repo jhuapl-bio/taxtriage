@@ -44,7 +44,7 @@ nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
    --outdir tmp --max_memory 10GB --max_cpus 3 \
-   -profile docker  -resume 
+   -profile docker  -resume --demux
 
 ```
  
@@ -55,7 +55,7 @@ or, using
 nextflow run ./main.nf \
    --input examples/Samplesheet_single.csv \
    --db $PWD/data/databases/flukraken2 \
-   --outdir tmp \
+   --outdir tmp/flu \
    --max_memory 10GB --max_cpus 3 -profile docker \
    --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
    -resume

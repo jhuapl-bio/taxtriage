@@ -107,6 +107,8 @@ include { MOVE_FILES } from '../modules/local/moveFiles.nf'
 include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
 include { PORECHOP } from '../modules/nf-core/modules/porechop/main'
 include { MULTIQC                     } from '../modules/nf-core/modules/multiqc/main'
+include { FLYE                     } from '../modules/nf-core/modules/flye/main'
+include { SPADES                     } from '../modules/nf-core/modules/spades/main'
 include { NANOPLOT                     } from '../modules/nf-core/modules/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/modules/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
@@ -217,48 +219,78 @@ workflow TAXTRIAGE {
         KRAKEN2_KRAKEN2.out.report,
         ch_top_hits_count
     )
-    ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
-        KRAKEN2_KRAKEN2.out.classified_reads_fastq
-    )
-    ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
-        KRAKEN2_KRAKEN2.out.classified_reads_assignment
-    )
-   
-    if (ch_assembly_file_type == 'ncbi' ){
-        
-        DOWNLOAD_ASSEMBLY (
-            ch_hit_to_kraken_report,
-            ch_assembly_txt
+    if (!params.skip_realignment){
+        ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
+            KRAKEN2_KRAKEN2.out.classified_reads_fastq
         )
-        PULL_FASTA (
-            DOWNLOAD_ASSEMBLY.out.fasta
+        ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
+            KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
-    } else {
-        ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
-            meta, report, classified_fastqs, reads_class -> [ meta, report, classified_fastqs, reads_class, ch_assembly_txt]
+    
+        if (ch_assembly_file_type == 'ncbi' ){
+            
+            DOWNLOAD_ASSEMBLY (
+                ch_hit_to_kraken_report,
+                ch_assembly_txt
+            )
+            PULL_FASTA (
+                DOWNLOAD_ASSEMBLY.out.fasta
+            )
+        } else {
+            ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
+                meta, report, classified_fastqs, reads_class -> [ meta, report, classified_fastqs, reads_class, ch_assembly_txt]
+            }
+            PULL_FASTA (
+                ch_hit_to_kraken_report
+            )
         }
-        PULL_FASTA (
-            ch_hit_to_kraken_report
+        ALIGNMENT(
+            PULL_FASTA.out.fastq
         )
+
+        CONFIDENCE_METRIC (
+            ALIGNMENT.out.pafs,
+        )
+        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+            CONFIDENCE_METRIC.out.tsv
+        )
+        CONVERT_CONFIDENCE (
+            ch_joined_confidence_report
+        )
+
+        CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
+        .set{ mergedtsv }
+    }
+    if (!params.spades_hmm ){
+        ch_spades_hmm = []
+    } else {
+        ch_spades_hmm = params.spades_hmm
+    }
+     
+    if (!params.skip_assembly){
+        println "spades"
+        illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
+             meta, reads, ref -> 
+            [meta, reads, [], []]
+        }
+        SPADES(
+           illumina_reads,
+           ch_spades_hmm
+        )
+        println "nanopore"
+        nanopore_reads = PULL_FASTA.out.fastq.filter { it[0].platform == 'OXFORD' }.map{
+            meta, reads, ref -> 
+            [meta, reads]
+        }
+        FLYE(
+            nanopore_reads,
+            "--nano-raw"
+        )
+    
     }
 
 
-    ALIGNMENT(
-        PULL_FASTA.out.fastq
-    )
-
-    CONFIDENCE_METRIC (
-        ALIGNMENT.out.pafs,
-    )
-    ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
-        CONFIDENCE_METRIC.out.tsv
-    )
-    CONVERT_CONFIDENCE (
-        ch_joined_confidence_report
-    )
-
-    CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-    .set{ mergedtsv }
+    
 
 
     
@@ -291,7 +323,7 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
     }
-
+    
     MULTIQC (
         ch_multiqc_files.collect()
     )
