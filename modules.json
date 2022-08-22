@@ -33,6 +33,12 @@
             "fastqc": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
+            "flye": {
+                "git_sha": "bd0fa881f6b4ed108af6b1f7393d7d37d4dbca97"
+            },
+            "gunzip": {
+                "git_sha": "fa37e0662690c4ec4260dae282fbce08777503e6"
+            },
             "ivar/consensus": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
@@ -69,11 +75,17 @@
             "nanoplot": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
+            "plasmidid": {
+                "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            },
             "porechop": {
                 "git_sha": "e20e57f90b6787ac9a010a980cf6ea98bd990046"
             },
             "pycoqc": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            },
+            "quast": {
+                "git_sha": "682f789f93070bd047868300dd018faf3d434e7c"
             },
             "rseqc/bamstat": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
@@ -83,6 +95,9 @@
             },
             "samtools/sort": {
                 "git_sha": "897c33d5da084b61109500ee44c01da2d3e4e773"
+            },
+            "spades": {
+                "git_sha": "682f789f93070bd047868300dd018faf3d434e7c"
             },
             "trimgalore": {
                 "git_sha": "85ec13ff1fc2196c5a507ea497de468101baabed"

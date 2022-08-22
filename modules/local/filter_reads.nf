@@ -14,22 +14,21 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process TOP_HITS {
+process FILTER_CLASS_READS {
     tag "$meta.id"
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/python:3.8.3' :
-        'quay.io/biocontainers/python:3.8.3' }"
+        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
+        'pegi3s/biopython:latest' }"
 
     input:
-    tuple val(meta), path(report)
-    val(top_hits_count)
+    tuple val(meta),  path(tops_report), path(classified_reads), path(reads)
 
     output:
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*_top_report.tsv"), optional:false, emit: tops
+    tuple val(meta), path("*.fastq"), optional:false, emit: reads
 
 
 
@@ -41,15 +40,18 @@ process TOP_HITS {
     def id = "${meta.id}"
     """
     echo ${meta.id} "-----------------META variable------------------"
-    get_top_hits.py \\
-        -i $report \\
-        -o $id \\
-        -t $top_hits_count
+    filter_reads.py \\
+        -a $classified_reads \\
+        -d $reads\\
+        -o ./ \\
+        -i $tops_report
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python --version | sed 's/Python //g')
+        python3: \$(python3 --version | sed 's/Python //g')
     END_VERSIONS
 
     """
 }
+
 

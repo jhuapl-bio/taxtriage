@@ -42,7 +42,9 @@ process MOVE_FILES {
     
 
     """
-    mv ${files} "${pattern}${files}"
+    for f in \$(ls *unclassified*); do 
+        mv "\$f" "${pattern}\$f"
+    done; 
     
 
     """
