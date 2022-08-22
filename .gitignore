@@ -1,6 +1,6 @@
 .example_commands.txt
 tmp*
-nf-core
+./nf-core
 examples/taxtriage_output
 examples.tar.gz
 databases
