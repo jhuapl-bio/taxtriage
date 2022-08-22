@@ -27,6 +27,9 @@ Sample_2,AEG588A1_S2_L001_R1_001.fastq.gz,AEG588A1_S2_L001_R2_001.fastq.gz,ILLUM
 Sample_3,AEG588A1_S3_L001_R1_001.fastq.gz,AEG588A1_S3_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
 ```
 
+
+
+
 ### Multiple Samples AND Platforms 
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
@@ -61,7 +64,7 @@ An [example samplesheet](../examples/Samplesheet.csv) has been provided with the
 The typical command for running the pipeline is as follows:
 
 ```console
-nextflow run nf-core/taxtriage --input samplesheet.csv --outdir <OUTDIR> --asssembly <assembly file> -profile docker
+nextflow run nf-core/taxtriage --input samplesheet.csv --outdir <OUTDIR> --demux --asssembly <assembly file> -profile docker
 ```
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
@@ -75,25 +78,6 @@ work                # Directory containing the nextflow working files
 # Other nextflow hidden files, eg. history of pipeline runs and old logs.
 ```
 
-### Updating the pipeline
-
-When you run the above command, Nextflow automatically pulls the pipeline code from GitHub and stores it as a cached version. When running the pipeline after this, it will always use the cached version if available - even if the pipeline has been updated since. To make sure that you're running the latest version of the pipeline, make sure that you regularly update the cached version of the pipeline:
-
-```console
-nextflow pull nf-core/taxtriage
-```
-
-| Column     | Parameters from the command line         |
-| ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `input`   | Samplesheet.csv file. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
-| `assembly`  | Can be a full path to the reference assembly txt file (see `assembly_file_type` for more info), reference FASTa file used to make the Kraken2 database, or blank which will autopull the latest ncbi regseq assembly text file. The first and last option require internet to run.                                             |
-| `assembly_file_type`  | Type of assembly to realign your reads against. Can be `ncbi` or `kraken2` where the former is an assembly reference tsv file such as `assembly_refseq.txt` or the reference, for the latter, FASTA file used to make the kraken2 database.                                                             |
-| `demux`  | If fields in the `Samplesheet.csv` used are demultiplexed folder(s), full of more than one fastq file, concatenate and compress to single file per sample     
-| `db`     | Directory path of the Kraken2 database                                                                                       |
-| `filter`     | Directory path of the Kraken2 database to filter out reads from. This database for example could be used to remove all human reads prior to downstream steps                                                                              |
-| `outdir` | Output directory path                                                       |
-
-An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
 
 ### Reproducibility

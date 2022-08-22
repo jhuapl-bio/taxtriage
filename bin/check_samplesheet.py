@@ -165,12 +165,13 @@ def sniff_format(handle):
         https://docs.python.org/3/glossary.html#term-text-file
 
     """
-    peek = handle.read(1024)
+    header = handle.readline().rstrip()
+    # peek = handle.read(2048)
     sniffer = csv.Sniffer()
-    if not sniffer.has_header(peek):
+    if not sniffer.has_header(header):
         logger.critical(f"The given sample sheet does not appear to contain a header.")
         # sys.exit(1)
-    dialect = sniffer.sniff(peek)
+    dialect = sniffer.sniff(header)
     handle.seek(0)
     return dialect
 

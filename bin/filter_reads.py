@@ -51,15 +51,6 @@ def parse_args(argv=None):
         help="List of taxids to pull from reference",
     )
     parser.add_argument(
-        "-r",
-        "--reference",
-        metavar="REFERENCE",
-        type=Path,
-        nargs="+",
-        help="Reference fasta files",
-    )
-    
-    parser.add_argument(
         "-s",
         "--taxid_header_sep",
         metavar="SEP",
@@ -99,10 +90,10 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "-o",
-        "--file_out",
-        metavar="FILE_OUT",
+        "--dir_out",
+        metavar="DIR_OUT",
         type=Path,
-        help="Name of the output tsv file containing a mapping of top n organisms at individual taxa levels",
+        help="Name of the output directory to place the filtered fastq file(s) into",
     )
     parser.add_argument(
         "-l",
@@ -126,26 +117,7 @@ def import_taxids(filename):
     with open(filename,"r") as f:
         taxids = [line.strip().split("\t")[4] for line in f]
     return taxids
-def import_filter_fasta(taxids, fastafile, sep, pos):
-    
-    mapping  = dict()
-    if isinstance(taxids, str):
-        taxids = [taxids]
-    for file in fastafile:
-        print(file)
-        with open(file,"r") as f:
-            for seq_record in SeqIO.parse(file, "fasta"):
-                grabbed = seq_record.id.split(sep)
-                if pos:
-                    idx = grabbed[pos]
-                else:
-                    idx = grabbed[grabbed.index('kraken:taxid') + 1]
-                idx = str(idx)
-                if idx in taxids and idx not in mapping:
-                    
-                    mapping[idx] = seq_record.seq
-        f.close()
-    return mapping
+
 def write_filtered(outfile, record_dict):
     try:
         # if not os.path.isdir(outfile):
@@ -163,7 +135,7 @@ def write_filtered(outfile, record_dict):
         
     except OSError as error:
         print(error)
-def get_fastq_filtered(filtered_taxids, reads, assignment_reads, output):
+def get_fastq_filtered(filtered_taxids, reads, assignment_reads, outputdir):
     
     classified_reads  = dict()
     with open(assignment_reads,"r") as f:
@@ -175,39 +147,26 @@ def get_fastq_filtered(filtered_taxids, reads, assignment_reads, output):
     for read in reads:
         encoding = guess_type(read)[1]  # uses file extension
         sample_base = Path(read).stem.split(".")[0]
+        filehandles = dict()
+        matched = dict()
+        g=0
+        for taxid in filtered_taxids:
+            matched[taxid] = []
         _open = partial(gzip.open, mode='rt') if encoding == 'gzip' else open
-        filename = os.path.join(os.path.dirname(output), sample_base+"_"+str(i+1)+"_filtered.fastq")
+        os.makedirs(outputdir, exist_ok=True)
+        filename = os.path.join(outputdir,sample_base+"_"+str(i+1)+"_filtered.fastq")
         with open(filename, "w") as w:
             try:
                 with _open(read) as f:
-                    seen = dict()
-                    g = 0
                     for seq_record in SeqIO.parse(f, "fastq"):
                         if seq_record.id in classified_reads and str(classified_reads[seq_record.id]) in filtered_taxids:
-                            SeqIO.write(seq_record,w,"fastq")
                             taxid = str(classified_reads[seq_record.id])
-                            if taxid not in seen:
-                                seen[taxid] = []
-                            seen[taxid].append(g)
-                            g = g + 1
+                            SeqIO.write(seq_record, w, "fastq")
+                        g = g + 4
                 f.close()
             except Exception as ex:
-                print(ex, "failed with file", filename)
-                pass
-                
-            # for taxid,value in seen.items():
-            #     with open(os.path.join(file_reads_out[i], taxid+".fastq"), "w") as f:
-            #         o = 0
-            #         with _open(read) as t:
-            #             for seq_record in SeqIO.parse(t, "fastq"):
-            #                 if o in value:
-            #                     SeqIO.write(seq_record,f,"fastq")
-            #                 o = 1+o
-            #         t.close()
-                    
-            #     f.close()
-
-        w.close()
+                print(ex, "failed with file")
+                pass                
         i+=1    
 def main(argv=None):
     """Coordinate argument parsing and program execut      ion."""
@@ -216,30 +175,9 @@ def main(argv=None):
     # if  args.type == 'file' and not args.input.is_file() :
     #     logger.error(f"The given input file {args.input} was not found!")
     #     sys.exit(2)
-    if args.type == 'file':
-        logger.info("File exists, importing and filtering")
-        taxids = import_taxids(args.input)
-        filtered_taxids = import_filter_fasta(taxids, 
-            args.reference, 
-            args.taxid_header_sep, 
-            args.pos_taxid_header
-        )
-        write_filtered(args.file_out, filtered_taxids)
-        if args.reads and args.assignment_reads:
-            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_out)
-    elif args.type == 'list' and len(args.input) > 0:
-        filtered_taxids = import_filter_fasta(
-            args.input.split(" "), 
-            args.reference, 
-            args.taxid_header_sep, 
-            args.pos_taxid_header
-        )
-        write_filtered(args.file_out, filtered_taxids)
-        if args.reads and args.assignment_reads:
-            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_reads_out)
-    elif not args.input and args.type == 'list':
-        logger.error(f"The given input list of taxids: {args.input} was not found!")
-        sys.exit(2)
+    taxids = import_taxids(args.input)
+    if args.reads and args.assignment_reads:
+        get_fastq_filtered(taxids, args.reads, args.assignment_reads, args.dir_out)
     return 
 if __name__ == "__main__":
     sys.exit(main())

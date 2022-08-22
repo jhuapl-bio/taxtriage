@@ -25,9 +25,13 @@ workflow ALIGNMENT {
         bwamem2: it[0].platform =~ 'ILLUMINA'
     }
     ch_versions = 1
+    ch_aligners.bwamem2.view()
+    println ch_aligners.bwamem2
     BWA_INDEX (
         ch_aligners.bwamem2.map{ meta, fastq, fasta -> fasta }
     )
+    fastq_reads.view()
+    BWA_INDEX.out.index.view()
     BWA_MEM(
         ch_aligners.bwamem2.map{ meta, fastq, fasta -> [ meta, fastq ] },
         BWA_INDEX.out.index,
