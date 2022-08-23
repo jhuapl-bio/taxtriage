@@ -137,6 +137,7 @@ def import_genome_file(filename, kraken2output):
 def import_assembly_file(input, filename, idx):
     refs = dict()
     seen = dict()
+    print("--------------")
     if (not isinstance(input, list)):
         input = input.split(" ")
     with open(filename,"r") as f:
@@ -144,8 +145,7 @@ def import_assembly_file(input, filename, idx):
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
-            
-            if linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen :
+            if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen :
                 refs[linesplit[idx[0]]] = dict( id="kraken:taxid|{}|{}".format(linesplit[idx[1]],linesplit[idx[0]]), fulline=linesplit )
                 seen[linesplit[idx[1]]] = True
     return refs

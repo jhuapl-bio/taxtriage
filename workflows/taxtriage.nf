@@ -152,7 +152,7 @@ workflow TAXTRIAGE {
     }
 
     PYCOQC(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary }.map{
+        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
             meta, reads -> meta.sequencing_summary
         }
     )
