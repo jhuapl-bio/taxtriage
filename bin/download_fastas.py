@@ -31,8 +31,14 @@ import re
 import os
 import shutil
 import urllib.request as request
-from contextlib import closing
+import ssl
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
 
+
+from contextlib import closing
+#import requests
 from tabnanny import filename_only
 from tokenize import String
 from typing import List
@@ -175,7 +181,7 @@ def get_assemblies(refs, outfile, seen, index_ftp):
                     ftp_site = ftp_site+'/'+fullid
                     encoding = guess_type(fullid)[1]   # uses file extension
                     _open = partial(gzip.open, mode='rt') if encoding == 'gzip' else open
-                    with closing(request.urlopen(ftp_site)) as r:
+                    with closing(request.urlopen(ftp_site, context=ctx)) as r:
                         with open('file.gz', 'wb') as f:
                             shutil.copyfileobj(r, f)
                         f.close()
@@ -190,7 +196,7 @@ def get_assemblies(refs, outfile, seen, index_ftp):
                     uncompressed.close()
         w.close()
     return 
-                
+
     #provide your own mail here
     ids = refs.keys()
     handle = Entrez.efetch(db="assembly", id=ids, retmax='200')
