@@ -19,7 +19,7 @@ process GET_ASSEMBLIES {
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/gnu-wget:1.18--0' :
+        'https://depot.galaxyproject.org/singularity/gnu-wget%3A1.18--h7132678_6' :
         'cicirello/gnu-on-alpine' }"
 
     
@@ -47,7 +47,7 @@ process GET_ASSEMBLIES {
     """
     if [[ ! -s 'assembly_summary_refseq.txt' ]] ; then
         echo "Downloading the assembly summary file from ncbi...."
-        wget ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O assembly_summary_refseq.txt
+        wget --no-check-certificate ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O assembly_summary_refseq.txt
     else 
         echo "Assembly file exists"
     fi
