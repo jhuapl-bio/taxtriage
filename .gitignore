@@ -1,3 +1,4 @@
+./Samplesheet*csv
 .example_commands.txt
 ./nf-core
 tmp*

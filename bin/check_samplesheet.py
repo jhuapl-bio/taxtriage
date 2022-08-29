@@ -205,7 +205,7 @@ def check_samplesheet(file_in, file_out):
     # required_columns = {"sample", "fastq_1", "fastq_2"}
     required_columns = {"sample"}
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
-    with file_in.open(newline="") as in_handle:
+    with file_in.open(newline="", encoding='utf-8-sig') as in_handle:
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))
         # Validate the existence of the expected header columns.
         if not required_columns.issubset(reader.fieldnames):
@@ -214,6 +214,7 @@ def check_samplesheet(file_in, file_out):
         # Validate each row.
         checker = RowChecker()
         for i, row in enumerate(reader):
+            print(i, row)
             try:
                 checker.validate_and_transform(row)
             except AssertionError as error:
