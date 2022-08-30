@@ -18,23 +18,23 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
-include { KRAKEN2_KRAKEN2 } from '../../modules/nf-core/modules/kraken2/kraken2/main'
+include { KRAKEN2_KRAKEN2 as FILTERREADSKRAKEN2 } from '../../modules/nf-core/modules/kraken2/kraken2/main'
 include { MOVE_FILES } from '../../modules/local/moveFiles.nf'
 
-workflow FILTER_READS {
+workflow READSFILTER {
     take:
         fastq_reads
         db
 
     main:
-        KRAKEN2_KRAKEN2(
+        FILTERREADSKRAKEN2(
             fastq_reads,
             db,
             true,
             true
         )
         MOVE_FILES(
-            KRAKEN2_KRAKEN2.out.unclassified_reads_fastq,
+            FILTERREADSKRAKEN2.out.unclassified_reads_fastq,
             "filtered_",
             false,
             []
@@ -44,5 +44,5 @@ workflow FILTER_READS {
 
     emit:
         reads = ch_unclassified_reads
-        versions = KRAKEN2_KRAKEN2.out.versions
+        versions = FILTERREADSKRAKEN2.out.versions
 }

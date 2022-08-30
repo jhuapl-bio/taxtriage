@@ -47,6 +47,18 @@ nextflow run ./main.nf \
    -profile docker  -resume --demux
 
 ```
+
+or with your very own assembly refseq file (if no internet available from ncbi)
+
+```
+
+nextflow run ./main.nf \
+   --input examples/Samplesheet_cli.csv \
+   --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
+   --outdir tmp --max_memory 10GB --max_cpus 3 \
+   -profile docker  -resume --demux --assembly examples/assembly_summary_refseq.txt
+
+```
  
 or, using 
 
