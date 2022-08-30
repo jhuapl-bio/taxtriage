@@ -1,4 +1,7 @@
+./Samplesheet*csv
+./examples/Samplesheet_ERR.csv
 .example_commands.txt
+./nf-core
 tmp*
 ./nf-core
 examples/taxtriage_output
@@ -19,3 +22,4 @@ bin/tmp-*
 multiqc*
 data
 !examples/data
+./examples/Samplesheet_ERR.csv

@@ -87,7 +87,7 @@ ch_multiqc_custom_config = params.multiqc_config ? Channel.fromPath(params.multi
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
-include { FILTER_READS } from '../subworkflows/local/filter_reads'
+include { READSFILTER } from '../subworkflows/local/filter_reads'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -108,7 +108,8 @@ include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
 include { PORECHOP } from '../modules/nf-core/modules/porechop/main'
 include { MULTIQC                     } from '../modules/nf-core/modules/multiqc/main'
 include { FLYE                     } from '../modules/nf-core/modules/flye/main'
-include { SPADES                     } from '../modules/nf-core/modules/spades/main'
+include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/modules/spades/main'
+include { SPADES as SPADES_OXFORD } from '../modules/nf-core/modules/spades/main'
 include { NANOPLOT                     } from '../modules/nf-core/modules/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/modules/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
@@ -184,11 +185,11 @@ workflow TAXTRIAGE {
     if (params.filter){
         ch_filter_db = file(params.filter)
         println "${ch_filter_db} <-- filtering reads on this db"
-        FILTER_READS(
+        READSFILTER(
             ch_reads,
             ch_filter_db
         )
-        ch_reads = FILTER_READS.out.reads
+        ch_reads = READSFILTER.out.reads
     }
     if (!params.skip_plots){
         FASTQC (
@@ -270,21 +271,26 @@ workflow TAXTRIAGE {
     if (!params.skip_assembly){
         println "spades"
         illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
-             meta, reads, ref -> 
+            meta, reads, ref -> 
             [meta, reads, [], []]
         }
-        SPADES(
+        SPADES_ILLUMINA(
            illumina_reads,
            ch_spades_hmm
         )
         println "nanopore"
-        nanopore_reads = PULL_FASTA.out.fastq.filter { it[0].platform == 'OXFORD' }.map{
+        nanopore_reads = PULL_FASTA.out.fastq.filter { it[0].platform == 'OXFORD'  }.map{
             meta, reads, ref -> 
-            [meta, reads]
+            [meta, [], [], reads]
         }
+	    // SPADES_OXFORD(
+        //    nanopore_reads,
+        //    ch_spades_hmm
+        // )
+        
         FLYE(
-            nanopore_reads,
-            "--nano-raw"
+           nanopore_reads,
+           "--nano-raw"
         )
     
     }
