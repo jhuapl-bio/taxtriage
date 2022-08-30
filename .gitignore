@@ -1,4 +1,5 @@
 ./Samplesheet*csv
+./examples/Samplesheet_ERR.csv
 .example_commands.txt
 ./nf-core
 tmp*
@@ -21,3 +22,4 @@ bin/tmp-*
 multiqc*
 data
 !examples/data
+./examples/Samplesheet_ERR.csv

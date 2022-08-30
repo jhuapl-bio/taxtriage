@@ -87,7 +87,7 @@ ch_multiqc_custom_config = params.multiqc_config ? Channel.fromPath(params.multi
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
-include { FILTER_READS } from '../subworkflows/local/filter_reads'
+include { READSFILTER } from '../subworkflows/local/filter_reads'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -185,11 +185,11 @@ workflow TAXTRIAGE {
     if (params.filter){
         ch_filter_db = file(params.filter)
         println "${ch_filter_db} <-- filtering reads on this db"
-        FILTER_READS(
+        READSFILTER(
             ch_reads,
             ch_filter_db
         )
-        ch_reads = FILTER_READS.out.reads
+        ch_reads = READSFILTER.out.reads
     }
     if (!params.skip_plots){
         FASTQC (

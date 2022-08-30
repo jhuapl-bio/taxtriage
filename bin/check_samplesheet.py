@@ -214,7 +214,6 @@ def check_samplesheet(file_in, file_out):
         # Validate each row.
         checker = RowChecker()
         for i, row in enumerate(reader):
-            print(i, row)
             try:
                 checker.validate_and_transform(row)
             except AssertionError as error:
