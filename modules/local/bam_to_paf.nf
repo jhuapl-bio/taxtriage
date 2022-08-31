@@ -20,7 +20,7 @@ process BAM_TO_PAF {
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/bioconvert:0.5.2--pyhdfd78af_0' :
+        'https://depot.galaxyproject.org/singularity/bioconvert:0.6.1--pyhdfd78af_0' :
         'lbmc/bioconvert:0.4.0' }"
 
     input:
