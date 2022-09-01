@@ -38,7 +38,7 @@ process BAM_TO_SAM {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     """
-    bioconvert bam2sam ${bamfiles} ${meta.id}.sam -a --force; 
+    samtools view -h -o ${meta.id}.sam  ${bamfiles} 
 
 
     cat <<-END_VERSIONS > versions.yml
