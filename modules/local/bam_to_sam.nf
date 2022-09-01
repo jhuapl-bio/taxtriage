@@ -18,10 +18,10 @@ process BAM_TO_SAM {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
+    conda (params.enable_conda ? "bioconda::samtools=1.15.1" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/bioconvert:0.6.1--pyhdfd78af_0' :
-        'lbmc/bioconvert:0.4.0' }"
+        'https://depot.galaxyproject.org/singularity/samtools:1.15.1--h1170115_0' :
+        'quay.io/biocontainers/samtools:1.15.1--h1170115_0' }"
 
     input:
     tuple val(meta), path(bamfiles)
@@ -38,7 +38,7 @@ process BAM_TO_SAM {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     """
-    bioconvert bam2sam ${bamfiles} ${meta.id}.sam -a --force; 
+    samtools view -h -o ${meta.id}.sam  ${bamfiles} 
 
 
     cat <<-END_VERSIONS > versions.yml
