@@ -24,7 +24,7 @@ process CONFIDENCE_METRIC {
         'cicirello/gnu-on-alpine' }"
 
     input:
-    tuple val(meta), path(paf)
+    tuple val(meta), path(sam)
 
     output:
     tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
@@ -46,8 +46,8 @@ process CONFIDENCE_METRIC {
     """
     
 
-    bash paf_to_confidence.sh \\
-        -i $paf \\
+    bash sam_to_confidence.sh \\
+        -i $sam \\
         -o $output
 
     cat <<-END_VERSIONS > versions.yml
