@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process BAM_TO_PAF {
+process BAM_TO_SAM {
     tag "$meta.id"
     label 'process_medium'
 
@@ -28,7 +28,7 @@ process BAM_TO_PAF {
 
     output:
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*.paf")     , optional:false, emit: paf
+    tuple val(meta), path("*.sam")     , optional:false, emit: sam
 
 
 
@@ -39,7 +39,6 @@ process BAM_TO_PAF {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     """
     bioconvert bam2sam ${bamfiles} ${meta.id}.sam -a --force; 
-    bioconvert sam2paf ${meta.id}.sam ${meta.id}.paf -a --force
 
 
     cat <<-END_VERSIONS > versions.yml

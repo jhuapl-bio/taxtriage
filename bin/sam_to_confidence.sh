@@ -45,14 +45,14 @@ OUTPUT FORMAT:
 
 OPTIONS:
 	-h	help	show this message
-	-i	FILE	input paf filename (should include full path)
+	-i	FILE	input sam filename (should include full path)
 	-o	FILE	output tsv filename (should include full path)
 
 USAGE:
-bash paf_to_confidence.sh -i </full/path/to/alignment.paf> -o </full/path/to/output.tsv>
-i="/data/projects/aphl_basestack/module-paf_to_confidence/examples/b_thuringensis_test1.paf"
-o="/data/sandbox/paf_to_conf-b_thuringensis_test1.tsv"
-bash paf_to_confidence.sh -i "$i" -o "$o"
+bash sam_to_confidence.sh -i </full/path/to/alignment.sam> -o </full/path/to/output.tsv>
+i="/data/projects/aphl_basestack/module-sam_to_confidence/examples/b_thuringensis_test1.sam"
+o="/data/sandbox/sam_to_conf-b_thuringensis_test1.tsv"
+bash sam_to_confidence.sh -i "$i" -o "$o"
 
 EOF
 }
@@ -66,14 +66,14 @@ while getopts "hi:o:" OPTION
 do
 	case $OPTION in
 		h) usage; exit 1 ;;
-		i) PAF=$OPTARG ;;
+		i) SAM=$OPTARG ;;
 		o) OUTPUT=$OPTARG ;;
 		?) usage; exit ;;
 	esac
 done
 # check args
-if [[ -z "$PAF" ]]; then printf "%s\n" "Please specify an input filename (-i) [include full path]."; exit; fi
-if [[ ! -f "$PAF" ]]; then printf "%s\n" "The input filename (-i) does not exist. Exiting."; exit; fi
+if [[ -z "$SAM" ]]; then printf "%s\n" "Please specify an input filename (-i) [include full path]."; exit; fi
+if [[ ! -f "$SAM" ]]; then printf "%s\n" "The input filename (-i) does not exist. Exiting."; exit; fi
 if [[ -z "$OUTPUT" ]]; then printf "%s\n" "Please specify an output filename (-o) [include full path]."; exit; fi
 
 # setup other variables
@@ -88,47 +88,59 @@ mkdir -p "$tmp"
 # find single best alignment per read
 >&2 echo "finding best single alignment per read"
 #		based on MAPQ
-awk -F'\t' '{
+gawk -F'\t' 'BEGIN{OFS="\t"}{
+	match($0, /LN:([0-9]+)/, ary )
+	if (ary[1]){
+		match($0, /SN:([^\t]+)/, ars )
+		t[ars[1]]=ary[1]
+	}
 	if($1 in b){
-		if($12>best[$1]){
-			b[$1]=$12;
-			best[$1]=$0;
+		if($5>best[$1]){
+			b[$1]=$5;
+			best[$1]=$0"\t"t[$3];
 		}
 	}else{
-		b[$1]=$12;
-		best[$1]=$0;
+		b[$1]=$5;
+		best[$1]=$0"\t"t[$3];
 	}
+	
 }END{
 	for(r in best){
 		print(best[r]);
 	}
-}' "$PAF"  > "$tmp/tmp1.paf"
-
+}' "$SAM"   > "$tmp/tmp1.sam"
 # include all alignments
-
-#cat "$outdir/newtarget_filtered.paf" > "$outdir/seeker.paf"
-bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1.paf")
-bsa_acccount=$(cut -f6 "$tmp/tmp1.paf" | sort | uniq | awk 'END{print(NR)}')
+bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1.sam")
+bsa_acccount=$(cut -f3 "$tmp/tmp1.sam" | sort | uniq | awk 'END{print(NR)}')
 >&2 echo "  $bsa_seqcount single best alignments"
 >&2 echo "  to $bsa_acccount unique accessions"
 
 # get reads with a "block length"/"read length" greater than 80%
 >&2 echo "finding reads with a [block length]:[read length] ratio > 0.80"
-awk -F'\t' '{if(($10/$2)>0.0){print($0)}}' "$tmp/tmp1.paf" > "$tmp/tmp2.paf"
+
+regex="NM:i:([0-9]+)"
+gawk -v regex=$regex 'BEGIN{OFS="\t"}
+	match($0, /NM:i:([0-9])+/, ary ) {
+		mm=ary[1]
+		print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$(NF),mm
+	}' "$tmp/tmp1.sam"  > "$tmp/tmp1_included.sam" 
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.0){print($0)}}' "$tmp/tmp1_included.sam" > "$tmp/tmp2.sam"
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.0){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
+	| sort \
+	| uniq -c \
+	| sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
 
 
-awk -F'\t' '{if(($10/$2)>0.0){count[$1]++; a[$1]=$6}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1.paf" | sort | uniq -c | sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
-
-umseqs_count=$(awk -F'\t' '{x+=$1}END{print(x)}' "$tmp/uniq.refs")
+umseqs_count=$(awk -F'\t' '{x+=$3}END{print(x)}' "$tmp/uniq.refs")
 umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
 >&2 echo "  to $umrefs_count accessions"
 #>&2 echo "gathering alignment stats"
-awk -F'\t'  '{
-	ilen[$6]=$7;
-	ireads[$6]+=1;
-	for(i=$8+1;i<=$9+1;i++){
-		dep[$6][i]+=1
+awk -F'\t'  'function abs(x){return +sqrt(x*x)}{
+	ilen[$3]=$12;
+	ireads[$3]+=1;
+	for(i=$4+1;i<=($4 + abs($9))+1;i++){
+		dep[$3][i]+=1
 	};
 }END{
 	for(i in ireads){
@@ -149,22 +161,21 @@ awk -F'\t'  '{
 		adjtotal+=(sfactor*sum[i]);
 	}
 
-	# print output row per $6
+	# print output row per $4
 	for(i in dep){
 		o1=ireads[i];
 		o3=o1/aligned;
 		o4=(sum[i]/total_bases);
 		o5=(adjsum[i]/adjtotal);
 		o6=(cov[i]/ilen[i]);
-		
 		mean=sum[i]/ilen[i];
 		stdev=sqrt((sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
+		# print o6,cov[i],ilen[i]
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}' "$tmp/tmp2.paf"   > $OUTPUT
-# > $OUTPUT
-# head $OUTPUT
+}'  "$tmp/tmp2.sam"   > $OUTPUT
+
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
 #	o1		total reads aligned to accession
