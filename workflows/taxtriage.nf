@@ -250,7 +250,7 @@ workflow TAXTRIAGE {
         )
 
         CONFIDENCE_METRIC (
-            ALIGNMENT.out.pafs,
+            ALIGNMENT.out.sam,
         )
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv

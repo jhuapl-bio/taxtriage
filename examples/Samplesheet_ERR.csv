@@ -1,0 +1,2 @@
+sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
+ERR6913102,FALSE,,ILLUMINA,FALSE,examples/data/ERR6913102_1.fastq.gz,examples/data/ERR6913102_2.fastq.gz,,
