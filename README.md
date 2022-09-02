@@ -138,7 +138,7 @@ On release, automated continuous integration tests run the pipeline on a full-si
    ```
 
 ## Modules
-
+0. Subsample (OPTIONAL)
 1.	Guppyplex (Oxford Nanopore Only)
 2.	QC Plotting part 1 (pycoQC – Oxford Nanopore)
 3.	Trimming (Trimgalore – Illumina, Porechop – Oxford Nanopore)

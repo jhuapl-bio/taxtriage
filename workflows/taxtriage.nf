@@ -106,6 +106,7 @@ include { ARTIC_GUPPYPLEX } from '../modules/nf-core/modules/artic/guppyplex/mai
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
 include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
 include { PORECHOP } from '../modules/nf-core/modules/porechop/main'
+include { SEQTK_SAMPLE } from '../modules/nf-core/modules/seqtk/sample/main'
 include { MULTIQC                     } from '../modules/nf-core/modules/multiqc/main'
 include { FLYE                     } from '../modules/nf-core/modules/flye/main'
 include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/modules/spades/main'
@@ -142,9 +143,19 @@ workflow TAXTRIAGE {
     INPUT_CHECK (
         ch_input
     )
+    ch_reads = INPUT_CHECK.out.reads
+    if (params.subsample && params.subsample > 0){
+        ch_subsample  = params.subsample
+        SEQTK_SAMPLE (
+            ch_reads,
+            ch_subsample
+        )
+        ch_reads = SEQTK_SAMPLE.out.reads
+        ch_reads.view()
+    }
     if (params.demux){
         ARTIC_GUPPYPLEX(
-            INPUT_CHECK.out.reads.filter{ it[0].barcode }
+            ch_reads.filter{ it[0].barcode }
         )
         ch_reads = ARTIC_GUPPYPLEX.out.fastq
         ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].barcode })
