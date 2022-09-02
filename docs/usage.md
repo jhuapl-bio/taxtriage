@@ -45,6 +45,7 @@ TRUE,Sample_1,,OXFORD,FALSE,data/test-run/sample_metagenome.fastq.gz,,,
 FALSE,ERR6913101,,ILLUMINA,FALSE,data/test-run/ERR6913101_1.fastq.gz,data/test-run/ERR6913101_2.fastq.gz,,
 ```
 
+### Samplesheet Information
 
 | Column     | Description                                                                                                                                                                            |
 | ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,6 +78,23 @@ work                # Directory containing the nextflow working files
 .nextflow_log       # Log file from Nextflow
 # Other nextflow hidden files, eg. history of pipeline runs and old logs.
 ```
+
+### CLI Parameters Possible and Explained
+
+| Parameter     | Description                                                                                                                                                                            |
+| ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input <samplesheet.csv_path>`   | CSV file containing samplesheet information for each sample. See [Samplesheet section](#samplesheet-information)  |
+| `--outdir <path_to_output_to_be_made>`  | Output folder.                                             |
+| `--skip_assembly`  | Full path to FastQ file for Illumina short reads 2. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
+| `--skip_plots`  | TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
+| `--subsample <number>`     | Take a subsample of n reads from each sample                                                                                       |
+| `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database)                                                          |
+| `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
+| `--low_memory <number>` | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD |
+| `--max_cpus <number>` | Max CPUs you want to dedicate to the pipeline | 
+| `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
+| `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
+| `-profile [docker,singularity,conda]` | Conda, Singularity, or Docker | 
 
 
 
