@@ -28,7 +28,7 @@ process SEQTK_SAMPLE {
             $args \\
             $reads \\
             $sample_size \\
-            | gzip --no-name > ${prefix}.fastq.gz \\
+            | gzip --no-name > ${prefix}_subsample.fastq.gz \\
 
         cat <<-END_VERSIONS > versions.yml
         "${task.process}":
@@ -45,14 +45,14 @@ process SEQTK_SAMPLE {
             $args \\
             ${reads[0]} \\
             $sample_size \\
-            | gzip --no-name > ${prefix}_1.fastq.gz \\
+            | gzip --no-name > ${prefix}_1_subsample.fastq.gz \\
 
         seqtk \\
             sample \\
             $args \\
             ${reads[1]} \\
             $sample_size \\
-            | gzip --no-name > ${prefix}_2.fastq.gz \\
+            | gzip --no-name > ${prefix}_2_subsample.fastq.gz \\
 
         cat <<-END_VERSIONS > versions.yml
         "${task.process}":

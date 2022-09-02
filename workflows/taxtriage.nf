@@ -144,15 +144,7 @@ workflow TAXTRIAGE {
         ch_input
     )
     ch_reads = INPUT_CHECK.out.reads
-    if (params.subsample && params.subsample > 0){
-        ch_subsample  = params.subsample
-        SEQTK_SAMPLE (
-            ch_reads,
-            ch_subsample
-        )
-        ch_reads = SEQTK_SAMPLE.out.reads
-        ch_reads.view()
-    }
+    
     if (params.demux){
         ARTIC_GUPPYPLEX(
             ch_reads.filter{ it[0].barcode }
@@ -162,7 +154,27 @@ workflow TAXTRIAGE {
     } else {
         ch_reads = INPUT_CHECK.out.reads
     }
+    if (params.subsample && params.subsample > 0){
+        ch_subsample  = params.subsample
+        ch_reads.view()
+        SEQTK_SAMPLE (
+            ch_reads,
+            ch_subsample
+        )
+        ch_reads = SEQTK_SAMPLE.out.reads
+    }
 
+    
+    
+    if (params.filter){
+        ch_filter_db = file(params.filter)
+        println "${ch_filter_db} <-- filtering reads on this db"
+        READSFILTER(
+            ch_reads,
+            ch_filter_db
+        )
+        ch_reads = READSFILTER.out.reads
+    }
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
             meta, reads -> meta.sequencing_summary
@@ -192,16 +204,6 @@ workflow TAXTRIAGE {
         trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
         ch_reads=nontrimmed_reads.mix(trimmed_reads)
     } 
-    
-    if (params.filter){
-        ch_filter_db = file(params.filter)
-        println "${ch_filter_db} <-- filtering reads on this db"
-        READSFILTER(
-            ch_reads,
-            ch_filter_db
-        )
-        ch_reads = READSFILTER.out.reads
-    }
     if (!params.skip_plots){
         FASTQC (
             ch_reads.filter { it[0].platform == 'ILLUMINA'}
