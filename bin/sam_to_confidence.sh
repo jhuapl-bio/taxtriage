@@ -136,7 +136,7 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
 >&2 echo "  to $umrefs_count accessions"
 #>&2 echo "gathering alignment stats"
-awk -F'\t'  'function abs(x){return +sqrt(x*x)}{
+awk -F'\t'  'function abs(x){return sqrt(x*x)}{
 	ilen[$3]=$12;
 	ireads[$3]+=1;
 	for(i=$4+1;i<=($4 + abs($9))+1;i++){
@@ -171,10 +171,9 @@ awk -F'\t'  'function abs(x){return +sqrt(x*x)}{
 		mean=sum[i]/ilen[i];
 		stdev=sqrt((sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
-		# print o6,cov[i],ilen[i]
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}'  "$tmp/tmp2.sam"   > $OUTPUT
+}'  "$tmp/tmp2.sam"  > $OUTPUT
 
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
