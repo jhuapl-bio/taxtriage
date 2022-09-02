@@ -124,8 +124,8 @@ gawk -v regex=$regex 'BEGIN{OFS="\t"}
 		mm=ary[1]
 		print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$(NF),mm
 	}' "$tmp/tmp1.sam"  > "$tmp/tmp1_included.sam" 
-awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.0){print($0)}}' "$tmp/tmp1_included.sam" > "$tmp/tmp2.sam"
-awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.0){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.01){print($0)}}' "$tmp/tmp1_included.sam" > "$tmp/tmp2.sam"
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.01){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
 	| sort \
 	| uniq -c \
 	| sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
