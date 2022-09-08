@@ -265,6 +265,9 @@ workflow TAXTRIAGE {
         CONFIDENCE_METRIC (
             ALIGNMENT.out.sam,
         )
+        // SEPARATE_READS(
+        //     CONFIDENCE_METRIC.out.reads
+        // )
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         )
