@@ -1,3 +1,4 @@
+./test
 ./Samplesheet*csv
 examples/assembly_summary_refseq.txt
 ./examples/Samplesheet_ERR.csv
