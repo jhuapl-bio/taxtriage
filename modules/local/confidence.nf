@@ -28,6 +28,7 @@ process CONFIDENCE_METRIC {
 
     output:
     tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
+    path("*reads"), optional: false, emit: reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -48,7 +49,8 @@ process CONFIDENCE_METRIC {
 
     bash sam_to_confidence.sh \\
         -i $sam \\
-        -o $output
+        -o $output \\
+        -r ${meta.id}.reads
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

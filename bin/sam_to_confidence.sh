@@ -60,14 +60,17 @@ EOF
 
 
 
+OUTPUT_READS="false"
+
 #	ARGUMENTS
 # parse args
-while getopts "hi:o:" OPTION
+while getopts "hi:o:r:" OPTION
 do
 	case $OPTION in
 		h) usage; exit 1 ;;
 		i) SAM=$OPTARG ;;
 		o) OUTPUT=$OPTARG ;;
+		r) OUTPUT_READS=$OPTARG;;
 		?) usage; exit ;;
 	esac
 done
@@ -75,7 +78,7 @@ done
 if [[ -z "$SAM" ]]; then printf "%s\n" "Please specify an input filename (-i) [include full path]."; exit; fi
 if [[ ! -f "$SAM" ]]; then printf "%s\n" "The input filename (-i) does not exist. Exiting."; exit; fi
 if [[ -z "$OUTPUT" ]]; then printf "%s\n" "Please specify an output filename (-o) [include full path]."; exit; fi
-
+if [[  ! "$OUTPUT_READS" == "false" ]]; then printf "%s\n" "READS to be output in a 2 column file to $OUTPUT_READS"; fi
 # setup other variables
 absolute_path_x="$(readlink -fn -- "$0"; echo x)"
 absolute_path_of_script="${absolute_path_x%x}"
@@ -88,93 +91,237 @@ mkdir -p "$tmp"
 # find single best alignment per read
 >&2 echo "finding best single alignment per read"
 #		based on MAPQ
-gawk -F'\t' 'BEGIN{OFS="\t"}{
+regex="NM:i:([0-9]+)"
+
+
+samtools mpileup $SAM > "$tmp/tmp1.mpileup"
+
+gawk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
+	if ($1 ~ /^@/){
+		print $0
+	}
 	match($0, /LN:([0-9]+)/, ary )
 	if (ary[1]){
 		match($0, /SN:([^\t]+)/, ars )
 		t[ars[1]]=ary[1]
-	}
-	if($1 in b){
-		if($5>best[$1]){
+	} 
+	match($0, /NM:i:([0-9])+/, arx )
+	if (length(arx) >0){
+		mm=arx[1]
+		
+		match($6, /([0-9]+)M/, s )
+
+		size=s[1]
+		if($1 in b){
+			if($5>best[$1]){
+				b[$1]=$5;
+				best[$1]=$1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8"\t"size"\t"$10"\t"t[$3]"\t"mm;
+			}
+		}else{
 			b[$1]=$5;
-			best[$1]=$0"\t"t[$3];
+			    best[$1]=$1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8"\t"size"\t"$10"\t"t[$3]"\t"mm;
 		}
-	}else{
-		b[$1]=$5;
-		best[$1]=$0"\t"t[$3];
 	}
 	
 }END{
 	for(r in best){
 		print(best[r]);
 	}
-}' "$SAM"   > "$tmp/tmp1.sam"
+}' "$SAM" > "$tmp/tmp1_included.sam" 
+
 # include all alignments
-bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1.sam")
-bsa_acccount=$(cut -f3 "$tmp/tmp1.sam" | sort | uniq | awk 'END{print(NR)}')
+bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1_included.sam")
+bsa_acccount=$(cut -f3 "$tmp/tmp1_included.sam" | sort | uniq | awk 'END{print(NR)}')
 >&2 echo "  $bsa_seqcount single best alignments"
 >&2 echo "  to $bsa_acccount unique accessions"
 
 # get reads with a "block length"/"read length" greater than 80%
 >&2 echo "finding reads with a [block length]:[read length] ratio > 0.80"
 
-regex="NM:i:([0-9]+)"
-gawk -v regex=$regex 'BEGIN{OFS="\t"}
-	match($0, /NM:i:([0-9])+/, ary ) {
-		mm=ary[1]
-		print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$(NF),mm
-	}' "$tmp/tmp1.sam"  > "$tmp/tmp1_included.sam" 
-awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.05){print($0)}}' "$tmp/tmp1_included.sam" > "$tmp/tmp2.sam"
-awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if(abs(($8-$13)/$8)>0.05){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if($1 ~ /^@/ || abs(($9-$13)/$9)>=0.05){print($0)}}' "$tmp/tmp1_included.sam"   > "$tmp/tmp2.sam"
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if( $1 ~ /^[^@]/ && abs(($9-$13)/$9)>0.05){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
 	| sort \
 	| uniq -c \
 	| sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
+
+if [[ ! $OUTPUT_READS == 'false' ]]; then
+	echo "adding reads to $OUTPUT_READS as 2 column file"
+	cut -f 1,3 -d $'\t' "$tmp/tmp2.sam" > $OUTPUT_READS
+	# awk -v output=$OUTPUT_READS -F "\t" '{ print>output"_"$3".reads" }' "$tmp/tmp2.sam"
+	echo "added reads to necessary file"
+fi 
 
 
 umseqs_count=$(awk -F'\t' '{x+=$3}END{print(x)}' "$tmp/uniq.refs")
 umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
 >&2 echo "  to $umrefs_count accessions"
-#>&2 echo "gathering alignment stats"
-awk -F'\t'  'function abs(x){return sqrt(x*x)}{
-	ilen[$3]=$12;
-	ireads[$3]+=1;
-	for(i=$4+1;i<=($4 + abs($9))+1;i++){
-		dep[$3][i]+=1
+>&2 echo "gathering alignment stats"
+echo "______"
+gawk -F'\t'  'function abs(x){
+		return ((x < 0.0) ? -x : x)
 	};
-}END{
-	for(i in ireads){
-		aligned+=ireads[i];
-		for(j in dep[i]){
-			sum[i]+=dep[i][j];
-			sumsq[i]+=dep[i][j]^2;
-			total_bases+=dep[i][j];
-			cov[i]+=1;
+{
+	if(NR==FNR){
+		a[$1][$2]=$4; 		
+		next
+	} else {
+		if ($1 ~ /^[^@]/ ){
+			ilen[$3]=$11;
+			ireads[$3]+=1;
+			if ($9 < 0){
+				start = $4-abs($9)
+				end=$4+1
+			} else {
+				end=$4+abs($9)
+				start=$4
+			}
+			end=$4+abs($9)
+			start=$4
+			
+			dep[$3][start][end]+=1
+			for(i=start;i<end;i++){
+				dep2[$3][i]+=1
+			};
 		}
+		
+	};
+	
+}
+END{
+	
+	for (i in ireads){
+		for (pos in a[i]){
+			sumsq[i]+=a[i][pos]^2
+		}
+		i=i+0
 		tlen+=ilen[i];
+		
+		aligned+=ireads[i];
+		s=0
+		delete f
+		min=0
+		delete count
+		delete deleteMarks
+		delete seen
+ 		for(j in dep[i]){
+			max=0		
+			j=j+0
+			for (y in dep[i][j]){
+				y=y+0
+				
+				plus=dep[i][j][y] * (y  - j )
+				sum[i]+=plus;
+				total_bases+=dep[i][j][y];
+				# for (t=j; t<=y; t++){
+				# 	count[i][t]+=dep[i][j][y]
+				# }
+				if (max < y){
+					max = y
+				}	
+			}
+			seen[j]=max
+		}
+		
+		# for (p in count){
+		# 	for (t in count[p]){
+		# 		sumsq[i]+=count[p][t]^2
+		# 	}
+		# }
+		lastt=0
+		nextt=0
+		delete marks
+		
+		# n=asorti(seen, sortedseen,"@ind_num_asc")
+		PROCINFO["sorted_in"] = "@ind_num_asc"
+		for (t in seen)  {
+				left=t+0
+				right=seen[t]+0
+				# print "old: ", lastt,"-",nextt
+				# print "testing...: ", left,"-",right
+				result=0
+				if (nextt >= left && right > nextt){
+					result=1
+					nextt=right
+					if (left < lastt){
+						lastt=left
+						
+					} 
+				} else if (nextt < left){
+					result=2
+					if (left < lastt || lastt == 0){
+						lastt=left
+					} else if (left > nextt){
+						lastt=left
+					}
+					nextt=right
+				} 
+				if(result>0){
+					#print "results: ", result,"override: ", left,"-",right," with: ", "next: ", lastt,"-",nextt
+					main=right-left+1
+					new=nextt-lastt+1
+					#print "new: ", new, "main: ", main
+					marks[lastt]=nextt
+				} 
+				
+				
+				
+				for(k in marks){
+					# print k,"-:-",marks[k] 
+				}
+				# print"-----------------"
+		}
+		# print"_____________END_____"
+		for(k in marks){
+			# print k,"-:-",marks[k] 
+			cov[i]+=(marks[k]-k)
+		}
+		#print cov[i], "|", sumsq[i], "|", sum[i]
 	}
 
 
-	for(i in dep){
+	print"_________TRUE____\n_______ "
+	for(i in ireads){
+		aligned+=ireads[i];
+		for(j in dep2[i]){
+			# print i,j,dep2[i][j]
+			if (a[i][j] != dep2[i][j]){
+				# print i,j,"depthfile: ",a[i][j], "counts: ",dep2[i][j]
+			}
+			sum2[i]+=dep2[i][j];
+			sumsq2[i]+=dep2[i][j]^2;
+			total_bases+=dep2[i][j];
+			cov2[i]+=1;
+		}
+		#print cov2[i], "|", sumsq2[i], "|", sum2[i]
+		tlen+=ilen[i];
+		# cov[i]=cov2[i]
+		# sumsq[i] = sumsq2[i]
+		# sum[i]=sum2[i]
+	}
+
+	for(i in ireads){
 		sfactor=(ilen[i]/tlen);
 		adjsum[i]=(sfactor*sum[i]);
 		adjtotal+=(sfactor*sum[i]);
 	}
 
 	# print output row per $4
-	for(i in dep){
+	for(i in ireads){
 		o1=ireads[i];
 		o3=o1/aligned;
 		o4=(sum[i]/total_bases);
 		o5=(adjsum[i]/adjtotal);
 		o6=(cov[i]/ilen[i]);
 		mean=sum[i]/ilen[i];
-		stdev=sqrt((sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
+		stdev=sqrt(abs(sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
+		# print stdev,sumsq[i],sum[i],ilen[i],sumsq[i]-sum[i]^2/ilen[i],o6
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}'  "$tmp/tmp2.sam"  > $OUTPUT
+}'  "$tmp/tmp1.mpileup" "$tmp/tmp2.sam"    > $OUTPUT
 
+cat $OUTPUT
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
 #	o1		total reads aligned to accession
