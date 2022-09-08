@@ -51,6 +51,7 @@ workflow ALIGNMENT {
         ch_bams
     )
     ch_sams=BAM_TO_SAM.out.sam
+    ch_pileups=BAM_TO_SAM.out.mpileup
 
 
 
@@ -63,6 +64,7 @@ workflow ALIGNMENT {
     emit:
     sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
     bams  = ch_bams // channel: bamfile
+    mpileup = ch_pileups
     // stats = ch_stats
     versions = ch_versions
 }

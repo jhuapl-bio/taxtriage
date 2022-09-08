@@ -28,8 +28,8 @@ process BAM_TO_SAM {
 
     output:
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*.sam")     , optional:false, emit: sam
-
+    tuple val(meta), path("*.sam")    , optional:false, emit: sam
+    path("*.mpileup"), optional: false, emit: mpileup
 
 
     when:
@@ -38,8 +38,8 @@ process BAM_TO_SAM {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     """
-    samtools view -h -o ${meta.id}.sam  ${bamfiles} 
-
+    samtools view -h  ${bamfiles} | samtools sort -O sam - >  ${meta.id}.sam
+    samtools mpileup -o ${meta.id}.mpileup ${meta.id}.sam
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

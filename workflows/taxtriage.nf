@@ -240,7 +240,7 @@ workflow TAXTRIAGE {
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
-    
+        
         if (ch_assembly_file_type == 'ncbi' ){
             
             DOWNLOAD_ASSEMBLY (
@@ -264,6 +264,7 @@ workflow TAXTRIAGE {
 
         CONFIDENCE_METRIC (
             ALIGNMENT.out.sam,
+            ALIGNMENT.out.mpileup
         )
         // SEPARATE_READS(
         //     CONFIDENCE_METRIC.out.reads
