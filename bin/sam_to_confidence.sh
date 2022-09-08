@@ -64,11 +64,12 @@ OUTPUT_READS="false"
 
 #	ARGUMENTS
 # parse args
-while getopts "hi:o:r:" OPTION
+while getopts "hi:o:r:m:" OPTION
 do
 	case $OPTION in
 		h) usage; exit 1 ;;
 		i) SAM=$OPTARG ;;
+		m) PILEUP=$OPTARG ;;
 		o) OUTPUT=$OPTARG ;;
 		r) OUTPUT_READS=$OPTARG;;
 		?) usage; exit ;;
@@ -77,6 +78,7 @@ done
 # check args
 if [[ -z "$SAM" ]]; then printf "%s\n" "Please specify an input filename (-i) [include full path]."; exit; fi
 if [[ ! -f "$SAM" ]]; then printf "%s\n" "The input filename (-i) does not exist. Exiting."; exit; fi
+if [[ -z "$PILEUP" ]]; then printf "%s\n" "Please specify an mpileup filename (-m) [include full path]."; exit; fi
 if [[ -z "$OUTPUT" ]]; then printf "%s\n" "Please specify an output filename (-o) [include full path]."; exit; fi
 if [[  ! "$OUTPUT_READS" == "false" ]]; then printf "%s\n" "READS to be output in a 2 column file to $OUTPUT_READS"; fi
 # setup other variables
@@ -94,9 +96,8 @@ mkdir -p "$tmp"
 regex="NM:i:([0-9]+)"
 
 
-samtools mpileup $SAM > "$tmp/tmp1.mpileup"
 
-gawk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
+awk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
 	if ($1 ~ /^@/){
 		print $0
 	}
@@ -158,7 +159,7 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  to $umrefs_count accessions"
 >&2 echo "gathering alignment stats"
 echo "______"
-gawk -F'\t'  'function abs(x){
+awk -F'\t'  'function abs(x){
 		return ((x < 0.0) ? -x : x)
 	};
 {
@@ -280,7 +281,7 @@ END{
 	}
 
 
-	print"_________TRUE____\n_______ "
+	# print"_________TRUE____\n_______ "
 	for(i in ireads){
 		aligned+=ireads[i];
 		for(j in dep2[i]){
@@ -293,6 +294,7 @@ END{
 			total_bases+=dep2[i][j];
 			cov2[i]+=1;
 		}
+		
 		#print cov2[i], "|", sumsq2[i], "|", sum2[i]
 		tlen+=ilen[i];
 		# cov[i]=cov2[i]
@@ -316,12 +318,12 @@ END{
 		mean=sum[i]/ilen[i];
 		stdev=sqrt(abs(sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
-		# print stdev,sumsq[i],sum[i],ilen[i],sumsq[i]-sum[i]^2/ilen[i],o6
+		#print stdev,sumsq[i],sum[i],ilen[i],sumsq[i]-sum[i]^2/ilen[i],o6
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}'  "$tmp/tmp1.mpileup" "$tmp/tmp2.sam"    > $OUTPUT
+}'  $PILEUP "$tmp/tmp2.sam"     > $OUTPUT
 
-cat $OUTPUT
+# cat $OUTPUT
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
 #	o1		total reads aligned to accession

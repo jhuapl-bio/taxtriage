@@ -25,6 +25,7 @@ process CONFIDENCE_METRIC {
 
     input:
     tuple val(meta), path(sam)
+    path(mpileup)
 
     output:
     tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
@@ -49,6 +50,7 @@ process CONFIDENCE_METRIC {
 
     bash sam_to_confidence.sh \\
         -i $sam \\
+        -m $mpileup \\
         -o $output \\
         -r ${meta.id}.reads
 
