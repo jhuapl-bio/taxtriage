@@ -15,7 +15,7 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 process PULL_FASTA {
-    
+    tag "$meta.id"
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)

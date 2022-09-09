@@ -121,6 +121,7 @@ include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
+include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -229,10 +230,23 @@ workflow TAXTRIAGE {
         true,
         true
     )
+    ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
+    if (params.remove_taxids){
+        remove_input = ch_kraken2_report.map{
+            meta, report -> [
+                meta, report, params.remove_taxids
+            ]
+        }
+        REMOVETAXIDSCLASSIFICATION(
+            remove_input
+        )
+        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
+    }
     TOP_HITS (
-        KRAKEN2_KRAKEN2.out.report,
+        ch_kraken2_report,
         ch_top_hits_count
     )
+    
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
             KRAKEN2_KRAKEN2.out.classified_reads_fastq
@@ -337,7 +351,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
-    ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2_KRAKEN2.out.report.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
     if (params.trim){
         ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
