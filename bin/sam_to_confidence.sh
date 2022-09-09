@@ -139,8 +139,8 @@ bsa_acccount=$(cut -f3 "$tmp/tmp1_included.sam" | sort | uniq | awk 'END{print(N
 # get reads with a "block length"/"read length" greater than 80%
 >&2 echo "finding reads with a [block length]:[read length] ratio > 0.80"
 
-awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if($1 ~ /^@/ || abs(($9-$13)/$9)>=0.05){print($0)}}' "$tmp/tmp1_included.sam"   > "$tmp/tmp2.sam"
-awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if( $1 ~ /^[^@]/ && abs(($9-$13)/$9)>0.05){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if($1 ~ /^@/ || abs(($9-$13)/$9)>=0.01){print($0)}}' "$tmp/tmp1_included.sam"   > "$tmp/tmp2.sam"
+awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if( $1 ~ /^[^@]/ && abs(($9-$13)/$9)>0.01){count[$1]++; a[$1]=$3}}END{for(r in count){if(count[r]==1){print(a[r])}}}' "$tmp/tmp1_included.sam" \
 	| sort \
 	| uniq -c \
 	| sed -e 's/^ \+//' -e 's/ /\t/' > "$tmp/uniq.refs"
