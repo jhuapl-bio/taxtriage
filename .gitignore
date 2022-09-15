@@ -1,4 +1,7 @@
+nf-core/*
+./test
 ./Samplesheet*csv
+examples/assembly_summary_refseq.txt
 ./examples/Samplesheet_ERR.csv
 .example_commands.txt
 ./nf-core
@@ -23,3 +26,4 @@ multiqc*
 data
 !examples/data
 ./examples/Samplesheet_ERR.csv
+./examples/assembly_summary_refseq.txt

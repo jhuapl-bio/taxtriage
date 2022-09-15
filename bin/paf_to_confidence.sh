@@ -49,7 +49,7 @@ OPTIONS:
 	-o	FILE	output tsv filename (should include full path)
 
 USAGE:
-bash paf_to_confidence.sh -i </full/path/to/alignment.paf> -i </full/path/to/output.tsv>
+bash paf_to_confidence.sh -i </full/path/to/alignment.paf> -o </full/path/to/output.tsv>
 i="/data/projects/aphl_basestack/module-paf_to_confidence/examples/b_thuringensis_test1.paf"
 o="/data/sandbox/paf_to_conf-b_thuringensis_test1.tsv"
 bash paf_to_confidence.sh -i "$i" -o "$o"
@@ -102,8 +102,10 @@ awk -F'\t' '{
 	for(r in best){
 		print(best[r]);
 	}
-}' "$PAF" > "$tmp/tmp1.paf"
+}' "$PAF"  > "$tmp/tmp1.paf"
+
 # include all alignments
+
 #cat "$outdir/newtarget_filtered.paf" > "$outdir/seeker.paf"
 bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1.paf")
 bsa_acccount=$(cut -f6 "$tmp/tmp1.paf" | sort | uniq | awk 'END{print(NR)}')
@@ -121,15 +123,13 @@ umseqs_count=$(awk -F'\t' '{x+=$1}END{print(x)}' "$tmp/uniq.refs")
 umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
 >&2 echo "  to $umrefs_count accessions"
-
-
-
-
 #>&2 echo "gathering alignment stats"
 awk -F'\t'  '{
 	ilen[$6]=$7;
 	ireads[$6]+=1;
-	for(i=$8+1;i<=$9+1;i++){dep[$6][i]+=1};
+	for(i=$8+1;i<=$9+1;i++){
+		dep[$6][i]+=1
+	};
 }END{
 	for(i in ireads){
 		aligned+=ireads[i];
@@ -156,14 +156,15 @@ awk -F'\t'  '{
 		o4=(sum[i]/total_bases);
 		o5=(adjsum[i]/adjtotal);
 		o6=(cov[i]/ilen[i]);
+		
 		mean=sum[i]/ilen[i];
 		stdev=sqrt((sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}' "$tmp/tmp2.paf" > $OUTPUT
+}' "$tmp/tmp2.paf"   > $OUTPUT
 # > $OUTPUT
-
+# head $OUTPUT
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
 #	o1		total reads aligned to accession

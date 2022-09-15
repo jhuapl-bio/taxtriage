@@ -106,6 +106,7 @@ include { ARTIC_GUPPYPLEX } from '../modules/nf-core/modules/artic/guppyplex/mai
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
 include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
 include { PORECHOP } from '../modules/nf-core/modules/porechop/main'
+include { SEQTK_SAMPLE } from '../modules/nf-core/modules/seqtk/sample/main'
 include { MULTIQC                     } from '../modules/nf-core/modules/multiqc/main'
 include { FLYE                     } from '../modules/nf-core/modules/flye/main'
 include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/modules/spades/main'
@@ -120,6 +121,7 @@ include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
+include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -142,16 +144,38 @@ workflow TAXTRIAGE {
     INPUT_CHECK (
         ch_input
     )
+    ch_reads = INPUT_CHECK.out.reads
+    
     if (params.demux){
         ARTIC_GUPPYPLEX(
-            INPUT_CHECK.out.reads.filter{ it[0].barcode }
+            ch_reads.filter{ it[0].barcode }
         )
         ch_reads = ARTIC_GUPPYPLEX.out.fastq
         ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].barcode })
     } else {
         ch_reads = INPUT_CHECK.out.reads
     }
+    if (params.subsample && params.subsample > 0){
+        ch_subsample  = params.subsample
+        ch_reads.view()
+        SEQTK_SAMPLE (
+            ch_reads,
+            ch_subsample
+        )
+        ch_reads = SEQTK_SAMPLE.out.reads
+    }
 
+    
+    
+    if (params.filter){
+        ch_filter_db = file(params.filter)
+        println "${ch_filter_db} <-- filtering reads on this db"
+        READSFILTER(
+            ch_reads,
+            ch_filter_db
+        )
+        ch_reads = READSFILTER.out.reads
+    }
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
             meta, reads -> meta.sequencing_summary
@@ -181,16 +205,6 @@ workflow TAXTRIAGE {
         trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
         ch_reads=nontrimmed_reads.mix(trimmed_reads)
     } 
-    
-    if (params.filter){
-        ch_filter_db = file(params.filter)
-        println "${ch_filter_db} <-- filtering reads on this db"
-        READSFILTER(
-            ch_reads,
-            ch_filter_db
-        )
-        ch_reads = READSFILTER.out.reads
-    }
     if (!params.skip_plots){
         FASTQC (
             ch_reads.filter { it[0].platform == 'ILLUMINA'}
@@ -216,10 +230,23 @@ workflow TAXTRIAGE {
         true,
         true
     )
+    ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
+    if (params.remove_taxids){
+        remove_input = ch_kraken2_report.map{
+            meta, report -> [
+                meta, report, params.remove_taxids
+            ]
+        }
+        REMOVETAXIDSCLASSIFICATION(
+            remove_input
+        )
+        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
+    }
     TOP_HITS (
-        KRAKEN2_KRAKEN2.out.report,
+        ch_kraken2_report,
         ch_top_hits_count
     )
+    
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
             KRAKEN2_KRAKEN2.out.classified_reads_fastq
@@ -227,7 +254,7 @@ workflow TAXTRIAGE {
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
-    
+        
         if (ch_assembly_file_type == 'ncbi' ){
             
             DOWNLOAD_ASSEMBLY (
@@ -250,8 +277,12 @@ workflow TAXTRIAGE {
         )
 
         CONFIDENCE_METRIC (
-            ALIGNMENT.out.pafs,
+            ALIGNMENT.out.sam,
+            ALIGNMENT.out.mpileup
         )
+        // SEPARATE_READS(
+        //     CONFIDENCE_METRIC.out.reads
+        // )
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         )
@@ -318,9 +349,9 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-    ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
+    
     // ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
-    ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2_KRAKEN2.out.report.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
     if (params.trim){
         ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
@@ -328,6 +359,9 @@ workflow TAXTRIAGE {
     if (!params.skip_plots){
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
+    }
+    if(!params.skip_realignment){
+        ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
     }
     
     MULTIQC (

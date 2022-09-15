@@ -22,12 +22,14 @@ process CONFIDENCE_METRIC {
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
         'cicirello/gnu-on-alpine' }"
-
+ 
     input:
-    tuple val(meta), path(paf)
+    tuple val(meta), path(sam)
+    path(mpileup)
 
     output:
     tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
+    path("*reads"), optional: false, emit: reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -46,9 +48,11 @@ process CONFIDENCE_METRIC {
     """
     
 
-    bash paf_to_confidence.sh \\
-        -i $paf \\
-        -o $output
+    bash sam_to_confidence.sh \\
+        -i $sam \\
+        -m $mpileup \\
+        -o $output \\
+        -r ${meta.id}.reads
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
