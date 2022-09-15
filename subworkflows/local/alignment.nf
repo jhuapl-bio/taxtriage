@@ -6,7 +6,7 @@ include { BWA_INDEX } from '../../modules/nf-core/modules/bwa/index/main'
 include { BWA_MEM } from '../../modules/nf-core/modules/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/modules/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/modules/minimap2/index/main'
-include { BAM_TO_PAF } from "../../modules/local/bam_to_paf"
+include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
 include { RSEQC_BAMSTAT } from '../../modules/nf-core/modules/rseqc/bamstat/main'
 
 workflow ALIGNMENT {
@@ -47,10 +47,11 @@ workflow ALIGNMENT {
         true
     )
     ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
-    BAM_TO_PAF(
+    BAM_TO_SAM(
         ch_bams
     )
-    ch_pafs=BAM_TO_PAF.out.paf
+    ch_sams=BAM_TO_SAM.out.sam
+    ch_pileups=BAM_TO_SAM.out.mpileup
 
 
 
@@ -61,8 +62,9 @@ workflow ALIGNMENT {
     // RSEQC_BAMSTAT.out.txt.set{ ch_stats }
 
     emit:
-    pafs  = ch_pafs // channel: [ val(meta), [ paffile ] ] ]
+    sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
     bams  = ch_bams // channel: bamfile
+    mpileup = ch_pileups
     // stats = ch_stats
     versions = ch_versions
 }

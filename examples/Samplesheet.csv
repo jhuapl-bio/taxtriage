@@ -1,6 +1,6 @@
 sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
-ERR6913102,FALSE,,ILLUMINA,FALSE,/Users/merribb1/Documents/Projects/APHL/data/ERR6913102_1.fastq.gz,data/ERR6913102_2.fastq.gz,,
-NB01,TRUE,/Users/merribb1/Documents/Projects/APHL/data/fastq_demux/NB01,OXFORD,TRUE,,,,
-NB03,TRUE,/Users/merribb1/Documents/Projects/APHL/data/fastq_demux/NB03,OXFORD,TRUE,,,,
-NB11,TRUE,/Users/merribb1/Documents/Projects/APHL/data/fastq_demux/NB11,OXFORD,TRUE,,,,
-Sample_1,TRUE,,OXFORD,FALSE,/Users/merribb1/Documents/Projects/APHL/data/sample_metagenome.fastq.gz,,,
+ERR6913102,FALSE,,ILLUMINA,FALSE,examples/data/ERR6913102_1.fastq.gz,examples/data/ERR6913102_2.fastq.gz,,
+NB01,TRUE,examples/data/fastq_demux/NB01,OXFORD,TRUE,,,,
+NB03,TRUE,examples/data/fastq_demux/NB03,OXFORD,TRUE,,,,
+NB11,TRUE,examples/data/fastq_demux/NB11,OXFORD,TRUE,,,,
+Sample_1,TRUE,,OXFORD,FALSE,examples/data/sample_metagenome.fastq.gz,,,

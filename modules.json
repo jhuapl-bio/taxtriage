@@ -99,6 +99,12 @@
             "samtools/sort": {
                 "git_sha": "897c33d5da084b61109500ee44c01da2d3e4e773"
             },
+            "seqtk/sample": {
+                "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            },
+            "seqtk/seq": {
+                "git_sha": "f0800157544a82ae222931764483331a81812012"
+            },
             "spades": {
                 "git_sha": "682f789f93070bd047868300dd018faf3d434e7c"
             },
