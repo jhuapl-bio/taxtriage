@@ -173,6 +173,7 @@ def get_assemblies(refs, outfile, seen, index_ftp):
         with open(outfile, "a") as w:
             for id in ids:
                 if seen and id in seen:
+                    print(id)
                     print("key already seen:", id, "; skipping")
                 else:
                     ftp_site = refs[id]['fulline'][index_ftp]
@@ -272,6 +273,7 @@ def main(argv=None):
     else:
         refs = import_genome_file(taxids, args.kraken2output)
     seen = dict()
+    
     i = 0
     if os.path.exists(args.file_out):
         for seq_record in SeqIO.parse(args.file_out, "fasta"):
@@ -296,8 +298,10 @@ def main(argv=None):
         Entrez.email = args.email
     print(len(seen.keys()), "already seen reference ids")
     if (not args.assembly_refseq_file):
+        print("downloading refseq file")
         download(refs, args.db, args.file_out, seen)
     else:
+        print("get assemblies")
         get_assemblies(refs, args.file_out, seen, args.ftp_path)
     
 if __name__ == "__main__":

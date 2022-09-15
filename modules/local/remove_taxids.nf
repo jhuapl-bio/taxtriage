@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONFIDENCE_METRIC {
+process REMOVETAXIDSCLASSIFICATION  {
     tag "$meta.id"
     label 'process_medium'
 
@@ -22,42 +22,29 @@ process CONFIDENCE_METRIC {
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
         'cicirello/gnu-on-alpine' }"
- 
+
     input:
-    tuple val(meta), path(sam)
-    path(mpileup)
+    tuple val(meta), path(report), val(taxids)
 
     output:
-    tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
-    path("*reads"), optional: false, emit: reads
     path "versions.yml"           , emit: versions
+    tuple val(meta), path("*.filtered.report")    , optional:false, emit: report
+
 
     when:
     task.ext.when == null || task.ext.when
 
 
-    
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    
-    def output = "${meta.id}.confidences.tsv"
-
-    
-
-
     """
-    
-
-    bash sam_to_confidence.sh \\
-        -i $sam \\
-        -m $mpileup \\
-        -o $output \\
-        -r ${meta.id}.reads
+    bash remove_taxids.sh -i $report -t \"$taxids\" -o ${meta.id}.filtered.report
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        awk: \$(awk --version )
+        awk: \$(awk --version)
     END_VERSIONS
 
     """
 }
+
+
