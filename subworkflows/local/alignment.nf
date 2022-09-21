@@ -25,46 +25,48 @@ workflow ALIGNMENT {
         bwamem2: it[0].platform =~ 'ILLUMINA'
     }
     ch_versions = 1
-    ch_aligners.bwamem2.view()
-    println ch_aligners.bwamem2
-    BWA_INDEX (
-        ch_aligners.bwamem2.map{ meta, fastq, fasta -> fasta }
-    )
-    fastq_reads.view()
-    BWA_INDEX.out.index.view()
-    BWA_MEM(
-        ch_aligners.bwamem2.map{ meta, fastq, fasta -> [ meta, fastq ] },
-        BWA_INDEX.out.index,
-        true
-    )
-    ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+
+    ch_split_aligners_illumina  = ch_aligners.bwamem2.transpose(by:[2]).view()
+
+    // }
+    // BWA_INDEX (
+    //     ch_aligners.bwamem2.map{ meta, fastq, fasta -> fasta }
+    // )
+    // fastq_reads.view()
+    // BWA_INDEX.out.index.view()
+    // BWA_MEM(
+    //     ch_aligners.bwamem2.map{ meta, fastq, fasta -> [ meta, fastq ] },
+    //     BWA_INDEX.out.index,
+    //     true
+    // )
+    // ch_bams = ch_bams.mix(BWA_MEM.out.bam)
     
-    MINIMAP2_ALIGN (
-        ch_aligners.minimap2.map{ meta, fastq, fasta -> [ meta, fastq ] },
-        ch_aligners.minimap2.map{ meta, fastq, fasta -> fasta },
-        true,
-        true,
-        true
-    )
-    ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
-    BAM_TO_SAM(
-        ch_bams
-    )
-    ch_sams=BAM_TO_SAM.out.sam
-    ch_pileups=BAM_TO_SAM.out.mpileup
-
-
-
-
-    // RSEQC_BAMSTAT(
+    // MINIMAP2_ALIGN (
+    //     ch_aligners.minimap2.map{ meta, fastq, fasta -> [ meta, fastq ] },
+    //     ch_aligners.minimap2.map{ meta, fastq, fasta -> fasta },
+    //     true,
+    //     true,
+    //     true
+    // )
+    // ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
+    // BAM_TO_SAM(
     //     ch_bams
-    // )    
-    // RSEQC_BAMSTAT.out.txt.set{ ch_stats }
+    // )
+    // ch_sams=BAM_TO_SAM.out.sam
+    // ch_pileups=BAM_TO_SAM.out.mpileup
 
-    emit:
-    sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
-    bams  = ch_bams // channel: bamfile
-    mpileup = ch_pileups
-    // stats = ch_stats
-    versions = ch_versions
+
+
+
+    // // RSEQC_BAMSTAT(
+    // //     ch_bams
+    // // )    
+    // // RSEQC_BAMSTAT.out.txt.set{ ch_stats }
+
+    // emit:
+    // sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
+    // bams  = ch_bams // channel: bamfile
+    // mpileup = ch_pileups
+    // // stats = ch_stats
+    // versions = ch_versions
 }

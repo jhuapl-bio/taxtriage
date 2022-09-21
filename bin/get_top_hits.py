@@ -72,55 +72,67 @@ def parse_args(argv=None):
 def import_file(input):
     tsv_file = open(input)
     read_tsv = csv.reader(tsv_file, delimiter="\t")
-    mapping=dict()
-    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name']
+    mapping=[]
+    taxids=dict()
+    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name', 'parents']
     total = []
     for row in read_tsv:
-        
         entry = dict()
-        if row[3] not in mapping:
-            mapping[row[3]] = []
         for x in range(0, len(header)):
-            if (header[x] != 'name' and header[x] != 'rank' and header[x] != 'taxid'):
+            if (header[x] != 'name' and header[x] != 'rank' and header[x] != 'taxid'and x < len(row)) :
                 entry[header[x]] = float(row[x])
-            else:
+            elif x < len(row):
                 if header[x] == 'taxid':
                     entry[header[x]] = int(row[x])
                 else:
                     entry[header[x]] = row[x]
+            else:
+                entry[header[x]]=""
                 
-        mapping[row[3]].append(entry)
+        mapping.append(entry)
+        taxids[entry['taxid']]=entry['name']
     # k2_regex = re.compile(r"^\s{0,2}(\d{1,3}\.\d{1,2})\t(\d+)\t(\d+)\t([\dUDKRPCOFGS-]{1,3})\t(\d+)(\s+)(.+)")
     k2_regex = re.compile(r"^(\s+)(.+)")
     data = []
     depth = dict()
-    for key, value in mapping.items():
-        for  l in value:
-            match = k2_regex.search(l['name'])
-            if match:
-                depth[l['taxid']] = int(len(match.group(1))/2)
-                l['name'] = match.group(2)
-            else:
-                depth[l['taxid']] = 0
-            l['depth'] = depth[l['taxid']]
-            
+    lastdepth=0
+    lastparents = dict()
+    for  l in mapping:
+        match = k2_regex.search(l['name'])
+        if match:
+            depth[l['taxid']] = int(len(match.group(1))/2)
+            l['name'] = match.group(2)
+        else:
+            depth[l['taxid']] = 0
+        parents=[]
+        
+        for i in range (depth[l['taxid']]-1,0,-1):
+            parents.append(str(lastparents[i]))
+        lastdepth=depth[l['taxid']]
+        lastparents[depth[l['taxid']]] = l['taxid']
+        l['depth'] = depth[l['taxid']]
+        l['parents'] = ";".join(parents)
     return mapping
 def top_hit(mapping):
-    uniq_ranks = list(mapping.keys())
+    uniq_ranks = list([x['rank'] for x in mapping])
     sorted_mapping = dict()
+    for x in mapping:
+        if not x['rank'] in sorted_mapping:
+            sorted_mapping[x['rank']]=[]
+        sorted_mapping[x['rank']].append(x)
     i = 0
     for rank in uniq_ranks:
-        sorted_specific_rank  = sorted(mapping[rank], key=lambda d: d['abundance'], reverse =True) 
-        mapping[rank] = sorted_specific_rank
-    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name']
-    return mapping
+        sorted_specific_rank  = sorted(sorted_mapping[rank], key=lambda d: d['abundance'], reverse =True) 
+        sorted_mapping[rank] = sorted_specific_rank
+    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name','parents']
+    return sorted_mapping
 def make_files(mapping,outdir,top):
     import json
     # try:
     #     os.mkdir(os.path.dirname(outdir))
     # except OSError as e:
     #     print(e)
-    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name']
+    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name','parents']
     path = str(outdir)+"_top_report.tsv"
     path  = open(path, "w")
     writer = csv.writer(path, delimiter='\t')
@@ -146,11 +158,8 @@ def main(argv=None):
     if not args.file_in.is_file():
         logger.error(f"The given input file {args.file_in} was not found!")
         sys.exit(2)
-    print("yes")
     args.file_out.parent.mkdir(parents=True, exist_ok=True)
-    print("yes")
     mapping = import_file(args.file_in)
-    print("yes")
     mapping = top_hit(mapping)
     make_files(mapping, args.file_out, args.top_per_rank)
 if __name__ == "__main__":

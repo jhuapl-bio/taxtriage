@@ -51,6 +51,12 @@ def parse_args(argv=None):
         help="2 column tsv file that is Read ID AND second column as the category it belongs to. ",
     )
     parser.add_argument(
+        "-f",
+        "--genome_file",
+        metavar="INPUT",
+        help="Split the FASTA file",
+    )
+    parser.add_argument(
         "-q",
         "--reads",
         nargs="+",
@@ -78,36 +84,43 @@ def parse_args(argv=None):
 def split_fastqs(metadata, reads, outputdir):
     
     classified_reads  = dict()
+    taxids = []
     with open(metadata,"r") as f:
         for line in f.readlines():
             splitline = line.rstrip().split("\t")
-            classified_reads[(splitline[1])]= splitline[0]
+            if splitline[1] not in taxids:
+                taxids.append(splitline[1])
+            classified_reads[(splitline[0])] = splitline[1]
     f.close()
-    exit()
+    outputfilehandles = dict()
+    
     i=0
     for read in reads:
         encoding = guess_type(read)[1]  # uses file extension
         sample_base = Path(read).stem.split(".")[0]
-        filehandles = dict()
-        matched = dict()
         g=0
-        for taxid in filtered_taxids:
-            matched[taxid] = []
         _open = partial(gzip.open, mode='rt') if encoding == 'gzip' else open
         os.makedirs(outputdir, exist_ok=True)
-        filename = os.path.join(outputdir,sample_base+"_"+str(i+1)+"_filtered.fastq")
-        with open(filename, "w") as w:
-            try:
-                with _open(read) as f:
-                    for seq_record in SeqIO.parse(f, "fastq"):
-                        if seq_record.id in classified_reads and str(classified_reads[seq_record.id]) in filtered_taxids:
-                            taxid = str(classified_reads[seq_record.id])
-                            SeqIO.write(seq_record, w, "fastq")
-                        g = g + 4
-                f.close()
-            except Exception as ex:
-                print(ex, "failed with file")
-                pass                
+        for f in taxids:
+            outpath = os.path.join(outputdir,f+"_"+sample_base+"_"+str(i+1)+"_filtered.fastq")
+            if not os.path.exists(os.path.dirname(outpath)):
+                os.makedirs(os.path.dirname(outpath))
+            outputfilehandles[f] = open(outpath, "w")
+        try:
+            with _open(read) as f:
+                for seq_record in SeqIO.parse(f, "fastq"):
+                    if seq_record.id in classified_reads:
+                        taxid = str(classified_reads[seq_record.id])
+                        if (taxid in taxids):
+                            SeqIO.write(seq_record, outputfilehandles[taxid], "fastq")
+                    g = g + 4
+            f.close()
+        except Exception as ex:
+            print(ex, "failed with file")
+            pass    
+        finally:
+            for f in outputfilehandles.values():
+                f.close()            
         i+=1    
 def main(argv=None):
     """Coordinate argument parsing and program execut      ion."""

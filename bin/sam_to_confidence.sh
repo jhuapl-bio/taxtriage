@@ -147,7 +147,7 @@ awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if( $1 ~ /^[^@]/ && abs(($9-$13)/
 
 if [[ ! $OUTPUT_READS == 'false' ]]; then
 	echo "adding reads to $OUTPUT_READS as 2 column file"
-	cut -f 1,3 -d $'\t' "$tmp/tmp2.sam" > $OUTPUT_READS
+	cut -f 1,3 -d $'\t' "$tmp/tmp2.sam" | grep -v '^@' > $OUTPUT_READS
 	# awk -v output=$OUTPUT_READS -F "\t" '{ print>output"_"$3".reads" }' "$tmp/tmp2.sam"
 	echo "added reads to necessary file"
 fi 
