@@ -272,26 +272,35 @@ workflow TAXTRIAGE {
                 ch_hit_to_kraken_report
             )
         }
+        
+        // Channel.from([
+        //         ['a', ['p', 'q'], ['o','l', 'u','v'] ],
+        //         ['b', ['p', 'q'], ['o','l', 'u','v'] ],
+        //     ])
+        //     .transpose(by:[2])
+        //     .view()
+        
         ALIGNMENT(
             PULL_FASTA.out.fastq
         )
+        ALIGNMENT.out.sam.view()
+        CONFIDENCE_METRIC (
+            ALIGNMENT.out.sam,
+            ALIGNMENT.out.mpileup
+        )
+        // CONFIDENCE_METRIC.out.tsv.view()
+        // SEPARATE_READS(
+        //     CONFIDENCE_METRIC.out.reads
+        // )
+        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+            CONFIDENCE_METRIC.out.tsv
+        )
+        CONVERT_CONFIDENCE (
+            ch_joined_confidence_report
+        )
 
-        // CONFIDENCE_METRIC (
-        //     ALIGNMENT.out.sam,
-        //     ALIGNMENT.out.mpileup
-        // )
-        // // SEPARATE_READS(
-        // //     CONFIDENCE_METRIC.out.reads
-        // // )
-        // ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
-        //     CONFIDENCE_METRIC.out.tsv
-        // )
-        // CONVERT_CONFIDENCE (
-        //     ch_joined_confidence_report
-        // )
-
-        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        // .set{ mergedtsv }
+        CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
+        .set{ mergedtsv }
     }
     // if (!params.spades_hmm ){
     //     ch_spades_hmm = []
