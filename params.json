@@ -1,0 +1,15 @@
+{
+    "input": "examples/Samplesheet.csv",
+    "db": "/Users/merribb1/Documents/Projects/APHL/taxtriage/data/databases/minikraken2_v2_8GB_201904_UPDATE",
+    "outdir": "tmp_full",
+    "top_hits_count": 3,
+    "demux": true,
+    "assembly": "examples/assembly_summary_refseq.txt",
+    "skip_plots": true,
+    "skip_assembly": true,
+    "max_memory": "10GB",
+    "max_cpus": 3,
+    "low_memory": true,
+    "remove_taxids": "9606",
+    "profile": "docker"
+}

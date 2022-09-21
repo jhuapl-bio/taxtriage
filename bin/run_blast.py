@@ -1,7 +1,7 @@
 # to run
 # conda install biopython
-# run_bast.py /Users/ernluaw1/Desktop/testt/draft_assembly_read1.fasta /Users/ernluaw1/Desktop/testt
-
+# run_blast.py /Users/ernluaw1/Desktop/testt/draft_assembly_read1.fasta /Users/ernluaw1/Desktop/testt
+import os 
 from Bio.Blast.Applications import NcbiblastnCommandline
 import sys
 
@@ -16,6 +16,7 @@ out_file_base=assembly.split('/')[-1].split('.')[0]
 
 #output file
 out = '{0}/{1}.txt'.format(output_directory, out_file_base)
+os.makedirs(output_directory, exist_ok=True)
 
 # output format for blast - read_id, accession, evalue, bitscore, organism
 outfmt = '6 qseqid sseqid evalue bitscore stitle'
