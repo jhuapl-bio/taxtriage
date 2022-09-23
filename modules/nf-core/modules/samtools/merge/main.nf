@@ -22,7 +22,6 @@ process SAMTOOLS_MERGE {
 
     script:
 
-    println meta
 
     def args = task.ext.args   ?: ''
     prefix   = task.ext.prefix ?: "${meta.id}"
