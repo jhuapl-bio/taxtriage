@@ -64,6 +64,12 @@ def parse_args(argv=None):
         help="Fastq File(s)",
     )
     parser.add_argument(
+        "-k",
+        "--kraken2_genome_format",
+        action="store_true",
+        help="If called, the second column from the metadata is in kraken2 format so will pull the 2nd column of that format e.g. Kraken:taxid|1366|GCF|NZ",
+    )
+    parser.add_argument(
         "-o",
         "--dir_out",
         metavar="DIR_OUT",
