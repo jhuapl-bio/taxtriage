@@ -29,7 +29,7 @@ process CONFIDENCE_METRIC {
 
     output:
     tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
-    path("*reads"), optional: false, emit: reads
+    tuple val(meta), path("*reads"), optional: false, emit: reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -42,7 +42,6 @@ process CONFIDENCE_METRIC {
     
     def output = "${meta.id}.confidences.tsv"
 
-    
 
 
     """
