@@ -24,10 +24,10 @@ process SPLIT_READS {
         'pegi3s/biopython:latest' }"
 
     input:
-    tuple val(meta), path(fastq), val(fasta)
+    tuple val(meta), path(fastq), path(fasta), path(reads)
 
     output:
-    tuple val(meta), path("**/*fastq"), val(fasta), optional: false, emit: mapping_reads_to_genomes
+    tuple val(meta), path("**/*fastq"), optional: false, emit: split_reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -46,11 +46,10 @@ process SPLIT_READS {
     """
     
 
-    python3 split_reads.py \\
+    split_reads.py \\
             -m "${reads}" \\
             -o ${meta.id}_splitreads  \\
-            -q ${fastq}  \\
-            -f ${genomes}  
+            -q ${fastq} 
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

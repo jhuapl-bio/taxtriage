@@ -105,9 +105,6 @@
             "samtools/bam2fq": {
                 "git_sha": "5510ea39fe638594bc26ac34cadf4a84bf27d159"
             },
-            "samtools/merge": {
-                "git_sha": "720027275ccdc1363bb2a19c6412da148e31d94b"
-            },
             "samtools/sort": {
                 "git_sha": "897c33d5da084b61109500ee44c01da2d3e4e773"
             },
