@@ -97,6 +97,61 @@ work                # Directory containing the nextflow working files
 | `-profile [docker,singularity,conda]` | Conda, Singularity, or Docker | 
 
 
+## AWS with Nextflow Tower
+
+While we support Taxtriage in both Basestack and native and local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
+
+1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
+    - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
+2. Next, setup an AWS account if you have not done so at [https://aws.amazon.com/](https://aws.amazon.com/)
+3. Set up your compute environments for AWS by following [this](https://help.tower.nf/22.2/compute-envs/aws-batch/)
+    - Additional documentation for other cloud platforms is [here](https://help.tower.nf/22.2/compute-envs/overview/#introduction)
+At this point follow all steps for setting up AWS. You should see some information like setting up an IAM user like so:
+
+<!-- ![IAM Examples](images/iam_example.png) -->
+<img src="images/iam_example.png" alt="drawing" height="300"/>
+
+When all necessary items have been setup, you'll need to load your data you want to run into an S3 bucket. Be aware that all filesystem refrences to files/directories need to be relative to the S3 bucket. However, with things like the Samplesheet, the paths can be relative only within the S3 bucket so you don't need to use things like `S3://bucketname/path/to/file `
+
+<img src="images/s3bucket.png" alt="drawing" height="300"/>
+<img src="images/s3bucket2.png" alt="drawing" height="300"/>
+
+In the above example, I've made an s3 bucket with necessary permissions for nextflow-tower to run. I have a directory with the same test-data you can find in the `examples` directory in the root level of this bit of code [here](../examples)
+
+
+Once the AWS system is setup, let's head back to Nextflow Tower. On the left, you can select a drop-down and open up your own personal launchpad (and other features)
+
+<img src="images/cloud_showcase_nftower.png" alt="drawing" height="300"/>
+
+<img src="images/addpipeline.png" alt="drawing" />
+
+<!-- <img src="images/taxtriagelaunchpad1.png" alt="drawing" height="300"/> -->
+
+![Launchpad1](images/taxtriagelaunchpad1.png)
+
+MAKE SURE that the compute environment matches the one you set up when you set your credentials in AWS with NF tower
+
+If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
+
+
+
+![Launchpad2](images/taxtriagelaunchpad2.png)
+
+Next, Run the pipeline from the Launchpad
+
+
+<video width="320" height="240" controls>
+  <source src="images/cloud_run_2.mov" type="video/mp4">
+</video>
+
+<video width="320" height="240" controls>
+  <source src="images/cloud_run_3.mov" type="video/mp4">
+</video>
+
+<video width="320" height="240" controls>
+  <source src="images/cloud_run_1.mov" type="video/mp4">
+</video>
+
 
 ### Reproducibility
 
