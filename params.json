@@ -1,6 +1,6 @@
 {
     "input": "examples/Samplesheet.csv",
-    "db": "/Users/merribb1/Documents/Projects/APHL/taxtriage/data/databases/minikraken2_v2_8GB_201904_UPDATE",
+    "db": null,
     "outdir": "tmp_full",
     "top_hits_count": 3,
     "demux": true,
@@ -11,5 +11,7 @@
     "max_cpus": 3,
     "low_memory": true,
     "remove_taxids": "9606",
-    "profile": "docker"
+    "profile": "docker",
+    "blastdb": null,
+    "remoteblast": false
 }
