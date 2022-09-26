@@ -27,12 +27,12 @@ process DOWNLOAD_ASSEMBLY {
 
 
     input:
-    tuple val(meta), path(taxid_containing_file), path(classified_reads_fastq), path(classified_reads)
+    tuple val(meta), path(taxid_containing_file), val(classified_reads_fastq), val(classified_reads)
     val(assembly)
 
 
     output:
-    tuple val(meta), val(taxid_containing_file), val(classified_reads_fastq), val(classified_reads), path("*.output.references.fasta"), optional: false, emit: fasta
+    tuple val(meta), path(taxid_containing_file), val(classified_reads_fastq), val(classified_reads), path("*.output.references.fasta"), optional: false, emit: fasta
     path "versions.yml"           , emit: versions
 
     when:
