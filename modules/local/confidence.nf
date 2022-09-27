@@ -21,7 +21,7 @@ process CONFIDENCE_METRIC {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'cicirello/gnu-on-alpine' }"
+        'ubuntu:18.04' }"
  
     input:
     tuple val(meta), path(sam)
