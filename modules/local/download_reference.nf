@@ -49,7 +49,7 @@ process REFERENCE {
 
     """
 
-    bash taxid_to_reflist.sh -i $taxid -o $id".ftmp" -a $assembly
+    taxid_to_reflist.sh -i $taxid -o $id".ftmp" -a $assembly
     
 
     cat <<-END_VERSIONS > versions.yml
