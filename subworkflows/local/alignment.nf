@@ -45,10 +45,10 @@ workflow ALIGNMENT {
         .set{ transposed_fastas_illumina }
     transposed_fastas_illumina.view()
 
-    SPLIT_READS(
-        transposed_fastas_illumina
-    )
-    SPLIT_READS.out.split_reads.view()
+    // SPLIT_READS(
+    //     transposed_fastas_illumina
+    // )
+    // SPLIT_READS.out.split_reads.view()
 
 
 
