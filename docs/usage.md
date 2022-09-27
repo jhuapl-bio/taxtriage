@@ -139,9 +139,6 @@ If you expand the pipeline parameters, you can mimic what I've written for my ex
 
 Next, Run the pipeline from the Launchpad
 
-
-
-
 [cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
 
 [cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
