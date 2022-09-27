@@ -141,15 +141,15 @@ Next, Run the pipeline from the Launchpad
 
 
 <video width="320" height="240" controls>
-  <source src="images/cloud_run_2.webm" type="video/webm">
+  <source src="images/cloud_run_2.mp4" type="video/mp4">
 </video>
 
 <video width="320" height="240" controls>
-  <source src="images/cloud_run_3.webm" type="video/webm">
+  <source src="images/cloud_run_3.mp4" type="video/mp4">
 </video>
 
 <video width="320" height="240" controls>
-  <source src="images/cloud_run_1.webm" type="video/webm">
+  <source src="images/cloud_run_1.mp4" type="video/mp4">
 </video> 
 
 
