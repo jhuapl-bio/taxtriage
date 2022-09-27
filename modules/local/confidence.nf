@@ -48,7 +48,7 @@ process CONFIDENCE_METRIC {
     """
     
 
-    bash sam_to_confidence.sh \\
+    sam_to_confidence.sh \\
         -i $sam \\
         -m $mpileup \\
         -o $output \\

@@ -46,7 +46,7 @@ process RUN_BLAST_REMOTE {
     """
     
 
-    bash run_blast.py ${assembly} ${output}
+    run_blast.py ${assembly} ${output}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

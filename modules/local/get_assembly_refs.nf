@@ -54,7 +54,7 @@ process GET_ASSEMBLIES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        minimap2: \$(wget --version 2>&1)
+        wget: \$(wget --version 2>&1)
     END_VERSIONS
 
     """
