@@ -37,7 +37,7 @@ process REMOVETAXIDSCLASSIFICATION  {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     """
-    bash remove_taxids.sh -i $report -t \"$taxids\" -o ${meta.id}.filtered.report
+    remove_taxids.sh -i $report -t \"$taxids\" -o ${meta.id}.filtered.report
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
