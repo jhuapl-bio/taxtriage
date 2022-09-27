@@ -14,20 +14,21 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONVERT_CONFIDENCE {
+process MERGE_FASTA {
     tag "$meta.id"
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
-        'pegi3s/biopython:latest' }"
+        'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
+        'cicirello/gnu-on-alpine' }"
+
 
     input:
-    tuple val(meta),  path(kraken_report), path(tsv)
+    tuple val(meta), path(fastas)
 
     output:
-    tuple val(meta), path("*confidences.merged.tsv"), optional: false, emit: tsv
+    tuple val(meta), path("*merged.fasta"), optional: false, emit: fasta
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,21 +39,22 @@ process CONVERT_CONFIDENCE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     
-    def output_parsed = "${meta.id}.confidences.merged.tsv"
+    def output = "${meta.base}.merged.fasta"
+
+
 
     """
+    
 
-    mergeConfidence.py -f \\
-        -i $tsv \\
-        -o $output_parsed \\
-        -s ${meta.id} \\
-        -k $kraken_report
+    bash merge_fasta.sh \\
+        -i "$fastas" \\
+        -s ${meta.base} \\
+        -o $output \\
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 --version )
+        gawk: \$(gawk --version )
     END_VERSIONS
 
     """
 }
-
