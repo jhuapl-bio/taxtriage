@@ -96,8 +96,7 @@ mkdir -p "$tmp"
 regex="NM:i:([0-9]+)"
 
 
-
-awk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
+gawk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
 	if ($1 ~ /^@/){
 		print $0
 	}
@@ -128,7 +127,7 @@ awk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
 	for(r in best){
 		print(best[r]);
 	}
-}' "$SAM" > "$tmp/tmp1_included.sam" 
+}' "$SAM"  > "$tmp/tmp1_included.sam" 
 
 # include all alignments
 bsa_seqcount=$(awk 'END{print(NR)}' "$tmp/tmp1_included.sam")
@@ -147,7 +146,7 @@ awk -F'\t' 'function abs(x){return +sqrt(x*x)}{if( $1 ~ /^[^@]/ && abs(($9-$13)/
 
 if [[ ! $OUTPUT_READS == 'false' ]]; then
 	echo "adding reads to $OUTPUT_READS as 2 column file"
-	cut -f 1,3 -d $'\t' "$tmp/tmp2.sam" > $OUTPUT_READS
+	cut -f 1,3 -d $'\t' "$tmp/tmp2.sam" | grep -v '^@' > $OUTPUT_READS
 	# awk -v output=$OUTPUT_READS -F "\t" '{ print>output"_"$3".reads" }' "$tmp/tmp2.sam"
 	echo "added reads to necessary file"
 fi 
@@ -158,8 +157,7 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
 >&2 echo "  to $umrefs_count accessions"
 >&2 echo "gathering alignment stats"
-echo "______"
-awk -F'\t'  'function abs(x){
+gawk -F'\t'  'function abs(x){
 		return ((x < 0.0) ? -x : x)
 	};
 {
@@ -179,7 +177,6 @@ awk -F'\t'  'function abs(x){
 			}
 			end=$4+abs($9)
 			start=$4
-			
 			dep[$3][start][end]+=1
 			for(i=start;i<end;i++){
 				dep2[$3][i]+=1
@@ -195,7 +192,6 @@ END{
 		for (pos in a[i]){
 			sumsq[i]+=a[i][pos]^2
 		}
-		i=i+0
 		tlen+=ilen[i];
 		
 		aligned+=ireads[i];
@@ -207,6 +203,7 @@ END{
 		delete seen
  		for(j in dep[i]){
 			max=0		
+			
 			j=j+0
 			for (y in dep[i][j]){
 				y=y+0
@@ -220,6 +217,7 @@ END{
 				if (max < y){
 					max = y
 				}	
+		
 			}
 			seen[j]=max
 		}
@@ -321,8 +319,7 @@ END{
 		#print stdev,sumsq[i],sum[i],ilen[i],sumsq[i]-sum[i]^2/ilen[i],o6
 		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}'  $PILEUP "$tmp/tmp2.sam"     > $OUTPUT
-
+}'  $PILEUP "$tmp/tmp2.sam"   > $OUTPUT
 # cat $OUTPUT
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
