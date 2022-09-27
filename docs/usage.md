@@ -137,7 +137,7 @@ If you expand the pipeline parameters, you can mimic what I've written for my ex
 
 ![Launchpad2](images/taxtriagelaunchpad2.png)
 
-Next, Run the pipeline from the Launchpad
+Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
 
 [cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
 
