@@ -140,23 +140,18 @@ If you expand the pipeline parameters, you can mimic what I've written for my ex
 Next, Run the pipeline from the Launchpad
 
 
-<!-- <video width="320" height="240" controls>
-  <source src="images/cloud_run_2.mp4" type="video/mp4">
+<video width="320" height="240" controls>
+  <source src="images/cloud_run_2.webm" type="video/webm">
 </video>
 
 <video width="320" height="240" controls>
-  <source src="images/cloud_run_3.mp4" type="video/mp4">
+  <source src="images/cloud_run_3.webm" type="video/webm">
 </video>
 
 <video width="320" height="240" controls>
-  <source src="images/cloud_run_1.mp4" type="video/mp4">
-</video> -->
+  <source src="images/cloud_run_1.webm" type="video/webm">
+</video> 
 
-![cloud2](images/cloud_run_2.webm)
-
-![cloud3](images/cloud_run_3.webm)
-
-![cloud1](images/cloud_run_1.webm)
 
 ### Reproducibility
 
