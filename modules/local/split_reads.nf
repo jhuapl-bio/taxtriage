@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONVERT_CONFIDENCE {
+process SPLIT_READS {
     tag "$meta.id"
     label 'process_medium'
 
@@ -24,10 +24,10 @@ process CONVERT_CONFIDENCE {
         'pegi3s/biopython:latest' }"
 
     input:
-    tuple val(meta),  path(kraken_report), path(tsv)
+    tuple val(meta), path(fastq), path(fasta), path(reads)
 
     output:
-    tuple val(meta), path("*confidences.merged.tsv"), optional: false, emit: tsv
+    tuple val(meta), path("**/*fastq"), optional: false, emit: split_reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,21 +38,23 @@ process CONVERT_CONFIDENCE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     
-    def output_parsed = "${meta.id}.confidences.merged.tsv"
+    def output = "${meta.id}.blast.txt"
+
+    
+
 
     """
+    
 
-    mergeConfidence.py -f \\
-        -i $tsv \\
-        -o $output_parsed \\
-        -s ${meta.id} \\
-        -k $kraken_report
+    split_reads.py \\
+            -m "${reads}" \\
+            -o ${meta.id}_splitreads  \\
+            -q ${fastq} 
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 --version )
+        python3: \$(python3 --version )
     END_VERSIONS
 
     """
 }
-
