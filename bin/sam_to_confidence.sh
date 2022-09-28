@@ -159,7 +159,7 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  to $umrefs_count accessions"
 >&2 echo "gathering alignment stats"
 echo "______"
-awk -F'\t'  'function abs(x){
+gawk -F'\t'  'function abs(x){
 		return ((x < 0.0) ? -x : x)
 	};
 {
