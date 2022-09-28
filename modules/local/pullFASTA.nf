@@ -28,7 +28,7 @@ process PULL_FASTA {
 
     output:
         tuple val(meta), path("*filtered.fastq"), optional: false, emit: fastq
-        path("*${meta.id}.fasta"), optional: true, emit: fasta
+        tuple val(meta), path("*${meta.id}.fasta"), optional: true, emit: fasta
 
 
 
