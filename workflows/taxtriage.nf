@@ -272,7 +272,8 @@ workflow TAXTRIAGE {
                 ch_hit_to_kraken_report
             )
         }
-        PULL_FASTA.out.fasta.view()
+        ch_new  = PULL_FASTA.out.fastq.mix(PULL_FASTA.out.fasta)
+        ch_new.view()
         // ALIGNMENT(
         //     PULL_FASTA.out.fastq
         // )
@@ -293,12 +294,12 @@ workflow TAXTRIAGE {
         //     ALIGNMENT.out.sam,
         //     ALIGNMENT.out.mpileup
         // )
-        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
-            CONFIDENCE_METRIC.out.tsv
-        )
-        CONVERT_CONFIDENCE (
-            ch_joined_confidence_report
-        )
+        // ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+        //     CONFIDENCE_METRIC.out.tsv
+        // )
+        // CONVERT_CONFIDENCE (
+        //     ch_joined_confidence_report
+        // )
 
 
         // // SPLIT_READS.out.split_reads
