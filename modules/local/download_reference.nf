@@ -54,7 +54,7 @@ process REFERENCE {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        gawk: \$(gawk --version 2>&1)
+        awk: \$(awk --version 2>&1)
     END_VERSIONS
 
     """
