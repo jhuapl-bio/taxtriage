@@ -39,11 +39,10 @@ process CONVERT_CONFIDENCE {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     
     def output_parsed = "${meta.id}.confidences.merged.tsv"
-    // println "${meta.id} ${kraken_report} ${tsv}"
 
     """
 
-    mergeConfidence.py \\
+    mergeConfidence.py -f \\
         -i $tsv \\
         -o $output_parsed \\
         -s ${meta.id} \\

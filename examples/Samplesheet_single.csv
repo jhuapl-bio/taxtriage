@@ -1,2 +1,2 @@
 sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
-BC05,TRUE,,OXFORD,FALSE,examples/data/BC05.fastq.gz,,,FALSE
+BC05,TRUE,,OXFORD,FALSE,examples/data/sample_metagenome.fastq.gz,,,FALSE

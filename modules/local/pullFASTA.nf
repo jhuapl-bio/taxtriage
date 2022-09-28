@@ -27,14 +27,15 @@ process PULL_FASTA {
         tuple val(meta), path(taxid_file), path(classified_reads), path(classified_reads_assignment), path(genomes)
 
     output:
-        tuple val(meta), path("*filtered.fastq"), path("*refs.fasta"), optional: false, emit: fastq
+        tuple val(meta), path("*filtered.fastq"), optional: false, emit: fastq
+        path("*${meta.id}.fasta"), optional: true, emit: fasta
 
 
 
     
     
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def outfile = "${meta.id}_refs.fasta"
+    def outdir = "."
     def filtered = classified_reads.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }
     def classifieds = filtered.join(" ")
 
@@ -42,12 +43,13 @@ process PULL_FASTA {
         
         getfasta_refs.py  \\
             -i "$taxid_file" \\
-            -o $outfile \\
+            -o $outdir \\
             -t file \\
             -r $genomes \\
             -d $classifieds \\
             -a $classified_reads_assignment \\
-            -q 
+            -q \\
+            -p ${meta.id}
         
     
     """
