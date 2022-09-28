@@ -271,11 +271,10 @@ workflow TAXTRIAGE {
                 ch_hit_to_kraken_report
             )
         }
-        ch_new  = PULL_FASTA.out.fastq.mix(PULL_FASTA.out.fasta)
-        ch_new.view()
-        // ALIGNMENT(
-        //     PULL_FASTA.out.fastq
-        // )
+        ch_new  = PULL_FASTA.out.fastq.join(PULL_FASTA.out.fasta)
+        ALIGNMENT(
+            ch_new
+        )
         // ch_alignment_stats = ALIGNMENT.out.stats
         
         // if (params.blastdb && !params.remoteblast){

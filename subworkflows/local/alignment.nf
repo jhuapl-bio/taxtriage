@@ -61,119 +61,119 @@ workflow ALIGNMENT {
         .set{ transposed_fastas_oxford }
 
     transposed_fastas_oxford.view()
-    // BWA_INDEX (
-    //     transposed_fastas_illumina.map{ m, fastq, fasta -> 
-    //         return fasta 
-    //     }
-    // )
-    // BWA_MEM(
-    //     transposed_fastas_illumina.map{ m, fastq, fasta -> 
-    //         return [ m, fastq ] 
-    //     },
-    //     BWA_INDEX.out.index,
-    //     true
-    // )
-    // ch_bams = ch_bams.mix(BWA_MEM.out.bam)
-    // MINIMAP2_ALIGN (
-    //     transposed_fastas_oxford.map{ m, fastq, fasta -> [ m, fastq ] },
-    //     transposed_fastas_oxford.map{ meta, fastq, fasta -> fasta },
-    //     true,
-    //     true,
-    //     true
-    // )
-    // BCFTOOLS_MPILEUP_OXFORD(
-    //     MINIMAP2_ALIGN.out.bam, 
-    //     transposed_fastas_oxford.map{m,fastq,fasta -> fasta },
-    //     false
-    // )
-    // ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
-    // ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(transposed_fastas_oxford.map{m,fastq,fasta -> [m,fasta] })
+    BWA_INDEX (
+        transposed_fastas_illumina.map{ m, fastq, fasta -> 
+            return fasta 
+        }
+    )
+    BWA_MEM(
+        transposed_fastas_illumina.map{ m, fastq, fasta -> 
+            return [ m, fastq ] 
+        },
+        BWA_INDEX.out.index,
+        true
+    )
+    ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+    MINIMAP2_ALIGN (
+        transposed_fastas_oxford.map{ m, fastq, fasta -> [ m, fastq ] },
+        transposed_fastas_oxford.map{ meta, fastq, fasta -> fasta },
+        true,
+        true,
+        true
+    )
+    BCFTOOLS_MPILEUP_OXFORD(
+        MINIMAP2_ALIGN.out.bam, 
+        transposed_fastas_oxford.map{m,fastq,fasta -> fasta },
+        false
+    )
+    ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
+    ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(transposed_fastas_oxford.map{m,fastq,fasta -> [m,fasta] })
     
-    // BCFTOOLS_MPILEUP_ILLUMINA(
-    //     BWA_MEM.out.bam, 
-    //     transposed_fastas_illumina.map{m,fastq,fasta -> fasta },
-    //     false
-    // )    
-    // ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
-    // ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(transposed_fastas_illumina.map{m,fastq,fasta -> [m,fasta] })
+    BCFTOOLS_MPILEUP_ILLUMINA(
+        BWA_MEM.out.bam, 
+        transposed_fastas_illumina.map{m,fastq,fasta -> fasta },
+        false
+    )    
+    ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
+    ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(transposed_fastas_illumina.map{m,fastq,fasta -> [m,fasta] })
 
-    // ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
-    // BCFTOOLS_STATS(
-    //     ch_merged_mpileup.map{
-    //         m, vcf, tbi, fasta -> [m, vcf, tbi]
+    ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
+    BCFTOOLS_STATS(
+        ch_merged_mpileup.map{
+            m, vcf, tbi, fasta -> [m, vcf, tbi]
             
-    //     },
-    //     Channel.empty(),
-    //     Channel.empty(),
-    //     Channel.empty()
-    // )
+        },
+        Channel.empty(),
+        Channel.empty(),
+        Channel.empty()
+    )
     
     
 
-    // ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
-    // ch_bams = ch_bams.mix(BWA_MEM.out.bam)
-    // ch_bams.map{
-    //     m, bams ->
-    //     return [m.base,m, bams]
+    ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
+    ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+    ch_bams.map{
+        m, bams ->
+        return [m.base,m, bams]
 
-    // }.groupTuple(by:0).map{
-    //     base,meta,fasta -> [meta.first(), fasta]
-    // }.set{ collected_bams }
-    // fastq_reads.map{
-    //     m, reads, fasta ->
-    //         [ m.id, m, reads ]
+    }.groupTuple(by:0).map{
+        base,meta,fasta -> [meta.first(), fasta]
+    }.set{ collected_bams }
+    fastq_reads.map{
+        m, reads, fasta ->
+            [ m.id, m, reads ]
         
-    // }
-    // .join(
-    // collected_bams
-    // .map{
-    //     m,bams -> 
-    //     return [ m.base, bams ]
-    // }
-    // , by:0)
-    // .map{
-    //     id, m, fastqs, bams -> [ m, bams ]
-    // }.set { collected_bams }
-    // SAMTOOLS_MERGE(
-    //     collected_bams
-    // )
-    // BAM_TO_SAM(
-    //     SAMTOOLS_MERGE.out.bam
-    // )
-    // ch_sams=BAM_TO_SAM.out.sam
-    // ch_pileups=BAM_TO_SAM.out.mpileup
-    // ch_bams = SAMTOOLS_MERGE.out.bam
+    }
+    .join(
+    collected_bams
+    .map{
+        m,bams -> 
+        return [ m.base, bams ]
+    }
+    , by:0)
+    .map{
+        id, m, fastqs, bams -> [ m, bams ]
+    }.set { collected_bams }
+    SAMTOOLS_MERGE(
+        collected_bams
+    )
+    BAM_TO_SAM(
+        SAMTOOLS_MERGE.out.bam
+    )
+    ch_sams=BAM_TO_SAM.out.sam
+    ch_pileups=BAM_TO_SAM.out.mpileup
+    ch_bams = SAMTOOLS_MERGE.out.bam
     
     
-    // if (!params.skip_consensus){
-    //     BCFTOOLS_CONSENSUS (
-    //         ch_merged_mpileup
-    //     )
-    //     ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
-    //     BCFTOOLS_CONSENSUS.out.fasta.map{
-    //         m,fasta-> [m.base,m,fasta]
-    //     }.groupTuple(by:0).map{
-    //         base,meta,fasta -> [meta.first(), fasta]
-    //     }.set{ ch_fasta }
-    //     MERGE_FASTA(
-    //         ch_fasta
-    //     )
-    //     ch_fasta = MERGE_FASTA.out.fasta
-    //     collected_bams.map{
-    //         m, bams->
-    //             [ m.id, m, bams ]
+    if (!params.skip_consensus){
+        BCFTOOLS_CONSENSUS (
+            ch_merged_mpileup
+        )
+        ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
+        BCFTOOLS_CONSENSUS.out.fasta.map{
+            m,fasta-> [m.base,m,fasta]
+        }.groupTuple(by:0).map{
+            base,meta,fasta -> [meta.first(), fasta]
+        }.set{ ch_fasta }
+        MERGE_FASTA(
+            ch_fasta
+        )
+        ch_fasta = MERGE_FASTA.out.fasta
+        collected_bams.map{
+            m, bams->
+                [ m.id, m, bams ]
             
-    //     }.join(
-    //     ch_fasta
-    //     .map{
-    //         m,fasta -> 
-    //         return [ m.base, fasta ]
-    //     }
-    //     , by:0)
-    //     .map{
-    //         id, m, bams, fasta -> [ m, fasta ]
-    //     }.set { ch_merged_fasta }
-    // }
+        }.join(
+        ch_fasta
+        .map{
+            m,fasta -> 
+            return [ m.base, fasta ]
+        }
+        , by:0)
+        .map{
+            id, m, bams, fasta -> [ m, fasta ]
+        }.set { ch_merged_fasta }
+    }
 
     
 
