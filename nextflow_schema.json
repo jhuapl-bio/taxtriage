@@ -107,6 +107,16 @@
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "blastdb": {
+                    "type": "string",
+                    "description": "Blast Database (local or remote, local must be absolute path)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "remoteblast": {
+                    "type": "boolean",
+                    "description": "Run BLAST remote",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "multiqc_config": {
                     "type": "string",
                     "description": "Config file for multiqc",

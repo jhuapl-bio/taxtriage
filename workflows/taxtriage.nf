@@ -73,7 +73,8 @@ if (params.assembly && ch_assembly_txt.isEmpty() ) {
 
 ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 ch_multiqc_custom_config = params.multiqc_config ? Channel.fromPath(params.multiqc_config) : Channel.empty()
-
+ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
+ch_alignment_stats = Channel.empty()
 
 
 /*
@@ -134,10 +135,9 @@ def multiqc_report = []
 
 
 workflow TAXTRIAGE {
-    ch_db = params.db
     
     ch_versions = Channel.empty()
-    
+    ch_db = params.db
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
@@ -271,60 +271,93 @@ workflow TAXTRIAGE {
                 ch_hit_to_kraken_report
             )
         }
-        PULL_FASTA.out.fastq.view()
-        ALIGNMENT(
-            PULL_FASTA.out.fastq
-        )
-
-        CONFIDENCE_METRIC (
-            ALIGNMENT.out.sam,
-            ALIGNMENT.out.mpileup
-        )
-        // SEPARATE_READS(
-        //     CONFIDENCE_METRIC.out.reads
+        ch_new  = PULL_FASTA.out.fastq.mix(PULL_FASTA.out.fasta)
+        ch_new.view()
+        // ALIGNMENT(
+        //     PULL_FASTA.out.fastq
         // )
-        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
-            CONFIDENCE_METRIC.out.tsv
-        )
-        CONVERT_CONFIDENCE (
-            ch_joined_confidence_report
-        )
+        // ch_alignment_stats = ALIGNMENT.out.stats
+        
+        // if (params.blastdb && !params.remoteblast){
+        //     BLAST_BLASTN(
+        //         ALIGNMENT.out.fasta,
+        //         ch_blast_db
+        //     )
+        // } else if (params.blastdb && params.remoteblast){
+        //     REMOTE_BLASTN(
+        //         ALIGNMENT.out.fasta,
+        //         ch_blast_db
+        //     )
+        // }
+        // CONFIDENCE_METRIC (
+        //     ALIGNMENT.out.sam,
+        //     ALIGNMENT.out.mpileup
+        // )
+        // ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+        //     CONFIDENCE_METRIC.out.tsv
+        // )
+        // CONVERT_CONFIDENCE (
+        //     ch_joined_confidence_report
+        // )
 
-        CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        .set{ mergedtsv }
-    }
-    if (!params.spades_hmm ){
-        ch_spades_hmm = []
-    } else {
-        ch_spades_hmm = params.spades_hmm
+
+        // // SPLIT_READS.out.split_reads
+        // // .transpose(by:[2])
+        // // .map{
+        // //     m, fastq, fasta ->
+        // //         def basename = fasta.baseName
+        // //         def id = basename
+        // //         return [ [id:id, platform:m.platform, base: m.id] , fastq, fasta ]
+        // // }.set{ch_split}
+
+
+        // // ch_split.view()
+        
+        // ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+        //     CONFIDENCE_METRIC.out.tsv
+        // )
+        // CONVERT_CONFIDENCE (
+        //     ch_joined_confidence_report
+        // )
+        // CONVERT_CONFIDENCE.out.tsv.view()
+        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
+        // .set{ mergedtsv }
     }
      
-    if (!params.skip_assembly){
-        println "spades"
-        illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
-            meta, reads, ref -> 
-            [meta, reads, [], []]
-        }
-        SPADES_ILLUMINA(
-           illumina_reads,
-           ch_spades_hmm
-        )
-        println "nanopore"
-        nanopore_reads = PULL_FASTA.out.fastq.filter { it[0].platform == 'OXFORD'  }.map{
-            meta, reads, ref -> 
-            [meta, [], [], reads]
-        }
-	    // SPADES_OXFORD(
-        //    nanopore_reads,
-        //    ch_spades_hmm
-        // )
+    // if (!params.skip_assembly){
+    //     illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
+    //         meta, reads, ref -> 
+    //         [meta, reads, [], []]
+    //     }
+    //     ch_split.view()
+    //     illumina_reads = ch_split.map{
+    //         m, reads -> [
+    //             m, reads, [], []
+    //         ]
+    //     }
         
-        FLYE(
-           nanopore_reads,
-           "--nano-raw"
-        )
+        
+        
+        
+    //     SPADES_ILLUMINA(
+    //        illumina_reads,
+    //        ch_spades_hmm
+    //     )
+    //     nanopore_reads = PULL_FASTA.out.fastq.filter { it[0].platform == 'OXFORD'  }.map{
+    //         meta, reads, ref -> 
+    //         [meta, [], [], reads]
+    //     }
+	//     //SPADES_OXFORD(
+    //      //  nanopore_reads,
+    //       // ch_spades_hmm
+    //     //)
+        
+    //     FLYE(
+    //        nanopore_reads,
+    //        "--nano-raw"
+    //     )
     
-    }
+    // }
 
 
     
@@ -345,30 +378,40 @@ workflow TAXTRIAGE {
     workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
     ch_workflow_summary = Channel.value(workflow_summary)
 
-    ch_multiqc_files = Channel.empty()
-    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    // ch_multiqc_files = Channel.empty()
+    // ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
+    // // ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
+    // if (params.blastdb && !params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // } else if (params.blastdb && params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // }
+    // // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
+    // if (params.trim){
+    //     ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
+    // }
+    // if (!params.skip_plots){
+    //     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
+    //     ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
+    // }
+    // if(!params.skip_realignment){
+    //     ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
+    // }
     
     // ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
-    ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
-    if (params.trim){
-        ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
-    }
-    if (!params.skip_plots){
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
-    }
-    if(!params.skip_realignment){
-        ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
-    }
     
-    MULTIQC (
-        ch_multiqc_files.collect()
-    )
-    multiqc_report = MULTIQC.out.report.toList()
-    ch_versions    = ch_versions.mix(MULTIQC.out.versions)
+    
+    // MULTIQC (
+    //     ch_multiqc_files.collect()
+    // )
+    // multiqc_report = MULTIQC.out.report.toList()
+    // ch_versions    = ch_versions.mix(MULTIQC.out.versions)
 }
 
 /*

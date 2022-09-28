@@ -1,0 +1,18 @@
+{
+    "input": "examples/Samplesheet.csv",
+    "db": null,
+    "outdir": "tmp_full",
+    "top_hits_count": 3,
+    "demux": true,
+    "assembly": "examples/assembly_summary_refseq.txt",
+    "skip_plots": true,
+    "skip_assembly": true,
+    "max_memory": "10GB",
+    "max_cpus": 3,
+    "low_memory": true,
+    "remove_taxids": "9606",
+    "profile": "docker",
+    "blastdb": null,
+    "remoteblast": false,
+    "skip_consensus": false
+}
