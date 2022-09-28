@@ -27,7 +27,7 @@ process CONVERT_CONFIDENCE {
     tuple val(meta),  path(kraken_report), path(tsv)
 
     output:
-    tuple val(meta), path("*confidences.merged.tsv"), optional: false, emit: tsv
+    path("*confidences.merged.tsv"), optional: false, emit: tsv
     path "versions.yml"           , emit: versions
 
     when:
