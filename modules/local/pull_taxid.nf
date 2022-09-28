@@ -48,7 +48,7 @@ process PULL_TAXID {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        minimap2: \$(gawk --version 2>&1)
+        awk: \$(awk --version 2>&1)
     END_VERSIONS
 
     """

@@ -61,7 +61,7 @@ process DOWNLOAD_ASSEMBLY {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python --version | sed 's/Python //g')
+        python: \$(python3 --version )
     END_VERSIONS
 
     """
