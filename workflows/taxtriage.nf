@@ -246,17 +246,16 @@ workflow TAXTRIAGE {
         ch_kraken2_report,
         ch_top_hits_count
     )
-    
+    ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
-            KRAKEN2_KRAKEN2.out.classified_reads_fastq
+            ch_filtered_reads
         )
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
         
         if (ch_assembly_file_type == 'ncbi' ){
-            
             DOWNLOAD_ASSEMBLY (
                 ch_hit_to_kraken_report,
                 ch_assembly_txt
@@ -272,6 +271,7 @@ workflow TAXTRIAGE {
                 ch_hit_to_kraken_report
             )
         }
+        PULL_FASTA.out.fastq.view()
         ALIGNMENT(
             PULL_FASTA.out.fastq
         )
