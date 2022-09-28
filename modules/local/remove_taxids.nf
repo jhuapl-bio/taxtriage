@@ -21,7 +21,7 @@ process REMOVETAXIDSCLASSIFICATION  {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'gcc:bullseye' }"
+        'euformatics/gawk-curl-jq:2021-11-03' }"
 
     input:
     tuple val(meta), path(report), val(taxids)
