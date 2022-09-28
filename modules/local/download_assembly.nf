@@ -28,7 +28,7 @@ process DOWNLOAD_ASSEMBLY {
 
     input:
     tuple val(meta), path(taxid_containing_file), val(classified_reads_fastq), val(classified_reads)
-    val(assembly)
+    path(assembly)
 
 
     output:
