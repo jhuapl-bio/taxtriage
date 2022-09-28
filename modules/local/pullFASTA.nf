@@ -24,7 +24,7 @@ process PULL_FASTA {
         'pegi3s/biopython:latest' }"
 
     input:
-        tuple val(meta), path(taxid_file), val(classified_reads), val(classified_reads_assignment), path(genomes)
+        tuple val(meta), path(taxid_file), path(classified_reads), path(classified_reads_assignment), path(genomes)
 
     output:
         tuple val(meta), path("*filtered.fastq"), path("*refs.fasta"), optional: false, emit: fastq
