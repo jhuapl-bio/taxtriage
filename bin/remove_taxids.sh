@@ -78,7 +78,7 @@ if [[   -z "$OUTPUT" ]]; then printf "%s\n" "No output"; exit ; fi
 #		based on MAPQ
 
 
-awk -v filtertaxids="${TAXIDS[@]}" -F '\t' '
+gawk -v filtertaxids="${TAXIDS[@]}" -F '\t' '
     function join(array, start, end, sep,    result, i)
     {
         if (sep == "")
