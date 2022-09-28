@@ -21,7 +21,7 @@ process PULL_TAXID {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'cicirello/gnu-on-alpine' }"
+        'osexp2000/ubuntu-with-utils' }"
 
     input:
     tuple val(meta), val(assembly_hits)
@@ -43,7 +43,7 @@ process PULL_TAXID {
     println assembly_hits
     """
     mkdir -p $output
-    bash refseq_download_single.sh -i $assembly_hits -o $output
+    refseq_download_single.sh -i $assembly_hits -o $output
     gzip -d $output/*.gz
 
     cat <<-END_VERSIONS > versions.yml

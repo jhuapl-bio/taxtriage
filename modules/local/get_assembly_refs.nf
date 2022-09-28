@@ -20,7 +20,7 @@ process GET_ASSEMBLIES {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gnu-wget%3A1.18--h7132678_6' :
-        'cicirello/gnu-on-alpine' }"
+        'osexp2000/ubuntu-with-utils:xenial' }"
 
     
 
@@ -54,7 +54,7 @@ process GET_ASSEMBLIES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        minimap2: \$(wget --version 2>&1)
+        wget: \$(wget --version 2>&1)
     END_VERSIONS
 
     """

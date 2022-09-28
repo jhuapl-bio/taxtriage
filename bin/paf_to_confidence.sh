@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ##############################################################################################
 # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 # All rights reserved.

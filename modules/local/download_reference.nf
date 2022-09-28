@@ -21,7 +21,7 @@ process REFERENCE {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'cicirello/gnu-on-alpine' }"
+        'osexp2000/ubuntu-with-utils' }"
 
     
 
@@ -49,7 +49,7 @@ process REFERENCE {
 
     """
 
-    bash taxid_to_reflist.sh -i $taxid -o $id".ftmp" -a $assembly
+    taxid_to_reflist.sh -i $taxid -o $id".ftmp" -a $assembly
     
 
     cat <<-END_VERSIONS > versions.yml

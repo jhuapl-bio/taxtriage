@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ##############################################################################################
 # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 # All rights reserved.
@@ -40,11 +40,11 @@ OPTIONS:
 	-t	STRING	1 or more taxids, separated by spaces and in double quotes
 
 USAGE:
-bash remove_taxids.sh -i </full/path/to/kraken2/report> -o </full/path/to/kraken2/filtered/report> -t "<taxids_separated_by_space>"
+remove_taxids.sh -i </full/path/to/kraken2/report> -o </full/path/to/kraken2/filtered/report> -t "<taxids_separated_by_space>"
 i="BC01.kraken.report"
 o="BC01.filtered.kraken.report"
 t="1 2 9609"
-bash sam_to_confidence.sh -i "$i" -o "$o" -t "$t"
+remove_taxids.sh -i "$i" -o "$o" -t "$t"
 
 EOF
 }
