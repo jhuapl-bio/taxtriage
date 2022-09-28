@@ -26,7 +26,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 import re
-import os 
+import os
+from xmlrpc.client import Boolean 
 logger = logging.getLogger()
 
 
@@ -60,6 +61,12 @@ def parse_args(argv=None):
         help="Kraken report file to merge information with",
     )
     parser.add_argument(
+        "-f",
+        "--taxid_format_kraken2",
+        action="store_true",
+        help="Merge based on the kraken2 format for taxid rather than a 1 to 1 confidence taxid in the acc column",
+    )
+    parser.add_argument(
         "-o",
         "--file_out",
         metavar="FILE_OUT",
@@ -77,17 +84,18 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def import_file(tsv_filename, kraken_report, samplename):
+def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
     tsv_file = open(tsv_filename)
     rows = dict()
     confidence_tsv = csv.reader(tsv_file, delimiter="\t")
     for row in confidence_tsv:
+        if format_kraken2:
+            row[0] = row[0].split("|")[1]
         rows[row[0]] = row
         if samplename:
             row[0] = row[0] +"_" + samplename
     tsv_file.close()
     report_file = open(kraken_report)
-    
     report = csv.reader(report_file, delimiter="\t")
     for row in report:
         taxid = row[4]
@@ -108,7 +116,7 @@ def main(argv=None):
     if not args.file_in.is_file():
         logger.error(f"The given input file {args.file_in} was not found!")
         sys.exit(2)
-    rows = import_file(args.file_in, args.kraken_report, args.sample)
+    rows = import_file(args.file_in, args.kraken_report, args.sample, args.taxid_format_kraken2)
     path  = open(args.file_out, "w")
     writer = csv.writer(path, delimiter='\t')
     writer.writerow(['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation'])

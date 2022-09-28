@@ -9,6 +9,15 @@
             "artic/guppyplex": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
+            "bcftools/consensus": {
+                "git_sha": "682f789f93070bd047868300dd018faf3d434e7c"
+            },
+            "bcftools/mpileup": {
+                "git_sha": "682f789f93070bd047868300dd018faf3d434e7c"
+            },
+            "bcftools/stats": {
+                "git_sha": "41dfa13929d2c178855159a69d2e2958c52be155"
+            },
             "blast/blastn": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
             },
@@ -77,6 +86,9 @@
             },
             "nanoplot": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
+            },
+            "pangolin": {
+                "git_sha": "682f789f93070bd047868300dd018faf3d434e7c"
             },
             "plasmidid": {
                 "git_sha": "e745e167c1020928ef20ea1397b6b4d230681b4d"
