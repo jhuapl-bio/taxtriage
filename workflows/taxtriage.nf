@@ -308,11 +308,7 @@ workflow TAXTRIAGE {
             meta, reads, ref -> 
             [meta, reads, [], []]
         }
-        illumina_reads = ch_split.map{
-            m, reads -> [
-                m, reads, [], []
-            ]
-        }
+        
         
         
         
