@@ -44,7 +44,7 @@ nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
    --outdir tmp --max_memory 10GB --max_cpus 3 \
-   -profile docker  -resume --demux
+   -profile docker  -resume --demux --remove_taxids "9606"
 
 ```
 
@@ -55,7 +55,7 @@ or with your very own assembly refseq file (if no internet available from ncbi)
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
-   --outdir tmp --max_memory 10GB --max_cpus 3 \
+   --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" \
    -profile docker  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
 
 ```
@@ -67,7 +67,7 @@ or, using
 nextflow run ./main.nf \
    --input examples/Samplesheet_single.csv \
    --db $PWD/data/databases/flukraken2 \
-   --outdir tmp/flu \
+   --outdir tmp/flu --remove_taxids "9606" \
    --max_memory 10GB --max_cpus 3 -profile docker \
    --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
    -resume

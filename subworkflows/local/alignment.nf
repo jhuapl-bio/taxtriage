@@ -28,6 +28,7 @@ workflow ALIGNMENT {
     ch_stats = Channel.empty()
     ch_pafs = Channel.empty()
     ch_sams = Channel.empty()
+    collected_bams  = Channel.empty()
     
     ch_merged_fasta = Channel.empty()
 
@@ -60,7 +61,6 @@ workflow ALIGNMENT {
         }
         .set{ transposed_fastas_oxford }
 
-    transposed_fastas_oxford.view()
     BWA_INDEX (
         transposed_fastas_illumina.map{ m, fastq, fasta -> 
             return fasta 
@@ -81,32 +81,9 @@ workflow ALIGNMENT {
         true,
         true
     )
-    BCFTOOLS_MPILEUP_OXFORD(
-        MINIMAP2_ALIGN.out.bam, 
-        transposed_fastas_oxford.map{m,fastq,fasta -> fasta },
-        false
-    )
-    ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
-    ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(transposed_fastas_oxford.map{m,fastq,fasta -> [m,fasta] })
-    
-    BCFTOOLS_MPILEUP_ILLUMINA(
-        BWA_MEM.out.bam, 
-        transposed_fastas_illumina.map{m,fastq,fasta -> fasta },
-        false
-    )    
-    ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
-    ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(transposed_fastas_illumina.map{m,fastq,fasta -> [m,fasta] })
 
-    ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
-    BCFTOOLS_STATS(
-        ch_merged_mpileup.map{
-            m, vcf, tbi, fasta -> [m, vcf, tbi]
-            
-        },
-        Channel.empty(),
-        Channel.empty(),
-        Channel.empty()
-    )
+    
+    
     
     
 
@@ -134,6 +111,67 @@ workflow ALIGNMENT {
     .map{
         id, m, fastqs, bams -> [ m, bams ]
     }.set { collected_bams }
+
+    if (!params.skip_variants){
+        BCFTOOLS_MPILEUP_OXFORD(
+            MINIMAP2_ALIGN.out.bam, 
+            transposed_fastas_oxford.map{m,fastq,fasta -> fasta },
+            false
+        )
+        ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
+        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(transposed_fastas_oxford.map{m,fastq,fasta -> [m,fasta] })
+        
+        BCFTOOLS_MPILEUP_ILLUMINA(
+            BWA_MEM.out.bam, 
+            transposed_fastas_illumina.map{m,fastq,fasta -> fasta },
+            false
+        )    
+        ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
+        ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(transposed_fastas_illumina.map{m,fastq,fasta -> [m,fasta] })
+
+        ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
+        BCFTOOLS_STATS(
+            ch_merged_mpileup.map{
+                m, vcf, tbi, fasta -> [m, vcf, tbi]
+                
+            },
+            [],
+            [],
+            []
+        )
+        if (!params.skip_consensus){
+            BCFTOOLS_CONSENSUS (
+                ch_merged_mpileup
+            )
+            ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
+            BCFTOOLS_CONSENSUS.out.fasta.map{
+                m,fasta-> [m.base,m,fasta]
+            }.groupTuple(by:0).map{
+                base,meta,fasta -> [meta.first(), fasta]
+            }.set{ ch_fasta }
+            MERGE_FASTA(
+                ch_fasta
+            )
+            ch_fasta = MERGE_FASTA.out.fasta
+            collected_bams.map{
+                m, bams->
+                    [ m.id, m, bams ]
+                
+            }.join(
+            ch_fasta
+            .map{
+                m,fasta -> 
+                return [ m.base, fasta ]
+            }
+            , by:0)
+            .map{
+                id, m, bams, fasta -> [ m, fasta ]
+            }.set { ch_merged_fasta }
+        }
+        ch_stats = BCFTOOLS_STATS.out.stats
+    }
+
+
     SAMTOOLS_MERGE(
         collected_bams
     )
@@ -145,35 +183,7 @@ workflow ALIGNMENT {
     ch_bams = SAMTOOLS_MERGE.out.bam
     
     
-    if (!params.skip_consensus){
-        BCFTOOLS_CONSENSUS (
-            ch_merged_mpileup
-        )
-        ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
-        BCFTOOLS_CONSENSUS.out.fasta.map{
-            m,fasta-> [m.base,m,fasta]
-        }.groupTuple(by:0).map{
-            base,meta,fasta -> [meta.first(), fasta]
-        }.set{ ch_fasta }
-        MERGE_FASTA(
-            ch_fasta
-        )
-        ch_fasta = MERGE_FASTA.out.fasta
-        collected_bams.map{
-            m, bams->
-                [ m.id, m, bams ]
-            
-        }.join(
-        ch_fasta
-        .map{
-            m,fasta -> 
-            return [ m.base, fasta ]
-        }
-        , by:0)
-        .map{
-            id, m, bams, fasta -> [ m, fasta ]
-        }.set { ch_merged_fasta }
-    }
+    
 
     
 
