@@ -35,7 +35,6 @@ for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true
 
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
-if (params.blastdb) { ch_blast_db = file(params.blastdb) } else { ch_blast_db = Channel.value('nt') }
 if (params.top_hits_count) { 
     ch_top_hits_count = params.top_hits_count 
 } else { 
@@ -106,7 +105,6 @@ include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/module
 include { TRIMGALORE } from '../modules/nf-core/modules/trimgalore/main'
 include { ARTIC_GUPPYPLEX } from '../modules/nf-core/modules/artic/guppyplex/main'
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
-include { REMOTE_BLASTN } from '../modules/local/remote_blast.nf'
 include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
 include { PORECHOP } from '../modules/nf-core/modules/porechop/main'
 include { SEQTK_SAMPLE } from '../modules/nf-core/modules/seqtk/sample/main'
@@ -114,7 +112,6 @@ include { MULTIQC                     } from '../modules/nf-core/modules/multiqc
 include { FLYE                     } from '../modules/nf-core/modules/flye/main'
 include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/modules/spades/main'
 include { SPADES as SPADES_OXFORD } from '../modules/nf-core/modules/spades/main'
-include { BLAST_BLASTN } from '../modules/nf-core/modules/blast/blastn/main'
 include { NANOPLOT                     } from '../modules/nf-core/modules/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/modules/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
@@ -126,7 +123,6 @@ include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
-include { SPLIT_READS } from '../modules/local/split_reads'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -139,10 +135,9 @@ def multiqc_report = []
 
 
 workflow TAXTRIAGE {
-    ch_db = params.db
     
     ch_versions = Channel.empty()
-    ch_split = Channel.empty()
+    ch_db = params.db
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
@@ -162,6 +157,7 @@ workflow TAXTRIAGE {
     }
     if (params.subsample && params.subsample > 0){
         ch_subsample  = params.subsample
+        ch_reads.view()
         SEQTK_SAMPLE (
             ch_reads,
             ch_subsample
@@ -186,6 +182,7 @@ workflow TAXTRIAGE {
         }
     )
     if (!ch_assembly_txt){
+        println "empty"
         GET_ASSEMBLIES(
             ch_reads
         )
@@ -296,7 +293,12 @@ workflow TAXTRIAGE {
         //     ALIGNMENT.out.sam,
         //     ALIGNMENT.out.mpileup
         // )
-        
+        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+            CONFIDENCE_METRIC.out.tsv
+        )
+        CONVERT_CONFIDENCE (
+            ch_joined_confidence_report
+        )
 
 
         // // SPLIT_READS.out.split_reads
@@ -321,11 +323,6 @@ workflow TAXTRIAGE {
         // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
         // .set{ mergedtsv }
     }
-    // if (!params.spades_hmm ){
-    //     ch_spades_hmm = []
-    // } else {
-    //     ch_spades_hmm = params.spades_hmm
-    // }
      
     // if (!params.skip_assembly){
     //     illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
@@ -369,17 +366,17 @@ workflow TAXTRIAGE {
     
     
 
-    // CUSTOM_DUMPSOFTWAREVERSIONS (
-    //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    // )
+    CUSTOM_DUMPSOFTWAREVERSIONS (
+        ch_versions.unique().collectFile(name: 'collated_versions.yml')
+    )
 
 
     
-    // //
-    // // MODULE: MultiQC
-    // //
-    // workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-    // ch_workflow_summary = Channel.value(workflow_summary)
+    //
+    // MODULE: MultiQC
+    //
+    workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+    ch_workflow_summary = Channel.value(workflow_summary)
 
     // ch_multiqc_files = Channel.empty()
     // ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
@@ -405,6 +402,10 @@ workflow TAXTRIAGE {
     // if(!params.skip_realignment){
     //     ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
     // }
+    
+    // ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
+    // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
+    
     
     // MULTIQC (
     //     ch_multiqc_files.collect()
