@@ -97,7 +97,7 @@ regex="NM:i:([0-9]+)"
 
 
 
-awk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
+gawk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
 	if ($1 ~ /^@/){
 		print $0
 	}
