@@ -27,7 +27,8 @@ process PULL_FASTA {
         tuple val(meta), val(taxid_file), val(classified_reads), val(classified_reads_assignment), val(genomes)
 
     output:
-        tuple val(meta), path("*filtered.fastq"), path("**${meta.id}.fasta"), optional: false, emit: fastq
+        tuple val(meta), path("*filtered.fastq"), optional: false, emit: fastq
+        path("*${meta.id}.fasta"), optional: true, emit: fasta
 
 
 
