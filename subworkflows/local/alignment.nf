@@ -46,7 +46,10 @@ workflow ALIGNMENT {
                 return [ [id:id, platform:m.platform, base: m.id] , fastq, fasta ]
         }
         .set{ transposed_fastas_illumina }
-    ch_aligners.minimap2.view()
+    
+
+
+
     ch_aligners.minimap2
         .transpose(by:[2])
         .map{

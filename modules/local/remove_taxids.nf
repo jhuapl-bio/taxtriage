@@ -21,7 +21,7 @@ process REMOVETAXIDSCLASSIFICATION  {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'cicirello/gnu-on-alpine' }"
+        'osexp2000/ubuntu-with-utils' }"
 
     input:
     tuple val(meta), path(report), val(taxids)
@@ -37,7 +37,7 @@ process REMOVETAXIDSCLASSIFICATION  {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     """
-    bash remove_taxids.sh -i $report -t \"$taxids\" -o ${meta.id}.filtered.report
+    remove_taxids.sh -i $report -t \"$taxids\" -o ${meta.id}.filtered.report
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
