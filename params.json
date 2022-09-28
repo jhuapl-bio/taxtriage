@@ -13,5 +13,6 @@
     "remove_taxids": "9606",
     "profile": "docker",
     "blastdb": null,
-    "remoteblast": false
+    "remoteblast": false,
+    "skip_consensus": false
 }
