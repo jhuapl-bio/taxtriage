@@ -96,10 +96,6 @@ mkdir -p "$tmp"
 regex="NM:i:([0-9]+)"
 
 
-<<<<<<< HEAD
-
-=======
->>>>>>> dev
 gawk -v regex=$regex -F'\t' 'BEGIN{OFS="\t"}{
 	if ($1 ~ /^@/){
 		print $0
@@ -161,10 +157,7 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  $umseqs_count uniquely mapping reads"
 >&2 echo "  to $umrefs_count accessions"
 >&2 echo "gathering alignment stats"
-<<<<<<< HEAD
 echo "______"
-=======
->>>>>>> dev
 gawk -F'\t'  'function abs(x){
 		return ((x < 0.0) ? -x : x)
 	};
