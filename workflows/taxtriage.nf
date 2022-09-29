@@ -272,6 +272,9 @@ workflow TAXTRIAGE {
             )
         }
         ch_new  = PULL_FASTA.out.fastq.join(PULL_FASTA.out.fasta)
+        ch_new = ch_new.map{
+            m, fastq, fasta -> [m, fastq, ( fasta instanceof List  ? fasta : [fasta] )  ]
+        }
         ALIGNMENT(
             ch_new
         )
@@ -298,7 +301,6 @@ workflow TAXTRIAGE {
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
-        CONVERT_CONFIDENCE.out.tsv.view()
         CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
         .set{ mergedtsv }
     }
