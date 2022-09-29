@@ -28,15 +28,18 @@ workflow ALIGNMENT {
     ch_stats = Channel.empty()
     ch_pafs = Channel.empty()
     ch_sams = Channel.empty()
+    ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()
     
     ch_merged_fasta = Channel.empty()
 
-    ch_aligners = fastq_reads
+    
+    fastq_reads
     .branch{
         minimap2: it[0].platform =~ 'OXFORD'
         bwamem2: it[0].platform =~ 'ILLUMINA'
-    }
+    }.set { ch_aligners }
+
     ch_versions = 1
     ch_aligners.bwamem2
         .transpose(by:[2])
@@ -48,7 +51,6 @@ workflow ALIGNMENT {
         }
         .set{ transposed_fastas_illumina }
     
-
 
 
     ch_aligners.minimap2
