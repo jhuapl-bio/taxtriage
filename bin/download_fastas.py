@@ -154,6 +154,7 @@ def import_assembly_file(input, filename, idx):
             if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen :
                 refs[linesplit[idx[0]]] = dict( id="kraken:taxid|{}|{}".format(linesplit[idx[1]],linesplit[idx[0]]), fulline=linesplit )
                 seen[linesplit[idx[1]]] = True
+    print(refs)
     return refs
 def get_assembly_summary(id):
     """Get esummary for an entrez id"""
