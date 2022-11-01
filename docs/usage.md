@@ -50,13 +50,13 @@ FALSE,ERR6913101,,ILLUMINA,FALSE,data/test-run/ERR6913101_1.fastq.gz,data/test-r
 | Column     | Description                                                                                                                                                                            |
 | ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sample`   | Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
-| `fastq_1`  | Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                             |
-| `fastq_2`  | Full path to FastQ file for Illumina short reads 2. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
-| `barcode`  | TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
-| `from`     | Directory path of the barcode, only used with the column being set as TRUE in the barcode column                                                                                       |
+| `fastq_1`  | OPTIONAL (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                             |
+| `fastq_2`  | OPTIONAL. Full path to FastQ file for Illumina short reads 2. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
+| `barcode`  | OPTIONAL. TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
+| `from`     | OPTIONAL (if not using fastq1/2) Directory path of the barcode, only used with the column being set as TRUE in the barcode column                                                                                       |
 | `platform` | Platform used, [ILLUMINA, OXFORD]                                                            |
 | `trim` | TRUE/FALSE, do you want to run trimming on the sample?                                       |
-| `sequencing_summary` | If detected, output plots based on the the sequencing summary file for that sample | 
+| `sequencing_summary` | OPTIONAL. If detected, output plots based on the the sequencing summary file for that sample | 
 
 An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
