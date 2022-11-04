@@ -56,7 +56,7 @@ nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
    --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" \
-   -profile docker  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
+   -profile singularity  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
 
 ```
  
