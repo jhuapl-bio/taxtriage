@@ -13,6 +13,8 @@ Efforts are underway to provide full support of this pipeline on [nf-core](nf-co
 
 ## Quick Start
 
+Make sure you have either Docker or Singularity installed, as well as Nextflow
+
 1. Get databases 
 
 `mkdir -p data/databases`
