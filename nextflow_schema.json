@@ -33,6 +33,12 @@
                     "description": "Save all read classifications as a txt file",
                     "default": true
                 },
+                "low_memory": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-book",
+                    "description": "Dont load db to memory, run from I/O",
+                    "default": false
+                },
                 "save_reads_assignment": {
                     "type": "boolean",
                     "description": "Report output",
@@ -90,7 +96,8 @@
                 "skip_assembly": {
                     "type": "boolean",
                     "description": "Skip De Novo Assembly",
-                    "fa_icon": "fas fa-file-signature"
+                    "fa_icon": "fas fa-file-signature",
+                    "default": true
                 },
                 "demux": {
                     "type": "boolean",
