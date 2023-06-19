@@ -9,7 +9,6 @@ process SPADES {
 
     input:
     tuple val(meta), path(illumina), path(pacbio), path(nanopore)
-    path  hmm
 
     output:
     tuple val(meta), path('*.scaffolds.fa.gz')    , optional:true, emit: scaffolds
@@ -30,13 +29,11 @@ process SPADES {
     def illumina_reads = illumina ? ( meta.single_end ? "-s $illumina" : "-1 ${illumina[0]} -2 ${illumina[1]}" ) : ""
     def pacbio_reads = pacbio ? "--pacbio $pacbio" : ""
     def nanopore_reads = nanopore ? "--nanopore $nanopore" : ""
-    def custom_hmms = hmm ? "--custom-hmms $hmm" : ""
     """
     spades.py \\
         $args \\
         --threads $task.cpus \\
         --memory $maxmem \\
-        $custom_hmms \\
         $illumina_reads \\
         $pacbio_reads \\
         $nanopore_reads \\

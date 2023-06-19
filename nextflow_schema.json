@@ -132,7 +132,7 @@
                 "remove_taxids": {
                     "description": "Taxid numbers in double quotes ( e.g. \"9606\" for human). For multiple, example: \"9606 2\" removes human AND all Bacteria",
                     "fa_icon": "fas fa-file-signature",
-                    "type": "string"
+                    "type": ["string", "integer"]
                 },
                 "skip_realignment": {
                     "type": "boolean",
