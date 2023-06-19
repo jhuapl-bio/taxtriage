@@ -307,26 +307,25 @@ workflow TAXTRIAGE {
      
     if (!params.skip_assembly){
         illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
-            meta, reads, ref -> 
+            meta, reads -> 
             [meta, reads, [], []]
         }
-        
-        
-        
-        
-        
         SPADES_ILLUMINA(
-           illumina_reads,
-           ch_spades_hmm
+           illumina_reads
         )
-        nanopore_reads = PULL_FASTA.out.fastq.filter { it[0].platform == 'OXFORD'  }.map{
-            meta, reads, ref -> 
+        println("____")
+        illumina_reads.view()
+        println("____")
+
+        
+        nanopore_reads = PULL_FASTA.out.fastq.filter{ it[0].platform == 'OXFORD'  }.map{
+            meta, reads -> 
             [meta, [], [], reads]
         }
-	    //SPADES_OXFORD(
-         //  nanopore_reads,
-          // ch_spades_hmm
-        //)
+        // nanopore_reads.view()
+	    // SPADES_OXFORD(
+        //   nanopore_reads,
+        // )
         
         FLYE(
            nanopore_reads,
