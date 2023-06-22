@@ -13,9 +13,8 @@ You can use this example samplesheet as a reference in making your own sampleshe
 
 See this [table](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#samplesheet-information) for a description of all columns
 
-One important thing to note is that the `fastq_1` column MUST have a value, be it a fastq file or directory of fastq files. The system will determine if it is a directory if not a file automatically
-the FROM indicates that the location
-
+One important thing to note is that the `fastq_1` column MUST have a value if using a FILE that is a compressed fastq (`.gz` extension), `from` is directory of fastq files that may or may not be compressed with `.gz`. A paired end read set for Illumina must have a file in `fastq_1` and another in `fastq_2` for each row.  
+IF you're using `from` you must have a directory of fastq file(s) in the path
 
 ### 2. Nextflow Tower
 ### 3. AWS (Compute env and S3)
