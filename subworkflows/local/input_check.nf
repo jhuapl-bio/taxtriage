@@ -25,15 +25,14 @@ workflow INPUT_CHECK {
     samplesheet // file: /path/to/samplesheet.csv
 
     main:
-    println samplesheet
     SAMPLESHEET_CHECK ( samplesheet )
         .csv
         .splitCsv ( header:true, sep:',' )
         .map { create_fastq_channel(it) }
         .set { reads }
-
+    
     emit:
-    reads                                     // channel: [ val(meta), [ reads ] ]
+        reads                                     // channel: [ val(meta), [ reads ] ]
     versions = SAMPLESHEET_CHECK.out.versions // channel: [ versions.yml ]
 }
 
@@ -50,7 +49,7 @@ def create_fastq_channel(LinkedHashMap row) {
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
     
-    if (meta.barcode){
+    if (row.from && file(row.from).exists()){
         if (row.platform == 'OXFORD'){
             meta.bc = row.bc
             meta.from = row.from
