@@ -146,15 +146,13 @@ workflow TAXTRIAGE {
     )
     ch_reads = INPUT_CHECK.out.reads
     
-    if (params.demux){
-        ARTIC_GUPPYPLEX(
-            ch_reads.filter{ it[0].barcode }
-        )
-        ch_reads = ARTIC_GUPPYPLEX.out.fastq
-        ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].barcode })
-    } else {
-        ch_reads = INPUT_CHECK.out.reads
-    }
+
+    ARTIC_GUPPYPLEX(
+        ch_reads.filter{ it[0].from   }
+    )
+    ch_reads = ARTIC_GUPPYPLEX.out.fastq
+    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].from   })
+    
     if (params.subsample && params.subsample > 0){
         ch_subsample  = params.subsample
         ch_reads.view()
