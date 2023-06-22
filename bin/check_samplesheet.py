@@ -89,13 +89,14 @@ class RowChecker:
 
         """
         self._validate_sample(row)
-        if row['barcode'] != 'TRUE':
+        print(row)
+        if  row['from'] and not row['fastq_1']  :
+            self._seen.add((row[self._sample_col], row[self._bc_col]))
+        else:
             self._validate_first(row)
             self._validate_second(row)
             self._validate_pair(row)
             self._seen.add((row[self._sample_col], row[self._first_col]))
-        else:
-            self._seen.add((row[self._sample_col], row[self._bc_col]))
         self.modified.append(row)
 
     def _validate_sample(self, row):
