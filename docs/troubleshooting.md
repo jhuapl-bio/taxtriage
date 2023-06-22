@@ -1,11 +1,9 @@
 ## Troubleshooting and FAQ
 WORK IN PROGRESS
 
-1. Input
+### 1. Input
 
-FAQ.
-
-What is a Samplesheet?
+#### What is a Samplesheet?
 
 A Samplesheet is a .csv (comman delimited) file that contains the necessary locations of all of your input data. It consists of a set of columns defined at this [location] (https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#samplesheet-input)
 This is required and denoted by the parameter `--input` before it if you're running from the command line like `nextflow run https://github.com/jhuapl-bio/taxtriage --input <name of samplesheet...`
@@ -19,18 +17,18 @@ One important thing to note is that the `fastq_1` column MUST have a value, be i
 the FROM indicates that the location
 
 
-2. Nextflow Tower
-3. AWS (Compute env and S3)
-4. Installation
-5. Basestack deployment
-6. Nextflow Logs of TaxTriage
+### 2. Nextflow Tower
+### 3. AWS (Compute env and S3)
+### 4. Installation
+### 5. Basestack deployment
+### 6. Nextflow Logs of TaxTriage
 
 ERROR - RED Text is all over the place, did my pipeline fail?
 
 IF you're running TaxTriage in the Command line or viewing the Execution logs in Nextflow Tower runs, you may experience an error like: 
 
 ```
-ERROR ~ Error executing process > 'NFCORE_TAXTRIAGE:TAXTRIAGE:INPUT_CHECK:SAMPLESHEET_CHECK (Samplesheet_cli.csv)'
+#### ERROR ~ Error executing process > 'NFCORE_TAXTRIAGE:TAXTRIAGE:INPUT_CHECK:SAMPLESHEET_CHECK (Samplesheet_cli.csv)'
 
 Caused by:
   Process `NFCORE_TAXTRIAGE:TAXTRIAGE:INPUT_CHECK:SAMPLESHEET_CHECK (Samplesheet_cli.csv)` terminated with an error exit status (1)
@@ -71,17 +69,17 @@ I can simply edit that column and rerun with the `-resume` flag on the CLI or by
 to the samplesheet on S3 on AWS.
 
 
-ERROR - my pipeline fails at NanoPlot?
+#### ERROR - my pipeline fails at NanoPlot?
 
 Check to make sure that the directory/file being used is not empty. If no data is present NanoPlot will fail
 
 
-ERROR - I cant get the Assemblies to download
+#### ERROR - I cant get the Assemblies to download
 
 There is a good chance that you are behind a firewall or require specifical certificates to be setup, please try to adjust things to work in your organization's internet as this step uses `curl` to pull data
 
 
-What is the difference between remove_taxids and filter when getting rid of host reads?
+#### What is the difference between remove_taxids and filter when getting rid of host reads?
 
 `filter` is when you want to use a human reads database (or any other database) that automatically removes any and all classified reads. `remove_taxids` is a list of taxids, separated by a space, that will be removed post-kraken2 output with your `--db` database. 
 Please be aware that these options will not catch all organisms of interest, so please be aware of data privacy concerns before passing read data off that have gone through these steps
