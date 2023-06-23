@@ -11,7 +11,7 @@ Efforts are underway to provide full support of this pipeline on [nf-core](nf-co
 
 [See Here for full usage details](docs/usage.md)
 
-[See Here for troubleshooting & FAQ](docs/usage.md)
+[See Here for troubleshooting & FAQ](docs/troubleshooting.md)
 
 ## Quick Start
 
