@@ -9,7 +9,7 @@
     "skip_assembly": true,
     "max_memory": "10GB",
     "max_cpus": 3,
-    "low_memory": true,
+    "low_memory": false,
     "remove_taxids": "9606",
     "profile": "docker",
     "blastdb": null,
