@@ -7,11 +7,11 @@
 
 Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August. 
 
-Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) for the individual modules within it. Because these modules are separate from the soruce code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates. 
+Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates. 
 
 [See Here for full usage details](docs/usage.md)
 
-[See Here for troubleshooting & FAQ](docs/usage.md)
+[See Here for troubleshooting & FAQ](docs/troubleshooting.md)
 
 ## Quick Start
 
@@ -47,8 +47,8 @@ Make sure you have either Docker or Singularity installed, as well as Nextflow
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE --skip_assembly \
-   --outdir tmp --max_memory 10GB --max_cpus 3 \
-   -profile docker  -resume --demux --remove_taxids "9606"
+   --outdir tmp --max_memory 10GB --max_cpus 3  --skip_plots \
+   -profile docker  -resume --demux --remove_taxids "9606 9606"
 
 ```
 
