@@ -103,9 +103,8 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
 
 1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
     - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
-2. Next, setup an AWS account if you have not done so at [https://aws.amazon.com/](https://aws.amazon.com/)
-3. Set up your compute environments for AWS by following [this](https://help.tower.nf/22.2/compute-envs/aws-batch/)
-    - Additional documentation for other cloud platforms is [here](https://help.tower.nf/22.2/compute-envs/overview/#introduction)
+2. Request a user account to brian.merritt@jhuapl.edu
+    - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
 At this point follow all steps for setting up AWS. You should see some information like setting up an IAM user like so:
 
 <!-- ![IAM Examples](images/iam_example.png) -->
