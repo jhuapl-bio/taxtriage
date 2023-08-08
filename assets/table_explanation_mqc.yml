@@ -1,5 +1,4 @@
 id: 'MergedtableColumnExplanation'
-description: 'What each column indicates'
 section_name: 'Statistics Table for Alignment against top Taxids'
 section_href: 'https://github.com/jhuapl-bio/taxtriage'
 plot_type: 'html'

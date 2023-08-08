@@ -12,16 +12,16 @@ top_modules:
   - "nf-core-taxtriage-summary"
 # run_modules:
 #     - custom_content
-# table_columns_visible:
-#   confidences.merged_mqc:   # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
-#     'Reads Aligned': false
-#     'Abu Total Aligned': false
-#     'Abu Total Bases': false
-#     'Total Bases Adjusted': false
-#     'Breadth Genome Coverage': false
-#     'Depth Coverage Mean': false
-#     'Depth Coverage Stdev': false
-#     'Depth Coef. Variation': false
+table_columns_visible:
+  merge:   # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
+    'Reads Aligned': false
+    'Abu Total Aligned': false
+    'Abu Total Bases': false
+    'Total Bases Adjusted': false
+    'Breadth Genome Coverage': false
+    'Depth Coverage Mean': false
+    'Depth Coverage Stdev': false
+    'Depth Coef. Variation': false
 custom_css_files:
   - ./mqc.css
 custom_data:
