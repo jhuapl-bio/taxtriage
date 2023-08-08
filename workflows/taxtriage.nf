@@ -264,7 +264,6 @@ workflow TAXTRIAGE {
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
-        ch_hit_to_kraken_report.view()
         
         if (ch_assembly_file_type == 'ncbi' ){
             DOWNLOAD_ASSEMBLY (
@@ -309,18 +308,19 @@ workflow TAXTRIAGE {
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         )
+        ch_joined_confidence_report.view()
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
-        ch_joined_confidence_report.view()
-        CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        .set{ mergedtsv }
+        // CONVERT_CONFIDENCE.out.tsv.view()
+        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
+        // .set{ mergedtsv }
 
-        // MERGE_CONFIDENCE(
-        //     CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
-        // )
+        MERGE_CONFIDENCE(
+            CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+        )
 
-        // MERGE_CONFIDENCE.out.confidence_report.view()
+        MERGE_CONFIDENCE.out.confidence_report.view()
     }
      
     if (!params.skip_assembly){
@@ -393,11 +393,11 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(MOVE_NANOPLOT.out.html.collect{it[1]}.ifEmpty([]))
     }
-    if(!params.skip_realignment){
-        ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
-    }
+    // if(!params.skip_realignment){
+    //     ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
+    // }
     
-    // ch_multiqc_files = ch_multiqc_files.mix(MERGE_CONFIDENCE.out.confidence_report.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(MERGE_CONFIDENCE.out.confidence_report.collect().ifEmpty([]))
     
     
     MULTIQC (
