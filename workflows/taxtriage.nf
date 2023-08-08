@@ -395,7 +395,7 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
     }
     
-    ch_multiqc_files = ch_multiqc_files.mix(MERGE_CONFIDENCE.out.confidence_report.collect().ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(MERGE_CONFIDENCE.out.confidence_report.collect().ifEmpty([]))
     
     
     MULTIQC (
