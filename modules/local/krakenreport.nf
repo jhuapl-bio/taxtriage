@@ -30,7 +30,7 @@ process KRAKENREPORT {
     
     output:
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*.krakenreport.tsv"), optional:false, emit: krakenreport
+    tuple val(meta), path("*.krakenreport_mqc.tsv"), optional:false, emit: krakenreport
 
 
 
@@ -42,7 +42,7 @@ process KRAKENREPORT {
     """
     echo ${meta.id} "-----------------Krakenreport Starting------------------"
     krakenreport.py \\
-        -o ./${id}.krakenreport.tsv \\
+        -o ./${id}.krakenreport_mqc.tsv \\
         -i $report -d ${id}
 
     cat <<-END_VERSIONS > versions.yml

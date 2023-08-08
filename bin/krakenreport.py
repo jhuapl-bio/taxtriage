@@ -67,11 +67,12 @@ with open(args.input, 'r') as file:
             top_n_base = limited[row['rank_code']]
         else:
             top_n_base = top_n_baseAll
+        
         if row["rank_code"] not in t_ranks:
             continue
         if row["rank_code"] not in top_n_counts:
             top_n_counts[row["rank_code"]] = 0
-        if top_n_counts[row["rank_code"]] >= top_n_base*row['num_spaces']:
+        if top_n_counts[row["rank_code"]] >= top_n_base:
             continue
         top_n_counts[row["rank_code"]] = top_n_counts.get(row["rank_code"], 0) + 1
         table_row = {
