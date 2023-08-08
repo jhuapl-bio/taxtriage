@@ -315,11 +315,11 @@ workflow TAXTRIAGE {
         CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
         .set{ mergedtsv }
 
-        MERGE_CONFIDENCE(
-            CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
-        )
+        // MERGE_CONFIDENCE(
+        //     CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+        // )
 
-        MERGE_CONFIDENCE.out.confidence_report.view()
+        // MERGE_CONFIDENCE.out.confidence_report.view()
     }
      
     if (!params.skip_assembly){
@@ -374,6 +374,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(KRAKENREPORT.out.krakenreport.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
