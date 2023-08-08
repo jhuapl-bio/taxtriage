@@ -89,11 +89,14 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
     rows = dict()
     confidence_tsv = csv.reader(tsv_file, delimiter="\t")
     for row in confidence_tsv:
+        splitrow = row[0].split("|")
+        ref = splitrow[3]
+        taxid = splitrow[1]
         if format_kraken2:
-            row[0] = row[0].split("|")[1]
-        rows[row[0]] = row
+            row[0] = taxid
         if samplename:
-            row[0] = row[0] +"_" + samplename
+            row[0] = row[0] +"_" + samplename + "_" + ref
+        rows[row[0]] = row
     tsv_file.close()
     report_file = open(kraken_report)
     report = csv.reader(report_file, delimiter="\t")
