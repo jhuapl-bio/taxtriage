@@ -119,7 +119,7 @@ def main(argv=None):
     rows = import_file(args.file_in, args.kraken_report, args.sample, args.taxid_format_kraken2)
     path  = open(args.file_out, "w")
     writer = csv.writer(path, delimiter='\t')
-    writer.writerow(['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation'])
+    writer.writerow(['Acc', 'Name', 'Rank', 'Length', 'X Cov.:Pos. Amt.', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation'])
     if len(rows.keys()) == 0:
         empty = ['None']
         for x in range(0, 11):

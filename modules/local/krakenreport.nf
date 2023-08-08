@@ -1,5 +1,6 @@
+
 // ##############################################################################################
-// # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
+// # Copyright 2023 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
 // # Permission is hereby granted, free of charge, to any person obtaining a copy of this 
 // # software and associated documentation files (the "Software"), to deal in the Software 
@@ -14,49 +15,42 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONFIDENCE_METRIC {
+process KRAKENREPORT {
     tag "$meta.id"
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'euformatics/gawk-curl-jq:2021-11-03' }"
- 
-    input:
-    tuple val(meta), path(sam)
-    path(mpileup)
+        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
+        'pegi3s/biopython:latest' }"
 
+    input:
+    tuple val(meta),  path(report)
+    
+    
     output:
-    tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
-    tuple val(meta), path("*reads"), optional: false, emit: reads
     path "versions.yml"           , emit: versions
+    tuple val(meta), path("*.krakenreport.tsv"), optional:false, emit: krakenreport
+
+
 
     when:
     task.ext.when == null || task.ext.when
 
-
-    
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    
-    def output = "${meta.id}.confidences.tsv"
-
-
-    println "sam_to_confidence.sh -i $sam -m $mpileup -o $output -r ${meta.id}.reads"
+    def id = "${meta.id}"
     """
-    
-
-    sam_to_confidence.sh \\
-        -i $sam \\
-        -m $mpileup \\
-        -o $output \\
-        -r ${meta.id}.reads
+    echo ${meta.id} "-----------------Krakenreport Starting------------------"
+    krakenreport.py \\
+        -o ./${id}.krakenreport.tsv \\
+        -i $report -d ${id}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        awk: \$(awk --version )
+        python3: \$(python3 --version | sed 's/Python //g')
     END_VERSIONS
 
     """
 }
+
+
