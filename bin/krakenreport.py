@@ -26,8 +26,11 @@ t_ranks = {
     # 'F': 'Family',
     # 'G': 'Genus',
     'S': 'Species',
-    'S1': 'Species1',
-    'S2': 'Species3',
+    'S1': 'Species 1',
+    'S2': 'Species 2',
+    'S3': 'Species 3',
+    'S4': 'Species 4',
+    'S5': 'Species 5',
 }
 limited = {
     # 'D': 1, 
