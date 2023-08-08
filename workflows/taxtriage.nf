@@ -123,6 +123,9 @@ include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
+include { KRAKENREPORT } from '../modules/local/krakenreport'
+include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
+include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -240,6 +243,15 @@ workflow TAXTRIAGE {
         )
         ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
+    KRAKENREPORT(
+        ch_kraken2_report
+    )
+    MERGEDKRAKENREPORT(
+        KRAKENREPORT.out.krakenreport.map { meta, file ->  file }.collect()
+    )
+    
+    
+
     TOP_HITS (
         ch_kraken2_report,
         ch_top_hits_count
@@ -252,6 +264,7 @@ workflow TAXTRIAGE {
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
+        ch_hit_to_kraken_report.view()
         
         if (ch_assembly_file_type == 'ncbi' ){
             DOWNLOAD_ASSEMBLY (
@@ -301,6 +314,12 @@ workflow TAXTRIAGE {
         )
         CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
         .set{ mergedtsv }
+
+        MERGE_CONFIDENCE(
+            CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+        )
+
+        MERGE_CONFIDENCE.out.confidence_report.view()
     }
      
     if (!params.skip_assembly){
@@ -352,19 +371,19 @@ workflow TAXTRIAGE {
     ch_workflow_summary = Channel.value(workflow_summary)
 
     ch_multiqc_files = Channel.empty()
+    ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
+
     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     if (params.blastdb && !params.remoteblast){
         ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
     } else if (params.blastdb && params.remoteblast){
         ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
     }
-    // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
     if (params.trim){
         ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
     }
@@ -376,8 +395,7 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
     }
     
-    ch_multiqc_files = ch_multiqc_files.mix(CONVERT_CONFIDENCE.out.tsv.collect())
-    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.stats.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(MERGE_CONFIDENCE.out.confidence_report.collect().ifEmpty([]))
     
     
     MULTIQC (
