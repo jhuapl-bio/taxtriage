@@ -94,16 +94,16 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
         taxid = splitrow[1]
         if format_kraken2:
             row[0] = taxid
+        rows[row[0]] = row
         if samplename:
             row[0] = row[0] +"_" + samplename + "_" + ref
-        rows[row[0]] = row
+            # row[0] = row[0] +"_" + samplename  
     tsv_file.close()
     report_file = open(kraken_report)
     report = csv.reader(report_file, delimiter="\t")
     for row in report:
         taxid = row[4]
         rank=row[3]  
-        
         name = row[5].strip()
         if taxid in rows:
             rows[taxid].insert(1,rank)      
