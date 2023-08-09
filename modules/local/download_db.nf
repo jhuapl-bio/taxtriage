@@ -15,7 +15,7 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 process DOWNLOAD_DB {
-    // tag "$meta.id"
+
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
@@ -28,11 +28,6 @@ process DOWNLOAD_DB {
     val(url)
     val(db_dir)
     val(checksum)
-
-    // output:
-    // tuple val(meta), path("*")     , optional:true, emit: files
-
-
 
     when:
     task.ext.when == null || task.ext.when
