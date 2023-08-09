@@ -9,7 +9,7 @@ args = parser.parse_args()
 file = args.file
 hashval = args.hashvalue
 
-algo = hashlib.md5()
+algo = hashlib.sha256()
 
 with open(file, "rb") as f:
     for byte_block in iter(lambda: f.read(4096), b""):

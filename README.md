@@ -17,36 +17,13 @@ Efforts are underway to provide full support of this pipeline on [nf-core](nf-co
 
 Make sure you have either Docker or Singularity installed, as well as Nextflow
 
-1. Get databases 
-
-`mkdir -p data/databases`
-
-- Flukraken2
-
-```
-   wget "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz" -O data/databases/flukraken2.tar.gz; 
-   tar -xvzf data/databases/flukraken2.tar.gz; 
-   mv -f flukraken2 data/databases/flukraken2; 
-   rm  data/databases/flukraken2.tar.gz
-```
-
-
-- Minikraken2
-
-```
-   wget "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz";  
-   tar -xvzf minikraken2_v2_8GB_201904.tgz; 
-   mv minikraken2* data/databases/; 
-   rm ./minikraken2.tar.gz
-```
-
-2. Running Kraken2 and FASTQC report with flukraken db
+1. Running Kraken2 and FASTQC report with flukraken db
 
 ```
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
-   --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE --skip_assembly \
+   --db flukraken2 --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3  --skip_plots \
    -profile docker  -resume --demux --remove_taxids "9606 9606"
 
@@ -58,7 +35,7 @@ or with your very own assembly refseq file (if no internet available from ncbi)
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
-   --db $PWD/data/databases/minikraken2_v2_8GB_201904_UPDATE \
+   --db minikraken2 --download_db \
    --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" \
    -profile singularity  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
 
@@ -70,7 +47,7 @@ or, using
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_single.csv \
-   --db $PWD/data/databases/flukraken2 \
+   --db flukraken2 --download_db \
    --outdir tmp/flu --remove_taxids "9606" \
    --max_memory 10GB --max_cpus 3 -profile docker --skip_plots --skip_assembly \
    --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
@@ -182,7 +159,6 @@ For further information or help, don't hesitate to get in touch on the [Slack `#
 <!-- TODO nf-core: Add bibliography of tools and data used in your pipeline -->
 
 An extensive list of references for the tools used by the pipeline can be found in the [`CITATIONS.md`](CITATIONS.md) file.
-
 You can cite the `nf-core` publication as follows:
 
 > **The nf-core framework for community-curated bioinformatics pipelines.**
