@@ -140,17 +140,20 @@ workflow TAXTRIAGE {
     supported_dbs = [
         "flukraken2": [
             "url": "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz",
-            "checksum": "a9b3570271c9491e5d349df5a55526ea"
+            "checksum": "9d388703b1fa7c2e269bb63acf1043dbec7bb62da0a57c4fb1c41d8ab7f9c953",
+            "size": "180M"
         ],
         "minikraken2": [
             "url": "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz",
-            "checksum": "9b89cf014566a3a10fa41e3d8ddc0522"
+            "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
+            "size": "7.5G"
             ]
     ]
 
     if (params.download_db) {
     
         if (supported_dbs.containsKey(params.db)) {
+            println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]["size"]} of space."
             DOWNLOAD_DB (
                 params.db,
                 supported_dbs[params.db]["url"],
