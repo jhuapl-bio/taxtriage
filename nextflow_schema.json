@@ -25,7 +25,13 @@
                     "type": "string",
                     "fa_icon": "fas fa-book",
                     "format": "directory-path",
-                    "description": "Database for Kraken2"
+                    "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
+                },
+                "download_db": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-download",
+                    "description": "Download the preset database indicated in --db to --outdir.",
+                    "default": false
                 },
                 "save_output_fastqs": {
                     "type": "boolean",

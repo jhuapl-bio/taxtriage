@@ -1,6 +1,7 @@
 {
     "input": "examples/Samplesheet.csv",
     "db": null,
+    "download_db": false,
     "outdir": "tmp_full",
     "top_hits_count": 3,
     "demux": true,
