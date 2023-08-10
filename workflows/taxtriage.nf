@@ -77,7 +77,8 @@ if (params.assembly && ch_assembly_txt.isEmpty() ) {
 
 
 ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
-ch_multiqc_custom_config = params.multiqc_config ? Channel.fromPath(params.multiqc_config) : Channel.empty()
+ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath( params.multiqc_config, checkIfExists: true ) : Channel.empty()
+ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath( params.multiqc_logo, checkIfExists: true ) : Channel.empty()
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
 ch_alignment_stats = Channel.empty()
 
@@ -164,7 +165,6 @@ workflow TAXTRIAGE {
     
     if (params.subsample && params.subsample > 0){
         ch_subsample  = params.subsample
-        ch_reads.view()
         SEQTK_SAMPLE (
             ch_reads,
             ch_subsample
@@ -328,7 +328,6 @@ workflow TAXTRIAGE {
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         )
-        ch_joined_confidence_report.view()
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
@@ -352,7 +351,6 @@ workflow TAXTRIAGE {
            illumina_reads
         )
         println("____")
-        illumina_reads.view()
         println("____")
 
         
@@ -360,10 +358,7 @@ workflow TAXTRIAGE {
             meta, reads -> 
             [meta, [], [], reads]
         }
-        // nanopore_reads.view()
-	    // SPADES_OXFORD(
-        //   nanopore_reads,
-        // )
+        
         
         FLYE(
            nanopore_reads,
@@ -418,9 +413,12 @@ workflow TAXTRIAGE {
     // }
     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
     
-    
     MULTIQC (
-        ch_multiqc_files.collect()
+        ch_multiqc_files.collect(),
+        ch_multiqc_config,
+        ch_multiqc_custom_config,
+        ch_multiqc_logo
+
     )
     multiqc_report = MULTIQC.out.report.toList()
     ch_versions    = ch_versions.mix(MULTIQC.out.versions)
