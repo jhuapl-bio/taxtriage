@@ -10,6 +10,7 @@ top_modules:
   - "summary_metagenomics_metrics_plot"
   - "kraken"
   - "nf-core-taxtriage-summary"
+  - "fastp"
 # run_modules:
 #     - custom_content
 table_columns_visible:
