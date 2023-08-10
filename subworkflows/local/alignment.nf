@@ -2,16 +2,16 @@
 // Check input samplesheet and get read channels
 //
 
-include { BWA_INDEX } from '../../modules/nf-core/modules/bwa/index/main'
-include { BWA_MEM } from '../../modules/nf-core/modules/bwa/mem/main'
-include { MINIMAP2_ALIGN } from '../../modules/nf-core/modules/minimap2/align/main'
-include { MINIMAP2_INDEX } from '../../modules/nf-core/modules/minimap2/index/main'
+include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
+include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
+include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
-include { SAMTOOLS_MERGE } from '../../modules/nf-core/modules/samtools/merge/main'
-include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/modules/bcftools/consensus/main'
-include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/modules/bcftools/mpileup/main'
-include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_OXFORD } from '../../modules/nf-core/modules/bcftools/mpileup/main'
-include { BCFTOOLS_STATS } from '../../modules/nf-core/modules/bcftools/stats/main'
+include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
+include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
+include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/bcftools/mpileup/main'
+include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_OXFORD } from '../../modules/nf-core/bcftools/mpileup/main'
+include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
 include { MERGE_FASTA } from '../../modules//local/merge_fasta'
 include { SPLIT_READS } from '../../modules/local/split_reads'
 

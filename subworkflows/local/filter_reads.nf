@@ -18,7 +18,7 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
-include { KRAKEN2_KRAKEN2 as FILTERREADSKRAKEN2 } from '../../modules/nf-core/modules/kraken2/kraken2/main'
+include { KRAKEN2_KRAKEN2 as FILTERREADSKRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { MOVE_FILES } from '../../modules/local/moveFiles.nf'
 
 workflow READSFILTER {
