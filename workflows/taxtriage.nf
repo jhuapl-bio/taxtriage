@@ -197,18 +197,7 @@ workflow TAXTRIAGE {
         
     }
     // // //  
-    ch_fail_reads_multiqc = Channel.empty()
-    ch_reads.view()
-    if (!params.skip_fastp) {
-        FASTP (
-            ch_reads,
-            [],
-            false, 
-            false
-        )
-        ch_reads = FASTP.out.reads
-       
-    }
+    
     
     // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
@@ -224,6 +213,18 @@ workflow TAXTRIAGE {
         trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
         ch_reads=nontrimmed_reads.mix(trimmed_reads)
     } 
+    ch_fail_reads_multiqc = Channel.empty()
+    ch_reads.view()
+    if (!params.skip_fastp) {
+        FASTP (
+            ch_reads,
+            [],
+            false, 
+            false
+        )
+        ch_reads = FASTP.out.reads
+       
+    }
     if (!params.skip_plots){
         FASTQC (
             ch_reads.filter { it[0].platform == 'ILLUMINA'}
@@ -389,8 +390,6 @@ workflow TAXTRIAGE {
     //
     workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
     ch_workflow_summary = Channel.value(workflow_summary)
-    KRAKENREPORT.out.krakenreport.view()
-    MERGEDKRAKENREPORT.out.krakenreport.view()
     ch_multiqc_files = Channel.empty()
     ch_multiqc_files = ch_multiqc_files.mix(KRAKENREPORT.out.krakenreport.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
