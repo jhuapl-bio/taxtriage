@@ -1,7 +1,7 @@
 ## Troubleshooting and FAQ
 WORK IN PROGRESS
 
-### 1. Input
+### Input
 
 #### What is a Samplesheet?
 
@@ -16,11 +16,7 @@ See this [table](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md
 One important thing to note is that the `fastq_1` column MUST have a value if using a FILE that is a compressed fastq (`.gz` extension), `from` is directory of fastq files that may or may not be compressed with `.gz`. A paired end read set for Illumina must have a file in `fastq_1` and another in `fastq_2` for each row.  
 IF you're using `from` you must have a directory of fastq file(s) in the path
 
-### 2. Nextflow Tower
-### 3. AWS (Compute env and S3)
-### 4. Installation
-### 5. Basestack deployment
-### 6. Nextflow Logs of TaxTriage
+### Nextflow Logs of TaxTriage
 
 ERROR - RED Text is all over the place, did my pipeline fail?
 
