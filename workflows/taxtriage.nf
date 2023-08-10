@@ -369,7 +369,7 @@ workflow TAXTRIAGE {
         )
         // CONVERT_CONFIDENCE.out.tsv.view()
         // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        // .set{ mergedtsv }
+        // .set{ ch_mergedtsv }
 
         MERGE_CONFIDENCE(
             CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
