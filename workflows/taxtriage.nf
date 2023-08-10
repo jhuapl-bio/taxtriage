@@ -30,7 +30,7 @@ WorkflowTaxtriage.initialise(params, log)
 // Check input path parameters to see if they exist
 // def checkPathParamList = [ params.input, params.multiqc_config, params.fasta ]
 
-def checkPathParamList = [  params.db, params.reference ]
+def checkPathParamList = [ params.reference ]
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // Check mandatory parameters
@@ -105,8 +105,9 @@ include { READSFILTER } from '../subworkflows/local/filter_reads'
 //
 // MODULE: Installed directly from nf-core/modules
 //
-include { FASTQC                      } from '../modules/nf-core/fastqc/main'
-include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
+include { DOWNLOAD_DB } from '../modules/local/download_db'
+include { FASTQC                      } from '../modules/nf-core/modules/fastqc/main'
+include { PYCOQC                      } from '../modules/nf-core/modules/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/kraken2/kraken2/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -145,9 +146,44 @@ def multiqc_report = []
 
 
 workflow TAXTRIAGE {
+
+    supported_dbs = [
+        "flukraken2": [
+            "url": "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz",
+            "checksum": "9d388703b1fa7c2e269bb63acf1043dbec7bb62da0a57c4fb1c41d8ab7f9c953",
+            "size": "180M"
+        ],
+        "minikraken2": [
+            "url": "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz",
+            "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
+            "size": "7.5G"
+            ]
+    ]
+
+    if (params.download_db) {
     
+        if (supported_dbs.containsKey(params.db)) {
+            println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]["size"]} of space."
+            DOWNLOAD_DB (
+                params.db,
+                supported_dbs[params.db]["url"],
+                params.outdir,
+                supported_dbs[params.db]["checksum"]
+            )
+            ch_db = "${PWD}/${params.outdir}/${params.db}"
+
+        } else {
+            println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
+        }
+
+    } else {
+        if (params.db) {
+            file(params.db, checkIfExists: true)
+            ch_db = params.db
+        }
+    }
+
     ch_versions = Channel.empty()
-    ch_db = params.db
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
