@@ -41,7 +41,12 @@ if (params.top_hits_count) {
     ch_top_hits_count=2
     println 'Top hits not specified, defaulting to 10 per rank level in taxonomy tree for database for kraken2' 
 }
-
+if (params.minq) { 
+    ch_minq = params.minq
+} else { 
+    ch_minq = 30
+    println 'Min Quality set to default: 30' 
+}
 
 
 
@@ -99,21 +104,22 @@ include { READSFILTER } from '../subworkflows/local/filter_reads'
 //
 // MODULE: Installed directly from nf-core/modules
 //
-include { FASTQC                      } from '../modules/nf-core/modules/fastqc/main'
-include { PYCOQC                      } from '../modules/nf-core/modules/pycoqc/main'
-include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/modules/kraken2/kraken2/main'
-include { TRIMGALORE } from '../modules/nf-core/modules/trimgalore/main'
-include { ARTIC_GUPPYPLEX } from '../modules/nf-core/modules/artic/guppyplex/main'
+include { FASTQC                      } from '../modules/nf-core/fastqc/main'
+include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
+include { FASTP } from '../modules/nf-core/fastp/main'
+include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/kraken2/kraken2/main'
+include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
+include { ARTIC_GUPPYPLEX } from '../modules/nf-core/artic/guppyplex/main'
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
 include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
-include { PORECHOP } from '../modules/nf-core/modules/porechop/main'
-include { SEQTK_SAMPLE } from '../modules/nf-core/modules/seqtk/sample/main'
-include { MULTIQC                     } from '../modules/nf-core/modules/multiqc/main'
-include { FLYE                     } from '../modules/nf-core/modules/flye/main'
-include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/modules/spades/main'
-include { SPADES as SPADES_OXFORD } from '../modules/nf-core/modules/spades/main'
-include { NANOPLOT                     } from '../modules/nf-core/modules/nanoplot/main'
-include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/modules/custom/dumpsoftwareversions/main'
+include { PORECHOP } from '../modules/nf-core/porechop/main'
+include { SEQTK_SAMPLE } from '../modules/nf-core/seqtk/sample/main'
+include { MULTIQC                     } from '../modules/nf-core/multiqc/main'
+include { FLYE                     } from '../modules/nf-core/flye/main'
+include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/spades/main'
+include { SPADES as SPADES_OXFORD } from '../modules/nf-core/spades/main'
+include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
+include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
 include { CONVERT_CONFIDENCE } from '../modules/local/convert_confidence'
 include { PULL_TAXID } from '../modules/local/pull_taxid'
@@ -190,9 +196,21 @@ workflow TAXTRIAGE {
         GET_ASSEMBLIES.out.assembly.map{ meta, record -> record }.set{ ch_assembly_txt }
         
     }
-    // // //
+    // // //  
+    ch_fail_reads_multiqc = Channel.empty()
+    ch_reads.view()
+    if (!params.skip_fastp) {
+        FASTP (
+            ch_reads,
+            [],
+            false, 
+            false
+        )
+        ch_reads = FASTP.out.reads
+       
+    }
     
-    // // // MODULE: Run FastQC
+    // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
     if (params.trim){
         nontrimmed_reads = ch_reads.filter { !it[0].trim }
@@ -256,6 +274,7 @@ workflow TAXTRIAGE {
         ch_kraken2_report,
         ch_top_hits_count
     )
+    ch_mergedtsv = Channel.empty()
     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
@@ -319,8 +338,8 @@ workflow TAXTRIAGE {
         MERGE_CONFIDENCE(
             CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
         )
+        ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
 
-        MERGE_CONFIDENCE.out.confidence_report.view()
     }
      
     if (!params.skip_assembly){
@@ -379,7 +398,8 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
-
+    ch_multiqc_files = FASTP.out.json.collect{it[1]}.ifEmpty([])
+    ch_multiqc_files = FASTP.out.html.collect{it[1]}.ifEmpty([])
     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     if (params.blastdb && !params.remoteblast){
         ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
@@ -396,8 +416,7 @@ workflow TAXTRIAGE {
     // if(!params.skip_realignment){
     //     ch_multiqc_files = ch_multiqc_files.mix(mergedtsv.collect().ifEmpty([]))
     // }
-    
-    ch_multiqc_files = ch_multiqc_files.mix(MERGE_CONFIDENCE.out.confidence_report.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
     
     
     MULTIQC (

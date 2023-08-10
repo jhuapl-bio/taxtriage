@@ -93,6 +93,12 @@
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "skip_fastp": {
+                    "type": "boolean",
+                    "description": "Skip QC trimming",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_assembly": {
                     "type": "boolean",
                     "description": "Skip De Novo Assembly",
