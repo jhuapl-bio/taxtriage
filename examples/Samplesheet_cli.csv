@@ -1,3 +1,0 @@
-sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
-NB11,TRUE,examples/data/fastq_demux/NB11,OXFORD,,,,,
-Sample_1,TRUE,,OXFORD,FALSE,examples/data/sample_metagenome.fastq.gz,,,
