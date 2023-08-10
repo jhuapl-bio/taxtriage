@@ -83,5 +83,7 @@ There is a good chance that you are behind a firewall or require specifical cert
 `filter` is when you want to use a human reads database (or any other database) that automatically removes any and all classified reads. `remove_taxids` is a list of taxids, separated by a space, that will be removed post-kraken2 output with your `--db` database. 
 Please be aware that these options will not catch all organisms of interest, so please be aware of data privacy concerns before passing read data off that have gone through these steps
 
+### Why is my run taking so long?
 
+This could be a variety of reasons. Specific modules are prone to take much longer than others, namely the MultiQC (final step), consensus/assembly, or any of the alignment steps. Additionally, plotting for Oxford Nanopore can take a large amount of time when using NanoPlot. Consider disabling many of these features if you simply want the baseline kraken results with --skip_{name_of_step(s)}. 
    
