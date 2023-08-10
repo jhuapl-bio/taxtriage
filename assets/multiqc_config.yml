@@ -7,5 +7,36 @@ report_section_order:
     order: -1000
 export_plots: true
 top_modules:
+  - "summary_metagenomics_metrics_plot"
   - "kraken"
   - "nf-core-taxtriage-summary"
+  - "fastp"
+# run_modules:
+#     - custom_content
+table_columns_visible:
+  merge:   # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
+    'Reads Aligned': false
+    'Abu Total Aligned': false
+    'Abu Total Bases': false
+    'Total Bases Adjusted': false
+    'Breadth Genome Coverage': false
+    'Depth Coverage Mean': false
+    'Depth Coverage Stdev': false
+    'Depth Coef. Variation': false
+custom_css_files:
+  - ./mqc.css
+custom_data:
+  krakenreport:
+    section_name: 'Metagenomic Metrics'
+    plot_type: 'table'
+    pconfig:
+        id: 'summary_metagenomics_metrics_plot'
+        table_title: 'Metagenomic Analysis at Ranks'
+        namespace: 'Metagenomic Metrics'
+  # nf-core-taxtriage-summary:
+  #   section_name: 'Merged'
+  #   plot_type: 'table'
+  #   pconfig:
+  #       id: 'nf-core-taxtriage-summary'
+  #       table_title: 'Confidence Analysis after re-alignment'
+  #       namespace: 'Merged'

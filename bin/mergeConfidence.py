@@ -89,18 +89,21 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
     rows = dict()
     confidence_tsv = csv.reader(tsv_file, delimiter="\t")
     for row in confidence_tsv:
+        splitrow = row[0].split("|")
+        ref = splitrow[3]
+        taxid = splitrow[1]
         if format_kraken2:
-            row[0] = row[0].split("|")[1]
+            row[0] = taxid
         rows[row[0]] = row
         if samplename:
-            row[0] = row[0] +"_" + samplename
+            row[0] = row[0] +"_" + samplename + "_" + ref
+            # row[0] = row[0] +"_" + samplename  
     tsv_file.close()
     report_file = open(kraken_report)
     report = csv.reader(report_file, delimiter="\t")
     for row in report:
         taxid = row[4]
         rank=row[3]  
-        
         name = row[5].strip()
         if taxid in rows:
             rows[taxid].insert(1,rank)      
@@ -119,7 +122,7 @@ def main(argv=None):
     rows = import_file(args.file_in, args.kraken_report, args.sample, args.taxid_format_kraken2)
     path  = open(args.file_out, "w")
     writer = csv.writer(path, delimiter='\t')
-    writer.writerow(['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation'])
+    writer.writerow(['Acc', 'Name', 'Rank', 'Length', 'X Cov.:Pos. Amt.', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation'])
     if len(rows.keys()) == 0:
         empty = ['None']
         for x in range(0, 11):

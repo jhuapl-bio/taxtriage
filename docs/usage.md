@@ -104,10 +104,31 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
 
 1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
     - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
-2. Next, setup an AWS account if you have not done so at [https://aws.amazon.com/](https://aws.amazon.com/)
-3. Set up your compute environments for AWS by following [this](https://help.tower.nf/22.2/compute-envs/aws-batch/)
-    - Additional documentation for other cloud platforms is [here](https://help.tower.nf/22.2/compute-envs/overview/#introduction)
+2. Request a user account to brian.merritt@jhuapl.edu
+    - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
 At this point follow all steps for setting up AWS. You should see some information like setting up an IAM user like so:
+
+
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide2.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide3.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide4.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide5.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide6.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide7.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide8.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide9.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide10.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide11.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide12.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide13.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide14.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide15.png)
+![CloudDeck](images/Cloud_AWS_NFTower_only/Slide16.png)
+
+
+
+
+
 
 <!-- ![IAM Examples](images/iam_example.png) -->
 <img src="images/iam_example.png" alt="drawing" height="300"/>

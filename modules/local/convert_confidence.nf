@@ -41,7 +41,7 @@ process CONVERT_CONFIDENCE {
     def output_parsed = "${meta.id}.confidences.merged.tsv"
 
     """
-
+    echo "Printing confidence"
     mergeConfidence.py -f \\
         -i $tsv \\
         -o $output_parsed \\
