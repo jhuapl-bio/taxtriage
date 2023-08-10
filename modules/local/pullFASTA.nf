@@ -38,9 +38,11 @@ process PULL_FASTA {
     def outdir = "."
     def filtered = classified_reads.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }
     def classifieds = filtered.join(" ")
-
+    // println "python3 bin/getfasta_refs.py -i $taxid_file -o $outdir -t file -q -p $meta.id -r $genomes -d $classifieds -a $classified_reads_assignment"
     """
         
+
+
         getfasta_refs.py  \\
             -i "$taxid_file" \\
             -o $outdir \\

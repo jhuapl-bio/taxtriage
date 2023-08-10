@@ -158,9 +158,20 @@ umrefs_count=$(awk -F'\t' 'END{print(NR)}' "$tmp/uniq.refs")
 >&2 echo "  to $umrefs_count accessions"
 >&2 echo "gathering alignment stats"
 echo "______"
-gawk -F'\t'  'function abs(x){
+gawk -F'\t'  '
+	function round2(num) {
+		return int(num * 100 + (num < 0 ? -0.5 : 0.5)) / 100
+	}
+	function abs(x){
 		return ((x < 0.0) ? -x : x)
 	};
+BEGIN {
+    # Define the coverage thresholds
+    thresholds[1]=1
+    thresholds[10]=1
+	thresholds[50]=1
+	thresholds[100]=1
+}
 {
 	if(NR==FNR){
 		a[$1][$2]=$4; 		
@@ -178,6 +189,10 @@ gawk -F'\t'  'function abs(x){
 			}
 			end=$4+abs($9)
 			start=$4
+			for (t = start; t <= end; t++) {
+				countpos[t] = countpos[t] + 1
+			}
+			
 			dep[$3][start][end]+=1
 			for(i=start;i<end;i++){
 				dep2[$3][i]+=1
@@ -188,11 +203,13 @@ gawk -F'\t'  'function abs(x){
 	
 }
 END{
-	
 	for (i in ireads){
 		for (pos in a[i]){
 			sumsq[i]+=a[i][pos]^2
+
+			
 		}
+		
 		tlen+=ilen[i];
 		
 		aligned+=ireads[i];
@@ -212,9 +229,7 @@ END{
 				plus=dep[i][j][y] * (y  - j )
 				sum[i]+=plus;
 				total_bases+=dep[i][j][y];
-				# for (t=j; t<=y; t++){
-				# 	count[i][t]+=dep[i][j][y]
-				# }
+				
 				if (max < y){
 					max = y
 				}	
@@ -223,22 +238,15 @@ END{
 			seen[j]=max
 		}
 		
-		# for (p in count){
-		# 	for (t in count[p]){
-		# 		sumsq[i]+=count[p][t]^2
-		# 	}
-		# }
+		
 		lastt=0
 		nextt=0
 		delete marks
 		
-		# n=asorti(seen, sortedseen,"@ind_num_asc")
 		PROCINFO["sorted_in"] = "@ind_num_asc"
 		for (t in seen)  {
 				left=t+0
 				right=seen[t]+0
-				# print "old: ", lastt,"-",nextt
-				# print "testing...: ", left,"-",right
 				result=0
 				if (nextt >= left && right > nextt){
 					result=1
@@ -257,48 +265,31 @@ END{
 					nextt=right
 				} 
 				if(result>0){
-					#print "results: ", result,"override: ", left,"-",right," with: ", "next: ", lastt,"-",nextt
 					main=right-left+1
 					new=nextt-lastt+1
-					#print "new: ", new, "main: ", main
 					marks[lastt]=nextt
 				} 
 				
 				
 				
-				for(k in marks){
-					# print k,"-:-",marks[k] 
-				}
-				# print"-----------------"
 		}
-		# print"_____________END_____"
 		for(k in marks){
-			# print k,"-:-",marks[k] 
 			cov[i]+=(marks[k]-k)
 		}
-		#print cov[i], "|", sumsq[i], "|", sum[i]
 	}
 
 
-	# print"_________TRUE____\n_______ "
 	for(i in ireads){
 		aligned+=ireads[i];
 		for(j in dep2[i]){
-			# print i,j,dep2[i][j]
-			if (a[i][j] != dep2[i][j]){
-				# print i,j,"depthfile: ",a[i][j], "counts: ",dep2[i][j]
-			}
+			
 			sum2[i]+=dep2[i][j];
 			sumsq2[i]+=dep2[i][j]^2;
 			total_bases+=dep2[i][j];
 			cov2[i]+=1;
 		}
 		
-		#print cov2[i], "|", sumsq2[i], "|", sum2[i]
 		tlen+=ilen[i];
-		# cov[i]=cov2[i]
-		# sumsq[i] = sumsq2[i]
-		# sum[i]=sum2[i]
 	}
 
 	for(i in ireads){
@@ -307,24 +298,45 @@ END{
 		adjtotal+=(sfactor*sum[i]);
 	}
 
-	# print output row per $4
-	for(i in ireads){
+ 	for(i in ireads){
 		o1=ireads[i];
 		o3=o1/aligned;
+		num_keys = 0
+		for (p in countpos) {
+			num_keys++
+ 		}
+		if (num_keys == 0) {
+			o6 = 0
+		} else {
+			o6 = (num_keys/ilen[i])
+		}
+		result_str = ""
+		for (t in thresholds) {
+			threshold = t+0
+			threshold_count = 0
+			for (p in countpos) {
+				amount = countpos[p]+0
+				if ( amount  >= threshold) {
+					threshold_count++
+				}
+			}
+			result_str = result_str "," threshold "x:" round2(threshold_count/ilen[i])
+		}
 		o4=(sum[i]/total_bases);
 		o5=(adjsum[i]/adjtotal);
-		o6=(cov[i]/ilen[i]);
+		o8=(substr(result_str, 2))  
+		# o6=(cov[i]/ilen[i]);
 		mean=sum[i]/ilen[i];
 		stdev=sqrt(abs(sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
-		#print stdev,sumsq[i],sum[i],ilen[i],sumsq[i]-sum[i]^2/ilen[i],o6
-		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
+		printf("%s\t%.0f\t%s\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i],o8, o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
-}'  $PILEUP "$tmp/tmp2.sam"   > $OUTPUT
+}'  $PILEUP "$tmp/tmp2.sam"    > $OUTPUT
 # cat $OUTPUT
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
 #	o1		total reads aligned to accession
+#	o2		genome x coverages
 #	o3		abundance based on total aligned reads (does NOT include unaligned reads in denominator)
 #	o4		abundance based on total bases of aligned reads
 #	o5		abundance based on total bases of aligned reads (adjusted for genome size)

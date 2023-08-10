@@ -141,8 +141,7 @@ def import_taxids(filename):
             parentsdict[taxid]=parents.split(";")
             taxids.append(taxid)
     return  taxids, parentsdict
-def import_filter_fasta(taxids, fastafile, sep, pos):
-    
+def import_filter_fasta(taxids, fastafile, sep, pos, parents):
     mapping  = dict()
     if isinstance(taxids, str):
         taxids = [taxids]
@@ -188,11 +187,11 @@ def write_filtered(outdir, record_dict, sample_base):
 def get_fastq_filtered(filtered_taxids, reads, assignment_reads, output,parents):
     classified_reads  = dict()
     lowers = dict()
-    for lower,parents in parents.items():
-        for parent in parents:
-            if parent not in lowers:
-                lowers[parent] = []
-            lowers[parent].append(lower)
+    # for lower,parents in parents.items():
+    #     for parent in parents:
+    #         if parent not in lowers:
+    #             lowers[parent] = []
+    #         lowers[parent].append(lower)
     with open(assignment_reads,"r") as f:
         for line in f.readlines():
             splitline = line.rstrip().split("\t")
@@ -211,19 +210,26 @@ def get_fastq_filtered(filtered_taxids, reads, assignment_reads, output,parents)
                     seen = dict()
                     g = 0
                     
+                    i=0
                     for seq_record in SeqIO.parse(f, "fastq"):
                         if seq_record.id in classified_reads:
                             seen=False
-                            if (classified_reads[seq_record.id] in lowers):
-                                for key in key_list:
-                                    if key in lowers[classified_reads[seq_record.id]]:
-                                        seen=True
-                            if str(classified_reads[seq_record.id]) in key_list or seen :
-                                SeqIO.write(seq_record,w,"fastq")
+                            
+                            if (classified_reads[seq_record.id] in parents):
+                                
+
+                                i+=1
+                                # for key in key_list:
+                                #     print(key_list)
+                                #     if key in lowers[classified_reads[seq_record.id]]:
+                                #         seen=True
+                                #         break
+                            # if str(classified_reads[seq_record.id]) in key_list or seen :
+                            SeqIO.write(seq_record,w,"fastq")
                                 # taxid = str(classified_reads[seq_record.id])
                                 # if taxid not in seen:
                                 #     seen[taxid] = []
-                                g = g + 1
+                            g = g + 1
                 f.close()
             except Exception as ex:
                 print(ex, "failed with file", filename,read)
@@ -244,11 +250,13 @@ def main(argv=None):
         filtered_taxids = import_filter_fasta(taxids, 
             args.reference, 
             args.taxid_header_sep, 
-            args.pos_taxid_header
+            args.pos_taxid_header,
+            parents
         )
+        # print(taxids, "\n\n\n", parents)
         write_filtered(args.dir_out, filtered_taxids, args.samplename)
         if args.reads and args.assignment_reads:
-            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.dir_out, parents)
+            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.dir_out, taxids)
     elif args.type == 'list' and len(args.input) > 0:
         filtered_taxids = import_filter_fasta(
             args.input.split(" "), 

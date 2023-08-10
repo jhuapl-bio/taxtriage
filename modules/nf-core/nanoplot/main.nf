@@ -1,5 +1,6 @@
 process NANOPLOT {
     tag "$meta.id"
+    errorStrategy 'ignore'
     label 'process_low'
 
     conda (params.enable_conda ? 'bioconda::nanoplot=1.39.0' : null)
