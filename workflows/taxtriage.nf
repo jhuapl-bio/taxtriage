@@ -106,8 +106,8 @@ include { READSFILTER } from '../subworkflows/local/filter_reads'
 // MODULE: Installed directly from nf-core/modules
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
-include { FASTQC                      } from '../modules/nf-core/modules/fastqc/main'
-include { PYCOQC                      } from '../modules/nf-core/modules/pycoqc/main'
+include { FASTQC                      } from '../modules/nf-core/fastqc/main'
+include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/kraken2/kraken2/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -450,10 +450,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
     
     MULTIQC (
-        ch_multiqc_files.collect(),
-        ch_multiqc_config,
-        ch_multiqc_custom_config,
-        ch_multiqc_logo
+        ch_multiqc_files.collect()
 
     )
     multiqc_report = MULTIQC.out.report.toList()
