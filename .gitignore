@@ -1,6 +1,8 @@
 nf-core/*
 ./test
 ./Samplesheet*csv
+./examples/Samplesheet*csv
+!./examples/Samplesheet.csv
 examples/assembly_summary_refseq.txt
 ./examples/Samplesheet_ERR.csv
 .example_commands.txt
