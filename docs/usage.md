@@ -85,10 +85,15 @@ work                # Directory containing the nextflow working files
 | ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--input <samplesheet.csv_path>`   | CSV file containing samplesheet information for each sample. See [Samplesheet section](#samplesheet-information)  |
 | `--outdir <path_to_output_to_be_made>`  | Output folder.                                             |
-| `--skip_assembly`  | Full path to FastQ file for Illumina short reads 2. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
-| `--skip_plots`  | TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
-| `--subsample <number>`     | Take a subsample of n reads from each sample                                                                                       |
-| `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path                                                          |
+| `--skip_assembly`  | Skip the assembly process. Currently this is recommmended as spades/flye are not functioning properly |
+| `--skip_fastp`  | TRUE/FALSE,  do not filter with fastp |
+| `--skip_plots`  | TRUE/FALSE,  do not make any plots  |
+| `--remove_taxids  <numbers[]>`  | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "'9606'" for human reads |
+| `--skip_realignment`  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result                    |            
+| `--minq <number>`     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina         |
+| `--trim`     | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)  |
+| `--subsample <number>`     | Take a subsample of n reads from each sample         |
+| `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path |
 | `--download_db` | Download the preset database indicated in `--db` to `--outdir` |
 | `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
 | `--low_memory <number>` | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD |
