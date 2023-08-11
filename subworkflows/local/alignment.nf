@@ -14,9 +14,11 @@ include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_OXFORD } from '../../modules/nf-c
 include { BCFTOOLS_STATS } from '../../modules/nf-core/modules/bcftools/stats/main'
 include { MERGE_FASTA } from '../../modules//local/merge_fasta'
 include { SPLIT_READS } from '../../modules/local/split_reads'
+include { FILTER_PAIRED } from '../../modules/local/filter_paired'
 
 
 workflow ALIGNMENT {
+    
     take:
     fastq_reads
     
@@ -30,9 +32,8 @@ workflow ALIGNMENT {
     ch_sams = Channel.empty()
     ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()
-    
     ch_merged_fasta = Channel.empty()
-
+    ch_branchedtype = Channel.empty()
     
     fastq_reads
     .branch{
@@ -41,13 +42,14 @@ workflow ALIGNMENT {
     }.set { ch_aligners }
 
     ch_versions = 1
+
     ch_aligners.bwamem2
         .transpose(by:[2])
         .map{
             m, fastq, fasta ->
                 def basename = fasta.baseName
                 def id = basename
-                return [ [id:id, platform:m.platform, base: m.id] , fastq, fasta ]
+                return [ [id:id, platform:m.platform, base: m.id, single_end: m.single_end] , fastq, fasta ]
         }
         .set{ transposed_fastas_illumina }
     
@@ -63,11 +65,15 @@ workflow ALIGNMENT {
         }
         .set{ transposed_fastas_oxford }
 
+
     BWA_INDEX (
         transposed_fastas_illumina.map{ m, fastq, fasta -> 
             return fasta 
         }
     )
+
+
+
     BWA_MEM(
         transposed_fastas_illumina.map{ m, fastq, fasta -> 
             return [ m, fastq ] 
@@ -75,7 +81,27 @@ workflow ALIGNMENT {
         BWA_INDEX.out.index,
         true
     )
-    ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+
+    transposed_fastas_illumina
+    .branch{
+        paired: !it[0].single_end 
+        single: it[0].single_end 
+    }.set { ch_branchedtype } 
+
+    FILTER_PAIRED(
+
+         BWA_MEM.out.bam
+    )
+    
+
+    //ch_bams //mix output of filter_paired with ch_branchedtype.single
+
+
+//ch_bams = ch_bams.mix(FILTERED_PAIRED.out.filtered_bam, BWA_MEM.out.bam)
+//if still fails, MERGE BWA_mem.out.bam with transposed_fastas_illumina by m.id
+//ch_branchedtype.paired merged with 
+
+    //ch_bams = ch_bams.mix(BWA_MEM.out.bam)
     MINIMAP2_ALIGN (
         transposed_fastas_oxford.map{ m, fastq, fasta -> [ m, fastq ] },
         transposed_fastas_oxford.map{ meta, fastq, fasta -> fasta },

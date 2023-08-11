@@ -44,6 +44,14 @@ if (params.top_hits_count) {
 
 
 
+ch_spades_hmm=null
+if (!params.spades_hmm){
+    println "No hmm files given, proceeding without hmm-guided mode"
+    
+} else {
+    println "Hmm files provided, proceeding using hmm-guided mode"
+    ch_spades_hmm=file(params.spades_hmm, checkIfExists: true)
+}
 
 ch_assembly_txt=null
 ch_kraken_reference=false
@@ -306,7 +314,7 @@ workflow TAXTRIAGE {
     if (!params.skip_assembly){
         illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
             meta, reads -> 
-            [meta, reads, [], []]
+            [meta, reads, [], [], ch_spades_hmm]
         }
         SPADES_ILLUMINA(
            illumina_reads
@@ -322,7 +330,7 @@ workflow TAXTRIAGE {
         }
         // nanopore_reads.view()
 	    // SPADES_OXFORD(
-        //   nanopore_reads,
+        //   nanopore_reads, ch_spades_hmm
         // )
         
         FLYE(

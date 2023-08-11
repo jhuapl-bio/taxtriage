@@ -1,3 +1,4 @@
+
 process SPADES {
     tag "$meta.id"
     label 'process_high'
@@ -7,8 +8,11 @@ process SPADES {
         'https://depot.galaxyproject.org/singularity/spades:3.15.4--h95f258a_0' :
         'quay.io/biocontainers/spades:3.15.4--h95f258a_0' }"
 
+
+    
     input:
-    tuple val(meta), path(illumina), path(pacbio), path(nanopore)
+    tuple val(meta), path(illumina), path(pacbio), path(nanopore), val(hmm)
+ 
 
     output:
     tuple val(meta), path('*.scaffolds.fa.gz')    , optional:true, emit: scaffolds
@@ -29,6 +33,8 @@ process SPADES {
     def illumina_reads = illumina ? ( meta.single_end ? "-s $illumina" : "-1 ${illumina[0]} -2 ${illumina[1]}" ) : ""
     def pacbio_reads = pacbio ? "--pacbio $pacbio" : ""
     def nanopore_reads = nanopore ? "--nanopore $nanopore" : ""
+    def custom_hmms = hmm ? "--custom-hmms $hmm" : ""
+    
     """
     spades.py \\
         $args \\
@@ -37,6 +43,7 @@ process SPADES {
         $illumina_reads \\
         $pacbio_reads \\
         $nanopore_reads \\
+	    $custom_hmms \\
         -o ./
     mv spades.log ${prefix}.spades.log
 
