@@ -35,16 +35,13 @@ for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true
 
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
-if (params.top_hits_count) { 
-    ch_top_hits_count = params.top_hits_count 
-} else { 
-    ch_top_hits_count=2
-    println 'Top hits not specified, defaulting to 10 per rank level in taxonomy tree for database for kraken2' 
-}
+
 if (params.minq) { 
-    ch_minq = params.minq
+    ch_minq_illumina = params.minq
+    ch_minq_oxford = params.minq
 } else { 
-    ch_minq = 30
+    ch_minq_illumina=20
+    ch_minq_oxford=7
     println 'Min Quality set to default: 30' 
 }
 
@@ -298,18 +295,18 @@ workflow TAXTRIAGE {
         )
         ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
-    KRAKENREPORT(
-        ch_kraken2_report
-    )
-    MERGEDKRAKENREPORT(
-        KRAKENREPORT.out.krakenreport.map { meta, file ->  file }.collect()
-    )
+    // KRAKENREPORT(
+    //     ch_kraken2_report
+    // )
+    
     
     
 
     TOP_HITS (
         ch_kraken2_report,
-        ch_top_hits_count
+    )
+    MERGEDKRAKENREPORT(
+        TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
     )
     ch_mergedtsv = Channel.empty()
     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
@@ -345,17 +342,17 @@ workflow TAXTRIAGE {
             ch_new
         )
         ch_alignment_stats = ALIGNMENT.out.stats
-        if (params.blastdb && !params.remoteblast){
-            BLAST_BLASTN(
-                ALIGNMENT.out.fasta,
-                ch_blast_db
-            )
-        } else if (params.blastdb && params.remoteblast){
-            REMOTE_BLASTN(
-                ALIGNMENT.out.fasta,
-                ch_blast_db
-            )
-        }
+        // if (params.blastdb && !params.remoteblast){
+        //     BLAST_BLASTN(
+        //         ALIGNMENT.out.fasta,
+        //         ch_blast_db
+        //     )
+        // } else if (params.blastdb && params.remoteblast){
+        //     REMOTE_BLASTN(
+        //         ALIGNMENT.out.fasta,
+        //         ch_blast_db
+        //     )
+        // }
         CONFIDENCE_METRIC (
             ALIGNMENT.out.sam,
             ALIGNMENT.out.mpileup
@@ -422,7 +419,6 @@ workflow TAXTRIAGE {
     workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
     ch_workflow_summary = Channel.value(workflow_summary)
     ch_multiqc_files = Channel.empty()
-    ch_multiqc_files = ch_multiqc_files.mix(KRAKENREPORT.out.krakenreport.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))

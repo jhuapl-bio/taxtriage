@@ -12,6 +12,7 @@
     "low_memory": false,
     "remove_taxids": "9606",
     "profile": "docker",
+    "top_per_taxa": "10239:10:S",
     "blastdb": null,
     "remoteblast": false,
     "skip_fastp": false,
