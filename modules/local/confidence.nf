@@ -43,7 +43,7 @@ process CONFIDENCE_METRIC {
     def output = "${meta.id}.confidences.tsv"
 
 
-    println "sam_to_confidence.sh -i $sam -m $mpileup -o $output -r ${meta.id}.reads"
+    // println "sam_to_confidence.sh -i $sam -m $mpileup -o $output -r ${meta.id}.reads"
     """
     
 
