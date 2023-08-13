@@ -27,7 +27,7 @@ custom_css_files:
   - ./mqc.css
 custom_data:
   krakenreport:
-    section_name: 'Metagenomic Metrics'
+    section_name: 'Full Metagenomic Hits'
     plot_type: 'table'
     pconfig:
         id: 'summary_metagenomics_metrics_plot'

@@ -68,6 +68,14 @@ workflow ALIGNMENT {
             return fasta 
         }
     )
+    
+
+    
+
+
+
+
+
     BWA_MEM(
         transposed_fastas_illumina.map{ m, fastq, fasta -> 
             return [ m, fastq ] 

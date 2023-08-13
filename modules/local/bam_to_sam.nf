@@ -37,8 +37,10 @@ process BAM_TO_SAM {
 
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
+    def added_script =  !meta.single_end ? " -f 2 " : ""
     """
-    samtools view -h  ${bamfiles} | samtools sort -O sam - >  ${meta.id}.sam
+
+    samtools view  ${added_script} -h  ${bamfiles} | samtools sort -O sam - >  ${meta.id}.sam
     samtools mpileup -o ${meta.id}.mpileup ${meta.id}.sam
 
     cat <<-END_VERSIONS > versions.yml

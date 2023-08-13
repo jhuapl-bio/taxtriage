@@ -84,7 +84,7 @@ def parse_args(argv=None):
 
 
 def import_file(input, filter_ranks):
-    tsv_file = open(input)
+    tsv_file = open(input,newline='' )
     read_tsv = csv.reader(tsv_file, delimiter="\t")
     mapping=[]
     
@@ -103,7 +103,7 @@ def import_file(input, filter_ranks):
                     entry[header[x]] = row[x]
             else:
                 entry[header[x]]=""
-        
+        entry['name'] = entry['name'].strip()
         mapping.append(entry)
         taxids[entry['taxid']]=entry['name']
         

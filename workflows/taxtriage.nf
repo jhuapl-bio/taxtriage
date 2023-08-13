@@ -295,9 +295,7 @@ workflow TAXTRIAGE {
         )
         ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
-    // KRAKENREPORT(
-    //     ch_kraken2_report
-    // )
+    
     
     
     
@@ -317,7 +315,7 @@ workflow TAXTRIAGE {
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
-        
+        ch_hit_to_kraken_report.view()
         if (ch_assembly_file_type == 'ncbi' ){
             DOWNLOAD_ASSEMBLY (
                 ch_hit_to_kraken_report,
@@ -420,13 +418,13 @@ workflow TAXTRIAGE {
     ch_workflow_summary = Channel.value(workflow_summary)
     ch_multiqc_files = Channel.empty()
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_reads.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.html.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     if (params.blastdb && !params.remoteblast){
         ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
