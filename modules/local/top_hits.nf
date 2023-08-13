@@ -45,12 +45,12 @@ process TOP_HITS {
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
-        -i $report \\
+        -i \"$report\" \\
         -o ${id}.top_report.tsv \\
         $top_hits_count  $top_per_taxa
     
-    awk -F \"\t\" -v id=${id} \\
-        'BEGIN{OFS=\"\t\"} { if (NR==1){ print \"Sample_Taxid\", \$1, \$NF } else { \$5 = id\"_\"\$5;  print \$5, \$1, \$NF }}'  ${id}.top_report.tsv > ${id}.krakenreport_mqc.tsv 
+    awk -F '\\t' -v id=${id} \\
+        'BEGIN{OFS=\"\\t\"} { if (NR==1){ print \"Sample_Taxid\",  \$1, \$4, \$6} else { \$5 = id\"_\"\$5;  print \$5, \$1, \$4, \$6  }}'  ${id}.top_report.tsv > ${id}.krakenreport_mqc.tsv 
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
