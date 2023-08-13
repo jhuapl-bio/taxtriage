@@ -1,7 +1,7 @@
 ## Troubleshooting and FAQ
 WORK IN PROGRESS
 
-### 1. Input
+### Input
 
 #### What is a Samplesheet?
 
@@ -16,11 +16,7 @@ See this [table](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md
 One important thing to note is that the `fastq_1` column MUST have a value if using a FILE that is a compressed fastq (`.gz` extension), `from` is directory of fastq files that may or may not be compressed with `.gz`. A paired end read set for Illumina must have a file in `fastq_1` and another in `fastq_2` for each row.  
 IF you're using `from` you must have a directory of fastq file(s) in the path
 
-### 2. Nextflow Tower
-### 3. AWS (Compute env and S3)
-### 4. Installation
-### 5. Basestack deployment
-### 6. Nextflow Logs of TaxTriage
+### Nextflow Logs of TaxTriage
 
 ERROR - RED Text is all over the place, did my pipeline fail?
 
@@ -83,5 +79,7 @@ There is a good chance that you are behind a firewall or require specifical cert
 `filter` is when you want to use a human reads database (or any other database) that automatically removes any and all classified reads. `remove_taxids` is a list of taxids, separated by a space, that will be removed post-kraken2 output with your `--db` database. 
 Please be aware that these options will not catch all organisms of interest, so please be aware of data privacy concerns before passing read data off that have gone through these steps
 
+### Why is my run taking so long?
 
+This could be a variety of reasons. Specific modules are prone to take much longer than others, namely the MultiQC (final step), consensus/assembly, or any of the alignment steps. Additionally, plotting for Oxford Nanopore can take a large amount of time when using NanoPlot. Consider disabling many of these features if you simply want the baseline kraken results with --skip_{name_of_step(s)}. 
    
