@@ -86,7 +86,7 @@ absolute_path_x="$(readlink -fn -- "$0"; echo x)"
 absolute_path_of_script="${absolute_path_x%x}"
 scriptdir=$(dirname "$absolute_path_of_script")
 runtime=$(date +"%Y%m%d%H%M%S%N")
-tmp="$scriptdir/tmp-$runtime"
+tmp="$scriptdir/tmp-$runtime-$RANDOM"
 mkdir -p "$tmp"
 #	MAIN
 
