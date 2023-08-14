@@ -27,7 +27,7 @@ data/*
 !data/test-run/*
 bin/tmp-*
 multiqc*
-!modules/nf-core/multiqc*
+!modules/nf-core/multiqc/*
 data
 !examples/data
 ./examples/Samplesheet_ERR.csv
