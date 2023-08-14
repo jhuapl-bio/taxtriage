@@ -96,6 +96,7 @@ work                # Directory containing the nextflow working files
 | `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path |
 | `--download_db` | Download the preset database indicated in `--db` to `--outdir` |
 | `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
+| `-latest` | Use the latest revision (-r). If you want to autopull the latest commit for a branch from https://github.com/jhuapl-bio/taxtriage, specify this. Used in Basestack and the Cloud (default toggle) |
 | `--low_memory <number>` | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD |
 | `--max_cpus <number>` | Max CPUs you want to dedicate to the pipeline | 
 | `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
