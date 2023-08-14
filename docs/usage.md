@@ -92,7 +92,7 @@ work                # Directory containing the nextflow working files
 | `--skip_realignment`  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result                    |            
 | `--minq <number>`     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina         |
 | `--trim`     | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)  |
-| `--subsample <number>`     | Take a subsample of n reads from each sample         |
+| `--subsample <number>`     | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis      |
 | `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path |
 | `--download_db` | Download the preset database indicated in `--db` to `--outdir` |
 | `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
