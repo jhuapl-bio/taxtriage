@@ -101,6 +101,7 @@ work                # Directory containing the nextflow working files
 | `--max_cpus <number>` | Max CPUs you want to dedicate to the pipeline | 
 | `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
 | `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
+| `-r [main, stable, etc.]` | Specify the branch/revision name to use if pulling from github (not local main.nf file) | 
 | `-profile [docker,singularity,conda]` | Conda, Singularity, or Docker | 
 
 
