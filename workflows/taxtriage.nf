@@ -30,8 +30,8 @@ WorkflowTaxtriage.initialise(params, log)
 // Check input path parameters to see if they exist
 // def checkPathParamList = [ params.input, params.multiqc_config, params.fasta ]
 
-def checkPathParamList = [ params.reference ]
-for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
+// def checkPathParamList = [ params.reference ]
+// for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
@@ -42,7 +42,7 @@ if (params.minq) {
 } else { 
     ch_minq_illumina=20
     ch_minq_oxford=7
-    println 'Min Quality set to default: 30' 
+    println "Min Quality set to default" 
 }
 
 

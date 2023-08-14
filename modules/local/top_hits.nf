@@ -40,8 +40,8 @@ process TOP_HITS {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def id = "${meta.id}"
     ch_top_per_taxa = ""
-    def top_per_taxa  = params.top_per_taxa ? " -t ${params.top_per_taxa}" : ''
-    def top_hits_count = params.top_hits_count ? " -c ${params.top_hits_count}" : ' -t 5 '
+    def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa}" : ''
+    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 5 '
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
