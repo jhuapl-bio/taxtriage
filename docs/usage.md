@@ -50,8 +50,8 @@ FALSE,ERR6913101,,ILLUMINA,FALSE,data/test-run/ERR6913101_1.fastq.gz,data/test-r
 | Column     | Description                                                                                                                                                                            |
 | ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sample`   | Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
-| `fastq_1`  | OPTIONAL (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                             |
-| `fastq_2`  | OPTIONAL. Full path to FastQ file for Illumina short reads 2. File has to be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
+| `fastq_1`  | OPTIONAL (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                             |
+| `fastq_2`  | OPTIONAL. Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
 | `barcode`  | OPTIONAL. TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
 | `from`     | OPTIONAL (if not using fastq1/2) Directory path of the barcode, only used with the column being set as TRUE in the barcode column                                                                                       |
 | `platform` | Platform used, [ILLUMINA, OXFORD]                                                            |
@@ -92,14 +92,16 @@ work                # Directory containing the nextflow working files
 | `--skip_realignment`  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result                    |            
 | `--minq <number>`     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina         |
 | `--trim`     | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)  |
-| `--subsample <number>`     | Take a subsample of n reads from each sample         |
+| `--subsample <number>`     | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis      |
 | `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path |
 | `--download_db` | Download the preset database indicated in `--db` to `--outdir` |
 | `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
+| `-latest` | Use the latest revision (-r). If you want to autopull the latest commit for a branch from https://github.com/jhuapl-bio/taxtriage, specify this. Used in Basestack and the Cloud (default toggle) |
 | `--low_memory <number>` | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD |
 | `--max_cpus <number>` | Max CPUs you want to dedicate to the pipeline | 
 | `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
 | `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
+| `-r [main, stable, etc.]` | Specify the branch/revision name to use if pulling from github (not local main.nf file) | 
 | `-profile [docker,singularity,conda]` | Conda, Singularity, or Docker | 
 
 
