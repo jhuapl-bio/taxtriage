@@ -37,7 +37,7 @@ custom_data:
         id: 'summary_metagenomics_metrics_plot'
         table_title: 'Metagenomic Analysis at Ranks'
         namespace: 'Metagenomic Metrics'
-skip_generalstats: false
+skip_generalstats: true
 section_order:
   - confidence
   - krakenreport

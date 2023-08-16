@@ -14,6 +14,7 @@ process MERGEDKRAKENREPORT {
     path("*krakenreport*.merged_mqc.tsv"), optional:false, emit: krakenreport
 
     script:
+
     """
     merge_tsvs.py \\
         -o ./krakenreport.merged_mqc.tsv \\
