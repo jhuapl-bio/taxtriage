@@ -94,7 +94,7 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
         taxid = splitrow[1]
         if format_kraken2:
             row[0] = taxid
-        rows[row[0]] = row
+        rows[taxid] = row
         if samplename:
             row[0] = row[0] +"_" + samplename + "_" + ref
             # row[0] = row[0] +"_" + samplename  
@@ -106,7 +106,7 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
         rank=row[3]  
         name = row[5].strip()
         if taxid in rows:
-            rows[taxid].insert(1,rank)      
+            rows[taxid].insert(1,rank)   
             rows[taxid].insert(1,name)      
     report_file.close()
     
