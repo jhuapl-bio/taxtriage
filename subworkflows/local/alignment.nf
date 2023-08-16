@@ -86,7 +86,6 @@ workflow ALIGNMENT {
         true, 
         true
     )
-    BOWTIE2_ALIGN.out.log.view()
     ch_bams = ch_bams.mix(BOWTIE2_ALIGN.out.aligned)
     MINIMAP2_ALIGN (
         transposed_fastas_oxford.map{ m, fastq, fasta -> [ m, fastq ] },
