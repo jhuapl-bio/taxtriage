@@ -74,6 +74,7 @@ if (params.assembly && ch_assembly_txt.isEmpty() ) {
 
 
 ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
+ch_multiqc_css       = file("$projectDir/assets/mqc.css", checkIfExists: true)
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath( params.multiqc_config, checkIfExists: true ) : Channel.empty()
 ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath( params.multiqc_logo, checkIfExists: true ) : Channel.empty()
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
@@ -234,6 +235,7 @@ workflow TAXTRIAGE {
     
     // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
+    ch_porechop_out = Channel.empty()
     if (params.trim){
         nontrimmed_reads = ch_reads.filter { !it[0].trim }
         TRIMGALORE(
@@ -242,6 +244,7 @@ workflow TAXTRIAGE {
         PORECHOP(
             ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
         )
+        ch_porechop_out  = PORECHOP.out.reads
 
         trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
         ch_reads=nontrimmed_reads.mix(trimmed_reads)
@@ -387,14 +390,16 @@ workflow TAXTRIAGE {
         
         nanopore_reads = PULL_FASTA.out.fastq.filter{ it[0].platform == 'OXFORD'  }.map{
             meta, reads -> 
-            [meta, [], [], reads]
+            [meta, [], [], [], reads]
         }
-        
-        
-        FLYE(
-           nanopore_reads,
-           "--nano-raw"
+        SPADES_OXFORD(
+           illumina_reads
         )
+        
+        // FLYE(
+        //    nanopore_reads,
+        //    "--nano-raw"
+        // )
     
     }
 
@@ -418,9 +423,13 @@ workflow TAXTRIAGE {
     ch_workflow_summary = Channel.value(workflow_summary)
     ch_multiqc_files = Channel.empty()
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+    
+    ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
+    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
