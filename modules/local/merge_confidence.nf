@@ -19,6 +19,8 @@ process MERGE_CONFIDENCE {
         -o ./confidences.merged_mqc.tsv \\
         -i $confidences 
 
+    
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python3: \$(python3 --version | sed 's/Python //g')
