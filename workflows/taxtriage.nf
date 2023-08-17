@@ -116,6 +116,8 @@ include { PORECHOP } from '../modules/nf-core/porechop/main'
 include { SEQTK_SAMPLE } from '../modules/nf-core/seqtk/sample/main'
 include { MULTIQC                     } from '../modules/nf-core/multiqc/main'
 include { FLYE                     } from '../modules/nf-core/flye/main'
+include { KRAKENTOOLS_COMBINEKREPORTS   } from '../modules/nf-core/krakentools/combinekreports/main'
+include { KRONA   } from '../modules/local/krona.nf'
 include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/spades/main'
 include { SPADES as SPADES_OXFORD } from '../modules/nf-core/spades/main'
 include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
@@ -298,7 +300,14 @@ workflow TAXTRIAGE {
         )
         ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
-    
+    // if ( !params.skip_krona){ // to be continued
+    //     KRAKENTOOLS_COMBINEKREPORTS(
+    //         ch_kraken2_report
+    //     )
+    //     KRONA(
+    //         KRAKENTOOLS_COMBINEKREPORTS.out.txt       
+    //     )
+    // }
     
     
     
@@ -425,7 +434,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     
     // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
     ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
