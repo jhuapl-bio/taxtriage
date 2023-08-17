@@ -309,11 +309,10 @@ workflow TAXTRIAGE {
     //     )
     // }
     
-    
-    
 
     TOP_HITS (
-        ch_kraken2_report,
+        ch_kraken2_report
+        
     )
     MERGEDKRAKENREPORT(
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
@@ -327,7 +326,6 @@ workflow TAXTRIAGE {
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
             KRAKEN2_KRAKEN2.out.classified_reads_assignment
         )
-        ch_hit_to_kraken_report.view()
         if (ch_assembly_file_type == 'ncbi' ){
             DOWNLOAD_ASSEMBLY (
                 ch_hit_to_kraken_report,
@@ -374,7 +372,6 @@ workflow TAXTRIAGE {
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
-        // CONVERT_CONFIDENCE.out.tsv.view()
         // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
         // .set{ ch_mergedtsv }
 

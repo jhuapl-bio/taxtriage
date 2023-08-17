@@ -51,11 +51,12 @@ def parse_args(argv=None):
         type=str, nargs="+", default=['S2', 'S1', 'S', 'C', 'O', 'F', 'G', 'P', 'K', 'D', 'U' ],
         help="Filter on only showing specific ranks ",
     )
+    
     parser.add_argument(
         "-s",
         "--top_hits_string",
         metavar="TOP_HITS_STRING",
-        type=str,
+        type=str, nargs="+", default=[],
         help="Top Hits ",
     )
     parser.add_argument(
@@ -94,6 +95,7 @@ def import_file(input, filter_ranks):
     for row in read_tsv:
         entry = dict()
         for x in range(0, len(header)):
+            
             if (header[x] != 'name' and header[x] != 'rank' and header[x] != 'taxid'and x < len(row)) :
                 entry[header[x]] = float(row[x])
             elif x < len(row):
@@ -103,7 +105,6 @@ def import_file(input, filter_ranks):
                     entry[header[x]] = row[x]
             else:
                 entry[header[x]]=""
-        entry['name'] = entry['name'].strip()
         mapping.append(entry)
         taxids[entry['taxid']]=entry['name']
         
@@ -111,10 +112,12 @@ def import_file(input, filter_ranks):
     k2_regex = re.compile(r"^(\s+)(.+)")
     depth = dict()
     lastparents = dict()
-    for  l in mapping:
+    for  i, l in enumerate(mapping):
         match = k2_regex.search(l['name'])
+        
         if match:
             depth[l['taxid']] = int(len(match.group(1))/2)
+            
             l['name'] = match.group(2)
         else:
             depth[l['taxid']] = 0
@@ -149,7 +152,7 @@ def top_hit(mapping, specific_limits, top_per_rank):
     for specifics, value in specific_limits.items():
         rank = value['rank']
         limit = value['limit']
-    
+
         if rank in sorted_mapping:
             i=0
             for row in sorted_mapping[rank]:
@@ -174,13 +177,16 @@ def top_hit(mapping, specific_limits, top_per_rank):
                 if not row['taxid'] in newdata:
                     newdata[row['taxid']] = row
                     countranks[key] +=1
-    for key, value in newdata.items():
-        rank = value['rank']
+    # for key, value in newdata.items():
+    #     rank = value['rank']
+    # for key, valu in newdata.items():
+    #     if valu['rank'] == 'S':
+    #         print(key, valu)
     return newdata
 
 
 def make_files(mapping, outpath):
-    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name']
+    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name' ]
     path = str(outpath)
     path  = open(path, "w")
     writer = csv.writer(path, delimiter='\t')
@@ -188,8 +194,11 @@ def make_files(mapping, outpath):
     for taxid, row in mapping.items():
         out = []
         for head_item in header:
-            if head_item == 'parents':
-                out.append(";".join([str(x) for x in row[head_item]]))
+            if head_item == 'name':
+                out.append(row[head_item].strip())
+            elif head_item == 'parents':
+                parentt = ";".join([str(x) for x in row[head_item]])
+                out.append(parentt)
             else:
                 out.append(row[head_item])
         writer.writerow(out)
@@ -205,11 +214,10 @@ def main(argv=None):
     args.file_out.parent.mkdir(parents=True, exist_ok=True)
     specific_limits = dict()
     if args.top_hits_string:
-        for x in args.top_hits_string.split(";"):
+        for x in  args.top_hits_string:
             fulllist = x.split(":")
             if len(fulllist) >= 3:
                 specific_limits[int(fulllist[0])] = dict( limit=int(fulllist[1]), rank=fulllist[2] )
-    
     mapping = import_file(args.file_in, args.filter_ranks)
     mapping = top_hit(mapping, specific_limits, args.top_per_rank)
     make_files(mapping, args.file_out)
