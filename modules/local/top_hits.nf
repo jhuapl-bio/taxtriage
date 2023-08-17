@@ -24,7 +24,7 @@ process TOP_HITS {
         'quay.io/biocontainers/python:3.8.3' }"
 
     input:
-    tuple val(meta), path(report)
+    tuple val(meta), path(report) 
 
     output:
     path "versions.yml"           , emit: versions
@@ -40,13 +40,13 @@ process TOP_HITS {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def id = "${meta.id}"
     ch_top_per_taxa = ""
-    def top_per_taxa  = params.top_per_taxa ? " -s \"${params.top_per_taxa}\" " : ''
-    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 5 '
+    def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa} " : ''
+    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 50 '
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
         -i \"$report\" \\
-        -o ${id}.top_report.tsv \\
+        -o ${id}.top_report.tsv   \\
         $top_hits_count  $top_per_taxa
     
     awk -F '\\t' -v id=${id} \\
