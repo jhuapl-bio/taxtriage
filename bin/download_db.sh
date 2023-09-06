@@ -14,5 +14,4 @@ wget $url -O $db_dir/${db}.tar.gz
 mkdir -p $db_dir/$db
 tar -xvzf $db_dir/${db}.tar.gz -C $db_dir/$db
 rm $db_dir/${db}.tar.gz
-mv -f $db* $db_dir/
 python3 $db_dir/../bin/checksum.py $db_dir/$db/taxo.k2d $checksum
