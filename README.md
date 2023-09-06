@@ -25,9 +25,12 @@ nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db flukraken2 --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3   \
-   -profile docker  -resume --demux --remove_taxids "9606"
+   -profile docker  -resume --demux --remove_taxids "'9606'"
 
 ```
+
+Remember, if you are doing a single taxid, wrap it with '' inside the "" quote
+
 
 or with your very own assembly refseq file (if no internet available from ncbi)
 

@@ -14,7 +14,8 @@ include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_OXFORD } from '../../modules/nf-c
 include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
 include { MERGE_FASTA } from '../../modules//local/merge_fasta'
 include { SPLIT_READS } from '../../modules/local/split_reads'
-
+include { BOWTIE2_ALIGN } from '../../modules/nf-core/bowtie2/align/main'
+include { BOWTIE2_BUILD } from '../../modules/nf-core/bowtie2/build/main'
 
 workflow ALIGNMENT {
     take:
@@ -36,12 +37,13 @@ workflow ALIGNMENT {
     
     fastq_reads
     .branch{
-        minimap2: it[0].platform =~ 'OXFORD'
-        bwamem2: it[0].platform =~ 'ILLUMINA'
+        longreads: it[0].platform =~ 'OXFORD'
+        shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
 
     ch_versions = 1
-    ch_aligners.bwamem2
+    
+    ch_aligners.shortreads
         .transpose(by:[2])
         .map{
             m, fastq, fasta ->
@@ -53,7 +55,7 @@ workflow ALIGNMENT {
     
 
 
-    ch_aligners.minimap2
+    ch_aligners.longreads
         .transpose(by:[2])
         .map{
             m, fastq, fasta ->
@@ -62,28 +64,35 @@ workflow ALIGNMENT {
                 return [ [id:id, single_end: true, platform:m.platform, base: m.id], fastq, fasta ]
         }
         .set{ transposed_fastas_oxford }
-
-    BWA_INDEX (
+    // BWA_INDEX (
+    //     transposed_fastas_illumina.map{ m, fastq, fasta -> 
+    //         return fasta 
+    //     }
+    // )
+    // BWA_MEM(
+    //     transposed_fastas_illumina.map{ m, fastq, fasta -> 
+    //         return [ m, fastq ] 
+    //     },
+    //     BWA_INDEX.out.index,
+    //     true
+    // )
+    // ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+    BOWTIE2_BUILD (
         transposed_fastas_illumina.map{ m, fastq, fasta -> 
-            return fasta 
+            return [ m, fasta  ]
         }
     )
-    
-
-    
-
-
-
-
-
-    BWA_MEM(
+    BOWTIE2_ALIGN(
         transposed_fastas_illumina.map{ m, fastq, fasta -> 
             return [ m, fastq ] 
         },
-        BWA_INDEX.out.index,
+        BOWTIE2_BUILD.out.index,
+        false,
         true
     )
-    ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+    ch_bams = ch_bams.mix(BOWTIE2_ALIGN.out.aligned)
+
+
     MINIMAP2_ALIGN (
         transposed_fastas_oxford.map{ m, fastq, fasta -> [ m, fastq ] },
         transposed_fastas_oxford.map{ meta, fastq, fasta -> fasta },
@@ -91,14 +100,8 @@ workflow ALIGNMENT {
         true,
         true
     )
-
-    
-    
-    
-    
-
     ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
-    ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+
     ch_bams.map{
         m, bams ->
         return [m.base,m, bams]
@@ -132,7 +135,7 @@ workflow ALIGNMENT {
         ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(transposed_fastas_oxford.map{m,fastq,fasta -> [m,fasta] })
         
         BCFTOOLS_MPILEUP_ILLUMINA(
-            BWA_MEM.out.bam, 
+            BOWTIE2_ALIGN.out.aligned, 
             transposed_fastas_illumina.map{m,fastq,fasta -> fasta },
             false
         )    

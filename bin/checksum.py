@@ -15,5 +15,5 @@ with open(file, "rb") as f:
     for byte_block in iter(lambda: f.read(4096), b""):
         algo.update(byte_block)
     digest = algo.hexdigest()
-
+    print(digest)
 exit(0) if digest == hashval else exit("Hash values do not match. Data may be corrupted!")

@@ -157,7 +157,12 @@ workflow TAXTRIAGE {
             "url": "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz",
             "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
             "size": "7.5G"
-            ]
+        ],
+        "viral": [
+            "url": "https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz",
+            "checksum": "adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99",
+            "size": "553M"
+        ],
     ]
 
     if (params.download_db) {

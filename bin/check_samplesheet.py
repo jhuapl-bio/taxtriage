@@ -114,7 +114,7 @@ class RowChecker:
 
     def _validate_second(self, row):
         """Assert that the second FASTQ entry has the right format if it exists."""
-        if len(row[self._second_col]) > 0:
+        if row[self._second_col] and len(row[self._second_col]) > 0:
             self._validate_fastq_format(row[self._second_col])
 
     def _validate_pair(self, row):
