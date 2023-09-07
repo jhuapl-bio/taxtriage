@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 db=$1
 url=$2
 checksum=$3
