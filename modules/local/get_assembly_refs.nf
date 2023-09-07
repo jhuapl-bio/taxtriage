@@ -47,7 +47,7 @@ process GET_ASSEMBLIES {
     """
     if [[ ! -s 'assembly_summary_refseq.txt' ]] ; then
         echo "Downloading the assembly summary file from ncbi...."
-        wget --no-check-certificate ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O assembly_summary_refseq.txt
+        wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt  -O assembly_summary_refseq.txt
     else 
         echo "Assembly file exists"
     fi
