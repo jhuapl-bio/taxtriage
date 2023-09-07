@@ -18,5 +18,8 @@ rm ${db}.tar.gz
 if [[  ${db} == 'flukraken2' ]]; then
     mv -f ${db}/${db}/* ${db}/
 fi
+if [[  ${db} == 'minikraken2' ]]; then
+    mv -f ${db}/minikraken2_v2_8GB_201904_UPDATE/* ${db}/
+fi
 
 # python3 $db_dir/../bin/checksum.py $db_dir/$db/taxo.k2d $checksum
