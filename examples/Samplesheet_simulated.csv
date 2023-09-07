@@ -1,0 +1,3 @@
+sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
+longreads,TRUE,,OXFORD,FALSE,examples/data/nanosim_metagenome.fastq.gz,,,
+shortreads,FALSE,,ILLUMINA,FALSE,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,

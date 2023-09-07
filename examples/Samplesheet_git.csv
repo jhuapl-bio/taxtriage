@@ -1,3 +1,4 @@
 sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
-BC05_flu,TRUE,,OXFORD,FALSE,https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/data/BC05.fastq.gz,,,
 Sample_1,TRUE,,OXFORD,FALSE,https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/data/sample_metagenome.fastq.gz,,,
+longreads,TRUE,,OXFORD,FALSE,https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/data/nanosim_metagenome.fastq.gz,,,
+shortreads,FALSE,,ILLUMINA,FALSE,https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/data/iss_reads_R1.fastq.gz,https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/data/iss_reads_R2.fastq.gz,,

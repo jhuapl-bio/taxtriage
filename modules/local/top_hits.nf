@@ -41,7 +41,7 @@ process TOP_HITS {
     def id = "${meta.id}"
     ch_top_per_taxa = ""
     def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa} " : ''
-    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
+    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 7 '
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
