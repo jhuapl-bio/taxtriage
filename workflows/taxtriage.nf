@@ -168,6 +168,12 @@ workflow TAXTRIAGE {
             "checksum": "adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99",
             "size": "553M"
         ],
+        "test": [
+            "url": "https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz",
+            "checksum": "c7d50ca4f46885ce7d342a06e748f9390cf3f4157a54c995d34ecdabbc83e1b8",
+            "size": "112M"
+        ],
+        
     ]
 
     if (params.download_db) {
@@ -193,6 +199,12 @@ workflow TAXTRIAGE {
             file(params.db, checkIfExists: true)
             ch_db = params.db
         }
+    }
+    if (!ch_assembly_txt){
+        println "empty"
+        GET_ASSEMBLIES()
+        GET_ASSEMBLIES.out.assembly.map{  record -> record }.set{ ch_assembly_txt }
+        
     }
 
 
@@ -237,14 +249,7 @@ workflow TAXTRIAGE {
             meta, reads -> meta.sequencing_summary
         }
     )
-    if (!ch_assembly_txt){
-        println "empty"
-        GET_ASSEMBLIES(
-            ch_reads
-        )
-        GET_ASSEMBLIES.out.assembly.map{ meta, record -> record }.set{ ch_assembly_txt }
-        
-    }
+    
     // // //  
     
     

@@ -26,11 +26,11 @@ process GET_ASSEMBLIES {
 
 
     input:
-    tuple val(meta), val(inputs)
+    
 
 
     output:
-    tuple val(meta), path("assembly_summary_refseq.txt"), optional: true, emit: assembly
+    path("assembly_summary_refseq.txt"), optional: false, emit: assembly
     path "versions.yml"           , emit: versions
 
     when:
