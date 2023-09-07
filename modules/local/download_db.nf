@@ -44,6 +44,6 @@ process DOWNLOAD_DB {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
     """
-    bash  $PWD/bin/download_db.sh $db  $url $checksum
+    download_db.sh $db  $url $checksum
     """
 }
