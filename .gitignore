@@ -1,6 +1,6 @@
 nf-core/*
 ./test
-
+tmp*
 ./Samplesheet*csv
 examples/*
 examples/Samplesheet.csv
