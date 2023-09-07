@@ -14,7 +14,6 @@ tmp*
 ./nf-core
 examples/taxtriage_output
 examples.tar.gz
-databases
 merged_mqc
 .nextflow*
 work/
