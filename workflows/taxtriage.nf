@@ -172,10 +172,12 @@ workflow TAXTRIAGE {
             DOWNLOAD_DB (
                 params.db,
                 supported_dbs[params.db]["url"],
-                params.outdir,
                 supported_dbs[params.db]["checksum"]
             )
-            ch_db = "${PWD}/${params.outdir}/${params.db}"
+            DOWNLOAD_DB.out.k2d.view()
+            ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
+            
+            println("_____________")
 
         } else {
             println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
@@ -187,6 +189,7 @@ workflow TAXTRIAGE {
             ch_db = params.db
         }
     }
+
 
     ch_versions = Channel.empty()
     // //

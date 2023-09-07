@@ -26,8 +26,16 @@ process DOWNLOAD_DB {
     input:
     val(db)
     val(url)
-    val(db_dir)
     val(checksum)
+
+    output:
+
+    path("**/*hash.k2d"), optional: false, emit: k2d
+    path("**/*opts.k2d"), optional: false, emit: opts
+    path("**/*taxo.k2d"), optional: false, emit: taxo
+    // val("**/*k2d"), optional: false, emit: dir
+    
+
 
     when:
     task.ext.when == null || task.ext.when
@@ -36,6 +44,6 @@ process DOWNLOAD_DB {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
     """
-    sh $PWD/bin/download_db.sh $db $PWD/$db_dir $url $checksum
+    bash  $PWD/bin/download_db.sh $db  $url $checksum
     """
 }
