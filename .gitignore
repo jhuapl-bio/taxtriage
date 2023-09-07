@@ -2,6 +2,7 @@ nf-core/*
 ./test
 
 ./Samplesheet*csv
+examples/*
 examples/Samplesheet.csv
 ./examples/Samplesheet*csv
 !./examples/Samplesheet.csv
