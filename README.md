@@ -22,7 +22,20 @@ Efforts are underway to provide full support of this pipeline on [nf-core](nf-co
 
 Make sure you have either Docker or Singularity installed, as well as Nextflow
 
-1. Running Kraken2 and FASTQC report with flukraken db
+### Test Run
+
+This will pull the test data and run the pipeline. It should take ~10-15 minutes.
+
+```
+nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker --outdir test_output
+```
+
+
+### Local Data
+
+1. Pull the test data from [here](https://github.com/jhuapl-bio/datasets/tree/main/sequencing) into `examples/data`
+
+2. Running Kraken2 and FASTQC report with flukraken db
 
 ```
 
