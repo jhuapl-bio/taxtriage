@@ -128,7 +128,7 @@ def main(argv=None):
         empty = ['None']
         for x in range(0, len(header)-1 ):
             empty.append("N/A")
-        writer.writerow(empty)
+        # writer.writerow(empty)
 
     else:
         for key, value in rows.items():
