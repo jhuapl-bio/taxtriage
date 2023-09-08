@@ -63,7 +63,9 @@ if (!params.assembly_file_type){
 }
 if (params.assembly && ch_assembly_txt.isEmpty() ) {
     exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"
-} 
+}  else if (params.assembly){
+    println "Assembly file present, using it to pull genomes from ncbi... ${params.assembly}"
+}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
