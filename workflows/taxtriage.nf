@@ -270,6 +270,7 @@ workflow TAXTRIAGE {
         ch_reads=nontrimmed_reads.mix(trimmed_reads)
     } 
     ch_fastp_reads = Channel.empty()
+    ch_fastp_html = Channel.empty()
     if (!params.skip_fastp) {
         FASTP (
             ch_reads,
@@ -279,6 +280,7 @@ workflow TAXTRIAGE {
         )
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
+        ch_fastp_html = FASTP.out.html
        
     }
     if (!params.skip_plots){
@@ -457,7 +459,8 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_reads.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_reads.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
     if (params.blastdb && !params.remoteblast){
         ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))

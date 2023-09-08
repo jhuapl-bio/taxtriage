@@ -206,8 +206,6 @@ END{
 	for (i in ireads){
 		for (pos in a[i]){
 			sumsq[i]+=a[i][pos]^2
-
-			
 		}
 		
 		tlen+=ilen[i];
@@ -310,33 +308,32 @@ END{
 		} else {
 			o6 = (num_keys/ilen[i])
 		}
-		result_str = ""
-		for (t in thresholds) {
-			threshold = t+0
-			threshold_count = 0
-			for (p in countpos) {
-				amount = countpos[p]+0
-				if ( amount  >= threshold) {
-					threshold_count++
-				}
-			}
-			result_str = result_str "," threshold "x:" round2(threshold_count/ilen[i])
-		}
+		# result_str = ""
+		# for (t in thresholds) {
+		# 	threshold = t+0
+		# 	threshold_count = 0
+		# 	for (p in countpos) {
+		# 		amount = countpos[p]+0
+		# 		if ( amount  >= threshold) {
+		# 			threshold_count++
+		# 		}
+		# 	}
+		# 	result_str = result_str "," threshold "x:" round2(threshold_count/ilen[i])
+		# }
 		o4=(sum[i]/total_bases);
 		o5=(adjsum[i]/adjtotal);
-		o8=(substr(result_str, 2))  
+		# o8=(substr(result_str, 2))  
 		# o6=(cov[i]/ilen[i]);
 		mean=sum[i]/ilen[i];
 		stdev=sqrt(abs(sumsq[i]-sum[i]^2/ilen[i])/ilen[i]);
 		o9=stdev/mean;
-		printf("%s\t%.0f\t%s\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i],o8, o1, o3, o4, o5, o6, mean, stdev, o9);
+		printf("%s\t%.0f\t%.0f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n", i, ilen[i], o1, o3, o4, o5, o6, mean, stdev, o9);
 	}
 }'  $PILEUP "$tmp/tmp2.sam"    > $OUTPUT
 # cat $OUTPUT
 #	i		ref accession
 #	ilen[i]	ref accession length (bp) [assembly length for .assemblies output]
 #	o1		total reads aligned to accession
-#	o2		genome x coverages
 #	o3		abundance based on total aligned reads (does NOT include unaligned reads in denominator)
 #	o4		abundance based on total bases of aligned reads
 #	o5		abundance based on total bases of aligned reads (adjusted for genome size)
