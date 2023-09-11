@@ -31,7 +31,7 @@ process DOWNLOAD_TAXTAB {
 
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-
+    def url = "https://github.com/jhuapl-bio/datasets/raw/main/databases/ncbi/taxonomy.tab.gz"
     """
     wget $url -O taxonomy.tab.gz && gzip -d taxonomy.tab.gz 
     """
