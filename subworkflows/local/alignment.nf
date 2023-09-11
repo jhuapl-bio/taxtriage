@@ -16,6 +16,8 @@ include { MERGE_FASTA } from '../../modules//local/merge_fasta'
 include { SPLIT_READS } from '../../modules/local/split_reads'
 include { BOWTIE2_ALIGN } from '../../modules/nf-core/bowtie2/align/main'
 include { BOWTIE2_BUILD } from '../../modules/nf-core/bowtie2/build/main'
+include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
+
 
 workflow ALIGNMENT {
     take:
@@ -31,7 +33,7 @@ workflow ALIGNMENT {
     ch_sams = Channel.empty()
     ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()
-    
+    ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
 
     
@@ -184,6 +186,14 @@ workflow ALIGNMENT {
         ch_stats = BCFTOOLS_STATS.out.stats
     }
 
+    RSEQC_BAMSTAT(
+        collected_bams
+    )
+    ch_bamstats = RSEQC_BAMSTAT.out.txt
+
+
+    RSEQC_BAMSTAT.out.txt.view()
+
 
     SAMTOOLS_MERGE(
         collected_bams
@@ -208,5 +218,6 @@ workflow ALIGNMENT {
     bams = ch_bams
     fasta  = ch_merged_fasta
     stats = ch_stats
+    bamstats = ch_bamstats
     versions = ch_versions
 }
