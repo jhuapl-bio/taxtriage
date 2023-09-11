@@ -210,7 +210,10 @@ workflow TAXTRIAGE {
             ch_db = params.db
         }
     } 
-    if (params.taxtab){
+    if (params.taxtab == 'default'){
+        DOWNLOAD_TAXTAB()
+        ch_taxdump = DOWNLOAD_TAXTAB.out.taxtab
+    } else if (params.taxtab) {
         ch_taxdump = file(params.taxtab, checkIfExists: true)
         println("Taxdump file provided, using it to pull genomes from... ${params.taxtab}")
     }  else {
