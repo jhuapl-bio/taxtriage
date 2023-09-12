@@ -113,9 +113,7 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
     - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
 2. Request a user account to brian.merritt@jhuapl.edu
     - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
-At this point follow all steps for setting up AWS. You should see some information like setting up an IAM user like so:
-
-[View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
+3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
 
 
