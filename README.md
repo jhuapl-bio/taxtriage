@@ -32,6 +32,9 @@ nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile te
 
 ❗If you want singularity instead, make sure to specify that in the profile instead of docker like: `test,singularity`
 
+### Cloud 
+
+Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 
 ### Local Data
 
