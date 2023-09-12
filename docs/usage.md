@@ -115,22 +115,8 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
     - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
 At this point follow all steps for setting up AWS. You should see some information like setting up an IAM user like so:
 
+[View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide2.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide3.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide4.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide5.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide6.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide7.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide8.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide9.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide10.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide11.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide12.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide13.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide14.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide15.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide16.png)
 
 
 
