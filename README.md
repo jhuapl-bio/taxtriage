@@ -39,7 +39,6 @@ Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 ### Local Data
 
 1. Pull the test data from [here](https://github.com/jhuapl-bio/datasets/tree/main/sequencing) into `examples/data`
-
 2. Running Kraken2 and FASTQC report with flukraken db
 
 ```
@@ -80,6 +79,13 @@ nextflow run ./main.nf \
    -resume
 
 ```
+
+
+If you want to download the databases from scratch, you can see them here
+Make sure to Download these databases to your `Desktop` or wherever you are the most comfortable. Remember the location and specify the `--db` parameter as the absolute path. For example `~/Desktop/flukraken2`. Also, remove the `--download-db` parameter
+  - [standard-8](https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz)
+  - [viral](https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz)
+  - [flukraken2](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz)
 
 
 # ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_light.png#gh-light-mode-only) ![nf-core/taxtriage](docs/images/nf-core/taxtriage_logo_dark.png#gh-dark-mode-only)
