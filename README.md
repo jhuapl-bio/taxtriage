@@ -118,7 +118,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
 1. Install [`Nextflow`](https://www.nextflow.io/docs/latest/getstarted.html#installation) (`>=21.10.3`)
 
-2. Install any of [`Docker`](https://docs.docker.com/engine/installation/), [`Singularity`](https://www.sylabs.io/guides/3.0/user-guide/) (you can follow [this tutorial](https://singularity-tutorial.github.io/01-installation/)), [`Podman`](https://podman.io/), [`Shifter`](https://nersc.gitlab.io/development/shifter/how-to-use/) or [`Charliecloud`](https://hpc.github.io/charliecloud/) for full pipeline reproducibility _(you can use [`Conda`](https://conda.io/miniconda.html) both to install Nextflow itself and also to manage software within pipelines. Please only use it within pipelines as a last resort; see [docs](https://nf-co.re/usage/configuration#basic-configuration-profiles))_.
+2. Install any of [`Docker`](https://docs.docker.com/engine/installation/), [`Singularity`](https://www.sylabs.io/guides/3.0/user-guide/) (you can follow [this tutorial](https://singularity-tutorial.github.io/01-installation/)), for full pipeline reproducibility _(you can use [`Conda`](https://conda.io/miniconda.html) both to install Nextflow itself and also to manage software within pipelines. Please only use it within pipelines as a last resort; see [docs](https://nf-co.re/usage/configuration#basic-configuration-profiles))_.
 
 3. Download the pipeline and test it on a minimal dataset with a single command:
 
@@ -128,7 +128,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
    Note that some form of configuration will be needed so that Nextflow knows how to fetch the required software. This is usually done in the form of a config profile (`YOURPROFILE` in the example command above). You can chain multiple config profiles in a comma-separated string.
 
-   > - The pipeline comes with config profiles called `docker`, `singularity`, `podman`, `shifter`, `charliecloud` and `conda` which instruct the pipeline to use the named tool for software management. For example, `-profile test,docker`.
+   > - The pipeline comes with config profiles called `docker`, `singularity`, and `conda` which instruct the pipeline to use the named tool for software management. For example, `-profile test,docker`.
    > - Please check [nf-core/configs](https://github.com/nf-core/configs#documentation) to see if a custom config file to run nf-core pipelines already exists for your Institute. If so, you can simply use `-profile <institute>` in your command. This will enable either `docker` or `singularity` and set the appropriate execution settings for your local compute environment.
    > - If you are using `singularity`, please use the [`nf-core download`](https://nf-co.re/tools/#downloading-pipelines-for-offline-use) command to download images first, before running the pipeline. Setting the [`NXF_SINGULARITY_CACHEDIR` or `singularity.cacheDir`](https://www.nextflow.io/docs/latest/singularity.html?#singularity-docker-hub) Nextflow options enables you to store and re-use the images from a central location for future pipeline runs.
    > - If you are using `conda`, it is highly recommended to use the [`NXF_CONDA_CACHEDIR` or `conda.cacheDir`](https://www.nextflow.io/docs/latest/conda.html) settings to store the environments in a central location for future pipeline runs.
@@ -138,7 +138,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
    <!-- TODO nf-core: Update the example "typical command" below used to run the pipeline -->
 
    ```console
-   nextflow run nf-core/taxtriage --input samplesheet.csv --outdir <OUTDIR> --genome GRCh37 -profile <docker/singularity/podman/shifter/charliecloud/conda/institute>
+           nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest --outdir test_output -profile <docker/singularity/conda>
    ```
 
 ## Modules
@@ -148,7 +148,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 3.	Trimming (Trimgalore – Illumina, Porechop – Oxford Nanopore)
 4.	Filtering ( Kraken2 – Illlumina, Oxford Nanopore)
 5.	QC Plotting part 2 (FastQC – Illlumina, Nanoplot – Oxford Nanopore)
-6.	Classification ( Kraken2 – Illumina, Oxford Nanopore)
+6.	Classification ( Kraken2 – Illumina, Oxford Nanopore, Krona Plots)
 7.	Alignment for Stats ( BWAMEM2 – Illumina, Minimap2 – Oxford Nanopore)
    - :warning:Currently, the only realignment is going to be based on a taxid call. For example, if there will not be a complete realignment of "order" despite there being multiple species all within that order. For the most part, this is limited to more specific ranks like species, strain, subspecies etc. 
 8.	Report Generation ( MultiQC – Illumina, Oxford Nanopore)
@@ -162,7 +162,7 @@ The nf-core/taxtriage pipeline comes with documentation about the pipeline [usag
 
 ## Credits
 
-nf-core/taxtriage was originally written by Brian Merritt.
+nf-core/taxtriage was originally written by Brian Merritt, MS Bioinformatics.
 
 We thank the following people for their extensive assistance in the development of this pipeline:
 
@@ -171,8 +171,6 @@ We thank the following people for their extensive assistance in the development 
 ## Contributions and Support
 
 If you would like to contribute to this pipeline, please see the [contributing guidelines](.github/CONTRIBUTING.md).
-
-For further information or help, don't hesitate to get in touch on the [Slack `#taxtriage` channel](https://nfcore.slack.com/channels/taxtriage) (you can join with [this invite](https://nf-co.re/join/slack)).
 
 ## Citations
 
