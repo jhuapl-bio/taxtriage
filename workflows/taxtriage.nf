@@ -58,6 +58,9 @@ if (!params.assembly){
     println "Assembly file present, using it to pull genomes from... ${params.assembly}"
     ch_assembly_txt=file(params.assembly, checkIfExists: true)
 }
+
+
+
 if (!params.assembly_file_type){
     ch_assembly_file_type = 'ncbi'
 } else {
@@ -68,7 +71,8 @@ if (params.assembly && ch_assembly_txt.isEmpty() ) {
     exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"
 }  else if (params.assembly){
     println "Assembly file present, using it to pull genomes from ncbi... ${params.assembly}"
-}
+} 
+
 
 
 
@@ -195,7 +199,6 @@ workflow TAXTRIAGE {
                 supported_dbs[params.db]["url"],
                 supported_dbs[params.db]["checksum"]
             )
-            DOWNLOAD_DB.out.k2d.view()
             ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
             
             println("_____________")
@@ -353,61 +356,53 @@ workflow TAXTRIAGE {
         )
         ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
-    // if ( !params.skip_krona){ // to be continued
-    //     KRAKENTOOLS_COMBINEKREPORTS(
-    //         ch_kraken2_report
-    //     )
-    //     KRONA(
-    //         KRAKENTOOLS_COMBINEKREPORTS.out.txt       
-    //     )
-    // }
+    
     
 
     TOP_HITS (
         ch_kraken2_report
-        
     )
     MERGEDKRAKENREPORT(
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
     )
     ch_mergedtsv = Channel.empty()
+    
     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
     if (!params.skip_realignment){
-        ch_hit_to_kraken_report = TOP_HITS.out.tops.join(
-            ch_filtered_reads
-        )
-        ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
-            KRAKEN2_KRAKEN2.out.classified_reads_assignment
-        )
-        if (ch_assembly_file_type == 'ncbi' ){
-            DOWNLOAD_ASSEMBLY (
-                ch_hit_to_kraken_report,
-                ch_assembly_txt
-            )
-            PULL_FASTA (
-                DOWNLOAD_ASSEMBLY.out.fasta
-            )
+        ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
+        
+        if (params.reference_fasta){
+            ch_reference_fasta = params.reference_fasta ? Channel.fromPath( params.reference_fasta, checkIfExists: true ) : Channel.empty()
+            ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
+                ch_reference_fasta
+            )  
         } else {
-            ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
-                meta, report, classified_fastqs, reads_class -> [ meta, report, classified_fastqs, reads_class, ch_assembly_txt]
+            ch_hit_to_kraken_report.view()
+            if (ch_assembly_file_type == 'ncbi' ){
+                DOWNLOAD_ASSEMBLY (
+                    ch_hit_to_kraken_report,
+                    ch_assembly_txt
+                )
+                ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
+                    DOWNLOAD_ASSEMBLY.out.fasta
+                )               
+            } else {
+                ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
+                    meta, report, reads_class -> [ meta, report, ch_assembly ]
+                }
             }
-            PULL_FASTA (
-                ch_hit_to_kraken_report
-            )
         }
-        ch_new  = PULL_FASTA.out.fastq.join(PULL_FASTA.out.fasta)
-        ch_new = ch_new.map{
-            m, fastq, fasta -> [m, fastq, ( fasta instanceof List  ? fasta : [fasta] )  ]
-        }
+        // ch_new = ch_hit_to_kraken_report.join(ch_reads)
         ALIGNMENT(
-            ch_new
+            ch_hit_to_kraken_report
         )
+
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bamstats = ALIGNMENT.out.bamstats
+        ch_depth = ALIGNMENT.out.depth
 
         CONFIDENCE_METRIC (
-            ALIGNMENT.out.sam,
-            ALIGNMENT.out.mpileup
+            ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
         )
         
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
@@ -489,11 +484,11 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
-    if (params.blastdb && !params.remoteblast){
-        ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
-    } else if (params.blastdb && params.remoteblast){
-        ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
-    }
+    // if (params.blastdb && !params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // } else if (params.blastdb && params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // }
     if (params.trim){
         ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
     }

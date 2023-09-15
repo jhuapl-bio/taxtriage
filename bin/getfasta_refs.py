@@ -252,8 +252,8 @@ def main(argv=None):
         )
         # print(taxids, "\n\n\n", parents)
         write_filtered(args.dir_out, filtered_taxids, args.samplename)
-        if args.reads and args.assignment_reads:
-            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.dir_out, taxids)
+        # if args.reads and args.assignment_reads:
+        #     get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.dir_out, taxids)
     elif args.type == 'list' and len(args.input) > 0:
         filtered_taxids = import_filter_fasta(
             args.input.split(" "), 
@@ -262,8 +262,8 @@ def main(argv=None):
             args.pos_taxid_header
         )
         write_filtered(args.dir_out, filtered_taxids, args.samplename)
-        if args.reads and args.assignment_reads:
-            get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_reads_out,[])
+        # if args.reads and args.assignment_reads:
+        #     get_fastq_filtered(filtered_taxids, args.reads, args.assignment_reads, args.file_reads_out,[])
     elif not args.input and args.type == 'list':
         logger.error(f"The given input list of taxids: {args.input} was not found!")
         sys.exit(2)

@@ -6,14 +6,15 @@ include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
 include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
-include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
-include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
+// include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
+include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/bcftools/mpileup/main'
+include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
 include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_OXFORD } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
 include { MERGE_FASTA } from '../../modules//local/merge_fasta'
-include { SPLIT_READS } from '../../modules/local/split_reads'
+include { SPLIT_VCF } from '../../modules/local/split_vcf'
 include { BOWTIE2_ALIGN } from '../../modules/nf-core/bowtie2/align/main'
 include { BOWTIE2_BUILD } from '../../modules/nf-core/bowtie2/build/main'
 include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
@@ -45,145 +46,136 @@ workflow ALIGNMENT {
 
     ch_versions = 1
     
-    ch_aligners.shortreads
-        .transpose(by:[2])
-        .map{
-            m, fastq, fasta ->
-                def basename = fasta.baseName
-                def id = basename
-                return [ [id:id, platform:m.platform, base: m.id] , fastq, fasta ]
-        }
-        .set{ transposed_fastas_illumina }
+    // ch_aligners.shortreads
+    //     .transpose(by:[2])
+    //     .map{
+    //         m, report, fasta, fastq ->
+    //             def basename = fasta.baseName
+    //             def id = basename
+    //             return [ [id:id, platform:m.platform, base: m.id] , fastq, fasta ]
+    //     }
+    //     .set{ transposed_fastas_illumina }
     
 
 
-    ch_aligners.longreads
-        .transpose(by:[2])
-        .map{
-            m, fastq, fasta ->
-                def basename = fasta.baseName
-                def id = basename
-                return [ [id:id, single_end: true, platform:m.platform, base: m.id], fastq, fasta ]
-        }
-        .set{ transposed_fastas_oxford }
-    // BWA_INDEX (
-    //     transposed_fastas_illumina.map{ m, fastq, fasta -> 
-    //         return fasta 
+    // ch_aligners.longreads
+    //     .transpose(by:[2])
+    //     .map{
+    //         m, report, fasta, fastq ->
+    //             def basename = fasta.baseName
+    //             def id = basename
+    //             return [ [id:id, single_end: true, platform:m.platform, base: m.id], fastq, fasta ]
     //     }
-    // )
-    // BWA_MEM(
-    //     transposed_fastas_illumina.map{ m, fastq, fasta -> 
-    //         return [ m, fastq ] 
-    //     },
-    //     BWA_INDEX.out.index,
-    //     true
-    // )
-    // ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+    //     .set{ transposed_fastas_oxford }
+    //// BWA_INDEX (
+    ////   transposed_fastas_illumina.map{ m, fastq, fasta -> 
+    ////        return fasta 
+    ////     }
+    //// )
+    //// BWA_MEM(
+    ////     transposed_fastas_illumina.map{ m, fastq, fasta -> 
+    ////         return [ m, fastq ] 
+    ////     },
+    ////     BWA_INDEX.out.index,
+    ////     true
+    //// )
+    //// ch_bams = ch_bams.mix(BWA_MEM.out.bam)
+
+
     BOWTIE2_BUILD (
-        transposed_fastas_illumina.map{ m, fastq, fasta -> 
+        ch_aligners.shortreads.map{  m, report, fastq, fasta  -> 
             return [ m, fasta  ]
         }
     )
     BOWTIE2_ALIGN(
-        transposed_fastas_illumina.map{ m, fastq, fasta -> 
+        ch_aligners.shortreads.map{  m, report, fastq, fasta  -> 
             return [ m, fastq ] 
         },
         BOWTIE2_BUILD.out.index,
         false,
         true
     )
-    ch_bams = ch_bams.mix(BOWTIE2_ALIGN.out.aligned)
+    illumina_alignments = ch_aligners.shortreads.join(
+        BOWTIE2_ALIGN.out.aligned
+    ) 
 
 
     MINIMAP2_ALIGN (
-        transposed_fastas_oxford.map{ m, fastq, fasta -> [ m, fastq ] },
-        transposed_fastas_oxford.map{ meta, fastq, fasta -> fasta },
+        ch_aligners.longreads.map{ m, report, fastq, fasta -> [ m, fastq ] },
+        ch_aligners.longreads.map{ meta, report, fastq, fasta -> fasta },
         true,
         true,
         true
     )
-    ch_bams = ch_bams.mix(MINIMAP2_ALIGN.out.bam)
+    nanopore_alignments = ch_aligners.longreads.join(
+        MINIMAP2_ALIGN.out.bam
+    ) 
 
-    ch_bams.map{
-        m, bams ->
-        return [m.base,m, bams]
-
-    }.groupTuple(by:0).map{
-        base,meta,fasta -> [meta.first(), fasta]
-    }.set{ collected_bams }
-    fastq_reads.map{
-        m, reads, fasta ->
-            [ m.id, m, reads ]
-        
-    }
-    .join(
-    collected_bams
-    .map{
-        m,bams -> 
-        return [ m.base, bams ]
-    }
-    , by:0)
-    .map{
-        id, m, fastqs, bams -> [ m, bams ]
+    nanopore_alignments.mix(illumina_alignments).map{
+        m, report, fastq, fasta, bam -> [ m, bam ]
     }.set { collected_bams }
+    
+
+    
+    SAMTOOLS_DEPTH(
+        collected_bams, 
+    )
 
     if (!params.skip_variants){
         BCFTOOLS_MPILEUP_OXFORD(
-            MINIMAP2_ALIGN.out.bam, 
-            transposed_fastas_oxford.map{m,fastq,fasta -> fasta },
+            nanopore_alignments.map{ m, report, fastq, fasta, bam -> [m, bam] },
+            nanopore_alignments.map{ m, report, fastq, fasta, bam -> fasta },
             false
         )
         ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
-        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(transposed_fastas_oxford.map{m,fastq,fasta -> [m,fasta] })
+        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(nanopore_alignments.map{ m, report, fastq, fasta, bam -> [m,fasta] })
         
         BCFTOOLS_MPILEUP_ILLUMINA(
-            BOWTIE2_ALIGN.out.aligned, 
-            transposed_fastas_illumina.map{m,fastq,fasta -> fasta },
+            illumina_alignments.map{ m, report, fastq, fasta, bam -> [m, bam] },
+            illumina_alignments.map{ m, report, fastq, fasta, bam -> fasta },
             false
-        )    
+        )  
+        
+        .set{ transposed_fastas_oxford }  
         ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
-        ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(transposed_fastas_illumina.map{m,fastq,fasta -> [m,fasta] })
+        ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(illumina_alignments.map{ m, report, fastq, fasta, bam -> [m,fasta] })
 
         ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
-        BCFTOOLS_STATS(
-            ch_merged_mpileup.map{
-                m, vcf, tbi, fasta -> [m, vcf, tbi]
-                
-            },
-            [],
-            [],
-            []
-        )
+        if (!params.skip_stats){
+            SPLIT_VCF(
+                ch_merged_mpileup.map{
+                    m, vcf, tbi, fasta -> [m, vcf, tbi]
+                }
+            )
+            ch_vcf_split = SPLIT_VCF.out.vcfs.transpose(by:[1])
+            BCFTOOLS_INDEX(
+                ch_vcf_split
+            )
+            ch_vcf_split_windx = ch_vcf_split.join(BCFTOOLS_INDEX.out.csi)
+            
+            .map {
+                m, vcf, csi ->
+                    def parts = vcf.baseName.split("\\.")
+                    def id = "${parts[0]}.${parts[1]}"
+                    return [ [id:id, single_end: true, platform:m.platform, base: m.id], vcf, csi ]
+            }
+            
+            // ch_stats = BCFTOOLS_STATS.out.stats
+            BCFTOOLS_STATS(
+                ch_vcf_split_windx,
+                [], 
+                [], 
+                []
+            )
+            ch_stats = BCFTOOLS_STATS.out.stats
+        }
         if (!params.skip_consensus){
             BCFTOOLS_CONSENSUS (
                 ch_merged_mpileup
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
-            BCFTOOLS_CONSENSUS.out.fasta.map{
-                m,fasta-> [m.base,m,fasta]
-            }.groupTuple(by:0).map{
-                base,meta,fasta -> [meta.first(), fasta]
-            }.set{ ch_fasta }
-            MERGE_FASTA(
-                ch_fasta
-            )
-            ch_fasta = MERGE_FASTA.out.fasta
-            collected_bams.map{
-                m, bams->
-                    [ m.id, m, bams ]
-                
-            }.join(
-            ch_fasta
-            .map{
-                m,fasta -> 
-                return [ m.base, fasta ]
-            }
-            , by:0)
-            .map{
-                id, m, bams, fasta -> [ m, fasta ]
-            }.set { ch_merged_fasta }
         }
-        ch_stats = BCFTOOLS_STATS.out.stats
+        
     }
 
     RSEQC_BAMSTAT(
@@ -192,20 +184,16 @@ workflow ALIGNMENT {
     ch_bamstats = RSEQC_BAMSTAT.out.txt
 
 
-    RSEQC_BAMSTAT.out.txt.view()
 
 
-    SAMTOOLS_MERGE(
-        collected_bams
-    )
-    BAM_TO_SAM(
-        SAMTOOLS_MERGE.out.bam
-    )
-    ch_sams=BAM_TO_SAM.out.sam
-    ch_pileups=BAM_TO_SAM.out.mpileup
-    ch_bams = SAMTOOLS_MERGE.out.bam
-    
-    
+   
+    // BAM_TO_SAM(
+    //     collected_bams
+    // )
+    // ch_sams=BAM_TO_SAM.out.sam
+    // ch_pileups=BAM_TO_SAM.out.mpileup
+    ch_bams =  collected_bams
+    ch_depths = SAMTOOLS_DEPTH.out.tsv
     
 
     
@@ -213,8 +201,9 @@ workflow ALIGNMENT {
 
 
     emit:
-    sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
-    mpileup = ch_pileups
+    // sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
+    depth = ch_depths
+    mpileup = ch_merged_mpileup
     bams = ch_bams
     fasta  = ch_merged_fasta
     stats = ch_stats

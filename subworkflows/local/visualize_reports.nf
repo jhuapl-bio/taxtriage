@@ -50,10 +50,6 @@ workflow VISUALIZE_REPORTS {
             ch_krona 
         }
 
-        println("Done with the taxdump")
-        ch_krona.view()
-
-
     emit:
         krona = ch_krona
 

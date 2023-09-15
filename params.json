@@ -16,6 +16,7 @@
     "blastdb": null,
     "remoteblast": false,
     "skip_fastp": false,
+    "skip_stats": false, 
     "skip_plots": true,
     "skip_consensus": false,
     "skip_variants": false,
