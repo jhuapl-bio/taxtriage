@@ -72,7 +72,6 @@ def split_vcf(input_vcf_path, output_prefix):
                 # Open new file if taxid not encountered before
                 if taxid not in seen_files:
                     openfile = pysam.VariantFile(f"{output_prefix}{taxid}.vcf.gz", "w", header=header)
-                    openfile.write(header)
                     seen_files[taxid] = 1
                 # else:
                     # openfile.close()

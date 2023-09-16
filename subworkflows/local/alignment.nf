@@ -114,13 +114,9 @@ workflow ALIGNMENT {
                     m, vcf, tbi, fasta -> [m, vcf, tbi]
                 }
             )
-            println "___________"
             chff = SPLIT_VCF.out.vcfs.groupTuple()
                 .map { meta, vcfs -> [meta, vcfs.flatten()] } 
             ch_vcf_split = chff.transpose(by:[1])
-            ch_vcf_split.view()
-
-            println "0000000000000000"
             BCFTOOLS_INDEX(
                 ch_vcf_split
             )

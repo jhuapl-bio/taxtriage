@@ -370,7 +370,6 @@ workflow TAXTRIAGE {
                 ch_reference_fasta
             )  
         } else {
-            ch_hit_to_kraken_report.view()
             if (ch_assembly_file_type == 'ncbi' ){
                 DOWNLOAD_ASSEMBLY (
                     ch_hit_to_kraken_report,
@@ -386,6 +385,8 @@ workflow TAXTRIAGE {
             }
         }
         // ch_new = ch_hit_to_kraken_report.join(ch_reads)
+        ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> new File(fasta.toString()).length() > 0 }
+        
         ALIGNMENT(
             ch_hit_to_kraken_report
         )
