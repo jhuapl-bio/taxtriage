@@ -189,9 +189,10 @@ workflow TAXTRIAGE {
         ],
         
     ]
-
-    if (params.download_db) {
+    // if the download_db params is called AND the --db is not existient as a path
+    // then download the db
     
+    if (params.download_db &&  !file(params.db, checkIfExists: true) ) {
         if (supported_dbs.containsKey(params.db)) {
             println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]["size"]} of space."
             DOWNLOAD_DB (
@@ -465,7 +466,7 @@ workflow TAXTRIAGE {
     
     // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
 
 
     ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))

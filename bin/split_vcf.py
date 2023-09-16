@@ -54,17 +54,16 @@ def split_vcf(input_vcf_path, output_prefix):
     openfile = None
     lasttaxid = None
     try:
-        header = pysam.VariantFile(input_vcf_path).header
-
-        with (gzip.open(input_vcf_path, 'rt') if is_compressed else open(input_vcf_path, 'r')) as vcf_file:
+        vcf = pysam.VariantFile(input_vcf_path)
+        # with (gzip.open(input_vcf_path, 'rt') if is_compressed else open(input_vcf_path, 'r')) as vcf_file:
             # Open the VCF with pysam
-            vcf = pysam.VariantFile(vcf_file)
-            
+        header = vcf.header
+        for record in vcf:
             # Extract the header
             header = vcf.header
-
             for record in vcf:
                 taxid = record.chrom.split('|')[1]
+                print(record)
                 if lasttaxid != taxid:
                     if taxid in seen_files:
                         print("already seen:", taxid)
@@ -73,6 +72,7 @@ def split_vcf(input_vcf_path, output_prefix):
                 # Open new file if taxid not encountered before
                 if taxid not in seen_files:
                     openfile = pysam.VariantFile(f"{output_prefix}{taxid}.vcf.gz", "w", header=header)
+                    openfile.write(header)
                     seen_files[taxid] = 1
                 # else:
                     # openfile.close()
