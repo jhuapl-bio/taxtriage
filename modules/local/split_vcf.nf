@@ -27,7 +27,7 @@ process SPLIT_VCF {
     tuple val(meta), path(vcf), path(tbi)
 
     output:
-    tuple val(meta), path("*vcf.gz"), optional: false, emit: vcfs
+    tuple val(meta), path("*vcf.gz"), optional: true, emit: vcfs
     path "versions.yml"           , emit: versions
 
     when:

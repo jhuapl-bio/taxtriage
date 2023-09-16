@@ -316,15 +316,7 @@ workflow TAXTRIAGE {
         NANOPLOT (
             ch_reads.filter { it[0].platform == 'OXFORD'}
         )
-        // ch_nanoplot_files_reformatted = NANOPLOT.out.html.map{
-        //     meta, record -> [ meta, record.findAll{ !( it =~ /.*NanoPlot-report.html/) }  ]
-        // }
-        ch_nanoplot_files_reformatted = NANOPLOT.out.html.map{
-            meta, record -> [ meta, record.findAll{ ( it =~ /NanoPlot-report.html/) }  ]
-        }
-        MOVE_NANOPLOT(
-            ch_nanoplot_files_reformatted
-        )
+        
        
     }
     

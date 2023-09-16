@@ -46,40 +46,7 @@ workflow ALIGNMENT {
 
     ch_versions = 1
     
-    // ch_aligners.shortreads
-    //     .transpose(by:[2])
-    //     .map{
-    //         m, report, fasta, fastq ->
-    //             def basename = fasta.baseName
-    //             def id = basename
-    //             return [ [id:id, platform:m.platform, base: m.id] , fastq, fasta ]
-    //     }
-    //     .set{ transposed_fastas_illumina }
     
-
-
-    // ch_aligners.longreads
-    //     .transpose(by:[2])
-    //     .map{
-    //         m, report, fasta, fastq ->
-    //             def basename = fasta.baseName
-    //             def id = basename
-    //             return [ [id:id, single_end: true, platform:m.platform, base: m.id], fastq, fasta ]
-    //     }
-    //     .set{ transposed_fastas_oxford }
-    //// BWA_INDEX (
-    ////   transposed_fastas_illumina.map{ m, fastq, fasta -> 
-    ////        return fasta 
-    ////     }
-    //// )
-    //// BWA_MEM(
-    ////     transposed_fastas_illumina.map{ m, fastq, fasta -> 
-    ////         return [ m, fastq ] 
-    ////     },
-    ////     BWA_INDEX.out.index,
-    ////     true
-    //// )
-    //// ch_bams = ch_bams.mix(BWA_MEM.out.bam)
 
 
     BOWTIE2_BUILD (
@@ -147,7 +114,10 @@ workflow ALIGNMENT {
                     m, vcf, tbi, fasta -> [m, vcf, tbi]
                 }
             )
-            ch_vcf_split = SPLIT_VCF.out.vcfs.transpose(by:[1])
+            chff = SPLIT_VCF.out.vcfs.groupTuple()
+                .map { meta, vcfs -> [meta, vcfs.flatten()] } 
+            chff.view()
+            ch_vcf_split = chff.transpose(by:[1])
             BCFTOOLS_INDEX(
                 ch_vcf_split
             )

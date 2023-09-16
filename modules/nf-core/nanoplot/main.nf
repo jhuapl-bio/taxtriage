@@ -27,9 +27,9 @@ process NANOPLOT {
         ("$ontfile".endsWith(".txt")) ? "--summary ${ontfile}" : ''
     """
     NanoPlot \\
-        $args \\
+        $args -p ${meta.id}_ \\
         -t $task.cpus \\
-        $input_file
+        $input_file 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         nanoplot: \$(echo \$(NanoPlot --version 2>&1) | sed 's/^.*NanoPlot //; s/ .*\$//')

@@ -82,7 +82,8 @@ def split_vcf(input_vcf_path, output_prefix):
                 openfile.write(record)
                 
     finally:
-        openfile.close()
+        if openfile:
+            openfile.close()
 
     
 

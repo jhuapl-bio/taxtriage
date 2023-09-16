@@ -24,10 +24,11 @@ process MOVE_NANOPLOT {
         'gcc:bullseye' }"
 
     input:
-    tuple val(meta), path(html)
+    tuple val(meta), path(html), path(stats)
 
     output:
     tuple val(meta), path("*_mqc.html"), optional: false, emit: html
+    tuple val(meta), path("*NanoStats.txt"), optional: false, emit: stats
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,7 +39,8 @@ process MOVE_NANOPLOT {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     
-    def output = "${meta.id}_mqc.html"
+    def output_html = "${meta.id}_mqc.html"
+    def output_stats = "${meta.id}_mqc.stats"
 
     """
 
@@ -46,6 +48,13 @@ process MOVE_NANOPLOT {
     for i in "\${array[@]}"
     do
         mv \$i ${meta.id}_\${i}_mqc.html
+    done
+
+    array=( $stats )
+    for i in "\${array[@]}"
+    do
+        echo \$i
+        mv \$i ${meta.id}_\${i}
     done
 
 
