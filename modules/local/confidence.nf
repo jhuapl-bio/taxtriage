@@ -18,18 +18,16 @@ process CONFIDENCE_METRIC {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
+    conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
-        'euformatics/gawk-curl-jq:2021-11-03' }"
+        'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
+        'quay.io/biocontainers/pysam:0.21.0--py39hcada746_1' }"
  
     input:
-    tuple val(meta), path(sam)
-    path(mpileup)
+    tuple val(meta), path(bam), path(depth)
 
     output:
     tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
-    tuple val(meta), path("*reads"), optional: false, emit: reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -47,15 +45,14 @@ process CONFIDENCE_METRIC {
     """
     
 
-    sam_to_confidence.sh \\
-        -i $sam \\
-        -m $mpileup \\
+    sam_to_confidence.py \\
+        -i $bam \\
         -o $output \\
-        -r ${meta.id}.reads
+        -d $depth 
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        awk: \$(awk --version )
+        python3: \$(python3 --version | sed 's/Python //g')
     END_VERSIONS
 
     """

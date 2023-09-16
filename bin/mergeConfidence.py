@@ -94,7 +94,11 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
         taxid = splitrow[1]
         if format_kraken2:
             row[0] = taxid
-        rows[taxid] = row
+        if taxid not in rows:
+            rows[taxid] = [row]
+        else:
+            rows[taxid].append(row)
+        
         if samplename:
             row[0] = row[0] +"_" + samplename + "_" + ref
             # row[0] = row[0] +"_" + samplename  
@@ -106,8 +110,11 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
         rank=row[3]  
         name = row[5].strip()
         if taxid in rows:
-            rows[taxid].insert(1,rank)   
-            rows[taxid].insert(1,name)      
+            for i in range(0, len(rows[taxid])):
+                rows[taxid][i].insert(1,rank)   
+                rows[taxid][i].append(name)
+    # filter rows where no taxid or name
+    
     report_file.close()
     
     return rows
@@ -122,17 +129,21 @@ def main(argv=None):
     rows = import_file(args.file_in, args.kraken_report, args.sample, args.taxid_format_kraken2)
     path  = open(args.file_out, "w")
     writer = csv.writer(path, delimiter='\t')
-    header = ['Acc', 'Name', 'Rank', 'Length', 'X Cov.:Pos. Amt.', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation']
+    # header = ['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation']
+    header = ["Acc", "Rank", "Mean Depth", "Avg Cov.", "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
     writer.writerow(header)
     if len(rows.keys()) == 0:
         empty = ['None']
         for x in range(0, len(header)-1 ):
             empty.append("N/A")
-        writer.writerow(empty)
-
     else:
         for key, value in rows.items():
-            writer.writerow(value)
+            for r in value:
+                if len(r) == len(header):
+                    writer.writerow(r)
+                else:
+                    print(f"Mismatch in length of header and row, skipping {value}")
+            
     path.close()    
 if __name__ == "__main__":
     sys.exit(main())

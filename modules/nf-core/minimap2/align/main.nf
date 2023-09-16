@@ -31,7 +31,6 @@ process MINIMAP2_ALIGN {
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     """
     
-
     minimap2 \\
         $args \\
         -t $task.cpus \\

@@ -1,7 +1,9 @@
 nf-core/*
 ./test
 tmp*
+test_*
 ./Samplesheet*csv
+examples/data/*
 examples/*
 examples/Samplesheet.csv
 ./examples/Samplesheet*csv

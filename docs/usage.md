@@ -113,32 +113,10 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
     - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
 2. Request a user account to brian.merritt@jhuapl.edu
     - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
-At this point follow all steps for setting up AWS. You should see some information like setting up an IAM user like so:
+3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
 
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide2.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide3.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide4.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide5.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide6.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide7.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide8.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide9.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide10.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide11.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide12.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide13.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide14.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide15.png)
-![CloudDeck](images/Cloud_AWS_NFTower_only/Slide16.png)
-
-
-
-
-
-
-<!-- ![IAM Examples](images/iam_example.png) -->
-<img src="images/iam_example.png" alt="drawing" height="300"/>
+#### Working with your own data NF Tower
 
 When all necessary items have been setup, you'll need to load your data you want to run into an S3 bucket. Be aware that all filesystem refrences to files/directories need to be relative to the S3 bucket. However, with things like the Samplesheet, the paths can be relative only within the S3 bucket so you don't need to use things like `S3://bucketname/path/to/file `
 
@@ -150,21 +128,21 @@ In the above example, I've made an s3 bucket with necessary permissions for next
 
 Once the AWS system is setup, let's head back to Nextflow Tower. On the left, you can select a drop-down and open up your own personal launchpad (and other features)
 
-<img src="images/cloud_showcase_nftower.png" alt="drawing" height="300"/>
+<img src="images/cloud_showcase_nftower.png" alt="drawing" width="40%" height="20%"/>
 
-<img src="images/addpipeline.png" alt="drawing" />
+<img src="images/addpipeline.png"  width="20%" height="30%">
 
-<!-- <img src="images/taxtriagelaunchpad1.png" alt="drawing" height="300"/> -->
 
-![Launchpad1](images/taxtriagelaunchpad1.png)
+<img src="images/taxtriagelaunchpad1.png"  width="50%" height="50%">
+
 
 MAKE SURE that the compute environment matches the one you set up when you set your credentials in AWS with NF tower
 
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
 
+<img src="images/taxtriagelaunchpad2.png"  width="50%" height="50%">
 
-![Launchpad2](images/taxtriagelaunchpad2.png)
 
 Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
 

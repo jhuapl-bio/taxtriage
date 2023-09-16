@@ -64,6 +64,14 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "reference_fasta": {
+                    "type": "string",
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "Reference FASTA file to use instead of using ncbi API to pull genomes. Useful for offlined pipelines",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
+                },
                 "filter": {
                     "type": "string",
                     "format": "directory-path",
@@ -103,6 +111,18 @@
                 "skip_plots": {
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "taxtab": {
+                    "type": "string",
+                    "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
+                    "default": "default",
+                    "description": "Taxonomy tab file for krona plots",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_stats": {
+                    "type": "boolean",
+                    "description": "Skip generating stats for each individual taxa per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_fastp": {

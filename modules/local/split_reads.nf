@@ -38,7 +38,6 @@ process SPLIT_READS {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     
-    def output = "${meta.id}.blast.txt"
 
     
 
