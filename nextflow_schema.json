@@ -113,6 +113,12 @@
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "taxtab": {
+                    "type": "string",
+                    "default": "default",
+                    "description": "Taxonomy tab file for krona plots",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_stats": {
                     "type": "boolean",
                     "description": "Skip generating stats for each individual taxa per sample",
