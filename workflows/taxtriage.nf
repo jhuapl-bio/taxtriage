@@ -191,8 +191,7 @@ workflow TAXTRIAGE {
     ]
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
-    
-    if (params.download_db &&  !file(params.db, checkIfExists: true) ) {
+    if (params.download_db ) {
         if (supported_dbs.containsKey(params.db)) {
             println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]["size"]} of space."
             DOWNLOAD_DB (
@@ -203,11 +202,12 @@ workflow TAXTRIAGE {
             ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
             
             println("_____________")
-
+        } else if  (params.db)  {
+            file(params.db, checkIfExists: true)
+            ch_db = params.db
         } else {
             println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
         }
-
     } else {
         if (params.db) {
             file(params.db, checkIfExists: true)
@@ -385,6 +385,7 @@ workflow TAXTRIAGE {
             }
         }
         // ch_new = ch_hit_to_kraken_report.join(ch_reads)
+
         ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> new File(fasta.toString()).length() > 0 }
         
         ALIGNMENT(
