@@ -115,6 +115,7 @@
                 },
                 "taxtab": {
                     "type": "string",
+                    "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
                     "default": "default",
                     "description": "Taxonomy tab file for krona plots",
                     "fa_icon": "fas fa-file-signature"
