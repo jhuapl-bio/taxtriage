@@ -170,7 +170,7 @@ def get_assemblies(refs, outfile, seen, index_ftp):
         path: folder to save to
     """
     ids = refs.keys()
-    if index_ftp:
+    if index_ftp and len(ids) > 0:
         with open(outfile, "a") as w:
             for id in ids:
                 if seen and id in seen:
@@ -225,6 +225,9 @@ def get_assemblies(refs, outfile, seen, index_ftp):
         #     urllib.request.urlretrieve(link, f'{label}.fna.gz')
     return links
 def download(refs, db, outfile, seen):
+    # if refs is not empty
+    if len(refs.items()) == 0:
+        return 
     with open(outfile, "a") as w:
         i = 0
         maxt = 30

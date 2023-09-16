@@ -43,7 +43,7 @@ workflow ALIGNMENT {
         longreads: it[0].platform =~ 'OXFORD'
         shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
-
+    
     ch_versions = 1
     
     

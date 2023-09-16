@@ -385,9 +385,8 @@ workflow TAXTRIAGE {
             }
         }
         // ch_new = ch_hit_to_kraken_report.join(ch_reads)
-
-        ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> new File(fasta.toString()).length() > 0 }
-        ch_hit_to_kraken_report.view()
+        // ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> fasta != null }
+        
         ALIGNMENT(
             ch_hit_to_kraken_report
         )

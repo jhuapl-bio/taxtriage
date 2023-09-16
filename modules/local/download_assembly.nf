@@ -32,7 +32,7 @@ process DOWNLOAD_ASSEMBLY {
 
 
     output:
-    tuple val(meta),  path("*.output.references.fasta"), optional: false, emit: fasta
+    tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
     path "versions.yml"           , emit: versions
 
     when:
