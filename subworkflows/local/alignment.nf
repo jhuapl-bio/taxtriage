@@ -8,6 +8,7 @@ include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 // include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
+include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
@@ -86,6 +87,9 @@ workflow ALIGNMENT {
     
     SAMTOOLS_DEPTH(
         collected_bams, 
+    )
+    SAMTOOLS_INDEX (
+        collected_bams
     )
 
     if (!params.skip_variants){
