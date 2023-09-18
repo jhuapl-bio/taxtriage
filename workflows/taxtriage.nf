@@ -203,8 +203,7 @@ workflow TAXTRIAGE {
             
             println("_____________")
         } else if  (params.db)  {
-            file(params.db, checkIfExists: true)
-            ch_db = params.db
+            ch_db = file(params.db, checkIfExists: true)
         } else {
             println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
         }
@@ -415,32 +414,33 @@ workflow TAXTRIAGE {
 
     }
      
-    if (!params.skip_assembly){
-        illumina_reads =  PULL_FASTA.out.fastq.filter { it[0].platform == 'ILLUMINA'  }.map{
-            meta, reads -> 
-            [meta, reads, [], []]
-        }
-        SPADES_ILLUMINA(
-           illumina_reads
-        )
-        println("____")
-        println("____")
+    // if (!params.skip_assembly){
+    //     illumina_reads =  ch_hit_to_kraken_report.filter { it[0].platform == 'ILLUMINA'  }.map{
+    //         meta, reads -> 
+    //         [meta, reads, [], []]
+    //     }
+    //     SPADES_ILLUMINA(
+    //        illumina_reads
+    //     )
+    //     println("____")
+    //     println("____")
 
         
-        nanopore_reads = PULL_FASTA.out.fastq.filter{ it[0].platform == 'OXFORD'  }.map{
-            meta, reads -> 
-            [meta, [], [], [], reads]
-        }
-        SPADES_OXFORD(
-           illumina_reads
-        )
+    //     nanopore_reads = ch_hit_to_kraken_report
+    //     .filter{ it[0].platform == 'OXFORD'  }.map{
+    //         meta, class, reads -> 
+    //         [meta, [], [], [], reads]
+    //     }
+    //     SPADES_OXFORD(
+    //        illumina_reads
+    //     )
         
-        // FLYE(
-        //    nanopore_reads,
-        //    "--nano-raw"
-        // )
+    //     // FLYE(
+    //     //    nanopore_reads,
+    //     //    "--nano-raw"
+    //     // )
     
-    }
+    // }
 
 
     
