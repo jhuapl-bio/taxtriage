@@ -107,34 +107,14 @@ work                # Directory containing the nextflow working files
 
 ### Supported Default databases
 
-```
-"flukraken2": [
-            "url": "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz",
-            "checksum": "9d388703b1fa7c2e269bb63acf1043dbec7bb62da0a57c4fb1c41d8ab7f9c953",
-            "size": "180M"
-        ],
-        "minikraken2": [
-            "url": "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz",
-            "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
-            "size": "7.5G"
-        ],
-        "standard8": [
-            "url": "https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz",
-            "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
-            "size": "7.5G"
-        ],
-        "viral": [
-            "url": "https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz",
-            "checksum": "adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99",
-            "size": "553M"
-        ],
-        "test": [
-            "url": "https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz",
-            "checksum": "c7d50ca4f46885ce7d342a06e748f9390cf3f4157a54c995d34ecdabbc83e1b8",
-            "size": "112M"
-        ]
-```
-
+                                                                                               
+| Database Name | Location | Size | 
+| ------  | ------ | --- |
+| standard8  | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz) | 7.5G |
+| viral  | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz) | 553M |
+| flukraken2  | [Download](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz) | 180M |
+| test    |    [Download](https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz)   |    112M   |
+| minikraken2  | [Download](https://genome-idx.s3.amazonaws.com/kraken/minikraken2_v2_8GB_201904.tgz) | 7.5G |
 
 ## AWS with Nextflow Tower
 
