@@ -62,7 +62,7 @@ Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 ### Running it with the local config (for laptops/workstations) with limited RAM
 
 ```
-nextflow run ./main.nf  \
+nextflow run https://github.com/jhuapl-bio/taxtriage  \
   --outdir tmp_viral \
   -resume \
   --input examples/Samplesheet.csv \
@@ -75,7 +75,7 @@ nextflow run ./main.nf  \
 
 ```
 
-nextflow run ./main.nf \
+nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet_cli.csv \
    --db viral --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3   \
@@ -93,7 +93,7 @@ This will use a local assembly text and reference fasta, assuming the reference 
 
 ```
 
-nextflow run ./main.nf \
+nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet_cli.csv \
    --db minikraken2 --download_db \
    --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" --reference_fasta ./refer.fasta \
@@ -105,7 +105,7 @@ nextflow run ./main.nf \
 
 ```
 
-nextflow run ./main.nf \
+nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet_single.csv \
    --db viral --download_db \
    --outdir tmp/flu --remove_taxids "9606" \
