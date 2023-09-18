@@ -45,7 +45,7 @@ Make sure you have either Docker or Singularity installed, as well as Nextflow
 This will pull the test data and run the pipeline. It should take ~10-15 minutes.
 
 ```
-nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker --outdir test_output
+nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker --outdir test_output -resume
 ```
 
 ❗If you want singularity instead, make sure to specify that in the profile instead of docker like: `test,singularity`
