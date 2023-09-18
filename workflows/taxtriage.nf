@@ -158,7 +158,6 @@ include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 def multiqc_report = []
 
 
-
 workflow TAXTRIAGE {
 
     supported_dbs = [
