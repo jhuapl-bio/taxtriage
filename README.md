@@ -66,7 +66,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage  \
   --outdir tmp_viral \
   -resume \
   --input examples/Samplesheet.csv \
-  --taxtab "default" \
+  --taxtab "default" -r main -latest \
   --db "viral" --download-db \
   -profile local,docker  
 ```
@@ -76,7 +76,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage  \
 ```
 
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --input examples/Samplesheet_cli.csv \
+   --input examples/Samplesheet_cli.csv -r main -latest \
    --db viral --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3   \
    -profile docker  -resume --demux --remove_taxids "'9606'"
@@ -95,7 +95,7 @@ This will use a local assembly text and reference fasta, assuming the reference 
 
 nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet_cli.csv \
-   --db minikraken2 --download_db \
+   --db minikraken2 --download_db -r main -latest \
    --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" --reference_fasta ./refer.fasta \
    -profile singularity  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
 
@@ -107,7 +107,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 
 nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet_single.csv \
-   --db viral --download_db \
+   --db viral --download_db -r main -latest \
    --outdir tmp/flu --remove_taxids "9606" \
    --max_memory 10GB --max_cpus 3 -profile docker --skip_plots --skip_assembly \
    --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
