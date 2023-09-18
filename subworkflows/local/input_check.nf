@@ -43,31 +43,31 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.id         = row.sample
     meta.single_end = row.single_end.toBoolean()
     meta.platform = row.platform
-    meta.barcode = row.barcode.toBoolean()
+    meta.fastq_1 = row.fastq_1
+    meta.fastq_2 = row.fastq_2
     meta.trim = row.trim.toBoolean()
+    meta.directory = row.directory.toBoolean()
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
-    
-    if (row.from && file(row.from).exists()){
-        if (row.platform == 'OXFORD'){
-            meta.bc = row.bc
-            meta.from = row.from
-            fastq_meta = [ meta, [ file(row.from) ]  ]
+    println meta
+    if (meta.directory ){
+        if (meta.platform == 'OXFORD'){
+            fastq_meta = [ meta, [ file(meta.fastq_1) ]  ]
         } else {
-            exit 1, "ERROR: Please check input samplesheet -> the platform is not specified as OXFORD \n${row.sample}"
+            exit 1, "ERROR: Please check input samplesheet -> the platform is not specified as OXFORD \n${meta.sample}"
         }
     } else {
-        if (!file(row.fastq_1).exists()) {
-            exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${row.fastq_1}"
+        if (!file(meta.fastq_1).exists()) {
+            exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
         }
         if (meta.single_end) {
-            fastq_meta = [ meta, [ file(row.fastq_1) ] ]
+            fastq_meta = [ meta, [ file(meta.fastq_1) ] ]
         } else {
-            if (!file(row.fastq_2).exists()) {
-                exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${row.fastq_2}"
+            if (!file(meta.fastq_2).exists()) {
+                exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
             }
-            fastq_meta = [ meta, [ file(row.fastq_1), file(row.fastq_2) ] ]
+            fastq_meta = [ meta, [ file(meta.fastq_1), file(meta.fastq_2) ] ]
         }
     }
     

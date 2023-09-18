@@ -134,7 +134,7 @@ workflow ALIGNMENT {
                 m, vcf, csi ->
                     def parts = vcf.baseName.split("\\.")
                     def id = "${parts[0]}.${parts[1]}"
-                    return [ [id:id, single_end: true, platform:m.platform, base: m.id], vcf, csi ]
+                    return [ [id:id, platform:m.platform, base: m.id], vcf, csi ]
             }
             
             // ch_stats = BCFTOOLS_STATS.out.stats

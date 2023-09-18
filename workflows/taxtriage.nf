@@ -244,10 +244,10 @@ workflow TAXTRIAGE {
     
 
     ARTIC_GUPPYPLEX(
-        ch_reads.filter{ it[0].from   }
+        ch_reads.filter{ it[0].directory   }
     )
     ch_reads = ARTIC_GUPPYPLEX.out.fastq
-    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].from   })
+    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].directory   })
     
     if (params.subsample && params.subsample > 0){
         ch_subsample  = params.subsample
@@ -371,7 +371,9 @@ workflow TAXTRIAGE {
         } else {
             if (ch_assembly_file_type == 'ncbi' ){
                 DOWNLOAD_ASSEMBLY (
-                    ch_hit_to_kraken_report,
+                    ch_hit_to_kraken_report.map{
+                        meta, report, reads_class -> return [ meta, report ]
+                    },
                     ch_assembly_txt
                 )
                 ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(

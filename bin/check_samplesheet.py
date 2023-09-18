@@ -19,7 +19,7 @@
 
 """Provide a command line tool to validate and transform tabular samplesheets."""
 
-
+import os 
 import argparse
 import csv
 import logging
@@ -52,9 +52,9 @@ class RowChecker:
         self,
         sample_col="sample",
         first_col="fastq_1",
-        bc_col="sample",
         second_col="fastq_2",
         single_col="single_end",
+        dir_col="directory",
         **kwargs,
     ):
         """
@@ -70,13 +70,15 @@ class RowChecker:
             single_col (str): The name of the new column that will be inserted and
                 records whether the sample contains single- or paired-end sequencing
                 reads (default "single_end").
+            dir_col (str): The name of the new column that will be inserted and
+                records whether the sample is a directory of fastq files or not.
 
         """
         super().__init__(**kwargs)
         self._sample_col = sample_col
         self._first_col = first_col
         self._second_col = second_col
-        self._bc_col = bc_col
+        self._dir_col = dir_col
         self._single_col = single_col
         self._seen = set()
         self.modified = []
@@ -91,20 +93,36 @@ class RowChecker:
 
         """
         self._validate_sample(row)
-        print(row)
-        if  row['from'] and not row['fastq_1']  :
-            self._seen.add((row[self._sample_col], row[self._bc_col]))
+        # check if the path of row['fastq_1'] is a directory or file
+        # if directory, then row['fastq_1'] is the directory name
+        # if file, then row['fastq_1'] is the file name , check if the path is a directory too
+        if row['fastq_1'] and row['fastq_1'] != '' and not any( row['fastq_1'].endswith(extension) for extension in self.VALID_FORMATS):
+            row[self._single_col] = True
+            row[self._dir_col] = True
+            self._seen.add((row[self._sample_col], row[self._first_col]))
         else:
+            row[self._single_col] = True
+            row[self._dir_col] = False
             self._validate_first(row)
             self._validate_second(row)
             self._validate_pair(row)
             self._seen.add((row[self._sample_col], row[self._first_col]))
+        # for each attribute in row, strip spaces on either side
+        for key in row:
+            if isinstance(row[key], str):
+                row[key] = row[key].strip()
+                # if row[key] == 'trim':
+                    #uppercase the trim value
+                    # row[key] = row[key].upper()
+        print(row) 
         self.modified.append(row)
+
 
     def _validate_sample(self, row):
         """Assert that the sample name exists and convert spaces to underscores."""
         assert len(row[self._sample_col]) > 0, "Sample input is required."
         # Sanitize samples slightly.
+        row[self._dir_col] = False
         row[self._sample_col] = row[self._sample_col].replace(" ", "_")
 
     def _validate_first(self, row):
@@ -169,6 +187,7 @@ def sniff_format(handle):
 
     """
     header = handle.readline().rstrip()
+    # header = f"{header},single_end,directory"
     # peek = handle.read(2048)
     sniffer = csv.Sniffer()
     if not sniffer.has_header(header):
@@ -206,7 +225,7 @@ def check_samplesheet(file_in, file_out):
 
     """
     # required_columns = {"sample", "fastq_1", "fastq_2"}
-    required_columns = {"sample"}
+    required_columns = {"sample", "fastq_1", "platform"}
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_in.open(newline="", encoding='utf-8-sig') as in_handle:
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))
@@ -225,6 +244,7 @@ def check_samplesheet(file_in, file_out):
         checker.validate_unique_samples()
     header = list(reader.fieldnames)
     header.insert(1, "single_end")
+    header.insert(1, "directory")
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_out.open(mode="w", newline="") as out_handle:
         writer = csv.DictWriter(out_handle, header, delimiter=",")

@@ -21,10 +21,11 @@ You will need to create a samplesheet with information about the samples you wou
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
 ```console
-sample,fastq_1,fastq_2,platform,from,trim,sequencing_summary,single_end,barcode
-Sample_1,AEG588A1_S1_L001_R1_001.fastq.gz,AEG588A1_S1_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
-Sample_2,AEG588A1_S2_L001_R1_001.fastq.gz,AEG588A1_S2_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
-Sample_3,AEG588A1_S3_L001_R1_001.fastq.gz,AEG588A1_S3_L001_R2_001.fastq.gz,ILLUMINA,,FALSE,,FALSE,FALSE
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim
+NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
+shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
 ```
 
 
@@ -37,12 +38,11 @@ The `sample` identifiers have to be the same when you have re-sequenced the same
 
 
 ```console
-single_end,sample,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
-TRUE,NB01,data/test-run/fastq_demux/NB01,OXFORD,TRUE,,,data/test-run/sequencing_summarycovid.txt,
-TRUE,NB03,data/test-run/fastq_demux/NB03,OXFORD,TRUE,,,,
-TRUE,NB11,data/test-run/fastq_demux/NB11,OXFORD,TRUE,,,,
-TRUE,Sample_1,,OXFORD,FALSE,data/test-run/sample_metagenome.fastq.gz,,,
-FALSE,ERR6913101,,ILLUMINA,FALSE,data/test-run/ERR6913101_1.fastq.gz,data/test-run/ERR6913101_2.fastq.gz,,
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim
+NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
+shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
 ```
 
 ### Samplesheet Information
@@ -52,8 +52,6 @@ FALSE,ERR6913101,,ILLUMINA,FALSE,data/test-run/ERR6913101_1.fastq.gz,data/test-r
 | `sample`   | Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
 | `fastq_1`  | OPTIONAL (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                             |
 | `fastq_2`  | OPTIONAL. Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
-| `barcode`  | OPTIONAL. TRUE/FALSE, is the row attributed to a demultiplexed barcode folder of 1 or more fastq files or is it a single file that is .gz?                                                       |
-| `from`     | OPTIONAL (if not using fastq1/2) Directory path of the barcode, only used with the column being set as TRUE in the barcode column                                                                                       |
 | `platform` | Platform used, [ILLUMINA, OXFORD]                                                            |
 | `trim` | TRUE/FALSE, do you want to run trimming on the sample?                                       |
 | `sequencing_summary` | OPTIONAL. If detected, output plots based on the the sequencing summary file for that sample | 
@@ -65,8 +63,10 @@ An [example samplesheet](../examples/Samplesheet.csv) has been provided with the
 The typical command for running the pipeline is as follows:
 
 ```console
-nextflow run nf-core/taxtriage --input samplesheet.csv --outdir <OUTDIR> --demux --asssembly <assembly file> -profile docker
+nextflow run nf-core/taxtriage --input samplesheet.csv --outdir <OUTDIR> -profile docker
 ```
+
+:warning: please be aware that for local instances, due to limited resources, we have defined several config profiles. Please try `-profile test,docker` for a trial run of dummy data and then use `-profile local,docker` first on your own data before manually adjusting parameters
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
 
@@ -93,6 +93,7 @@ work                # Directory containing the nextflow working files
 | `--minq <number>`     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina         |
 | `--trim`     | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)  |
 | `--subsample <number>`     | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis      |
+| `--reference_fasta <filepath>`     | Location of a reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references     |
 | `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path |
 | `--download_db` | Download the preset database indicated in `--db` to `--outdir` |
 | `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
@@ -102,7 +103,7 @@ work                # Directory containing the nextflow working files
 | `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
 | `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
 | `-r [main, stable, etc.]` | Specify the branch/revision name to use if pulling from github (not local main.nf file) | 
-| `-profile [docker,singularity,conda]` | Conda, Singularity, or Docker | 
+| `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons | 
 
 
 ## AWS with Nextflow Tower
@@ -184,6 +185,7 @@ If `-profile` is not specified, the pipeline will run locally and expect all sof
 - `singularity`
   - A generic configuration profile to be used with [Singularity](https://sylabs.io/docs/)
 
+
 ### `-resume`
 
 Specify this when restarting a pipeline. Nextflow will use cached results from any pipeline steps where the inputs are the same, continuing from where it got to previously. For input to be considered the same, not only the names must be identical but the files' contents as well. For more info about this parameter, see [this blog post](https://www.nextflow.io/blog/2019/demystifying-nextflow-resume.html).
@@ -192,71 +194,10 @@ You can also supply a run name to resume a specific run: `-resume [run-name]`. U
 
 ## Custom configuration
 
-### Resource requests
-
-Whilst the default requirements set within the pipeline will hopefully work for most people and with most input data, you may find that you want to customise the compute resources that the pipeline requests. Each step in the pipeline has a default set of requirements for number of CPUs, memory and time. For most of the steps in the pipeline, if the job exits with any of the error codes specified [here](https://github.com/nf-core/rnaseq/blob/4c27ef5610c87db00c3c5a3eed10b1d161abf575/conf/base.config#L18) it will automatically be resubmitted with higher requests (2 x original, then 3 x original). If it still fails after the third attempt then the pipeline execution is stopped.
-
-For example, if the nf-core/rnaseq pipeline is failing after multiple re-submissions of the `STAR_ALIGN` process due to an exit code of `137` this would indicate that there is an out of memory issue:
-
-```console
-[62/149eb0] NOTE: Process `NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN (WT_REP1)` terminated with an error exit status (137) -- Execution is retried (1)
-Error executing process > 'NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN (WT_REP1)'
-
-Caused by:
-    Process `NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN (WT_REP1)` terminated with an error exit status (137)
-
-Command executed:
-    STAR \
-        --genomeDir star \
-        --readFilesIn WT_REP1_trimmed.fq.gz  \
-        --runThreadN 2 \
-        --outFileNamePrefix WT_REP1. \
-        <TRUNCATED>
-
-Command exit status:
-    137
-
-Command output:
-    (empty)
-
-Command error:
-    .command.sh: line 9:  30 Killed    STAR --genomeDir star --readFilesIn WT_REP1_trimmed.fq.gz --runThreadN 2 --outFileNamePrefix WT_REP1. <TRUNCATED>
-Work dir:
-    /home/pipelinetest/work/9d/172ca5881234073e8d76f2a19c88fb
-
-Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
-```
 
 ### Updating containers
 
 The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. If for some reason you need to use a different version of a particular tool with the pipeline then you just need to identify the `process` name and override the Nextflow `container` definition for that process using the `withName` declaration. For example, in the [nf-core/viralrecon](https://nf-co.re/viralrecon) pipeline a tool called [Pangolin](https://github.com/cov-lineages/pangolin) has been used during the COVID-19 pandemic to assign lineages to SARS-CoV-2 genome sequenced samples. Given that the lineage assignments change quite frequently it doesn't make sense to re-release the nf-core/viralrecon everytime a new version of Pangolin has been released. However, you can override the default container used by the pipeline by creating a custom config file and passing it as a command-line argument via `-c custom.config`.
-
-1. Check the default version used by the pipeline in the module file for [Pangolin](https://github.com/nf-core/viralrecon/blob/a85d5969f9025409e3618d6c280ef15ce417df65/modules/nf-core/software/pangolin/main.nf#L14-L19)
-2. Find the latest version of the Biocontainer available on [Quay.io](https://quay.io/repository/biocontainers/pangolin?tag=latest&tab=tags)
-3. Create the custom config accordingly:
-
-   - For Docker:
-
-     ```nextflow
-     process {
-         withName: PANGOLIN {
-             container = 'quay.io/biocontainers/pangolin:3.0.5--pyhdfd78af_0'
-         }
-     }
-     ```
-
-   - For Singularity:
-
-     ```nextflow
-     process {
-         withName: PANGOLIN {
-             container = 'https://depot.galaxyproject.org/singularity/pangolin:3.0.5--pyhdfd78af_0'
-         }
-     }
-     ```
-
-
-> **NB:** If you wish to periodically update individual tool-specific results (e.g. Pangolin) generated by the pipeline then you must ensure to keep the `work/` directory otherwise the `-resume` ability of the pipeline will be compromised and it will restart from scratch.
 
 ### nf-core/configs
 
