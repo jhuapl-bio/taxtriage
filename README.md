@@ -57,40 +57,57 @@ Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 ### Local Data
 
 1. Pull the test data from [here](https://github.com/jhuapl-bio/datasets/tree/main/sequencing) into `examples/data`
-2. Running Kraken2 and FASTQC report with flukraken db
+2. Running Kraken2 and FASTQC report with the k2_viral db
+
+### Running it with the local config (for laptops/workstations) with limited RAM
+
+```
+nextflow run ./main.nf  \
+  --outdir tmp_viral \
+  -resume \
+  --input examples/Samplesheet.csv \
+  --taxtab "default" \
+  --db "viral" --download-db \
+  -profile local,docker  
+```
+
+### Running it by overriding some parameters from the local config
 
 ```
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
-   --db flukraken2 --download_db --skip_assembly \
+   --db viral --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3   \
    -profile docker  -resume --demux --remove_taxids "'9606'"
 
 ```
 
+
 Remember, if you are doing a single taxid, wrap it with '' inside the "" quote
 
 
-or with your very own assembly refseq file (if no internet available from ncbi)
+### Running it without internet availability
+
+This will use a local assembly text and reference fasta, assuming the reference FASTA is called `refer.fasta`
 
 ```
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_cli.csv \
    --db minikraken2 --download_db \
-   --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" \
+   --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" --reference_fasta ./refer.fasta \
    -profile singularity  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
 
 ```
  
-or, using 
+#### Using a Custom Taxonomy
 
 ```
 
 nextflow run ./main.nf \
    --input examples/Samplesheet_single.csv \
-   --db flukraken2 --download_db \
+   --db viral --download_db \
    --outdir tmp/flu --remove_taxids "9606" \
    --max_memory 10GB --max_cpus 3 -profile docker --skip_plots --skip_assembly \
    --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
