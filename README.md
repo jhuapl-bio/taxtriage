@@ -57,8 +57,14 @@ Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 
 1. Run the command:
 ```
-nextflow pull https://github.com/jhuapl-bio/taxtriage && cd ~/.nextflow/assets/jhuapl-bio/taxtriage
+nextflow drop -f https://github.com/jhuapl-bio/taxtriage
+nextflow pull https://github.com/jhuapl-bio/taxtriage
+cp -r ~/.nextflow/assets/jhuapl-bio/taxtriage ~/taxtriage
+cd ~/taxtriage
 ```
+
+:warning: If you get an error on uncommitted changes please run the `nextflow drop -f https://github.com/jhuapl-bio/taxtriage`
+
 2. Running Kraken2 and FASTQC report with the k2_viral db
 
 ### Running it with the local config (for laptops/workstations) with limited RAM
