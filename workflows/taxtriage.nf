@@ -157,7 +157,6 @@ include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 // Info required for completion email and summary
 def multiqc_report = []
 
-
 workflow TAXTRIAGE {
 
     supported_dbs = [
@@ -259,15 +258,7 @@ workflow TAXTRIAGE {
 
     
     
-    if (params.filter){
-        ch_filter_db = file(params.filter)
-        println "${ch_filter_db} <-- filtering reads on this db"
-        READSFILTER(
-            ch_reads,
-            ch_filter_db
-        )
-        ch_reads = READSFILTER.out.reads
-    }
+    
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
             meta, reads -> meta.sequencing_summary
@@ -328,6 +319,15 @@ workflow TAXTRIAGE {
         true,
         true
     )
+    // if (params.filter){
+    //     ch_filter_db = file(params.filter)
+    //     println "${ch_filter_db} <-- filtering reads on this db"
+    //     READSFILTER(
+    //         ch_reads,
+    //         ch_filter_db
+    //     )
+    //     ch_reads = READSFILTER.out.reads
+    // }
     ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
     VISUALIZE_REPORTS(
@@ -405,8 +405,6 @@ workflow TAXTRIAGE {
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
-        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        // .set{ ch_mergedtsv }
 
         MERGE_CONFIDENCE(
             CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
@@ -415,33 +413,32 @@ workflow TAXTRIAGE {
 
     }
      
-    // if (!params.skip_assembly){
-    //     illumina_reads =  ch_hit_to_kraken_report.filter { it[0].platform == 'ILLUMINA'  }.map{
-    //         meta, reads -> 
-    //         [meta, reads, [], []]
-    //     }
-    //     SPADES_ILLUMINA(
-    //        illumina_reads
-    //     )
-    //     println("____")
-    //     println("____")
+    if (!params.skip_assembly){
+
+        illumina_reads = ch_hit_to_kraken_report.filter { 
+            it[0].platform == 'ILLUMINA'  
+        }.map{
+            meta, reads -> [meta, reads, [], []]
+        }
+        SPADES_ILLUMINA(
+           illumina_reads
+        )
+
+        println("____________________________")
 
         
-    //     nanopore_reads = ch_hit_to_kraken_report
-    //     .filter{ it[0].platform == 'OXFORD'  }.map{
-    //         meta, class, reads -> 
-    //         [meta, [], [], [], reads]
-    //     }
-    //     SPADES_OXFORD(
-    //        illumina_reads
-    //     )
-        
-    //     // FLYE(
-    //     //    nanopore_reads,
-    //     //    "--nano-raw"
-    //     // )
+        nanopore_reads = ch_hit_to_kraken_report.filter{ 
+            it[0].platform == 'OXFORD'  
+        }.map{
+            meta, reads -> [meta, [], [], [], reads]
+        }
+       
+        FLYE(
+           nanopore_reads,
+           "--nano-raw"
+        )
     
-    // }
+    }
 
 
     
