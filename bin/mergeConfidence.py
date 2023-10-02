@@ -88,20 +88,38 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
     tsv_file = open(tsv_filename)
     rows = dict()
     confidence_tsv = csv.reader(tsv_file, delimiter="\t")
+
+    index_id = 0
     for row in confidence_tsv:
+        
         splitrow = row[0].split("|")
         ref = splitrow[3]
         taxid = splitrow[1]
         if format_kraken2:
             row[0] = taxid
+
         if taxid not in rows:
             rows[taxid] = [row]
+            row.insert(0, index_id)
+            if samplename:
+                row.insert(2, samplename)
+                row.insert(3, ref)
+            else:
+                row.insert(2, "N/A")
+                row.insert(3, ref)
+            index_id += 1
+
         else:
+            row.insert(0, index_id)
+            if samplename:
+                row.insert(2, samplename)
+                row.insert(3, ref)
+            else:
+                row.insert(2, "N/A")
+                row.insert(3, ref)
             rows[taxid].append(row)
+            index_id += 1
         
-        if samplename:
-            row[0] = row[0] +"_" + samplename + "_" + ref
-            # row[0] = row[0] +"_" + samplename  
     tsv_file.close()
     report_file = open(kraken_report)
     report = csv.reader(report_file, delimiter="\t")
@@ -111,7 +129,7 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
         name = row[5].strip()
         if taxid in rows:
             for i in range(0, len(rows[taxid])):
-                rows[taxid][i].insert(1,rank)   
+                rows[taxid][i].insert(4,rank)   
                 rows[taxid][i].append(name)
     # filter rows where no taxid or name
     
@@ -130,7 +148,8 @@ def main(argv=None):
     path  = open(args.file_out, "w")
     writer = csv.writer(path, delimiter='\t')
     # header = ['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation']
-    header = ["Acc", "Rank", "Mean Depth", "Avg Cov.", "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
+    #header = ["Acc", "Rank", "Mean Depth", "Avg Cov.", "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
+    header = ["Index", "Tax_Id", "Sample_Name", "Reference", "Rank", "Mean Depth", "Avg Cov.", "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
     writer.writerow(header)
     if len(rows.keys()) == 0:
         empty = ['None']

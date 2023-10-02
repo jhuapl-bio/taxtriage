@@ -146,6 +146,7 @@ include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../modules/local/krakenreport'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
+include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 /*
@@ -358,6 +359,9 @@ workflow TAXTRIAGE {
     )
     ch_mergedtsv = Channel.empty()
     
+    FILTERKRAKEN (
+        MERGEDKRAKENREPORT.out.krakenreport
+    )
     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
@@ -465,6 +469,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
     
     // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
