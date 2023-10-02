@@ -2,7 +2,6 @@
 [![Cite with Zenodo](http://img.shields.io/badge/DOI-10.5281/zenodo.XXXXXXX-1073c8?labelColor=000000)](https://doi.org/10.5281/zenodo.XXXXXXX)
 
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
-[![run with conda](http://img.shields.io/badge/run%20with-conda-3EB049?labelColor=000000&logo=anaconda)](https://docs.conda.io/en/latest/)
 [![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![run with singularity](https://img.shields.io/badge/run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
 
@@ -45,7 +44,7 @@ Make sure you have either Docker or Singularity installed, as well as Nextflow
 This will pull the test data and run the pipeline. It should take ~10-15 minutes.
 
 ```
-nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker --outdir test_output
+nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker --outdir test_output -resume
 ```
 
 ❗If you want singularity instead, make sure to specify that in the profile instead of docker like: `test,singularity`
@@ -56,46 +55,105 @@ Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 
 ### Local Data
 
-1. Pull the test data from [here](https://github.com/jhuapl-bio/datasets/tree/main/sequencing) into `examples/data`
-2. Running Kraken2 and FASTQC report with flukraken db
-
+1. Run the command:
+```
+nextflow drop -f https://github.com/jhuapl-bio/taxtriage
+nextflow pull https://github.com/jhuapl-bio/taxtriage
+cp -r ~/.nextflow/assets/jhuapl-bio/taxtriage ~/taxtriage
+cd ~/taxtriage
 ```
 
-nextflow run ./main.nf \
-   --input examples/Samplesheet_cli.csv \
-   --db flukraken2 --download_db --skip_assembly \
+:warning: If you get an error on uncommitted changes please run the `nextflow drop -f https://github.com/jhuapl-bio/taxtriage`
+
+2. Running Kraken2 and FASTQC report with the k2_viral db
+
+### Running it with the local config (for laptops/workstations) with limited RAM
+
+```
+nextflow run https://github.com/jhuapl-bio/taxtriage  \
+  --outdir tmp_viral \
+  -resume \
+  --input examples/Samplesheet.csv \
+  --taxtab "default" -r main -latest \
+  --db "viral" --download-db \
+  -profile local,docker  
+```
+
+### Running it by overriding some parameters from the local config
+
+```
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+   --input examples/Samplesheet.csv -r main -latest \
+   --db viral --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3   \
    -profile docker  -resume --demux --remove_taxids "'9606'"
-
 ```
+
+:warning: Please see the contents of test or local config to figure out what the defaults are for those profiles
 
 Remember, if you are doing a single taxid, wrap it with '' inside the "" quote
 
 
-or with your very own assembly refseq file (if no internet available from ncbi)
+#### Using a db that is on your local filesystem
 
 ```
 
-nextflow run ./main.nf \
-   --input examples/Samplesheet_cli.csv \
-   --db minikraken2 --download_db \
-   --outdir tmp --max_memory 10GB --max_cpus 3 --remove_taxids "9606" \
-   -profile singularity  -resume --demux --assembly examples/assembly_summary_refseq.txt --skip_plots --skip_assembly
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+   --input examples/Samplesheet.csv \
+   --db "k2_viral" -r main -latest \
+   --outdir tmp_viral  \
+   --profile local,docker \
+   -resume
+```
+
+### Running it without internet availability
+
+This will use a local assembly text and reference fasta, assuming the reference FASTA is called `refer.fasta`
+
+You will need 3 files locally on your system
+
+1. assembly
+2. reference_fasta
+3. db
+
+```
+
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+   --input examples/Samplesheet.csv \
+   --db "k2_viral" -r main -latest \
+   --outdir tmp --reference_fasta ./refer.fasta \
+   -profile local,docker \ 
+   -resume \ 
+   --demux \ 
+   --assembly examples/assembly_summary_refseq.txt
 
 ```
  
-or, using 
+#### Using a Custom Taxonomy
 
 ```
 
-nextflow run ./main.nf \
-   --input examples/Samplesheet_single.csv \
-   --db flukraken2 --download_db \
-   --outdir tmp/flu --remove_taxids "9606" \
-   --max_memory 10GB --max_cpus 3 -profile docker --skip_plots --skip_assembly \
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+   --input examples/Samplesheet_flu.csv \
+   --db viral --download_db -r main -latest \
+   --outdir tmp_viral \
+   -profile local,docker  \
    --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
    -resume
 
+```
+
+#### Running on local nf files (test config)
+
+:warning: Make sure you're in the `jhuaplbio/taxtriage` repo first!
+
+```
+nextflow run ./main.nf \
+   -profile test,docker \
+   --outdir tmp_local \
+   --input examples/Samplesheet.csv \
+   --db ~/Desktop/mytax/test_metagenome \
+   -resume
 ```
 
 
@@ -118,27 +176,27 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
 1. Install [`Nextflow`](https://www.nextflow.io/docs/latest/getstarted.html#installation) (`>=21.10.3`)
 
-2. Install any of [`Docker`](https://docs.docker.com/engine/installation/), [`Singularity`](https://www.sylabs.io/guides/3.0/user-guide/) (you can follow [this tutorial](https://singularity-tutorial.github.io/01-installation/)), for full pipeline reproducibility _(you can use [`Conda`](https://conda.io/miniconda.html) both to install Nextflow itself and also to manage software within pipelines. Please only use it within pipelines as a last resort; see [docs](https://nf-co.re/usage/configuration#basic-configuration-profiles))_.
+2. Install any of [`Docker`](https://docs.docker.com/engine/installation/), [`Singularity`](https://www.sylabs.io/guides/3.0/user-guide/) (you can follow [this tutorial](https://singularity-tutorial.github.io/01-installation/)).
 
 3. Download the pipeline and test it on a minimal dataset with a single command:
 
    ```console
-   nextflow run nf-core/taxtriage -profile test,YOURPROFILE --outdir <OUTDIR>
+   nextflow run nf-core/taxtriage -profile test,YOURPROFILE --outdir ./$OUTDIR
    ```
 
    Note that some form of configuration will be needed so that Nextflow knows how to fetch the required software. This is usually done in the form of a config profile (`YOURPROFILE` in the example command above). You can chain multiple config profiles in a comma-separated string.
 
-   > - The pipeline comes with config profiles called `docker`, `singularity`, and `conda` which instruct the pipeline to use the named tool for software management. For example, `-profile test,docker`.
+   > - The pipeline comes with config profiles called `docker` or `singularity` which instruct the pipeline to use the named tool for software management. For example, `-profile test,docker`.
    > - Please check [nf-core/configs](https://github.com/nf-core/configs#documentation) to see if a custom config file to run nf-core pipelines already exists for your Institute. If so, you can simply use `-profile <institute>` in your command. This will enable either `docker` or `singularity` and set the appropriate execution settings for your local compute environment.
    > - If you are using `singularity`, please use the [`nf-core download`](https://nf-co.re/tools/#downloading-pipelines-for-offline-use) command to download images first, before running the pipeline. Setting the [`NXF_SINGULARITY_CACHEDIR` or `singularity.cacheDir`](https://www.nextflow.io/docs/latest/singularity.html?#singularity-docker-hub) Nextflow options enables you to store and re-use the images from a central location for future pipeline runs.
-   > - If you are using `conda`, it is highly recommended to use the [`NXF_CONDA_CACHEDIR` or `conda.cacheDir`](https://www.nextflow.io/docs/latest/conda.html) settings to store the environments in a central location for future pipeline runs.
+ 
 
 4. Start running your own analysis!
 
    <!-- TODO nf-core: Update the example "typical command" below used to run the pipeline -->
 
    ```console
-           nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest --outdir test_output -profile <docker/singularity/conda>
+           nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest --outdir test_output -profile <local,docker/singularity>
    ```
 
 ## Modules

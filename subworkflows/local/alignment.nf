@@ -8,6 +8,8 @@ include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 // include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
+include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
+include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
@@ -45,14 +47,17 @@ workflow ALIGNMENT {
     }.set { ch_aligners }
     
     ch_versions = 1
-    
-    
+    SAMTOOLS_FAIDX (
+        fastq_reads.map{ m, report, fastq, fasta -> return [ m, fasta ] }, 
+        fastq_reads.map{ m, report, fastq, fasta -> return [ m, [] ] }, 
+    )
 
 
     BOWTIE2_BUILD (
         ch_aligners.shortreads.map{  m, report, fastq, fasta  -> 
             return [ m, fasta  ]
         }
+        
     )
     BOWTIE2_ALIGN(
         ch_aligners.shortreads.map{  m, report, fastq, fasta  -> 
@@ -86,6 +91,9 @@ workflow ALIGNMENT {
     
     SAMTOOLS_DEPTH(
         collected_bams, 
+    )
+    SAMTOOLS_INDEX (
+        collected_bams
     )
 
     if (!params.skip_variants){
@@ -126,7 +134,7 @@ workflow ALIGNMENT {
                 m, vcf, csi ->
                     def parts = vcf.baseName.split("\\.")
                     def id = "${parts[0]}.${parts[1]}"
-                    return [ [id:id, single_end: true, platform:m.platform, base: m.id], vcf, csi ]
+                    return [ [id:id, platform:m.platform, base: m.id], vcf, csi ]
             }
             
             // ch_stats = BCFTOOLS_STATS.out.stats

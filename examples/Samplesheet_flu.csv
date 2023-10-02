@@ -1,2 +1,2 @@
-sample,single_end,from,platform,barcode,fastq_1,fastq_2,sequencing_summary,trim
-BC05_flu,TRUE,,OXFORD,FALSE,examples/data/BC05.fastq.gz,,,
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,FALSE
