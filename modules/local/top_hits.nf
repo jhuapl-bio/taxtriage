@@ -50,7 +50,7 @@ process TOP_HITS {
         $top_hits_count  $top_per_taxa
     
     awk -F '\\t' -v id=${id} \\
-        'BEGIN{OFS=\"\\t\"} { if (NR==1){ print \"Sample_Taxid\",  \$1, \$4, \$6} else { \$5 = id\"_\"\$5;  print \$5, \$1, \$4, \$6  }}'  ${id}.top_report.tsv > ${id}.krakenreport_mqc.tsv 
+        'BEGIN{OFS=\"\\t\"} { if (NR==1){ print \"Sample_Taxid\", \$2, \$1, \$4, \$6} else { \$5 = id\"_\"\$5;  print \$5, \$2, \$1, \$4, \$6  }}'  ${id}.top_report.tsv > ${id}.krakenreport_mqc.tsv 
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
