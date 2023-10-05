@@ -13,6 +13,9 @@
 
 <!-- TODO nf-core: Write a 1-2 sentence summary of what data the pipeline is for and what it does -->
 
+![](assets/taxtriage_schematics.png)
+
+
 #### Alerts
 
 :warning: Git History was recently updated, causing a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters
