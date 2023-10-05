@@ -146,6 +146,7 @@ include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../modules/local/krakenreport'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
+include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 /*
@@ -156,7 +157,6 @@ include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
  
 // Info required for completion email and summary
 def multiqc_report = []
-
 
 workflow TAXTRIAGE {
 
@@ -259,15 +259,7 @@ workflow TAXTRIAGE {
 
     
     
-    if (params.filter){
-        ch_filter_db = file(params.filter)
-        println "${ch_filter_db} <-- filtering reads on this db"
-        READSFILTER(
-            ch_reads,
-            ch_filter_db
-        )
-        ch_reads = READSFILTER.out.reads
-    }
+    
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
             meta, reads -> meta.sequencing_summary
@@ -328,6 +320,15 @@ workflow TAXTRIAGE {
         true,
         true
     )
+    // if (params.filter){
+    //     ch_filter_db = file(params.filter)
+    //     println "${ch_filter_db} <-- filtering reads on this db"
+    //     READSFILTER(
+    //         ch_reads,
+    //         ch_filter_db
+    //     )
+    //     ch_reads = READSFILTER.out.reads
+    // }
     ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
     VISUALIZE_REPORTS(
@@ -358,6 +359,9 @@ workflow TAXTRIAGE {
     )
     ch_mergedtsv = Channel.empty()
     
+    FILTERKRAKEN (
+        MERGEDKRAKENREPORT.out.krakenreport
+    )
     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
@@ -405,8 +409,6 @@ workflow TAXTRIAGE {
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
-        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        // .set{ ch_mergedtsv }
 
         MERGE_CONFIDENCE(
             CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
@@ -415,33 +417,32 @@ workflow TAXTRIAGE {
 
     }
      
-    // if (!params.skip_assembly){
-    //     illumina_reads =  ch_hit_to_kraken_report.filter { it[0].platform == 'ILLUMINA'  }.map{
-    //         meta, reads -> 
-    //         [meta, reads, [], []]
-    //     }
-    //     SPADES_ILLUMINA(
-    //        illumina_reads
-    //     )
-    //     println("____")
-    //     println("____")
+    if (!params.skip_assembly){
+
+        illumina_reads = ch_hit_to_kraken_report.filter { 
+            it[0].platform == 'ILLUMINA'  
+        }.map{
+            meta, reads -> [meta, reads, [], []]
+        }
+        SPADES_ILLUMINA(
+           illumina_reads
+        )
+
+        println("____________________________")
 
         
-    //     nanopore_reads = ch_hit_to_kraken_report
-    //     .filter{ it[0].platform == 'OXFORD'  }.map{
-    //         meta, class, reads -> 
-    //         [meta, [], [], [], reads]
-    //     }
-    //     SPADES_OXFORD(
-    //        illumina_reads
-    //     )
-        
-    //     // FLYE(
-    //     //    nanopore_reads,
-    //     //    "--nano-raw"
-    //     // )
+        nanopore_reads = ch_hit_to_kraken_report.filter{ 
+            it[0].platform == 'OXFORD'  
+        }.map{
+            meta, reads -> [meta, [], [], [], reads]
+        }
+       
+        FLYE(
+           nanopore_reads,
+           "--nano-raw"
+        )
     
-    // }
+    }
 
 
     
@@ -465,6 +466,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
     
     // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))

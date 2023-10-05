@@ -100,6 +100,7 @@ work                # Directory containing the nextflow working files
 | `-latest` | Use the latest revision (-r). If you want to autopull the latest commit for a branch from https://github.com/jhuapl-bio/taxtriage, specify this. Used in Basestack and the Cloud (default toggle) |
 | `--low_memory <number>` | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD |
 | `--max_cpus <number>` | Max CPUs you want to dedicate to the pipeline | 
+| `--top_per_taxa ,taxid:amount:rank]` | One or more 3 element values for the minimum taxa at a rank. Example "10239:20:S 2:20:S" is minimum 20 virus species (10239 is Virus) AND (separated by space for a new definition) 20 Bacteria (2) species. Possible Rank codes are G,S,P,F,O,C | 
 | `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
 | `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
 | `-r [main, stable, etc.]` | Specify the branch/revision name to use if pulling from github (not local main.nf file) | 
