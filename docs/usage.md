@@ -89,6 +89,7 @@ work                # Directory containing the nextflow working files
 | `--skip_fastp`  | TRUE/FALSE,  do not filter with fastp |
 | `--skip_plots`  | TRUE/FALSE,  do not make any plots  |
 | `--remove_taxids  <numbers[]>`  | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "'9606'" for human reads |
+| `--k2_confidence  <numbers[]>`  | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information. |
 | `--skip_realignment`  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result                    |            
 | `--minq <number>`     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina         |
 | `--trim`     | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)  |

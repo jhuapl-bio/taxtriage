@@ -30,6 +30,7 @@ process KRAKEN2_KRAKEN2 {
     def classified   = meta.single_end ? "${prefix}.classified.fastq"   : "${prefix}.classified#.fastq"
     def unclassified = meta.single_end ? "${prefix}.unclassified.fastq" : "${prefix}.unclassified#.fastq"
     def classified_command = save_output_fastqs ? "--classified-out ${classified}" : ""
+    def confidence = params.k2_confidence ? "--confidence ${params.k2_confidence}" : ""
     def unclassified_command = save_output_fastqs ? "--unclassified-out ${unclassified}" : ""
     def readclassification_command = save_reads_assignment ? "--output ${prefix}.kraken2.classifiedreads.txt" : ""
     def compress_reads_command = save_output_fastqs ? "pigz -p $task.cpus *.fastq" : ""
@@ -42,8 +43,8 @@ process KRAKEN2_KRAKEN2 {
         $unclassified_command \\
         $classified_command \\
         $readclassification_command \\
-        $paired \\
-        $args \\
+        $paired $confidence \\
+        $args  \\
         $reads
 
     $compress_reads_command

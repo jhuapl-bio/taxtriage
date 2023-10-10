@@ -158,6 +158,11 @@
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "k2_confidence": {
+                    "type": "number",
+                    "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "blastdb": {
                     "type": "string",
                     "description": "Blast Database (local or remote, local must be absolute path)",
