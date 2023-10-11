@@ -1,6 +1,8 @@
 reports:
   multiqc_report.html:
     display: "MultiQC HTML report"
+  "**/convert/*merged.tsv":
+    display: "Confidence Table"
 tower:
   admin:
     user-workspace-enabled: true 
