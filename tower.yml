@@ -3,8 +3,5 @@ reports:
     display: "MultiQC HTML report"
   "**/convert/*merged.tsv":
     display: "Confidence Table"
-  "**/krona/*html":
+  "**/krona/*.html":
     display: "Krona Plots"
-tower:
-  admin:
-    user-workspace-enabled: true 
