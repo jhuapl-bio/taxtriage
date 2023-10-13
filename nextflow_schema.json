@@ -27,6 +27,17 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
+                "outdir": {
+                    "type": "string",
+                    "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "top_per_taxa": {
+                    "type": "string",
+                    "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
+                    "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
+                    "default": ""
+                },
                 "download_db": {
                     "type": "boolean",
                     "fa_icon": "fas fa-download",
@@ -49,12 +60,6 @@
                     "type": "boolean",
                     "description": "Report output",
                     "default": true
-                },
-                "top_per_taxa": {
-                    "type": "string",
-                    "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
-                    "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
-                    "default": ""
                 },
                 "assembly": {
                     "type": "string",
@@ -146,11 +151,6 @@
                 "demux": {
                     "type": "boolean",
                     "description": "Run Demux on a folder of fastq files",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "outdir": {
-                    "type": "string",
-                    "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "top_hits_count": {
