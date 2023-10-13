@@ -33,208 +33,208 @@
                     "fa_icon": "fas fa-file-signature"
                 }
             },
-            "prelim_and_qc": {
-                "title": "Preliminary and QC",
-                "type": "object",
-                "fa_icon": "fas fa-terminal",
-                "description": "Run general maintenance scripts to prep the data prior to classifications/analysis, inlcuding some plotting",
-                "properties": {
-                    "trim": {
-                        "type": "boolean",
-                        "description": "Trim the files beforehand with trimgalore. Illumina only samples",
-                        "default": false,
-                        "fa_icon": "fas fa-file-csv"
-                    },
-                    "remove_taxids": {
-                        "description": "Taxid numbers in double quotes ( e.g. \"9606\" for human). For multiple, example: \"9606 2\" removes human AND all Bacteria",
-                        "fa_icon": "fas fa-file-signature",
-                        "type": "string"
-                    },
-                    "demux": {
-                        "type": "boolean",
-                        "description": "Run Demux on a folder of fastq files",
-                        "fa_icon": "fas fa-file-signature"
-                    }
-                }
-            },
-            "metagenomics_parameters": {
-                "title": "Metagenomics Parameters",
-                "type": "object",
-                "fa_icon": "fas fa-terminal",
-                "description": "Define where the pipeline should find input data and save output data.",
-                "properties": {
-                    "top_per_taxa": {
-                        "type": "string",
-                        "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
-                        "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
-                        "default": ""
-                    },
-                    "low_memory": {
-                        "type": "boolean",
-                        "fa_icon": "fas fa-book",
-                        "description": "Dont load db to memory, run from I/O",
-                        "default": false
-                    },
-                    "download_db": {
-                        "type": "boolean",
-                        "fa_icon": "fas fa-download",
-                        "description": "Download the preset database indicated in --db to --outdir.",
-                        "default": false
-                    },
-                    "taxtab": {
-                        "type": "string",
-                        "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
-                        "default": "default",
-                        "description": "Taxonomy tab file for krona plots",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "save_reads_assignment": {
-                        "type": "boolean",
-                        "description": "Report output",
-                        "default": true
-                    },
-                    "save_output_fastqs": {
-                        "type": "boolean",
-                        "fa_icon": "fas fa-book",
-                        "description": "Save all read classifications as a txt file",
-                        "default": true
-                    },
-                    "top_hits_count": {
-                        "type": "number",
-                        "description": "Top N organisms to report per sample",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "k2_confidence": {
-                        "type": "number",
-                        "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "filter": {
-                        "type": "string",
-                        "format": "directory-path",
-                        "schema": "assets/schema_input.json",
-                        "description": "Path to a kraken2 database. Typically, this would be the human reads database for human-derived samples. Deprecated! Choose --remove_taxids insteads",
-                        "help_text": "",
-                        "fa_icon": "fas fa-file-csv"
-                    }
-                }
-            },
-            "alignment_parameters": {
-                "title": "Alignment",
-                "type": "object",
-                "fa_icon": "fas fa-terminal",
-                "description": "Alignment Parameter adjustments",
-                "properties": {
-                    "skip_realignment": {
-                        "type": "boolean",
-                        "description": "Dont do re-alignment post kraken2 classification",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "assembly": {
-                        "type": "string",
-                        "format": "file-path",
-                        "schema": "assets/schema_input.json",
-                        "description": "Path to an assembly file. This contains the taxid and relative genome file that can be pulled from Entrez (ncbi). If not called, it auto downloads in the pipeline and requires internet connectivity",
-                        "help_text": "",
-                        "fa_icon": "fas fa-file-csv"
-                    },
-                    "assembly_file_type": {
-                        "type": "string",
-                        "description": "Assembly text file format. Can be a kraken2 fasta (kraken2) or the one pulled from ncbi (ncbi)",
-                        "fa_icon": "fas fa-folder-open",
-                        "enum": [
-                            "kraken2",
-                            "ncbi"
-                        ],
-                        "default": "ncbi"
-                    },
-                    "reference_fasta": {
-                        "type": "string",
-                        "format": "file-path",
-                        "schema": "assets/schema_input.json",
-                        "description": "Reference FASTA file to use instead of using ncbi API to pull genomes. Useful for offlined pipelines",
-                        "help_text": "",
-                        "fa_icon": "fas fa-file-csv"
-                    }
-                }
-            },
-            "skips": {
-                "title": "Skip Steps",
-                "type": "object",
-                "fa_icon": "fas fa-terminal",
-                "description": "Not all steps are required to make a report, choose what to skip upfront. Be aware some analysis plots will be missing depending on what you skip.",
-                "properties": {
-                    "skip_plots": {
-                        "type": "boolean",
-                        "description": "Skip upfront QC plotting to save time",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    
-                    "skip_stats": {
-                        "type": "boolean",
-                        "description": "Skip generating stats for each individual taxa per sample",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "skip_fastp": {
-                        "type": "boolean",
-                        "description": "Skip QC trimming",
-                        "fa_icon": "fas fa-file-signature",
-                        "default": false
-                    },
-                    "skip_krona": {
-                        "type": "boolean",
-                        "description": "Skip Krona Plots",
-                        "fa_icon": "fas fa-file-signature",
-                        "default": false
-                    },
-                    "skip_assembly": {
-                        "type": "boolean",
-                        "description": "Skip De Novo Assembly",
-                        "fa_icon": "fas fa-file-signature",
-                        "default": true
-                    }
-                }
-            },
-            "general": {
-                "title": "General Info",
-                "type": "object",
-                "fa_icon": "fas fa-terminal",
-                "description": "",
-                "properties": {
-                    "email": {
-                        "type": "string",
-                        "description": "Email address for completion summary.",
-                        "fa_icon": "fas fa-envelope",
-                        "help_text": "Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to specify this on the command line for every run.",
-                        "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
-                    },
-                    "multiqc_title": {
-                        "type": "string",
-                        "description": "MultiQC report title. Printed as page header, used for filename if not otherwise specified.",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "blastdb": {
-                        "type": "string",
-                        "description": "Blast Database (local or remote, local must be absolute path)",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "remoteblast": {
-                        "type": "boolean",
-                        "description": "Run BLAST remote",
-                        "fa_icon": "fas fa-file-signature"
-                    },
-                    "multiqc_config": {
-                        "type": "string",
-                        "description": "Config file for multiqc",
-                        "fa_icon": "fas fa-file-signature"
-                    }
-                }
-            },
             "required": [
                 "input",
                 "db",
                 "outdir"
             ]
+        },
+        "prelim_and_qc": {
+            "title": "Preliminary and QC",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "Run general maintenance scripts to prep the data prior to classifications/analysis, inlcuding some plotting",
+            "properties": {
+                "trim": {
+                    "type": "boolean",
+                    "description": "Trim the files beforehand with trimgalore. Illumina only samples",
+                    "default": false,
+                    "fa_icon": "fas fa-file-csv"
+                },
+                "remove_taxids": {
+                    "description": "Taxid numbers in double quotes ( e.g. \"9606\" for human). For multiple, example: \"9606 2\" removes human AND all Bacteria",
+                    "fa_icon": "fas fa-file-signature",
+                    "type": "string"
+                },
+                "demux": {
+                    "type": "boolean",
+                    "description": "Run Demux on a folder of fastq files",
+                    "fa_icon": "fas fa-file-signature"
+                }
+            }
+        },
+        "metagenomics_parameters": {
+            "title": "Metagenomics Parameters",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "Define where the pipeline should find input data and save output data.",
+            "properties": {
+                "top_per_taxa": {
+                    "type": "string",
+                    "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
+                    "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
+                    "default": ""
+                },
+                "low_memory": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-book",
+                    "description": "Dont load db to memory, run from I/O",
+                    "default": false
+                },
+                "download_db": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-download",
+                    "description": "Download the preset database indicated in --db to --outdir.",
+                    "default": false
+                },
+                "taxtab": {
+                    "type": "string",
+                    "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
+                    "default": "default",
+                    "description": "Taxonomy tab file for krona plots",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "save_reads_assignment": {
+                    "type": "boolean",
+                    "description": "Report output",
+                    "default": true
+                },
+                "save_output_fastqs": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-book",
+                    "description": "Save all read classifications as a txt file",
+                    "default": true
+                },
+                "top_hits_count": {
+                    "type": "number",
+                    "description": "Top N organisms to report per sample",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "k2_confidence": {
+                    "type": "number",
+                    "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "filter": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "Path to a kraken2 database. Typically, this would be the human reads database for human-derived samples. Deprecated! Choose --remove_taxids insteads",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
+                }
+            }
+        },
+        "alignment_parameters": {
+            "title": "Alignment",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "Alignment Parameter adjustments",
+            "properties": {
+                "skip_realignment": {
+                    "type": "boolean",
+                    "description": "Dont do re-alignment post kraken2 classification",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "assembly": {
+                    "type": "string",
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "Path to an assembly file. This contains the taxid and relative genome file that can be pulled from Entrez (ncbi). If not called, it auto downloads in the pipeline and requires internet connectivity",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
+                },
+                "assembly_file_type": {
+                    "type": "string",
+                    "description": "Assembly text file format. Can be a kraken2 fasta (kraken2) or the one pulled from ncbi (ncbi)",
+                    "fa_icon": "fas fa-folder-open",
+                    "enum": [
+                        "kraken2",
+                        "ncbi"
+                    ],
+                    "default": "ncbi"
+                },
+                "reference_fasta": {
+                    "type": "string",
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "Reference FASTA file to use instead of using ncbi API to pull genomes. Useful for offlined pipelines",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
+                }
+            }
+        },
+        "skips": {
+            "title": "Skip Steps",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "Not all steps are required to make a report, choose what to skip upfront. Be aware some analysis plots will be missing depending on what you skip.",
+            "properties": {
+                "skip_plots": {
+                    "type": "boolean",
+                    "description": "Skip upfront QC plotting to save time",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                
+                "skip_stats": {
+                    "type": "boolean",
+                    "description": "Skip generating stats for each individual taxa per sample",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_fastp": {
+                    "type": "boolean",
+                    "description": "Skip QC trimming",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "skip_krona": {
+                    "type": "boolean",
+                    "description": "Skip Krona Plots",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "skip_assembly": {
+                    "type": "boolean",
+                    "description": "Skip De Novo Assembly",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": true
+                }
+            }
+        },
+        "general": {
+            "title": "General Info",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "Email address for completion summary.",
+                    "fa_icon": "fas fa-envelope",
+                    "help_text": "Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to specify this on the command line for every run.",
+                    "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
+                },
+                "multiqc_title": {
+                    "type": "string",
+                    "description": "MultiQC report title. Printed as page header, used for filename if not otherwise specified.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "blastdb": {
+                    "type": "string",
+                    "description": "Blast Database (local or remote, local must be absolute path)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "remoteblast": {
+                    "type": "boolean",
+                    "description": "Run BLAST remote",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "multiqc_config": {
+                    "type": "string",
+                    "description": "Config file for multiqc",
+                    "fa_icon": "fas fa-file-signature"
+                }
+            }
         }
     },
     "allOf": [
