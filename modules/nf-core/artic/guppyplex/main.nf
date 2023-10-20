@@ -5,7 +5,7 @@ process ARTIC_GUPPYPLEX {
     conda (params.enable_conda ? "bioconda::artic=1.2.1" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/artic:1.2.1--py_0' :
-        'quay.io/biocontainers/artic:1.2.1--py_0' }"
+        'biocontainers/artic:1.2.1--py_0' }"
 
     input:
     tuple val(meta), path(fastq_dir)

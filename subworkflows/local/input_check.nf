@@ -50,7 +50,6 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
-    println meta
     if (meta.directory ){
         if (meta.platform == 'OXFORD'){
             fastq_meta = [ meta, [ file(meta.fastq_1) ]  ]

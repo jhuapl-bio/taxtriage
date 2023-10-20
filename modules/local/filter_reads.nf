@@ -21,7 +21,7 @@ process FILTER_CLASS_READS {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/biopython:1.78' :
-        'pegi3s/biopython:latest' }"
+        'biocontainers/biopython:1.75' }"
 
     input:
     tuple val(meta),  path(tops_report), path(classified_reads), path(reads)
