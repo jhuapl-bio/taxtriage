@@ -7,7 +7,7 @@ export_plots: true
 # run_modules:
   # - custom_content
   # - kraken
-
+max_table_rows: 1000000
 table_columns_visible:
   merge:   # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
     'Reads Aligned': false
@@ -28,6 +28,7 @@ custom_content:
     - confidences
     - krakenreport
 custom_data:
+  
   individuals:
     section_name: 'Individuals'
     plot_type: 'table'
@@ -36,13 +37,12 @@ custom_data:
       table_title: 'Individuals Data'
       namespace: 'Individuals'
   confidences:
-    section_name: 'Confidence'
+    section_name: 'Confidence Metrics'
     plot_type: 'table'
     file: "*confidences.merged_mqc.tsv*"
-    file_format: 'tsv'
+    file_format: 'tsv'    
     pconfig:
       beeswarm: false   
-      
   krakenreport:
     section_name: 'All Metagenomic Hits'
     plot_type: 'table'
@@ -63,7 +63,6 @@ module_order:
   - kraken
   - fastp
   - bcftools
-
 report_section_order:
   confidences:
     order:  9999
