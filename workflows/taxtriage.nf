@@ -28,10 +28,11 @@ WorkflowTaxtriage.initialise(params, log)
 
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
-// def checkPathParamList = [ params.input, params.multiqc_config, params.fasta ]
+def checkPathParamList = [ 
+    params.input,
+]
 
-// def checkPathParamList = [ params.reference ]
-// for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
+for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
@@ -121,9 +122,6 @@ include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/kraken2/kraken2/main'
-include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../modules/nf-core/minimap2/align/main'
-include { BOWTIE2_ALIGN as FILTER_BOWTIE2 } from '../modules/nf-core/bowtie2/align/main'
-include { BOWTIE2_BUILD  as FILTER_BOWTIE2_IDX } from '../modules/nf-core/bowtie2/build/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
 include { ARTIC_GUPPYPLEX } from '../modules/nf-core/artic/guppyplex/main'
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
@@ -142,10 +140,6 @@ include { CONFIDENCE_METRIC } from '../modules/local/confidence'
 include { CONVERT_CONFIDENCE } from '../modules/local/convert_confidence'
 include { PULL_TAXID } from '../modules/local/pull_taxid'
 include { REFERENCE } from '../modules/local/download_reference'
-include { SAMTOOLS_VIEW } from '../modules/nf-core/samtools/view/main'
-include { SAMTOOLS_FASTQ } from '../modules/nf-core/samtools/fastq/main'
-include { SAMTOOLS_INDEX as FILTERED_SAMTOOLS_INDEX } from '../modules/nf-core/samtools/index/main'
-include { SAMTOOLS_STATS as FILTERED_STATS } from '../modules/nf-core/samtools/stats/main'
 include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
@@ -156,6 +150,7 @@ include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
+include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -254,6 +249,7 @@ workflow TAXTRIAGE {
     // // // //
     // // // //
 
+
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
@@ -319,72 +315,15 @@ workflow TAXTRIAGE {
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
-       
     }
-    // Remove the human reads first
 
-    if (params.remove_reference_file){
-        ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
-        // Run minimap2 module on all OXFORD platform reads and Bowtie2 on ILLUMINA  reads
-
-        ch_reads.branch{
-            longreads: it[0].platform =~ /(?i)OXFORD/
-            shortreads: it[0].platform =~ /(?i)ILLUMINA/
-        }.set { ch_aligned_for_filter }
-
-        // if ch_aligned_for_filter.shorteads is not empty
-        // then run bowtie2 on it
-        // else run minimap2 on ch_aligned_for_filter.longreads
-        ch_bt2_index = Channel.empty()
-        ch_filt_illumina = Channel.empty()
-        ch_filt_oxfo = Channel.empty()
-        if (ch_aligned_for_filter.shortreads){
-            ch_meta_reference_fasta = [ [id: 'filterreadsbt2'] , ch_reference_fasta_removal]
-            FILTER_BOWTIE2_IDX(
-                ch_meta_reference_fasta
-            )
-            ch_bt2_index = FILTER_BOWTIE2_IDX.out.index
-        }
-        FILTER_BOWTIE2(
-            ch_aligned_for_filter.shortreads.map{ m, fastq -> return [m, fastq] },
-            ch_bt2_index,
-            true,
-            true
-        )
-        FILTER_MINIMAP2(
-            ch_aligned_for_filter.longreads.map{ m, fastq -> return [m, fastq] },
-            ch_reference_fasta_removal,
-            true,
-            true,
-            true
-        )
-        
-
-        SAMTOOLS_VIEW ( 
-            FILTER_MINIMAP2.out.bam.map{ m, bam -> 
-                return [m, bam, [] 
-            ]}, 
-            [ [],[] ], 
-            [] 
-        )
-        SAMTOOLS_FASTQ ( SAMTOOLS_VIEW.out.bam, false )
-        ch_reads = SAMTOOLS_FASTQ.out.other.mix(
-            FILTER_BOWTIE2.out.fastq
-        )
-        ch_all_Bams = FILTER_MINIMAP2.out.bam.mix(FILTER_BOWTIE2.out.aligned)
-        
-        FILTERED_SAMTOOLS_INDEX ( ch_all_Bams )
-        ch_bai_files = ch_all_Bams.join(FILTERED_SAMTOOLS_INDEX.out.bai)
-        ch_bai_files.view()
-        FILTERED_STATS ( 
-            ch_bai_files, 
-            [ [], file(params.remove_reference_file, checkIfExists: true) ]
-        )
-        ch_multiqc_files = ch_multiqc_files.mix(FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([]))
-    }
-    // if (params.pre_remove_taxids){
-    //     ch_pre_remove_taxids = Channel.of(params.pre_remove_taxids)
-    // }
+    HOST_REMOVAL (
+        ch_reads,
+        params.genome
+    )
+    ch_reads = HOST_REMOVAL.out.unclassified_reads
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+    
     if (!params.skip_plots){
         FASTQC (
             ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
@@ -592,12 +531,12 @@ workflow TAXTRIAGE {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-// workflow.onComplete {
-//     if (params.email || params.email_on_fail) {
-//         NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
-//     }
-//     NfcoreTemplate.summary(workflow, params, log)
-// }
+workflow.onComplete {
+    if (params.email || params.email_on_fail) {
+        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+    }
+    NfcoreTemplate.summary(workflow, params, log)
+}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
