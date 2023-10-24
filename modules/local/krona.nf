@@ -4,7 +4,7 @@ process KRONA { //https://github.com/nf-core/mag/blob/66cf53aff834d2a254b78b94fc
     conda "bioconda::krona=2.7.1"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/krona:2.7.1--pl526_5' :
-        'quay.io/biocontainers/krona:2.7.1--pl526_5' }"
+        'biocontainers/krona:2.7.1--pl526_5' }"
 
     input:
     tuple val(meta), path(report)

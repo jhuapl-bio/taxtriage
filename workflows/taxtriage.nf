@@ -28,10 +28,11 @@ WorkflowTaxtriage.initialise(params, log)
 
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
-// def checkPathParamList = [ params.input, params.multiqc_config, params.fasta ]
+def checkPathParamList = [ 
+    params.input,
+]
 
-// def checkPathParamList = [ params.reference ]
-// for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
+for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
@@ -149,6 +150,7 @@ include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
+include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -233,6 +235,21 @@ workflow TAXTRIAGE {
 
 
     ch_versions = Channel.empty()
+    // // // //
+    // // // // MODULE: MultiQC
+    // // // //
+    workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+    ch_workflow_summary = Channel.value(workflow_summary)
+    ch_multiqc_files = Channel.empty()
+    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
+    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
+    // // // //
+    // // // //
+    // // // //
+
+
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
@@ -241,6 +258,7 @@ workflow TAXTRIAGE {
     )
     ch_reads = INPUT_CHECK.out.reads
     
+
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter{ it[0].directory   }
@@ -266,10 +284,10 @@ workflow TAXTRIAGE {
         }
     )
     
-    // // //  
+    // // // //  
     
     
-    // // // MODULE: Run FastQC or Porechop, Trimgalore
+    // // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
     ch_porechop_out = Channel.empty()
     if (params.trim){
@@ -297,23 +315,30 @@ workflow TAXTRIAGE {
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
-       
     }
+
+    HOST_REMOVAL (
+        ch_reads,
+        params.genome
+    )
+    ch_reads = HOST_REMOVAL.out.unclassified_reads
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+    
     if (!params.skip_plots){
         FASTQC (
-            ch_reads.filter { it[0].platform == 'ILLUMINA'}
+            ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
         )
         ch_versions = ch_versions.mix(FASTQC.out.versions.first())
         NANOPLOT (
-            ch_reads.filter { it[0].platform == 'OXFORD'}
+            ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
         )
         
        
     }
     
-    // // // // // //
-    // // // // // // MODULE: Run Kraken2
-    // // // // // //
+    // // // // // // //
+    // // // // // // // MODULE: Run Kraken2
+    // // // // // // //
     KRAKEN2_KRAKEN2(
         ch_reads,
         ch_db,
@@ -337,17 +362,17 @@ workflow TAXTRIAGE {
     )
 
 
-    if (params.remove_taxids){
-        remove_input = ch_kraken2_report.map{
-            meta, report -> [
-                meta, report, params.remove_taxids
-            ]
-        }
-        REMOVETAXIDSCLASSIFICATION(
-            remove_input
-        )
-        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
-    }
+    // if (params.remove_taxids){
+    //     remove_input = ch_kraken2_report.map{
+    //         meta, report -> [
+    //             meta, report, params.remove_taxids
+    //         ]
+    //     }
+    //     REMOVETAXIDSCLASSIFICATION(
+    //         remove_input
+    //     )
+    //     ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
+    // }
     
     
 
@@ -458,34 +483,17 @@ workflow TAXTRIAGE {
 
     
     // // //
-    // // // MODULE: MultiQC
+    // // // MODULE: MultiQC Pt 2
     // // //
-    workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-    ch_workflow_summary = Channel.value(workflow_summary)
-    ch_multiqc_files = Channel.empty()
-    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+    
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-    
-    // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
-
-
     ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
-    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
-    // if (params.blastdb && !params.remoteblast){
-    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
-    // } else if (params.blastdb && params.remoteblast){
-    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
-    // }
     if (params.trim){
         ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
     }
@@ -493,12 +501,25 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect{it[1]}.ifEmpty([]))
     }
-    
     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
+
+    // Unused or Incomplete
+    // if (params.blastdb && !params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // } else if (params.blastdb && params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // }
+    // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
+
+
     
+    
+
+
     MULTIQC (
         ch_multiqc_files.collect()
-
     )
     multiqc_report = MULTIQC.out.report.toList()
     ch_versions    = ch_versions.mix(MULTIQC.out.versions)
@@ -510,12 +531,12 @@ workflow TAXTRIAGE {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-// workflow.onComplete {
-//     if (params.email || params.email_on_fail) {
-//         NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
-//     }
-//     NfcoreTemplate.summary(workflow, params, log)
-// }
+workflow.onComplete {
+    if (params.email || params.email_on_fail) {
+        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+    }
+    NfcoreTemplate.summary(workflow, params, log)
+}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

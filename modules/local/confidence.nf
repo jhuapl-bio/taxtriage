@@ -21,7 +21,7 @@ process CONFIDENCE_METRIC {
     conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
-        'quay.io/biocontainers/pysam:0.21.0--py39hcada746_1' }"
+        'biocontainers/pysam:0.21.0--py39hcada746_1' }"
  
     input:
     tuple val(meta), path(bam), path(depth)
