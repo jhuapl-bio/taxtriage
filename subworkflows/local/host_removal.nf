@@ -20,7 +20,6 @@
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
 include { BOWTIE2_ALIGN as FILTER_BOWTIE2 } from '../../modules/nf-core/bowtie2/align/main'
-include { BOWTIE2_ALIGN as FILTER_BOWTIE2 } from '../../modules/nf-core/bowtie2/align/main'
 include { BOWTIE2_BUILD  as FILTER_BOWTIE2_IDX } from '../../modules/nf-core/bowtie2/build/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
 include { SAMTOOLS_FASTQ } from '../../modules/nf-core/samtools/fastq/main'
