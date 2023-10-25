@@ -14,7 +14,7 @@ You can use this example samplesheet as a reference in making your own sampleshe
 
 See this [table](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#samplesheet-information) for a description of all columns
 
-One important thing to note is that the `fastq_1` column MUST have a value if using a FILE that is a compressed fastq (`.gz` extension), `from` is directory of fastq files that may or may not be compressed with `.gz`. A paired end read set for Illumina must have a file in `fastq_1` and another in `fastq_2` for each row.  
+One important thing to note is that the `fastq_1` column MUST have a value if using a FILE that is a compressed fastq (`.gz` extension), `from` is directory of fastq files that may or may not be compressed with `.gz`. A paired end read set for Illumina must have a file in `fastq_1` and another in `fastq_2` for each row.
 IF you're using `from` you must have a directory of fastq file(s) in the path
 
 ### Nextflow Logs of TaxTriage
@@ -54,11 +54,11 @@ Work dir:
 
 Tip: view the complete command output by changing to the process work dir and entering the command `cat .command.out`
 
- -- Check '.nextflow.log' file for details
+-- Check '.nextflow.log' file for details
 ```
 
 The title of the module, in this example, is the INPUT_CHECK:SAMPLESHEET_CHECK where we are importing the information from a samplesheet. This name may be different depending on the step in the pipeline
-It is important to note that `Command error: [CRITICAL] 
+It is important to note that `Command error: [CRITICAL]
 ` line indicates what went wrong. In this case, the second line in the samplesheet is incorrect as it needs a FASTQ File `At least the first FASTQ file is required. On line 2.`
 
 I can simply edit that column and rerun with the `-resume` flag on the CLI or by clicking the dots in the upper right of the failed job and hitting "resume" once I've made my changes

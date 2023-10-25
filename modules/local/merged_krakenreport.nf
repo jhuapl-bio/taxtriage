@@ -6,7 +6,7 @@ process MERGEDKRAKENREPORT {
         'https://depot.galaxyproject.org/singularity/biopython:1.78' :
         'biocontainers/biopython:1.75' }"
 
-        
+
     input:
     file reports
 
@@ -18,8 +18,8 @@ process MERGEDKRAKENREPORT {
     """
     merge_tsvs.py \\
         -o ./krakenreport.merged_mqc.tsv \\
-        -i $reports 
-    
+        -i $reports
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python3: \$(python3 --version | sed 's/Python //g')

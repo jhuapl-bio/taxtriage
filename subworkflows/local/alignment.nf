@@ -25,7 +25,7 @@ include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
 workflow ALIGNMENT {
     take:
     fastq_reads
-    
+
 
     main:
     ch_bams = Channel.empty()
@@ -39,29 +39,29 @@ workflow ALIGNMENT {
     ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
 
-    
+
     fastq_reads
     .branch{
         longreads: it[0].platform =~ 'OXFORD'
         shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
-    
+
     ch_versions = 1
     SAMTOOLS_FAIDX (
-        fastq_reads.map{ m, report, fastq, fasta -> return [ m, fasta ] }, 
-        fastq_reads.map{ m, report, fastq, fasta -> return [ m, [] ] }, 
+        fastq_reads.map{ m, report, fastq, fasta -> return [ m, fasta ] },
+        fastq_reads.map{ m, report, fastq, fasta -> return [ m, [] ] },
     )
 
 
     BOWTIE2_BUILD (
-        ch_aligners.shortreads.map{  m, report, fastq, fasta  -> 
+        ch_aligners.shortreads.map{  m, report, fastq, fasta  ->
             return [ m, fasta  ]
         }
-        
+
     )
     BOWTIE2_ALIGN(
-        ch_aligners.shortreads.map{  m, report, fastq, fasta  -> 
-            return [ m, fastq ] 
+        ch_aligners.shortreads.map{  m, report, fastq, fasta  ->
+            return [ m, fastq ]
         },
         BOWTIE2_BUILD.out.index,
         false,
@@ -69,7 +69,7 @@ workflow ALIGNMENT {
     )
     illumina_alignments = ch_aligners.shortreads.join(
         BOWTIE2_ALIGN.out.aligned
-    ) 
+    )
 
 
     MINIMAP2_ALIGN (
@@ -81,16 +81,16 @@ workflow ALIGNMENT {
     )
     nanopore_alignments = ch_aligners.longreads.join(
         MINIMAP2_ALIGN.out.bam
-    ) 
+    )
 
     nanopore_alignments.mix(illumina_alignments).map{
         m, report, fastq, fasta, bam -> [ m, bam ]
     }.set { collected_bams }
-    
 
-    
+
+
     SAMTOOLS_DEPTH(
-        collected_bams, 
+        collected_bams,
     )
     SAMTOOLS_INDEX (
         collected_bams
@@ -104,14 +104,14 @@ workflow ALIGNMENT {
         )
         ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
         ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(nanopore_alignments.map{ m, report, fastq, fasta, bam -> [m,fasta] })
-        
+
         BCFTOOLS_MPILEUP_ILLUMINA(
             illumina_alignments.map{ m, report, fastq, fasta, bam -> [m, bam] },
             illumina_alignments.map{ m, report, fastq, fasta, bam -> fasta },
             false
-        )  
-        
-        .set{ transposed_fastas_oxford }  
+        )
+
+        .set{ transposed_fastas_oxford }
         ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
         ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(illumina_alignments.map{ m, report, fastq, fasta, bam -> [m,fasta] })
 
@@ -123,25 +123,25 @@ workflow ALIGNMENT {
                 }
             )
             chff = SPLIT_VCF.out.vcfs.groupTuple()
-                .map { meta, vcfs -> [meta, vcfs.flatten()] } 
+                .map { meta, vcfs -> [meta, vcfs.flatten()] }
             ch_vcf_split = chff.transpose(by:[1])
             BCFTOOLS_INDEX(
                 ch_vcf_split
             )
             ch_vcf_split_windx = ch_vcf_split.join(BCFTOOLS_INDEX.out.csi)
-            
+
             .map {
                 m, vcf, csi ->
                     def parts = vcf.baseName.split("\\.")
                     def id = "${parts[0]}.${parts[1]}"
                     return [ [id:id, platform:m.platform, base: m.id], vcf, csi ]
             }
-            
+
             // ch_stats = BCFTOOLS_STATS.out.stats
             BCFTOOLS_STATS(
                 ch_vcf_split_windx,
-                [], 
-                [], 
+                [],
+                [],
                 []
             )
             ch_stats = BCFTOOLS_STATS.out.stats
@@ -152,7 +152,7 @@ workflow ALIGNMENT {
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
         }
-        
+
     }
 
     RSEQC_BAMSTAT(
@@ -163,7 +163,7 @@ workflow ALIGNMENT {
 
 
 
-   
+
     // BAM_TO_SAM(
     //     collected_bams
     // )
@@ -171,9 +171,9 @@ workflow ALIGNMENT {
     // ch_pileups=BAM_TO_SAM.out.mpileup
     ch_bams =  collected_bams
     ch_depths = SAMTOOLS_DEPTH.out.tsv
-    
 
-    
+
+
 
 
 
