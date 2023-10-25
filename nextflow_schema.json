@@ -33,11 +33,7 @@
                     "fa_icon": "fas fa-file-signature"
                 }
             },
-            "required": [
-                "input",
-                "db",
-                "outdir"
-            ]
+            "required": ["input", "db", "outdir"]
         },
         "prelim_and_qc": {
             "title": "Preliminary and QC",
@@ -170,10 +166,7 @@
                     "type": "string",
                     "description": "Assembly text file format. Can be a kraken2 fasta (kraken2) or the one pulled from ncbi (ncbi)",
                     "fa_icon": "fas fa-folder-open",
-                    "enum": [
-                        "kraken2",
-                        "ncbi"
-                    ],
+                    "enum": ["kraken2", "ncbi"],
                     "default": "ncbi"
                 },
                 "reference_fasta": {
@@ -197,7 +190,7 @@
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
-                
+
                 "skip_stats": {
                     "type": "boolean",
                     "description": "Skip generating stats for each individual taxa per sample",

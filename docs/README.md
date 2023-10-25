@@ -7,5 +7,4 @@ The nf-core/taxtriage documentation is split into the following pages:
 - [FAQ and Troubleshooting](troubleshooting.md)
   - Troubleshooting and FAQ
 
-
 You can find a lot more documentation about installing, configuring and running nf-core pipelines on the website: [https://nf-co.re](https://nf-co.re)

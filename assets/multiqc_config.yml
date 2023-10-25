@@ -5,19 +5,19 @@ report_comment: >
 
 export_plots: true
 # run_modules:
-  # - custom_content
-  # - kraken
+# - custom_content
+# - kraken
 max_table_rows: 1000000
 table_columns_visible:
-  merge:   # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
-    'Reads Aligned': false
-    'Abu Total Aligned': false
-    'Abu Total Bases': false
-    'Total Bases Adjusted': false
-    'Breadth Genome Coverage': false
-    'Depth Coverage Mean': false
-    'Depth Coverage Stdev': false
-    'Depth Coef. Variation': false
+  merge: # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
+    "Reads Aligned": false
+    "Abu Total Aligned": false
+    "Abu Total Bases": false
+    "Total Bases Adjusted": false
+    "Breadth Genome Coverage": false
+    "Depth Coverage Mean": false
+    "Depth Coverage Stdev": false
+    "Depth Coef. Variation": false
 custom_css_files:
   - ./mqc.css
 custom_content:
@@ -28,33 +28,32 @@ custom_content:
     - confidences
     - krakenreport
 custom_data:
-  
   individuals:
-    section_name: 'Individuals'
-    plot_type: 'table'
-    file_format: 'tsv'
+    section_name: "Individuals"
+    plot_type: "table"
+    file_format: "tsv"
     pconfig:
-      table_title: 'Individuals Data'
-      namespace: 'Individuals'
+      table_title: "Individuals Data"
+      namespace: "Individuals"
   confidences:
-    section_name: 'Confidence Metrics'
-    plot_type: 'table'
+    section_name: "Confidence Metrics"
+    plot_type: "table"
     file: "*confidences.merged_mqc.tsv*"
-    file_format: 'tsv'    
+    file_format: "tsv"
     pconfig:
-      beeswarm: false   
+      beeswarm: false
   krakenreport:
-    section_name: 'All Metagenomic Hits'
-    plot_type: 'table'
-    file_format: 'tsv'
+    section_name: "All Metagenomic Hits"
+    plot_type: "table"
+    file_format: "tsv"
     file: "krakenreport.merged_mqc.tsv"
     pconfig:
-      id: 'summary_metagenomics_metrics_plot'
+      id: "summary_metagenomics_metrics_plot"
       beeswarm: false
-      headers: 
-        rank: 'Rank'
+      headers:
+        rank: "Rank"
   nf-core-taxtriage-summary:
-    section_name: 'Metadata'
+    section_name: "Metadata"
     file: "table_explanation_mqc.yml"
 skip_generalstats: true
 module_order:
@@ -65,9 +64,9 @@ module_order:
   - bcftools
 report_section_order:
   confidences:
-    order:  9999
+    order: 9999
   krakenreport:
-    order:  9998
+    order: 9998
   kraken:
     order: 9997
   bcftools:
