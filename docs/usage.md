@@ -120,9 +120,13 @@ work                # Directory containing the nextflow working files
 While we support Taxtriage in both Basestack and native and local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
 
 1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
-  - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
+
+- Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
+
 2. Request a user account to brian.merritt@jhuapl.edu
-  - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
+
+- Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
+
 3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
 #### Working with your own data NF Tower
