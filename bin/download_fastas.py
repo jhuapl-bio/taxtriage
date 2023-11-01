@@ -189,6 +189,7 @@ def get_assemblies(refs, outfile, seen, index_ftp):
                         obj = refs[id]['id']
                         fullid = os.path.basename(ftp_site) + '_genomic.fna.gz'
                         ftp_site = ftp_site+'/'+fullid
+                        print(ftp_site, id)
                         encoding = guess_type(fullid)[1]   # uses file extension
                         _open = partial(
                             gzip.open, mode='rt') if encoding == 'gzip' else open
