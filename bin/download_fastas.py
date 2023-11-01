@@ -182,6 +182,7 @@ def get_assemblies(refs, outfile, seen, index_ftp):
                     fullid = os.path.basename(ftp_site) +'_genomic.fna.gz'
                     ftp_site = ftp_site+'/'+fullid
                     encoding = guess_type(fullid)[1]   # uses file extension
+                    print(ftp_site, id)
                     _open = partial(gzip.open, mode='rt') if encoding == 'gzip' else open
                     with closing(request.urlopen(ftp_site, context=ctx)) as r:
                         with open('file.gz', 'wb') as f:
