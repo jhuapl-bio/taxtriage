@@ -10,6 +10,7 @@ include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
+include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
@@ -92,8 +93,16 @@ workflow ALIGNMENT {
     SAMTOOLS_DEPTH(
         collected_bams,
     )
+
     SAMTOOLS_INDEX (
         collected_bams
+    )
+
+    collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ collected_bams_combined }
+
+    collected_bams.view()
+    SAMTOOLS_COVERAGE (
+        collected_bams_combined
     )
 
     if (!params.skip_variants){

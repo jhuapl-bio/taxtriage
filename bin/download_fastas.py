@@ -159,7 +159,6 @@ def import_assembly_file(input, filename, idx):
                 refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
                     linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
                 seen[linesplit[idx[1]]] = True
-    print(refs)
     return refs
 
 
@@ -181,30 +180,33 @@ def get_assemblies(refs, outfile, seen, index_ftp):
     if index_ftp and len(ids) > 0:
         with open(outfile, "a") as w:
             for id in ids:
-                if seen and id in seen:
-                    print(id)
-                    print("key already seen:", id, "; skipping")
-                else:
-                    ftp_site = refs[id]['fulline'][index_ftp]
-                    obj = refs[id]['id']
-                    fullid = os.path.basename(ftp_site) + '_genomic.fna.gz'
-                    ftp_site = ftp_site+'/'+fullid
-                    encoding = guess_type(fullid)[1]   # uses file extension
-                    _open = partial(
-                        gzip.open, mode='rt') if encoding == 'gzip' else open
-                    with closing(request.urlopen(ftp_site, context=ctx)) as r:
-                        with open('file.gz', 'wb') as f:
-                            shutil.copyfileobj(r, f)
-                        f.close()
-                    r.close()
-                    breakable = False
-                    with _open('file.gz') as uncompressed:
-                        for record in SeqIO.parse(uncompressed, "fasta"):
-                            if (len(record.seq) > 1000):
-                                newobj = obj+"|"+record.id
-                                record.id = newobj
-                                SeqIO.write(record, w, "fasta")
-                    uncompressed.close()
+                try:
+                    if seen and id in seen  :
+                        print(id)
+                        print("key already seen:", id, "; skipping")
+                    else:
+                        ftp_site = refs[id]['fulline'][index_ftp]
+                        obj = refs[id]['id']
+                        fullid = os.path.basename(ftp_site) + '_genomic.fna.gz'
+                        ftp_site = ftp_site+'/'+fullid
+                        encoding = guess_type(fullid)[1]   # uses file extension
+                        _open = partial(
+                            gzip.open, mode='rt') if encoding == 'gzip' else open
+                        with closing(request.urlopen(ftp_site, context=ctx)) as r:
+                            with open('file.gz', 'wb') as f:
+                                shutil.copyfileobj(r, f)
+                            f.close()
+                        r.close()
+                        with _open('file.gz') as uncompressed:
+                            for record in SeqIO.parse(uncompressed, "fasta"):
+                                if (len(record.seq) > 1000):
+                                    newobj = obj+"|"+record.id
+                                    record.id = newobj
+                                    SeqIO.write(record, w, "fasta")
+                        uncompressed.close()
+                except Exception as ex:
+                    print(ex)
+                    pass
         w.close()
     return
 
