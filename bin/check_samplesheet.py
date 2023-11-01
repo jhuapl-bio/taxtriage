@@ -3,23 +3,23 @@
 ##############################################################################################
 # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 # All rights reserved.
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this 
-# software and associated documentation files (the "Software"), to deal in the Software 
-# without restriction, including without limitation the rights to use, copy, modify, 
-# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this
+# software and associated documentation files (the "Software"), to deal in the Software
+# without restriction, including without limitation the rights to use, copy, modify,
+# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
 # permit persons to whom the Software is furnished to do so.
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
-# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
-# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 # OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
 """Provide a command line tool to validate and transform tabular samplesheets."""
 
-import os 
+import os
 import argparse
 import csv
 import logging
@@ -96,7 +96,7 @@ class RowChecker:
         # check if the path of row['fastq_1'] is a directory or file
         # if directory, then row['fastq_1'] is the directory name
         # if file, then row['fastq_1'] is the file name , check if the path is a directory too
-        if row['fastq_1'] and row['fastq_1'] != '' and not any( row['fastq_1'].endswith(extension) for extension in self.VALID_FORMATS):
+        if row['fastq_1'] and row['fastq_1'] != '' and not any(row['fastq_1'].endswith(extension) for extension in self.VALID_FORMATS):
             row[self._single_col] = True
             row[self._dir_col] = True
             self._seen.add((row[self._sample_col], row[self._first_col]))
@@ -112,11 +112,10 @@ class RowChecker:
             if isinstance(row[key], str):
                 row[key] = row[key].strip()
                 # if row[key] == 'trim':
-                    #uppercase the trim value
-                    # row[key] = row[key].upper()
-        print(row) 
+                # uppercase the trim value
+                # row[key] = row[key].upper()
+        print(row)
         self.modified.append(row)
-
 
     def _validate_sample(self, row):
         """Assert that the sample name exists and convert spaces to underscores."""
@@ -140,7 +139,8 @@ class RowChecker:
         if row[self._first_col] and row[self._second_col]:
             row[self._single_col] = False
             assert (
-                Path(row[self._first_col]).suffixes[-2:] == Path(row[self._second_col]).suffixes[-2:]
+                Path(
+                    row[self._first_col]).suffixes[-2:] == Path(row[self._second_col]).suffixes[-2:]
             ), "FASTQ pairs must have the same file extensions."
         else:
             row[self._single_col] = True
@@ -160,7 +160,8 @@ class RowChecker:
         FASTQ file combination exists.
 
         """
-        assert len(self._seen) == len(self.modified), "The pair of sample name and FASTQ must be unique."
+        assert len(self._seen) == len(
+            self.modified), "The pair of sample name and FASTQ must be unique."
         if len({pair[0] for pair in self._seen}) < len(self._seen):
             counts = Counter(pair[0] for pair in self._seen)
             seen = Counter()
@@ -191,7 +192,8 @@ def sniff_format(handle):
     # peek = handle.read(2048)
     sniffer = csv.Sniffer()
     if not sniffer.has_header(header):
-        logger.critical(f"The given sample sheet does not appear to contain a header.")
+        logger.critical(
+            f"The given sample sheet does not appear to contain a header.")
         # sys.exit(1)
     dialect = sniffer.sniff(header)
     handle.seek(0)
@@ -231,7 +233,8 @@ def check_samplesheet(file_in, file_out):
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))
         # Validate the existence of the expected header columns.
         if not required_columns.issubset(reader.fieldnames):
-            logger.critical(f"The sample sheet **must** contain the column headers: {', '.join(required_columns)}.")
+            logger.critical(
+                f"The sample sheet **must** contain the column headers: {', '.join(required_columns)}.")
             sys.exit(1)
         # Validate each row.
         checker = RowChecker()
@@ -284,7 +287,8 @@ def parse_args(argv=None):
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
     args = parse_args(argv)
-    logging.basicConfig(level=args.log_level, format="[%(levelname)s] %(message)s")
+    logging.basicConfig(level=args.log_level,
+                        format="[%(levelname)s] %(message)s")
     if not args.file_in.is_file():
         logger.error(f"The given input file {args.file_in} was not found!")
         sys.exit(2)

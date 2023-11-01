@@ -6,7 +6,7 @@ process MERGE_CONFIDENCE {
         'https://depot.galaxyproject.org/singularity/biopython:1.78' :
         'biocontainers/biopython:1.75' }"
 
-        
+
     input:
     file confidences
 
@@ -17,9 +17,9 @@ process MERGE_CONFIDENCE {
     """
     merge_tsvs.py \\
         -o ./confidences.merged_mqc.tsv \\
-        -i $confidences 
+        -i $confidences
 
-    
+
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

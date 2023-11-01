@@ -1,20 +1,19 @@
-id: 'MergedtableColumnExplanation'
-section_name: 'Statistics Table for Alignment against top Taxids'
-section_href: 'https://github.com/jhuapl-bio/taxtriage'
-plot_type: 'html'
+id: "MergedtableColumnExplanation"
+section_name: "Statistics Table for Alignment against top Taxids"
+section_href: "https://github.com/jhuapl-bio/taxtriage"
+plot_type: "html"
 data: |
-    <p style="font-size:110%"><b>Table Statistics for Alignments</b></p>
-    <dl class="dl-horizontal">
-      <dt>1</dt>		<dd><samp>Taxid_SampleName_AccessionMapped/samp></dd>
-      <dt>2</dt>		<dd><samp>Rank of Taxa</samp></dd>
-      <dt>3</dt>		<dd><samp>Mean Depth of all positions</samp></dd>
-      <dt>4</dt>		<dd><samp>Avg Coverage of Reference</samp></dd>
-      <dt>5</dt>		<dd><samp>Reference Accession Length From Alignment</samp></dd>
-      <dt>6</dt>		<dd><samp>Total # Aligned Reads from Kraken2</samp></dd>
-      <dt>7</dt>		<dd><samp>% Aligned Reads from Kraken2 relative to sample's alignment total</samp></dd>
-      <dt>8</dt>		<dd><samp>Std. Deviation of Coverage</samp></dd>
-      <dt>9	</dt>		<dd><samp>Abundance of the Aligned Reads relative to the sample</samp></dd>
-      <dt>10	</dt>		<dd><samp>X Coverage of Positions meeting minimum depth/samp></dd>
-      <dt>11</dt>		<dd><samp>Name of Taxa</samp></dd>
-    </dl>
-   
+  <p style="font-size:110%"><b>Table Statistics for Alignments</b></p>
+  <dl class="dl-horizontal">
+    <dt>1</dt>		<dd><samp>Taxid_SampleName_AccessionMapped/samp></dd>
+    <dt>2</dt>		<dd><samp>Rank of Taxa</samp></dd>
+    <dt>3</dt>		<dd><samp>Mean Depth of all positions</samp></dd>
+    <dt>4</dt>		<dd><samp>Avg Coverage of Reference</samp></dd>
+    <dt>5</dt>		<dd><samp>Reference Accession Length From Alignment</samp></dd>
+    <dt>6</dt>		<dd><samp>Total # Aligned Reads from Kraken2</samp></dd>
+    <dt>7</dt>		<dd><samp>% Aligned Reads from Kraken2 relative to sample's alignment total</samp></dd>
+    <dt>8</dt>		<dd><samp>Std. Deviation of Coverage</samp></dd>
+    <dt>9	</dt>		<dd><samp>Abundance of the Aligned Reads relative to the sample</samp></dd>
+    <dt>10	</dt>		<dd><samp>X Coverage of Positions meeting minimum depth/samp></dd>
+    <dt>11</dt>		<dd><samp>Name of Taxa</samp></dd>
+  </dl>

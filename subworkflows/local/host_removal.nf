@@ -4,17 +4,17 @@
 // ##############################################################################################
 // # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
-// # Permission is hereby granted, free of charge, to any person obtaining a copy of this 
-// # software and associated documentation files (the "Software"), to deal in the Software 
-// # without restriction, including without limitation the rights to use, copy, modify, 
-// # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+// # Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// # software and associated documentation files (the "Software"), to deal in the Software
+// # without restriction, including without limitation the rights to use, copy, modify,
+// # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
 // # permit persons to whom the Software is furnished to do so.
 // #
-// # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-// # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
-// # PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
-// # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-// # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+// # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// # PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+// # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+// # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
@@ -47,7 +47,7 @@ workflow HOST_REMOVAL {
         if (params.remove_reference_file){
             ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
         } else if (params.genome) {
-            ch_reference_fasta_removal = params.genomes[params.genome]['fasta']            
+            ch_reference_fasta_removal = params.genomes[params.genome]['fasta']
         }
 
         if (params.remove_reference_file || params.genome){
@@ -75,29 +75,29 @@ workflow HOST_REMOVAL {
                 true,
                 true
             )
-            
 
-            SAMTOOLS_VIEW ( 
-                FILTER_MINIMAP2.out.bam.map{ m, bam -> 
-                    return [m, bam, [] 
-                ]}, 
-                [ [],[] ], 
-                [] 
+
+            SAMTOOLS_VIEW (
+                FILTER_MINIMAP2.out.bam.map{ m, bam ->
+                    return [m, bam, []
+                ]},
+                [ [],[] ],
+                []
             )
             SAMTOOLS_FASTQ ( SAMTOOLS_VIEW.out.bam, false )
             ch_reads = SAMTOOLS_FASTQ.out.other.mix(
                 FILTER_BOWTIE2.out.fastq
             )
             ch_all_Bams = FILTER_MINIMAP2.out.bam.mix(FILTER_BOWTIE2.out.aligned)
-            
+
             FILTERED_SAMTOOLS_INDEX ( ch_all_Bams )
             ch_bai_files = ch_all_Bams.join(FILTERED_SAMTOOLS_INDEX.out.bai)
-            FILTERED_STATS ( 
-                ch_bai_files, 
+            FILTERED_STATS (
+                ch_bai_files,
                 [ [], file(params.remove_reference_file, checkIfExists: true) ]
             )
             ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
-            
+
         }
         // if (params.pre_remove_taxids){
         //     ch_pre_remove_taxids = Channel.of(params.pre_remove_taxids)

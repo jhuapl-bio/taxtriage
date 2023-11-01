@@ -3,22 +3,30 @@
 ##############################################################################################
 # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 # All rights reserved.
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this 
-# software and associated documentation files (the "Software"), to deal in the Software 
-# without restriction, including without limitation the rights to use, copy, modify, 
-# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this
+# software and associated documentation files (the "Software"), to deal in the Software
+# without restriction, including without limitation the rights to use, copy, modify,
+# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
 # permit persons to whom the Software is furnished to do so.
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
-# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
-# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 # OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
 
+from Bio import SeqIO, Entrez
+from xmlrpc.client import Boolean
+from functools import partial
+from mimetypes import guess_type
+from typing import List
+from tokenize import String
+from tabnanny import filename_only
+from contextlib import closing
 import gzip
 
 import argparse
@@ -37,16 +45,9 @@ ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
 
-from contextlib import closing
-#import requests
-from tabnanny import filename_only
-from tokenize import String
-from typing import List
-from xmlrpc.client import Boolean 
+# import requests
 logger = logging.getLogger()
-from Bio import SeqIO,Entrez
-from mimetypes import guess_type
-from functools import partial
+
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -70,8 +71,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "-s",
         "--ftp_path",
-        type=int, 
-        default= 19,
+        type=int,
+        default=19,
         help="ftp path column, to be used instead of esummary when using the assembly file as reference",
     )
     parser.add_argument(
@@ -119,12 +120,13 @@ def parse_args(argv=None):
         type=Path,
         help="Name of the output FASTA file to put all fasta references into",
     )
-   
+
     return parser.parse_args(argv)
+
 
 def import_genome_file(filename, kraken2output):
     refs = dict()
-    with open(filename,"r") as f:
+    with open(filename, "r") as f:
         line = f.readline()
         for line in f:
             line = line.strip()
@@ -140,27 +142,32 @@ def import_genome_file(filename, kraken2output):
                 pass
     print("Done")
     return refs
+
+
 def import_assembly_file(input, filename, idx):
     refs = dict()
     seen = dict()
     print("--------------")
     if (not isinstance(input, list)):
         input = input.split(" ")
-    with open(filename,"r") as f:
+    with open(filename, "r") as f:
         line = f.readline()
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
-            if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen :
-                refs[linesplit[idx[0]]] = dict( id="kraken:taxid|{}|{}".format(linesplit[idx[1]],linesplit[idx[0]]), fulline=linesplit )
+            if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen:
+                refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
+                    linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
                 seen[linesplit[idx[1]]] = True
-    print(refs)
     return refs
+
+
 def get_assembly_summary(id):
     """Get esummary for an entrez id"""
     esummary_handle = Entrez.esummary(db="assembly", id=id, report="full")
     esummary_record = Entrez.read(esummary_handle)
     return esummary_record
+
 
 def get_assemblies(refs, outfile, seen, index_ftp):
     """Download genbank assemblies for a given search term.
@@ -173,46 +180,50 @@ def get_assemblies(refs, outfile, seen, index_ftp):
     if index_ftp and len(ids) > 0:
         with open(outfile, "a") as w:
             for id in ids:
-                if seen and id in seen:
-                    print(id)
-                    print("key already seen:", id, "; skipping")
-                else:
-                    ftp_site = refs[id]['fulline'][index_ftp]
-                    obj = refs[id]['id']
-                    fullid = os.path.basename(ftp_site) +'_genomic.fna.gz'
-                    ftp_site = ftp_site+'/'+fullid
-                    encoding = guess_type(fullid)[1]   # uses file extension
-                    print(ftp_site, id)
-                    _open = partial(gzip.open, mode='rt') if encoding == 'gzip' else open
-                    with closing(request.urlopen(ftp_site, context=ctx)) as r:
-                        with open('file.gz', 'wb') as f:
-                            shutil.copyfileobj(r, f)
-                        f.close()
-                    r.close()
-                    breakable = False
-                    with _open('file.gz') as uncompressed:
+                try:
+                    if seen and id in seen  :
+                        print(id)
+                        print("key already seen:", id, "; skipping")
+                    else:
+                        ftp_site = refs[id]['fulline'][index_ftp]
+                        obj = refs[id]['id']
+                        fullid = os.path.basename(ftp_site) + '_genomic.fna.gz'
+                        ftp_site = ftp_site+'/'+fullid
+                        print(ftp_site, id)
+                        encoding = guess_type(fullid)[1]   # uses file extension
+                        _open = partial(
+                            gzip.open, mode='rt') if encoding == 'gzip' else open
+                        with closing(request.urlopen(ftp_site, context=ctx)) as r:
+                            with open('file.gz', 'wb') as f:
+                                shutil.copyfileobj(r, f)
+                            f.close()
+                        r.close()
+                        with _open('file.gz') as uncompressed:
                             for record in SeqIO.parse(uncompressed, "fasta"):
-                                if (len(record.seq) > 1000) :
+                                if (len(record.seq) > 1000):
                                     newobj = obj+"|"+record.id
                                     record.id = newobj
                                     SeqIO.write(record, w, "fasta")
-                    uncompressed.close()
+                        uncompressed.close()
+                except Exception as ex:
+                    print(ex)
+                    pass
         w.close()
-    return 
+    return
 
-    #provide your own mail here
+    # provide your own mail here
     ids = refs.keys()
     handle = Entrez.efetch(db="assembly", id=ids, retmax='200')
     record = Entrez.read(handle)
     ids = [record[i] for i in range(len(record)) if i % 2 == 0]
-    print (f'found {len(ids)} ids')
+    print(f'found {len(ids)} ids')
     links = []
     for id in ids:
-        #get summary
+        # get summary
         print(id)
         summary = get_assembly_summary(id)
         print("_")
-        #get ftp link
+        # get ftp link
         url = summary['DocumentSummarySet']['DocumentSummary'][0]['FtpPath_RefSeq']
         if url == '':
             continue
@@ -225,24 +236,27 @@ def get_assemblies(refs, outfile, seen, index_ftp):
         #     #download link
         #     urllib.request.urlretrieve(link, f'{label}.fna.gz')
     return links
+
+
 def download(refs, db, outfile, seen):
     # if refs is not empty
     if len(refs.items()) == 0:
-        return 
+        return
     with open(outfile, "a") as w:
         i = 0
         maxt = 30
         next_ = []
         for key, value in refs.items():
             try:
-                if seen and key  in seen:
+                if seen and key in seen:
                     print("key already seen:", key, "; skipping")
                 else:
                     next_.append(key)
-                if i % maxt == 0 and len(next_)>0:
-                    print( str(i), " th iteration of ids to submit..", next_, db)
-                    handle = Entrez.efetch(db=db, rettype="fasta", retmode="fasta", id=",".join(next_), idtype="acc")
-                    seq_records = SeqIO.parse(handle, 'fasta') 
+                if i % maxt == 0 and len(next_) > 0:
+                    print(str(i), " th iteration of ids to submit..", next_, db)
+                    handle = Entrez.efetch(
+                        db=db, rettype="fasta", retmode="fasta", id=",".join(next_), idtype="acc")
+                    seq_records = SeqIO.parse(handle, 'fasta')
                     for seq_record in seq_records:
                         if (seq_record):
                             seq_record.id = str(value.replace(">", ""))
@@ -250,41 +264,45 @@ def download(refs, db, outfile, seen):
                     handle.close()
                     next_ = []
 
-                
             except Exception as err:
                 print("No seq record found", next_, err)
                 next_ = []
                 pass
             i = i+1
+
+
 def get_taxids_from_file(filename, colnumber):
     taxids = []
     with open(filename, "r") as f:
         lines = f.readlines()
         for line in lines:
-            line  = line.rstrip()
+            line = line.rstrip()
             taxids.append(line.split("\t")[colnumber-1])
     return taxids
 
+
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
-    args = parse_args(argv)   
+    args = parse_args(argv)
     # logging.basicConfig(level=args.log_level, format="[%(levelname)s] %(message)s")
     if args.type == 'file':
         taxids = get_taxids_from_file(args.input, args.colnumber_file_taxids)
     else:
         taxids = args.input
     if (args.assembly_refseq_file):
-        refs = import_assembly_file(taxids, args.assembly_refseq_file, args.assembly_map_idx)
+        refs = import_assembly_file(
+            taxids, args.assembly_refseq_file, args.assembly_map_idx)
     else:
         refs = import_genome_file(taxids, args.kraken2output)
     seen = dict()
-    
+
     i = 0
     if os.path.exists(args.file_out):
         for seq_record in SeqIO.parse(args.file_out, "fasta"):
             line = str(seq_record.id)
             if i % 1000 == 0:
-                print ("grabbed the " + str(i+1) + "th reference from existing fasta")
+                print("grabbed the " + str(i+1) +
+                "th reference from existing fasta")
             i = i+1
             try:
                 if (args.kraken2output):
@@ -298,7 +316,7 @@ def main(argv=None):
                 seen[header] = True
             except Exception as ex:
                 print(ex)
-                pass;
+                pass
     if args.email:
         Entrez.email = args.email
     print(len(seen.keys()), "already seen reference ids")
@@ -308,6 +326,7 @@ def main(argv=None):
     else:
         print("get assemblies")
         get_assemblies(refs, args.file_out, seen, args.ftp_path)
-    
+
+
 if __name__ == "__main__":
     sys.exit(main())
