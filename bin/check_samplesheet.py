@@ -44,6 +44,8 @@ class RowChecker:
     VALID_FORMATS = (
         ".fq.gz",
         ".fastq.gz",
+        ".fastq.clean.gz",
+        ".fq.clean.gz",
         ".fastq",
         ".fq"
     )
@@ -222,8 +224,7 @@ def check_samplesheet(file_in, file_out):
             SAMPLE_PE,SAMPLE_PE_RUN2_1.fastq.gz,SAMPLE_PE_RUN2_2.fastq.gz
             SAMPLE_SE,SAMPLE_SE_RUN1_1.fastq.gz,
 
-    .. _viral recon samplesheet:
-        https://raw.githubusercontent.com/nf-core/test-datasets/viralrecon/samplesheet/samplesheet_test_illumina_amplicon.csv
+
 
     """
     # required_columns = {"sample", "fastq_1", "fastq_2"}
