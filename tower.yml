@@ -1,0 +1,13 @@
+reports:
+  multiqc_report.html:
+    display: "MultiQC HTML report"
+  "**/convert/*merged.tsv":
+    display: "Confidence Table"
+  "**/krona/*.html":
+    display: "Krona Plots"
+  "**/fastqc/*_fastqc.html":
+    display: "FASTQC output (Illumina Only)"
+  "**/nanoplot/*_NanoPlot-report.html":
+    display: "Nanoplot output (Nanopore Only)"
+  "**/fastp/*.fastp.html":
+    display: "fastp output (QC Trimming)"

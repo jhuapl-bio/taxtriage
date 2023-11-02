@@ -1,0 +1,43 @@
+{
+    "samples": [
+        "longreads"
+    ],
+    "tests": [
+        {
+            "id": "reference assembly",
+            "test": "all exists",
+            "regex": true,
+            "directory": "bcftools",
+            "match": ".*\\.consensus.fa$"
+        },
+        {
+            "id": "abundance",
+            "test": "ge",
+            "value": 10,
+            "regex": true,
+            "directory": "top",
+            "match": "*_mqc.tsv"
+        },
+        {
+            "id": "meandepth",
+            "test": "ge",
+            "regex": true,
+            "directory": "samtools",
+            "value": 0.02,
+            "column": "meandepth",
+            "match": ".*\\.txt$"
+        },
+        {
+            "id": "coverage",
+            "test": "ge",
+            "directory": "samtools",
+            "value": 0.06,
+            "regex": true,
+            "coverage": "coverage",
+            "match": ".*\\.txt$"
+
+        }
+
+    ]
+
+}
