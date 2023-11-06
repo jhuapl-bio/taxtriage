@@ -1,17 +1,17 @@
 // ##############################################################################################
 // # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
-// # Permission is hereby granted, free of charge, to any person obtaining a copy of this 
-// # software and associated documentation files (the "Software"), to deal in the Software 
-// # without restriction, including without limitation the rights to use, copy, modify, 
-// # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+// # Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// # software and associated documentation files (the "Software"), to deal in the Software
+// # without restriction, including without limitation the rights to use, copy, modify,
+// # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
 // # permit persons to whom the Software is furnished to do so.
 // #
-// # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-// # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
-// # PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
-// # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-// # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+// # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// # PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+// # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+// # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
@@ -28,21 +28,22 @@ WorkflowTaxtriage.initialise(params, log)
 
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
-// def checkPathParamList = [ params.input, params.multiqc_config, params.fasta ]
+def checkPathParamList = [
+    params.input,
+]
 
-// def checkPathParamList = [ params.reference ]
-// for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
+for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
-if (params.minq) { 
+if (params.minq) {
     ch_minq_illumina = params.minq
     ch_minq_oxford = params.minq
-} else { 
+} else {
     ch_minq_illumina=20
     ch_minq_oxford=7
-    println "Min Quality set to default" 
+    println "Min Quality set to default"
 }
 
 
@@ -71,7 +72,7 @@ if (params.assembly && ch_assembly_txt.isEmpty() ) {
     exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"
 }  else if (params.assembly){
     println "Assembly file present, using it to pull genomes from ncbi... ${params.assembly}"
-} 
+}
 
 
 
@@ -155,12 +156,13 @@ include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
+include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
- 
+
 // Info required for completion email and summary
 def multiqc_report = []
 
@@ -192,7 +194,7 @@ workflow TAXTRIAGE {
             "checksum": "c7d50ca4f46885ce7d342a06e748f9390cf3f4157a54c995d34ecdabbc83e1b8",
             "size": "112M"
         ],
-        
+
     ]
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
@@ -205,7 +207,7 @@ workflow TAXTRIAGE {
                 supported_dbs[params.db]["checksum"]
             )
             ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
-            
+
             println("_____________")
         } else if  (params.db)  {
             ch_db = file(params.db, checkIfExists: true)
@@ -217,7 +219,7 @@ workflow TAXTRIAGE {
             file(params.db, checkIfExists: true)
             ch_db = params.db
         }
-    } 
+    }
     if (params.taxtab == 'default'){
         DOWNLOAD_TAXTAB()
         ch_taxdump = DOWNLOAD_TAXTAB.out.taxtab
@@ -234,11 +236,26 @@ workflow TAXTRIAGE {
         println "empty"
         GET_ASSEMBLIES()
         GET_ASSEMBLIES.out.assembly.map{  record -> record }.set{ ch_assembly_txt }
-        
+
     }
 
 
     ch_versions = Channel.empty()
+    // // // //
+    // // // // MODULE: MultiQC
+    // // // //
+    workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+    ch_workflow_summary = Channel.value(workflow_summary)
+    ch_multiqc_files = Channel.empty()
+    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
+    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
+    // // // //
+    // // // //
+    // // // //
+
+
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
@@ -246,14 +263,15 @@ workflow TAXTRIAGE {
         ch_input
     )
     ch_reads = INPUT_CHECK.out.reads
-    
+
+
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter{ it[0].directory   }
     )
     ch_reads = ARTIC_GUPPYPLEX.out.fastq
     ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].directory   })
-    
+
     if (params.subsample && params.subsample > 0){
         ch_subsample  = params.subsample
         SEQTK_SAMPLE (
@@ -279,11 +297,11 @@ workflow TAXTRIAGE {
             meta, reads -> meta.sequencing_summary
         }
     )
-    
-    // // //  
-    
-    
-    // // // MODULE: Run FastQC or Porechop, Trimgalore
+
+    // // // //
+
+
+    // // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
     ch_porechop_out = Channel.empty()
     if (params.trim){
@@ -298,36 +316,59 @@ workflow TAXTRIAGE {
 
         trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
         ch_reads=nontrimmed_reads.mix(trimmed_reads)
-    } 
+    }
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
     if (!params.skip_fastp) {
         FASTP (
             ch_reads,
             [],
-            false, 
+            false,
             false
         )
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
-       
     }
+
+    HOST_REMOVAL (
+        ch_reads,
+        params.genome
+    )
+    ch_reads = HOST_REMOVAL.out.unclassified_reads
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+
     if (!params.skip_plots){
         FASTQC (
-            ch_reads.filter { it[0].platform == 'ILLUMINA'}
+            ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
         )
         ch_versions = ch_versions.mix(FASTQC.out.versions.first())
         NANOPLOT (
-            ch_reads.filter { it[0].platform == 'OXFORD'}
+            ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
         )
-        
-       
+
+
     }
-    
-   
-   
-    // // // // // //
+
+    // // // // // // //
+    // // // // // // // MODULE: Run Kraken2
+    // // // // // // //
+    KRAKEN2_KRAKEN2(
+        ch_reads,
+        ch_db,
+        true,
+        true
+    )
+    // if (params.filter){
+    //     ch_filter_db = file(params.filter)
+    //     println "${ch_filter_db} <-- filtering reads on this db"
+    //     READSFILTER(
+    //         ch_reads,
+    //         ch_filter_db
+    //     )
+    //     ch_reads = READSFILTER.out.reads
+    // }
+    ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
     //Create empty channel to store report depending on classification tool
     ch_report = Channel.empty()
@@ -407,7 +448,7 @@ workflow TAXTRIAGE {
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
     )
     ch_mergedtsv = Channel.empty()
-    
+
     FILTERKRAKEN (
         MERGEDKRAKENREPORT.out.krakenreport
     )
@@ -420,12 +461,12 @@ workflow TAXTRIAGE {
     }
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
-        
+
         if (params.reference_fasta){
             ch_reference_fasta = params.reference_fasta ? Channel.fromPath( params.reference_fasta, checkIfExists: true ) : Channel.empty()
             ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
                 ch_reference_fasta
-            )  
+            )
         } else {
             if (ch_assembly_file_type == 'ncbi' ){
                 DOWNLOAD_ASSEMBLY (
@@ -436,7 +477,7 @@ workflow TAXTRIAGE {
                 )
                 ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
                     DOWNLOAD_ASSEMBLY.out.fasta
-                )               
+                )
             } else {
                 ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
                     meta, report, reads_class -> [ meta, report, ch_assembly ]
@@ -445,7 +486,7 @@ workflow TAXTRIAGE {
         }
         // ch_new = ch_hit_to_kraken_report.join(ch_reads)
         // ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> fasta != null }
-        
+
         ALIGNMENT(
             ch_hit_to_kraken_report
         )
@@ -476,56 +517,51 @@ workflow TAXTRIAGE {
         ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
 
     }
-     
-    // if (!params.skip_assembly){
-    //     illumina_reads =  ch_hit_to_kraken_report.filter { it[0].platform == 'ILLUMINA'  }.map{
-    //         meta, reads -> 
-    //         [meta, reads, [], []]
-    //     }
-    //     SPADES_ILLUMINA(
-    //        illumina_reads
-    //     )
-    //     println("____")
-    //     println("____")
 
-        
-    //     nanopore_reads = ch_hit_to_kraken_report
-    //     .filter{ it[0].platform == 'OXFORD'  }.map{
-    //         meta, class, reads -> 
-    //         [meta, [], [], [], reads]
-    //     }
-    //     SPADES_OXFORD(
-    //        illumina_reads
-    //     )
-        
-    //     // FLYE(
-    //     //    nanopore_reads,
-    //     //    "--nano-raw"
-    //     // )
-    
-    // }
+    if (!params.skip_assembly){
+
+        illumina_reads = ch_hit_to_kraken_report.filter {
+            it[0].platform == 'ILLUMINA'
+        }.map{
+            meta, reads -> [meta, reads, [], []]
+        }
+        SPADES_ILLUMINA(
+            illumina_reads
+        )
+
+        println("____________________________")
 
 
-    
+        nanopore_reads = ch_hit_to_kraken_report.filter{
+            it[0].platform == 'OXFORD'
+        }.map{
+            meta, reads -> [meta, [], [], [], reads]
+        }
+
+        FLYE(
+            nanopore_reads,
+            "--nano-raw"
+        )
+
+    }
 
 
-    
-    
+
+
+
+
+
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )
 
 
-    
+
     // // //
-    // // // MODULE: MultiQC
+    // // // MODULE: MultiQC Pt 2
     // // //
-    workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-    ch_workflow_summary = Channel.value(workflow_summary)
-    ch_multiqc_files = Channel.empty()
-    ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(TAXPASTA_STANDARDISE.out.standardised_profile.collect{it[1]}.ifEmpty([]))
@@ -535,8 +571,6 @@ workflow TAXTRIAGE {
 
 
     ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
-    ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
     ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
@@ -556,12 +590,20 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect{it[1]}.ifEmpty([]))
     }
-    
     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
-    
+
+    // Unused or Incomplete
+    // if (params.blastdb && !params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // } else if (params.blastdb && params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // }
+    // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
+
     MULTIQC (
         ch_multiqc_files.collect()
-
     )
     multiqc_report = MULTIQC.out.report.toList()
     ch_versions    = ch_versions.mix(MULTIQC.out.versions)
@@ -573,12 +615,12 @@ workflow TAXTRIAGE {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-// workflow.onComplete {
-//     if (params.email || params.email_on_fail) {
-//         NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
-//     }
-//     NfcoreTemplate.summary(workflow, params, log)
-// }
+workflow.onComplete {
+    if (params.email || params.email_on_fail) {
+        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+    }
+    NfcoreTemplate.summary(workflow, params, log)
+}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

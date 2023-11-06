@@ -4,17 +4,17 @@
 // ##############################################################################################
 // # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
-// # Permission is hereby granted, free of charge, to any person obtaining a copy of this 
-// # software and associated documentation files (the "Software"), to deal in the Software 
-// # without restriction, including without limitation the rights to use, copy, modify, 
-// # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+// # Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// # software and associated documentation files (the "Software"), to deal in the Software
+// # without restriction, including without limitation the rights to use, copy, modify,
+// # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
 // # permit persons to whom the Software is furnished to do so.
 // #
-// # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-// # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
-// # PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
-// # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-// # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+// # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// # PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+// # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+// # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
@@ -30,7 +30,7 @@ workflow INPUT_CHECK {
         .splitCsv ( header:true, sep:',' )
         .map { create_fastq_channel(it) }
         .set { reads }
-    
+
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
     versions = SAMPLESHEET_CHECK.out.versions // channel: [ versions.yml ]
@@ -50,7 +50,6 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
-    println meta
     if (meta.directory ){
         if (meta.platform == 'OXFORD'){
             fastq_meta = [ meta, [ file(meta.fastq_1) ]  ]
@@ -70,6 +69,6 @@ def create_fastq_channel(LinkedHashMap row) {
             fastq_meta = [ meta, [ file(meta.fastq_1), file(meta.fastq_2) ] ]
         }
     }
-    
+
     return fastq_meta
 }

@@ -33,11 +33,7 @@
                     "fa_icon": "fas fa-file-signature"
                 }
             },
-            "required": [
-                "input",
-                "db",
-                "outdir"
-            ]
+            "required": ["input", "db", "outdir"]
         },
         "prelim_and_qc": {
             "title": "Preliminary and QC",
@@ -144,14 +140,33 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "genome": {
+                    "type": "string",
+                    "description": "Name of iGenomes reference.",
+                    "fa_icon": "fas fa-book",
+                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details.",
+                    "hidden": true
+                },
+                "igenomes_base": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Directory / URL base for iGenomes references.",
+                    "default": "s3://ngi-igenomes/igenomes",
+                    "fa_icon": "fas fa-cloud-download-alt",
+                    "hidden": true
+                },
+                "igenomes_ignore": {
+                    "type": "boolean",
+                    "description": "Do not load the iGenomes reference config.",
+                    "fa_icon": "fas fa-ban",
+                    "hidden": true,
+                    "help_text": "Do not load `igenomes.config` when running the pipeline. You may choose this option if you observe clashes between custom parameters and those supplied in `igenomes.config`."
+                },
                 "assembly_file_type": {
                     "type": "string",
                     "description": "Assembly text file format. Can be a kraken2 fasta (kraken2) or the one pulled from ncbi (ncbi)",
                     "fa_icon": "fas fa-folder-open",
-                    "enum": [
-                        "kraken2",
-                        "ncbi"
-                    ],
+                    "enum": ["kraken2", "ncbi"],
                     "default": "ncbi"
                 },
                 "reference_fasta": {
@@ -175,7 +190,7 @@
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
-                
+
                 "skip_stats": {
                     "type": "boolean",
                     "description": "Skip generating stats for each individual taxa per sample",

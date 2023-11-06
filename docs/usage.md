@@ -16,7 +16,7 @@ You will need to create a samplesheet with information about the samples you wou
 --input '[path to samplesheet file]'
 ```
 
-### Multiple Samples 
+### Multiple Samples
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
@@ -28,14 +28,9 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
 ```
 
-
-
-
-### Multiple Samples AND Platforms 
+### Multiple Samples AND Platforms
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
-
-
 
 ```console
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim
@@ -47,14 +42,14 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 
 ### Samplesheet Information
 
-| Column     | Description                                                                                                                                                                            |
-| ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sample`   | Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
-| `fastq_1`  | OPTIONAL (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                             |
-| `fastq_2`  | OPTIONAL. Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                             |
-| `platform` | Platform used, [ILLUMINA, OXFORD]                                                            |
-| `trim` | TRUE/FALSE, do you want to run trimming on the sample?                                       |
-| `sequencing_summary` | OPTIONAL. If detected, output plots based on the the sequencing summary file for that sample | 
+| Column               | Description                                                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`             | Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
+| `fastq_1`            | OPTIONAL (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".               |
+| `fastq_2`            | OPTIONAL. Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                     |
+| `platform`           | Platform used, [ILLUMINA, OXFORD]                                                                                                                                                      |
+| `trim`               | TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                 |
+| `sequencing_summary` | OPTIONAL. If detected, output plots based on the the sequencing summary file for that sample                                                                                           |
 
 An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
@@ -81,55 +76,58 @@ work                # Directory containing the nextflow working files
 
 ### CLI Parameters Possible and Explained
 
-| Parameter     | Description                                                                                                                                                                            |
-| ---------  | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--input <samplesheet.csv_path>`   | CSV file containing samplesheet information for each sample. See [Samplesheet section](#samplesheet-information)  |
-| `--outdir <path_to_output_to_be_made>`  | Output folder.                                             |
-| `--skip_assembly`  | Skip the assembly process. Currently this is recommmended as spades/flye are not functioning properly |
-| `--skip_fastp`  | TRUE/FALSE,  do not filter with fastp |
-| `--skip_plots`  | TRUE/FALSE,  do not make any plots  |
-| `--remove_taxids  <numbers[]>`  | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "'9606'" for human reads |
-| `--k2_confidence  <numbers[]>`  | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information. |
-| `--skip_realignment`  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result                    |            
-| `--minq <number>`     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina         |
-| `--trim`     | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)  |
-| `--subsample <number>`     | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis      |
-| `--reference_fasta <filepath>`     | Location of a reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references     |
-| `--db <path_to_kraken2_database>` | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path. [See here for a full list](#supported-default-databases)  |
-| `--download_db` | Download the preset database indicated in `--db` to `--outdir` |
-| `--max_memory <number>GB` | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called |
-| `-latest` | Use the latest revision (-r). If you want to autopull the latest commit for a branch from https://github.com/jhuapl-bio/taxtriage, specify this. Used in Basestack and the Cloud (default toggle) |
-| `--low_memory <number>` | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD |
-| `--max_cpus <number>` | Max CPUs you want to dedicate to the pipeline | 
-| `--top_per_taxa ,taxid:amount:rank]` | One or more 3 element values for the minimum taxa at a rank. Example "10239:20:S 2:20:S" is minimum 20 virus species (10239 is Virus) AND (separated by space for a new definition) 20 Bacteria (2) species. Possible Rank codes are G,S,P,F,O,C | 
-| `--demux` | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag | 
-| `--top_hits_count` | Minimum taxa to filter out per rank level. If top_per_taxa specified, whatever is the larger of the 2 values for the results takes priority. | 
-| `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
-| `-r [main, stable, etc.]` | Specify the branch/revision name to use if pulling from github (not local main.nf file) | 
-| `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons | 
-| `-classifier [kraken2, metaphlan]` | Specify which taxonomic classifier to use
+| Parameter                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input <samplesheet.csv_path>`                      | CSV file containing samplesheet information for each sample. See [Samplesheet section](#samplesheet-information)                                                                                                                                                                                                                                                                                                                  |
+| `--outdir <path_to_output_to_be_made>`                | Output folder.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--skip_assembly`                                     | Skip the assembly process. Currently this is recommmended as spades/flye are not functioning properly                                                                                                                                                                                                                                                                                                                             |
+| `--skip_fastp`                                        | TRUE/FALSE, do not filter with fastp                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--skip_plots`                                        | TRUE/FALSE, do not make any plots                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `--remove_taxids  <numbers[]>`                        | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "'9606'" for human reads                                                                                                                                                                                                                                                                                       |
+| `--k2_confidence  <numbers[]>`                        | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information.                                                                                                                                                                                                                                            |
+| `--skip_realignment`                                  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result                                                                                                                                                                                                                                                                                                                                                  |
+| `--minq <number>`                                     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina                                                                                                                                                                                                                                                                                          |
+| `--trim`                                              | Remove adapters from data prior to qc filtering. Trimgalore for Illumina, Porechop for Illumina (SLOW)                                                                                                                                                                                                                                                                                                                            |
+| `--subsample <number>`                                | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis                                                                                                                                                                                                                                                                                                         |
+| `--reference_fasta <filepath>`                        | Location of a reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references                                                                                                                                                                                                                                 |
+| `--db <path_to_kraken2_database>`                     | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path. [See here for a full list](#supported-default-databases) |
+| `--download_db`                                       | Download the preset database indicated in `--db` to `--outdir`                                                                                                                                                                                                                                                                                                                                                                    |
+| `--max_memory <number>GB`                             | Max RAM you want to dedicate to the pipeline. Most of it will be used during Kraken2 steps so ensure you have more memory than the size of the `--db` called                                                                                                                                                                                                                                                                      |
+| `-latest`                                             | Use the latest revision (-r). If you want to autopull the latest commit for a branch from https://github.com/jhuapl-bio/taxtriage, specify this. Used in Basestack and the Cloud (default toggle)                                                                                                                                                                                                                                 |
+| `--low_memory <number>`                               | If you don't have enough memory to load the kraken2 db, call this to read it from the filesystem for each read. THIS IS MUCH SLOWER THAN THE DEFAULT METHOD                                                                                                                                                                                                                                                                       |
+| `--max_cpus <number>`                                 | Max CPUs you want to dedicate to the pipeline                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--top_per_taxa ,taxid:amount:rank]`                  | One or more 3 element values for the minimum taxa at a rank. Example "10239:20:S 2:20:S" is minimum 20 virus species (10239 is Virus) AND (separated by space for a new definition) 20 Bacteria (2) species. Possible Rank codes are G,S,P,F,O,C                                                                                                                                                                                  |
+| `--genome`                                            | Pull one of the pre-made igenomes databases. Available list at [here](https://github.com/nf-core/rnaseq/blob/e049f51f0214b2aef7624b9dd496a404a7c34d14/conf/igenomes.config#L22) or [here](https://ewels.github.io/AWS-iGenomes/) (aws cli or curl command) to download them locally                                                                                                                                               |
+| `--remove_reference_file`                             | Remove all reads that align to a set of accessions in a single fasta file                                                                                                                                                                                                                                                                                                                                                         |
+| `--demux`                                             | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag                                                                                                                                                                                                                                                                                                                                      |
+| `--top_hits_count`                                    | Minimum taxa to filter out per rank level. If top_per_taxa specified, whatever is the larger of the 2 values for the results takes priority.                                                                                                                                                                                                                                                                                      |
+| `-resume`                                             | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time                                                                                                                                                                                                                                                                                                               |
+| `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
+| `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                                                                        | `-classifier [kraken2, metaphlan]` | Specify which taxonomic classifier to use                                                                                                                                                                    |
 
 ### Supported Default databases
 
-                                                                                               
-| Database Name | Location | Size | 
-| ------  | ------ | --- |
-| standard8  | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz) | 7.5G |
-| viral  | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz) | 553M |
-| flukraken2  | [Download](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz) | 180M |
-| test    |    [Download](https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz)   |    112M   |
-| minikraken2  | [Download](https://genome-idx.s3.amazonaws.com/kraken/minikraken2_v2_8GB_201904.tgz) | 7.5G |
+| Database Name | Location                                                                                                  | Size |
+| ------------- | --------------------------------------------------------------------------------------------------------- | ---- |
+| standard8     | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz)                   | 7.5G |
+| viral         | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz)                           | 553M |
+| flukraken2    | [Download](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz) | 180M |
+| test          | [Download](https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz)      | 112M |
+| minikraken2   | [Download](https://genome-idx.s3.amazonaws.com/kraken/minikraken2_v2_8GB_201904.tgz)                      | 7.5G |
 
 ## AWS with Nextflow Tower
 
 While we support Taxtriage in both Basestack and native and local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
 
 1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
-    - Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
-2. Request a user account to brian.merritt@jhuapl.edu
-    - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
-3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
+- Further documentation for the following steps can be found [here](https://help.tower.nf/22.2/)
+
+2. Request a user account to brian.merritt@jhuapl.edu
+
+- Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
+
+3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
 #### Working with your own data NF Tower
 
@@ -140,24 +138,19 @@ When all necessary items have been setup, you'll need to load your data you want
 
 In the above example, I've made an s3 bucket with necessary permissions for nextflow-tower to run. I have a directory with the same test-data you can find in the `examples` directory in the root level of this bit of code [here](../examples)
 
-
 Once the AWS system is setup, let's head back to Nextflow Tower. On the left, you can select a drop-down and open up your own personal launchpad (and other features)
 
 <img src="images/cloud_showcase_nftower.png" alt="drawing" width="40%" height="20%"/>
 
 <img src="images/addpipeline.png"  width="20%" height="30%">
 
-
 <img src="images/taxtriagelaunchpad1.png"  width="50%" height="50%">
-
 
 MAKE SURE that the compute environment matches the one you set up when you set your credentials in AWS with NF tower
 
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
-
 <img src="images/taxtriagelaunchpad2.png"  width="50%" height="50%">
-
 
 Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
 
@@ -199,7 +192,6 @@ If `-profile` is not specified, the pipeline will run locally and expect all sof
 - `singularity`
   - A generic configuration profile to be used with [Singularity](https://sylabs.io/docs/)
 
-
 ### `-resume`
 
 Specify this when restarting a pipeline. Nextflow will use cached results from any pipeline steps where the inputs are the same, continuing from where it got to previously. For input to be considered the same, not only the names must be identical but the files' contents as well. For more info about this parameter, see [this blog post](https://www.nextflow.io/blog/2019/demystifying-nextflow-resume.html).
@@ -207,7 +199,6 @@ Specify this when restarting a pipeline. Nextflow will use cached results from a
 You can also supply a run name to resume a specific run: `-resume [run-name]`. Use the `nextflow log` command to show previous run names.
 
 ## Custom configuration
-
 
 ### Updating containers
 

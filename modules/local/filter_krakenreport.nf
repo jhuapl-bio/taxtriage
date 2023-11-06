@@ -9,11 +9,11 @@ process FILTERKRAKEN {
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/python:3.9--1' :
-        'quay.io/biocontainers/python:3.8.3' }"
-        
-        
+        'biocontainers/python:3.8.3' }"
+
+
     input:
-    path krakenreport 
+    path krakenreport
 
     output:
     path("*_filtered_mqc.tsv"), optional:true, emit: reports
@@ -30,9 +30,9 @@ process FILTERKRAKEN {
     filter_tsv.py \\
         -o ./ \\
         -i $krakenreport
-    
+
     cat <<-END_VERSIONS > versions.yml
-    "${task.process}":  
+    "${task.process}":
         python3: \$(python3 --version | sed 's/Python //g')
     END_VERSIONS
     """
