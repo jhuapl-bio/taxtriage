@@ -107,6 +107,7 @@ work                # Directory containing the nextflow working files
 | `-resume` | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time | 
 | `-r [main, stable, etc.]` | Specify the branch/revision name to use if pulling from github (not local main.nf file) | 
 | `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons | 
+| `-classifier [kraken2, metaphlan]` | Specify which taxonomic classifier to use
 
 ### Supported Default databases
 

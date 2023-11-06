@@ -145,6 +145,12 @@ include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../modules/local/krakenreport'
+//include { CENTRIFUGE_CENTRIFUGE } from '../modules/nf-core/centrifuge/centrifuge/main'
+//include { CENTRIFUGE_KREPORT } from '../modules/nf-core/centrifuge/kreport/main'
+include { METAPHLAN_MAKEDB } from '../modules/nf-core/metaphlan/makedb/main'
+include { METAPHLAN_METAPHLAN } from '../modules/nf-core/metaphlan/metaphlan/main'
+include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main' 
+include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'           
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
@@ -259,7 +265,15 @@ workflow TAXTRIAGE {
 
     
     
-    
+    if (params.filter){
+        ch_filter_db = file(params.filter)
+        println "${ch_filter_db} <-- filtering reads on this db"
+        READSFILTER(
+            ch_reads,
+            ch_filter_db
+        )
+        ch_reads = READSFILTER.out.reads
+    }
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
             meta, reads -> meta.sequencing_summary
@@ -311,34 +325,69 @@ workflow TAXTRIAGE {
        
     }
     
+   
+   
     // // // // // //
-    // // // // // // MODULE: Run Kraken2
-    // // // // // //
-    KRAKEN2_KRAKEN2(
-        ch_reads,
-        ch_db,
-        true,
-        true
-    )
-    // if (params.filter){
-    //     ch_filter_db = file(params.filter)
-    //     println "${ch_filter_db} <-- filtering reads on this db"
-    //     READSFILTER(
-    //         ch_reads,
-    //         ch_filter_db
-    //     )
-    //     ch_reads = READSFILTER.out.reads
-    // }
-    ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
+    //Create empty channel to store report depending on classification tool
+    ch_report = Channel.empty()
+    ch_profile = Channel.empty()
+
+
+    classifier = params.classifier
+
+    //centrifuge_db = '/Users/tas1/Documents/APHL/taxtriage/bin/test_dbs/centrifuge/indices'
+    metaphlan_db = '/Users/tas1/Documents/APHL/taxtriage/bin/test_dbs/toy/mpa_vJan21_TOY_CHOCOPhlAnSGB_202103/'
+    taxdump_dir = '/Users/tas1/Documents/APHL/taxtriage/taxdump'
+
+    // // // // // // MODULE: Run Kraken2
+    if (classifier == 'kraken2') {
+
+        KRAKEN2_KRAKEN2(
+            ch_reads,
+            ch_db,
+            true,
+            true
+        )
+        ch_report = KRAKEN2_KRAKEN2.out.report
+        ch_profile = KRAKEN2_KRAKEN2.out.report
+    /* } else if (classifier == 'centrifuge') {
+        CENTRIFUGE_CENTRIFUGE(
+            ch_reads,
+            centrifuge_db,
+            true,
+            true
+        )
+        CENTRIFUGE_KREPORT(
+            CENTRIFUGE_CENTRIFUGE.out.report,
+            centrifuge_db
+        ) 
+
+        ch_report = CENTRIFUGE_KREPORT.out.kreport*/
+    } else if (classifier == 'metaphlan') {
+        //METAPHLAN_MAKEDB()
+        METAPHLAN_METAPHLAN(
+            ch_reads,
+            metaphlan_db
+        )
+
+        ch_profile = METAPHLAN_METAPHLAN.out.profile
+    }
+    TAXPASTA_STANDARDISE(
+        ch_profile,
+        taxdump_dir
+    )
+    ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
+
+    
     VISUALIZE_REPORTS(
-        ch_kraken2_report,
+        ch_report,
         ch_taxdump
     )
 
 
     if (params.remove_taxids){
-        remove_input = ch_kraken2_report.map{
+        remove_input = ch_report.map{
             meta, report -> [
                 meta, report, params.remove_taxids
             ]
@@ -346,13 +395,13 @@ workflow TAXTRIAGE {
         REMOVETAXIDSCLASSIFICATION(
             remove_input
         )
-        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
+        ch_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
     
     
 
     TOP_HITS (
-        ch_kraken2_report
+        ch_report
     )
     MERGEDKRAKENREPORT(
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
@@ -362,7 +411,13 @@ workflow TAXTRIAGE {
     FILTERKRAKEN (
         MERGEDKRAKENREPORT.out.krakenreport
     )
-    ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
+
+    ch_filtered_reads = Channel.empty()
+    if (classifier == 'kraken2') {
+        ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
+    } else if (classifier == 'centrifuge') {
+        ch_filtered_reads = CENTRIFUGE_CENTRIFUGE.out.fastq_mapped.map{m,r-> [m, r.findAll{ it =~ /.*\.mapped.*(fq|fastq)(\.gz)?/  }]}
+    }
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
         
@@ -403,12 +458,17 @@ workflow TAXTRIAGE {
             ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
         )
         
-        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+        /* ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
-        )
+        ) */
+
+        ch_joined_confidence_report = ch_report.join(CONFIDENCE_METRIC.out.tsv)
+
         CONVERT_CONFIDENCE (
             ch_joined_confidence_report
         )
+        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
+        // .set{ ch_mergedtsv }
 
         MERGE_CONFIDENCE(
             CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
@@ -417,32 +477,33 @@ workflow TAXTRIAGE {
 
     }
      
-    if (!params.skip_assembly){
-
-        illumina_reads = ch_hit_to_kraken_report.filter { 
-            it[0].platform == 'ILLUMINA'  
-        }.map{
-            meta, reads -> [meta, reads, [], []]
-        }
-        SPADES_ILLUMINA(
-           illumina_reads
-        )
-
-        println("____________________________")
+    // if (!params.skip_assembly){
+    //     illumina_reads =  ch_hit_to_kraken_report.filter { it[0].platform == 'ILLUMINA'  }.map{
+    //         meta, reads -> 
+    //         [meta, reads, [], []]
+    //     }
+    //     SPADES_ILLUMINA(
+    //        illumina_reads
+    //     )
+    //     println("____")
+    //     println("____")
 
         
-        nanopore_reads = ch_hit_to_kraken_report.filter{ 
-            it[0].platform == 'OXFORD'  
-        }.map{
-            meta, reads -> [meta, [], [], [], reads]
-        }
-       
-        FLYE(
-           nanopore_reads,
-           "--nano-raw"
-        )
+    //     nanopore_reads = ch_hit_to_kraken_report
+    //     .filter{ it[0].platform == 'OXFORD'  }.map{
+    //         meta, class, reads -> 
+    //         [meta, [], [], [], reads]
+    //     }
+    //     SPADES_OXFORD(
+    //        illumina_reads
+    //     )
+        
+    //     // FLYE(
+    //     //    nanopore_reads,
+    //     //    "--nano-raw"
+    //     // )
     
-    }
+    // }
 
 
     
@@ -467,7 +528,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-    
+    ch_multiqc_files = ch_multiqc_files.mix(TAXPASTA_STANDARDISE.out.standardised_profile.collect{it[1]}.ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
     // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
@@ -480,7 +541,9 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
+    //ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_report.collect{it[1]}.ifEmpty([]))
+
     // if (params.blastdb && !params.remoteblast){
     //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
     // } else if (params.blastdb && params.remoteblast){

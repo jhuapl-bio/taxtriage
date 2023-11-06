@@ -1,0 +1,4 @@
+﻿sample,platform,fastq_1,fastq_2,sequencing_summary,trim
+stool,ILLUMINA,/Users/tas1/Documents/APHL/taxtriage/examples/data/metaphlan_toy/SRS014459-Stool.fq.gz,,,FALSE
+tongue,ILLUMINA,/Users/tas1/Documents/APHL/taxtriage/examples/data/metaphlan_toy/SRS014470-Tongue_dorsum.fq.gz,,,FALSE
+mucosa,ILLUMINA,/Users/tas1/Documents/APHL/taxtriage/examples/data/metaphlan_toy/SRS014472-Buccal_mucosa.fq.gz,,,FALSE

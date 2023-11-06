@@ -1,6 +1,7 @@
-#mqc-module-section-confidences, .mqc-module-section{
-    white-space: nowrap;
-    overflow: hidden;
-    font-size: 0.94em;
-    text-overflow: ellipsis;
+#mqc-module-section-confidences,
+.mqc-module-section {
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0.94em;
+  text-overflow: ellipsis;
 }
