@@ -118,6 +118,7 @@ include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxon
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
+include { DONWLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
@@ -150,8 +151,8 @@ include { KRAKENREPORT } from '../modules/local/krakenreport'
 //include { CENTRIFUGE_KREPORT } from '../modules/nf-core/centrifuge/kreport/main'
 include { METAPHLAN_MAKEDB } from '../modules/nf-core/metaphlan/makedb/main'
 include { METAPHLAN_METAPHLAN } from '../modules/nf-core/metaphlan/metaphlan/main'
-include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main' 
-include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'           
+include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main'
+include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
@@ -220,6 +221,19 @@ workflow TAXTRIAGE {
             ch_db = params.db
         }
     }
+
+    ch_taxdump_dir = Channel.empty()
+
+    if (!params.taxdump && params.classifier == 'metaphlan'){
+        DONWLOAD_TAXDUMP()
+        ch_taxdump_dir = DONWLOAD_TAXDUMP.out.nodes.parent
+        ch_taxdump_dir.view()
+    } else if (params.taxdump) {
+        ch_taxdump_dir = Channel.value(params.taxdump)
+        println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
+    }
+
+
     if (params.taxtab == 'default'){
         DOWNLOAD_TAXTAB()
         ch_taxdump = DOWNLOAD_TAXTAB.out.taxtab
@@ -230,6 +244,7 @@ workflow TAXTRIAGE {
         KRONA_KTUPDATETAXONOMY()
         ch_taxdump = KRONA_KTUPDATETAXONOMY.out.db
     }
+
 
 
     if (!ch_assembly_txt){
@@ -281,8 +296,8 @@ workflow TAXTRIAGE {
         ch_reads = SEQTK_SAMPLE.out.reads
     }
 
-    
-    
+
+
     if (params.filter){
         ch_filter_db = file(params.filter)
         println "${ch_filter_db} <-- filtering reads on this db"
@@ -346,8 +361,6 @@ workflow TAXTRIAGE {
         NANOPLOT (
             ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
         )
-
-
     }
 
     // // // // // // //
@@ -373,16 +386,10 @@ workflow TAXTRIAGE {
     //Create empty channel to store report depending on classification tool
     ch_report = Channel.empty()
     ch_profile = Channel.empty()
-
-
-    classifier = params.classifier
-
-    //centrifuge_db = '/Users/tas1/Documents/APHL/taxtriage/bin/test_dbs/centrifuge/indices'
-    metaphlan_db = '/Users/tas1/Documents/APHL/taxtriage/bin/test_dbs/toy/mpa_vJan21_TOY_CHOCOPhlAnSGB_202103/'
-    taxdump_dir = '/Users/tas1/Documents/APHL/taxtriage/taxdump'
+    ch_classifier = params.classifier
 
     // // // // // // MODULE: Run Kraken2
-    if (classifier == 'kraken2') {
+    if (ch_classifier == 'kraken2') {
 
         KRAKEN2_KRAKEN2(
             ch_reads,
@@ -392,38 +399,26 @@ workflow TAXTRIAGE {
         )
         ch_report = KRAKEN2_KRAKEN2.out.report
         ch_profile = KRAKEN2_KRAKEN2.out.report
-    /* } else if (classifier == 'centrifuge') {
-        CENTRIFUGE_CENTRIFUGE(
-            ch_reads,
-            centrifuge_db,
-            true,
-            true
-        )
-        CENTRIFUGE_KREPORT(
-            CENTRIFUGE_CENTRIFUGE.out.report,
-            centrifuge_db
-        ) 
-
-        ch_report = CENTRIFUGE_KREPORT.out.kreport*/
-    } else if (classifier == 'metaphlan') {
+    } else if (ch_classifier == 'metaphlan') {
         //METAPHLAN_MAKEDB()
         METAPHLAN_METAPHLAN(
             ch_reads,
-            metaphlan_db
+            params.db
         )
 
         ch_profile = METAPHLAN_METAPHLAN.out.profile
     }
+
     TAXPASTA_STANDARDISE(
         ch_profile,
-        taxdump_dir
+        ch_taxdump_dir
     )
     ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
 
-    
+
     VISUALIZE_REPORTS(
         ch_report,
-        ch_taxdump
+        ch_taxdump_dir
     )
 
 
@@ -438,8 +433,8 @@ workflow TAXTRIAGE {
         )
         ch_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
-    
-    
+
+
 
     TOP_HITS (
         ch_report
@@ -453,10 +448,12 @@ workflow TAXTRIAGE {
         MERGEDKRAKENREPORT.out.krakenreport
     )
 
+
+
     ch_filtered_reads = Channel.empty()
-    if (classifier == 'kraken2') {
+    if (ch_classifier == 'kraken2') {
         ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
-    } else if (classifier == 'centrifuge') {
+    } else if (ch_classifier == 'centrifuge') {
         ch_filtered_reads = CENTRIFUGE_CENTRIFUGE.out.fastq_mapped.map{m,r-> [m, r.findAll{ it =~ /.*\.mapped.*(fq|fastq)(\.gz)?/  }]}
     }
     if (!params.skip_realignment){
@@ -498,7 +495,7 @@ workflow TAXTRIAGE {
         CONFIDENCE_METRIC (
             ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
         )
-        
+
         /* ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         ) */

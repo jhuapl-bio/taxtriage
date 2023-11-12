@@ -2,10 +2,10 @@ process METAPHLAN_METAPHLAN {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? 'bioconda::metaphlan=4.0.6' : null)
+    conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/metaphlan:4.0.6--pyhca03a8a_0' :
-        'quay.io/biocontainers/metaphlan:4.0.6--pyhca03a8a_0' }"
+        'biocontainers/metaphlan:4.0.6--pyhca03a8a_0' }"
 
     input:
     tuple val(meta), path(input)
@@ -30,7 +30,6 @@ process METAPHLAN_METAPHLAN {
     """
     BT2_DB=`find -L "${metaphlan_db_latest}" -name "*rev.1.bt2*" -exec dirname {} \\;`
     BT2_DB_INDEX=`find -L ${metaphlan_db_latest} -name "*.rev.1.bt2*" | sed 's/\\.rev.1.bt2.*\$//' | sed 's/.*\\///'`
-    BT2_DB=/Users/tas1/Documents/APHL/taxtriage/bin/test_dbs/toy/mpa_vJan21_TOY_CHOCOPhlAnSGB_202103/
 
     metaphlan \\
         --nproc $task.cpus \\
@@ -39,7 +38,7 @@ process METAPHLAN_METAPHLAN {
         $args \\
         $bowtie2_out \\
         --bowtie2db \$BT2_DB \\
-        --index mpa_vJan21_TOY_CHOCOPhlAnSGB_202103 \\
+        --index \$BT2_DB_INDEX \\
         --biom ${prefix}.biom \\
         --output_file ${prefix}_profile.txt
 
