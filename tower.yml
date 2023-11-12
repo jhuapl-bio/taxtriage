@@ -11,3 +11,5 @@ reports:
     display: "Nanoplot output (Nanopore Only)"
   "**/fastp/*.fastp.html":
     display: "fastp output (QC Trimming)"
+  "**/samtools/*.txt":
+    display: "Coverage, Base Quality, and Map Stats"
