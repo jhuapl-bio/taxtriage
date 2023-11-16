@@ -362,17 +362,17 @@ workflow TAXTRIAGE {
     )
 
 
-    // if (params.remove_taxids){
-    //     remove_input = ch_kraken2_report.map{
-    //         meta, report -> [
-    //             meta, report, params.remove_taxids
-    //         ]
-    //     }
-    //     REMOVETAXIDSCLASSIFICATION(
-    //         remove_input
-    //     )
-    //     ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
-    // }
+    if (params.remove_taxids){
+        remove_input = ch_kraken2_report.map{
+            meta, report -> [
+                meta, report, params.remove_taxids
+            ]
+        }
+        REMOVETAXIDSCLASSIFICATION(
+            remove_input
+        )
+        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
+    }
 
 
 

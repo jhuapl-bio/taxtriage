@@ -1,6 +1,5 @@
 scratch
-examples/Samplesheet_tongue_metaphlan.csv
-bin/taxdump
+files
 null
 test/*
 nf-core/*
