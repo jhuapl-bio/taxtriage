@@ -13,3 +13,17 @@ reports:
     display: "fastp output (QC Trimming)"
   "**/samtools/*.txt":
     display: "Coverage, Base Quality, and Map Stats"
+  "**/bcftools/*consensus.fa":
+    display: "Consensus Generation File"
+  "**/bcftools/*consensus.fa":
+    display: "Consensus Generation File"
+  "**/minimap2/*bam":
+    display: "Long Read BAM File(s)"
+  "**/bowtie2/*bam":
+    display: "Short Read BAM File(s)"
+  "**/top/*top_report.tsv":
+    display: "Top Taxa Per Rank post-Kraken2"
+  "**/top/krakenreport.merged_mqc.tsv":
+    display: "All Samples Top Hits Post-Kraken2"
+
+

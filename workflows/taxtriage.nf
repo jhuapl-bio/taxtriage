@@ -423,7 +423,7 @@ workflow TAXTRIAGE {
 
 
     if (params.remove_taxids){
-        remove_input = ch_report.map{
+        remove_input = ch_kraken2_report.map{
             meta, report -> [
                 meta, report, params.remove_taxids
             ]
@@ -431,7 +431,7 @@ workflow TAXTRIAGE {
         REMOVETAXIDSCLASSIFICATION(
             remove_input
         )
-        ch_report=REMOVETAXIDSCLASSIFICATION.out.report
+        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     }
 
 
