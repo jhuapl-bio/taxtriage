@@ -59,7 +59,7 @@ def parse_args(argv=None):
         "-i",
         "--input",
         metavar="INPUT",
-        help="List of refseq IDs",
+        help="List of taxIDs",
     )
     parser.add_argument(
         "-d",
@@ -79,7 +79,7 @@ def parse_args(argv=None):
         "-f",
         "--type",
         default='file',
-        help="Inpit type, can be a list of taxids or from a file",
+        help="Input type, can be a list of taxids or from a file",
     )
     parser.add_argument(
         "-c",
@@ -143,10 +143,12 @@ def import_genome_file(filename, kraken2output):
     print("Done")
     return refs
 
-
+#
 def import_assembly_file(input, filename, idx):
     refs = dict()
     seen = dict()
+    first = dict()
+
     print("--------------")
     if (not isinstance(input, list)):
         input = input.split(" ")
@@ -155,10 +157,31 @@ def import_assembly_file(input, filename, idx):
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
-            if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen:
-                refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
-                    linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
-                seen[linesplit[idx[1]]] = True
+            
+            if len(linesplit) >= 12 and (linesplit[idx[1]] in input) and linesplit[11] == "Complete Genome" and linesplit[idx[1]] not in seen:
+
+                #If the refseq_category column in the assembly.txt is reference genome
+                if linesplit[4] == "reference genome":
+                    #Set taxid as seen
+                    seen[linesplit[idx[1]]] = True
+                    #Save reference to dict
+                    refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
+                        linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
+                #If there is no reference genome
+                else:
+                    #If this is the first time the taxa without reference genome is seen
+                    if linesplit[idx[1]] not in first:
+                        #Save reference to dict
+                        refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
+                            linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
+                        #Save taxa as the first to be seen
+                        first[linesplit[idx[1]]] = True
+                    #If the taxa without reference genome has already been seen previously, pass (save first seen only)
+                    elif linesplit[idx[1]] in first:
+                        pass
+            #If no complete genome found, pass
+            else:
+                pass
     return refs
 
 
@@ -246,6 +269,7 @@ def download(refs, db, outfile, seen):
         i = 0
         maxt = 30
         next_ = []
+        retry_max = 3
         for key, value in refs.items():
             try:
                 if seen and key in seen:
@@ -254,8 +278,16 @@ def download(refs, db, outfile, seen):
                     next_.append(key)
                 if i % maxt == 0 and len(next_) > 0:
                     print(str(i), " th iteration of ids to submit..", next_, db)
-                    handle = Entrez.efetch(
-                        db=db, rettype="fasta", retmode="fasta", id=",".join(next_), idtype="acc")
+                    for retry_count in range(retry_max):
+                        try:
+                            handle = Entrez.efetch(
+                                db=db, rettype="fasta", retmode="fasta", id=",".join(next_), idtype="acc")
+                        except Exception as e:
+                            if retry_count < retry_max - 1:
+                                print(f"Failed to fetch records (attempt {retry_count + 1})), retrying...")
+                                time.sleep(10) # Wait for a few seconds before retrying
+                            else:
+                                print(f"Failed to fetch records after {retry_max} attempts. Error: {str(e)}")
                     seq_records = SeqIO.parse(handle, 'fasta')
                     for seq_record in seq_records:
                         if (seq_record):
@@ -302,7 +334,7 @@ def main(argv=None):
             line = str(seq_record.id)
             if i % 1000 == 0:
                 print("grabbed the " + str(i+1) +
-                "th reference from existing fasta")
+                "the reference from existing fasta")
             i = i+1
             try:
                 if (args.kraken2output):
