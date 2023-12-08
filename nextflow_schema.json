@@ -27,6 +27,18 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
+                "metaphlan_db": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Metaphlan"
+                },
+                "centrifuge_db": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Centrifuge"
+                },
                 "outdir": {
                     "type": "string",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
@@ -88,6 +100,13 @@
                     "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
                     "default": "default",
                     "description": "Taxonomy tab file for krona plots",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "classifiers": {
+                    "type": "string",
+                    "hint": "Options: [kraken2, centrifuge, metaphlan]",
+                    "default": "default",
+                    "description": "Choose one ore more classifiers, separated by a comma.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "save_reads_assignment": {

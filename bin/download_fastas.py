@@ -155,6 +155,8 @@ def import_assembly_file(input, filename, idx):
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
+
+
             if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen:
                 refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
                     linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)

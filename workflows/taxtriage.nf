@@ -34,6 +34,13 @@ def checkPathParamList = [
 
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
+// check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
+if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
+    exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
+}
+
+
+
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
@@ -46,7 +53,9 @@ if (params.minq) {
     println "Min Quality set to default"
 }
 
-
+// if params.save_fastq_classified then set ch_save_fastq_classified to true
+// else set ch_save_fastq_classified to false
+ch_save_fastq_classified = params.save_fastq_classified ? true : false
 
 ch_assembly_txt=null
 ch_kraken_reference=false
@@ -118,7 +127,7 @@ include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxon
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
-include { DONWLOAD_TAXDUMP } from '../modules/local/download_taxdump'
+include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
@@ -225,34 +234,34 @@ workflow TAXTRIAGE {
     ch_taxdump_dir = Channel.empty()
 
     if (!params.taxdump && params.classifier == 'metaphlan'){
-        DONWLOAD_TAXDUMP()
-        ch_taxdump_dir = DONWLOAD_TAXDUMP.out.nodes.parent
+        DOWNLOAD_TAXDUMP()
+        ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
         ch_taxdump_dir.view()
     } else if (params.taxdump) {
-        ch_taxdump_dir = Channel.value(params.taxdump)
+        ch_taxdump_dir = Channel.fromPath(params.taxdump)
         println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
     }
 
 
-    if (params.taxtab == 'default'){
-        DOWNLOAD_TAXTAB()
-        ch_taxdump = DOWNLOAD_TAXTAB.out.taxtab
-    } else if (params.taxtab && params.taxtab != 'krona') {
-        ch_taxdump = file(params.taxtab, checkIfExists: true)
-        println("Taxdump file provided, using it to pull genomes from... ${params.taxtab}")
-    }  else {
-        KRONA_KTUPDATETAXONOMY()
-        ch_taxdump = KRONA_KTUPDATETAXONOMY.out.db
-    }
+    // if (params.taxtab == 'default'){
+    //     DOWNLOAD_TAXTAB()
+    //     ch_taxdump = DOWNLOAD_TAXTAB.out.taxtab
+    // } else if (params.taxtab && params.taxtab != 'krona') {
+    //     ch_taxdump = file(params.taxtab, checkIfExists: true)
+    //     println("Taxdump file provided, using it to pull genomes from... ${params.taxtab}")
+    // }  else {
+    //     KRONA_KTUPDATETAXONOMY()
+    //     ch_taxdump = KRONA_KTUPDATETAXONOMY.out.db
+    // }
 
 
 
-    if (!ch_assembly_txt){
-        println "empty"
-        GET_ASSEMBLIES()
-        GET_ASSEMBLIES.out.assembly.map{  record -> record }.set{ ch_assembly_txt }
+    // if (!ch_assembly_txt){
+    //     println "empty"
+    //     GET_ASSEMBLIES()
+    //     GET_ASSEMBLIES.out.assembly.map{  record -> record }.set{ ch_assembly_txt }
 
-    }
+    // }
 
 
     ch_versions = Channel.empty()
@@ -281,97 +290,23 @@ workflow TAXTRIAGE {
 
 
 
-    ARTIC_GUPPYPLEX(
-        ch_reads.filter{ it[0].directory   }
-    )
-    ch_reads = ARTIC_GUPPYPLEX.out.fastq
-    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].directory   })
+    // ARTIC_GUPPYPLEX(
+    //     ch_reads.filter{ it[0].directory   }
+    // )
+    // ch_reads = ARTIC_GUPPYPLEX.out.fastq
+    // ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].directory   })
 
-    if (params.subsample && params.subsample > 0){
-        ch_subsample  = params.subsample
-        SEQTK_SAMPLE (
-            ch_reads,
-            ch_subsample
-        )
-        ch_reads = SEQTK_SAMPLE.out.reads
-    }
-
-
-
-    if (params.filter){
-        ch_filter_db = file(params.filter)
-        println "${ch_filter_db} <-- filtering reads on this db"
-        READSFILTER(
-            ch_reads,
-            ch_filter_db
-        )
-        ch_reads = READSFILTER.out.reads
-    }
-    PYCOQC(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
-            meta, reads -> meta.sequencing_summary
-        }
-    )
-
-    // // // //
+    // if (params.subsample && params.subsample > 0){
+    //     ch_subsample  = params.subsample
+    //     SEQTK_SAMPLE (
+    //         ch_reads,
+    //         ch_subsample
+    //     )
+    //     ch_reads = SEQTK_SAMPLE.out.reads
+    // }
 
 
-    // // // // MODULE: Run FastQC or Porechop, Trimgalore
-    // // //
-    ch_porechop_out = Channel.empty()
-    if (params.trim){
-        nontrimmed_reads = ch_reads.filter { !it[0].trim }
-        TRIMGALORE(
-            ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
-        )
-        PORECHOP(
-            ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
-        )
-        ch_porechop_out  = PORECHOP.out.reads
 
-        trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
-        ch_reads=nontrimmed_reads.mix(trimmed_reads)
-    }
-    ch_fastp_reads = Channel.empty()
-    ch_fastp_html = Channel.empty()
-    if (!params.skip_fastp) {
-        FASTP (
-            ch_reads,
-            [],
-            false,
-            false
-        )
-        ch_reads = FASTP.out.reads
-        ch_fastp_reads = FASTP.out.json
-        ch_fastp_html = FASTP.out.html
-    }
-
-    HOST_REMOVAL (
-        ch_reads,
-        params.genome
-    )
-    ch_reads = HOST_REMOVAL.out.unclassified_reads
-    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
-
-    if (!params.skip_plots){
-        FASTQC (
-            ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
-        )
-        ch_versions = ch_versions.mix(FASTQC.out.versions.first())
-        NANOPLOT (
-            ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
-        )
-    }
-
-    // // // // // // //
-    // // // // // // // MODULE: Run Kraken2
-    // // // // // // //
-    KRAKEN2_KRAKEN2(
-        ch_reads,
-        ch_db,
-        true,
-        true
-    )
     // if (params.filter){
     //     ch_filter_db = file(params.filter)
     //     println "${ch_filter_db} <-- filtering reads on this db"
@@ -381,229 +316,318 @@ workflow TAXTRIAGE {
     //     )
     //     ch_reads = READSFILTER.out.reads
     // }
-    ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
+    // PYCOQC(
+    //     ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
+    //         meta, reads -> meta.sequencing_summary
+    //     }
+    // )
+
+    // // // //
+
+
+    // // // // MODULE: Run FastQC or Porechop, Trimgalore
+    // // //
+    // ch_porechop_out = Channel.empty()
+    // if (params.trim){
+    //     nontrimmed_reads = ch_reads.filter { !it[0].trim }
+    //     TRIMGALORE(
+    //         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
+    //     )
+    //     PORECHOP(
+    //         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
+    //     )
+    //     ch_porechop_out  = PORECHOP.out.reads
+
+    //     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
+    //     ch_reads=nontrimmed_reads.mix(trimmed_reads)
+    // }
+    // ch_fastp_reads = Channel.empty()
+    // ch_fastp_html = Channel.empty()
+    // if (!params.skip_fastp) {
+    //     FASTP (
+    //         ch_reads,
+    //         [],
+    //         false,
+    //         false
+    //     )
+    //     ch_reads = FASTP.out.reads
+    //     ch_fastp_reads = FASTP.out.json
+    //     ch_fastp_html = FASTP.out.html
+    // }
+
+    // HOST_REMOVAL (
+    //     ch_reads,
+    //     params.genome
+    // )
+    // ch_reads = HOST_REMOVAL.out.unclassified_reads
+    // ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+
+    // if (!params.skip_plots){
+    //     FASTQC (
+    //         ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
+    //     )
+    //     ch_versions = ch_versions.mix(FASTQC.out.versions.first())
+    //     NANOPLOT (
+    //         ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
+    //     )
+    // }
+
+
+    // if (params.filter){
+    //     ch_filter_db = file(params.filter)
+    //     println "${ch_filter_db} <-- filtering reads on this db"
+    //     READSFILTER(
+    //         ch_reads,
+    //         ch_filter_db
+    //     )
+    //     ch_reads = READSFILTER.out.reads
+    // }
+    // split params.classifier on command and optional space assign to list channel
+    ch_classifier = params.classifiers.split(",\\s*")
 
     //Create empty channel to store report depending on classification tool
     ch_report = Channel.empty()
     ch_profile = Channel.empty()
-    ch_classifier = params.classifier
-
+    ch_kraken2_report = Channel.empty()
+    ch_standardized = Channel.empty()
     // // // // // // MODULE: Run Kraken2
-    if (ch_classifier == 'kraken2') {
+    // print type ch_classifier
+    print ch_classifier
 
+
+    if (ch_classifier.contains('kraken2')) {
+        // // // // // // //
+        // // // // // // // MODULE: Run Kraken2
+        // // // // // // //
         KRAKEN2_KRAKEN2(
             ch_reads,
             ch_db,
-            true,
+            ch_save_fastq_classified,
             true
         )
-        ch_report = KRAKEN2_KRAKEN2.out.report
-        ch_profile = KRAKEN2_KRAKEN2.out.report
-    } else if (ch_classifier == 'metaphlan') {
-        //METAPHLAN_MAKEDB()
+        // Convert the meta.id to the current id and kraken2
+        ch_kraken2_report = KRAKEN2_KRAKEN2.out.report.map{ meta, file -> {
+                meta.id = "${meta.id}_kraken2"
+                meta.classifier = "kraken2"
+                return [ meta, file ]
+            }
+        }
+        // append KRAKEN2_KRAKEN2.out.report to ch_profile
+        ch_profile = ch_profile.concat(ch_kraken2_report)
+    }
+    if (ch_classifier.contains('metaphlan')) {
         METAPHLAN_METAPHLAN(
             ch_reads,
-            params.db
+            params.metaphlan_db
         )
-
-        ch_profile = METAPHLAN_METAPHLAN.out.profile
+        ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
+                meta.id = "${meta.id}_metaphlan"
+                meta.classifier = "metaphlan"
+                return [ meta, file ]
+            }
+        }
+        // append METAPHLAN_METAPHLAN.out.report to ch_profile
+        ch_profile  = ch_profile.concat(ch_metaphlan_report)
     }
 
+    ch_taxdump_dir = Channel.value('')
     TAXPASTA_STANDARDISE(
         ch_profile,
         ch_taxdump_dir
     )
+
+
     ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
+    ch_standardized.view()
+
+    // VISUALIZE_REPORTS(
+    //     ch_report,
+    //     ch_taxdump_dir
+    // )
 
 
-    VISUALIZE_REPORTS(
-        ch_report,
-        ch_taxdump_dir
-    )
-
-
-    if (params.remove_taxids){
-        remove_input = ch_kraken2_report.map{
-            meta, report -> [
-                meta, report, params.remove_taxids
-            ]
-        }
-        REMOVETAXIDSCLASSIFICATION(
-            remove_input
-        )
-        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
-    }
-
-
-
-    TOP_HITS (
-        ch_report
-    )
-    MERGEDKRAKENREPORT(
-        TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
-    )
-    ch_mergedtsv = Channel.empty()
-
-    FILTERKRAKEN (
-        MERGEDKRAKENREPORT.out.krakenreport
-    )
-
-
-
-    ch_filtered_reads = Channel.empty()
-    if (ch_classifier == 'kraken2') {
-        ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
-    } else if (ch_classifier == 'centrifuge') {
-        ch_filtered_reads = CENTRIFUGE_CENTRIFUGE.out.fastq_mapped.map{m,r-> [m, r.findAll{ it =~ /.*\.mapped.*(fq|fastq)(\.gz)?/  }]}
-    }
-    if (!params.skip_realignment){
-        ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
-
-        if (params.reference_fasta){
-            ch_reference_fasta = params.reference_fasta ? Channel.fromPath( params.reference_fasta, checkIfExists: true ) : Channel.empty()
-            ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
-                ch_reference_fasta
-            )
-        } else {
-            if (ch_assembly_file_type == 'ncbi' ){
-                DOWNLOAD_ASSEMBLY (
-                    ch_hit_to_kraken_report.map{
-                        meta, report, reads_class -> return [ meta, report ]
-                    },
-                    ch_assembly_txt
-                )
-                ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
-                    DOWNLOAD_ASSEMBLY.out.fasta
-                )
-            } else {
-                ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
-                    meta, report, reads_class -> [ meta, report, ch_assembly ]
-                }
-            }
-        }
-        // ch_new = ch_hit_to_kraken_report.join(ch_reads)
-        // ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> fasta != null }
-
-        ALIGNMENT(
-            ch_hit_to_kraken_report
-        )
-
-        ch_alignment_stats = ALIGNMENT.out.stats
-        ch_bamstats = ALIGNMENT.out.bamstats
-        ch_depth = ALIGNMENT.out.depth
-
-        CONFIDENCE_METRIC (
-            ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
-        )
-
-        /* ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
-            CONFIDENCE_METRIC.out.tsv
-        ) */
-
-        ch_joined_confidence_report = ch_report.join(CONFIDENCE_METRIC.out.tsv)
-
-        CONVERT_CONFIDENCE (
-            ch_joined_confidence_report
-        )
-        // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
-        // .set{ ch_mergedtsv }
-
-        MERGE_CONFIDENCE(
-            CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
-        )
-        ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
-
-    }
-
-    if (!params.skip_assembly){
-
-        illumina_reads = ch_hit_to_kraken_report.filter {
-            it[0].platform == 'ILLUMINA'
-        }.map{
-            meta, reads -> [meta, reads, [], []]
-        }
-        SPADES_ILLUMINA(
-            illumina_reads
-        )
-
-        println("____________________________")
-
-
-        nanopore_reads = ch_hit_to_kraken_report.filter{
-            it[0].platform == 'OXFORD'
-        }.map{
-            meta, reads -> [meta, [], [], [], reads]
-        }
-
-        FLYE(
-            nanopore_reads,
-            "--nano-raw"
-        )
-
-    }
-
-
-
-
-
-
-
-
-    CUSTOM_DUMPSOFTWAREVERSIONS (
-        ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    )
-
-
-
-    // // //
-    // // // MODULE: MultiQC Pt 2
-    // // //
-
-    ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(TAXPASTA_STANDARDISE.out.standardised_profile.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
-
-
-    ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
-    //ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_report.collect{it[1]}.ifEmpty([]))
-
-    // if (params.blastdb && !params.remoteblast){
-    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
-    // } else if (params.blastdb && params.remoteblast){
-    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // if (params.remove_taxids){
+    //     remove_input = ch_kraken2_report.map{
+    //         meta, report -> [
+    //             meta, report, params.remove_taxids
+    //         ]
+    //     }
+    //     REMOVETAXIDSCLASSIFICATION(
+    //         remove_input
+    //     )
+    //     ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
     // }
-    if (params.trim){
-        ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
-    }
-    if (!params.skip_plots){
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect{it[1]}.ifEmpty([]))
-    }
-    ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
 
-    // Unused or Incomplete
-    // if (params.blastdb && !params.remoteblast){
-    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
-    // } else if (params.blastdb && params.remoteblast){
-    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+
+
+    // TOP_HITS (
+    //     ch_report
+    // )
+    // MERGEDKRAKENREPORT(
+    //     TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
+    // )
+    // ch_mergedtsv = Channel.empty()
+
+    // FILTERKRAKEN (
+    //     MERGEDKRAKENREPORT.out.krakenreport
+    // )
+
+
+
+    // ch_filtered_reads = Channel.empty()
+    // if (ch_classifier == 'kraken2') {
+    //     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
+    // } else if (ch_classifier == 'centrifuge') {
+    //     ch_filtered_reads = CENTRIFUGE_CENTRIFUGE.out.fastq_mapped.map{m,r-> [m, r.findAll{ it =~ /.*\.mapped.*(fq|fastq)(\.gz)?/  }]}
     // }
-    // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
+    // if (!params.skip_realignment){
+    //     ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
 
-    MULTIQC (
-        ch_multiqc_files.collect()
-    )
-    multiqc_report = MULTIQC.out.report.toList()
-    ch_versions    = ch_versions.mix(MULTIQC.out.versions)
+    //     if (params.reference_fasta){
+    //         ch_reference_fasta = params.reference_fasta ? Channel.fromPath( params.reference_fasta, checkIfExists: true ) : Channel.empty()
+    //         ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
+    //             ch_reference_fasta
+    //         )
+    //     } else {
+    //         if (ch_assembly_file_type == 'ncbi' ){
+    //             DOWNLOAD_ASSEMBLY (
+    //                 ch_hit_to_kraken_report.map{
+    //                     meta, report, reads_class -> return [ meta, report ]
+    //                 },
+    //                 ch_assembly_txt
+    //             )
+    //             ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
+    //                 DOWNLOAD_ASSEMBLY.out.fasta
+    //             )
+    //         } else {
+    //             ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
+    //                 meta, report, reads_class -> [ meta, report, ch_assembly ]
+    //             }
+    //         }
+    //     }
+    //     // ch_new = ch_hit_to_kraken_report.join(ch_reads)
+    //     // ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> fasta != null }
+
+    //     ALIGNMENT(
+    //         ch_hit_to_kraken_report
+    //     )
+
+    //     ch_alignment_stats = ALIGNMENT.out.stats
+    //     ch_bamstats = ALIGNMENT.out.bamstats
+    //     ch_depth = ALIGNMENT.out.depth
+
+    //     CONFIDENCE_METRIC (
+    //         ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+    //     )
+
+    //     /* ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+    //         CONFIDENCE_METRIC.out.tsv
+    //     ) */
+
+    //     ch_joined_confidence_report = ch_report.join(CONFIDENCE_METRIC.out.tsv)
+
+    //     CONVERT_CONFIDENCE (
+    //         ch_joined_confidence_report
+    //     )
+    //     // CONVERT_CONFIDENCE.out.tsv.collectFile(name: 'merged_mqc.tsv', keepHeader: true, storeDir: 'merged_mqc',  newLine: true)
+    //     // .set{ ch_mergedtsv }
+
+    //     MERGE_CONFIDENCE(
+    //         CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+    //     )
+    //     ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
+
+    // }
+
+    // if (!params.skip_assembly){
+
+    //     illumina_reads = ch_hit_to_kraken_report.filter {
+    //         it[0].platform == 'ILLUMINA'
+    //     }.map{
+    //         meta, reads -> [meta, reads, [], []]
+    //     }
+    //     SPADES_ILLUMINA(
+    //         illumina_reads
+    //     )
+
+    //     println("____________________________")
+
+
+    //     nanopore_reads = ch_hit_to_kraken_report.filter{
+    //         it[0].platform == 'OXFORD'
+    //     }.map{
+    //         meta, reads -> [meta, [], [], [], reads]
+    //     }
+
+    //     FLYE(
+    //         nanopore_reads,
+    //         "--nano-raw"
+    //     )
+
+    // }
+
+
+
+
+
+
+
+
+    // CUSTOM_DUMPSOFTWAREVERSIONS (
+    //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
+    // )
+
+
+
+    // // // //
+    // // // // MODULE: MultiQC Pt 2
+    // // // //
+
+    // ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(TAXPASTA_STANDARDISE.out.standardised_profile.collect{it[1]}.ifEmpty([]))
+    // // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
+    // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
+    // // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
+
+
+    // ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
+    // //ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_report.collect{it[1]}.ifEmpty([]))
+
+    // // if (params.blastdb && !params.remoteblast){
+    // //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // // } else if (params.blastdb && params.remoteblast){
+    // //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // // }
+    // if (params.trim){
+    //     ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
+    // }
+    // if (!params.skip_plots){
+    //     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
+    //     ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect{it[1]}.ifEmpty([]))
+    // }
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
+
+    // // Unused or Incomplete
+    // // if (params.blastdb && !params.remoteblast){
+    // //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // // } else if (params.blastdb && params.remoteblast){
+    // //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // // }
+    // // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
+    // // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
+    // // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
+
+    // MULTIQC (
+    //     ch_multiqc_files.collect()
+    // )
+    // multiqc_report = MULTIQC.out.report.toList()
+    // ch_versions    = ch_versions.mix(MULTIQC.out.versions)
 }
 
 /*

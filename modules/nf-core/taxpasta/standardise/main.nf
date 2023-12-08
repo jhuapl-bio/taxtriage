@@ -2,14 +2,14 @@ process TAXPASTA_STANDARDISE {
     tag "$meta.id"
     label 'process_single'
 
-    conda 'modules/nf-core/taxpasta/standardise/environment.yml'
+    conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/taxpasta:0.6.1--pyhdfd78af_0':
-        'quay.io/biocontainers/taxpasta:0.6.1--pyhdfd78af_0' }"
+        'biocontainers/taxpasta:0.6.1--pyhdfd78af_0' }"
 
     input:
-    tuple val(meta), path(profile)
-    path taxonomy
+    tuple val(meta), path(profile), val(classifier)
+    val taxonomy
 
     output:
     tuple val(meta), path("*.{tsv,csv,arrow,parquet,biom}"), emit: standardised_profile
@@ -27,20 +27,17 @@ process TAXPASTA_STANDARDISE {
     // e.g., "--output ${task.ext.prefix}.tsv".
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def profiler = "--profiler ${meta.classifier}"
+    def output = "--output ${meta.id}.taxpasta.standardized.tsv"
     def taxonomy_option = taxonomy ? "--taxonomy ${taxonomy}" : ''
-    def profiler = "-p ${params.classifier}"
-    def output_file = "-o ${meta.id}.standardized_report_mqc.tsv" 
-    
-    
     """
     taxpasta standardise \\
-        $profiler \\
-        $output_file \\
         $args \\
         $taxonomy_option \\
-        --add-name \\
-        $profile
-        
+        $output  \\
+        $profiler \\
+        $profile 
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         taxpasta: \$(taxpasta --version)
