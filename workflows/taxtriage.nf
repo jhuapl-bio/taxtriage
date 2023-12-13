@@ -431,14 +431,16 @@ workflow TAXTRIAGE {
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         )
-        CONVERT_CONFIDENCE (
-            ch_joined_confidence_report
-        )
-
-        MERGE_CONFIDENCE(
-            CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
-        )
-        ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
+        if(!params.skip_confidence){
+            CONVERT_CONFIDENCE (
+                ch_joined_confidence_report
+            )
+    
+            MERGE_CONFIDENCE(
+                CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+            )
+            ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
+        }
 
     }
 
