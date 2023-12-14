@@ -132,6 +132,11 @@
                     "description": "Dont do re-alignment post kraken2 classification",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "skip_confidence": {
+                    "type": "boolean",
+                    "description": "Dont do confidence metrics post-alignment",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "assembly": {
                     "type": "string",
                     "format": "file-path",
