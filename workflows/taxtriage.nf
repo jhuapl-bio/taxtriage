@@ -50,7 +50,7 @@ if (params.minq) {
 
 ch_assembly_txt=null
 ch_kraken_reference=false
-ch_taxdump = Channel.empty()
+
 
 if (!params.assembly){
     println "No assembly file given, downloading the standard ncbi one"
@@ -106,7 +106,7 @@ include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
 include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxonomy/main'
-
+include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT NF-CORE MODULES/SUBWORKFLOWS
@@ -140,7 +140,6 @@ include { CONFIDENCE_METRIC } from '../modules/local/confidence'
 include { CONVERT_CONFIDENCE } from '../modules/local/convert_confidence'
 include { PULL_TAXID } from '../modules/local/pull_taxid'
 include { REFERENCE } from '../modules/local/download_reference'
-include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
@@ -151,6 +150,10 @@ include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
+include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
+include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
+include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
+
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -214,16 +217,7 @@ workflow TAXTRIAGE {
             ch_db = params.db
         }
     }
-    if (params.taxtab == 'default'){
-        DOWNLOAD_TAXTAB()
-        ch_taxdump = DOWNLOAD_TAXTAB.out.taxtab
-    } else if (params.taxtab && params.taxtab != 'krona') {
-        ch_taxdump = file(params.taxtab, checkIfExists: true)
-        println("Taxdump file provided, using it to pull genomes from... ${params.taxtab}")
-    }  else {
-        KRONA_KTUPDATETAXONOMY()
-        ch_taxdump = KRONA_KTUPDATETAXONOMY.out.db
-    }
+
 
 
     if (!ch_assembly_txt){
@@ -235,6 +229,7 @@ workflow TAXTRIAGE {
 
 
     ch_versions = Channel.empty()
+    ch_mergedtsv = Channel.empty()
     // // // //
     // // // // MODULE: MultiQC
     // // // //
@@ -336,30 +331,36 @@ workflow TAXTRIAGE {
 
     }
 
-    // // // // // // //
-    // // // // // // // MODULE: Run Kraken2
-    // // // // // // //
+    // // // // // //
+    // // // // // // MODULE: Run Kraken2
+    // // // // // //
     KRAKEN2_KRAKEN2(
         ch_reads,
         ch_db,
         true,
         true
     )
-    // if (params.filter){
-    //     ch_filter_db = file(params.filter)
-    //     println "${ch_filter_db} <-- filtering reads on this db"
-    //     READSFILTER(
-    //         ch_reads,
-    //         ch_filter_db
-    //     )
-    //     ch_reads = READSFILTER.out.reads
-    // }
+
     ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
-    VISUALIZE_REPORTS(
-        ch_kraken2_report,
-        ch_taxdump
+    KREPORT_TO_KRONATXT(
+        ch_kraken2_report
     )
+    ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+    ch_combined = ch_krona_txt
+                .map { it -> it[1] }  // Extract the file part
+                .collect()            // Collect all file parts into a list
+                .map { files ->
+                    // Join the files with single quotes and space
+                    String joinedFiles = files.collect { "'$it'" }.join(" ")
+                    [[id:'combined_krona_kreports'], joinedFiles]  // Combine with new ID
+                }
+
+
+    KRONA_KTIMPORTTEXT(
+        ch_combined
+    )
+
 
 
     if (params.remove_taxids){
@@ -379,24 +380,33 @@ workflow TAXTRIAGE {
     TOP_HITS (
         ch_kraken2_report
     )
+    ch_taxids_list = TOP_HITS.out.txt
+
     MERGEDKRAKENREPORT(
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
     )
-    ch_mergedtsv = Channel.empty()
+
 
     FILTERKRAKEN (
         MERGEDKRAKENREPORT.out.krakenreport
     )
     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
+
+
+    // // ch_taxids_list.view()
     if (!params.skip_realignment){
         ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
 
-        if (params.reference_fasta){
+        if (params.reference_fasta){ //
+            // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
             ch_reference_fasta = params.reference_fasta ? Channel.fromPath( params.reference_fasta, checkIfExists: true ) : Channel.empty()
             ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
                 ch_reference_fasta
             )
         } else {
+            // NCBIGENOMEDOWNLOAD(
+            //     ch_taxids_list
+            // )
             if (ch_assembly_file_type == 'ncbi' ){
                 DOWNLOAD_ASSEMBLY (
                     ch_hit_to_kraken_report.map{
@@ -413,8 +423,6 @@ workflow TAXTRIAGE {
                 }
             }
         }
-        // ch_new = ch_hit_to_kraken_report.join(ch_reads)
-        // ch_hit_to_kraken_report = ch_hit_to_kraken_report.filter { m, report, fastq, fasta -> fasta != null }
 
         ALIGNMENT(
             ch_hit_to_kraken_report
@@ -503,15 +511,14 @@ workflow TAXTRIAGE {
     }
     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
 
+
+
     // Unused or Incomplete
     // if (params.blastdb && !params.remoteblast){
     //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
     // } else if (params.blastdb && params.remoteblast){
     //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
     // }
-    // ch_multiqc_files = ch_multiqc_files.mix(VISUALIZE_REPORTS.out.krona.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ALIGNMENT.out.bowtie2logs.collect{it[1]}.ifEmpty([]))
-    // ch_multiqc_files = ch_multiqc_files.mix(ch_bamstats.collect{it[1]}.ifEmpty([]))
 
     MULTIQC (
         ch_multiqc_files.collect()

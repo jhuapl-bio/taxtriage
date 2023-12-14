@@ -147,6 +147,7 @@ def import_genome_file(filename, kraken2output):
 def import_assembly_file(input, filename, idx):
     refs = dict()
     seen = dict()
+    first = dict()
     print("--------------")
     if (not isinstance(input, list)):
         input = input.split(" ")
@@ -155,10 +156,30 @@ def import_assembly_file(input, filename, idx):
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
-            if len(linesplit) >= 12 and linesplit[11] == 'Complete Genome' and (linesplit[idx[1]] in input) and linesplit[idx[1]] not in seen:
-                refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
-                    linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
-                seen[linesplit[idx[1]]] = True
+            if len(linesplit) >= 12 and (linesplit[idx[1]] in input) and linesplit[11] == "Complete Genome" and linesplit[idx[1]] not in seen:
+
+                #If the refseq_category column in the assembly.txt is reference genome
+                if linesplit[4] == "reference genome":
+                    #Set taxid as seen
+                    seen[linesplit[idx[1]]] = True
+                    #Save reference to dict
+                    refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
+                        linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
+                #If there is no reference genome
+                else:
+                    #If this is the first time the taxa without reference genome is seen
+                    if linesplit[idx[1]] not in first:
+                        #Save reference to dict
+                        refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
+                            linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
+                        #Save taxa as the first to be seen
+                        first[linesplit[idx[1]]] = True
+                    #If the taxa without reference genome has already been seen previously, pass (save first seen only)
+                    elif linesplit[idx[1]] in first:
+                        pass
+            #If no complete genome found, pass
+            else:
+                pass
     return refs
 
 

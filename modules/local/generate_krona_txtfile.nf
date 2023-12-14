@@ -14,20 +14,20 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONFIDENCE_METRIC {
+process KREPORT_TO_KRONATXT {
     tag "$meta.id"
-    label 'process_suphigh'
+    label 'process_medium'
 
-    conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
+    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
-        'biocontainers/pysam:0.21.0--py39hcada746_1' }"
+        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
+        'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta), path(bam), path(depth)
+    tuple val(meta),  val(kraken_report)
 
     output:
-    tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
+    tuple val(meta), path("*krakenreport.krona.txt"), optional: false, emit: txt
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,22 +38,23 @@ process CONFIDENCE_METRIC {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output = "${meta.id}.confidences.tsv"
+    def output_parsed = "${meta.id}.krakenreport.krona.txt"
+    // combine kraken_Report into a string, separated by spaces and double quotes around it
 
 
-    // println "sam_to_confidence.sh -i $sam -m $mpileup -o $output -r ${meta.id}.reads"
     """
 
+    make_kt_files.py \\
+        -i  ${kraken_report} \\
+        -o  ${output_parsed} \\
+        -r "root"
 
-    sam_to_confidence.py \\
-        -i $bam \\
-        -o $output \\
-        -d $depth
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python3: \$(python3 --version | sed 's/Python //g')
+        python: \$(python3 --version )
     END_VERSIONS
 
     """
 }
+
