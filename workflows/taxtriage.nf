@@ -230,6 +230,7 @@ workflow TAXTRIAGE {
 
     ch_versions = Channel.empty()
     ch_mergedtsv = Channel.empty()
+    ch_hit_to_kraken_report = Channel.empty()
     // // // //
     // // // // MODULE: MultiQC
     // // // //
@@ -381,7 +382,7 @@ workflow TAXTRIAGE {
         ch_kraken2_report
     )
     ch_taxids_list = TOP_HITS.out.txt
-
+    ch_taxids_list.view()
     MERGEDKRAKENREPORT(
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
     )
@@ -443,7 +444,7 @@ workflow TAXTRIAGE {
             CONVERT_CONFIDENCE (
                 ch_joined_confidence_report
             )
-    
+
             MERGE_CONFIDENCE(
                 CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
             )
