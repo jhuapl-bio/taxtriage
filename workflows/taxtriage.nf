@@ -1,3 +1,4 @@
+/* groovylint-disable DuplicateMapLiteral */
 // ##############################################################################################
 // # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
@@ -41,41 +42,33 @@ if (params.minq) {
     ch_minq_illumina = params.minq
     ch_minq_oxford = params.minq
 } else {
-    ch_minq_illumina=20
-    ch_minq_oxford=7
-    println "Min Quality set to default"
+    ch_minq_illumina = 20
+    ch_minq_oxford = 7
+    println 'Min Quality set to default'
 }
 
+ch_assembly_txt = null
+ch_kraken_reference = false
 
-
-ch_assembly_txt=null
-ch_kraken_reference=false
-
-
-if (!params.assembly){
-    println "No assembly file given, downloading the standard ncbi one"
-    ch_assembly_txt=null
+if (!params.assembly) {
+    println 'No assembly file given, downloading the standard ncbi one'
+    ch_assembly_txt = null
 } else {
     println "Assembly file present, using it to pull genomes from... ${params.assembly}"
-    ch_assembly_txt=file(params.assembly, checkIfExists: true)
+    ch_assembly_txt = file(params.assembly, checkIfExists: true)
 }
 
-
-
-if (!params.assembly_file_type){
+if (!params.assembly_file_type) {
     ch_assembly_file_type = 'ncbi'
 } else {
     ch_assembly_file_type = params.assembly_file_type
 }
 
-if (params.assembly && ch_assembly_txt.isEmpty() ) {
+if (params.assembly && ch_assembly_txt.isEmpty()) {
     exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"
-}  else if (params.assembly){
+}  else if (params.assembly) {
     println "Assembly file present, using it to pull genomes from ncbi... ${params.assembly}"
 }
-
-
-
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,16 +76,12 @@ if (params.assembly && ch_assembly_txt.isEmpty() ) {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-
-
 ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 ch_multiqc_css       = file("$projectDir/assets/mqc.css", checkIfExists: true)
-ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath( params.multiqc_config, checkIfExists: true ) : Channel.empty()
-ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath( params.multiqc_logo, checkIfExists: true ) : Channel.empty()
+ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
+ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
 ch_alignment_stats = Channel.empty()
-
-
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT LOCAL MODULES/SUBWORKFLOWS
@@ -153,6 +142,8 @@ include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
 include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
+include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
+include { FEATURES_TO_BED } from '../modules/local/convert_features_to_bed'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -164,49 +155,49 @@ include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 def multiqc_report = []
 
 workflow TAXTRIAGE {
-
     supported_dbs = [
-        "flukraken2": [
-            "url": "https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz",
-            "checksum": "9d388703b1fa7c2e269bb63acf1043dbec7bb62da0a57c4fb1c41d8ab7f9c953",
-            "size": "180M"
+        'flukraken2': [
+            'url': 'https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz',
+            'checksum': '9d388703b1fa7c2e269bb63acf1043dbec7bb62da0a57c4fb1c41d8ab7f9c953',
+            'size': '180M'
         ],
-        "minikraken2": [
-            "url": "ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz",
-            "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
-            "size": "7.5G"
+        'minikraken2': [
+            'url': 'ftp://ftp.ccb.jhu.edu/pub/data/kraken2_dbs/old/minikraken2_v2_8GB_201904.tgz',
+            'checksum': 'a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac',
+            'size': '7.5G'
         ],
-        "standard8": [
-            "url": "https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz",
-            "checksum": "a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac",
-            "size": "7.5G"
+        'standard8': [
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz',
+            'checksum': 'a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac',
+            'size': '7.5G'
         ],
-        "viral": [
-            "url": "https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz",
-            "checksum": "adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99",
-            "size": "553M"
+        'viral': [
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz',
+            'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
+            'size': '553M'
         ],
-        "test": [
-            "url": "https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz",
-            "checksum": "c7d50ca4f46885ce7d342a06e748f9390cf3f4157a54c995d34ecdabbc83e1b8",
-            "size": "112M"
+        'test': [
+            'url': 'https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz',
+            'checksum': 'c7d50ca4f46885ce7d342a06e748f9390cf3f4157a54c995d34ecdabbc83e1b8',
+            'size': '112M'
         ],
 
     ]
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
-    if (params.download_db ) {
+    if (params.download_db) {
         if (supported_dbs.containsKey(params.db)) {
-            println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]["size"]} of space."
-            DOWNLOAD_DB (
+            println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]['size']} of space."
+            DOWNLOAD_DB(
                 params.db,
-                supported_dbs[params.db]["url"],
-                supported_dbs[params.db]["checksum"]
+                supported_dbs[params.db]['url'],
+                supported_dbs[params.db]['checksum']
             )
+            /* groovylint-disable-next-line UnnecessaryGetter */
             ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
 
-            println("_____________")
-        } else if  (params.db)  {
+            println('_____________')
+        } else if (params.db)  {
             ch_db = file(params.db, checkIfExists: true)
         } else {
             println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
@@ -218,18 +209,18 @@ workflow TAXTRIAGE {
         }
     }
 
-
-
-    if (!ch_assembly_txt){
-        println "empty"
+    if (!ch_assembly_txt) {
+        println 'empty'
         GET_ASSEMBLIES()
-        GET_ASSEMBLIES.out.assembly.map{  record -> record }.set{ ch_assembly_txt }
-
+        GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
     }
-
 
     ch_versions = Channel.empty()
     ch_mergedtsv = Channel.empty()
+    // make an empty path channel
+    ch_accession_mapping  = Channel.empty()
+    ch_empty_file = file("$projectDir/assets/NO_FILE")
+
     ch_hit_to_kraken_report = Channel.empty()
     // // // //
     // // // // MODULE: MultiQC
@@ -245,48 +236,40 @@ workflow TAXTRIAGE {
     // // // //
     // // // //
 
-
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
-    INPUT_CHECK (
+    INPUT_CHECK(
         ch_input
     )
     ch_reads = INPUT_CHECK.out.reads
-
-
-
     ARTIC_GUPPYPLEX(
-        ch_reads.filter{ it[0].directory   }
+        ch_reads.filter { it[0].directory   }
     )
     ch_reads = ARTIC_GUPPYPLEX.out.fastq
-    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter{ !it[0].directory   })
+    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter { !it[0].directory   })
 
-    if (params.subsample && params.subsample > 0){
+    if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
-        SEQTK_SAMPLE (
+        SEQTK_SAMPLE(
             ch_reads,
             ch_subsample
         )
         ch_reads = SEQTK_SAMPLE.out.reads
     }
 
-
-
-
     PYCOQC(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map{
+        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
             meta, reads -> meta.sequencing_summary
-        }
+}
     )
 
     // // // //
 
-
     // // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
     ch_porechop_out = Channel.empty()
-    if (params.trim){
+    if (params.trim) {
         nontrimmed_reads = ch_reads.filter { !it[0].trim }
         TRIMGALORE(
             ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
@@ -297,12 +280,12 @@ workflow TAXTRIAGE {
         ch_porechop_out  = PORECHOP.out.reads
 
         trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
-        ch_reads=nontrimmed_reads.mix(trimmed_reads)
+        ch_reads = nontrimmed_reads.mix(trimmed_reads)
     }
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
     if (!params.skip_fastp) {
-        FASTP (
+        FASTP(
             ch_reads,
             [],
             false,
@@ -313,22 +296,21 @@ workflow TAXTRIAGE {
         ch_fastp_html = FASTP.out.html
     }
 
-    HOST_REMOVAL (
+    HOST_REMOVAL(
         ch_reads,
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
-    if (!params.skip_plots){
-        FASTQC (
+    if (!params.skip_plots) {
+        FASTQC(
             ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
         )
         ch_versions = ch_versions.mix(FASTQC.out.versions.first())
-        NANOPLOT (
+        NANOPLOT(
             ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
         )
-
 
     }
 
@@ -349,23 +331,20 @@ workflow TAXTRIAGE {
     )
     ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
     ch_combined = ch_krona_txt
-                .map { it -> it[1] }  // Extract the file part
+                .map{ it[1] }        // Get the file path
                 .collect()            // Collect all file parts into a list
                 .map { files ->
                     // Join the files with single quotes and space
-                    String joinedFiles = files.collect { "'$it'" }.join(" ")
+                    String joinedFiles = files.collect { "'$it'" }.join(' ')
                     [[id:'combined_krona_kreports'], joinedFiles]  // Combine with new ID
                 }
-
 
     KRONA_KTIMPORTTEXT(
         ch_combined
     )
 
-
-
-    if (params.remove_taxids){
-        remove_input = ch_kraken2_report.map{
+    if (params.remove_taxids) {
+        remove_input = ch_kraken2_report.map {
             meta, report -> [
                 meta, report, params.remove_taxids
             ]
@@ -373,56 +352,66 @@ workflow TAXTRIAGE {
         REMOVETAXIDSCLASSIFICATION(
             remove_input
         )
-        ch_kraken2_report=REMOVETAXIDSCLASSIFICATION.out.report
+        ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
     }
 
-
-
-    TOP_HITS (
+    TOP_HITS(
         ch_kraken2_report
     )
-    ch_taxids_list = TOP_HITS.out.txt
-    ch_taxids_list.view()
     MERGEDKRAKENREPORT(
         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
     )
 
-
-    FILTERKRAKEN (
+    FILTERKRAKEN(
         MERGEDKRAKENREPORT.out.krakenreport
     )
-    ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map{m,r-> [m, r.findAll{ it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }]}
+    ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+    ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
+    ch_accessions = Channel.empty()
+    ch_bedfiles = Channel.empty()
+    ch_hit_to_kraken_report_merged = Channel.empty()
+    ch_bedfiles_or_default = Channel.empty()
+    if (params.reference_fasta) { //
+        // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
+        ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+        ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
+            ch_reference_fasta
+        )
+    } else {
+        DOWNLOAD_ASSEMBLY(
+            ch_hit_to_kraken_report.map {
+                meta, report, readsclass ->  [ meta, report ]
+            },
+            ch_assembly_txt
+        )
+        ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
+            DOWNLOAD_ASSEMBLY.out.fasta
+        )
+        ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
+        ch_accession_mapping = DOWNLOAD_ASSEMBLY.out.mappings
 
-
-    // // ch_taxids_list.view()
-    if (!params.skip_realignment){
-        ch_hit_to_kraken_report = TOP_HITS.out.tops.join(ch_filtered_reads)
-
-        if (params.reference_fasta){ //
-            // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
-            ch_reference_fasta = params.reference_fasta ? Channel.fromPath( params.reference_fasta, checkIfExists: true ) : Channel.empty()
-            ch_hit_to_kraken_report = ch_hit_to_kraken_report.combine(
-                ch_reference_fasta
+        if (!params.skip_features){
+            NCBIGENOMEDOWNLOAD_FEATURES(
+                ch_accessions
             )
-        } else {
-            // NCBIGENOMEDOWNLOAD(
-            //     ch_taxids_list
-            // )
-            if (ch_assembly_file_type == 'ncbi' ){
-                DOWNLOAD_ASSEMBLY (
-                    ch_hit_to_kraken_report.map{
-                        meta, report, reads_class -> return [ meta, report ]
-                    },
-                    ch_assembly_txt
-                )
-                ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(
-                    DOWNLOAD_ASSEMBLY.out.fasta
-                )
-            } else {
-                ch_hit_to_kraken_report = ch_hit_to_kraken_report.map{
-                    meta, report, reads_class -> [ meta, report, ch_assembly ]
-                }
+
+            FEATURES_TO_BED(
+                NCBIGENOMEDOWNLOAD_FEATURES.out.features
+            )
+
+            ch_bedfiles = FEATURES_TO_BED.out.bed
+        }
+    }
+
+
+    if (!params.skip_realignment) {
+        // Combine ch_hit_to_kraken_report with ch_bedfiles_or_default
+        if (params.skip_features){
+            ch_hit_to_kraken_report = ch_hit_to_kraken_report.map {
+                meta, report, readsclass, fasta -> [ meta, report, readsclass, fasta, null ]
             }
+        } else {
+            ch_hit_to_kraken_report = ch_hit_to_kraken_report.join(ch_bedfiles)
         }
 
         ALIGNMENT(
@@ -433,15 +422,26 @@ workflow TAXTRIAGE {
         ch_bamstats = ALIGNMENT.out.bamstats
         ch_depth = ALIGNMENT.out.depth
 
-        CONFIDENCE_METRIC (
-            ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+        ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+        // ch_alignment_outmerg = ch_alignment_outmerg.join(Channel.empty(), remainder: true)
+
+        ch_combined = ch_alignment_outmerg
+            .join(ch_accession_mapping, by: 0, remainder: true)
+            .map { meta, bam, depth, mapping ->
+                // If mapping is not present, replace it with null or an empty placeholder
+                return [meta, bam, depth, mapping ?: ch_empty_file]
+            }
+        CONFIDENCE_METRIC(
+           ch_combined
         )
 
         ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
             CONFIDENCE_METRIC.out.tsv
         )
-        if(!params.skip_confidence){
-            CONVERT_CONFIDENCE (
+
+
+        if (!params.skip_confidence) {
+            CONVERT_CONFIDENCE(
                 ch_joined_confidence_report
             )
 
@@ -450,71 +450,55 @@ workflow TAXTRIAGE {
             )
             ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
         }
-
     }
 
-    if (!params.skip_assembly){
-
+    if (!params.skip_assembly) {
         illumina_reads = ch_hit_to_kraken_report.filter {
             it[0].platform == 'ILLUMINA'
-        }.map{
+        }.map {
             meta, reads -> [meta, reads, [], []]
         }
         SPADES_ILLUMINA(
             illumina_reads
         )
 
-        println("____________________________")
+        println('____________________________')
 
-
-        nanopore_reads = ch_hit_to_kraken_report.filter{
+        nanopore_reads = ch_hit_to_kraken_report.filter {
             it[0].platform == 'OXFORD'
-        }.map{
+        }.map {
             meta, reads -> [meta, [], [], [], reads]
         }
 
         FLYE(
             nanopore_reads,
-            "--nano-raw"
+            '--nano-raw'
         )
-
     }
 
-
-
-
-
-
-
-
-    CUSTOM_DUMPSOFTWAREVERSIONS (
+    CUSTOM_DUMPSOFTWAREVERSIONS(
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )
-
-
-
     // // //
     // // // MODULE: MultiQC Pt 2
     // // //
 
     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
     ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect{it[1]}.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect{it[1]}.ifEmpty([]))
-    if (params.trim){
-        ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect{it[1]}.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
+    if (params.trim) {
+        ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
     }
-    if (!params.skip_plots){
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]}.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect{it[1]}.ifEmpty([]))
+    if (!params.skip_plots) {
+        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
     }
     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
-
-
 
     // Unused or Incomplete
     // if (params.blastdb && !params.remoteblast){
@@ -522,12 +506,14 @@ workflow TAXTRIAGE {
     // } else if (params.blastdb && params.remoteblast){
     //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
     // }
+    if (!params.skip_multiqc){
+        MULTIQC(
+            ch_multiqc_files.collect()
+        )
+        multiqc_report = MULTIQC.out.report.toList()
+        ch_versions    = ch_versions.mix(MULTIQC.out.versions)
+    }
 
-    MULTIQC (
-        ch_multiqc_files.collect()
-    )
-    multiqc_report = MULTIQC.out.report.toList()
-    ch_versions    = ch_versions.mix(MULTIQC.out.versions)
 }
 
 /*

@@ -111,6 +111,11 @@
                     "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "k2_minimum_hit_groups": {
+                    "type": "number",
+                    "description": "Kraken2 minimum hit groups for LCA to be called",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "filter": {
                     "type": "string",
                     "format": "directory-path",
@@ -144,6 +149,18 @@
                     "description": "Path to an assembly file. This contains the taxid and relative genome file that can be pulled from Entrez (ncbi). If not called, it auto downloads in the pipeline and requires internet connectivity",
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
+                },
+                "refresh_download": {
+                    "type": "boolean",
+                    "description": "Redownload all references from NCBI",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "default_download": {
+                    "type": "boolean",
+                    "description": "Download the default assembly file from NCBI using ncbi-genome-download tool",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": true
                 },
                 "genome": {
                     "type": "string",
@@ -195,7 +212,6 @@
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
-
                 "skip_stats": {
                     "type": "boolean",
                     "description": "Skip generating stats for each individual taxa per sample",
@@ -218,6 +234,16 @@
                     "description": "Skip De Novo Assembly",
                     "fa_icon": "fas fa-file-signature",
                     "default": true
+                },
+                "skip_features": {
+                    "type": "boolean",
+                    "description": "Skip generating annotations from alignments that take place",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_multiqc": {
+                    "type": "boolean",
+                    "description": "Skip upfront QC plotting to save time",
+                    "fa_icon": "fas fa-file-signature"
                 }
             }
         },

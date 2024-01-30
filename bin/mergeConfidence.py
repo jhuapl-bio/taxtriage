@@ -60,6 +60,13 @@ def parse_args(argv=None):
         help="Kraken report file to merge information with",
     )
     parser.add_argument(
+        "-m",
+        "--mapping",
+        metavar="MAPPUNG",
+        type=Path,
+        help="TSV of accession to map to name. 3 columns of acc, gcf, name",
+    )
+    parser.add_argument(
         "-f",
         "--taxid_format_kraken2",
         action="store_true",
@@ -91,31 +98,27 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
     index_id = 0
     for row in confidence_tsv:
 
-        splitrow = row[0].split("|")
-        ref = splitrow[3]
-        taxid = splitrow[1]
+        accession = row[0]
         if format_kraken2:
-            row[0] = taxid
+            row[0] = accession
 
-        if taxid not in rows:
-            rows[taxid] = [row]
+        if accession not in rows:
+            rows[accession] = [row]
             row.insert(0, index_id)
             if samplename:
                 row.insert(2, samplename)
-                row.insert(3, ref)
             else:
                 row.insert(2, "N/A")
-                row.insert(3, ref)
             index_id += 1
 
         else:
             row.insert(0, index_id)
             if samplename:
                 row.insert(2, samplename)
-                row.insert(3, ref)
+                row.insert(3, accession)
             else:
                 row.insert(2, "N/A")
-                row.insert(3, ref)
+                row.insert(3, accession)
             rows[taxid].append(row)
             index_id += 1
 
@@ -151,7 +154,7 @@ def main(argv=None):
     writer = csv.writer(path, delimiter='\t')
     # header = ['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation']
     # header = ["Acc", "Rank", "Mean Depth", "Avg Cov.", "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
-    header = ["Index", "Tax_Id", "Sample_Name", "Reference", "Rank", "Mean Depth", "Avg Cov.",
+    header = ["Index", "Reference",  "Sample_Name", "Mean Depth", "Avg Cov.",
         "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
     writer.writerow(header)
     if len(rows.keys()) == 0:

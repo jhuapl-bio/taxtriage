@@ -1,6 +1,6 @@
 process KRAKEN2_KRAKEN2 {
     tag "$meta.id"
-    label 'process_suphigh'
+    label 'process_high'
 
     conda (params.enable_conda ? 'bioconda::kraken2=2.1.2 conda-forge::pigz=2.6' : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -34,6 +34,7 @@ process KRAKEN2_KRAKEN2 {
     def unclassified_command = save_output_fastqs ? "--unclassified-out ${unclassified}" : ""
     def readclassification_command = save_reads_assignment ? "--output ${prefix}.kraken2.classifiedreads.txt" : ""
     def compress_reads_command = save_output_fastqs ? "pigz -p $task.cpus *.fastq" : ""
+    def minimum_hit_groups = params.k2_minimum_hit_groups ? "--minimum-hit-groups ${params.k2_minimum_hit_groups}" : ""
     """
     kraken2 \\
         --db $db \\
@@ -42,6 +43,7 @@ process KRAKEN2_KRAKEN2 {
         --gzip-compressed \\
         $unclassified_command \\
         $classified_command \\
+        $minimum_hit_groups \\
         $readclassification_command \\
         $paired $confidence \\
         $args  \\

@@ -180,11 +180,6 @@ def top_hit(mapping, specific_limits, top_per_rank):
                 if not row['taxid'] in newdata:
                     newdata[row['taxid']] = row
                     countranks[key] += 1
-    # for key, value in newdata.items():
-    #     rank = value['rank']
-    # for key, valu in newdata.items():
-    #     if valu['rank'] == 'S':
-    #         print(key, valu)
     return newdata
 
 

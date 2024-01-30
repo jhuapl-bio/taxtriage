@@ -18,7 +18,7 @@
 #
 
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
-
+import time
 from Bio import SeqIO, Entrez
 from xmlrpc.client import Boolean
 from functools import partial
@@ -59,7 +59,7 @@ def parse_args(argv=None):
         "-i",
         "--input",
         metavar="INPUT",
-        help="List of taxIDs",
+        help="List of taxIDs or names",
     )
     parser.add_argument(
         "-d",
@@ -76,35 +76,63 @@ def parse_args(argv=None):
         help="ftp path column, to be used instead of esummary when using the assembly file as reference",
     )
     parser.add_argument(
+        "-r",
+        "--refresh",
+        action='store_true',
+        help="Dont index already pulled fasta files",
+    )
+    parser.add_argument(
         "-f",
         "--type",
         default='file',
-        help="Input type, can be a list of taxids or from a file",
+        help="Input type, can be a list of taxids or names or from a file",
+    )
+    parser.add_argument(
+        "-g",
+        "--gcf_map",
+        default='file',
+        required = False,
+        help="Output file that is a mapping of gcf & chr accession to taxid or name. 3 columns with tab separator is made",
     )
     parser.add_argument(
         "-c",
-        "--colnumber_file_taxids",
+        "--colnumber_file_hits",
+        type=int,
+        default=5, # 5 is for taxid, 6 for name
+        help="Column number to get taxids or names from if using a file. Starts at 1st index",
+    )
+    parser.add_argument(
+        "-a",
+        "--assembly_names",
         type=int,
         default=5,
-        help="Column number to get taxids from if using a file. Starts at 1st index",
+        help="Assembly refseq accession and taxid or name to be matched to the imported taxids",
+    )
+    parser.add_argument(
+        "-y",
+        "--name_col_assembly",
+        default=7,
+        type=int,
+        help="Name column in assembly file you'd like to make in the header",
     )
     parser.add_argument(
         "-k",
         "--kraken2output",
         action='store_true',
-        help="reformat header for each fasta to a kraken:taxid|id parsing. Requires the setup of the file to be kraken:taxid|taxid|refseqId (whatever text can come after this, separated by space(s)",
+        default = False,
+        help="reformat header for each fasta to a kraken:taxid/name|id parsing. Requires the setup of the file to be kraken:taxid|taxid|refseqId (whatever text can come after this, separated by space(s)",
     )
     parser.add_argument(
         "-p",
         "--assembly_map_idx",
-        default=[0, 5],
-        help="Assembly refseq accession and taxid",
+        default=0,
+        help="Assembly refseq accession and taxid or name",
     )
     parser.add_argument(
         "-t",
         "--assembly_refseq_file",
         type=Path,
-        help="Assembly refseq to pull taxids from instead of pulling straight from a set of IDs. Map the taxid to accession",
+        help="Assembly refseq to pull taxids or names from instead of pulling straight from a set of IDs. Map the taxid to accession",
     )
     parser.add_argument(
         "-e",
@@ -133,7 +161,7 @@ def import_genome_file(filename, kraken2output):
             try:
                 if (kraken2output):
                     firstline = line.split(" ")[0]
-                    header = firstline.split("|")[2]
+                    header = firstline.split(" | ")[1]
                     refs[header] = line
                 else:
                     header = line.split(" ")[0]
@@ -144,41 +172,68 @@ def import_genome_file(filename, kraken2output):
     return refs
 
 #
-def import_assembly_file(input, filename, idx):
+def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
     refs = dict()
     seen = dict()
     first = dict()
 
-
-    print("--------------")
+    # matchcol is the column is number of column where you match the top hits to
+    # idx is the column number where you get the ftp path from
+    # nameidx is the column where the name to the fasta file is to be
     if (not isinstance(input, list)):
         input = input.split(" ")
+    def get_url(utl, id):
+        bb = os.path.basename(utl)
+        return utl+"/"+bb+"_genomic.fna.gz"
     with open(filename, "r") as f:
         line = f.readline()
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
-
-            if len(linesplit) >= 12 and (linesplit[idx[1]] in input) and linesplit[11] == "Complete Genome" and linesplit[idx[1]] not in seen:
-
+            gcfidx = linesplit[idx]
+            matchidx = str(linesplit[matchcol])
+            namecol = linesplit[nameidx]
+            urlcol = linesplit[index_ftp]
+            formatted_header = namecol.replace(" ", "_")
+            formatted_header = str(formatted_header)
+            if len(linesplit) >= 12 and (matchidx in input) and linesplit[11] == "Complete Genome" and matchidx not in seen:
                 #If the refseq_category column in the assembly.txt is reference genome
                 if linesplit[4] == "reference genome":
                     #Set taxid as seen
-                    seen[linesplit[idx[1]]] = True
+                    seen[matchidx] = True
                     #Save reference to dict
-                    refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
-                        linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
+
+                    refs[namecol] = dict(
+                        name = formatted_header,
+                        accession = gcfidx,
+                        id="{}|{}|Reference".format(
+                            namecol,
+                            formatted_header
+                        ),
+                        is_reference = True,
+                        chrs = [],
+                        reference=get_url(urlcol, gcfidx),
+                    )
                 #If there is no reference genome
                 else:
                     #If this is the first time the taxa without reference genome is seen
-                    if linesplit[idx[1]] not in first:
+                    if formatted_header not in first:
                         #Save reference to dict
-                        refs[linesplit[idx[0]]] = dict(id="kraken:taxid|{}|{}".format(
-                            linesplit[idx[1]], linesplit[idx[0]]), fulline=linesplit)
+                        refs[namecol] = dict(
+                            id="{}|{}".format(
+                                namecol,
+                                formatted_header
+                            ),
+                            is_reference = False,
+                            accession = gcfidx,
+                            chrs = [],
+                            reference=get_url(urlcol, gcfidx),
+                            name = formatted_header,
+                        )
                         #Save taxa as the first to be seen
-                        first[linesplit[idx[1]]] = True
+                        first[formatted_header] = True
                     #If the taxa without reference genome has already been seen previously, pass (save first seen only)
-                    elif linesplit[idx[1]] in first:
+                    elif formatted_header in first:
                         pass
             #If no complete genome found, pass
             else:
@@ -193,28 +248,32 @@ def get_assembly_summary(id):
     return esummary_record
 
 
-def get_assemblies(refs, outfile, seen, index_ftp):
+def get_assemblies(refs, outfile, seen, index_ftp, refresh):
     """Download genbank assemblies for a given search term.
     Args:
         term: search term, usually organism name
         download: whether to download the results
         path: folder to save to
     """
-    ids = refs.keys()
+    # get the value.accession from the refs dict asa list
+    ids = list(refs.keys())
     if index_ftp and len(ids) > 0:
-        with open(outfile, "a") as w:
+        typee = "a"
+        if refresh:
+            typee = "w"
+        with open(outfile, typee) as w:
             for id in ids:
                 try:
-                    if seen and id in seen  :
-                        print(id)
+                    accession = refs[id]['accession']
+                    if seen and accession in seen:
+                        refs[id]['chrs'] = seen[accession]
                         print("key already seen:", id, "; skipping")
                     else:
-                        ftp_site = refs[id]['fulline'][index_ftp]
+                        ftp_site = refs[id]['reference']
                         obj = refs[id]['id']
-                        fullid = os.path.basename(ftp_site) + '_genomic.fna.gz'
-                        ftp_site = ftp_site+'/'+fullid
-                        print(ftp_site, id)
-                        encoding = guess_type(fullid)[1]   # uses file extension
+                        name = refs[id]['name']
+
+                        encoding = guess_type(ftp_site)[1]   # uses file extension
                         _open = partial(
                             gzip.open, mode='rt') if encoding == 'gzip' else open
                         with closing(request.urlopen(ftp_site, context=ctx)) as r:
@@ -222,12 +281,14 @@ def get_assemblies(refs, outfile, seen, index_ftp):
                                 shutil.copyfileobj(r, f)
                             f.close()
                         r.close()
+                        print(name, accession)
                         with _open('file.gz') as uncompressed:
                             for record in SeqIO.parse(uncompressed, "fasta"):
-                                if (len(record.seq) > 1000):
-                                    newobj = obj+"|"+record.id
-                                    record.id = newobj
-                                    SeqIO.write(record, w, "fasta")
+                                # if (len(record.seq) > 1000):
+                                refs[id]['chrs'].append(str(record.id))
+                                newobj = f"{record.id} {accession}"
+                                record.id = newobj
+                                SeqIO.write(record, w, "fasta")
                         uncompressed.close()
                 except Exception as ex:
                     print(ex)
@@ -273,6 +334,7 @@ def download(refs, db, outfile, seen):
         retry_max = 3
         for key, value in refs.items():
             try:
+
                 if seen and key in seen:
                     print("key already seen:", key, "; skipping")
                 else:
@@ -304,7 +366,7 @@ def download(refs, db, outfile, seen):
             i = i+1
 
 
-def get_taxids_from_file(filename, colnumber):
+def get_hits_from_file(filename, colnumber):
     taxids = []
     with open(filename, "r") as f:
         lines = f.readlines()
@@ -319,47 +381,63 @@ def main(argv=None):
     args = parse_args(argv)
     # logging.basicConfig(level=args.log_level, format="[%(levelname)s] %(message)s")
     if args.type == 'file':
-        taxids = get_taxids_from_file(args.input, args.colnumber_file_taxids)
+        #colnumber file hits is the column from the input top hits file you want to match to the args.assembly_names
+        taxids = get_hits_from_file(args.input, args.colnumber_file_hits)
+
     else:
         taxids = args.input
     if (args.assembly_refseq_file):
         refs = import_assembly_file(
-            taxids, args.assembly_refseq_file, args.assembly_map_idx)
+            # what column to match input to , col match accession (GCF accession), col match refrence name
+            taxids, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path)
     else:
         refs = import_genome_file(taxids, args.kraken2output)
+
     seen = dict()
 
     i = 0
     if os.path.exists(args.file_out):
         for seq_record in SeqIO.parse(args.file_out, "fasta"):
             line = str(seq_record.id)
+            desc = str(seq_record.description)
             if i % 1000 == 0:
                 print("grabbed the " + str(i+1) +
                 "the reference from existing fasta")
             i = i+1
             try:
+                linesplit = desc.split(" ")
                 if (args.kraken2output):
-                    firstline = line.split(" ")[0]
-                    header = firstline.split("|")[2].replace(">", "")
-                    refs[header] = line.replace(">", "")
+                    # use regex to split on " | " and get the second element
+                    acc = linesplit[0]
+                    header = linesplit[1]
                 else:
-                    header = line.split(" ")[0].replace(">", "")
-                    firstline = line.replace(">", "")
-                    refs[header] = firstline
-                seen[header] = True
+                    acc = linesplit[0]
+                    header = linesplit[1]
+                if not args.refresh:
+                    if header not in seen:
+                        seen[header] = [acc]
+                    else:
+                        seen[header].append(acc)
             except Exception as ex:
                 print(ex)
                 pass
     if args.email:
         Entrez.email = args.email
-    print(len(seen.keys()), "already seen reference ids")
+    if not (args.refresh):
+        print(len(seen.keys()), "already seen reference ids")
     if (not args.assembly_refseq_file):
         print("downloading refseq file")
         download(refs, args.db, args.file_out, seen)
     else:
         print("get assemblies")
-        get_assemblies(refs, args.file_out, seen, args.ftp_path)
+        get_assemblies(refs, args.file_out, seen, args.ftp_path, args.refresh)
 
+    if args.gcf_map:
+        with open(args.gcf_map, "w") as w:
+            for key, value in refs.items():
+                for chr in value['chrs']:
+                    w.write(f"{chr}\t{key}\t{value['accession']}\n")
+            w.close()
 
 if __name__ == "__main__":
     sys.exit(main())
