@@ -165,7 +165,7 @@ def output_statistics(depth, total_positions, coverage, count, sumsq, ireads, il
     # print the statistics to a file
     data = []
     with open(FILE_OUT, "w") as f:
-        # f.write("\t".join(headers)+"\n")
+        f.write("\t".join(headers)+"\n")
         for ref in ilen:
             if ref in coverage and ref in ilen:
                 avg_coverage = coverage[ref] / ilen[ref]
@@ -185,7 +185,7 @@ def output_statistics(depth, total_positions, coverage, count, sumsq, ireads, il
                         name = mapping[ref]
                     else:
                         name = ref
-                    outstring = f"{ref}\t{fm(avgDepth)}\t{fm(avg_coverage)}\t{ilen[ref]}\t{ireads[ref]}\t{fm(100*(ireads[ref]/total_reads_aligned))}\t{fm(stdev)}\t{fm(abu_total_aligned)}\t{':'.join([fm(x) for x in xCov])}\t{name}"
+                    outstring = f"{ref}\t{name}\t{fm(avgDepth)}\t{fm(avg_coverage)}\t{ilen[ref]}\t{ireads[ref]}\t{fm(100*(ireads[ref]/total_reads_aligned))}\t{fm(stdev)}\t{fm(abu_total_aligned)}\t{':'.join([fm(x) for x in xCov])}"
                     f.write(outstring+"\n")
 
 

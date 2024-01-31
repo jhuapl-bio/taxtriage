@@ -207,7 +207,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
                             namecol,
                             formatted_header
                         ),
-                        is_reference = False,
+                        is_reference = True,
                         accession = gcfidx,
                         chrs = [],
                         reference=get_url(urlcol, gcfidx),

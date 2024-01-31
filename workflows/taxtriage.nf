@@ -144,6 +144,7 @@ include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main
 include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
 include { FEATURES_TO_BED } from '../modules/local/convert_features_to_bed'
+include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -435,10 +436,13 @@ workflow TAXTRIAGE {
            ch_combined
         )
 
-        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+        CONFIDENCE_MERGE(
             CONFIDENCE_METRIC.out.tsv
         )
 
+        ch_joined_confidence_report = KRAKEN2_KRAKEN2.out.report.join(
+            CONFIDENCE_MERGE.out.confidence
+        )
 
         if (!params.skip_confidence) {
             CONVERT_CONFIDENCE(
@@ -448,6 +452,7 @@ workflow TAXTRIAGE {
             MERGE_CONFIDENCE(
                 CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
             )
+
             ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
         }
     }

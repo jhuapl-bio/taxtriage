@@ -14,20 +14,20 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONVERT_CONFIDENCE {
+process CONFIDENCE_MERGE {
     tag "$meta.id"
-    label 'process_medium'
+    label 'process_low'
 
-    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
+    conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
-        'biocontainers/biopython:1.75' }"
+        'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
+        'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta),  path(kraken_report), path(tsv)
+    tuple val(meta), path(single_confidence)
 
     output:
-    path("*confidences.merged.tsv"), optional: false, emit: tsv
+    tuple val(meta), path("*.fullconfidences.tsv"), optional: false, emit: confidence
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,20 +38,23 @@ process CONVERT_CONFIDENCE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output_parsed = "${meta.id}.confidences.merged.tsv"
+
+
+    def output = "${meta.id}.fullconfidences.tsv"
+
 
     """
-    echo "Printing confidence"
-    mergeConfidence.py -f \\
-        -i $tsv \\
-        -o $output_parsed \\
-        -s ${meta.id}
+
+
+    merge_assemblies_conf.py \\
+        -i $single_confidence \\
+        -o $output
+
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 --version )
+        python3: \$(python3 --version | sed 's/Python //g')
     END_VERSIONS
 
     """
 }
-

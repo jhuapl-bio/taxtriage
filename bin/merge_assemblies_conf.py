@@ -55,7 +55,7 @@ def main(argv=None):
     args = parse_args(argv)
 
     # Initialize data storage
-    data = defaultdict(lambda: {'Mean Depth': [], 'Average Coverage': [], 'Ref Size': [], 'Total Reads Aligned': 0, 'Individual Reads Aligned': []})
+    data = defaultdict(lambda: {'Mean Depth': [], 'Average Coverage': [], 'Ref Size': [], 'Total Reads Aligned': 0, '% Reads Aligned': []})
 
     # Read the confidences file
     with open(args.conf_file, 'r') as file:
@@ -68,8 +68,8 @@ def main(argv=None):
             data[name]['Mean Depth'].append(float(row['Mean Depth']))
             data[name]['Average Coverage'].append(float(row['Average Coverage']))
             data[name]['Ref Size'].append(float(row['Ref Size']))
-            data[name]['Total Reads Aligned'] += int(row['Total Reads Aligned'])
-            data[name]['Individual Reads Aligned'].append(int(row['Individual Reads Aligned']))
+            data[name]['Total Reads Aligned'] += float(row['Total Reads Aligned'])
+            # data[name]['Individual Reads Aligned'].append(float(row['Individual Reads Aligned']))
     file.close()
     # Process data
     aggregated = []
@@ -78,29 +78,31 @@ def main(argv=None):
         mean_depth = weighted_average(values['Mean Depth'], values['Ref Size'])
         avg_coverage = weighted_average(values['Average Coverage'], values['Ref Size'])
         stdev = calculate_stdev(values['Mean Depth'], values['Ref Size'], mean_depth)
-        abu_total_aligned = sum(values['Individual Reads Aligned']) / total_reads_aligned
+        if values['Total Reads Aligned'] == 0:
+            abu_total_aligned = 0
+        else:
+            abu_total_aligned = values['Total Reads Aligned'] / total_reads_aligned
         coverage_counts = coverage_thresholds(values['Mean Depth'], thresholds, values['Ref Size'])
         coverage_percentages = [coverage_counts[t] / sum(values['Ref Size']) * 100 for t in thresholds]
 
-        aggregated.append({
+        aggregated.append( {
             'Name': name,
             'Weighted Mean Depth': mean_depth,
             'Weighted Avg Coverage': avg_coverage,
-            'Stdev': stdev,
-            '% Reads Aligned': abu_total_aligned * 100,
-            '1X Cov.': coverage_percentages[0],
-            '10X Cov.': coverage_percentages[1],
-            '50X Cov.': coverage_percentages[2],
-            '100X Cov.': coverage_percentages[3],
-            '300X Cov.': coverage_percentages[4],
             'Total Ref Size': sum(values['Ref Size']),
-            'Total Reads Aligned': values['Total Reads Aligned']
+            'Total Reads Aligned': values['Total Reads Aligned'],
+            '% Reads Aligned': abu_total_aligned * 100,
+            'Stdev': stdev,
+            '1X:10x:50x:100x:300x Cov.': f"{coverage_percentages[0]:.2f}:{coverage_percentages[1]:.2f}:{coverage_percentages[2]:.2f}:{coverage_percentages[3]:.2f}:{coverage_percentages[4]:.2f}",
         })
 
     # Output the aggregated data
-    print(aggregated)
-    exit()
     output_file = args.file_out
     with open(output_file, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=aggregated[0].keys(), delimiter='\t')
-        writer.write
+        writer.writeheader()
+        writer.writerows(aggregated)
+    f.close()
+
+if __name__ == "__main__":
+    main()
