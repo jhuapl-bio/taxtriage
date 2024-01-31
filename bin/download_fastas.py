@@ -196,7 +196,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             urlcol = linesplit[index_ftp]
             formatted_header = namecol.replace(" ", "_")
             formatted_header = str(formatted_header)
-            if len(linesplit) >= 12 and (matchidx in input) and linesplit[11] == "Complete Genome" and matchidx not in seen:
+            if len(linesplit) >= 12 and (matchidx in input) and matchidx not in seen:
                 #If the refseq_category column in the assembly.txt is reference genome
                 if linesplit[4] == "reference genome":
                     #Set taxid as seen
@@ -213,6 +213,21 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
                         is_reference = True,
                         chrs = [],
                         reference=get_url(urlcol, gcfidx),
+                    )
+                elif linesplit[11] == "Complete Genome":
+                    #Set taxid as seen
+                    seen[matchidx] = True
+                    #Save reference to dict
+                    refs[namecol] = dict(
+                        id="{}|{}".format(
+                            namecol,
+                            formatted_header
+                        ),
+                        is_reference = False,
+                        accession = gcfidx,
+                        chrs = [],
+                        reference=get_url(urlcol, gcfidx),
+                        name = formatted_header,
                     )
                 #If there is no reference genome
                 else:
