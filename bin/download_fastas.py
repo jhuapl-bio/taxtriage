@@ -33,7 +33,7 @@ import argparse
 import csv
 import logging
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 import re
 import os
@@ -187,6 +187,8 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
         return utl+"/"+bb+"_genomic.fna.gz"
     with open(filename, "r") as f:
         line = f.readline()
+        next(f)
+        priorities = dict()
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
@@ -196,78 +198,54 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             urlcol = linesplit[index_ftp]
             formatted_header = namecol.replace(" ", "_")
             formatted_header = str(formatted_header)
-            if len(linesplit) >= 12 and (matchidx in input) and matchidx not in seen:
-                #If the refseq_category column in the assembly.txt is reference genome
-                if linesplit[4] == "representative genome":
-                    #Set taxid as seen
-                    seen[matchidx] = True
-                    #Save reference to dict
-                    refs[namecol] = dict(
-                        id="{}|{}".format(
-                            namecol,
-                            formatted_header
-                        ),
-                        is_reference = True,
-                        accession = gcfidx,
-                        chrs = [],
-                        reference=get_url(urlcol, gcfidx),
-                        name = formatted_header,
-                    )
-                elif linesplit[4] == "reference genome":
-                    #Set taxid as seen
-                    seen[matchidx] = True
-                    #Save reference to dict
+            if len(linesplit) >= 12 and (matchidx in input):
+                if namecol not in priorities:
+                    priorities[namecol] = dict()
+                obj = dict(
+                    id="{}|{}".format(
+                        gcfidx,
+                        formatted_header
+                    ),
+                    accession = gcfidx,
+                    characteristic = None,
+                    chrs = [],
+                    reference=get_url(urlcol, gcfidx),
+                    name = formatted_header,
+                )
 
-                    refs[namecol] = dict(
-                        name = formatted_header,
-                        accession = gcfidx,
-                        id="{}|{}|Reference".format(
-                            namecol,
-                            formatted_header
-                        ),
-                        is_reference = True,
-                        chrs = [],
-                        reference=get_url(urlcol, gcfidx),
-                    )
-                elif linesplit[11] == "Complete Genome":
-                    #Set taxid as seen
-                    seen[matchidx] = True
-                    #Save reference to dict
-                    refs[namecol] = dict(
-                        id="{}|{}".format(
-                            namecol,
-                            formatted_header
-                        ),
-                        is_reference = False,
-                        accession = gcfidx,
-                        chrs = [],
-                        reference=get_url(urlcol, gcfidx),
-                        name = formatted_header,
-                    )
+                #If the refseq_category column in the assembly.txt is reference genome
+                if linesplit[4] == "representative genome" and priorities[namecol].get('0') is None:
+                    obj['characteristic'] = "representative"
+                    priorities[namecol]['0'] = obj
+                elif linesplit[4] == "reference genome" and priorities[namecol].get('1') is None:
+                    obj['characteristic'] = "reference"
+                    priorities[namecol]['1'] = obj
+                elif linesplit[11] == "Complete Genome" and priorities[namecol].get('2') is None:
+                    obj['characteristic'] = "complete genome"
+                    priorities[namecol]['2'] = obj
                 #If there is no reference genome
                 else:
                     #If this is the first time the taxa without reference genome is seen
                     if formatted_header not in first:
                         #Save reference to dict
-                        refs[namecol] = dict(
-                            id="{}|{}".format(
-                                namecol,
-                                formatted_header
-                            ),
-                            is_reference = False,
-                            accession = gcfidx,
-                            chrs = [],
-                            reference=get_url(urlcol, gcfidx),
-                            name = formatted_header,
-                        )
-                        #Save taxa as the first to be seen
-                        first[formatted_header] = True
-                    #If the taxa without reference genome has already been seen previously, pass (save first seen only)
-                    elif formatted_header in first:
-                        pass
+                        obj['characteristic'] = "other"
+                        if priorities[namecol].get('3') is None:
+                            priorities[namecol]['3'] = obj
             #If no complete genome found, pass
             else:
                 pass
+    # iterate through priorities, if 0 then set refs to the 0 value, if not 0 then 1 and so on until 3 or not found at all
+    for key, value in priorities.items():
+        if value.get('0'):
+            refs[key] = value['0']
+        elif value.get('1'):
+            refs[key] = value['1']
+        elif value.get('2'):
+            refs[key] = value['2']
+        elif value.get('3'):
+            refs[key] = value['3']
+        else:
+            print("No reference genome found for", key)
     return refs
 
 
@@ -311,13 +289,16 @@ def get_assemblies(refs, outfile, seen, index_ftp, refresh):
                                 shutil.copyfileobj(r, f)
                             f.close()
                         r.close()
-                        print(name, accession)
                         with _open('file.gz') as uncompressed:
                             for record in SeqIO.parse(uncompressed, "fasta"):
                                 # if (len(record.seq) > 1000):
+                                pattern = f"{record.id}\s*"
+                                record.description = re.sub(pattern, "", record.description)
+                                # record.description = record.description.replace(" ", "_")
+                                newobj = f"{record.id} {accession} {record.description}"
                                 refs[id]['chrs'].append(str(record.id))
-                                newobj = f"{record.id} {accession}"
                                 record.id = newobj
+                                record.description = ""
                                 SeqIO.write(record, w, "fasta")
                         uncompressed.close()
                 except Exception as ex:
@@ -325,32 +306,6 @@ def get_assemblies(refs, outfile, seen, index_ftp, refresh):
                     pass
         w.close()
     return
-
-    # provide your own mail here
-    ids = refs.keys()
-    handle = Entrez.efetch(db="assembly", id=ids, retmax='200')
-    record = Entrez.read(handle)
-    ids = [record[i] for i in range(len(record)) if i % 2 == 0]
-    print(f'found {len(ids)} ids')
-    links = []
-    for id in ids:
-        # get summary
-        print(id)
-        summary = get_assembly_summary(id)
-        print("_")
-        # get ftp link
-        url = summary['DocumentSummarySet']['DocumentSummary'][0]['FtpPath_RefSeq']
-        if url == '':
-            continue
-        # label = os.path.basename(url)
-        # #get the fasta link - change this to get other formats
-        # link = os.path.join(url,label+'_genomic.fna.gz')
-        # print (link)
-        # links.append(link)
-        # if download == True:
-        #     #download link
-        #     urllib.request.urlretrieve(link, f'{label}.fna.gz')
-    return links
 
 
 def download(refs, db, outfile, seen):
@@ -416,6 +371,7 @@ def main(argv=None):
 
     else:
         taxids = args.input
+
     if (args.assembly_refseq_file):
         refs = import_assembly_file(
             # what column to match input to , col match accession (GCF accession), col match refrence name
@@ -435,19 +391,28 @@ def main(argv=None):
                 "the reference from existing fasta")
             i = i+1
             try:
-                linesplit = desc.split(" ")
+                # Splitting on space or pipe
+                delimiters = "[ ]"  # Split on underscore or comma
+                linesplit = re.split(delimiters, desc)
                 if (args.kraken2output):
                     # use regex to split on " | " and get the second element
                     acc = linesplit[0]
-                    header = linesplit[1]
+                    desc =  linesplit[1:]
                 else:
                     acc = linesplit[0]
-                    header = linesplit[1]
+                    desc = linesplit[1:]
+                header = desc[0]
+                desc = " ".join(desc)
                 if not args.refresh:
                     if header not in seen:
-                        seen[header] = [acc]
+                        seen[header] = [[acc, desc]]
                     else:
-                        seen[header].append(acc)
+                        seen[header].append([acc, desc])
+                    # Find the key where header == value.accession if it exists
+                    for key, value in refs.items():
+                        if value['accession'] == header:
+                            refs[key]['chrs'].append(acc)
+
             except Exception as ex:
                 print(ex)
                 pass
@@ -461,12 +426,12 @@ def main(argv=None):
     else:
         print("get assemblies")
         get_assemblies(refs, args.file_out, seen, args.ftp_path, args.refresh)
-
     if args.gcf_map:
         with open(args.gcf_map, "w") as w:
             for key, value in refs.items():
                 for chr in value['chrs']:
-                    w.write(f"{chr}\t{key}\t{value['accession']}\n")
+                    outstring = f"{chr}\t{key}\t{value['accession']}"
+                    w.write(f"{outstring}\n")
             w.close()
 
 if __name__ == "__main__":
