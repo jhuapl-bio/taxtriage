@@ -189,6 +189,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
         line = f.readline()
         next(f)
         priorities = dict()
+        seencols = dict()
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
@@ -201,6 +202,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             if len(linesplit) >= 12 and (matchidx in input):
                 if namecol not in priorities:
                     priorities[namecol] = dict()
+                seencols[matchidx] = True
                 obj = dict(
                     id="{}|{}".format(
                         gcfidx,
@@ -234,7 +236,19 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             #If no complete genome found, pass
             else:
                 pass
+    # figure out which inputs are missing from seencols
+    missing = list(set(input) - set(seencols.keys()))
+    if len(missing) > 0:
+        # get dirname of input file and write missing to a file
+        dirname = os.path.dirname(filename)
+        print("Missing", missing, )
+        # print out missing inputs to a file
+        with open(os.path.join(dirname, "missing.txt"), "w") as w:
+            for m in missing:
+                w.write(f"{m}\n")
+            w.close()
     # iterate through priorities, if 0 then set refs to the 0 value, if not 0 then 1 and so on until 3 or not found at all
+
     for key, value in priorities.items():
         if value.get('0'):
             refs[key] = value['0']

@@ -35,6 +35,7 @@ process DOWNLOAD_ASSEMBLY {
     tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
     tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: accessions
     tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mappings
+    tuple val(meta),  path("missing.txt"), optional: true, emit: missings
     path "versions.yml"           , emit: versions
 
     when:
@@ -46,7 +47,7 @@ process DOWNLOAD_ASSEMBLY {
 
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def email = params.email ? params.email : "brian.merritt@jhuapl.edu"
+    def email = params.email ? " -e ${params.email}" : ""
     def column = params.fuzzy ? " -c 6 "  : " -c 5 "
     def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5 "
     def refresh_download = params.refresh_download ? " -r " : ""
@@ -58,7 +59,7 @@ process DOWNLOAD_ASSEMBLY {
     download_fastas.py \\
             -i "${hits_containing_file}" \\
             -o ${meta.id}.output.references.fasta ${refresh_download} \\
-            -e ${email} -f file $column -g ${meta.id}.gcfmapping.tsv \\
+            ${email} -f file $column -g ${meta.id}.gcfmapping.tsv \\
             -t ${assembly} -k  $column $columnAssembly -y 7
 
     cut -f 3  ${meta.id}.gcfmapping.tsv > ${meta.id}.output.gcfids.txt
