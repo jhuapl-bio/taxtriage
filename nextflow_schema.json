@@ -150,17 +150,37 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "organisms": {
+                    "type": "string",
+                    "hint": "Options: Comma-separated taxids or organism names to match to ncbi assembly info. See --assembly for more info. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",
+                    "default": null,
+                    "description": "Either a string of taxids separated by a space, or organisms names with '' enclosure, separated by space for each enclosed name with ''",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "organisms_file": {
+                    "type": "string",
+                    "hint": "Options: [string or single column list of taxids or organism names]. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",
+                    "default": null,
+                    "description": "Either a file or string of taxids separated by a space, or organisms names with '' enclosure",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "fuzzy": {
+                    "type": "boolean",
+                    "description": "Fuzzy matching for organism names",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "minmapq": {
+                    "type": "number",
+                    "default": 5,
+                    "description": "Minimum MapQ Score for alignment",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "refresh_download": {
                     "type": "boolean",
                     "description": "Redownload all references from NCBI",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
-                },
-                "default_download": {
-                    "type": "boolean",
-                    "description": "Download the default assembly file from NCBI using ncbi-genome-download tool",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": true
                 },
                 "genome": {
                     "type": "string",
@@ -223,21 +243,38 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
+                "skip_kraken2": {
+                    "type": "boolean",
+                    "description": "Skip Kraken2. Will not work with \"unknown taxa\" mode. You must provide a reference FASTA if this is toggled on.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_krona": {
                     "type": "boolean",
                     "description": "Skip Krona Plots",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
-                "skip_assembly": {
+                "denovo_assembly": {
                     "type": "boolean",
-                    "description": "Skip De Novo Assembly",
+                    "description": "Perform De Novo Assembly",
                     "fa_icon": "fas fa-file-signature",
                     "default": true
                 },
-                "skip_features": {
+                "reference_assembly": {
                     "type": "boolean",
-                    "description": "Skip generating annotations from alignments that take place",
+                    "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": true
+                },
+                "get_features": {
+                    "type": "boolean",
+                    "description": "Start generating annotations from alignments that take place. Requires LOTS of RAM for large data files/genomes",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "get_variants": {
+                    "type": "boolean",
+                    "description": "Start generating variant call analysis relative to aligned reads to references",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_multiqc": {

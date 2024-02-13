@@ -40,6 +40,8 @@ import os
 import shutil
 import urllib.request as request
 import ssl
+from determine_priority_assembly import determine_priority_assembly, format_description
+
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
@@ -173,8 +175,7 @@ def import_genome_file(filename, kraken2output):
 
 #
 def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
-    refs = dict()
-    seen = dict()
+    assemblies  = dict()
     first = dict()
 
     # matchcol is the column is number of column where you match the top hits to
@@ -200,6 +201,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             formatted_header = namecol.replace(" ", "_")
             formatted_header = str(formatted_header)
             if len(linesplit) >= 12 and (matchidx in input):
+
                 if namecol not in priorities:
                     priorities[namecol] = dict()
                 seencols[matchidx] = True
@@ -251,16 +253,16 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
 
     for key, value in priorities.items():
         if value.get('0'):
-            refs[key] = value['0']
+            assemblies[key] = value['0']
         elif value.get('1'):
-            refs[key] = value['1']
+            assemblies[key] = value['1']
         elif value.get('2'):
-            refs[key] = value['2']
+            assemblies[key] = value['2']
         elif value.get('3'):
-            refs[key] = value['3']
+            assemblies[key] = value['3']
         else:
             print("No reference genome found for", key)
-    return refs
+    return assemblies
 
 
 def get_assembly_summary(id):
@@ -270,7 +272,22 @@ def get_assembly_summary(id):
     return esummary_record
 
 
-def get_assemblies(refs, outfile, seen, index_ftp, refresh):
+def download_fasta(ftp_site):
+    encoding = guess_type(ftp_site)[1]   # uses file extension
+    _open = partial(
+        gzip.open, mode='rt') if encoding == 'gzip' else open
+    try:
+        with closing(request.urlopen(ftp_site, context=ctx)) as r:
+            with open('file.gz', 'wb') as f:
+                shutil.copyfileobj(r, f)
+            f.close()
+        r.close()
+        return _open
+    except Exception as ex:
+        print("Could not download", ftp_site, ex)
+        raise ex
+
+def get_assemblies(assemblies, outfile, GCFs_to_skip, refresh):
     """Download genbank assemblies for a given search term.
     Args:
         term: search term, usually organism name
@@ -278,49 +295,60 @@ def get_assemblies(refs, outfile, seen, index_ftp, refresh):
         path: folder to save to
     """
     # get the value.accession from the refs dict asa list
-    ids = list(refs.keys())
-    if index_ftp and len(ids) > 0:
-        typee = "a"
-        if refresh:
-            typee = "w"
-        with open(outfile, typee) as w:
-            for id in ids:
-                try:
-                    accession = refs[id]['accession']
-                    if seen and accession in seen:
-                        refs[id]['chrs'] = seen[accession]
-                        print("key already seen:", id, "; skipping")
-                    else:
-                        ftp_site = refs[id]['reference']
-                        obj = refs[id]['id']
-                        name = refs[id]['name']
+    ids = list(assemblies.keys())
+    accessions = [assemblies[id]['accession'] for id in ids]
+    # filter accessions on those present in GCFS_to_skip
+    accessions = [x for x in accessions if x not in GCFs_to_skip]
+    caught_ncs = [ ]
+    new_mapping = dict()
+    seen = dict()
+    typee = "a"
+    if refresh:
+        typee = "w"
 
-                        encoding = guess_type(ftp_site)[1]   # uses file extension
-                        _open = partial(
-                            gzip.open, mode='rt') if encoding == 'gzip' else open
-                        with closing(request.urlopen(ftp_site, context=ctx)) as r:
-                            with open('file.gz', 'wb') as f:
-                                shutil.copyfileobj(r, f)
-                            f.close()
-                        r.close()
-                        with _open('file.gz') as uncompressed:
-                            for record in SeqIO.parse(uncompressed, "fasta"):
-                                # if (len(record.seq) > 1000):
-                                pattern = f"{record.id}\s*"
-                                record.description = re.sub(pattern, "", record.description)
-                                # record.description = record.description.replace(" ", "_")
-                                newobj = f"{record.id} {accession} {record.description}"
-                                refs[id]['chrs'].append(str(record.id))
-                                record.id = newobj
-                                record.description = ""
+
+    with open(outfile, typee) as w:
+        for id in ids:
+            try:
+                accession = assemblies[id]['accession']
+                if accession in GCFs_to_skip:
+                    assemblies[id]['chrs'] = GCFs_to_skip[accession]
+                    print("key already seen:", id, "; skipping")
+                else:
+                    ftp_site = assemblies[id]['reference']
+                    obj = assemblies[id]['id']
+                    name = assemblies[id]['name']
+                    _open = download_fasta(ftp_site)
+                    print(f"Downloading {ftp_site} to for {accession}: {id}")
+                    with _open('file.gz') as uncompressed:
+                        for record in SeqIO.parse(uncompressed, "fasta"):
+                            # pattern = f"{record.id}\s*"
+                            # record.description = re.sub(pattern, "", record.description)
+                            # record.description = record.description.replace(" ", "_")
+                            # newobj = f"{record.id} {accession} {record.description}"
+                            if record.id not in caught_ncs:
+                                caught_ncs.append(record.id)
+                            if (not refresh and record.id not in new_mapping) or refresh:
+                                print("writing", record.id, "to file")
+
                                 SeqIO.write(record, w, "fasta")
-                        uncompressed.close()
-                except Exception as ex:
-                    print(ex)
-                    pass
-        w.close()
-    return
-
+                            elif not refresh and record.id in new_mapping:
+                                print("already seen", record.id, "skipping")
+                            new_mapping[record.id] = dict(accession=accession, name=obj)
+                            if record.id not in assemblies[id]['chrs']:
+                                fid, description = format_description(record.id, record.description)
+                                assemblies[id]['chrs'].append(dict(acc=record.id, name=description) )
+                    uncompressed.close()
+                    try:
+                        os.remove('file.gz')
+                    except Exception as ex:
+                        print(f"Could not remove file.gz {ex}")
+                        pass
+            except Exception as ex:
+                print(ex)
+                pass
+    w.close()
+    return new_mapping
 
 def download(refs, db, outfile, seen):
     # if refs is not empty
@@ -378,24 +406,38 @@ def get_hits_from_file(filename, colnumber):
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
     args = parse_args(argv)
+
+
+    gcf_mapping = dict()
+
+    if args.gcf_map:
+        if os.path.exists(args.gcf_map):
+            #import the file, and save them to a dict of column 2 as key, column 1 as value
+            with open(args.gcf_map, "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    line = line.strip()
+                    linesplit = line.split("\t")
+                    if len(linesplit) > 1:
+                        key = linesplit[0]
+                        value = linesplit[1]
+                        gcf_mapping[key] = value
+            f.close()
     # logging.basicConfig(level=args.log_level, format="[%(levelname)s] %(message)s")
     if args.type == 'file':
         #colnumber file hits is the column from the input top hits file you want to match to the args.assembly_names
-        taxids = get_hits_from_file(args.input, args.colnumber_file_hits)
-
+        seen_in_tops = get_hits_from_file(args.input, args.colnumber_file_hits)
     else:
-        taxids = args.input
+        seen_in_tops = args.input.split(" ")
 
-    if (args.assembly_refseq_file):
-        refs = import_assembly_file(
-            # what column to match input to , col match accession (GCF accession), col match refrence name
-            taxids, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path)
-    else:
-        refs = import_genome_file(taxids, args.kraken2output)
+    assemblies = import_assembly_file(
+        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path
+    )
 
-    seen = dict()
+
 
     i = 0
+    seen_in_fasta = dict()
     if os.path.exists(args.file_out):
         for seq_record in SeqIO.parse(args.file_out, "fasta"):
             line = str(seq_record.id)
@@ -408,45 +450,46 @@ def main(argv=None):
                 # Splitting on space or pipe
                 delimiters = "[ ]"  # Split on underscore or comma
                 linesplit = re.split(delimiters, desc)
-                if (args.kraken2output):
-                    # use regex to split on " | " and get the second element
-                    acc = linesplit[0]
-                    desc =  linesplit[1:]
-                else:
-                    acc = linesplit[0]
-                    desc = linesplit[1:]
-                header = desc[0]
-                desc = " ".join(desc)
+                acc, desc = format_description(line, desc)
                 if not args.refresh:
-                    if header not in seen:
-                        seen[header] = [[acc, desc]]
-                    else:
-                        seen[header].append([acc, desc])
-                    # Find the key where header == value.accession if it exists
-                    for key, value in refs.items():
-                        if value['accession'] == header:
-                            refs[key]['chrs'].append(acc)
-
+                    seen_in_fasta[acc] = desc
             except Exception as ex:
                 print(ex)
                 pass
+    GCFs_to_skip = dict()
+    if not args.refresh:
+        for key, value in seen_in_fasta.items():
+            if key in gcf_mapping:
+                if gcf_mapping[key] not in GCFs_to_skip:
+                    GCFs_to_skip[gcf_mapping[key]] = [dict(acc=key, name=value)]
+                    print("GCF found in mapping file, skipping", key, "from", gcf_mapping[key])
+                else:
+                    GCFs_to_skip[gcf_mapping[key]].append(dict(acc=key, name=value))
+
+            else:
+                print("No mapping for chr/contig to GCF. Will need to redownload to get gcf mapping for: ", key)
+    ## Now, check what contigs/chrs in seen_in_fasta are present in the gcf_mapping
     if args.email:
         Entrez.email = args.email
     if not (args.refresh):
-        print(len(seen.keys()), "already seen reference ids")
-    if (not args.assembly_refseq_file):
-        print("downloading refseq file")
-        download(refs, args.db, args.file_out, seen)
-    else:
-        print("get assemblies")
-        get_assemblies(refs, args.file_out, seen, args.ftp_path, args.refresh)
+        print(len(seen_in_fasta.keys()), "already seen reference ids")
+    # Now use the assembly refseq file to get the ftp path and download the fasta files
+    print("Get assemblies now")
+
+
+    get_assemblies(
+        assemblies, #this is the top hits from the input file you want to retrieve
+        args.file_out, # this is the file you want to write to
+        GCFs_to_skip, # this is the list of GCFs you want to skip
+        args.refresh # this is the boolean to check if you want to refresh the file
+    )
     if args.gcf_map:
         with open(args.gcf_map, "w") as w:
-            for key, value in refs.items():
+            for key, value in assemblies.items():
                 for chr in value['chrs']:
-                    outstring = f"{chr}\t{key}\t{value['accession']}"
+                    outstring = f"{chr['acc']}\t{value['accession']}\t{key}\t{chr['name']}"
                     w.write(f"{outstring}\n")
-            w.close()
+        w.close()
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -44,11 +44,12 @@ def calculate_stdev(depths, ref_size, weighted_mean_depth):
     return math.sqrt(variance)
 
 def coverage_thresholds(depths, thresholds, ref_size):
-    coverage_counts = {threshold: 0 for threshold in thresholds}
+    coverage_counts = [0] * len(thresholds)
+    print(depths, thresholds, ref_size)
     for depth, size in zip(depths, ref_size):
-        for threshold in thresholds:
+        for i, threshold in enumerate(thresholds):
             if depth >= threshold:
-                coverage_counts[threshold] += size
+                coverage_counts[i] += size
     return coverage_counts
 
 def main(argv=None):
@@ -64,12 +65,15 @@ def main(argv=None):
         file.seek(0)  # Reset file pointer to the beginning
         reader = csv.DictReader(file, delimiter='\t')  # Reinitialize reader
         for row in reader:
-            name = row['Name']
+            name = row['Organism']
             data[name]['Mean Depth'].append(float(row['Mean Depth']))
             data[name]['Average Coverage'].append(float(row['Average Coverage']))
             data[name]['Ref Size'].append(float(row['Ref Size']))
             data[name]['Total Reads Aligned'] += float(row['Total Reads Aligned'])
             # data[name]['Individual Reads Aligned'].append(float(row['Individual Reads Aligned']))
+            # split 1:10:50:100:300X Cov. column into list on colons, setting thresholds and making it as a dict
+            data[name]['Coverage Thresholds'] = {int(t): float(p) for t, p in zip([1, 10, 50, 100, 300], row['1:10:50:100:300X Cov.'].split(':'))}
+
     file.close()
     # Process data
     aggregated = []
@@ -82,18 +86,22 @@ def main(argv=None):
             abu_total_aligned = 0
         else:
             abu_total_aligned = values['Total Reads Aligned'] / total_reads_aligned
-        coverage_counts = coverage_thresholds(values['Mean Depth'], thresholds, values['Ref Size'])
-        coverage_percentages = [coverage_counts[t] / sum(values['Ref Size']) * 100 for t in thresholds]
+        # use the Coverage Thresholds column to find weighted threhsolds for merged row
+        cov_thresholds = values['Coverage Thresholds']
 
+        # coverage_counts =  coverage_thresholds(cov_thresholds, thresholds, values['Ref Size'])
+        # print(coverage_counts)
+        # exit()
         aggregated.append( {
-            'Name': name,
+            'Organism': name,
             'Weighted Mean Depth': mean_depth,
             'Weighted Avg Coverage': avg_coverage,
             'Total Ref Size': sum(values['Ref Size']),
             'Total Reads Aligned': values['Total Reads Aligned'],
             '% Reads Aligned': abu_total_aligned * 100,
             'Stdev': stdev,
-            '1X:10x:50x:100x:300x Cov.': f"{coverage_percentages[0]:.2f}:{coverage_percentages[1]:.2f}:{coverage_percentages[2]:.2f}:{coverage_percentages[3]:.2f}:{coverage_percentages[4]:.2f}",
+            "1X:10x:50x:100x:300x Cov.": "Disabled"
+            # '1X:10x:50x:100x:300x Cov.': f"{coverage_percentages[0]:.2f}:{coverage_percentages[1]:.2f}:{coverage_percentages[2]:.2f}:{coverage_percentages[3]:.2f}:{coverage_percentages[4]:.2f}",
         })
 
     # Output the aggregated data
