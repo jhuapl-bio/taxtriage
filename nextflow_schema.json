@@ -176,6 +176,11 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "bt2_scoremin": {
+                    "type": "string",
+                    "description": "Bowtie2 score-min parameter",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "refresh_download": {
                     "type": "boolean",
                     "description": "Redownload all references from NCBI",

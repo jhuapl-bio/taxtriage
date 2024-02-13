@@ -50,6 +50,31 @@ if (params.minq) {
 ch_assembly_txt = null
 ch_kraken_reference = false
 
+
+def validateBt2Scoremin(String scoremin) {
+    def pattern = /^(G|L),-?\d+(\.\d+)?,-?\d+(\.\d+)?$/
+    if (!scoremin || !pattern.matcher(scoremin).matches()) {
+        error "ERROR: The parameter 'bt2_scoremin' is in an incorrect format or not provided. It should be 'G' or 'L' followed by two comma-separated values (e.g., 'G,-10,-2')."
+    }
+}
+String value = "G,-10,-2"
+boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$' )
+
+if (matches) {
+    println("The value matches the pattern.")
+} else {
+    println("The value does not match the pattern.")
+}
+// if (params.bt2_scoremin) {
+//     // Call the validation function early in the script
+//     validateBt2Scoremin(params.bt2_scoremin)
+// }
+
+// if skip_kraken2 and reference_fasta is empty AND organisms is empty and organisms_file is empty print and exit that organisms is required
+if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
+    exit 1, "If you are skipping kraken2, you must provide a reference fasta, organisms or organisms_file"
+}
+
 if (!params.assembly) {
     println 'No assembly file given, downloading the standard ncbi one'
     ch_assembly_txt = null
