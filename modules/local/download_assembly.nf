@@ -59,7 +59,7 @@ process DOWNLOAD_ASSEMBLY {
 
 
     download_fastas.py \\
-            -i "${hits_containing_file}" \\
+            -i ${hits_containing_file} \\
             -o ${meta.id}.output.references.fasta ${refresh_download} \\
             ${email} $type -g ${meta.id}.gcfmapping.tsv \\
             -t ${assembly} -k  $column $columnAssembly -y 7 -r

@@ -411,7 +411,7 @@ workflow TAXTRIAGE {
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
     ch_mapped_assemblies = Channel.empty()
-
+    ch_reads_to_align = Channel.empty()
 
     if (params.reference_fasta) { //
         // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
@@ -431,9 +431,8 @@ workflow TAXTRIAGE {
 
         ch_mapped_assemblies = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
         ch_accessions = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
-    } else {
-
-        if (params.organisms || params.organisms_file){
+    } else  {
+        if (params.skip_kraken2) {
             ch_pre_download = ch_filtered_reads.combine(ch_organisms)
         } else {
             ch_pre_download = ch_filtered_reads.map {
@@ -449,10 +448,7 @@ workflow TAXTRIAGE {
         )
         ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
 
-        // MAP_GCF(
-        //     DOWNLOAD_ASSEMBLY.out.fasta.map({ meta, fasta -> return  [ meta, fasta ] }),
-        //     ch_assembly_txt
-        // )
+
         ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
         ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
 
@@ -475,7 +471,7 @@ workflow TAXTRIAGE {
         if (params.get_features){
             ch_reads_to_align  = ch_filtered_reads.join(ch_bedfiles, remainder: true)
         } else {
-            ch_reads_to_align = ch_reads_to_align.map {
+            ch_reads_to_align = ch_filtered_reads.map {
                 meta, reads, fasta -> [ meta, reads, fasta, null ]
             }
         }
@@ -494,14 +490,12 @@ workflow TAXTRIAGE {
 
         ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
 
-        ch_accession_mapping.view()
         ch_combined = ch_alignment_outmerg
             .join(ch_mapped_assemblies, by: 0, remainder: true)
             .map { meta, bam, depth, mapping ->
                 // If mapping is not present, replace it with null or an empty placeholder
                 return [meta, bam, depth, mapping ?: ch_empty_file]
             }
-        ch_mapped_assemblies.view()
 
         if (!params.skip_confidence) {
             CONFIDENCE_METRIC(

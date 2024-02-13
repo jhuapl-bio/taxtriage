@@ -61,6 +61,7 @@ def parse_args(argv=None):
         "-i",
         "--input",
         metavar="INPUT",
+        nargs="+",
         help="List of taxIDs or names",
     )
     parser.add_argument(
@@ -393,13 +394,16 @@ def download(refs, db, outfile, seen):
             i = i+1
 
 
-def get_hits_from_file(filename, colnumber):
+def get_hits_from_file(filenames, colnumber):
     taxids = []
-    with open(filename, "r") as f:
-        lines = f.readlines()
-        for line in lines:
-            line = line.rstrip()
-            taxids.append(line.split("\t")[colnumber-1])
+    for filename in filenames:
+        with open(filename, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.rstrip()
+                name = line.split("\t")[colnumber-1]
+                if name not in taxids:
+                    taxids.append(name)
     return taxids
 
 
@@ -428,8 +432,7 @@ def main(argv=None):
         #colnumber file hits is the column from the input top hits file you want to match to the args.assembly_names
         seen_in_tops = get_hits_from_file(args.input, args.colnumber_file_hits)
     else:
-        seen_in_tops = args.input.split(" ")
-
+        seen_in_tops = args.input
     assemblies = import_assembly_file(
         seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path
     )
