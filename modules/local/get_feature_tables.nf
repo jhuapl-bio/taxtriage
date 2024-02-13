@@ -32,11 +32,6 @@ process NCBIGENOMEDOWNLOAD_FEATURES {
 
     find . -type f -name "*_feature_table.txt.gz" -exec gzip -d {}    \\;
 
-    awk '
-        FNR==1 && NR!=1 { while (/^# feature/) getline; }
-        1 {print}
-    ' *_feature_table.txt > ${meta.id}.features.txt;
-
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

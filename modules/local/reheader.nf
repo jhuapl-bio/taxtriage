@@ -1,4 +1,4 @@
-process FEATURES_TO_BED {
+process REFERENCE_REHEADER {
     tag "$meta.id"
     label 'process_low'
 
@@ -8,10 +8,10 @@ process FEATURES_TO_BED {
         'biocontainers/gawk:4.2.0' }"
 
     input:
-    tuple val(meta), path(features)
+    tuple val(meta), path(fasta)
 
     output:
-    tuple val(meta),  path("*.features.bed"), optional: false, emit: bed
+    tuple val(meta),  path("*.reformat.fasta"), optional: false, emit: fasta
     path "versions.yml"                               , emit: versions
 
     when:
@@ -20,19 +20,15 @@ process FEATURES_TO_BED {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-
+    def output = "${prefix}.reformat.fasta"
 
     """
 
-
-
-    awk -F '\t' 'NR > 1 { if (\$1 == "CDS" && \$8 < \$9 ){print \$7\"\t\"\$8\"\t\"\$9\"\t\"\$14 }}' \\
-        ${features} > ${meta.id}.features.bed
-
+    reheader_fasta.sh -i ${fasta} -o ${output} ${args}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$( python --version )
+        awk: \$( awk --version )
     END_VERSIONS
     """
 }

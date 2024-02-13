@@ -14,56 +14,53 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process TOP_HITS {
-    tag "$meta.id"
+process MAP_GCF {
     label 'process_medium'
+    tag "$meta.id"
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/python:3.9--1' :
-        'biocontainers/python:3.8.3' }"
+        'https://depot.galaxyproject.org/singularity/gawk:4.2.0' :
+        'biocontainers/gawk:4.2.0' }"
+
+
+
 
     input:
-    tuple val(meta), path(report)
+    tuple val(meta), path(fasta)
+    path(assembly)
+
+
 
     output:
+    tuple val(meta), path("*.mapping.tsv"), optional: false, emit: map
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*top_report.tsv"), optional:false, emit: tops
-    tuple val(meta), path("*toptaxids.txt"), optional:false, emit: taxids
-    tuple val(meta), path("*topnames.txt"), optional:false, emit: names
-    tuple val(meta), path("*.krakenreport_mqc.tsv"), optional:false, emit: krakenreport
-
-
 
     when:
     task.ext.when == null || task.ext.when
 
 
+
+
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def id = "${meta.id}"
-    ch_top_per_taxa = ""
-    def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa} " : ''
-    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
+
+    // def files = tops.splitCsv(header: true, sep="\t")
+    def assembly_file = assembly != null ? " -a $assembly" : ""
+    def output = "${meta.id}.GCF.mapping.tsv"
 
     """
-    echo ${meta.id} "-----------------META variable------------------"
-    get_top_hits.py \\
-        -i \"$report\" \\
-        -o ${id}.top_report.tsv   \\
-        $top_hits_count  $top_per_taxa
+
+    make_gcf_mapping.sh \\
+        -i $fasta  \\
+        -o $output\\
+        $assembly_file
 
 
-    awk -F '\\t' -v id=${id} \\
-        'BEGIN{OFS=\"\\t\"} { if (NR==1){ print \"Sample_Taxid\", \$2, \$1, \$4, \$6} else { \$5 = id\"_\"\$5;  print \$5, \$2, \$1, \$4, \$6  }}'  ${id}.top_report.tsv > ${id}.krakenreport_mqc.tsv
-
-    awk -F '\\t' 'NR>1 {if (\$4 ~ "^S"){print \$6}}' ${id}.top_report.tsv | sort | uniq > ${id}.topnames.txt
-    awk -F '\\t' 'NR>1 {if (\$4 ~ "^S"){print \$5}}' ${id}.top_report.tsv | sort | uniq > ${id}.toptaxids.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python --version | sed 's/Python //g')
+        awk: \$(awk --version 2>&1)
     END_VERSIONS
 
     """
 }
-

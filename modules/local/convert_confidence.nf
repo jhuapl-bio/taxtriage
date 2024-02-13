@@ -24,7 +24,7 @@ process CONVERT_CONFIDENCE {
         'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta),  path(kraken_report), path(tsv)
+    tuple val(meta),  path(tsv)
 
     output:
     path("*confidences.merged.tsv"), optional: false, emit: tsv

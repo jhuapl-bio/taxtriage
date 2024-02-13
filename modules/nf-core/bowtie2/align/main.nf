@@ -24,9 +24,10 @@ process BOWTIE2_ALIGN {
 
     script:
     def args = task.ext.args ?: ""
+    
     def args2 = task.ext.args2 ?: ""
     def prefix = task.ext.prefix ?: "${meta.id}"
-
+    def minmapq = params.minmapq ? " -q ${params.minmapq} " :  ""
     def unaligned = ""
     def reads_args = ""
     if (meta.single_end) {
@@ -36,7 +37,7 @@ process BOWTIE2_ALIGN {
         unaligned = save_unaligned ? "--un-conc-gz ${prefix}.unmapped.fastq.gz" : ""
         reads_args = "-1 ${reads[0]} -2 ${reads[1]}"
     }
-
+    
     def samtools_command = sort_bam ? 'sort' : 'view'
     def extension_pattern = /(--output-fmt|-O)+\s+(\S+)/
     def extension = (args2 ==~ extension_pattern) ? (args2 =~ extension_pattern)[0][2].toLowerCase() : "bam"
@@ -53,7 +54,7 @@ process BOWTIE2_ALIGN {
         $unaligned \\
         $args \\
         2> ${prefix}.bowtie2.log \\
-        | samtools $samtools_command $args2 --threads $task.cpus -o ${prefix}.${extension} -
+        | samtools sort --threads $task.cpus | samtools view $minmapq -@ ${task.cpus} -b -h -o ${prefix}.bam
 
     if [ -f ${prefix}.unmapped.fastq.1.gz ]; then
         mv ${prefix}.unmapped.fastq.1.gz ${prefix}.unmapped_1.fastq.gz

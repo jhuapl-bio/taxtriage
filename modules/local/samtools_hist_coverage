@@ -1,4 +1,4 @@
-process SAMTOOLS_COVERAGE {
+process SAMTOOLS_HIST_COVERAGE {
     tag "$meta.id"
     label 'process_single'
 
@@ -8,10 +8,10 @@ process SAMTOOLS_COVERAGE {
         'biocontainers/samtools:1.19.2--h50ea8bc_0' }"
 
     input:
-    tuple val(meta), path(input), path(input_index)
+    tuple val(meta), path(bam), path(mapping)
 
     output:
-    tuple val(meta), path("*.txt"), emit: coverage
+    tuple val(meta), path("*.histo.txt"), emit: histogram
     path "versions.yml"           , emit: versions
 
     when:
@@ -20,24 +20,15 @@ process SAMTOOLS_COVERAGE {
     script:
     def args   = task.ext.args   ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    """
-    samtools \\
-        coverage \\
-        $args \\
-        -o ${prefix}.txt \\
-        $input
+    def mapping = mapping ? " -m $mapping" : ""
+    def output = "${meta.id}.histo.txt"
 
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        samtools: \$(echo \$(samtools --version 2>&1) | sed 's/^.*samtools //; s/Using.*\$//' )
-    END_VERSIONS
     """
 
-    stub:
-    def args   = task.ext.args   ?: ''
-    def prefix = task.ext.prefix ?: "${meta.id}"
-    """
-    touch ${prefix}.txt
+    samtools_coverage.sh \\
+        -b ${bam} \\
+        -o ${output} \\
+        ${mapping} -a "$args"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

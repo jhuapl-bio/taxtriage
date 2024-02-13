@@ -8,7 +8,7 @@ process BEDTOOLS_DEPTHCOVERAGE {
         'biocontainers/bedtools:2.31.1--hf5e1c6e_0' }"
 
     input:
-    tuple val(meta), path(input_A), path(input_B)
+    tuple val(meta), path(bed), path(bam)
 
     output:
     tuple val(meta), path("*.features.coverage"), emit: coverage
@@ -24,10 +24,21 @@ process BEDTOOLS_DEPTHCOVERAGE {
 
 
     """
-    bedtools \\
-        coverage \\
-        -a $input_A \\
-        -b $input_B $args   > ${meta.id}.features.coverage
+
+    mkdir -p split_bed
+
+    awk '{print > "split_bed/"\$1".bed"}'  $bed
+
+
+    for bed_file in split_bed/*.bed; do
+
+        output_file="\${bed_file%.bed}_coverage.txt"
+
+        bedtools coverage $args  \\
+            -a "\$bed_file" \\
+            -b $bam -hist;
+
+    done >  ${meta.id}.features.coverage
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
