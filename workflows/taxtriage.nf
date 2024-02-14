@@ -232,8 +232,13 @@ workflow TAXTRIAGE {
     }
 
     ch_taxdump_dir = Channel.empty()
-
-    if (!params.taxdump && params.classifier == 'metaphlan'){
+    if (params.classifier){
+        // split params.classifier on command and optional space assign to list channel
+        ch_classifier = params.classifiers.split(",\\s*")
+    } else {
+        ch_classifier = ['kraken2']
+    }
+    if (!params.taxdump){
         DOWNLOAD_TAXDUMP()
         ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
         ch_taxdump_dir.view()
@@ -382,8 +387,7 @@ workflow TAXTRIAGE {
     //     )
     //     ch_reads = READSFILTER.out.reads
     // }
-    // split params.classifier on command and optional space assign to list channel
-    ch_classifier = params.classifiers.split(",\\s*")
+
 
     //Create empty channel to store report depending on classification tool
     ch_report = Channel.empty()
@@ -392,7 +396,6 @@ workflow TAXTRIAGE {
     ch_standardized = Channel.empty()
     // // // // // // MODULE: Run Kraken2
     // print type ch_classifier
-    print ch_classifier
 
 
     if (ch_classifier.contains('kraken2')) {
@@ -416,6 +419,7 @@ workflow TAXTRIAGE {
         ch_profile = ch_profile.concat(ch_kraken2_report)
     }
     if (ch_classifier.contains('metaphlan')) {
+        // make ch_metaphlan_db from params.metaphlan_db
         METAPHLAN_METAPHLAN(
             ch_reads,
             params.metaphlan_db
