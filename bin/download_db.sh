@@ -16,7 +16,7 @@ wget $url -O ${db}.tar.gz
 # curl -o ${db}.tar.gz $url
 
 mkdir -p $db
-tar -xvzf ${db}.tar.gz -C $db
+tar -xvf ${db}.tar.gz -C $db
 rm ${db}.tar.gz
 
 if [[  ${db} == 'flukraken2' ]]; then
