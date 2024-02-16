@@ -153,14 +153,12 @@
                 "organisms": {
                     "type": "string",
                     "hint": "Options: Comma-separated taxids or organism names to match to ncbi assembly info. See --assembly for more info. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",
-                    "default": null,
                     "description": "Either a string of taxids separated by a space, or organisms names with '' enclosure, separated by space for each enclosed name with ''",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "organisms_file": {
                     "type": "string",
                     "hint": "Options: [string or single column list of taxids or organism names]. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",
-                    "default": null,
                     "description": "Either a file or string of taxids separated by a space, or organisms names with '' enclosure",
                     "fa_icon": "fas fa-file-signature"
                 },
