@@ -11,8 +11,10 @@ set -e
 #     python3 $db_dir/../bin/checksum.py $db_dir/$db/taxo.k2d $checksum
 #     exit 0
 # fi
-echo "Downloading $db from $url, $checksum"
+echo "Downloading $db from $url $checksum"
 wget $url -O ${db}.tar.gz
+# curl -o ${db}.tar.gz $url
+
 mkdir -p $db
 tar -xvzf ${db}.tar.gz -C $db
 rm ${db}.tar.gz

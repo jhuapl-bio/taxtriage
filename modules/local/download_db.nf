@@ -20,8 +20,9 @@ process DOWNLOAD_DB {
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/gnu-wget:1.18--0' :
+        'https://depot.galaxyproject.org/singularity/wget:1.20.1' :
         'biocontainers/gnu-wget:1.18--h36e9172_9' }"
+
 
     input:
     val(db)
