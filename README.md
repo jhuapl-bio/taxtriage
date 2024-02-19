@@ -35,6 +35,56 @@ Efforts are underway to provide full support of this pipeline on [nf-core](nf-co
 
 [See Here for troubleshooting & FAQ](docs/troubleshooting.md)
 
+## Installation
+
+TaxTriage requires 2 primary installs for it to work
+
+1. Nextflow
+2. Singularity or Docker (recommended)
+
+### 1. Nextflow 
+
+Follow instructions [here](https://nf-co.re/docs/usage/installation) or run these commands in your WSL2, Native Linux, or Mac environment
+
+
+```
+# Make sure that Java v11+ is installed:
+java -version
+ 
+# Install Nextflow
+curl -fsSL get.nextflow.io | bash
+
+```
+
+Note, this command requires sudo to move to your home path. If you are on an HPC, make sure that nextflow is in your $PATH if not globally available
+Place it in your `$PATH`
+
+```
+# Add Nextflow binary to your user's PATH:
+mv nextflow ~/bin/
+```
+
+If installing globally, requiring sudo, type: 
+
+```
+sudo mv nextflow /usr/local/bin
+```
+
+When complete, verify installation with `nextflow -v` to see the version
+
+### 2. Containerization Approach Install
+
+Choose *A* (Recommended - Docker) or *B*. If on a HPC, talk with your IT to get B. Singularity setup. You do NOT need to install both software tools.
+
+#### A. Docker 
+
+Follow these steps for your OS [here](https://docs.docker.com/engine/install/) - IF on WSL2 (Windows), choose Docker Desktop for Windows and it should be available automatically in your WSL environment
+
+#### B. Singularity
+
+[Install Instructions](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)
+
+
 ## Quick Start
 
 Make sure you have either Docker or Singularity installed, as well as Nextflow
