@@ -45,9 +45,9 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 | Column               | Description                                                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sample`             | **MANDATORY** Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
-| `fastq_1`            | **MANDATORY** (if not using 'from'). Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".               |
+| `platform`           | **MANDATORY** Platform used, [ILLUMINA, OXFORD]. If omitted or left blank, assumes ILLUMINA                                                                                                                                                     |
+| `fastq_1`            | **MANDATORY** Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".               |
 | `fastq_2`            | OPTIONAL Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                     |
-| `platform`           | **MANDATORY** Platform used, [ILLUMINA, OXFORD]                                                                                                                                                      |
 | `trim`               | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                 |
 | `sequencing_summary` | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample                                                                                           |
 
