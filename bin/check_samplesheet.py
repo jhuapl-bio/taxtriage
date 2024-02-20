@@ -227,8 +227,7 @@ def check_samplesheet(file_in, file_out):
 
 
     """
-    # required_columns = {"sample", "fastq_1", "fastq_2"}
-    required_columns = {"sample", "fastq_1", "platform"}
+    required_columns = {"sample", "fastq_1"}
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_in.open(newline="", encoding='utf-8-sig') as in_handle:
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))
