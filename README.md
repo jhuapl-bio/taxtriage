@@ -94,7 +94,7 @@ Make sure you have either Docker or Singularity installed, as well as Nextflow
 This will pull the test data and run the pipeline. It should take ~10-15 minutes.
 
 ```
-nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker --outdir test_output -resume
+nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker -resume
 ```
 
 ❗If you want singularity instead, make sure to specify that in the profile instead of docker like: `test,singularity`
@@ -198,12 +198,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 :warning: Make sure you're in the `jhuaplbio/taxtriage` repo first!
 
 ```
-nextflow run ./main.nf \
-   -profile test,docker \
-   --outdir tmp_local \
-   --input examples/Samplesheet.csv \
-   --db ~/Desktop/mytax/test_metagenome \
-   -resume
+nextflow run ./main.nf -profile test,docker
 ```
 
 If you want to download the databases from scratch, you can see them here
