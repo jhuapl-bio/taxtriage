@@ -19,7 +19,7 @@
 
 :warning: Git History was recently updated, causing a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters
 
-**nf-core/taxtriage** is a bioinformatics best-practice analysis pipeline for APHL pipeline for triage classification reports.
+**TaxTriage** is a bioinformatics best-practice analysis pipeline for APHL pipeline for triage classification reports.
 
 The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It uses Docker/Singularity containers making installation trivial and results highly reproducible. The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. Where possible, these processes have been submitted to and installed from [nf-core/modules](https://github.com/nf-core/modules) in order to make them available to all nf-core pipelines, and to everyone within the Nextflow community!
 
@@ -229,7 +229,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 3. Download the pipeline and test it on a minimal dataset with a single command:
 
    ```console
-   nextflow run nf-core/taxtriage -profile test,YOURPROFILE --outdir ./$OUTDIR
+   nextflow run https://github.com/jhuapl-bio/taxtriage -profile test,docker --outdir ./outdir
    ```
 
    Note that some form of configuration will be needed so that Nextflow knows how to fetch the required software. This is usually done in the form of a config profile (`YOURPROFILE` in the example command above). You can chain multiple config profiles in a comma-separated string.
@@ -261,17 +261,13 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
 8. Report Generation ( MultiQC – Illumina, Oxford Nanopore)
 
-## Documentation
-
-The nf-core/taxtriage pipeline comes with documentation about the pipeline [usage](https://nf-co.re/taxtriage/usage), [parameters](https://nf-co.re/taxtriage/parameters) and [output](https://nf-co.re/taxtriage/output).
 
 ## Credits
 
-nf-core/taxtriage was originally written by Brian Merritt, MS Bioinformatics.
+TaxTriage was originally written by Brian Merritt, MS Bioinformatics.
 
 We thank the following people for their extensive assistance in the development of this pipeline:
 
-<!-- TODO nf-core: If applicable, make list of people who have also contributed -->
 
 ## Contributions and Support
 
@@ -279,10 +275,10 @@ If you would like to contribute to this pipeline, please see the [contributing g
 
 ## Citations
 
-<!-- TODO nf-core: Add citation for pipeline after first release. Uncomment lines below and update Zenodo doi and badge at the top of this file. -->
-<!-- If you use  nf-core/taxtriage for your analysis, please cite it using the following doi: [10.5281/zenodo.XXXXXX](https://doi.org/10.5281/zenodo.XXXXXX) -->
+<!-- TODO Add citation for pipeline after first release. Uncomment lines below and update Zenodo doi and badge at the top of this file. -->
+<!-- If you use  taxtriage for your analysis, please cite it using the following doi: [10.5281/zenodo.XXXXXX](https://doi.org/10.5281/zenodo.XXXXXX) -->
 
-<!-- TODO nf-core: Add bibliography of tools and data used in your pipeline -->
+<!-- TODO Add bibliography of tools and data used in your pipeline -->
 
 An extensive list of references for the tools used by the pipeline can be found in the [`CITATIONS.md`](CITATIONS.md) file.
 You can cite the `nf-core` publication as follows:
