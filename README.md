@@ -3,7 +3,7 @@
 
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 [![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
-[![run with singularity](https://img.shields.io/badge/run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
+[![run with singularityCE](https://img.shields.io/badge/run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
 
 [![Get help on Slack](http://img.shields.io/badge/slack-nf--core%20%23taxtriage-4A154B?labelColor=000000&logo=slack)](https://nfcore.slack.com/channels/taxtriage)
 [![Follow on Twitter](http://img.shields.io/badge/twitter-%40nf__core-1DA1F2?labelColor=000000&logo=twitter)](https://twitter.com/nf_core)
@@ -19,7 +19,7 @@
 
 :warning: Git History was recently updated, causing a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters
 
-**nf-core/taxtriage** is a bioinformatics best-practice analysis pipeline for APHL pipeline for triage classification reports.
+**TaxTriage** is a bioinformatics best-practice analysis pipeline for APHL pipeline for triage classification reports.
 
 The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It uses Docker/Singularity containers making installation trivial and results highly reproducible. The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. Where possible, these processes have been submitted to and installed from [nf-core/modules](https://github.com/nf-core/modules) in order to make them available to all nf-core pipelines, and to everyone within the Nextflow community!
 
@@ -29,11 +29,61 @@ On release, automated continuous integration tests run the pipeline on a full-si
 
 Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August.
 
-Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
+Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (*CE ONLY*) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
 
 [See Here for full usage details](docs/usage.md)
 
 [See Here for troubleshooting & FAQ](docs/troubleshooting.md)
+
+## Installation
+
+TaxTriage requires 2 primary installs for it to work
+
+1. Nextflow
+2. Singularity or Docker (recommended)
+
+### 1. Nextflow 
+
+Follow instructions [here](https://nf-co.re/docs/usage/installation) or run these commands in your WSL2, Native Linux, or Mac environment
+
+
+```
+# Make sure that Java v11+ is installed:
+java -version
+ 
+# Install Nextflow
+curl -fsSL get.nextflow.io | bash
+
+```
+
+Note, this command requires sudo to move to your home path. If you are on an HPC, make sure that nextflow is in your $PATH if not globally available
+Place it in your `$PATH`
+
+```
+# Add Nextflow binary to your user's PATH:
+mv nextflow ~/bin/
+```
+
+If installing globally, requiring sudo, type: 
+
+```
+sudo mv nextflow /usr/local/bin
+```
+
+When complete, verify installation with `nextflow -v` to see the version
+
+### 2. Containerization Approach Install
+
+Choose *A* (Recommended - Docker) or *B*. If on a HPC, talk with your IT to get B. Singularity setup. You do NOT need to install both software tools.
+
+#### A. Docker 
+
+Follow these steps for your OS [here](https://docs.docker.com/engine/install/) - IF on WSL2 (Windows), choose Docker Desktop for Windows and it should be available automatically in your WSL environment
+
+#### B. Singularity
+
+[Install Instructions](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)
+
 
 ## Quick Start
 
@@ -179,7 +229,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 3. Download the pipeline and test it on a minimal dataset with a single command:
 
    ```console
-   nextflow run nf-core/taxtriage -profile test,YOURPROFILE --outdir ./$OUTDIR
+   nextflow run https://github.com/jhuapl-bio/taxtriage -profile test,docker --outdir ./outdir
    ```
 
    Note that some form of configuration will be needed so that Nextflow knows how to fetch the required software. This is usually done in the form of a config profile (`YOURPROFILE` in the example command above). You can chain multiple config profiles in a comma-separated string.
@@ -211,17 +261,13 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
 8. Report Generation ( MultiQC – Illumina, Oxford Nanopore)
 
-## Documentation
-
-The nf-core/taxtriage pipeline comes with documentation about the pipeline [usage](https://nf-co.re/taxtriage/usage), [parameters](https://nf-co.re/taxtriage/parameters) and [output](https://nf-co.re/taxtriage/output).
 
 ## Credits
 
-nf-core/taxtriage was originally written by Brian Merritt, MS Bioinformatics.
+TaxTriage was originally written by Brian Merritt, MS Bioinformatics.
 
 We thank the following people for their extensive assistance in the development of this pipeline:
 
-<!-- TODO nf-core: If applicable, make list of people who have also contributed -->
 
 ## Contributions and Support
 
@@ -229,10 +275,10 @@ If you would like to contribute to this pipeline, please see the [contributing g
 
 ## Citations
 
-<!-- TODO nf-core: Add citation for pipeline after first release. Uncomment lines below and update Zenodo doi and badge at the top of this file. -->
-<!-- If you use  nf-core/taxtriage for your analysis, please cite it using the following doi: [10.5281/zenodo.XXXXXX](https://doi.org/10.5281/zenodo.XXXXXX) -->
+<!-- TODO Add citation for pipeline after first release. Uncomment lines below and update Zenodo doi and badge at the top of this file. -->
+<!-- If you use  taxtriage for your analysis, please cite it using the following doi: [10.5281/zenodo.XXXXXX](https://doi.org/10.5281/zenodo.XXXXXX) -->
 
-<!-- TODO nf-core: Add bibliography of tools and data used in your pipeline -->
+<!-- TODO Add bibliography of tools and data used in your pipeline -->
 
 An extensive list of references for the tools used by the pipeline can be found in the [`CITATIONS.md`](CITATIONS.md) file.
 You can cite the `nf-core` publication as follows:
