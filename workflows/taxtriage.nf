@@ -74,7 +74,14 @@ if (matches) {
 if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
     exit 1, "If you are skipping kraken2, you must provide a reference fasta, organisms or organisms_file"
 }
-
+// if params.pathogens, check if file ends with .tsv or .txt
+if (params.pathogens) {
+    if (params.pathogens.endsWith('.tsv') || params.pathogens.endsWith('.txt')) {
+        ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
+    } else {
+        exit 1, "Pathogens file must end with .tsv or .txt i.e. it is a .tsv file!"
+    }
+}
 if (!params.assembly) {
     println 'No assembly file given, downloading the standard ncbi one'
     ch_assembly_txt = null
@@ -130,6 +137,7 @@ ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
+include { PATHOGENS } from '../subworkflows/local/pathogen'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
 include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxonomy/main'
 include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
@@ -305,6 +313,7 @@ workflow TAXTRIAGE {
     ch_porechop_out = Channel.empty()
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
+    ch_pathogens = params.pathogens ? Channel.fromPath(params.pathogens, checkIfExists: true) : Channel.empty()
 
     if (params.trim) {
         nontrimmed_reads = ch_reads.filter { !it[0].trim }
@@ -505,6 +514,12 @@ workflow TAXTRIAGE {
 
         ALIGNMENT(
             ch_reads_to_align
+        )
+        ALIGNMENT.out.bams.join(ch_mapped_assemblies).view()
+
+        PATHOGENS(
+            ALIGNMENT.out.bams.join(ch_mapped_assemblies),
+            ch_pathogens
         )
 
         ch_alignment_stats = ALIGNMENT.out.stats

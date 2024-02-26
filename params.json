@@ -13,6 +13,7 @@
     "taxtab": "default",
     "remove_taxids": "9606",
     "profile": "docker",
+    "bt2_indices": null,
     "blastdb": null,
     "remoteblast": false,
     "skip_fastp": false,

@@ -53,22 +53,29 @@ workflow ALIGNMENT {
     ch_versions = 1
 
 
-    SAMTOOLS_FAIDX(
-        fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, fasta ] },
-        fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, [] ] },
-    )
+    // SAMTOOLS_FAIDX(
+    //     fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, fasta ] },
+    //     fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, [] ] },
+    // )
+    if (params.bt2_indices){
+        ch_indices = ch_aligners.shortreads.map{ m, fastq, fasta, bed, map -> return [ m, file(params.bt2_indices) ] }
+        ch_indices.view()
+        println("Using pre-built indices provided $params.bt2_indices")
+    } else {
+        println("Building indices from FASTA references")
+        BOWTIE2_BUILD(
+            ch_aligners.shortreads.map{  m, fastq, fasta, bed, map  ->
+                return [ m, fasta  ]
+            }
 
-    BOWTIE2_BUILD(
-        ch_aligners.shortreads.map{  m, fastq, fasta, bed, map  ->
-            return [ m, fasta  ]
-        }
-
-    )
+        )
+        ch_indices = BOWTIE2_BUILD.out.index
+    }
     BOWTIE2_ALIGN(
         ch_aligners.shortreads.map{  m, fastq, fasta, bed, map ->
             return [ m, fastq ]
         },
-        BOWTIE2_BUILD.out.index,
+        ch_indices,
         false,
         true
     )
@@ -209,12 +216,12 @@ workflow ALIGNMENT {
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
     emit:
-    // sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
-    depth = ch_depths
-    mpileup = ch_merged_mpileup
-    bams = ch_bams
-    fasta  = ch_merged_fasta
-    stats = ch_stats
-    bamstats = ch_bamstats
-    versions = ch_versions
-    }
+        // sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
+        depth = ch_depths
+        mpileup = ch_merged_mpileup
+        bams = ch_bams
+        fasta  = ch_merged_fasta
+        stats = ch_stats
+        bamstats = ch_bamstats
+        versions = ch_versions
+}

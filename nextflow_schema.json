@@ -174,6 +174,11 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "bt2_indices": {
+                    "type": "string",
+                    "description": "Path to Bowtie2 indices (directory). If not called, it auto creates it from the relevant FASTA file for each sample",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "bt2_scoremin": {
                     "type": "string",
                     "description": "Bowtie2 score-min parameter",

@@ -125,6 +125,9 @@ class RowChecker:
         # Sanitize samples slightly.
         row[self._dir_col] = False
         row[self._sample_col] = row[self._sample_col].replace(" ", "_")
+        for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '(', ')', '[', ']', '{', '}', '#', '%', '&', '+', '!', '@', '$', '^', '`', '~', ';', ',']:
+            row[self._sample_col] = row[self._sample_col].replace(char, "")
+
 
     def _validate_first(self, row):
         """Assert that the first FASTQ entry is non-empty and has the right format."""
