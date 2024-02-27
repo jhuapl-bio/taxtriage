@@ -317,7 +317,6 @@ workflow TAXTRIAGE {
 
     // if (params.trim) {
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
-    ch_reads.view()
     TRIMGALORE(
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
     )
@@ -516,7 +515,6 @@ workflow TAXTRIAGE {
         ALIGNMENT(
             ch_reads_to_align
         )
-        ALIGNMENT.out.bams.join(ch_mapped_assemblies).view()
 
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies),
