@@ -214,6 +214,8 @@ def draw_vertical_line(canvas, doc):
         canvas.setLineWidth(1)
         canvas.line(line_x, start_y, line_x, end_y)
         canvas.restoreState()
+
+
 def create_report(output, df_yes, df_no):
 
     # PDF file setup
@@ -242,36 +244,38 @@ def create_report(output, df_yes, df_no):
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
-    columns_yes = df_yes.columns.values
-    columns_yes = ["Sample", "Organism", "% Reads in Sample", "# Aligned to Sample", "Locations", "Status", "Type"]
-    # Now, call prepare_data_with_headers for both tables without manually preparing headers
-    data_yes = prepare_data_with_headers(df_yes, columns=columns_yes, include_headers=True, color_status=True)
-    table_style = return_table_style(df_yes, color_pathogen=True)
-    print(table_style)
-    table = make_table(
-        data_yes,
-        table_style=table_style
-    )
-    # Add the title and subtitle
-    title = Paragraph("Pathogen Discovery Analysis", title_style)
-    subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from a currently developed spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
-    elements = [title, subtitle, Spacer(1, 12)]
-    elements.append(table)
-    elements.append(Spacer(1, 12))  # Space between tables
-    ##########################################################################################
-    ### Section to Make the "Unannotated" Table
-    second_title = "Unannotated Organisms"
-    second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms contained within the samples that had atleast one read aligned"
-    elements.append(Paragraph(second_title, title_style))
-    elements.append(Paragraph(second_subtitle, subtitle_style))
-    columns_no = ['Sample', 'Organism', '% Reads in Sample', '# Aligned to Sample' ]
-    data_no = prepare_data_with_headers(df_no, include_headers=True, color_status=False, columns=columns_no)
-    table_style = return_table_style(df_no, color_pathogen=False)
-    table_no = make_table(
-        data_no,
-        table_style=table_style
-    )
-    elements.append(table_no)
+    if not df_yes.empty:
+        columns_yes = df_yes.columns.values
+        columns_yes = ["Sample", "Organism", "% Reads in Sample", "# Aligned to Sample", "Locations", "Status", "Type"]
+        # Now, call prepare_data_with_headers for both tables without manually preparing headers
+        data_yes = prepare_data_with_headers(df_yes, columns=columns_yes, include_headers=True, color_status=True)
+        table_style = return_table_style(df_yes, color_pathogen=True)
+        table = make_table(
+            data_yes,
+            table_style=table_style
+        )
+        # Add the title and subtitle
+        title = Paragraph("Pathogen Discovery Analysis", title_style)
+        subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from a currently developed spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
+        elements = [title, subtitle, Spacer(1, 12)]
+        elements.append(table)
+        elements.append(Spacer(1, 12))  # Space between tables
+
+    if not df_no.empty:
+        ##########################################################################################
+        ### Section to Make the "Unannotated" Table
+        second_title = "Unannotated Organisms"
+        second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms contained within the samples that had atleast one read aligned"
+        elements.append(Paragraph(second_title, title_style))
+        elements.append(Paragraph(second_subtitle, subtitle_style))
+        columns_no = ['Sample', 'Organism', '% Reads in Sample', '# Aligned to Sample' ]
+        data_no = prepare_data_with_headers(df_no, include_headers=True, color_status=False, columns=columns_no)
+        table_style = return_table_style(df_no, color_pathogen=False)
+        table_no = make_table(
+            data_no,
+            table_style=table_style
+        )
+        elements.append(table_no)
     elements.append(Spacer(1, 12))  # Space between tables
     ##########################################################################################
     #####  Build the PDF

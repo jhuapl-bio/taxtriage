@@ -21,8 +21,8 @@ process PATHOGENS_MERGE_REPORT {
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/pandas:1.5.2' :
-        'biocontainers/pandas:1.5.2' }"
+        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.6' :
+        'jhuaplbio/reportlab-pdf:4.0.6' }"
 
     input:
     file files_of_pathogens
@@ -30,7 +30,7 @@ process PATHOGENS_MERGE_REPORT {
     output:
         path "versions.yml"           , emit: versions
         path("pathogens.report.txt")    , optional: false, emit: report
-        // path("pathogens.report.pdf")    , optional: false, emit: pdf
+        path("pathogens.report.pdf")    , optional: false, emit: pdf
 
 
     when:
@@ -48,8 +48,7 @@ process PATHOGENS_MERGE_REPORT {
 
     awk 'NR==1{print; next} FNR>1' $files_of_pathogens > $output_txt
 
-
-    echo "create_report.py  -i $output_txt  -o $output_pdf  ongoing development. Need to find a way to install pandas in the container"
+    create_report.py -i $output_txt  -o $output_pdf
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
