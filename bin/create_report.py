@@ -104,7 +104,7 @@ def import_data(inputfile ):
     }
     df = df.rename(columns=remap_headers)
     # sort the dataframe by the Sample THEN the # Reads
-    df = df.sort_values(by=["Sample", "# Aligned to Sample"], ascending=[True, False])
+    df = df.sort_values(by=[ "Class", "Sample", "# Aligned to Sample"], ascending=[False, True, False])
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
             #  update index of row to change organism name to bold
@@ -189,6 +189,9 @@ def return_table_style(df, color_pathogen=False):
             val = row.Class
             status = row.Status
             sites = row.Locations
+            # if nan then set to empty string
+            if pd.isna(sites):
+                sites = ""
             # Get Sample Type value from row
             sampletype = row[sampleindx]
             if val == 'Pathogen' and sampletype in sites:
