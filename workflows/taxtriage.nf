@@ -315,24 +315,25 @@ workflow TAXTRIAGE {
     ch_fastp_html = Channel.empty()
     ch_pathogens = params.pathogens ? Channel.fromPath(params.pathogens, checkIfExists: true) : Channel.empty()
 
-    if (params.trim) {
-        nontrimmed_reads = ch_reads.filter { !it[0].trim }
-        TRIMGALORE(
-            ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
-        )
+    // if (params.trim) {
+    nontrimmed_reads = ch_reads.filter { !it[0].trim }
+    ch_reads.view()
+    TRIMGALORE(
+        ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
+    )
 
-        ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
 
-        PORECHOP(
-            ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
-        )
-        ch_porechop_out  = PORECHOP.out.reads
-        trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
-        ch_reads = nontrimmed_reads.mix(trimmed_reads)
-        ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]))
-
-    }
+    PORECHOP(
+        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
+    )
+    ch_porechop_out  = PORECHOP.out.reads
+    trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
+    ch_reads = nontrimmed_reads.mix(trimmed_reads)
+    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]))
+//
+    // }
 
     if (!params.skip_fastp) {
         FASTP(

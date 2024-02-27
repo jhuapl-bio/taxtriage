@@ -46,7 +46,11 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.fastq_2 = row.fastq_2
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
     meta.single_end = row.fastq_2  ? false : true
-    meta.trim = meta.trim ? row.trim.toBoolean() : null
+    if (row.trim && row.trim.toLowerCase() == "true"){
+        meta.trim = true
+    } else if (!row.trim  || meta.trim.toLowerCase() == "false"){
+        meta.trim = false
+    }
     meta.directory = row.directory ?  row.directory.toBoolean() : null
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
     // add path(s) of the fastq file(s) to the meta map
@@ -70,6 +74,7 @@ def create_fastq_channel(LinkedHashMap row) {
             fastq_meta = [ meta, [ file(meta.fastq_1), file(meta.fastq_2) ] ]
         }
     }
+    println "INFO: ${meta.id} -> ${fastq_meta}"
 
     return fastq_meta
 }
