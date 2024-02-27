@@ -60,6 +60,13 @@ def parse_args(argv=None):
         help="Index of the column in mapfile (if specified) to match to the name. 0 index start",
     )
     parser.add_argument(
+        "-t",
+        "--sampletype",
+        metavar="SAMPLETYPE",
+        default='Unknown',
+        help="Sample Type to process. If Empty, defaults to null",
+    )
+    parser.add_argument(
         "-s",
         "--samplename",
         metavar="SAMPLENAME",
@@ -234,10 +241,16 @@ def main():
     # to do this
     reference_hits = count_reference_hits(inputfile, matchdct)
 
-    write_to_tsv(reference_hits=reference_hits, pathogens=pathogens, output_file_path=output, sample_name=args.samplename)
+    write_to_tsv(
+        reference_hits=reference_hits,
+        pathogens=pathogens,
+        output_file_path=output,
+        sample_name=args.samplename,
+        sample_type = args.sampletype
+    )
 
 
-def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Name"):
+def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Name", sample_type="Unknown"):
     """
     Write reference hits and pathogen information to a TSV file.
 
@@ -249,7 +262,7 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
     with open(output_file_path, 'w') as file:
         # Write the header row
 
-        header =  "Name\tSample\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus"
+        header =  "Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus"
         file.write(f"{header}\n")
         for ref, count in reference_hits.items():
             if ref in pathogens:
@@ -274,9 +287,8 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
             countreads = count['count']
             percent_aligned = count['percent_of_aligned']
             percent_total = count['percent_of_total']
-
             # Assuming 'count' is a simple value; if it's a dictionary or complex structure, adjust accordingly.
-            file.write(f"{ref}\t{sample_name}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{sites}\t{is_pathogen}\t{taxid}\t{status}\n")
+            file.write(f"{ref}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{sites}\t{is_pathogen}\t{taxid}\t{status}\n")
 
 if __name__ == "__main__":
     sys.exit(main())

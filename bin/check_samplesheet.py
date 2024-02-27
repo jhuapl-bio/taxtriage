@@ -116,7 +116,6 @@ class RowChecker:
                 # if row[key] == 'trim':
                 # uppercase the trim value
                 # row[key] = row[key].upper()
-        print(row)
         self.modified.append(row)
 
     def _validate_sample(self, row):

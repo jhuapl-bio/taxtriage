@@ -51,6 +51,7 @@ def create_fastq_channel(LinkedHashMap row) {
     } else if (!row.trim  || (row.trim && row.trim.toLowerCase() == "false")){
         meta.trim = false
     }
+    meta.type = row.type
     meta.directory = row.directory ?  row.directory.toBoolean() : null
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
     // add path(s) of the fastq file(s) to the meta map

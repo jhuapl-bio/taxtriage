@@ -99,11 +99,16 @@ def import_data(inputfile ):
         "Name": "Organism",
         "# Aligned": "# Aligned to Sample",
         "Sites": "Locations",
-        "% Total Reads": "% Reads in Sample"
+        "% Total Reads": "% Reads in Sample",
+        "Type": "Class",
     }
     df = df.rename(columns=remap_headers)
     # sort the dataframe by the Sample THEN the # Reads
     df = df.sort_values(by=["Sample", "# Aligned to Sample"], ascending=[True, False])
+    for row_idx, row in df.iterrows():
+        if row['Status'] == 'putative':
+            #  update index of row to change organism name to bold
+            df.at[row_idx, 'Organism'] = f'{row.Organism}*'
 
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     df_yes = df[df['IsAnnotated'] == 'Yes'].copy()
@@ -175,14 +180,23 @@ def return_table_style(df, color_pathogen=False):
     if color_pathogen:
         # Placeholder for cells to color (row_index, col_index) format
         cells_to_color = []
-        colorindexcol = df.columns.get_loc('Type') - 1
+        colorindexcol = 3
+
+        sampleindx = df.columns.get_loc('Sample Type')
         # Example post-processing to mark cells
+        print(df.columns.values)
         for row_idx, row in enumerate(df.itertuples(index=False)):
-            val = row.Type
-            if val == 'Pathogen':
+            val = row.Class
+            status = row.Status
+            sites = row.Locations
+            # Get Sample Type value from row
+            sampletype = row[sampleindx]
+            if val == 'Pathogen' and sampletype in sites:
                 color = 'lightgreen'
-            else:
+            elif val == 'Pathogen' :
                 color = 'lightyellow'
+            else:
+                color = 'white'
             # Ensure indices are within the table's dimensions
             style_command = ('BACKGROUND', (colorindexcol, row_idx+1), (colorindexcol, row_idx+1), color)  # Or lightorange based on condition
             table_style.add(*style_command)
@@ -238,7 +252,7 @@ def create_report(output, df_yes, df_no):
         topMargin=top_margin,
         bottomMargin=bottom_margin
     )
-    version = "1.3.1"  # Example version
+    version = "1.3.2"  # Example version
     date = datetime.now().strftime("%Y-%m-%d")  # Current date
 
     elements = []
@@ -246,7 +260,7 @@ def create_report(output, df_yes, df_no):
     ##### Section to make the Top Table - all annotated commensal or otherwise
     if not df_yes.empty:
         columns_yes = df_yes.columns.values
-        columns_yes = ["Sample", "Organism", "% Reads in Sample", "# Aligned to Sample", "Locations", "Status", "Type"]
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Locations"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_yes, columns=columns_yes, include_headers=True, color_status=True)
         table_style = return_table_style(df_yes, color_pathogen=True)
@@ -256,11 +270,24 @@ def create_report(output, df_yes, df_no):
         )
         # Add the title and subtitle
         title = Paragraph("Pathogen Discovery Analysis", title_style)
-        subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from a currently developed spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
+        subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
         elements = [title, subtitle, Spacer(1, 12)]
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
+    # Adding regular text
 
+    styles = getSampleStyleSheet()
+
+    # Adding subtext (you can adjust the style to make it look like subtext)
+    subtext_style = styles["BodyText"]
+    subtext_style.fontSize = 10  # Smaller font size for subtext
+    subtext_style.leading = 12
+    subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types", subtext_style)
+    elements.append(subtext_para)
+    elements.append(Spacer(1, 12))
+    subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Green represents a match with your sample type", subtext_style)
+    elements.append(subtext_para)
+    elements.append(Spacer(1, 12))
     if not df_no.empty:
         ##########################################################################################
         ### Section to Make the "Unannotated" Table
@@ -268,7 +295,7 @@ def create_report(output, df_yes, df_no):
         second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms contained within the samples that had atleast one read aligned"
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
-        columns_no = ['Sample', 'Organism', '% Reads in Sample', '# Aligned to Sample' ]
+        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample' ]
         data_no = prepare_data_with_headers(df_no, include_headers=True, color_status=False, columns=columns_no)
         table_style = return_table_style(df_no, color_pathogen=False)
         table_no = make_table(

@@ -42,13 +42,14 @@ process PATHOGENS_FIND_SAMPLE {
 
     def output = "${meta.id}.paths.txt"
     def id = meta.id
-
+    def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     """
 
     match_paths.py \\
         -i $bamfiles \\
         -o $output \\
         -s $id \\
+        $type \\
         -p $pathogens_list \\
         -m $mapping
 
