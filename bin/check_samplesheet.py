@@ -116,7 +116,6 @@ class RowChecker:
                 # if row[key] == 'trim':
                 # uppercase the trim value
                 # row[key] = row[key].upper()
-        print(row)
         self.modified.append(row)
 
     def _validate_sample(self, row):
@@ -125,6 +124,9 @@ class RowChecker:
         # Sanitize samples slightly.
         row[self._dir_col] = False
         row[self._sample_col] = row[self._sample_col].replace(" ", "_")
+        for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '(', ')', '[', ']', '{', '}', '#', '%', '&', '+', '!', '@', '$', '^', '`', '~', ';', ',']:
+            row[self._sample_col] = row[self._sample_col].replace(char, "")
+
 
     def _validate_first(self, row):
         """Assert that the first FASTQ entry is non-empty and has the right format."""
@@ -227,8 +229,7 @@ def check_samplesheet(file_in, file_out):
 
 
     """
-    # required_columns = {"sample", "fastq_1", "fastq_2"}
-    required_columns = {"sample", "fastq_1", "platform"}
+    required_columns = {"sample", "fastq_1"}
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_in.open(newline="", encoding='utf-8-sig') as in_handle:
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))

@@ -20,6 +20,7 @@ args = parser.parse_args()
 
 def merge_tsvs(file_paths):
     with open(args.output, 'w') as outfile:
+        idx = 0
         for i, file_path in enumerate(file_paths):
             with open(file_path, 'r') as infile:
                 if args.header:
@@ -37,10 +38,15 @@ def merge_tsvs(file_paths):
                 # copy the rest of the file content
                 p = 0
                 for line in infile:
+                    # cange the first index (on tab separated) to be index +1
+                    linesplit = line.split("\t")
+                    linesplit[0] = str(idx)
+                    line = "\t".join(linesplit)
                     if args.append_name:
                         parsed = os.path.basename(file_path.split(".")[0])
                         line = parsed+"_"+str(p) + "\t" + line
                         p += 1
+                    idx +=1
                     outfile.write(line)
 
 

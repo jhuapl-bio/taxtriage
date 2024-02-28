@@ -47,6 +47,23 @@ def parse_args(argv=None):
         help="OPTIONAL, samplename analyzed",
     )
     parser.add_argument(
+        "-m",
+        "--mapping",
+        metavar="MAPPING",
+        default=None,
+        required=False,
+        help="Output accession to name tsv. 2 columns minimum. must be in 1 col for accession second is name",
+    )
+    parser.add_argument(
+        "-s",
+        "--splitidx",
+        metavar="SPLITIDX",
+        default=None,
+        required=False,
+        type=int,
+        help="If using -m mapping, split the index of the chr and get element. Split on | by default. 0 based index.",
+    )
+    parser.add_argument(
         "-o",
         "--file_out",
         metavar="FILE_OUT",
@@ -69,7 +86,7 @@ def parse_args(argv=None):
 def load_depth_file(depth_file):
     depth = {}
     total_positions = {}
-    print(depth_file)
+
 
     with open(depth_file, 'r') as f:
         for line in f:
@@ -135,15 +152,17 @@ def fm(x):
     # if the number is 0, then return 0 else return the number as is
     if x == 0:
         return "0"
-    elif x > 0 and x < 0.01:
-        return "<0.01"
+    # elif x > 0 and x < 0.01:
+    #     return "<0.01"
     else:
         return f"{x:.2f}"
 # Calculate statistics and output
 
 
-def output_statistics(depth, total_positions, coverage, count, sumsq, ireads, ilen, total_reads_aligned, FILE_OUT):
+def output_statistics(depth, total_positions, coverage, count, sumsq, ireads, ilen, total_reads_aligned, FILE_OUT, mapping, splitidx):
     headers = ["Accession",
+        "Organism",
+        "Full Name",
         "Mean Depth",
         "Average Coverage",
         "Ref Size",
@@ -153,9 +172,10 @@ def output_statistics(depth, total_positions, coverage, count, sumsq, ireads, il
         "Abundance Aligned",
         "1:10:50:100:300X Cov."
     ]
-    print("\t".join(headers))
     # print the statistics to a file
+    data = []
     with open(FILE_OUT, "w") as f:
+        f.write("\t".join(headers)+"\n")
         for ref in ilen:
             if ref in coverage and ref in ilen:
                 avg_coverage = coverage[ref] / ilen[ref]
@@ -171,10 +191,17 @@ def output_statistics(depth, total_positions, coverage, count, sumsq, ireads, il
                     stdev = math.sqrt(
                         abs(sumsq[ref] / count[ref] - (total_depth / count[ref]) ** 2))
                     abu_total_aligned = ireads[ref] / total_reads_aligned
-
-                    outstring = f"{ref}\t{fm(avgDepth)}\t{fm(avg_coverage)}\t{ilen[ref]}\t{ireads[ref]}\t{fm(100*(ireads[ref]/total_reads_aligned))}\t{fm(stdev)}\t{fm(abu_total_aligned)}\t{':'.join([fm(x) for x in xCov])}"
+                    check_idx = ref
+                    if splitidx or splitidx == 0:
+                        check_idx = check_idx.split("|")[splitidx]
+                    if check_idx in mapping:
+                        organism = mapping[check_idx]['organism']
+                        fullname = mapping[check_idx]['fullname']
+                    else:
+                        organism = "N/A"
+                        fullname = "N/A"
+                    outstring = f"{check_idx}\t{organism}\t{fullname}\t{fm(avgDepth)}\t{fm(avg_coverage)}\t{ilen[ref]}\t{ireads[ref]}\t{fm(100*(ireads[ref]/total_reads_aligned))}\t{fm(stdev)}\t{fm(abu_total_aligned)}\t{':'.join([fm(x) for x in xCov])}"
                     f.write(outstring+"\n")
-                    print(outstring)
 
 
 def main(argv=None):
@@ -182,6 +209,24 @@ def main(argv=None):
     args = parse_args(argv)
     DEPTHFILE = args.depth
     BAMFILE = args.bamfile
+    mapping = {}
+
+    if args.mapping:
+        # import mapping file. Split each line on "\t" and store in a dictionary
+        # where the key is the accession and the value is the name
+        with open(args.mapping, 'r') as f:
+            for line in f:
+                cols = line.strip().split("\t")
+                idx = cols[0]
+                organism = "N/A"
+                fullname = "N/A"
+                obj = dict(organism=organism, fullname=fullname)
+                if len(cols) > 2:
+                    obj['organism'] = cols[2]
+                if len(cols) > 3:
+                    obj['fullname'] = cols[3]
+                mapping[idx] = obj
+        f.close()
     depth, total_positions = load_depth_file(DEPTHFILE)
 
     def ensure_bam_index(bam_path):
@@ -193,7 +238,7 @@ def main(argv=None):
     coverage, count, sumsq, ireads, ilen, total_reads_aligned = process_bam_file(
         BAMFILE, depth, total_positions)
     output_statistics(depth, total_positions, coverage, count,
-        sumsq, ireads, ilen, total_reads_aligned, args.file_out)
+        sumsq, ireads, ilen, total_reads_aligned, args.file_out, mapping, args.splitidx)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@
 // #
 process CONFIDENCE_METRIC {
     tag "$meta.id"
-    label 'process_medium'
+    label 'process_suphigh'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -24,10 +24,10 @@ process CONFIDENCE_METRIC {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bam), path(depth)
+    tuple val(meta), path(bam), path(depth), path(mapping)
 
     output:
-    tuple val(meta), path("*confidences.tsv"), optional: false, emit: tsv
+    tuple val(meta), path("*.confidences.tsv"), optional: false, emit: tsv
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,17 +38,24 @@ process CONFIDENCE_METRIC {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
+
+
     def output = "${meta.id}.confidences.tsv"
+    def finaloutput = "${meta.id}.aggregate.tsv"
+    def map = mapping.name != "NO_FILE" ? " -m $mapping " : ""
 
 
-    // println "sam_to_confidence.sh -i $sam -m $mpileup -o $output -r ${meta.id}.reads"
     """
 
 
     sam_to_confidence.py \\
         -i $bam \\
         -o $output \\
-        -d $depth
+        -d $depth  ${map}
+
+
+
+
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

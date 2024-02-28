@@ -29,6 +29,8 @@ process TOP_HITS {
     output:
     path "versions.yml"           , emit: versions
     tuple val(meta), path("*top_report.tsv"), optional:false, emit: tops
+    tuple val(meta), path("*toptaxids.txt"), optional:false, emit: taxids
+    tuple val(meta), path("*topnames.txt"), optional:false, emit: names
     tuple val(meta), path("*.krakenreport_mqc.tsv"), optional:false, emit: krakenreport
 
 
@@ -41,7 +43,8 @@ process TOP_HITS {
     def id = "${meta.id}"
     ch_top_per_taxa = ""
     def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa} " : ''
-    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 7 '
+    def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
+
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
@@ -49,8 +52,12 @@ process TOP_HITS {
         -o ${id}.top_report.tsv   \\
         $top_hits_count  $top_per_taxa
 
+
     awk -F '\\t' -v id=${id} \\
         'BEGIN{OFS=\"\\t\"} { if (NR==1){ print \"Sample_Taxid\", \$2, \$1, \$4, \$6} else { \$5 = id\"_\"\$5;  print \$5, \$2, \$1, \$4, \$6  }}'  ${id}.top_report.tsv > ${id}.krakenreport_mqc.tsv
+
+    awk -F '\\t' 'NR>1 {if (\$4 ~ "^S"){print \$6}}' ${id}.top_report.tsv | sort | uniq > ${id}.topnames.txt
+    awk -F '\\t' 'NR>1 {if (\$4 ~ "^S"){print \$5}}' ${id}.top_report.tsv | sort | uniq > ${id}.toptaxids.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

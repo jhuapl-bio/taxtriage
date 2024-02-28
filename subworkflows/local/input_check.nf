@@ -41,12 +41,18 @@ def create_fastq_channel(LinkedHashMap row) {
     // create meta map
     def meta = [:]
     meta.id         = row.sample
-    meta.single_end = row.single_end.toBoolean()
-    meta.platform = row.platform
+    meta.platform = row.platform ? row.platform : 'ILLUMINA'
     meta.fastq_1 = row.fastq_1
     meta.fastq_2 = row.fastq_2
-    meta.trim = row.trim.toBoolean()
-    meta.directory = row.directory.toBoolean()
+    // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
+    meta.single_end = row.fastq_2  ? false : true
+    if (row.trim && row.trim.toLowerCase() == "true"){
+        meta.trim = true
+    } else if (!row.trim  || (row.trim && row.trim.toLowerCase() == "false")){
+        meta.trim = false
+    }
+    meta.type = row.type
+    meta.directory = row.directory ?  row.directory.toBoolean() : null
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
@@ -63,7 +69,7 @@ def create_fastq_channel(LinkedHashMap row) {
         if (meta.single_end) {
             fastq_meta = [ meta, [ file(meta.fastq_1) ] ]
         } else {
-            if (!file(meta.fastq_2).exists()) {
+            if (meta.fastq_2 && !file(meta.fastq_2).exists()) {
                 exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
             }
             fastq_meta = [ meta, [ file(meta.fastq_1), file(meta.fastq_2) ] ]
