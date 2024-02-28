@@ -10,6 +10,7 @@ import org.json.JSONTokener
 import org.json.JSONArray
 import groovy.json.JsonSlurper
 import groovy.json.JsonBuilder
+import groovy.json.JsonOutput
 
 class NfcoreSchema {
 
@@ -237,6 +238,31 @@ class NfcoreSchema {
         }
         output += NfcoreTemplate.dashedLine(params.monochrome_logs)
         return output
+    }
+    public static LinkedHashMap generateJSONSchema(workflow) {
+       def  workflow_summary = [:]
+        if (workflow.revision) {
+            workflow_summary['revision'] = workflow.revision
+        }
+        workflow_summary['runName']      = workflow.runName
+        if (workflow.containerEngine) {
+            workflow_summary['containerEngine'] = workflow.containerEngine
+        }
+        if (workflow.container) {
+            workflow_summary['container'] = workflow.container
+        }
+        workflow_summary['launchDir']    = workflow.launchDir
+        workflow_summary['workDir']      = workflow.workDir
+        workflow_summary['projectDir']   = workflow.projectDir
+        workflow_summary['userName']     = workflow.userName
+        workflow_summary['profile']      = workflow.profile
+        workflow_summary['configFiles']  = workflow.configFiles.join(', ')
+        // Use JsonBuilder to create the JSON representation
+        def jsonBuilder = new JsonBuilder(workflow_summary)
+
+        // Return the JSON string
+        return jsonBuilder.toPrettyString()
+
     }
 
     //

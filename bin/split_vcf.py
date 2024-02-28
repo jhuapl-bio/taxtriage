@@ -62,7 +62,7 @@ def split_vcf(input_vcf_path, output_prefix):
             # Extract the header
             header = vcf.header
             for record in vcf:
-                taxid = record.chrom.split('|')[1]
+                taxid = record.chrom.split('|')[0]
                 if lasttaxid != taxid:
                     if taxid in seen_files:
                         print("already seen:", taxid)

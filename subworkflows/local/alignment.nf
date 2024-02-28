@@ -11,6 +11,7 @@ include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
+include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP as BCFTOOLS_MPILEUP_ILLUMINA } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
@@ -21,50 +22,60 @@ include { SPLIT_VCF } from '../../modules/local/split_vcf'
 include { BOWTIE2_ALIGN } from '../../modules/nf-core/bowtie2/align/main'
 include { BOWTIE2_BUILD } from '../../modules/nf-core/bowtie2/build/main'
 include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
-
+include { BEDTOOLS_DEPTHCOVERAGE } from '../../modules/local/bedtools_coverage'
 
 workflow ALIGNMENT {
     take:
     fastq_reads
-
 
     main:
     ch_bams = Channel.empty()
     ch_fasta = Channel.empty()
     ch_pileups = Channel.empty()
     ch_stats = Channel.empty()
+    ch_depths = Channel.empty()
     ch_pafs = Channel.empty()
     ch_sams = Channel.empty()
     ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()
     ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
+    ch_merged_mpileup = Channel.empty()
 
 
     fastq_reads
-    .branch{
-        longreads: it[0].platform =~ 'OXFORD'
-        shortreads: it[0].platform =~ 'ILLUMINA'
+        .branch{
+            longreads: it[0].platform =~ 'OXFORD'
+            shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
 
+
     ch_versions = 1
-    SAMTOOLS_FAIDX (
-        fastq_reads.map{ m, report, fastq, fasta -> return [ m, fasta ] },
-        fastq_reads.map{ m, report, fastq, fasta -> return [ m, [] ] },
-    )
 
 
-    BOWTIE2_BUILD (
-        ch_aligners.shortreads.map{  m, report, fastq, fasta  ->
-            return [ m, fasta  ]
-        }
+    // SAMTOOLS_FAIDX(
+    //     fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, fasta ] },
+    //     fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, [] ] },
+    // )
+    if (params.bt2_indices){
+        ch_indices = ch_aligners.shortreads.map{ m, fastq, fasta, bed, map -> return [ m, file(params.bt2_indices) ] }
+        ch_indices.view()
+        println("Using pre-built indices provided $params.bt2_indices")
+    } else {
+        println("Building indices from FASTA references")
+        BOWTIE2_BUILD(
+            ch_aligners.shortreads.map{  m, fastq, fasta, bed, map  ->
+                return [ m, fasta  ]
+            }
 
-    )
+        )
+        ch_indices = BOWTIE2_BUILD.out.index
+    }
     BOWTIE2_ALIGN(
-        ch_aligners.shortreads.map{  m, report, fastq, fasta  ->
+        ch_aligners.shortreads.map{  m, fastq, fasta, bed, map ->
             return [ m, fastq ]
         },
-        BOWTIE2_BUILD.out.index,
+        ch_indices,
         false,
         true
     )
@@ -72,10 +83,9 @@ workflow ALIGNMENT {
         BOWTIE2_ALIGN.out.aligned
     )
 
-
-    MINIMAP2_ALIGN (
-        ch_aligners.longreads.map{ m, report, fastq, fasta -> [ m, fastq ] },
-        ch_aligners.longreads.map{ meta, report, fastq, fasta -> fasta },
+    MINIMAP2_ALIGN(
+        ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> [ m, fastq ] },
+        ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> fasta },
         true,
         true,
         true
@@ -85,114 +95,133 @@ workflow ALIGNMENT {
     )
 
     nanopore_alignments.mix(illumina_alignments).map{
-        m, report, fastq, fasta, bam -> [ m, bam ]
+        m, fastq, fasta, bed, map, bam -> [ m, bam ]
     }.set { collected_bams }
 
 
 
-    SAMTOOLS_DEPTH(
-        collected_bams,
-    )
 
-    SAMTOOLS_INDEX (
+    SAMTOOLS_INDEX(
         collected_bams
     )
 
-    collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ collected_bams_combined }
+    sorted_bams = collected_bams
 
-    collected_bams.view()
-    SAMTOOLS_COVERAGE (
-        collected_bams_combined
+    SAMTOOLS_DEPTH(
+        sorted_bams
     )
 
-    if (!params.skip_variants){
+    collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ sorted_bams_with_index }
+
+    SAMTOOLS_COVERAGE(
+        sorted_bams_with_index
+    )
+    gcf_with_bam = sorted_bams.join(fastq_reads.map{ m, fastq, fasta, bed, map -> return [m, map] })
+    SAMTOOLS_HIST_COVERAGE (
+        gcf_with_bam
+    )
+
+    sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, bed, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
+
+
+
+    if (params.get_features){
+
+        ch_merged_bed = sorted_bams.join(
+            fastq_reads.map{ m, fastq, fasta, bed, map -> return [m, bed] }
+        ).map{
+            meta, bam, bed -> [meta, bed, bam]
+        }.filter{
+            it[1] != null
+        }
+        BEDTOOLS_DEPTHCOVERAGE(
+            ch_merged_bed
+        )
+    }
+
+
+
+    // branch out the samtools_sort output to nanopore and illumina
+    ch_sorted_bam_split = sorted_bams.join(fastq_reads.map{ m, fastq, fasta, bed, map -> return [m, fasta] })
+
+    ch_sorted_bam_split.branch{
+            longreads: it[0].platform =~ 'OXFORD'
+            shortreads: it[0].platform =~ 'ILLUMINA'
+    }.set { ch_sorted_bam_split }
+
+
+    if (params.get_variants || params.reference_assembly){
         BCFTOOLS_MPILEUP_OXFORD(
-            nanopore_alignments.map{ m, report, fastq, fasta, bam -> [m, bam] },
-            nanopore_alignments.map{ m, report, fastq, fasta, bam -> fasta },
+            ch_sorted_bam_split.longreads.map{ m, bam, fasta -> [m, bam] },
+            ch_sorted_bam_split.longreads.map{ m, bam, fasta -> fasta },
             false
         )
         ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
-        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(nanopore_alignments.map{ m, report, fastq, fasta, bam -> [m,fasta] })
+        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(ch_sorted_bam_split.longreads.map{ m, bam, fasta -> [m, fasta] })
 
         BCFTOOLS_MPILEUP_ILLUMINA(
-            illumina_alignments.map{ m, report, fastq, fasta, bam -> [m, bam] },
-            illumina_alignments.map{ m, report, fastq, fasta, bam -> fasta },
+            ch_sorted_bam_split.shortreads.map{ m, bam, fasta -> [m, bam] },
+            ch_sorted_bam_split.shortreads.map{ m, bam, fasta -> fasta },
             false
         )
-
         .set{ transposed_fastas_oxford }
+
         ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
-        ch_merged_mpileup_illumina= ch_merged_mpileup_illumina.join(illumina_alignments.map{ m, report, fastq, fasta, bam -> [m,fasta] })
+        ch_merged_mpileup_illumina = ch_merged_mpileup_illumina.join(ch_sorted_bam_split.shortreads.map{ m, bam, fasta -> [m, fasta] })
 
         ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
-        if (!params.skip_stats){
-            SPLIT_VCF(
-                ch_merged_mpileup.map{
-                    m, vcf, tbi, fasta -> [m, vcf, tbi]
-                }
-            )
-            chff = SPLIT_VCF.out.vcfs.groupTuple()
-                .map { meta, vcfs -> [meta, vcfs.flatten()] }
-            ch_vcf_split = chff.transpose(by:[1])
-            BCFTOOLS_INDEX(
-                ch_vcf_split
-            )
-            ch_vcf_split_windx = ch_vcf_split.join(BCFTOOLS_INDEX.out.csi)
 
-            .map {
-                m, vcf, csi ->
-                    def parts = vcf.baseName.split("\\.")
-                    def id = "${parts[0]}.${parts[1]}"
-                    return [ [id:id, platform:m.platform, base: m.id], vcf, csi ]
-            }
+        // if (!params.skip_stats){
+        //     SPLIT_VCF(
+        //         ch_merged_mpileup.map{
+        //             m, vcf, tbi, fasta -> [m, vcf, tbi]
+        //         }
+        //     )
+        //     chff = SPLIT_VCF.out.vcfs.groupTuple()
+        //         .map { meta, vcfs -> [meta, vcfs.flatten()] }
+        //     ch_vcf_split = chff.transpose(by:[1])
+        //     BCFTOOLS_INDEX(
+        //         ch_vcf_split
+        //     )
+        //     ch_vcf_split_windx = ch_vcf_split.join(BCFTOOLS_INDEX.out.csi)
 
-            // ch_stats = BCFTOOLS_STATS.out.stats
-            BCFTOOLS_STATS(
-                ch_vcf_split_windx,
-                [],
-                [],
-                []
-            )
-            ch_stats = BCFTOOLS_STATS.out.stats
-        }
-        if (!params.skip_consensus){
-            BCFTOOLS_CONSENSUS (
+        //     .map {
+        //         m, vcf, csi ->
+        //             def parts = vcf.baseName.split("\\.")
+        //             def id = "${parts[0]}.${parts[1]}"
+        //             return [ [id:id, platform:m.platform, base: m.id], vcf, csi ]
+        //     }
+
+        //     // ch_stats = BCFTOOLS_STATS.out.stats
+        //     BCFTOOLS_STATS(
+        //         ch_vcf_split_windx,
+        //         [],
+        //         [],
+        //         []
+        //     )
+        //     ch_stats = BCFTOOLS_STATS.out.stats
+        // }
+        if (params.reference_assembly){
+            BCFTOOLS_CONSENSUS(
                 ch_merged_mpileup
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
         }
-
     }
-
     RSEQC_BAMSTAT(
-        collected_bams
+        sorted_bams
     )
     ch_bamstats = RSEQC_BAMSTAT.out.txt
-
-
-
-
-
-    // BAM_TO_SAM(
-    //     collected_bams
-    // )
-    // ch_sams=BAM_TO_SAM.out.sam
-    // ch_pileups=BAM_TO_SAM.out.mpileup
-    ch_bams =  collected_bams
+    ch_bams =  sorted_bams
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
-
-
-
-
-
     emit:
-    // sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
-    depth = ch_depths
-    mpileup = ch_merged_mpileup
-    bams = ch_bams
-    fasta  = ch_merged_fasta
-    stats = ch_stats
-    bamstats = ch_bamstats
-    versions = ch_versions
+        // sam  = ch_sams // channel: [ val(meta), [ paffile ] ] ]
+        depth = ch_depths
+        mpileup = ch_merged_mpileup
+        bams = ch_bams
+        fasta  = ch_merged_fasta
+        stats = ch_stats
+        bamstats = ch_bamstats
+        versions = ch_versions
 }

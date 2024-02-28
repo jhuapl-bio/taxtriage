@@ -60,6 +60,13 @@ def parse_args(argv=None):
         help="Kraken report file to merge information with",
     )
     parser.add_argument(
+        "-m",
+        "--mapping",
+        metavar="MAPPUNG",
+        type=Path,
+        help="TSV of accession to map to name. 3 columns of acc, gcf, name",
+    )
+    parser.add_argument(
         "-f",
         "--taxid_format_kraken2",
         action="store_true",
@@ -87,53 +94,51 @@ def import_file(tsv_filename, kraken_report, samplename, format_kraken2):
     tsv_file = open(tsv_filename)
     rows = dict()
     confidence_tsv = csv.reader(tsv_file, delimiter="\t")
-
     index_id = 0
+    # read in tsv_file with header
+    next(confidence_tsv)  # Skip the header row
+
     for row in confidence_tsv:
+        # skip the first since it its a header
 
-        splitrow = row[0].split("|")
-        ref = splitrow[3]
-        taxid = splitrow[1]
+        accession = row[0]
         if format_kraken2:
-            row[0] = taxid
+            row[0] = accession
 
-        if taxid not in rows:
-            rows[taxid] = [row]
+        if accession not in rows:
+            rows[accession] = [row]
             row.insert(0, index_id)
             if samplename:
                 row.insert(2, samplename)
-                row.insert(3, ref)
             else:
                 row.insert(2, "N/A")
-                row.insert(3, ref)
             index_id += 1
 
         else:
             row.insert(0, index_id)
             if samplename:
                 row.insert(2, samplename)
-                row.insert(3, ref)
+                row.insert(3, accession)
             else:
                 row.insert(2, "N/A")
-                row.insert(3, ref)
+                row.insert(3, accession)
             rows[taxid].append(row)
             index_id += 1
-
     tsv_file.close()
-    report_file = open(kraken_report)
-    report = csv.reader(report_file, delimiter="\t")
-    for row in report:
-        taxid = row[4]
-        rank = row[3]
-        name = row[5].strip()
-        if taxid in rows:
-            for i in range(0, len(rows[taxid])):
-                rows[taxid][i].insert(4, rank)
-                rows[taxid][i].append(name)
+    if kraken_report:
+        report_file = open(kraken_report)
+        report = csv.reader(report_file, delimiter="\t")
+        for row in report:
+            taxid = row[4]
+            rank = row[3]
+            name = row[5].strip()
+            print(taxid, rank, name)
+            if taxid in rows:
+                for i in range(0, len(rows[taxid])):
+                    rows[taxid][i].insert(4, rank)
+                    rows[taxid][i].append(name)
     # filter rows where no taxid or name
-
-    report_file.close()
-
+        report_file.close()
     return rows
 
 
@@ -145,14 +150,23 @@ def main(argv=None):
     if not args.file_in.is_file():
         logger.error(f"The given input file {args.file_in} was not found!")
         sys.exit(2)
+
     rows = import_file(args.file_in, args.kraken_report,
         args.sample, args.taxid_format_kraken2)
     path = open(args.file_out, "w")
     writer = csv.writer(path, delimiter='\t')
     # header = ['Acc', 'Name', 'Rank', 'Length', 'Reads Aligned', 'Abu Total Aligned', 'Abu Total Bases', 'Total Bases Adjusted', 'Breadth Genome Coverage', 'Depth Coverage Mean', 'Depth Coverage Stdev', 'Depth Coef. Variation']
     # header = ["Acc", "Rank", "Mean Depth", "Avg Cov.", "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
-    header = ["Index", "Tax_Id", "Sample_Name", "Reference", "Rank", "Mean Depth", "Avg Cov.",
-        "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Abu Aligned", "1:10:50:100:300X", "Name"]
+    if not args.kraken_report:
+        # header = ["Index", "Sample_Name", "Mean Depth", "Avg Cov.",
+        #     "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev",  "1:10:50:100:300X", "Name"]
+        header = ["Index", "Sample_Name", "Mean Depth", "Avg Cov.",
+            "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev", "Name"]
+    else:
+        # header = ["Index", "Taxid", "Sample_Name", "Rank", "Mean Depth", "Avg Cov.",
+        #     "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev",  "1:10:50:100:300X" "Name"]
+        header = ["Index", "Taxid", "Sample_Name", "Rank", "Mean Depth", "Avg Cov.",
+            "Ref. Size",  "Reads Aligned", "% Aligned", "Stdev",  "Name"]
     writer.writerow(header)
     if len(rows.keys()) == 0:
         empty = ['None']
@@ -161,6 +175,13 @@ def main(argv=None):
     else:
         for key, value in rows.items():
             for r in value:
+                # move r[1] to end of r
+                if not args.kraken_report:
+                    r.append(r.pop(1))
+                else:
+                    r.append(r.pop(2))
+                # remove the 2nd to last column
+                r.pop(-2)
                 if len(r) == len(header):
                     writer.writerow(r)
                 else:

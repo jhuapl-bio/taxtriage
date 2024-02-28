@@ -24,7 +24,7 @@ process CONVERT_CONFIDENCE {
         'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta),  path(kraken_report), path(tsv)
+    tuple val(meta),  path(tsv)
 
     output:
     path("*confidences.merged.tsv"), optional: false, emit: tsv
@@ -45,8 +45,7 @@ process CONVERT_CONFIDENCE {
     mergeConfidence.py -f \\
         -i $tsv \\
         -o $output_parsed \\
-        -s ${meta.id} \\
-        -k $kraken_report
+        -s ${meta.id}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

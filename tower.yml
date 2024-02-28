@@ -1,6 +1,8 @@
 reports:
   multiqc_report.html:
     display: "MultiQC HTML report"
+  "**/report/*report.pdf":
+    display: "Pathogen Table Report"
   "**/convert/*merged.tsv":
     display: "Confidence Table"
   "**/krona/*.html":
@@ -25,5 +27,6 @@ reports:
     display: "Top Taxa Per Rank post-Kraken2"
   "**/top/krakenreport.merged_mqc.tsv":
     display: "All Samples Top Hits Post-Kraken2"
+
 
 
