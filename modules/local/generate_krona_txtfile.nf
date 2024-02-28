@@ -24,7 +24,7 @@ process KREPORT_TO_KRONATXT {
         'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta),  val(kraken_report)
+    tuple val(meta),  path(kraken_report)
 
     output:
     tuple val(meta), path("*krakenreport.krona.txt"), optional: false, emit: txt
