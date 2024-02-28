@@ -27,7 +27,7 @@
 def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
 // Validate input parameters
 WorkflowTaxtriage.initialise(params, log)
-
+println "Initialising taxtriage workflow with parameters: ${workflow}"
 // def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
 
 // print wfsummary to json file to working directory
