@@ -256,7 +256,8 @@ def create_report(output, df_yes, df_no):
         bottomMargin=bottom_margin
     )
     version = "1.3.2"  # Example version
-    date = datetime.now().strftime("%Y-%m-%d")  # Current date
+    # get datetime of year-mont-day hour:min
+    date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
 
     elements = []
     ##########################################################################################
