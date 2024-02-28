@@ -14,9 +14,9 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process DOWNLOAD_ASSEMBLY {
+process MAKE_FILE {
     label 'process_medium'
-    tag "$meta.id"
+    tag "MakeFile"
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -27,15 +27,12 @@ process DOWNLOAD_ASSEMBLY {
 
 
     input:
-    tuple val(meta), path(hits_containing_file)
-    path assembly
+    val(items)
+
 
 
     output:
-    tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
-    tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: accessions
-    tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mappings
-    tuple val(meta),  path("missing.txt"), optional: true, emit: missings
+    path("elements.txt"), optional: false, emit: file
     path "versions.yml"           , emit: versions
 
     when:
@@ -44,28 +41,17 @@ process DOWNLOAD_ASSEMBLY {
 
 
 
-
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def email = params.email ? " -e ${params.email}" : ""
-    def column = " -c 1 "
-    def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5 "
-    def matchcol = params.fuzzy ? " -a 7 "  : " -a 5 "
-    def refresh_download = params.refresh_download ? " -r " : ""
-    def type = hits_containing_file ? " -f file " : " -f list  "
 
+    // def files = tops.splitCsv(header: true, sep="\t")
+
+    def output = "elements.txt"
 
     """
 
+    make_file_from_string.py -i "${items}" -o "${output}"
 
 
-    download_fastas.py \\
-            -i  ${hits_containing_file} \\
-            -o ${meta.id}.output.references.fasta ${refresh_download} \\
-            ${email} $type -g ${meta.id}.gcfmapping.tsv \\
-            -t ${assembly} -k  $column $columnAssembly -y 7 -r
-
-    cut -f 2 ${meta.id}.gcfmapping.tsv > ${meta.id}.output.gcfids.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

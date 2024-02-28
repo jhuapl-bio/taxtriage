@@ -151,6 +151,7 @@ include { PATHOGENS } from '../subworkflows/local/pathogen'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
 include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxonomy/main'
 include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
+include { MAKE_FILE } from '../modules/local/make_file'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT NF-CORE MODULES/SUBWORKFLOWS
@@ -280,7 +281,7 @@ workflow TAXTRIAGE {
     // make an empty path channel
     ch_accession_mapping  = Channel.empty()
     ch_empty_file = file("$projectDir/assets/NO_FILE")
-
+    ch_organisms = Channel.empty()
 
 
 
@@ -376,7 +377,7 @@ workflow TAXTRIAGE {
 
     }
     ch_filtered_reads = ch_reads
-
+    def empty_organism_file = false
     if (!params.skip_kraken2){
         // // // // // //
         // // // // // // MODULE: Run Kraken2
@@ -446,7 +447,12 @@ workflow TAXTRIAGE {
         // check if params.organisms is a file or a string
         ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
     } else if (params.organisms) {
-        ch_organisms = Channel.from(params.organisms)
+        ch_organisms_taxids = Channel.from(params.organisms)
+        // print params.organisms as a tsv, separated by space per
+        MAKE_FILE(
+            ch_organisms_taxids
+        )
+        ch_organisms = MAKE_FILE.out.file
     }
 
 
@@ -478,11 +484,15 @@ workflow TAXTRIAGE {
     } else  {
         if (params.skip_kraken2) {
             ch_pre_download = ch_filtered_reads.combine(ch_organisms)
+
         } else {
             ch_pre_download = ch_filtered_reads.map {
                 meta, readsclass ->  return [ meta, readsclass ]
             }.join(ch_organisms)
         }
+
+
+
 
         DOWNLOAD_ASSEMBLY(
             ch_pre_download.map {
