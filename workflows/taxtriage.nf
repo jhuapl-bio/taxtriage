@@ -410,11 +410,7 @@ workflow TAXTRIAGE {
                         // Join the files with single quotes and space
                         // String joinedFiles = files.collect { "'$it'" }.join(' ')
                         // if single file then make it [files] otherwise just files
-                        def f = files
-                        if (files.size() == 1) {
-                            f = [files]
-                        }
-                        [[id:'combined_krona_kreports'], f]  // Combine with new ID
+                        [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
                     }
         ch_combined.view()
         KRONA_KTIMPORTTEXT(
