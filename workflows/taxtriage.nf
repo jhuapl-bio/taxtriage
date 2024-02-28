@@ -158,7 +158,6 @@ include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { PATHOGENS } from '../subworkflows/local/pathogen'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
-include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxonomy/main'
 include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
 include { MAKE_FILE } from '../modules/local/make_file'
 /*
@@ -202,7 +201,6 @@ include { KRAKENREPORT } from '../modules/local/krakenreport'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
-include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
@@ -410,10 +408,15 @@ workflow TAXTRIAGE {
                     .collect()            // Collect all file parts into a list
                     .map { files ->
                         // Join the files with single quotes and space
-                        String joinedFiles = files.collect { "'$it'" }.join(' ')
-                        [[id:'combined_krona_kreports'], joinedFiles]  // Combine with new ID
+                        // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                        // if single file then make it [files] otherwise just files
+                        def f = files
+                        if (files.size() == 1) {
+                            f = [files]
+                        }
+                        [[id:'combined_krona_kreports'], f]  // Combine with new ID
                     }
-
+        ch_combined.view()
         KRONA_KTIMPORTTEXT(
             ch_combined
         )
@@ -594,7 +597,7 @@ workflow TAXTRIAGE {
         illumina_reads = ch_filtered_reads.filter {
             it[0].platform == 'ILLUMINA'
         }.map {
-            meta, reads -> [meta, reads, [], []]
+            meta, reads, reference -> [meta, reads, [], []]
         }
         SPADES_ILLUMINA(
             illumina_reads
@@ -604,7 +607,7 @@ workflow TAXTRIAGE {
         nanopore_reads = ch_filtered_reads.filter {
             it[0].platform == 'OXFORD'
         }.map {
-            meta, reads -> [meta, [], [], [], reads]
+            meta, reads, fasta -> [meta, reads]
         }
 
         FLYE(
