@@ -27,7 +27,7 @@
 def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
 // Validate input parameters
 WorkflowTaxtriage.initialise(params, log)
-println "Initialising taxtriage workflow with parameters: ${workflow}"
+// println "Initialising taxtriage workflow with parameters: ${workflow}"
 // def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
 
 // print wfsummary to json file to working directory
@@ -127,7 +127,6 @@ ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIf
 ch_multiqc_css       = file("$projectDir/assets/mqc.css", checkIfExists: true)
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
 ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
-
 ch_multiqc_files = Channel.empty()
 ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
 ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
@@ -135,6 +134,16 @@ ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
 ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
 ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
+
+// // // //
+// // // // MODULE:  Pathogens
+// // // //
+//// Get Pathogen sheet by default
+ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.txt", checkIfExists: true)
+// // // //
+// // // //
+
+
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -324,7 +333,8 @@ workflow TAXTRIAGE {
     ch_porechop_out = Channel.empty()
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
-    ch_pathogens = params.pathogens ? Channel.fromPath(params.pathogens, checkIfExists: true) : Channel.empty()
+    params.pathogens ? ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true) : ''
+
 
     // if (params.trim) {
     nontrimmed_reads = ch_reads.filter { !it[0].trim }

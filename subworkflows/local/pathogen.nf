@@ -27,22 +27,19 @@ workflow PATHOGENS {
         alignments
         pathogens_list
     main:
-        ch_pathogens_report = Channel.empty()
-        if (params.pathogens){
-            ch_pathogens = Channel.fromPath(params.pathogens)
-            PATHOGENS_FIND_SAMPLE(
-                alignments,
-                file(params.pathogens)
-            )
-            // collect all outputs FIND_PATHOGENS.out.txt into a single channel
-            // and assign it to the variable pathogens_list
-            full_list_pathogen_files = PATHOGENS_FIND_SAMPLE.out.txt.map{m, txt -> txt}.collect()
-            full_list_pathogen_files.view()
-            PATHOGENS_MERGE_REPORT(
-                full_list_pathogen_files
-            )
-            ch_pathogens_report = PATHOGENS_MERGE_REPORT.out.report
-        }
+        PATHOGENS_FIND_SAMPLE(
+            alignments,
+            pathogens_list
+        )
+        // collect all outputs FIND_PATHOGENS.out.txt into a single channel
+        // and assign it to the variable pathogens_list
+        full_list_pathogen_files = PATHOGENS_FIND_SAMPLE.out.txt.map{m, txt -> txt}.collect()
+        full_list_pathogen_files.view()
+        PATHOGENS_MERGE_REPORT(
+            full_list_pathogen_files
+        )
+        ch_pathogens_report = PATHOGENS_MERGE_REPORT.out.report
+
         println("Checking for pathogens")
     emit:
         pathogens_list = ch_pathogens_report
