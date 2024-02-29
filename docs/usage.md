@@ -33,11 +33,11 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
 ```console
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim
-NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
-BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE
-longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
-shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE,nasal
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE,nasal
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
+shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
 ### Samplesheet Information
