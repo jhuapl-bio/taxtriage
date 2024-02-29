@@ -43,6 +43,10 @@ def checkPathParamList = [
     params.input,
 ]
 
+if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== 'docker'){
+    exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
+}
+
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // Check mandatory parameters
@@ -84,6 +88,7 @@ if (matches) {
 if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
     exit 1, "If you are skipping kraken2, you must provide a reference fasta, organisms or organisms_file"
 }
+
 // if params.pathogens, check if file ends with .tsv or .txt
 if (params.pathogens) {
     if (params.pathogens.endsWith('.tsv') || params.pathogens.endsWith('.txt')) {
