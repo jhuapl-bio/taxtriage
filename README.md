@@ -137,7 +137,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet.csv -r main -latest \
    --db viral --download_db --skip_assembly \
    --outdir tmp --max_memory 10GB --max_cpus 3   \
-   -profile docker  -resume --demux --remove_taxids "'9606'"
+   -profile docker  -resume --demux --remove_taxids "9606"
 ```
 
 :warning: Please see the contents of test or local config to figure out what the defaults are for those profiles
