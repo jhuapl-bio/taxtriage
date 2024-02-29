@@ -32,13 +32,11 @@ workflow PATHOGENS {
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
             PATHOGENS_FIND_SAMPLE(
-                alignments,
-                pathogens_list
+                alignments.combine(pathogens_list)
             )
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
             // and assign it to the variable pathogens_list
             full_list_pathogen_files = PATHOGENS_FIND_SAMPLE.out.txt.map{m, txt -> txt}.collect()
-            full_list_pathogen_files.view()
             PATHOGENS_MERGE_REPORT(
                 full_list_pathogen_files
             )

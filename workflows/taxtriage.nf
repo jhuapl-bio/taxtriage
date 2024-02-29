@@ -412,7 +412,6 @@ workflow TAXTRIAGE {
                         // if single file then make it [files] otherwise just files
                         [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
                     }
-        ch_combined.view()
         KRONA_KTIMPORTTEXT(
             ch_combined
         )
