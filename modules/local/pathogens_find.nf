@@ -24,8 +24,7 @@ process PATHOGENS_FIND_SAMPLE {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(mapping)
-    path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(mapping), path(pathogens_list)
 
     output:
         path "versions.yml"           , emit: versions

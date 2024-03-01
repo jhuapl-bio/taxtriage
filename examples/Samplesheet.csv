@@ -1,5 +1,5 @@
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim
-NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
-BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE
-longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
-shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE,nasal
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,blood
+shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,gut
+covid,OXFORD,examples/data/fastq_demux/NB03,,,FALSE,nasal

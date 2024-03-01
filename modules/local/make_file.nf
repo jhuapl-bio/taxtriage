@@ -14,20 +14,25 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process KREPORT_TO_KRONATXT {
-    tag "$meta.id"
+process MAKE_FILE {
     label 'process_medium'
+    tag "MakeFile"
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
+        'docker://pegi3s/biopython:latest' :
         'biocontainers/biopython:1.75' }"
 
+
+
+
     input:
-    tuple val(meta),  path(kraken_report)
+    val(items)
+
+
 
     output:
-    tuple val(meta), path("*krakenreport.krona.txt"), optional: false, emit: txt
+    path("elements.txt"), optional: false, emit: file
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,16 +43,14 @@ process KREPORT_TO_KRONATXT {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output_parsed = "${meta.id}.krakenreport.krona.txt"
-    // combine kraken_Report into a string, separated by spaces and double quotes around it
+    // def files = tops.splitCsv(header: true, sep="\t")
 
+    def output = "elements.txt"
 
     """
 
-    make_kt_files.py \\
-        -i  ${kraken_report} \\
-        -o  ${output_parsed} \\
-        -r "root"
+    make_file_from_string.py -i "${items}" -o "${output}"
+
 
 
     cat <<-END_VERSIONS > versions.yml
@@ -57,4 +60,3 @@ process KREPORT_TO_KRONATXT {
 
     """
 }
-

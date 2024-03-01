@@ -163,6 +163,13 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "pathogens": {
+                    "type": "string",
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "Path to pathogens txt file. See documentation for format and info.",
+                    "fa_icon": "fas fa-file-csv"
+                },
                 "organisms": {
                     "type": "string",
                     "hint": "Options: Comma-separated taxids or organism names to match to ncbi assembly info. See --assembly for more info. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",

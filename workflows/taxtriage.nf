@@ -27,7 +27,7 @@
 def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
 // Validate input parameters
 WorkflowTaxtriage.initialise(params, log)
-println "Initialising taxtriage workflow with parameters: ${workflow}"
+// println "Initialising taxtriage workflow with parameters: ${workflow}"
 // def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
 
 // print wfsummary to json file to working directory
@@ -42,6 +42,10 @@ println "Initialising taxtriage workflow with parameters: ${workflow}"
 def checkPathParamList = [
     params.input,
 ]
+
+if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== 'docker'){
+    exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
+}
 
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
@@ -94,6 +98,7 @@ if (matches) {
 if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
     exit 1, "If you are skipping kraken2, you must provide a reference fasta, organisms or organisms_file"
 }
+
 // if params.pathogens, check if file ends with .tsv or .txt
 if (params.pathogens) {
     if (params.pathogens.endsWith('.tsv') || params.pathogens.endsWith('.txt')) {
@@ -137,7 +142,6 @@ ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIf
 ch_multiqc_css       = file("$projectDir/assets/mqc.css", checkIfExists: true)
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
 ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
-
 ch_multiqc_files = Channel.empty()
 ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
 ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
@@ -145,6 +149,16 @@ ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
 ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
 ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
+
+// // // //
+// // // // MODULE:  Pathogens
+// // // //
+//// Get Pathogen sheet by default
+ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.txt", checkIfExists: true)
+// // // //
+// // // //
+
+
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -159,8 +173,8 @@ include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { PATHOGENS } from '../subworkflows/local/pathogen'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
-include { KRONA_KTUPDATETAXONOMY  } from '../modules/nf-core/krona/ktupdatetaxonomy/main'
 include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
+include { MAKE_FILE } from '../modules/local/make_file'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT NF-CORE MODULES/SUBWORKFLOWS
@@ -209,7 +223,6 @@ include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
-include { VISUALIZE_REPORTS } from '../subworkflows/local/visualize_reports'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
@@ -313,7 +326,7 @@ workflow TAXTRIAGE {
     // make an empty path channel
     ch_accession_mapping  = Channel.empty()
     ch_empty_file = file("$projectDir/assets/NO_FILE")
-
+    ch_organisms = Channel.empty()
 
 
 
@@ -357,7 +370,8 @@ workflow TAXTRIAGE {
     ch_porechop_out = Channel.empty()
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
-    ch_pathogens = params.pathogens ? Channel.fromPath(params.pathogens, checkIfExists: true) : Channel.empty()
+    params.pathogens ? ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true) : ''
+
 
     // if (params.trim) {
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
@@ -412,6 +426,7 @@ workflow TAXTRIAGE {
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
 
+    def empty_organism_file = false
     if (!params.skip_kraken2){
         // // // // // //
         // // // // // // MODULE: Run Kraken2
@@ -473,10 +488,10 @@ workflow TAXTRIAGE {
                     .collect()            // Collect all file parts into a list
                     .map { files ->
                         // Join the files with single quotes and space
-                        String joinedFiles = files.collect { "'$it'" }.join(' ')
-                        [[id:'combined_krona_kreports'], joinedFiles]  // Combine with new ID
+                        // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                        // if single file then make it [files] otherwise just files
+                        [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
                     }
-
         KRONA_KTIMPORTTEXT(
             ch_combined
         )
@@ -520,7 +535,12 @@ workflow TAXTRIAGE {
         // check if params.organisms is a file or a string
         ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
     } else if (params.organisms) {
-        ch_organisms = Channel.from(params.organisms)
+        ch_organisms_taxids = Channel.from(params.organisms)
+        // print params.organisms as a tsv, separated by space per
+        MAKE_FILE(
+            ch_organisms_taxids
+        )
+        ch_organisms = MAKE_FILE.out.file
     }
 
 
@@ -552,11 +572,15 @@ workflow TAXTRIAGE {
     } else  {
         if (params.skip_kraken2) {
             ch_pre_download = ch_filtered_reads.combine(ch_organisms)
+
         } else {
             ch_pre_download = ch_filtered_reads.map {
                 meta, readsclass ->  return [ meta, readsclass ]
             }.join(ch_organisms)
         }
+
+
+
 
         DOWNLOAD_ASSEMBLY(
             ch_pre_download.map {
@@ -648,7 +672,7 @@ workflow TAXTRIAGE {
         illumina_reads = ch_filtered_reads.filter {
             it[0].platform == 'ILLUMINA'
         }.map {
-            meta, reads -> [meta, reads, [], []]
+            meta, reads, reference -> [meta, reads, [], []]
         }
         SPADES_ILLUMINA(
             illumina_reads
@@ -658,7 +682,7 @@ workflow TAXTRIAGE {
         nanopore_reads = ch_filtered_reads.filter {
             it[0].platform == 'OXFORD'
         }.map {
-            meta, reads -> [meta, [], [], [], reads]
+            meta, reads, fasta -> [meta, reads]
         }
 
         FLYE(

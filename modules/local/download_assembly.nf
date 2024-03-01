@@ -27,7 +27,7 @@ process DOWNLOAD_ASSEMBLY {
 
 
     input:
-    tuple val(meta), val(hits_containing_file)
+    tuple val(meta), path(hits_containing_file)
     path assembly
 
 
@@ -52,14 +52,15 @@ process DOWNLOAD_ASSEMBLY {
     def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5 "
     def matchcol = params.fuzzy ? " -a 7 "  : " -a 5 "
     def refresh_download = params.refresh_download ? " -r " : ""
-    def type = params.organisms ? " -f list " : " -f file  "
+    def type = hits_containing_file ? " -f file " : " -f list  "
+
 
     """
 
 
 
     download_fastas.py \\
-            -i ${hits_containing_file} \\
+            -i  ${hits_containing_file} \\
             -o ${meta.id}.output.references.fasta ${refresh_download} \\
             ${email} $type -g ${meta.id}.gcfmapping.tsv \\
             -t ${assembly} -k  $column $columnAssembly -y 7 -r
