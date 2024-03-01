@@ -53,13 +53,10 @@ workflow ALIGNMENT {
     ch_versions = 1
 
 
-    // SAMTOOLS_FAIDX(
-    //     fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, fasta ] },
-    //     fastq_reads.map{ m, fastq, fasta, bed, map -> return [ m, [] ] },
-    // )
     if (params.bt2_indices){
-        ch_indices = ch_aligners.shortreads.map{ m, fastq, fasta, bed, map -> return [ m, file(params.bt2_indices) ] }
-        ch_indices.view()
+        ch_indices = ch_aligners.shortreads.map{ m, fastq, fasta, bed, map -> return [ m, fastq, file(params.bt2_indices) ] }
+
+
         println("Using pre-built indices provided $params.bt2_indices")
     } else {
         println("Building indices from FASTA references")
@@ -69,12 +66,11 @@ workflow ALIGNMENT {
             }
 
         )
-        ch_indices = BOWTIE2_BUILD.out.index
-    }
-    BOWTIE2_ALIGN(
         ch_aligners.shortreads.map{  m, fastq, fasta, bed, map ->
             return [ m, fastq ]
-        },
+        }.join(BOWTIE2_BUILD.out.index).set { ch_indices  }
+    }
+    BOWTIE2_ALIGN(
         ch_indices,
         false,
         true
@@ -84,8 +80,7 @@ workflow ALIGNMENT {
     )
 
     MINIMAP2_ALIGN(
-        ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> [ m, fastq ] },
-        ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> fasta },
+        ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> [ m, fastq, fasta ] },
         true,
         true,
         true
@@ -224,4 +219,4 @@ workflow ALIGNMENT {
         stats = ch_stats
         bamstats = ch_bamstats
         versions = ch_versions
-}
+    }
