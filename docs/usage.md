@@ -21,11 +21,11 @@ You will need to create a samplesheet with information about the samples you wou
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
 ```console
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim
-NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
-BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE
-longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
-shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE,nasal
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE,nasal
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
+shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
 ### Multiple Samples AND Platforms
@@ -33,11 +33,11 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
 
 ```console
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim
-NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
-BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE
-longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE
-shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE,nasal
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE,nasal
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
+shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
 ### Samplesheet Information
@@ -84,7 +84,7 @@ work                # Directory containing the nextflow working files
 | `--reference_assembly`                                     | Perform the reference-based assembly on reads against top hit assemblies or assemblies provided as a local file. Performes variant analysis by default. Disabled by default       |
 | `--skip_fastp`                                        | TRUE/FALSE, do not filter with fastp     |
 | `--skip_plots`                                        | TRUE/FALSE, do not make any plots  |
-| `--remove_taxids  <numbers[]>`                        | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "'9606'" for human reads    |
+| `--remove_taxids  <numbers[]>`                        | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "9606" for human reads    |
 | `--k2_confidence  <numbers[]>`                        | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information.  |
 | `--organisms  <numbers[] or strings[]>`    |  Organisms list (names or taxids)  you want to pull from to get a reference. Used if you are skipping kraken2 only. Separate by a list of spaces like "1254 573"  |
 | `--fuzzy`                                  | TRUE/FALSE, Match names of organisms by their names (enabled) rather than taxids  |
