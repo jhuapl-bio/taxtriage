@@ -309,7 +309,6 @@ workflow TAXTRIAGE {
     if (!params.taxdump){
         DOWNLOAD_TAXDUMP()
         ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
-        ch_taxdump_dir.view()
     } else if (params.taxdump) {
         ch_taxdump_dir = Channel.fromPath(params.taxdump)
         println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
@@ -431,58 +430,27 @@ workflow TAXTRIAGE {
         // // // // // //
         // // // // // // MODULE: Run Kraken2
         // // // // // //
-        if (ch_classifier.contains('kraken2')) {
-            // // // // // // //
-            // // // // // // // MODULE: Run Kraken2
-            // // // // // // //
-            KRAKEN2_KRAKEN2(
-                ch_reads,
-                ch_db,
-                ch_save_fastq_classified,
-                true
-            )
-            // Convert the meta.id to the current id and kraken2
-            // ch_kraken2_report = KRAKEN2_KRAKEN2.out.report.map{ meta, file -> {
-            //         meta.id = "${meta.id}_kraken2"
-            //         meta.classifier = "kraken2"
-            //         return [ meta, file ]
-            //     }
-            // }
-            ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
-            // append KRAKEN2_KRAKEN2.out.report to ch_profile
-            ch_profile = ch_profile.concat(ch_kraken2_report)
-        }
-        if (ch_classifier.contains('metaphlan')) {
-            // make ch_metaphlan_db from params.metaphlan_db
-            METAPHLAN_METAPHLAN(
-                ch_reads,
-                params.metaphlan_db
-            )
-            ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
-                    meta.id = "${meta.id}_metaphlan"
-                    meta.classifier = "metaphlan"
-                    return [ meta, file ]
-                }
-            }
-            // append METAPHLAN_METAPHLAN.out.report to ch_profile
-            ch_profile  = ch_profile.concat(ch_metaphlan_report)
-        }
 
-        ch_taxdump_dir = Channel.value('')
-        TAXPASTA_STANDARDISE(
-            ch_profile,
-            ch_taxdump_dir
+        // // // // // // //
+        // // // // // // // MODULE: Run Kraken2
+        // // // // // // //
+        KRAKEN2_KRAKEN2(
+            ch_reads,
+            ch_db,
+            ch_save_fastq_classified,
+            true
         )
 
+        ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
-        ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
-        ch_standardized.view()
 
 
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
         )
+
         ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+
         ch_combined = ch_krona_txt
                     .map{ it[1] }        // Get the file path
                     .collect()            // Collect all file parts into a list
@@ -518,6 +486,7 @@ workflow TAXTRIAGE {
         FILTERKRAKEN(
             MERGEDKRAKENREPORT.out.krakenreport
         )
+        KRAKEN2_KRAKEN2.out.classified_reads_fastq.view()
         ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
 
         if (params.fuzzy){
@@ -543,6 +512,27 @@ workflow TAXTRIAGE {
         ch_organisms = MAKE_FILE.out.file
     }
 
+    if (params.metaphlan) {
+        // make ch_metaphlan_db from params.metaphlan_db
+        METAPHLAN_METAPHLAN(
+            ch_reads,
+            params.metaphlan_db
+        )
+        ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
+                meta.id = "${meta.id}_metaphlan"
+                meta.classifier = "metaphlan"
+                return [ meta, file ]
+            }
+        }
+        // append METAPHLAN_METAPHLAN.out.report to ch_profile
+        TAXPASTA_STANDARDISE(
+            ch_profile,
+            ch_taxdump_dir
+        )
+
+
+        ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
+    }
 
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
@@ -608,6 +598,7 @@ workflow TAXTRIAGE {
 
         ch_bedfiles = FEATURES_TO_BED.out.bed
     }
+
 
     if (!params.skip_realignment) {
         if (params.get_features){
