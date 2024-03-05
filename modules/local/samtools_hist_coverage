@@ -23,11 +23,12 @@ process SAMTOOLS_HIST_COVERAGE {
     def mapping = mapping ? " -m $mapping" : ""
     def output = "${meta.id}.histo.txt"
 
+
     """
 
     samtools_coverage.sh \\
         -b ${bam} \\
-        -o ${output} \\
+        -o ${output} -c 4 \\
         ${mapping} -a "$args"
 
     cat <<-END_VERSIONS > versions.yml

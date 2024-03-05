@@ -30,7 +30,8 @@ OPTIONS:
     -h          Show this help message
     -b FILE     Input BAM file
     -m FILE     Reference name mapping file (original and new names, tab-separated)
-    -a ARGS     Extra args to attach to samtools coverage
+    -o FILE     Output file for the modified samtools coverage results
+    -c ARGS     Which column to use for mapping. Default is 2
     -o FILE     Output file for the modified samtools coverage results
 
 The mapping file should have two columns:
@@ -42,6 +43,8 @@ Each line in the mapping file corresponds to one reference name mapping.
 Example:
 bash $0 -b input.bam -m mapping.txt -o coverage_output.txt
 
+
+
 EOF
 }
 
@@ -50,8 +53,9 @@ bam_file=""
 mapping_file=""
 output_file=""
 args=""
+mapcol=2
 # Parse command-line arguments
-while getopts "hb:m:o:a:" opt; do
+while getopts "hb:m:o:a:c:" opt; do
     case ${opt} in
         h )
             usage
@@ -59,6 +63,9 @@ while getopts "hb:m:o:a:" opt; do
             ;;
         b )
             bam_file=${OPTARG}
+            ;;
+        c )
+            mapcol=${OPTARG}
             ;;
         m )
             mapping_file=${OPTARG}
@@ -89,12 +96,12 @@ if ! command -v samtools &> /dev/null; then
     exit 1
 fi
 # Run samtools coverage and process the output
-samtools coverage $args "${bam_file}"  | awk -v mapFile="${mapping_file}" '
+samtools coverage $args "${bam_file}"  | awk -v mapcol=$mapcol -v mapFile="${mapping_file}" '
     BEGIN {
         FS=OFS="\t"
         # Load the mapping from the mapping file
         while ((getline < mapFile) > 0) {
-            map[$1] = $2;
+            map[$1] = $mapcol;
             # print $1,$2
         }
     }
