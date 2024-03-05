@@ -16,7 +16,7 @@
 // #
 process CONFIDENCE_METRIC {
     tag "$meta.id"
-    label 'process_suphigh'
+    label 'process_high'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
