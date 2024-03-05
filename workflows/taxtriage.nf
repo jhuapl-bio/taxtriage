@@ -70,7 +70,7 @@ if (params.minq) {
 
 // if params.save_fastq_classified then set ch_save_fastq_classified to true
 // else set ch_save_fastq_classified to false
-ch_save_fastq_classified = params.save_fastq_classified ? true : false
+ch_save_fastq_classified = params.skip_classified_fastq ? false : true
 ch_assembly_txt = null
 ch_kraken_reference = false
 
@@ -444,7 +444,6 @@ workflow TAXTRIAGE {
         ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
 
-
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
         )
@@ -486,8 +485,9 @@ workflow TAXTRIAGE {
         FILTERKRAKEN(
             MERGEDKRAKENREPORT.out.krakenreport
         )
-        KRAKEN2_KRAKEN2.out.classified_reads_fastq.view()
-        ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        if (ch_save_fastq_classified){
+            ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        }
 
         if (params.fuzzy){
             ch_organisms = TOP_HITS.out.names

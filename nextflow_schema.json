@@ -283,6 +283,12 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
+                "skip_classified_fastqs": {
+                    "type": "boolean",
+                    "description": "Skip saving classified fastqs",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "metaphlan": {
                     "type": "boolean",
                     "description": "Perform Metaphlan analysis",
