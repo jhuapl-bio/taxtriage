@@ -212,6 +212,7 @@ include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main
 include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
 include { FEATURES_TO_BED } from '../modules/local/convert_features_to_bed'
+include { FEATURES_MAP } from '../modules/local/features_map'
 include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include {  FEATURES_DOWNLOAD } from '../modules/local/download_features'
@@ -532,6 +533,9 @@ workflow TAXTRIAGE {
         )
 
         ch_bedfiles = FEATURES_TO_BED.out.bed
+
+
+
     }
 
     if (!params.skip_realignment) {
@@ -549,6 +553,7 @@ workflow TAXTRIAGE {
             ch_reads_to_align
         )
 
+
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies),
             ch_pathogens
@@ -564,10 +569,18 @@ workflow TAXTRIAGE {
 
         ch_combined = ch_alignment_outmerg
             .join(ch_mapped_assemblies, by: 0, remainder: true)
-            .map { meta, bam, depth, mapping ->
+            .map { meta, bam, bai, depth, mapping ->
                 // If mapping is not present, replace it with null or an empty placeholder
-                return [meta, bam, depth, mapping ?: ch_empty_file]
+                return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
+        if (params.get_features){
+
+            FEATURES_MAP(
+                ch_combined.map {
+                    meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+                }.join(ch_bedfiles)
+            )
+        }
 
         if (!params.skip_confidence) {
             CONFIDENCE_METRIC(

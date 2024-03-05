@@ -14,22 +14,22 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process PATHOGENS_FIND_SAMPLE {
+process FEATURES_MAP {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? "bioconda::pysam" : null)
+    conda (params.enable_conda ? "conda-forge::python=3.8.3 pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(pathogens_list)
+    tuple val(meta), path(bam), path(bai), path(mapping), path(bed)
 
     output:
-        path "versions.yml"           , emit: versions
-        tuple val(meta), path("*.txt")    , optional:false, emit: txt
-
+    tuple val(meta), path("*.features.individual.contig.tsv"), optional: false, emit: features_contig
+    tuple val(meta), path("*.features.organism.tsv"), optional: false, emit: features_full
+    path "versions.yml"           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -39,28 +39,32 @@ process PATHOGENS_FIND_SAMPLE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output = "${meta.id}.paths.txt"
-    def id = meta.id
-    def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
-    def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
+
+
+    def outputoi = "${meta.id}.features.individual.contig.tsv"
+    def outputo = "${meta.id}.features.organism.tsv"
+
 
     """
 
-    match_paths.py \\
-        -i $bamfiles \\
-        -o $output \\
-        -s $id \\
-        $type \\
-        $min_reads_align \\
-        -p $pathogens_list \\
-        -m $mapping
+
+    features_map.py \\
+        -b $bed \\
+        -a  $bam \\
+        -i $bai \\
+        -m  $mapping \\
+        -o $outputoi \\
+        -g $outputo
+
+
+
+
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python --version)
+        python3: \$(python3 --version | sed 's/Python //g')
     END_VERSIONS
 
     """
 }
-
 
