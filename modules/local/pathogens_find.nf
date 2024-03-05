@@ -42,6 +42,8 @@ process PATHOGENS_FIND_SAMPLE {
     def output = "${meta.id}.paths.txt"
     def id = meta.id
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
+    def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
+
     """
 
     match_paths.py \\
@@ -49,6 +51,7 @@ process PATHOGENS_FIND_SAMPLE {
         -o $output \\
         -s $id \\
         $type \\
+        $min_reads_align \\
         -p $pathogens_list \\
         -m $mapping
 

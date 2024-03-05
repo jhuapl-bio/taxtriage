@@ -169,6 +169,12 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
+                "min_reads_align": {
+                    "type": "number",
+                    "default": 3,
+                    "description": "Minimum reads threshold for realignment",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "minmapq": {
                     "type": "number",
                     "default": 5,
