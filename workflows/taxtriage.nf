@@ -530,9 +530,6 @@ workflow TAXTRIAGE {
             ch_metaphlan_report,
             ch_taxdump_dir
         )
-
-
-
         ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
     }
 
