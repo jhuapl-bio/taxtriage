@@ -96,11 +96,10 @@
                     "description": "Taxonomy tab file for krona plots",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "classifiers": {
+                "taxdump": {
                     "type": "string",
-                    "hint": "Options: [kraken2, centrifuge, metaphlan]",
-                    "default": "default",
-                    "description": "Choose one ore more classifiers, separated by a comma.",
+                    "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
+                    "description": "",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "save_reads_assignment": {

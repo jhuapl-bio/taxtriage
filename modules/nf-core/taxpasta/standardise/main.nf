@@ -27,7 +27,7 @@ process TAXPASTA_STANDARDISE {
     // e.g., "--output ${task.ext.prefix}.tsv".
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def profiler = "--profiler ${meta.classifier}"
+    def profiler = "--profiler ${classifier}"
     def output = "--output ${meta.id}.taxpasta.standardized.tsv"
     def taxonomy_option = taxonomy ? "--taxonomy ${taxonomy}" : ''
     """

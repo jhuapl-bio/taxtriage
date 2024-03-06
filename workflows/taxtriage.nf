@@ -307,13 +307,7 @@ workflow TAXTRIAGE {
     } else {
         ch_classifier = ['kraken2']
     }
-    if (!params.taxdump){
-        DOWNLOAD_TAXDUMP()
-        ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
-    } else if (params.taxdump) {
-        ch_taxdump_dir = Channel.fromPath(params.taxdump)
-        println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
-    }
+
 
     if (!ch_assembly_txt) {
         println 'empty'
@@ -514,22 +508,29 @@ workflow TAXTRIAGE {
     }
 
     if (params.metaphlan) {
-        // make ch_metaphlan_db from params.metaphlan_db
+
         METAPHLAN_METAPHLAN(
             ch_reads,
             params.metaphlan_db
         )
         ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
-                meta.id = "${meta.id}_metaphlan"
-                meta.classifier = "metaphlan"
-                return [ meta, file ]
+                return [ meta, file, 'metaphlan' ]
             }
+        }
+        // make ch_metaphlan_db from params.metaphlan_db
+        if (!params.taxdump){
+            DOWNLOAD_TAXDUMP()
+            ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
+        } else if (params.taxdump) {
+            ch_taxdump_dir = Channel.fromPath(params.taxdump)
+            println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
         }
         // append METAPHLAN_METAPHLAN.out.report to ch_profile
         TAXPASTA_STANDARDISE(
-            ch_profile,
+            ch_metaphlan_report,
             ch_taxdump_dir
         )
+
 
 
         ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
