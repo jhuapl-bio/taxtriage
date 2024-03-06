@@ -27,7 +27,7 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
-                "metaphlan_db": {
+                "metaphlan": {
                     "type": "string",
                     "fa_icon": "fas fa-book",
                     "format": "directory-path",
@@ -291,12 +291,6 @@
                 "skip_classified_fastqs": {
                     "type": "boolean",
                     "description": "Skip saving classified fastqs",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
-                },
-                "metaphlan": {
-                    "type": "boolean",
-                    "description": "Perform Metaphlan analysis",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },

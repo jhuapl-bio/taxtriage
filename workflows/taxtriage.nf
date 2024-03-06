@@ -216,7 +216,6 @@ include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../modules/local/krakenreport'
 //include { CENTRIFUGE_CENTRIFUGE } from '../modules/nf-core/centrifuge/centrifuge/main'
 //include { CENTRIFUGE_KREPORT } from '../modules/nf-core/centrifuge/kreport/main'
-include { METAPHLAN_MAKEDB } from '../modules/nf-core/metaphlan/makedb/main'
 include { METAPHLAN_METAPHLAN } from '../modules/nf-core/metaphlan/metaphlan/main'
 include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main'
 include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
@@ -511,13 +510,13 @@ workflow TAXTRIAGE {
 
         METAPHLAN_METAPHLAN(
             ch_reads,
-            params.metaphlan_db
+            params.metaphlan
         )
         ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
                 return [ meta, file, 'metaphlan' ]
             }
         }
-        // make ch_metaphlan_db from params.metaphlan_db
+        // make ch_metaphlan  from params.metaphlan database path
         if (!params.taxdump){
             DOWNLOAD_TAXDUMP()
             ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
