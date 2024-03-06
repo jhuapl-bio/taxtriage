@@ -49,6 +49,13 @@ if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== '
 
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
+// check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
+if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
+    exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
+}
+
+
+
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
@@ -61,6 +68,9 @@ if (params.minq) {
     println 'Min Quality set to default'
 }
 
+// if params.save_fastq_classified then set ch_save_fastq_classified to true
+// else set ch_save_fastq_classified to false
+ch_save_fastq_classified = params.skip_classified_fastq ? false : true
 ch_assembly_txt = null
 ch_kraken_reference = false
 
@@ -176,6 +186,7 @@ include { MAKE_FILE } from '../modules/local/make_file'
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
+include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
@@ -203,6 +214,12 @@ include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../modules/local/krakenreport'
+//include { CENTRIFUGE_CENTRIFUGE } from '../modules/nf-core/centrifuge/centrifuge/main'
+//include { CENTRIFUGE_KREPORT } from '../modules/nf-core/centrifuge/kreport/main'
+include { METAPHLAN_MAKEDB } from '../modules/nf-core/metaphlan/makedb/main'
+include { METAPHLAN_METAPHLAN } from '../modules/nf-core/metaphlan/metaphlan/main'
+include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main'
+include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
@@ -283,6 +300,15 @@ workflow TAXTRIAGE {
         }
     }
 
+    ch_taxdump_dir = Channel.empty()
+    if (params.classifier){
+        // split params.classifier on command and optional space assign to list channel
+        ch_classifier = params.classifiers.split(",\\s*")
+    } else {
+        ch_classifier = ['kraken2']
+    }
+
+
     if (!ch_assembly_txt) {
         println 'empty'
         GET_ASSEMBLIES()
@@ -309,6 +335,7 @@ workflow TAXTRIAGE {
         ch_input
     )
     ch_reads = INPUT_CHECK.out.reads
+
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
     )
@@ -391,24 +418,33 @@ workflow TAXTRIAGE {
 
     }
     ch_filtered_reads = ch_reads
+    ch_profile = Channel.empty()
+
     def empty_organism_file = false
     if (!params.skip_kraken2){
         // // // // // //
         // // // // // // MODULE: Run Kraken2
         // // // // // //
+
+        // // // // // // //
+        // // // // // // // MODULE: Run Kraken2
+        // // // // // // //
         KRAKEN2_KRAKEN2(
             ch_reads,
             ch_db,
-            true,
+            ch_save_fastq_classified,
             true
         )
 
         ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
+
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
         )
+
         ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+
         ch_combined = ch_krona_txt
                     .map{ it[1] }        // Get the file path
                     .collect()            // Collect all file parts into a list
@@ -444,7 +480,9 @@ workflow TAXTRIAGE {
         FILTERKRAKEN(
             MERGEDKRAKENREPORT.out.krakenreport
         )
-        ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        if (ch_save_fastq_classified){
+            ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        }
 
         if (params.fuzzy){
             ch_organisms = TOP_HITS.out.names
@@ -469,6 +507,31 @@ workflow TAXTRIAGE {
         ch_organisms = MAKE_FILE.out.file
     }
 
+    if (params.metaphlan) {
+
+        METAPHLAN_METAPHLAN(
+            ch_reads,
+            params.metaphlan_db
+        )
+        ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
+                return [ meta, file, 'metaphlan' ]
+            }
+        }
+        // make ch_metaphlan_db from params.metaphlan_db
+        if (!params.taxdump){
+            DOWNLOAD_TAXDUMP()
+            ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
+        } else if (params.taxdump) {
+            ch_taxdump_dir = Channel.fromPath(params.taxdump)
+            println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
+        }
+        // append METAPHLAN_METAPHLAN.out.report to ch_profile
+        TAXPASTA_STANDARDISE(
+            ch_metaphlan_report,
+            ch_taxdump_dir
+        )
+        ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
+    }
 
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
@@ -505,9 +568,6 @@ workflow TAXTRIAGE {
             }.join(ch_organisms)
         }
 
-
-
-
         DOWNLOAD_ASSEMBLY(
             ch_pre_download.map {
                 meta, readsclass, report ->  return [ meta, report ]
@@ -537,6 +597,7 @@ workflow TAXTRIAGE {
 
 
     }
+
 
     if (!params.skip_realignment) {
         if (params.get_features){
