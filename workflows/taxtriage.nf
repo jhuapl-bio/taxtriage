@@ -505,9 +505,6 @@ workflow TAXTRIAGE {
             }.join(ch_organisms)
         }
 
-
-
-
         DOWNLOAD_ASSEMBLY(
             ch_pre_download.map {
                 meta, readsclass, report ->  return [ meta, report ]
