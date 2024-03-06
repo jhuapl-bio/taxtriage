@@ -46,6 +46,13 @@ def parse_args(argv=None):
         help="Reference accessions match, 2 cols min: accession (NZ/NC), name",
     )
     parser.add_argument(
+        "-r",
+        "--min_reads_align",
+        metavar="MINREADSALIGN",
+        default=3,
+        help="Filter for minimum reads aligned to reference per organism. Default is 1",
+    )
+    parser.add_argument(
         "-a",
         "--accessioncol",
         metavar="ACCCOL",
@@ -240,7 +247,9 @@ def main():
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
     reference_hits = count_reference_hits(inputfile, matchdct)
-
+    if args.min_reads_align:
+        # filter the reference_hits based on the minimum number of reads aligned
+        reference_hits = {k: v for k, v in reference_hits.items() if v['count'] >= int(args.min_reads_align)}
     write_to_tsv(
         reference_hits=reference_hits,
         pathogens=pathogens,

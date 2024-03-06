@@ -166,36 +166,6 @@ workflow ALIGNMENT {
 
         ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
 
-        // if (!params.skip_stats){
-        //     SPLIT_VCF(
-        //         ch_merged_mpileup.map{
-        //             m, vcf, tbi, fasta -> [m, vcf, tbi]
-        //         }
-        //     )
-        //     chff = SPLIT_VCF.out.vcfs.groupTuple()
-        //         .map { meta, vcfs -> [meta, vcfs.flatten()] }
-        //     ch_vcf_split = chff.transpose(by:[1])
-        //     BCFTOOLS_INDEX(
-        //         ch_vcf_split
-        //     )
-        //     ch_vcf_split_windx = ch_vcf_split.join(BCFTOOLS_INDEX.out.csi)
-
-        //     .map {
-        //         m, vcf, csi ->
-        //             def parts = vcf.baseName.split("\\.")
-        //             def id = "${parts[0]}.${parts[1]}"
-        //             return [ [id:id, platform:m.platform, base: m.id], vcf, csi ]
-        //     }
-
-        //     // ch_stats = BCFTOOLS_STATS.out.stats
-        //     BCFTOOLS_STATS(
-        //         ch_vcf_split_windx,
-        //         [],
-        //         [],
-        //         []
-        //     )
-        //     ch_stats = BCFTOOLS_STATS.out.stats
-        // }
         if (params.reference_assembly){
             BCFTOOLS_CONSENSUS(
                 ch_merged_mpileup
@@ -207,7 +177,8 @@ workflow ALIGNMENT {
         sorted_bams
     )
     ch_bamstats = RSEQC_BAMSTAT.out.txt
-    ch_bams =  sorted_bams
+    ch_bams =  sorted_bams_with_index
+
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
     emit:
