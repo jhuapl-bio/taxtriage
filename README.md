@@ -135,9 +135,9 @@ nextflow run https://github.com/jhuapl-bio/taxtriage  \
 ```
 nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet.csv -r main -latest \
-   --db viral --download_db --skip_assembly \
-   --outdir tmp --max_memory 10GB --max_cpus 3   \
-   -profile docker  -resume --demux --remove_taxids "9606"
+   --db viral --download_db \
+   --outdir output_viral --max_memory 10GB --max_cpus 3   \
+   -profile docker  -resume --remove_taxids "9606"
 ```
 
 :warning: Please see the contents of test or local config to figure out what the defaults are for those profiles
@@ -146,12 +146,14 @@ Remember, if you are doing a single taxid, wrap it with '' inside the "" quote
 
 #### Using a db that is on your local filesystem
 
+Make sure you use a local k2 database in your system. Assuming (for this example) you've pulled and decompressed a k2 database like k2_viral [See here for more](https://benlangmead.github.io/aws-indexes/k2) and change it with the `--db` parameter like below.
+
 ```
 
 nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet.csv \
-   --db "k2_viral" -r main -latest \
-   --outdir tmp_viral  \
+   --db "./k2_viral" -r main -latest \
+   --outdir output_viral_local  \
    --profile local,docker \
    -resume
 ```
