@@ -1,3 +1,5 @@
 sample,platform,fastq_1,fastq_2
 longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz
+
+
