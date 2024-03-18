@@ -21,11 +21,11 @@ process PATHOGENS_MERGE_REPORT {
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.6' :
-        'jhuaplbio/reportlab-pdf:4.0.6' }"
+        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.7' :
+        'jhuaplbio/reportlab-pdf:4.0.7' }"
 
     input:
-    file files_of_pathogens
+    tuple file(files_of_pathogens)
 
     output:
         path "versions.yml"           , emit: versions
@@ -43,12 +43,13 @@ process PATHOGENS_MERGE_REPORT {
 
     def output_txt = "pathogens.report.txt"
     def output_pdf = "pathogens.report.pdf"
+    def distributions = params.distributions ? " -d ${file(params.distributions)} " : " "
 
     """
 
     awk 'NR==1{print; next} FNR>1' $files_of_pathogens > $output_txt
 
-    create_report.py -i $output_txt  -o $output_pdf
+    create_report.py -i $output_txt  -o $output_pdf $distributions
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

@@ -22,9 +22,10 @@ import pandas as pd
 import numpy as np
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
-
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from distributions import import_distributions, make_vplot
+
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from datetime import datetime
@@ -45,6 +46,22 @@ def parse_args(argv=None):
         required=True,
         help="Base pathogen discovery table file, TSV format",
     )
+    parser.add_argument(
+        "-distributions",
+        "--distributions",
+        metavar="DISTRIBUTIONS",
+        required=False,
+        help="TSV file that contains all the distribution information for body sites and organisms",
+    )
+    parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Total Reads',
+                        help="Name of abundance column, default is abundance")
+    parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default='Name',
+                        help="Name of id column, default is id")
+    parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',
+                        help="Name of site column, default is body_site")
+    parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='name',
+                        help="What type of data is being processed. Options: 'tax_id' or 'name'.",
+                        choices=['tax_id', 'name'])
     parser.add_argument(
         "-o",
         "--output",
@@ -81,43 +98,42 @@ def format_cell_content(cell):
 
 def import_data(inputfile ):
     # Load your TSV data into a DataFrame
-    tsv_data = """
-    Name\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus
-    Staphylococcus aureus\t0.6\t0.6\t32\tYes\tblood\tCommensal\t1280\testablished
-    Klebsiella pneumoniae\t46.22\t46.22\t2447\tYes\t"abscess, blood , skin, urine"\tCommensal\t573\testablished
-    Dickeya fangzhongdai\t2.87\t2.87\t152\tNo\t\t\t1778540\tN/A
-    Pediococcus acidilactici\t15.94\t15.94\t844\tNo\t\t\t1254\tN/A
-    Neisseria gonorrhoeae\t15.17\t15.17\t803\tYes\t"blood, urine"\tPathogen\t485\testablished
-    Staphylococcus aureus subsp. aureus NCTC 8325\t1.23\t1.23\t65\tNo\t\t\t93061\tN/A
-    Metabacillus litoralis\t0.08\t0.08\t4\tNo\t\t\t152268\tN/A
-    Fluviibacter phosphoraccumulans\t12.18\t12.18\t645\tNo\t\t\t1751046\tN/A
-    Diaphorobacter ruginosibacter\t5.7\t5.7\t302\tNo\t\t\t1715720\tN/A
-    """.strip()
+    # tsv_data = """
+    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus
+    # Staphylococcus aureus\tshortreads\tstool\t0.0002\t0.0002\t2\tYes\tstool\tCommensal\t1280\testablished
+    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished
+    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tNo\t\t\t1778540\tN/A
+    # Pediococcus acidilactici\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A
+    # Neisseria gonorrhoeae\tlongreads\toral\t0.012\t0.012\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished
+    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A
+    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A
+    # Fluviibacter phosphoraccumulans\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A
+    # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t0\tNo\t\t\t1715720\tN/A
+
+
+    # """.strip()
     df = pd.read_csv(inputfile, sep='\t')
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
-    remap_headers = {
-        "Name": "Organism",
-        "# Aligned": "# Aligned to Sample",
-        "Sites": "Locations",
-        "% Total Reads": "% Reads in Sample",
-        "Type": "Class",
-    }
-    df = df.rename(columns=remap_headers)
+
     # sort the dataframe by the Sample THEN the # Reads
-    df = df.sort_values(by=[ "Class", "Sample", "# Aligned to Sample"], ascending=[False, True, False])
+    df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
+    # trim all of NAme column  of whitespace either side
+    df['Name'] = df['Name'].str.strip()
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
             #  update index of row to change organism name to bold
             df.at[row_idx, 'Organism'] = f'{row.Organism}*'
 
+    return df
+
+def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
-    df_yes = df[df['IsAnnotated'] == 'Yes'].copy()
-    df_no = df[df['IsAnnotated'] == 'No'].copy()
+    df_yes = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
+    df_no = df_full[df_full['IsAnnotated'] == 'No'].copy()
     # reset index
     df_yes.reset_index(drop=True, inplace=True)
     df_no.reset_index(drop=True, inplace=True)
     return df_yes, df_no
-
 
 
 
@@ -145,25 +161,26 @@ title_style = ParagraphStyle(
     spaceAfter=10,
 )
 
-def prepare_data_with_headers(df, include_headers=True, color_status=False, columns=None):
+def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
     styles = getSampleStyleSheet()
-    header_style = styles['Normal']  # Customize this style for headers
     data = []
     if not columns:
-        columns = df.columns.values
-    # Prepare header row
+        columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
     if include_headers:
-        headers = [Paragraph('<b>{}</b>'.format(col), header_style) for col in columns]
+        headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
+        if len(plot_dict.keys()) > 0:
+            headers.append(Paragraph('<b>Distribution Metric</b>', styles['Normal']))  # Plot column header
         data.append(headers)
-
-    # Prepare data rows with conditional coloring for the "Sample" cell
     for index, row in df.iterrows():
-        row_data = []
-        for col in columns:
-            cell = row[col]
-            text = format_cell_content(cell)
-            paragraph = Paragraph(text, styles['Normal'])
-            row_data.append(paragraph)
+        row_data = [Paragraph(format_cell_content(str(cell)), styles['Normal']) for cell in row[columns][:]]  # Exclude plot data
+        # Insert the plot image
+        if len(plot_dict.keys()) > 0:
+            plot_key = (row['Organism'], row['Sample Type'])
+            if plot_key in plot_dict:
+                plot_image = Image(plot_dict[plot_key])
+                plot_image.drawHeight = 0.5 * inch  # Height of the image
+                plot_image.drawWidth = 1* inch  # Width of the image, adjusted from your figsize
+                row_data.append(plot_image)
         data.append(row_data)
 
     return data
@@ -184,7 +201,6 @@ def return_table_style(df, color_pathogen=False):
 
         sampleindx = df.columns.get_loc('Sample Type')
         # Example post-processing to mark cells
-        print(df.columns.values)
         for row_idx, row in enumerate(df.itertuples(index=False)):
             val = row.Class
             status = row.Status
@@ -233,7 +249,12 @@ def draw_vertical_line(canvas, doc):
         canvas.restoreState()
 
 
-def create_report(output, df_yes, df_no):
+def create_report(
+    output,
+    df_identified,
+    df_unidentified,
+    plotbuffer
+):
 
     # PDF file setup
     pdf_file = output
@@ -262,18 +283,18 @@ def create_report(output, df_yes, df_no):
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
-    if not df_yes.empty:
-        columns_yes = df_yes.columns.values
+    if not df_identified.empty:
+        columns_yes = df_identified.columns.values
         columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Locations"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_yes, columns=columns_yes, include_headers=True, color_status=True)
-        table_style = return_table_style(df_yes, color_pathogen=True)
+        data_yes = prepare_data_with_headers(df_identified, plotbuffer, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_identified, color_pathogen=True)
         table = make_table(
             data_yes,
             table_style=table_style
         )
         # Add the title and subtitle
-        title = Paragraph("Pathogen Discovery Analysis", title_style)
+        title = Paragraph("Organism Discovery Analysis", title_style)
         subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
         elements = [title, subtitle, Spacer(1, 12)]
         elements.append(table)
@@ -291,8 +312,17 @@ def create_report(output, df_yes, df_no):
     elements.append(Spacer(1, 12))
     subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Green represents a match with your sample type", subtext_style)
     elements.append(subtext_para)
+    if len(plotbuffer.keys()) > 0:
+        subtext_para = Paragraph("HHS: Healthy Human Subjects from the Human Microbiome Project", subtext_style)
+        elements.append(subtext_para)
+
+        subtext_para = Paragraph("Distribution metrics gathered from HMP SRA Taxonomy Analysis and compared to each organism in \
+            each row. Organisms falling outside the interquartile range (IQR) should be considered for downstream analysis, whether pathogenic or commensal in nature.\
+            Coloring specified by z-score with the mapping of score < z = 1(green), 2(yellow), 3(orange), & >3(red)", subtext_style)
+        elements.append(subtext_para)
+
     elements.append(Spacer(1, 12))
-    if not df_no.empty:
+    if not df_unidentified.empty:
         ##########################################################################################
         ### Section to Make the "Unannotated" Table
         second_title = "Unannotated Organisms"
@@ -300,8 +330,8 @@ def create_report(output, df_yes, df_no):
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
         columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample' ]
-        data_no = prepare_data_with_headers(df_no, include_headers=True, color_status=False, columns=columns_no)
-        table_style = return_table_style(df_no, color_pathogen=False)
+        data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
+        table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
             data_no,
             table_style=table_style
@@ -316,10 +346,92 @@ def create_report(output, df_yes, df_no):
     print(f"PDF generated: {pdf_file}")
 
 
+
+
 def main():
     args = parse_args()
-    df_yes, df_no = import_data(args.input)
-    create_report(args.output, df_yes, df_no)
+    df_full = import_data(args.input)
+
+    # change column "id" in avbundance_data to "tax_id" if args.type is "name"
+    df_full = df_full.rename(columns={args.id_col: args.type})
+    df_full = df_full.rename(columns={args.sitecol: 'body_site'})
+    df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
+    df_full = df_full.dropna(subset=[args.type])
+    # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
+    # Map several names for common groups for body_site
+    body_site_map = {
+        "gut": "stool",
+        "nose": "nasal",
+        "vagina": "vaginal",
+        "teeth": "oral"
+    }
+    # convert all body_site with map
+    df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map[x] if x in body_site_map else x)
+    plotbuffer = dict()
+    if args.distributions:
+        stats_dict = import_distributions(
+            df_full,
+            args.distributions,
+            args.type
+        )
+
+        for index, row in df_full.iterrows():
+            # taxid, body_site, stats, args, result_df
+            # if taxid and body site not in stats dict then make it empty or 0
+            if (row[args.type], row['body_site']) not in stats_dict:
+                stats = {
+                    'mean': 0,
+                    'std': 0,
+                    "min_abundance":0,
+                    "max_abundance": 0,
+                    "variance": 0,
+                    "body_site": "Unknown",
+                    "tax_id": "Unknown",
+                    "name": "Unknown",
+                    "rank": "Unknown",
+                    "abundances": []
+                }
+            else:
+                stats = stats_dict[(row[args.type], row['body_site'])]
+            rank = stats['rank']
+            buffer = make_vplot(
+                row[args.type],
+                stats,
+                args.type,
+                df_full
+            )
+            plotbuffer[(row[args.type], row['body_site'])] = buffer
+    # convert all locations nan to "Unknown"
+    df_full['Sites'] = df_full['Sites'].fillna("Unknown")
+
+    df_identified, df_unidentified = split_df(df_full)
+
+    remap_headers = {
+        "Name": "Organism",
+        "name": "Organism",
+        "# Aligned": "# Aligned to Sample",
+        "body_site": "Sample Type",
+        "abundance": "% Reads in Sample",
+        "Sites": "Locations",
+        "% Total Reads": "% Reads in Sample",
+        "Type": "Class",
+    }
+    df_identified= df_identified.rename(columns=remap_headers)
+    df_unidentified= df_unidentified.rename(columns=remap_headers)
+
+    create_report(
+        args.output,
+        df_identified,
+        df_unidentified,
+        plotbuffer
+    )
+
+
+
+
+
+
+    # create_report(args.output, df_identified, df_unidentified)
 if __name__ == "__main__":
     main()
 
