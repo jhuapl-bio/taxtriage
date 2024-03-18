@@ -15,6 +15,10 @@
 
 ![](assets/taxtriage_schematics.png)
 
+### About
+
+TaxTriage is designed in concordance with CDC recommendations to provide clinical environments the necessary tools to generate classification reports (using Kraken2) in a metagenomics scope. It is bundled with Nextflow to provide a seamless installation and usage experience. It is currently being developed so is subject for change at a rapid rate.
+
 #### Alerts
 
 :warning: If you make changes to the code within a nextflow-pulled repo, a change can result in a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters. If you expect to make local changes frequently, you should just `git clone` and `git pull` manually and run the pipeline from the `main.nf` file. See [here](https://github.com/jhuapl-bio/taxtriage?tab=readme-ov-file#running-on-local-nf-files-test-config) for more info
