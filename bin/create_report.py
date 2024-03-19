@@ -169,7 +169,7 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
     if include_headers:
         headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
         if len(plot_dict.keys()) > 0:
-            headers.append(Paragraph('<b>Distribution Metric</b>', styles['Normal']))  # Plot column header
+            headers.append(Paragraph('<b>Percentile of Healthy Subject</b>', styles['Normal']))  # Plot column header
         data.append(headers)
     for index, row in df.iterrows():
         row_data = [Paragraph(format_cell_content(str(cell)), styles['Normal']) for cell in row[columns][:]]  # Exclude plot data
