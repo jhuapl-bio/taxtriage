@@ -251,6 +251,14 @@
                     "description": "Reference FASTA file to use instead of using ncbi API to pull genomes. Useful for offlined pipelines",
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
+                },
+                "distributions": {
+                    "type": "string",
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "List of all metagenome distributions that contain abundances found in public HMP data for each taxa and body site combination",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
                 }
             }
         },

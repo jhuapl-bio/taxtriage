@@ -25,7 +25,7 @@ process PATHOGENS_MERGE_REPORT {
         'jhuaplbio/reportlab-pdf:4.0.7' }"
 
     input:
-    tuple file(files_of_pathogens)
+    file files_of_pathogens
 
     output:
         path "versions.yml"           , emit: versions
