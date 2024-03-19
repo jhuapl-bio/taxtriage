@@ -65,7 +65,7 @@ def parse_args(argv=None):
         help="List of taxIDs or names",
     )
     parser.add_argument(
-        "-d",
+        "-b",
         "--db",
         metavar="DB",
         default="nuccore",
@@ -144,6 +144,14 @@ def parse_args(argv=None):
         type=str,
         help="Email for entrez querying, optional",
     )
+    parser.add_argument(
+        "-d",
+        "--dry_run",
+        action='store_true',
+        default=False,
+        help="Only Dry run the total filesizes of download",
+    )
+
     parser.add_argument(
         "-o",
         "--file_out",
@@ -405,8 +413,46 @@ def get_hits_from_file(filenames, colnumber):
                 if name not in taxids:
                     taxids.append(name)
     return taxids
+def return_format_size(size_in_bytes):
+    # convert bytes to gb, mb or tb
+    format = "bytes"
+    if size_in_bytes > 1000000000000:
+        format = "tb"
+        size_in_bytes = size_in_bytes/1000000000000
+    elif size_in_bytes > 1000000000:
+        format = "gb"
+        size_in_bytes = size_in_bytes/1000000000
+    elif size_in_bytes > 1000000:
+        format = "mb"
+        size_in_bytes = size_in_bytes/1000000
+    elif size_in_bytes > 1000:
+        format = "kb"
+        size_in_bytes = size_in_bytes/1000
+    return size_in_bytes, format
+def check_size(assemblies, GCFs_to_skip):
+    final_size = 0
+    i = 0
+    for key, value in assemblies.items():
+        # retrieve the expected size of the file at value.reference
+        ftp_site = value['reference']
+        try:
+            with closing(request.urlopen(ftp_site, context=ctx)) as r:
+                final_size = final_size + int(r.info()['Content-Length'])
+                r.close()
+        except Exception as ex:
+            print("Could not get info for file", ftp_site, ex)
+            raise ex
+        finally:
+            i+=1
+            if i % 100== 0:
+                print("Checked", i, "files")
+                format_size, format = return_format_size(final_size)
+                print("Current size is", format_size, format)
+    format_size, format = return_format_size(final_size)
 
+    print("Total size of files to download is", format_size, format)
 
+    return final_size
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
     args = parse_args(argv)
@@ -479,20 +525,22 @@ def main(argv=None):
     # Now use the assembly refseq file to get the ftp path and download the fasta files
     print("Get assemblies now")
 
-
-    get_assemblies(
-        assemblies, #this is the top hits from the input file you want to retrieve
-        args.file_out, # this is the file you want to write to
-        GCFs_to_skip, # this is the list of GCFs you want to skip
-        args.refresh # this is the boolean to check if you want to refresh the file
-    )
-    if args.gcf_map:
-        with open(args.gcf_map, "w") as w:
-            for key, value in assemblies.items():
-                for chr in value['chrs']:
-                    outstring = f"{chr['acc']}\t{value['accession']}\t{key}\t{chr['name']}"
-                    w.write(f"{outstring}\n")
-        w.close()
+    if args.dry_run:
+        check_size(assemblies, GCFs_to_skip)
+    else:
+        get_assemblies(
+            assemblies, #this is the top hits from the input file you want to retrieve
+            args.file_out, # this is the file you want to write to
+            GCFs_to_skip, # this is the list of GCFs you want to skip
+            args.refresh # this is the boolean to check if you want to refresh the file
+        )
+        if args.gcf_map:
+            with open(args.gcf_map, "w") as w:
+                for key, value in assemblies.items():
+                    for chr in value['chrs']:
+                        outstring = f"{chr['acc']}\t{value['accession']}\t{key}\t{chr['name']}"
+                        w.write(f"{outstring}\n")
+            w.close()
 
 if __name__ == "__main__":
     sys.exit(main())
