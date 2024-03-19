@@ -27,6 +27,18 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
+                "metaphlan": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Metaphlan"
+                },
+                "centrifuge_db": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Centrifuge"
+                },
                 "outdir": {
                     "type": "string",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
@@ -82,6 +94,12 @@
                     "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
                     "default": "default",
                     "description": "Taxonomy tab file for krona plots",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "taxdump": {
+                    "type": "string",
+                    "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
+                    "description": "",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "save_reads_assignment": {
@@ -233,6 +251,14 @@
                     "description": "Reference FASTA file to use instead of using ncbi API to pull genomes. Useful for offlined pipelines",
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
+                },
+                "distributions": {
+                    "type": "string",
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "description": "List of all metagenome distributions that contain abundances found in public HMP data for each taxa and body site combination",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
                 }
             }
         },
@@ -267,6 +293,12 @@
                 "skip_krona": {
                     "type": "boolean",
                     "description": "Skip Krona Plots",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "skip_classified_fastqs": {
+                    "type": "boolean",
+                    "description": "Skip saving classified fastqs",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },

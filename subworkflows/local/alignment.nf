@@ -177,7 +177,8 @@ workflow ALIGNMENT {
         sorted_bams
     )
     ch_bamstats = RSEQC_BAMSTAT.out.txt
-    ch_bams =  sorted_bams
+    ch_bams =  sorted_bams_with_index
+
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
     emit:

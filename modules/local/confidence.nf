@@ -24,7 +24,7 @@ process CONFIDENCE_METRIC {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bam), path(depth), path(mapping)
+    tuple val(meta), path(bam), path(bai), path(depth), path(mapping)
 
     output:
     tuple val(meta), path("*.confidences.tsv"), optional: false, emit: tsv

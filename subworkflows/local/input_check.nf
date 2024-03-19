@@ -46,6 +46,14 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.fastq_2 = row.fastq_2
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
     meta.single_end = row.fastq_2  ? false : true
+    // Check if fastq_1 exists if not then error out and print error
+    if (!file(meta.fastq_1).exists()) {
+        exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
+    }
+    if (!meta.single_end && !file(meta.fastq_2).exists()) {
+        exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
+    }
+
     if (row.trim && row.trim.toLowerCase() == "true"){
         meta.trim = true
     } else if (!row.trim  || (row.trim && row.trim.toLowerCase() == "false")){

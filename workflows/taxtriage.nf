@@ -49,6 +49,13 @@ if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== '
 
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
+// check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
+if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
+    exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
+}
+
+
+
 // Check mandatory parameters
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
@@ -61,6 +68,9 @@ if (params.minq) {
     println 'Min Quality set to default'
 }
 
+// if params.save_fastq_classified then set ch_save_fastq_classified to true
+// else set ch_save_fastq_classified to false
+ch_save_fastq_classified = params.skip_classified_fastq ? false : true
 ch_assembly_txt = null
 ch_kraken_reference = false
 
@@ -176,6 +186,7 @@ include { MAKE_FILE } from '../modules/local/make_file'
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
+include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
@@ -203,6 +214,11 @@ include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../modules/local/krakenreport'
+//include { CENTRIFUGE_CENTRIFUGE } from '../modules/nf-core/centrifuge/centrifuge/main'
+//include { CENTRIFUGE_KREPORT } from '../modules/nf-core/centrifuge/kreport/main'
+include { METAPHLAN_METAPHLAN } from '../modules/nf-core/metaphlan/metaphlan/main'
+include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main'
+include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
@@ -212,6 +228,7 @@ include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main
 include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
 include { FEATURES_TO_BED } from '../modules/local/convert_features_to_bed'
+include { FEATURES_MAP } from '../modules/local/features_map'
 include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include {  FEATURES_DOWNLOAD } from '../modules/local/download_features'
@@ -282,6 +299,15 @@ workflow TAXTRIAGE {
         }
     }
 
+    ch_taxdump_dir = Channel.empty()
+    if (params.classifier){
+        // split params.classifier on command and optional space assign to list channel
+        ch_classifier = params.classifiers.split(",\\s*")
+    } else {
+        ch_classifier = ['kraken2']
+    }
+
+
     if (!ch_assembly_txt) {
         println 'empty'
         GET_ASSEMBLIES()
@@ -308,6 +334,7 @@ workflow TAXTRIAGE {
         ch_input
     )
     ch_reads = INPUT_CHECK.out.reads
+
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
     )
@@ -390,24 +417,34 @@ workflow TAXTRIAGE {
 
     }
     ch_filtered_reads = ch_reads
+    ch_profile = Channel.empty()
+    ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
+
     def empty_organism_file = false
     if (!params.skip_kraken2){
         // // // // // //
         // // // // // // MODULE: Run Kraken2
         // // // // // //
+
+        // // // // // // //
+        // // // // // // // MODULE: Run Kraken2
+        // // // // // // //
         KRAKEN2_KRAKEN2(
             ch_reads,
             ch_db,
-            true,
+            ch_save_fastq_classified,
             true
         )
 
         ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
+
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
         )
+
         ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+
         ch_combined = ch_krona_txt
                     .map{ it[1] }        // Get the file path
                     .collect()            // Collect all file parts into a list
@@ -443,22 +480,47 @@ workflow TAXTRIAGE {
         FILTERKRAKEN(
             MERGEDKRAKENREPORT.out.krakenreport
         )
-        ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        if (ch_save_fastq_classified){
+            ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        }
 
         if (params.fuzzy){
             ch_organisms = TOP_HITS.out.names
         } else {
             ch_organisms = TOP_HITS.out.taxids
         }
+        // mix ch_organisms_to_download with ch_organisms 2nd index list
+        ch_organisms_to_download = ch_organisms_to_download.join(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
+
+
+
 
         ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
-    } else if (params.organisms_file){
+    }
+
+
+    if (params.organisms_file){
         // check if params.organisms is a file or a string
         ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
+        ch_organisms_to_download = ch_organisms_to_download.combine(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
     } else if (params.organisms) {
         ch_organisms_taxids = Channel.from(params.organisms)
         // print params.organisms as a tsv, separated by space per
@@ -466,8 +528,42 @@ workflow TAXTRIAGE {
             ch_organisms_taxids
         )
         ch_organisms = MAKE_FILE.out.file
+
+        ch_organisms_to_download = ch_organisms_to_download.combine(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
     }
 
+    if (params.metaphlan) {
+
+        METAPHLAN_METAPHLAN(
+            ch_reads,
+            params.metaphlan
+        )
+        ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
+                return [ meta, file, 'metaphlan' ]
+            }
+        }
+        // make ch_metaphlan  from params.metaphlan database path
+        if (!params.taxdump){
+            DOWNLOAD_TAXDUMP()
+            ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
+        } else if (params.taxdump) {
+            ch_taxdump_dir = Channel.fromPath(params.taxdump)
+            println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
+        }
+        // append METAPHLAN_METAPHLAN.out.report to ch_profile
+        TAXPASTA_STANDARDISE(
+            ch_metaphlan_report,
+            ch_taxdump_dir
+        )
+        ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
+    }
 
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
@@ -476,6 +572,8 @@ workflow TAXTRIAGE {
     ch_mapped_assemblies = Channel.empty()
     ch_reads_to_align = Channel.empty()
 
+
+    // If you use a local genome Refseq FASTA file
     if (params.reference_fasta) { //
         // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
         ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
@@ -494,32 +592,20 @@ workflow TAXTRIAGE {
 
         ch_mapped_assemblies = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
         ch_accessions = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
-    } else  {
-        if (params.skip_kraken2) {
-            ch_pre_download = ch_filtered_reads.combine(ch_organisms)
-
-        } else {
-            ch_pre_download = ch_filtered_reads.map {
-                meta, readsclass ->  return [ meta, readsclass ]
-            }.join(ch_organisms)
-        }
-
-
-
-
-        DOWNLOAD_ASSEMBLY(
-            ch_pre_download.map {
-                meta, readsclass, report ->  return [ meta, report ]
-            },
-            ch_assembly_txt
-        )
-        ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
-
-
-        ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
-        ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
-
     }
+
+
+    DOWNLOAD_ASSEMBLY(
+        ch_organisms_to_download.map {
+            meta, report ->  return [ meta, report ]
+        },
+        ch_assembly_txt
+    )
+    ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
+
+    ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
+    ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
+
     if (params.get_features){
 
         FEATURES_DOWNLOAD(
@@ -532,7 +618,11 @@ workflow TAXTRIAGE {
         )
 
         ch_bedfiles = FEATURES_TO_BED.out.bed
+
+
+
     }
+
 
     if (!params.skip_realignment) {
         if (params.get_features){
@@ -549,6 +639,7 @@ workflow TAXTRIAGE {
             ch_reads_to_align
         )
 
+
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies),
             ch_pathogens
@@ -564,10 +655,18 @@ workflow TAXTRIAGE {
 
         ch_combined = ch_alignment_outmerg
             .join(ch_mapped_assemblies, by: 0, remainder: true)
-            .map { meta, bam, depth, mapping ->
+            .map { meta, bam, bai, depth, mapping ->
                 // If mapping is not present, replace it with null or an empty placeholder
-                return [meta, bam, depth, mapping ?: ch_empty_file]
+                return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
+        if (params.get_features){
+
+            FEATURES_MAP(
+                ch_combined.map {
+                    meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+                }.join(ch_bedfiles)
+            )
+        }
 
         if (!params.skip_confidence) {
             CONFIDENCE_METRIC(
