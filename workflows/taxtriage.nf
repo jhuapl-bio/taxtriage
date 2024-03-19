@@ -512,15 +512,14 @@ workflow TAXTRIAGE {
 
     if (params.organisms_file){
         // check if params.organisms is a file or a string
-        ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
-        ch_organisms_to_download = ch_organisms_to_download.combine(
-            ch_organisms
-        ).map{
-            meta, report, organisms -> {
-                report.add(organisms)
+        ch_organisms = file(params.organisms_file, checkIfExists: true)
+        ch_organisms_to_download = ch_organisms_to_download.map{
+            meta, report -> {
+                report.add(ch_organisms)
                 return [meta, report]
             }
         }
+        ch_organisms_to_download.view()
     } else if (params.organisms) {
         ch_organisms_taxids = Channel.from(params.organisms)
         // print params.organisms as a tsv, separated by space per
