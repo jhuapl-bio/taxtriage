@@ -418,6 +418,7 @@ workflow TAXTRIAGE {
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
+    ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
 
     def empty_organism_file = false
     if (!params.skip_kraken2){
@@ -488,15 +489,38 @@ workflow TAXTRIAGE {
         } else {
             ch_organisms = TOP_HITS.out.taxids
         }
+        // mix ch_organisms_to_download with ch_organisms 2nd index list
+        ch_organisms_to_download = ch_organisms_to_download.join(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
+
+
+
 
         ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
-    } else if (params.organisms_file){
+    }
+
+
+    if (params.organisms_file){
         // check if params.organisms is a file or a string
         ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
+        ch_organisms_to_download = ch_organisms_to_download.combine(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
     } else if (params.organisms) {
         ch_organisms_taxids = Channel.from(params.organisms)
         // print params.organisms as a tsv, separated by space per
@@ -504,6 +528,15 @@ workflow TAXTRIAGE {
             ch_organisms_taxids
         )
         ch_organisms = MAKE_FILE.out.file
+
+        ch_organisms_to_download = ch_organisms_to_download.combine(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
     }
 
     if (params.metaphlan) {
@@ -539,6 +572,8 @@ workflow TAXTRIAGE {
     ch_mapped_assemblies = Channel.empty()
     ch_reads_to_align = Channel.empty()
 
+
+    // If you use a local genome Refseq FASTA file
     if (params.reference_fasta) { //
         // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
         ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
@@ -557,28 +592,20 @@ workflow TAXTRIAGE {
 
         ch_mapped_assemblies = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
         ch_accessions = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
-    } else  {
-        if (params.skip_kraken2) {
-            ch_pre_download = ch_filtered_reads.combine(ch_organisms)
-
-        } else {
-            ch_pre_download = ch_filtered_reads.map {
-                meta, readsclass ->  return [ meta, readsclass ]
-            }.join(ch_organisms)
-        }
-
-        DOWNLOAD_ASSEMBLY(
-            ch_pre_download.map {
-                meta, readsclass, report ->  return [ meta, report ]
-            },
-            ch_assembly_txt
-        )
-        ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
-
-        ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
-        ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
-
     }
+
+
+    DOWNLOAD_ASSEMBLY(
+        ch_organisms_to_download.map {
+            meta, report ->  return [ meta, report ]
+        },
+        ch_assembly_txt
+    )
+    ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
+
+    ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
+    ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
+
     if (params.get_features){
 
         FEATURES_DOWNLOAD(
