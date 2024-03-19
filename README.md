@@ -9,17 +9,37 @@
 [![Follow on Twitter](http://img.shields.io/badge/twitter-%40nf__core-1DA1F2?labelColor=000000&logo=twitter)](https://twitter.com/nf_core)
 [![Watch on YouTube](http://img.shields.io/badge/youtube-nf--core-FF0000?labelColor=000000&logo=youtube)](https://www.youtube.com/c/nf-core)
 
-## Introduction
 
-<!-- TODO nf-core: Write a 1-2 sentence summary of what data the pipeline is for and what it does -->
+## About
+
+TaxTriage a flexible, containerized bioinformatics pipeline for identification of pathogens within short- or long-read metagenomic sequence data, generated from complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood). The workflow includes various software packages to perform quality control, classification, read mapping, as well as generation of confidence metrics and a final report listing anticipated pathogens of relevance. 
 
 ![](assets/taxtriage_schematics.png)
+
+
+### Description
+
+
+Tax Triage is designed as a pipeline to democratize metagenomic sequence analysis for use in public health for early warning, outbreak investigation, and potentially in clinical settings. To this end, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from tissues (human or animal). The intent is to provide non-bioinformaticians a tool capable of generating species-level identifications of pathogens from raw metagenomic or targeted sequencing data. Specific modules to be used depend on sequencing chemistry and settings are anticipated to vary based on specimen type. Strain, variant, or clade-level distinction may be possible with specialized datasets, but it is anticipated that level of granularity would require subsequent, specialized analyses.
+
+- Quality control steps
+- In-silico host depletion
+- Classification of reads
+- Mapping of reads to reference genomes
+- Confidence metric generation (e.g., depth/breadth of coverage, %nt ID)
+- Threshold mechanisms
+- De-novo assembly
+- Detailed MultiQC reports
+- Concise final report (intended to have all data fields required for use in clinical settings)
+
+For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). 
+
+Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August.
+
 
 #### Alerts
 
 :warning: If you make changes to the code within a nextflow-pulled repo, a change can result in a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters. If you expect to make local changes frequently, you should just `git clone` and `git pull` manually and run the pipeline from the `main.nf` file. See [here](https://github.com/jhuapl-bio/taxtriage?tab=readme-ov-file#running-on-local-nf-files-test-config) for more info
-
-**TaxTriage** is a bioinformatics best-practice analysis pipeline for APHL pipeline for triage classification reports.
 
 The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It uses Docker/Singularity containers making installation trivial and results highly reproducible. The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. Where possible, these processes have been submitted to and installed from [nf-core/modules](https://github.com/nf-core/modules) in order to make them available to all nf-core pipelines, and to everyone within the Nextflow community!
 
