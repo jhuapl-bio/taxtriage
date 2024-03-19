@@ -17,7 +17,7 @@
 # OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
-
+import os
 import pandas as pd
 import numpy as np
 from reportlab.lib import colors
@@ -347,7 +347,6 @@ def create_report(
 
 
 
-
 def main():
     args = parse_args()
     df_full = import_data(args.input)
@@ -368,7 +367,7 @@ def main():
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map[x] if x in body_site_map else x)
     plotbuffer = dict()
-    if args.distributions:
+    if args.distributions and os.path.exists(args.distributions):
         stats_dict = import_distributions(
             df_full,
             args.distributions,
