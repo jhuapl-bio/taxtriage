@@ -575,7 +575,6 @@ workflow TAXTRIAGE {
         )
         ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
 
-
         ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
         ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
 
