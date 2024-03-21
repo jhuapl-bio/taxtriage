@@ -202,12 +202,7 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "mm2_indices": {
-                    "type": "string",
-                    "format": "file-path",
-                    "description": "Path to Minimap2 index file. If not called, it auto creates it from the relevant FASTA file for each sample. Only usable with --reference_fasta",
-                    "fa_icon": "fas fa-file-signature"
-                },
+
                 "bt2_indices": {
                     "type": "string",
                     "format": "file-path",
