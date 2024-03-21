@@ -119,10 +119,11 @@ def import_data(inputfile ):
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
     # trim all of NAme column  of whitespace either side
     df['Name'] = df['Name'].str.strip()
+    df['Organism'] = df['Name']
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
             #  update index of row to change organism name to bold
-            df.at[row_idx, 'Organism'] = f'{row.Organism}*'
+            df.at[row_idx, 'Name'] = f'{row.Name}*'
 
     return df
 
