@@ -55,8 +55,6 @@ workflow ALIGNMENT {
 
     if (params.bt2_indices){
         ch_indices = ch_aligners.shortreads.map{ m, fastq, fasta, bed, map -> return [ m, fastq, file(params.bt2_indices) ] }
-
-
         println("Using pre-built indices provided $params.bt2_indices")
     } else {
         println("Building indices from FASTA references")
@@ -78,9 +76,22 @@ workflow ALIGNMENT {
     illumina_alignments = ch_aligners.shortreads.join(
         BOWTIE2_ALIGN.out.aligned
     )
+    if (params.mm2_indices){
+        ch_indices = ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> return [ m, fastq, file(params.mm2_indices) ] }
+        println("Using pre-built indices provided $params.mm2_indices")
+    } else {
+        MINIMAP2_INDEX(
+            ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> return [ m, fasta ] }
+        )
+        MINIMAP2_INDEX.out.index.view()
+        ch_aligners.longreads.map{  m, fastq, fasta, bed, map ->
+            return [ m, fastq, fasta ]
+        }.join(MINIMAP2_INDEX.out.index).set { ch_indices  }
+    }
+    ch_indices.view()
 
     MINIMAP2_ALIGN(
-        ch_aligners.longreads.map{ m, fastq, fasta, bed, map -> [ m, fastq, fasta ] },
+        ch_indices,
         true,
         true,
         true
