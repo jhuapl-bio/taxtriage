@@ -93,11 +93,13 @@
                     "type": "string",
                     "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
                     "default": "default",
+                    "format": "file-path",
                     "description": "Taxonomy tab file for krona plots",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "taxdump": {
                     "type": "string",
+                    "format": "file-path",
                     "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
                     "description": "",
                     "fa_icon": "fas fa-file-signature"
@@ -177,6 +179,7 @@
                 },
                 "organisms_file": {
                     "type": "string",
+                    "format": "file-path",
                     "hint": "Options: [string or single column list of taxids or organism names]. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",
                     "description": "Either a file or string of taxids separated by a space, or organisms names with '' enclosure",
                     "fa_icon": "fas fa-file-signature"
@@ -199,9 +202,16 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "mm2_indices": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Path to Minimap2 index file. If not called, it auto creates it from the relevant FASTA file for each sample. Only usable with --reference_fasta",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "bt2_indices": {
                     "type": "string",
-                    "description": "Path to Bowtie2 indices (directory). If not called, it auto creates it from the relevant FASTA file for each sample",
+                    "format": "file-path",
+                    "description": "Path to Bowtie2 indices (directory). If not called, it auto creates it from the relevant FASTA file for each sample. Only usable with --reference_fasta",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "bt2_scoremin": {
@@ -361,6 +371,7 @@
                 },
                 "multiqc_config": {
                     "type": "string",
+                    "format": "file-path",
                     "description": "Config file for multiqc",
                     "fa_icon": "fas fa-file-signature"
                 }
