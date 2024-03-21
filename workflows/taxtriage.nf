@@ -591,19 +591,22 @@ workflow TAXTRIAGE {
 
         ch_mapped_assemblies = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
         ch_accessions = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
+    } else {
+        DOWNLOAD_ASSEMBLY(
+            ch_organisms_to_download.map {
+                meta, report ->  return [ meta, report ]
+            },
+            ch_assembly_txt
+        )
+        ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
+
+        ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
+        ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
+
     }
 
 
-    DOWNLOAD_ASSEMBLY(
-        ch_organisms_to_download.map {
-            meta, report ->  return [ meta, report ]
-        },
-        ch_assembly_txt
-    )
-    ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
 
-    ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
-    ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
 
     if (params.get_features){
 
