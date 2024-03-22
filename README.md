@@ -145,7 +145,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage  \
   --outdir tmp_viral \
   -resume \
   --input examples/Samplesheet.csv \
-  --taxtab "default" -r main -latest \
+  -r main -latest \
   --db "viral" --download-db \
   -profile local,docker
 ```
