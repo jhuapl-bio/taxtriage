@@ -49,8 +49,8 @@ process DOWNLOAD_ASSEMBLY {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def email = params.email ? " -e ${params.email}" : ""
     def column = " -c 1 "
-    def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5 "
-    def matchcol = params.fuzzy ? " -a 7 "  : " -a 5 "
+    def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5,6 "
+    def matchcol = params.fuzzy ? " -a 7 "  : " -a 5,6 "
     def refresh_download = params.refresh_download ? " -r " : ""
     def type = hits_containing_file ? " -f file " : " -f list  "
 

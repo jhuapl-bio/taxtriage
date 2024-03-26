@@ -107,8 +107,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "-a",
         "--assembly_names",
-        type=int,
-        default=5,
+        type=str,
+        default="5,6",
         help="Assembly refseq accession and taxid or name to be matched to the imported taxids",
     )
     parser.add_argument(
@@ -192,6 +192,8 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
     # nameidx is the column where the name to the fasta file is to be
     if (not isinstance(input, list)):
         input = input.split(" ")
+    matchcol = str(matchcol)
+    assembly_cols = [int(x) for x in matchcol.split(",")]
     def get_url(utl, id):
         bb = os.path.basename(utl)
         return utl+"/"+bb+"_genomic.fna.gz"
@@ -204,16 +206,17 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             line = line.strip()
             linesplit = line.split("\t")
             gcfidx = linesplit[idx]
-            matchidx = str(linesplit[matchcol])
+            matchidces = [linesplit[x] for x in assembly_cols]
+            # get values of linepslit for indexes in assembly_cols
             namecol = linesplit[nameidx]
             urlcol = linesplit[index_ftp]
             formatted_header = namecol.replace(" ", "_")
             formatted_header = str(formatted_header)
-            if len(linesplit) >= 12 and (matchidx in input):
-
+            if len(linesplit) >= 12 and ( any(x in matchidces for x in input) ):
                 if namecol not in priorities:
                     priorities[namecol] = dict()
-                seencols[matchidx] = True
+                for mtdx in matchidces:
+                    seencols[mtdx] = True
                 obj = dict(
                     id="{}|{}".format(
                         gcfidx,
@@ -479,6 +482,7 @@ def main(argv=None):
         seen_in_tops = get_hits_from_file(args.input, args.colnumber_file_hits)
     else:
         seen_in_tops = args.input
+
     assemblies = import_assembly_file(
         seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path
     )
