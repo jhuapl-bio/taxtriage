@@ -117,6 +117,7 @@
                 },
                 "top_hits_count": {
                     "type": "number",
+                    "default": 400,
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
