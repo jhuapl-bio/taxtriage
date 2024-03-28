@@ -288,7 +288,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
     assembliesformat = dict()
     for key, item in assemblies.items():
 
-        assembliesformat[item['name']] = dict(
+        assembliesformat[item['organism']] = dict(
             accession=item['accession'],
             id=item['id'],
             name=item['name'],
