@@ -234,6 +234,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
                     accession = gcfidx,
                     characteristic = None,
                     chrs = [],
+                    organism = namecol,
                     reference=get_url(urlcol, gcfidx),
                     name = formatted_header,
                 )
@@ -284,7 +285,18 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             assemblies[key] = value['3']
         else:
             print("No reference genome found for", key)
-    return assemblies
+    assembliesformat = dict()
+    for key, item in assemblies.items():
+
+        assembliesformat[item['name']] = dict(
+            accession=item['accession'],
+            id=item['id'],
+            name=item['name'],
+            reference=item['reference'],
+            chrs=item['chrs'],
+        )
+
+    return assembliesformat
 
 
 def get_assembly_summary(id):

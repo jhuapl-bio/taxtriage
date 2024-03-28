@@ -61,16 +61,15 @@ workflow HOST_REMOVAL {
                     ch_meta_reference_fasta
                 )
                 ch_bt2_index = FILTER_BOWTIE2_IDX.out.index
+
             }
             FILTER_BOWTIE2(
-                ch_aligned_for_filter.shortreads.map{ m, fastq -> return [m, fastq] },
-                ch_bt2_index,
+                ch_aligned_for_filter.shortreads.map{ m, fastq -> return [m, fastq] }.combine(ch_bt2_index.map{ m, idx -> return idx }),
                 true,
                 true
             )
             FILTER_MINIMAP2(
-                ch_aligned_for_filter.longreads.map{ m, fastq -> return [m, fastq] },
-                ch_reference_fasta_removal,
+                ch_aligned_for_filter.longreads.map{ m, fastq -> return [m, fastq, ch_reference_fasta_removal] },
                 true,
                 true,
                 true
