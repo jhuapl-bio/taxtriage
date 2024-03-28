@@ -95,8 +95,8 @@ if (matches) {
 // }
 
 // if skip_kraken2 and reference_fasta is empty AND organisms is empty and organisms_file is empty print and exit that organisms is required
-if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
-    exit 1, "If you are skipping kraken2, you must provide a reference fasta, organisms or organisms_file"
+if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+    exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
 }
 
 // if params.pathogens, check if file ends with .tsv or .txt
@@ -186,6 +186,7 @@ include { MAKE_FILE } from '../modules/local/make_file'
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
+include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
@@ -273,6 +274,12 @@ workflow TAXTRIAGE {
         ],
 
     ]
+    ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+
+    if (params.get_pathogens){
+        DOWNLOAD_PATHOGENS()
+        ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
+    }
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
     if (params.download_db) {
@@ -519,7 +526,6 @@ workflow TAXTRIAGE {
                 return [meta, report]
             }
         }
-        ch_organisms_to_download.view()
     } else if (params.organisms) {
         ch_organisms_taxids = Channel.from(params.organisms)
         // print params.organisms as a tsv, separated by space per
@@ -570,27 +576,37 @@ workflow TAXTRIAGE {
     ch_alignment_stats = Channel.empty()
     ch_mapped_assemblies = Channel.empty()
     ch_reads_to_align = Channel.empty()
-
-
     // If you use a local genome Refseq FASTA file
-    if (params.reference_fasta) { //
+    ch_reference_fasta.view()
+    // if ch_refernece_fasta is empty
+
+    if (params.reference_fasta || params.get_pathogens) { //
         // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
-        ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
-
         // merge ch_reference_fasta on all of the krakenreports. single channel merged to multiple
-        ch_filtered_reads = ch_filtered_reads.combine(
-            ch_reference_fasta
-        )
-
         MAP_LOCAL_ASSEMBLY_TO_FASTA(
-            ch_filtered_reads.map {
-                meta, readsclass, fasta ->  return [ meta, fasta ]
+            ch_reference_fasta.map {  fasta ->  {
+                    // get basename of fasta path
+                    def basen = fasta.getName()
+                    return [ [id: basen ], fasta ]
+                }
             },
             ch_assembly_txt
         )
+        ch_filtered_reads = ch_filtered_reads.combine(
+            ch_reference_fasta
+        )
+        ch_filtered_reads.map {
+            meta, reads, fasta -> {
+                return [ meta ]
+            }
+        }.combine(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }).set{ch_mapped_assemblies }
+        ch_filtered_reads.map {
+            meta, reads, fasta -> {
+                return [ meta ]
+            }
+        }.combine(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, accessions ->  return accessions  }).set{ch_accessions }
 
-        ch_mapped_assemblies = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
-        ch_accessions = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
+
     } else {
         DOWNLOAD_ASSEMBLY(
             ch_organisms_to_download.map {
@@ -604,9 +620,6 @@ workflow TAXTRIAGE {
         ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
 
     }
-
-
-
 
     if (params.get_features){
 
@@ -624,7 +637,6 @@ workflow TAXTRIAGE {
 
 
     }
-
 
     if (!params.skip_realignment) {
         if (params.get_features){

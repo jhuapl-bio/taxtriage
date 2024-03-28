@@ -165,6 +165,13 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "get_pathogens": {
+                    "type": "boolean",
+                    "schema": "assets/schema_input.json",
+                    "description": "Pull remote pathogens reference file from GH",
+                    "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
+                    "fa_icon": "fas fa-file-csv"
+                },
                 "pathogens": {
                     "type": "string",
                     "format": "file-path",

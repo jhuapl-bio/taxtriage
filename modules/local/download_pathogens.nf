@@ -14,63 +14,26 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process DOWNLOAD_ASSEMBLY {
+process DOWNLOAD_PATHOGENS {
+
     label 'process_medium'
-    tag "$meta.id"
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'docker://pegi3s/biopython:latest' :
-        'biocontainers/biopython:1.75' }"
-
-
-
-
-    input:
-    tuple val(meta), path(hits_containing_file)
-    path assembly
-
+        'https://depot.galaxyproject.org/singularity/gnu-wget%3A1.18--h7132678_6' :
+        'biocontainers/gnu-wget:1.18--h36e9172_9' }"
 
     output:
-    tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
-    tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: accessions
-    tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mappings
-    tuple val(meta),  path("missing.txt"), optional: true, emit: missings
-    path "versions.yml"           , emit: versions
+        path("pathogens.fasta"), optional: false, emit: fasta
 
     when:
     task.ext.when == null || task.ext.when
 
 
-
-
-
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def email = params.email ? " -e ${params.email}" : ""
-    def column = " -c 1 "
-    def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5,6 "
-    def matchcol = params.fuzzy ? " -a 7 "  : " -a 5,6 "
-    def refresh_download = params.refresh_download ? " -r " : ""
-    def type = hits_containing_file ? " -f file " : " -f list  "
-
-
+    def url = "https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz"
     """
-
-
-
-    download_fastas.py \\
-            -i  ${hits_containing_file} \\
-            -o ${meta.id}.output.references.fasta ${refresh_download} \\
-            ${email} $type -g ${meta.id}.gcfmapping.tsv \\
-            -t ${assembly} -k  $column $columnAssembly -y 7 -r
-
-    cut -f 2 ${meta.id}.gcfmapping.tsv  | sort | uniq  > ${meta.id}.output.gcfids.txt
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        python: \$(python3 --version )
-    END_VERSIONS
+    wget $url -O pathogens.fasta.gz && gzip -d pathogens.fasta.gz
 
     """
 }

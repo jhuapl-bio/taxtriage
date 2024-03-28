@@ -208,15 +208,24 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             gcfidx = linesplit[idx]
             matchidces = [linesplit[x] for x in assembly_cols]
             # get values of linepslit for indexes in assembly_cols
+            # namecol = linesplit[nameidx]
             namecol = linesplit[nameidx]
             urlcol = linesplit[index_ftp]
             formatted_header = namecol.replace(" ", "_")
             formatted_header = str(formatted_header)
-            if len(linesplit) >= 12 and ( any(x in matchidces for x in input) ):
+            match_index = -1
+            for match in matchidces:
+                if match in input:
+                    # If a match is found, get the index from 'input_list'
+                    match_index = input.index(match)
+                    break  # Stop searching after the first match is found
+            if len(linesplit) >= 12 and ( match_index > -1):
+                # get the value for which x in matchidcs is in input array
+                matchval = input[match_index]
+
                 if namecol not in priorities:
-                    priorities[namecol] = dict()
-                for mtdx in matchidces:
-                    seencols[mtdx] = True
+                    priorities[matchval] = dict()
+                seencols[matchval] = True
                 obj = dict(
                     id="{}|{}".format(
                         gcfidx,
@@ -230,27 +239,28 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
                 )
 
                 #If the refseq_category column in the assembly.txt is reference genome
-                if linesplit[4] == "representative genome" and priorities[namecol].get('0') is None:
+                if linesplit[4] == "representative genome" and priorities[matchval].get('0') is None:
                     obj['characteristic'] = "representative"
-                    priorities[namecol]['0'] = obj
-                elif linesplit[4] == "reference genome" and priorities[namecol].get('1') is None:
+                    priorities[matchval]['0'] = obj
+                elif linesplit[4] == "reference genome" and priorities[matchval].get('1') is None:
                     obj['characteristic'] = "reference"
-                    priorities[namecol]['1'] = obj
-                elif linesplit[11] == "Complete Genome" and priorities[namecol].get('2') is None:
+                    priorities[matchval]['1'] = obj
+                elif linesplit[11] == "Complete Genome" and priorities[matchval].get('2') is None:
                     obj['characteristic'] = "complete genome"
-                    priorities[namecol]['2'] = obj
+                    priorities[matchval]['2'] = obj
                 #If there is no reference genome
                 else:
                     #If this is the first time the taxa without reference genome is seen
                     if formatted_header not in first:
                         #Save reference to dict
                         obj['characteristic'] = "other"
-                        if priorities[namecol].get('3') is None:
-                            priorities[namecol]['3'] = obj
+                        if priorities[matchval].get('3') is None:
+                            priorities[matchval]['3'] = obj
             #If no complete genome found, pass
             else:
                 pass
     # figure out which inputs are missing from seencols
+
     missing = list(set(input) - set(seencols.keys()))
     if len(missing) > 0:
         # get dirname of input file and write missing to a file
