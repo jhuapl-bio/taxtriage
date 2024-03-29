@@ -48,7 +48,7 @@ process PATHOGENS_FIND_SAMPLE {
 
     match_paths.py \\
         -i $bamfiles \\
-        -o $output -x $covfile -x $depthfile \\
+        -o $output -x $covfile -d $depthfile \\
         -s $id \\
         $type \\
         $min_reads_align \\
