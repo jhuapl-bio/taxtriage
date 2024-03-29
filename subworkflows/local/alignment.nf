@@ -109,6 +109,7 @@ workflow ALIGNMENT {
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
+    ch_stats = SAMTOOLS_COVERAGE.out.coverage
     gcf_with_bam = sorted_bams.join(fastq_reads.map{ m, fastq, fasta, bed, map -> return [m, map] })
     SAMTOOLS_HIST_COVERAGE (
         gcf_with_bam
@@ -176,7 +177,6 @@ workflow ALIGNMENT {
     )
     ch_bamstats = RSEQC_BAMSTAT.out.txt
     ch_bams =  sorted_bams_with_index
-
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
     emit:

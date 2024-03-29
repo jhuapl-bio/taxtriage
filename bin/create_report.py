@@ -286,7 +286,7 @@ def create_report(
     ##### Section to make the Top Table - all annotated commensal or otherwise
     if not df_identified.empty:
         columns_yes = df_identified.columns.values
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Locations"]
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Gini Coeff", "Locations"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified, color_pathogen=True)
@@ -330,7 +330,7 @@ def create_report(
         second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms contained within the samples that had atleast one read aligned"
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
-        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample' ]
+        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample', "Gini Coeff" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
@@ -389,7 +389,8 @@ def main():
                     "tax_id": "Unknown",
                     "name": "Unknown",
                     "rank": "Unknown",
-                    "abundances": []
+                    "abundances": [],
+                    "gini_coefficient": 0,
                 }
             else:
                 stats = stats_dict[(row[args.type], row['body_site'])]
@@ -415,6 +416,7 @@ def main():
         "Sites": "Locations",
         "% Total Reads": "% Reads in Sample",
         "Type": "Class",
+        "Gini Coefficient": "Gini Coeff",
     }
     df_identified= df_identified.rename(columns=remap_headers)
     df_unidentified= df_unidentified.rename(columns=remap_headers)
