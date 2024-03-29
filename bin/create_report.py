@@ -404,7 +404,7 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     df_full['Sites'] = df_full['Sites'].fillna("Unknown")
-
+    print(df_full.shape)
     df_identified, df_unidentified = split_df(df_full)
 
     remap_headers = {

@@ -16,7 +16,7 @@ workflow  REFERENCE_PREP {
     ch_accessions = Channel.empty()
     ch_mapped_assemblies = Channel.empty()
 
-    ch_reports_to_download = ch_samples.map{ meta, reads, report -> {
+    ch_reports_to_download = ch_samples.map{ meta, report -> {
             if (report){
                 return [meta,  report  ]
             } else {
@@ -72,13 +72,6 @@ workflow  REFERENCE_PREP {
 
 
 
-        // MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }.set{ch_mapped_assemblies }
-
-        // MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, accessions ->  return accessions  }.set{ch_accessions }
-
-        ch_accessions.view()
-        ch_mapped_assemblies.view()
-
         ch_prepfiles = ch_prepfiles.combine(
             MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }
         ).combine(
@@ -93,19 +86,26 @@ workflow  REFERENCE_PREP {
             }
         }.set{ch_prepfiles}
 
-        ch_prepfiles.view()
     }
     DOWNLOAD_ASSEMBLY(
-        ch_organisms_to_download.map {
-            meta, report ->  return [ meta, report ]
+        ch_prepfiles.map {
+            meta, report, listfasta, listmaps, listids ->  return [ meta, report ]
         },
         ch_assembly_txt
     )
-    // ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
+    ch_prepfiles.join(DOWNLOAD_ASSEMBLY.out.fasta)
+        .join(DOWNLOAD_ASSEMBLY.out.accessions)
+        .join(DOWNLOAD_ASSEMBLY.out.mappings).set{ch_prepfiles}
 
-    // ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
-    // ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
+    ch_prepfiles.map { meta, reports, listfasta, listmaps, listids, fasta, accessions, mappings -> {
+            listfasta.add(fasta)
+            listmaps.add(accessions)
+            listids.add(mappings)
+            return [meta, reports, listfasta, listmaps, listids]
+        }
+    }.set{ch_prepfiles}
 
+    ch_prepfiles.view()
 
     // if (params.get_features){
 
@@ -127,7 +127,6 @@ workflow  REFERENCE_PREP {
     //     }
     // }
 
-    // fastq_reads = fastq_reads.join(ch_mapped_assemblies)
 
     emit:
         versions = ch_versions

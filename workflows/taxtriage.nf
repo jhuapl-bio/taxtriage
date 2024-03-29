@@ -513,7 +513,7 @@ workflow TAXTRIAGE {
 
     }
     REFERENCE_PREP(
-        ch_filtered_reads.join(ch_organisms_to_download),
+        ch_organisms_to_download,
         ch_reference_fasta,
         ch_assembly_txt
     )
