@@ -22,10 +22,9 @@ from collections import defaultdict
 import sys
 import os
 import gzip
-import matplotlib.pyplot as plt
 import argparse
-import numpy as np
 import pysam
+from math import log2
 
 
 
@@ -188,66 +187,37 @@ def identify_pathogens(inputfile, pathogens):
     return None
 
 def calculate_entropy(values):
-    """Calculate the Shannon entropy of the given values."""
-    probabilities = np.array(values) / sum(values)
-    return -sum(p * np.log2(p) for p in probabilities if p > 0)
-
+    """Calculate the Shannon entropy of the given values without NumPy."""
+    total = sum(values)
+    probabilities = [value / total for value in values]
+    return -sum(p * log2(p) for p in probabilities if p > 0)
 def calculate_gini(array):
-    """Calculate the Gini coefficient of a numpy array."""
-    # Check for zero-size array to avoid ValueError
-    if array.size == 0:
-        return 0  # Define behavior for empty arrays, perhaps Gini = 0
+    """Calculate the Gini coefficient of a list."""
+    # Check for zero-size list to avoid ValueError
+    if len(array) == 0:
+        return 0  # Define behavior for empty lists, perhaps Gini = 0
 
-    # Continue with Gini calculation
-    array = array.flatten()  # All values must be treated equally, arrays must be 1D.
-    if np.amin(array) < 0:
+    # Ensure all values are treated equally, lists must be 1D.
+    array = [val for sublist in array for val in (sublist if isinstance(sublist, list) else [sublist])]
+
+    # Check for negative values
+    if any(i < 0 for i in array):
         raise ValueError("Array cannot contain negative values.")
-    # Ensure the array does not sum to zero
-    if np.sum(array) == 0:
+
+    # Ensure the list does not sum to zero
+    if sum(array) == 0:
         return 0  # No inequality if there is no coverage
 
-    # Sort the array
-    array_sorted = np.sort(array)
-    n = array.shape[0]
-    index = np.arange(1, n+1)
+    # Sort the list
+    array_sorted = sorted(array)
+    n = len(array)
+
     # Gini coefficient calculation
-    return (np.sum((2 * index - n - 1) * array_sorted)) / (n * np.sum(array_sorted))
+    index = range(1, n + 1)  # Create a list of indexes
+    numerator = sum((2 * idx - n - 1) * value for idx, value in zip(index, array_sorted))
 
-def make_plot(reference_coverage, plotname="test.png"):
-    # Sample data: Replace these lists with your actual data
-    mean_coverages = []
-    gini_coefficients = []
-    for ref, data in reference_coverage.items():
-        mean_coverages.append(data['depth_of_coverage'])
-        gini_coefficients.append(data['gini_coefficient'])
-    # convert mean coverage to np list
+    return numerator / (n * sum(array_sorted))
 
-
-    adjusted_mean_coverages = np.array(mean_coverages)
-    # adjusted_mean_coverages = np.log([x + 0.01 for x in mean_coverages])
-    # adjusted_mean_coverages = np.sqrt([x for x in mean_coverages])
-    # adjusted_mean_coverages = np.log([x + 0.01 for x in mean_coverages])
-
-
-    # Fit a trendline in the log-transformed space
-    z = np.polyfit(adjusted_mean_coverages, gini_coefficients, 1)
-    p = np.poly1d(z)
-    x_for_plot = np.linspace(adjusted_mean_coverages.min(), adjusted_mean_coverages.max(), 100)
-    y_for_plot = p(x_for_plot)
-
-    # Generate x values from the minimum to the maximum log-transformed coverage for plotting the trendline
-   # Create a scatter plot in the log-transformed space
-    plt.scatter(adjusted_mean_coverages, gini_coefficients, color='blue', label='Data Points')
-    plt.plot(x_for_plot, y_for_plot, "r--", label='Trendline in Space')
-
-    # Label the axes and provide a title
-    plt.xlabel('Log of Mean Coverage (adjusted)')
-    plt.ylabel('Gini Coefficient')
-    plt.title('Coverage Uniformity Analysis')
-    plt.legend()
-
-    # Display the plot
-    plt.show()
 
 # Function to calculate weighted mean
 def calculate_weighted_mean(data):
@@ -335,7 +305,7 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                         base_qualities_ascii = [chr(qual + 33) for qual in base_qualities]
                         # Convert ASCII to integers
                         base_qualities_int = [ord(qual) - 33 for qual in base_qualities_ascii]
-                        baseq = np.mean(base_qualities)
+                        baseq = sum(base_qualities) / len(base_qualities)
                         # get the mapq of the read
                         mapq = float(read.mapping_quality)
                         reference_coverage[reference_name]['mapqs'].append(mapq)
@@ -350,8 +320,8 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
             # make meanbaseq and meanmapq
             for ref, data in reference_coverage.items():
                 if data['numreads'] > 0:
-                    data['meanbaseq'] = np.mean(data['baseqs'])
-                    data['meanmapq'] = np.mean(data['mapqs'])
+                    data['meanbaseq'] = sum(data['baseqs']) / len(data['baseqs'])
+                    data['meanmapq'] = sum(data['mapqs']) / len(data['mapqs'])
 
     bam_file.close()
     if depthfile:
@@ -410,22 +380,30 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
             data['meanbaseq'] = weighted_baseqs_mean
             data['meanmapq'] = weighted_mapqs_mean
 
-        # Convert depths to a numpy array or ensure it has content before operations
-        depths_array = np.array(list(data['depths'].values())) if data['depths'].values() else np.array([0])
-        # Now, since depths_array is guaranteed to be non-empty (at least containing [0]),
-        # you can safely perform numpy operations without encountering the zero-size array error.
-        breadth_of_coverage = np.count_nonzero(depths_array) / data['total_length'] * 100 if data['total_length'] > 0 else 0
-        mean_coverage = np.mean(depths_array)  # Safe due to the default value
-        gini_coefficient = calculate_gini(depths_array)  # calculate_gini handles empty arrays as shown above
-        # Calculate the mean depth of coverage
-        mean_depth = np.sum(depths_array) / data['total_length'] if data['total_length'] > 0 else 0
+
+        # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int.
+        depths = list(data['depths'].values()) if data['depths'].values() else [0]
+
+        # Breadth of Coverage
+        breadth_of_coverage = sum(1 for depth in depths if depth > 0) / data['total_length'] * 100 if data['total_length'] > 0 else 0
+
+        # Mean Coverage
+        mean_coverage = sum(depths) / len(depths) if depths else 0
+
+        # Gini Coefficient
+        gini_coefficient = calculate_gini(depths)
+
+        # Mean Depth of Coverage
+        mean_depth = sum(depths) / data['total_length'] if data['total_length'] > 0 else 0
+
+
+
         # Update the organism info with the calculated metrics
         organism_coverage[organism]['breadth_of_coverage'] = breadth_of_coverage
         organism_coverage[organism]['mean_coverage'] = mean_coverage
         organism_coverage[organism]['gini_coefficient'] = gini_coefficient
         organism_coverage[organism]['depth_of_coverage'] = mean_depth
 
-    # make_plot(organism_coverage, "test.png")
     return organism_coverage, total_reads
 
 def main():
@@ -524,7 +502,7 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
         for ref, data in reference_hits.items():
             total_reads_aligned += data['numreads']
 
-        header =  "Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus"
+        header =  "Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tBreadth of Coverage\tDepth of Coverage\n"
         file.write(f"{header}\n")
         for ref, count in reference_hits.items():
             if ref in pathogens:
@@ -545,19 +523,23 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
                 callclass = ""
                 sites = ""
                 status = ""
-
+            meanbaseq = format_non_zero_decimals(count['meanbaseq'])
+            gini_coefficient = format_non_zero_decimals(count['gini_coefficient'])
+            meanmapq = format_non_zero_decimals(count['meanmapq'])
             countreads = count['numreads']
+            breadth_of_coverage = format_non_zero_decimals(count['breadth_of_coverage'])
+            depth_of_coverage = format_non_zero_decimals(count['depth_of_coverage'])
             # if total_reads_aligned is 0 then set percent_aligned to 0
             if total_reads_aligned == 0:
                 percent_aligned = 0
             else:
-                percent_aligned = format_non_zero_decimals(countreads / total_reads_aligned)
+                percent_aligned = format_non_zero_decimals(100*countreads / total_reads_aligned)
             if total_reads == 0:
                 percent_total = 0
             else:
-                percent_total = format_non_zero_decimals(countreads / total_reads)
+                percent_total = format_non_zero_decimals(100*countreads / total_reads)
             # Assuming 'count' is a simple value; if it's a dictionary or complex structure, adjust accordingly.
-            file.write(f"{ref}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{sites}\t{is_pathogen}\t{taxid}\t{status}\n")
+            file.write(f"{ref}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{sites}\t{is_pathogen}\t{taxid}\t{status}\t{gini_coefficient}\t{meanbaseq}\t{meanmapq}\t{breadth_of_coverage}\t{depth_of_coverage}\n")
 
 if __name__ == "__main__":
     sys.exit(main())
