@@ -173,8 +173,8 @@ include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { PATHOGENS } from '../subworkflows/local/pathogen'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
-include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
-include { MAKE_FILE } from '../modules/local/make_file'
+include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
+include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT NF-CORE MODULES/SUBWORKFLOWS
@@ -202,6 +202,7 @@ include { MULTIQC                     } from '../modules/nf-core/multiqc/main'
 include { FLYE                     } from '../modules/nf-core/flye/main'
 include { KRAKENTOOLS_COMBINEKREPORTS   } from '../modules/nf-core/krakentools/combinekreports/main'
 include { KRONA   } from '../modules/local/krona.nf'
+include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
 include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/spades/main'
 include { SPADES as SPADES_OXFORD } from '../modules/nf-core/spades/main'
 include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
@@ -223,18 +224,14 @@ include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
-include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
-include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
-include { FEATURES_TO_BED } from '../modules/local/convert_features_to_bed'
-include { FEATURES_MAP } from '../modules/local/features_map'
 include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include {  FEATURES_DOWNLOAD } from '../modules/local/download_features'
 include {  REFERENCE_REHEADER } from '../modules/local/reheader'
-include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../modules/local/map_assembly_to_fasta'
+include { FEATURES_MAP } from '../modules/local/features_map'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -515,34 +512,11 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
     }
-
-
-    if (params.organisms_file){
-        // check if params.organisms is a file or a string
-        ch_organisms = file(params.organisms_file, checkIfExists: true)
-        ch_organisms_to_download = ch_organisms_to_download.map{
-            meta, report -> {
-                report.add(ch_organisms)
-                return [meta, report]
-            }
-        }
-    } else if (params.organisms) {
-        ch_organisms_taxids = Channel.from(params.organisms)
-        // print params.organisms as a tsv, separated by space per
-        MAKE_FILE(
-            ch_organisms_taxids
-        )
-        ch_organisms = MAKE_FILE.out.file
-
-        ch_organisms_to_download = ch_organisms_to_download.combine(
-            ch_organisms
-        ).map{
-            meta, report, organisms -> {
-                report.add(organisms)
-                return [meta, report]
-            }
-        }
-    }
+    REFERENCE_PREP(
+        ch_filtered_reads.join(ch_organisms_to_download),
+        ch_reference_fasta,
+        ch_assembly_txt
+    )
 
     if (params.metaphlan) {
 
@@ -575,76 +549,10 @@ workflow TAXTRIAGE {
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
     ch_mapped_assemblies = Channel.empty()
-    ch_reads_to_align = Channel.empty()
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
 
-    if (params.reference_fasta || params.get_pathogens) { //
-        // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
-        // merge ch_reference_fasta on all of the krakenreports. single channel merged to multiple
-        MAP_LOCAL_ASSEMBLY_TO_FASTA(
-            ch_reference_fasta.map {  fasta ->  {
-                    // get basename of fasta path
-                    def basen = fasta.getName()
-                    return [ [id: basen ], fasta ]
-                }
-            },
-            ch_assembly_txt
-        )
-        ch_filtered_reads = ch_filtered_reads.combine(
-            ch_reference_fasta
-        )
-        ch_filtered_reads.map {
-            meta, reads, fasta -> {
-                return [ meta ]
-            }
-        }.combine(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }).set{ch_mapped_assemblies }
-        ch_filtered_reads.map {
-            meta, reads, fasta -> {
-                return [ meta ]
-            }
-        }.combine(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, accessions ->  return accessions  }).set{ch_accessions }
-
-
-    } else {
-        DOWNLOAD_ASSEMBLY(
-            ch_organisms_to_download.map {
-                meta, report ->  return [ meta, report ]
-            },
-            ch_assembly_txt
-        )
-        ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
-
-        ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
-        ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
-
-    }
-
-    if (params.get_features){
-
-        FEATURES_DOWNLOAD(
-            ch_accessions,
-            ch_assembly_txt
-        )
-
-        FEATURES_TO_BED(
-            FEATURES_DOWNLOAD.out.features
-        )
-
-        ch_bedfiles = FEATURES_TO_BED.out.bed
-    }
-
     if (!params.skip_realignment) {
-        if (params.get_features){
-            ch_reads_to_align  = ch_filtered_reads.join(ch_bedfiles, remainder: true)
-        } else {
-            ch_reads_to_align = ch_filtered_reads.map {
-                meta, reads, fasta -> [ meta, reads, fasta, null ]
-            }
-        }
-
-        ch_reads_to_align = ch_reads_to_align.join(ch_mapped_assemblies, remainder: true)
-
         ALIGNMENT(
             ch_reads_to_align
         )

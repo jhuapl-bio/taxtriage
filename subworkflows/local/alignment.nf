@@ -44,14 +44,21 @@ workflow ALIGNMENT {
     ch_merged_mpileup = Channel.empty()
 
 
+
+
+
     fastq_reads
         .branch{
             longreads: it[0].platform =~ 'OXFORD'
             shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
 
-
     ch_versions = 1
+
+
+
+
+
 
 
     if (params.bt2_indices){
