@@ -577,7 +577,6 @@ workflow TAXTRIAGE {
     ch_mapped_assemblies = Channel.empty()
     ch_reads_to_align = Channel.empty()
     // If you use a local genome Refseq FASTA file
-    ch_reference_fasta.view()
     // if ch_refernece_fasta is empty
 
     if (params.reference_fasta || params.get_pathogens) { //
@@ -654,7 +653,6 @@ workflow TAXTRIAGE {
         )
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
-        ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles).view()
 
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
