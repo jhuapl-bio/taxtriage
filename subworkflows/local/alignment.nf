@@ -10,6 +10,7 @@ include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
+include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
 include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
 include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
@@ -103,6 +104,16 @@ workflow ALIGNMENT {
     SAMTOOLS_DEPTH(
         sorted_bams
     )
+
+    sorted_bams
+        .map { m, bam -> return bam }
+        .collect()
+        .map { bams -> return [[id: 'mergedBams'], bams] }
+        .set { merged_bams_channel }
+    SAMTOOLS_MERGE(
+        merged_bams_channel
+    )
+    SAMTOOLS_MERGE.out.bam.view()
 
     collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ sorted_bams_with_index }
 

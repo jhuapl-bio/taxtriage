@@ -578,7 +578,10 @@ workflow TAXTRIAGE {
     ch_reads_to_align = Channel.empty()
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
-
+    // Stage ch_filteredrreads with an empty list
+    ch_filtered_reads = ch_filtered_reads.map {
+        meta, reads -> [meta, reads, []]
+    }
     if (params.reference_fasta || params.get_pathogens) { //
         // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
         // merge ch_reference_fasta on all of the krakenreports. single channel merged to multiple
@@ -606,7 +609,8 @@ workflow TAXTRIAGE {
         }.combine(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, accessions ->  return accessions  }).set{ch_accessions }
 
 
-    } else {
+    }
+    if (params.organisms || params.organisms_file || !params.skip_kraken2) {
         DOWNLOAD_ASSEMBLY(
             ch_organisms_to_download.map {
                 meta, report ->  return [ meta, report ]
@@ -632,9 +636,6 @@ workflow TAXTRIAGE {
         )
 
         ch_bedfiles = FEATURES_TO_BED.out.bed
-
-
-
     }
 
     if (!params.skip_realignment) {
