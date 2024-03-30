@@ -405,7 +405,7 @@ def main():
     # convert all locations nan to "Unknown"
     df_full['Sites'] = df_full['Sites'].fillna("Unknown")
 
-    print(df_full.shape)
+    print(f"Size of of full list of organisms: {df_full.shape[0]}")
     df_identified, df_unidentified = split_df(df_full)
     remap_headers = {
         "Name": "Organism",
