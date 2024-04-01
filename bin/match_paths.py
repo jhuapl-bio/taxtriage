@@ -250,6 +250,8 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
 
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
+        # get total reads
+        total_reads = sum(1 for _ in bam_file)
         for ref in bam_file.header.references:
             reference_lengths[ref] = bam_file.get_reference_length(ref)
             reference_coverage[ref] = dict(
@@ -292,7 +294,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
         if not depthfile or not covfile:
             print("No depthfile or covfile supplied, reading input from bam file")
             for read in bam_file.fetch(until_eof=True):
-                total_reads += 1
                 if not read.is_unmapped:  # Check if the read is aligned
                     reference_name = bam_file.get_reference_name(read.reference_id)
                     aligned_reads +=1
@@ -403,7 +404,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
         organism_coverage[organism]['mean_coverage'] = mean_coverage
         organism_coverage[organism]['gini_coefficient'] = gini_coefficient
         organism_coverage[organism]['depth_of_coverage'] = mean_depth
-
     return organism_coverage, total_reads
 
 def main():
@@ -534,6 +534,7 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
                 percent_aligned = 0
             else:
                 percent_aligned = format_non_zero_decimals(100*countreads / total_reads_aligned)
+            print(total_reads)
             if total_reads == 0:
                 percent_total = 0
             else:
