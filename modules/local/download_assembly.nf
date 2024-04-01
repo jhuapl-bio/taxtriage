@@ -35,7 +35,7 @@ process DOWNLOAD_ASSEMBLY {
     tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
     tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: accessions
     tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mappings
-    tuple val(meta),  path("missing.txt"), optional: true, emit: missings
+    tuple val(meta),  path("*missing*.txt"), optional: true, emit: missings
     path "versions.yml"           , emit: versions
 
     when:
