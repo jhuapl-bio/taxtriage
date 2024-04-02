@@ -280,18 +280,22 @@ def create_report(
     version = "1.3.2"  # Example version
     # get datetime of year-mont-day hour:min
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
+    # sort df_identified by Alignment Conf
+    df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
+    # filter out so only Class is PAthogen
+    df_identified_paths = df_identified[df_identified['Class'] == 'Pathogen']
+    df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
 
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
-    if not df_identified.empty:
-        columns_yes = df_identified.columns.values
+    if not df_identified_paths.empty:
+        columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        print(df_identified[df_identified['Gini Coeff'] >= 0.1])
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Gini Coeff", "Locations"]
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Locations"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_identified, plotbuffer, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_identified, color_pathogen=True)
+        data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_identified_paths, color_pathogen=True)
         table = make_table(
             data_yes,
             table_style=table_style
@@ -315,14 +319,25 @@ def create_report(
     elements.append(Spacer(1, 12))
     subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Green represents a match with your sample type", subtext_style)
     elements.append(subtext_para)
-    if len(plotbuffer.keys()) > 0:
-        subtext_para = Paragraph("HHS: Healthy Human Subjects from the Human Microbiome Project", subtext_style)
-        elements.append(subtext_para)
 
-        subtext_para = Paragraph("Distribution metrics gathered from HMP SRA Taxonomy Analysis and compared to each organism in \
-            each row. Organisms falling outside the interquartile range (IQR) should be considered for downstream analysis, whether pathogenic or commensal in nature.\
-            Coloring specified by z-score with the mapping of score < z = 1(green), 2(yellow), 3(orange), & >3(red)", subtext_style)
-        elements.append(subtext_para)
+    if not df_identified_others.empty:
+        columns_yes = df_identified_others.columns.values
+        # print only rows in df_identified with Gini Coeff above 0.2
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Locations"]
+        # Now, call prepare_data_with_headers for both tables without manually preparing headers
+        data_yes_others = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_identified_others, color_pathogen=True)
+        table = make_table(
+            data_yes_others,
+            table_style=table_style
+        )
+        # Add the title and subtitle
+        title = Paragraph("Other Organisms Annotated", title_style)
+        subtitle = Paragraph(f"All Organisms were identified but were not listed as a pathogen", subtitle_style)
+        elements = [title, subtitle, Spacer(1, 12)]
+        elements.append(table)
+        elements.append(Spacer(1, 12))  # Space between tables
+    # Adding regular text
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
@@ -333,7 +348,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample', "Gini Coeff" ]
+        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample', "Alignment Conf" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
@@ -407,7 +422,7 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     df_full['Sites'] = df_full['Sites'].fillna("Unknown")
-
+    df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{1-x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
     df_identified, df_unidentified = split_df(df_full)
     remap_headers = {
