@@ -27,6 +27,8 @@ from collections import Counter
 from pathlib import Path
 import re
 import os
+from distributions import import_distributions
+import pandas as pd
 logger = logging.getLogger()
 
 
@@ -59,6 +61,22 @@ def parse_args(argv=None):
         help="Top Hits ",
     )
     parser.add_argument(
+        "-d",
+        "--distributions",
+        metavar="DISTRIBUTIONS",
+        type=Path,
+        default = None,
+        help="Path to OPTIONAL file that contains distributions of zscores for each taxid in the input file.",
+    )
+    parser.add_argument(
+        "-z",
+        "--zscore",
+        metavar="ZSCORE",
+        type=float,
+        default = 1.5,
+        help="OPTIONAL: If providing a distributions file, max zscore to consider for top hits",
+    )
+    parser.add_argument(
         "-o",
         "--file_out",
         metavar="FILE_OUT",
@@ -72,6 +90,14 @@ def parse_args(argv=None):
         metavar="TOP_PER_RANK",
         type=int,
         help="Max Top per rank code",
+    )
+    parser.add_argument(
+        "-b",
+        "--body_site",
+        default="Unknown",
+        metavar="BODYSITE",
+        type=str,
+        help="What body site to loook at distributions for. If empty and listed distributions enabled, this is assumed as Unknown",
     )
     parser.add_argument(
         "-l",
@@ -204,7 +230,12 @@ def make_files(mapping, outpath):
     path.close()
     print("Done exporting the top hits report ")
 
-
+def get_stats(row, stats_dict):
+    taxid = row['tax_id']
+    if (taxid, row['body_site']) in stats_dict:
+        return stats_dict[(taxid, row['body_site'])]
+    else:
+        return None
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
     args = parse_args(argv)
@@ -221,7 +252,31 @@ def main(argv=None):
             if len(fulllist) >= 3:
                 specific_limits[int(fulllist[0])] = dict(
                     limit=int(fulllist[1]), rank=fulllist[2])
+
+
     mapping = import_file(args.file_in, args.filter_ranks)
+    # rename df_full['taxid'] to 'tax_id'
+
+    if args.distributions:
+        dists = import_distributions(
+            args.distributions,
+            "tax_id"
+        )
+        df_full = pd.DataFrame(mapping)
+        # only keep rank has S in it
+        df_full = df_full[df_full['rank'].str.contains('S')]
+        df_full['body_site'] = args.body_site
+        df_full.rename(columns={'taxid': 'tax_id'}, inplace=True)
+        df_full['stats'] = df_full.apply(lambda x: get_stats(x, dists), axis=1)
+        # get the mean, std, and zscore for each row
+        df_full['mean'] = df_full['stats'].apply(lambda x: x['mean'] if x else None)
+        df_full['std'] = df_full['stats'].apply(lambda x: x['std'] if x else None)
+        df_full['zscore'] = (df_full['abundance'] - df_full['mean']) / df_full['std']
+        # get taxid is 2 stool body_site
+        # Get percentile of abundance relative to all abundances
+        # df_full['percentile'] = df_full['abundance'].rank(pct=True) * 100
+        print(df_full[['abundance','zscore', 'mean', 'tax_id', 'name', "rank"]].head())
+    exit()
     mapping = top_hit(mapping, specific_limits, args.top_per_rank)
     make_files(mapping, args.file_out)
 

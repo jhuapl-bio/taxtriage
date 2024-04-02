@@ -7,13 +7,11 @@ from io import BytesIO
 import random
 
 def import_distributions(
-        abundance_data,
         distribution_data,
         column_id
     ):
-    body_sites = abundance_data['body_site'].unique()
     # convert any empty or NaN body site to "unknown"
-
+    distribution_data  = str(distribution_data)
     # Load the full dataset for comparison
     #if distribution_data is a .gz file, decompress otherwise read as is
     stats_dict = {}

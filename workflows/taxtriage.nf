@@ -473,9 +473,14 @@ workflow TAXTRIAGE {
             )
             ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
         }
+        if (!params.distributions){
+            distributions = ch_empty_file
+        } else{
+            distributions = Channel.fromPath(params.distributions)
+        }
 
         TOP_HITS(
-            ch_kraken2_report
+            ch_kraken2_report.combine(distributions)
         )
         MERGEDKRAKENREPORT(
             TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()

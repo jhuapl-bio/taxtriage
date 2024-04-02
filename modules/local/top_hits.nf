@@ -18,13 +18,13 @@ process TOP_HITS {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
+    conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/python:3.9--1' :
-        'biocontainers/python:3.8.3' }"
+        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.7' :
+        'jhuaplbio/reportlab-pdf:4.0.7' }"
 
     input:
-    tuple val(meta), path(report)
+    tuple val(meta), path(report), path(distributions)
 
     output:
     path "versions.yml"           , emit: versions
@@ -44,12 +44,15 @@ process TOP_HITS {
     ch_top_per_taxa = ""
     def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa} " : ''
     def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
+    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
+    println "$meta"
+    def site = meta.site ? " -b ${meta.site} " : ""
 
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
         -i \"$report\" \\
-        -o ${id}.top_report.tsv   \\
+        -o ${id}.top_report.tsv  ${distribution_arg} \\
         $top_hits_count  $top_per_taxa
 
 
