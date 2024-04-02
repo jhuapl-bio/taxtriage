@@ -534,7 +534,6 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
                 percent_aligned = 0
             else:
                 percent_aligned = format_non_zero_decimals(100*countreads / total_reads_aligned)
-            print(total_reads)
             if total_reads == 0:
                 percent_total = 0
             else:

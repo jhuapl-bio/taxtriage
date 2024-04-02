@@ -283,6 +283,7 @@ def create_report(
     # sort df_identified by Alignment Conf
     df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
     # filter out so only Class is PAthogen
+    df_identified['Class']
     df_identified_paths = df_identified[df_identified['Class'] == 'Pathogen']
     df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
 
@@ -303,7 +304,9 @@ def create_report(
         # Add the title and subtitle
         title = Paragraph("Organism Discovery Analysis", title_style)
         subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
-        elements = [title, subtitle, Spacer(1, 12)]
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
     # Adding regular text
@@ -334,10 +337,13 @@ def create_report(
         # Add the title and subtitle
         title = Paragraph("Other Organisms Annotated", title_style)
         subtitle = Paragraph(f"All Organisms were identified but were not listed as a pathogen", subtitle_style)
-        elements = [title, subtitle, Spacer(1, 12)]
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))  # Space between tables
+
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
-    # Adding regular text
+    # # Adding regular text
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
@@ -359,6 +365,7 @@ def create_report(
     elements.append(Spacer(1, 12))  # Space between tables
     ##########################################################################################
     #####  Build the PDF
+    print(len(elements))
     # Adjust the build method to include the draw_vertical_line function
     doc.build(elements, onFirstPage=draw_vertical_line, onLaterPages=draw_vertical_line)
 
@@ -438,7 +445,6 @@ def main():
     }
     df_identified= df_identified.rename(columns=remap_headers)
     df_unidentified= df_unidentified.rename(columns=remap_headers)
-
     create_report(
         args.output,
         df_identified,
@@ -451,7 +457,6 @@ def main():
 
 
 
-    # create_report(args.output, df_identified, df_unidentified)
 if __name__ == "__main__":
     main()
 
