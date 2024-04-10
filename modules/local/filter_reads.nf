@@ -24,7 +24,7 @@ process FILTER_CLASS_READS {
         'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta),  path(tops_report), path(classified_reads), path(reads)
+    tuple val(meta),  path(bam), path(classified_reads), path(reads)
 
     output:
     path "versions.yml"           , emit: versions

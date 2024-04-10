@@ -24,14 +24,14 @@ process TOP_HITS {
         'jhuaplbio/reportlab-pdf:4.0.7' }"
 
     input:
-    tuple val(meta), path(report), path(distributions)
+    tuple val(meta), path(report), path(distributions), path(pathogens)
 
     output:
     path "versions.yml"           , emit: versions
-    tuple val(meta), path("*top_report.tsv"), optional:false, emit: tops
-    tuple val(meta), path("*toptaxids.txt"), optional:false, emit: taxids
-    tuple val(meta), path("*topnames.txt"), optional:false, emit: names
-    tuple val(meta), path("*.krakenreport_mqc.tsv"), optional:false, emit: krakenreport
+    tuple val(meta), path("*top_report.tsv"), optional:true, emit: tops
+    tuple val(meta), path("*toptaxids.txt"), optional:true, emit: taxids
+    tuple val(meta), path("*topnames.txt"), optional:true, emit: names
+    tuple val(meta), path("*.krakenreport_mqc.tsv"), optional:true, emit: krakenreport
 
 
 
@@ -42,18 +42,19 @@ process TOP_HITS {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def id = "${meta.id}"
     ch_top_per_taxa = ""
-    def top_per_taxa  = params.top_per_taxa ? " -s ${params.top_per_taxa} " : ''
+    def top_per_taxa  = params.top_per_taxa && params.top_per_taxa != "" ? " -s ${params.top_per_taxa} " : ''
     def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
-    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
-    println "$meta"
-    def site = meta.site ? " -b ${meta.site} " : ""
+    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions -z 1.5  " : ""
+    def site = meta.type ? " -b ${meta.type} " : ""
+    def pathogen_sheet = pathogens.name != "NO_FILE" ? " -p $pathogens  " : ""
 
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
         -i \"$report\" \\
-        -o ${id}.top_report.tsv  ${distribution_arg} \\
+        -o ${id}.top_report.tsv  ${distribution_arg} ${pathogen_sheet} ${site} \\
         $top_hits_count  $top_per_taxa
+
 
 
     awk -F '\\t' -v id=${id} \\
@@ -61,6 +62,12 @@ process TOP_HITS {
 
     awk -F '\\t' 'NR>1 {if (\$4 ~ "^S"){print \$6}}' ${id}.top_report.tsv | sort | uniq > ${id}.topnames.txt
     awk -F '\\t' 'NR>1 {if (\$4 ~ "^S"){print \$5}}' ${id}.top_report.tsv | sort | uniq > ${id}.toptaxids.txt
+
+    if [ ! -s ${id}.topnames.txt ]; then
+        echo "No top hits found"
+        rm ${id}.top_report.tsv ${id}.krakenreport_mqc.tsv ${id}.topnames.txt ${id}.toptaxids.txt
+    fi
+
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

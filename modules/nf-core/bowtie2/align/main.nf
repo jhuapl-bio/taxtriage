@@ -11,6 +11,7 @@ process BOWTIE2_ALIGN {
     tuple val(meta) , path(reads), path(index) 
     val   save_unaligned
     val   sort_bam
+    val(minmapq)
 
     output:
     tuple val(meta), path("*.{bam,sam}"), emit: aligned
@@ -26,7 +27,7 @@ process BOWTIE2_ALIGN {
     
     def args2 = task.ext.args2 ?: ""
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def minmapq = params.minmapq ? " -q ${params.minmapq} " :  ""
+    def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def unaligned = ""
     def reads_args = ""
     if (meta.single_end) {

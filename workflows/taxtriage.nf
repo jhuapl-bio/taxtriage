@@ -83,6 +83,7 @@ def validateBt2Scoremin(String scoremin) {
 }
 String value = "G,-10,-2"
 boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$' )
+ch_empty_file = file("$projectDir/assets/NO_FILE")
 
 if (matches) {
     println("The value matches the pattern.")
@@ -106,6 +107,8 @@ if (params.pathogens) {
     } else {
         exit 1, "Pathogens file must end with .tsv or .txt i.e. it is a .tsv file!"
     }
+} else {
+    ch_pathogens = ch_empty_file
 }
 if (!params.assembly) {
     println 'No assembly file given, downloading the standard ncbi one'
@@ -322,7 +325,6 @@ workflow TAXTRIAGE {
     ch_mergedtsv = Channel.empty()
     // make an empty path channel
     ch_accession_mapping  = Channel.empty()
-    ch_empty_file = file("$projectDir/assets/NO_FILE")
     ch_organisms = Channel.empty()
 
 
@@ -406,6 +408,7 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+    // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
     if (!params.skip_plots) {
@@ -422,6 +425,7 @@ workflow TAXTRIAGE {
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
+    ch_preppedfiles = Channel.empty()
     ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
 
     def empty_organism_file = false
@@ -480,7 +484,7 @@ workflow TAXTRIAGE {
         }
 
         TOP_HITS(
-            ch_kraken2_report.combine(distributions)
+            ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
         MERGEDKRAKENREPORT(
             TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
@@ -523,6 +527,10 @@ workflow TAXTRIAGE {
         ch_assembly_txt
     )
 
+    ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
+
+
+
     if (params.metaphlan) {
 
         METAPHLAN_METAPHLAN(
@@ -557,63 +565,69 @@ workflow TAXTRIAGE {
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
 
+
+
     if (!params.skip_realignment) {
-        ALIGNMENT(
-            ch_reads_to_align
-        )
-        ch_depthfiles = ALIGNMENT.out.depth
-        ch_covfiles = ALIGNMENT.out.stats
-
-        PATHOGENS(
-            ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
-            ch_pathogens
-        )
-
-        ch_alignment_stats = ALIGNMENT.out.stats
-        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
-
-        ch_bamstats = ALIGNMENT.out.bamstats
-        ch_depth = ALIGNMENT.out.depth
-
-        ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
-
-        ch_combined = ch_alignment_outmerg
-            .join(ch_mapped_assemblies, by: 0, remainder: true)
-            .map { meta, bam, bai, depth, mapping ->
-                // If mapping is not present, replace it with null or an empty placeholder
-                return [meta, bam, bai, depth, mapping ?: ch_empty_file]
+        ch_prepfiles = ch_filtered_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
+                return [meta, fastas, map]
             }
-        if (params.get_features){
+        })
+        ALIGNMENT(
+            ch_prepfiles
+        )
+        // ch_depthfiles = ALIGNMENT.out.depth
+        // ch_covfiles = ALIGNMENT.out.stats
 
-            FEATURES_MAP(
-                ch_combined.map {
-                    meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
-                }.join(ch_bedfiles)
-            )
-        }
+        // PATHOGENS(
+        //     ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
+        //     ch_pathogens
+        // )
 
-        if (!params.skip_confidence) {
-            CONFIDENCE_METRIC(
-                ch_combined
-            )
+        // ch_alignment_stats = ALIGNMENT.out.stats
+        // ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-            CONFIDENCE_MERGE(
-                CONFIDENCE_METRIC.out.tsv
-            )
+        // ch_bamstats = ALIGNMENT.out.bamstats
+        // ch_depth = ALIGNMENT.out.depth
+
+        // ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+
+        // ch_combined = ch_alignment_outmerg
+        //     .join(ch_mapped_assemblies, by: 0, remainder: true)
+        //     .map { meta, bam, bai, depth, mapping ->
+        //         // If mapping is not present, replace it with null or an empty placeholder
+        //         return [meta, bam, bai, depth, mapping ?: ch_empty_file]
+        //     }
+        // if (params.get_features){
+
+        //     FEATURES_MAP(
+        //         ch_combined.map {
+        //             meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+        //         }.join(ch_bedfiles)
+        //     )
+        // }
+
+        // if (!params.skip_confidence) {
+        //     CONFIDENCE_METRIC(
+        //         ch_combined
+        //     )
+
+        //     CONFIDENCE_MERGE(
+        //         CONFIDENCE_METRIC.out.tsv
+        //     )
 
 
-            CONVERT_CONFIDENCE(
-                CONFIDENCE_MERGE.out.confidence
-            )
+        //     CONVERT_CONFIDENCE(
+        //         CONFIDENCE_MERGE.out.confidence
+        //     )
 
-            MERGE_CONFIDENCE(
-                CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
-            )
+        //     MERGE_CONFIDENCE(
+        //         CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+        //     )
 
-            ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
-            ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
+        //     ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
+        //     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
 
-        }
+        // }
     }
 
     if (params.denovo_assembly) {
