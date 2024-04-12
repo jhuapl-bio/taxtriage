@@ -401,12 +401,16 @@ workflow TAXTRIAGE {
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
     }
+    println "Reads filtered and trimmed."
+    ch_reads.view()
 
     HOST_REMOVAL(
         ch_reads,
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+    println "Host removal complete."
+    ch_reads.view()
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
@@ -436,6 +440,7 @@ workflow TAXTRIAGE {
         // // // // // // //
         // // // // // // // MODULE: Run Kraken2
         // // // // // // //
+        println "Performing Kraken2 analysis..."
         KRAKEN2_KRAKEN2(
             ch_reads,
             ch_db,
@@ -483,6 +488,7 @@ workflow TAXTRIAGE {
         } else{
             distributions = Channel.fromPath(params.distributions)
         }
+        println "Combining Kraken2 reports and getting top hits per file..."
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
