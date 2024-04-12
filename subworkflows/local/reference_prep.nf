@@ -126,33 +126,33 @@ workflow  REFERENCE_PREP {
             }
         }
 
-        ch_mapped_assemblies = ch_mapped_assemblies.combine(
-            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }
-        ).combine(
-            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, gcfids ->  return gcfids  }
-        )
+        // ch_mapped_assemblies = ch_mapped_assemblies.combine(
+        //     MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }
+        // ).combine(
+        //     MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, gcfids ->  return gcfids  }
+        // )
 
-        ch_mapped_assemblies.map { meta, fastas, listmaps, listids, mapfile, gcfids -> {
-                listmaps.add(mapfile)
-                listids.add(gcfids)
-                return [meta, fastas, listmaps, listids]
-        }
-        }.set{ ch_mapped_assemblies }
+        // ch_mapped_assemblies.map { meta, fastas, listmaps, listids, mapfile, gcfids -> {
+        //         listmaps.add(mapfile)
+        //         listids.add(gcfids)
+        //         return [meta, fastas, listmaps, listids]
+        // }
+        // }.set{ ch_mapped_assemblies }
     }
     if (!params.skip_kraken2 && !params.skip_realignment){
-        DOWNLOAD_ASSEMBLY(
-            ch_reports_to_download.map {
-                meta, report ->  return [ meta, report ]
-            },
-            ch_assembly_txt
-        )
+        // DOWNLOAD_ASSEMBLY(
+        //     ch_reports_to_download.map {
+        //         meta, report ->  return [ meta, report ]
+        //     },
+        //     ch_assembly_txt
+        // )
 
-        // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
-        // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
-        DOWNLOAD_ASSEMBLY.out.fasta.branch{
-                longreads: it[0].platform =~ 'OXFORD'
-                shortreads: it[0].platform =~ 'ILLUMINA'
-        }.set { ch_platform_split }
+        // // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
+        // // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
+        // DOWNLOAD_ASSEMBLY.out.fasta.branch{
+        //         longreads: it[0].platform =~ 'OXFORD'
+        //         shortreads: it[0].platform =~ 'ILLUMINA'
+        // }.set { ch_platform_split }
 
 //         BOWTIE2_BUILD_DWNLD(
 //             ch_platform_split.shortreads
