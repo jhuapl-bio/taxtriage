@@ -575,28 +575,28 @@ workflow TAXTRIAGE {
         ALIGNMENT(
             ch_prepfiles
         )
-        // ch_depthfiles = ALIGNMENT.out.depth
-        // ch_covfiles = ALIGNMENT.out.stats
+        ch_depthfiles = ALIGNMENT.out.depth
+        ch_covfiles = ALIGNMENT.out.stats
 
-        // PATHOGENS(
-        //     ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
-        //     ch_pathogens
-        // )
+        PATHOGENS(
+            ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
+            ch_pathogens
+        )
 
-        // ch_alignment_stats = ALIGNMENT.out.stats
-        // ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
+        ch_alignment_stats = ALIGNMENT.out.stats
+        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        // ch_bamstats = ALIGNMENT.out.bamstats
-        // ch_depth = ALIGNMENT.out.depth
+        ch_bamstats = ALIGNMENT.out.bamstats
+        ch_depth = ALIGNMENT.out.depth
 
-        // ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+        ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
 
-        // ch_combined = ch_alignment_outmerg
-        //     .join(ch_mapped_assemblies, by: 0, remainder: true)
-        //     .map { meta, bam, bai, depth, mapping ->
-        //         // If mapping is not present, replace it with null or an empty placeholder
-        //         return [meta, bam, bai, depth, mapping ?: ch_empty_file]
-        //     }
+        ch_combined = ch_alignment_outmerg
+            .join(ch_mapped_assemblies, by: 0, remainder: true)
+            .map { meta, bam, bai, depth, mapping ->
+                // If mapping is not present, replace it with null or an empty placeholder
+                return [meta, bam, bai, depth, mapping ?: ch_empty_file]
+            }
         // if (params.get_features){
 
         //     FEATURES_MAP(
