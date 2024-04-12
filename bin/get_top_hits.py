@@ -286,58 +286,62 @@ def main(argv=None):
         body_sites = [args.body_site.lower()]
 
     if args.pathogens:
-        with open(args.pathogens, 'r', encoding='utf-8', errors='replace') as f:
-            pathogen_sheet = pd.read_csv(f, sep=',')
-        f.close()
-        body_site_map = {
-            "gut": "stool",
-            "nose": "nasal",
-            "vagina": "vaginal",
-            "teeth": "oral",
-            "resp": "nasal",
-            "abscess": "skin",
-            "absscess": "skin",
-            "sputum": "oral",
-            "mouth": "oral",
-            "urinary tract": "urine",
-            "ear": "skin",
-            "lung": ["oral", "nasal"],
-            "eye": "eye",
-            "sinus": "nasal",
-            "urogenital": "skin",
-            "cornea": "eye",
-        }
-        # A function to apply the mapping and remove duplicates
-        def translate_and_deduplicate_sites(sites):
-            # Split the string by comma and space, and remove empty strings if any
-            sites_list = [site.strip() for site in sites.split(',') if site.strip()]
-            # Initialize an empty set for the translated sites
-            translated_sites = set()
-            for site in sites_list:
-                # Get the mapped value from the dictionary
-                mapped_value = body_site_map.get(site.lower(), site.lower())
-                # If the mapped value is a list, add all its items to the set
-                if isinstance(mapped_value, list):
-                    translated_sites.update(mapped_value)
-                else:
-                    translated_sites.add(mapped_value)
-            # Join the unique sites back into a string
-            return ', '.join(sorted(translated_sites))
+        try:
+            with open(args.pathogens, 'r', encoding='utf-8', errors='replace') as f:
+                pathogen_sheet = pd.read_csv(f, sep=',')
+            f.close()
+            body_site_map = {
+                "gut": "stool",
+                "nose": "nasal",
+                "vagina": "vaginal",
+                "teeth": "oral",
+                "resp": "nasal",
+                "abscess": "skin",
+                "absscess": "skin",
+                "sputum": "oral",
+                "mouth": "oral",
+                "urinary tract": "urine",
+                "ear": "skin",
+                "lung": ["oral", "nasal"],
+                "eye": "eye",
+                "sinus": "nasal",
+                "urogenital": "skin",
+                "cornea": "eye",
+            }
+            # A function to apply the mapping and remove duplicates
+            def translate_and_deduplicate_sites(sites):
+                # Split the string by comma and space, and remove empty strings if any
+                sites_list = [site.strip() for site in sites.split(',') if site.strip()]
+                # Initialize an empty set for the translated sites
+                translated_sites = set()
+                for site in sites_list:
+                    # Get the mapped value from the dictionary
+                    mapped_value = body_site_map.get(site.lower(), site.lower())
+                    # If the mapped value is a list, add all its items to the set
+                    if isinstance(mapped_value, list):
+                        translated_sites.update(mapped_value)
+                    else:
+                        translated_sites.add(mapped_value)
+                # Join the unique sites back into a string
+                return ', '.join(sorted(translated_sites))
 
-        # convert all pathogen_sites nan to "Unknown"
-        pathogen_sheet['pathogenic_sites'].fillna("Unknown", inplace=True)
-        pathogen_sheet['pathogenic_sites'] = pathogen_sheet['pathogenic_sites'].apply(translate_and_deduplicate_sites)
-        # check if (lowercase) args.body_site is anywhere in pathogen_orgs body_site column, if not filter
-        pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
-        # filter out where general_classification is pathogen or opportunistic pathogen
-        pathogen_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["primary", "opportunistic", "potential", "oportunistic"])]['taxid']
-        # remove all Nan values
-        pathogen_orgs = pathogen_orgs.dropna()
-        pathogen_orgs = pathogen_orgs.astype(int).tolist()
+            # convert all pathogen_sites nan to "Unknown"
+            pathogen_sheet['pathogenic_sites'].fillna("Unknown", inplace=True)
+            pathogen_sheet['pathogenic_sites'] = pathogen_sheet['pathogenic_sites'].apply(translate_and_deduplicate_sites)
+            # check if (lowercase) args.body_site is anywhere in pathogen_orgs body_site column, if not filter
+            pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
+            # filter out where general_classification is pathogen or opportunistic pathogen
+            pathogen_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["primary", "opportunistic", "potential", "oportunistic"])]['taxid']
+            # remove all Nan values
+            pathogen_orgs = pathogen_orgs.dropna()
+            pathogen_orgs = pathogen_orgs.astype(int).tolist()
 
-        for orgn in pathogen_orgs:
-            if orgn in seentaxids:
-                extra_orgs.append(orgn)
+            for orgn in pathogen_orgs:
+                if orgn in seentaxids:
+                    extra_orgs.append(orgn)
+        except Exception as e:
+            print(e)
+            print("Error reading pathogens file")
     if args.distributions:
         dists = import_distributions(
             args.distributions,

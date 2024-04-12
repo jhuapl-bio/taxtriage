@@ -102,10 +102,10 @@ if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !
 
 // if params.pathogens, check if file ends with .tsv or .txt
 if (params.pathogens) {
-    if (params.pathogens.endsWith('.tsv') || params.pathogens.endsWith('.txt')) {
+    if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
         ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
     } else {
-        exit 1, "Pathogens file must end with .tsv or .txt i.e. it is a .tsv file!"
+        exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
     }
 } else {
     ch_pathogens = ch_empty_file
