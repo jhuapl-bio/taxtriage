@@ -414,119 +414,120 @@ workflow TAXTRIAGE {
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
-    // if (!params.skip_plots) {
-    //     FASTQC(
-    //         ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
-    //     )
-    //     ch_versions = ch_versions.mix(FASTQC.out.versions.first())
-    //     NANOPLOT(
-    //         ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
-    //     )
-    //     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
-    //     ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
+    if (!params.skip_plots) {
+        FASTQC(
+            ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
+        )
+        ch_versions = ch_versions.mix(FASTQC.out.versions.first())
+        NANOPLOT(
+            ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
+        )
+        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
 
-    // }
-    // ch_filtered_reads = ch_reads
-    // ch_profile = Channel.empty()
-    // ch_preppedfiles = Channel.empty()
-    // ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
+    }
+    ch_filtered_reads = ch_reads
+    ch_profile = Channel.empty()
+    ch_preppedfiles = Channel.empty()
+    ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
 
-    // def empty_organism_file = false
-    // if (!params.skip_kraken2){
-    //     // // // // // //
-    //     // // // // // // MODULE: Run Kraken2
-    //     // // // // // //
+    def empty_organism_file = false
+    if (!params.skip_kraken2){
+        // // // // // //
+        // // // // // // MODULE: Run Kraken2
+        // // // // // //
 
-    //     // // // // // // //
-    //     // // // // // // // MODULE: Run Kraken2
-    //     // // // // // // //
-    //     println "Performing Kraken2 analysis..."
-    //     KRAKEN2_KRAKEN2(
-    //         ch_reads,
-    //         ch_db,
-    //         ch_save_fastq_classified,
-    //         true
-    //     )
+        // // // // // // //
+        // // // // // // // MODULE: Run Kraken2
+        // // // // // // //
+        println "Performing Kraken2 analysis..."
+        KRAKEN2_KRAKEN2(
+            ch_reads,
+            ch_db,
+            ch_save_fastq_classified,
+            true
+        )
 
-    //     ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
+        ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
+
+        ch_kraken2_report.view()
+
+        // KREPORT_TO_KRONATXT(
+        //     ch_kraken2_report
+        // )
+
+        // ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+
+        // ch_combined = ch_krona_txt
+        //             .map{ it[1] }        // Get the file path
+        //             .collect()            // Collect all file parts into a list
+        //             .map { files ->
+        //                 // Join the files with single quotes and space
+        //                 // String joinedFiles = files.collect { "'$it'" }.join(' ')
+        //                 // if single file then make it [files] otherwise just files
+        //                 [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
+        //             }
+        // KRONA_KTIMPORTTEXT(
+        //     ch_combined
+        // )
+
+        // if (params.remove_taxids) {
+        //     remove_input = ch_kraken2_report.map {
+        //         meta, report -> [
+        //             meta, report, params.remove_taxids
+        //         ]
+        //     }
+        //     REMOVETAXIDSCLASSIFICATION(
+        //         remove_input
+        //     )
+        //     ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
+        // }
+        // if (!params.unknown_sample){
+        //     distributions = Channel.fromPath(ch_empty_file)
+        // } else if (!params.distributions){
+        //     distributions = Channel.fromPath("$projectDir/assets/taxid_abundance_stats.hmp.tsv.gz", checkIfExists: true)
+        // } else{
+        //     distributions = Channel.fromPath(params.distributions)
+        // }
+        // println "Combining Kraken2 reports and getting top hits per file..."
+        // TOP_HITS(
+        //     ch_kraken2_report.combine(distributions).combine(ch_pathogens)
+        // )
+        // MERGEDKRAKENREPORT(
+        //     TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
+        // )
+
+        // FILTERKRAKEN(
+        //     MERGEDKRAKENREPORT.out.krakenreport
+        // )
+        // if (ch_save_fastq_classified){
+        //     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        // }
+
+        // if (params.fuzzy){
+        //     ch_organisms = TOP_HITS.out.names
+        // } else {
+        //     ch_organisms = TOP_HITS.out.taxids
+        // }
+        // // mix ch_organisms_to_download with ch_organisms 2nd index list
+        // ch_organisms_to_download = ch_organisms_to_download.join(
+        //     ch_organisms
+        // ).map{
+        //     meta, report, organisms -> {
+        //         report.add(organisms)
+        //         return [meta, report]
+        //     }
+        // }
 
 
-    //     KREPORT_TO_KRONATXT(
-    //         ch_kraken2_report
-    //     )
-
-    //     ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
-
-    //     ch_combined = ch_krona_txt
-    //                 .map{ it[1] }        // Get the file path
-    //                 .collect()            // Collect all file parts into a list
-    //                 .map { files ->
-    //                     // Join the files with single quotes and space
-    //                     // String joinedFiles = files.collect { "'$it'" }.join(' ')
-    //                     // if single file then make it [files] otherwise just files
-    //                     [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
-    //                 }
-    //     KRONA_KTIMPORTTEXT(
-    //         ch_combined
-    //     )
-
-    //     if (params.remove_taxids) {
-    //         remove_input = ch_kraken2_report.map {
-    //             meta, report -> [
-    //                 meta, report, params.remove_taxids
-    //             ]
-    //         }
-    //         REMOVETAXIDSCLASSIFICATION(
-    //             remove_input
-    //         )
-    //         ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
-    //     }
-    //     if (!params.unknown_sample){
-    //         distributions = Channel.fromPath(ch_empty_file)
-    //     } else if (!params.distributions){
-    //         distributions = Channel.fromPath("$projectDir/assets/taxid_abundance_stats.hmp.tsv.gz", checkIfExists: true)
-    //     } else{
-    //         distributions = Channel.fromPath(params.distributions)
-    //     }
-    //     println "Combining Kraken2 reports and getting top hits per file..."
-    //     TOP_HITS(
-    //         ch_kraken2_report.combine(distributions).combine(ch_pathogens)
-    //     )
-    //     MERGEDKRAKENREPORT(
-    //         TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
-    //     )
-
-    //     FILTERKRAKEN(
-    //         MERGEDKRAKENREPORT.out.krakenreport
-    //     )
-    //     if (ch_save_fastq_classified){
-    //         ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
-    //     }
-
-    //     if (params.fuzzy){
-    //         ch_organisms = TOP_HITS.out.names
-    //     } else {
-    //         ch_organisms = TOP_HITS.out.taxids
-    //     }
-    //     // mix ch_organisms_to_download with ch_organisms 2nd index list
-    //     ch_organisms_to_download = ch_organisms_to_download.join(
-    //         ch_organisms
-    //     ).map{
-    //         meta, report, organisms -> {
-    //             report.add(organisms)
-    //             return [meta, report]
-    //         }
-    //     }
 
 
+        ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
-
-    //     ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
-    //     ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
-    //     ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-    //     ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
-
-    // }
+    }
     // ch_mapped_assemblies = Channel.empty()
     // REFERENCE_PREP(
     //     ch_organisms_to_download,
