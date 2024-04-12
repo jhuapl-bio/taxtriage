@@ -80,13 +80,14 @@ workflow  REFERENCE_PREP {
 
         if (!params.skip_realignment) {
             if (params.bt2_indices) {
-                // If bt2_indices parameter is provided, create a channel from the provided path
-                ch_bt2indices = Channel.fromPath(params.bt2_indices)
-                ch_mapped_assemblies.map { meta, fastas, listmaps, listids -> {
-                        fastas.add([file(ch_reference_fasta), ch_bt2indices])
-                        return [meta, fastas, listmaps, listids]
-                    }
-                }
+            println "bt2 indices being used"
+            //     // If bt2_indices parameter is provided, create a channel from the provided path
+            //     ch_bt2indices = Channel.fromPath(params.bt2_indices)
+            //     ch_mapped_assemblies.map { meta, fastas, listmaps, listids -> {
+            //             fastas.add([file(ch_reference_fasta), ch_bt2indices])
+            //             return [meta, fastas, listmaps, listids]
+            //         }
+                // }
             } else {
                 // illuminaPresent = ch_samples
                 //       .filter { it[0].platform == "ILLUMINA" }
