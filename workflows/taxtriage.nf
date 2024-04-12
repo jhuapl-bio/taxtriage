@@ -437,7 +437,7 @@ workflow TAXTRIAGE {
         )
 
         ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
-
+        ch_kraken2_report.view()
 
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
