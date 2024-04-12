@@ -531,12 +531,12 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
     }
-    // ch_mapped_assemblies = Channel.empty()
-    // REFERENCE_PREP(
-    //     ch_organisms_to_download,
-    //     ch_reference_fasta,
-    //     ch_assembly_txt
-    // )
+    ch_mapped_assemblies = Channel.empty()
+    REFERENCE_PREP(
+        ch_organisms_to_download,
+        ch_reference_fasta,
+        ch_assembly_txt
+    )
 
     // ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
     // ch_mapped_assemblies = ch_preppedfiles.map{
