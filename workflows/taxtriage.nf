@@ -404,15 +404,15 @@ workflow TAXTRIAGE {
     println "Reads filtered and trimmed."
     ch_reads.view()
 
-    // HOST_REMOVAL(
-    //     ch_reads,
-    //     params.genome
-    // )
-    // ch_reads = HOST_REMOVAL.out.unclassified_reads
-    // println "Host removal complete."
-    // ch_reads.view()
-    // // test to make sure that fastq files are not empty files
-    // ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+    HOST_REMOVAL(
+        ch_reads,
+        params.genome
+    )
+    ch_reads = HOST_REMOVAL.out.unclassified_reads
+    println "Host removal complete."
+    ch_reads.view()
+    // test to make sure that fastq files are not empty files
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
     // if (!params.skip_plots) {
     //     FASTQC(
