@@ -490,10 +490,10 @@ workflow TAXTRIAGE {
         } else{
             distributions = Channel.fromPath(params.distributions)
         }
-        // println "Combining Kraken2 reports and getting top hits per file..."
-        // TOP_HITS(
-        //     ch_kraken2_report.combine(distributions).combine(ch_pathogens)
-        // )
+        println "Combining Kraken2 reports and getting top hits per file..."
+        TOP_HITS(
+            ch_kraken2_report.combine(distributions).combine(ch_pathogens)
+        )
         // MERGEDKRAKENREPORT(
         //     TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
         // )
