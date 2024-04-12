@@ -23,6 +23,7 @@ import sys
 import os
 import gzip
 import argparse
+import csv
 import pysam
 from math import log2
 
@@ -129,52 +130,38 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def import_pathogens(pathogens):
-    """Import the pathogens from the input file
-    """
-    pathogensdct = dict()
-    with open(pathogens, 'r') as f:
-        for line in f:
-            splitline = line.split('\t')
-            if len(splitline) > 0:
-                pathogenname = splitline[0]
-            else:
-                pathogenname = None
-            if len(splitline) > 1:
-                taxid = splitline[1]
-            else:
-                taxid = None
-            if len(splitline) > 2:
-                callclass = splitline[2]
-            else:
-                callclass = None
-            if len(splitline) > 3:
-                sites = splitline[3]
-            else:
-                sites = None
-            if len(splitline) > 4:
-                commensal = splitline[4]
-            else:
-                commensal = None
-            if len(splitline) > 5:
-                status = splitline[5]
-            else:
-                status = None
-            if len(splitline) > 6:
-                pathology = splitline[6]
-            else:
-                pathology = None
-            # assign these values into a dict where key is the pathogenname
-            pathogensdct[pathogenname] = {
+def import_pathogens(pathogens_file):
+    """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
+    pathogens_dict = {}
+    # Open the file using the `with` statement
+    with open(pathogens_file, 'r', newline='', encoding='ISO-8859-1') as file:
+        # Create a CSV reader object that handles commas inside quotes automatically
+        reader = csv.reader(file, delimiter=',', quotechar='"')
+
+        # Iterate over each row in the CSV file
+        for row in reader:
+            # Assign each part of the row to variables if available
+            pathogen_name = row[0] if len(row) > 0 else None
+            taxid = row[1] if len(row) > 1 else None
+            call_class = row[2] if len(row) > 2 else None
+            sites = row[3] if len(row) > 3 else None
+            commensal = row[4] if len(row) > 4 else None
+            status = row[5] if len(row) > 5 else None
+            pathology = row[6] if len(row) > 6 else None
+
+            # Store the data in the dictionary, keyed by pathogen name
+            pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
-                'callclass': callclass,
+                'callclass': call_class,
                 'sites': sites,
                 'commensal': commensal,
                 'status': status,
                 'pathology': pathology
             }
-    f.close()
-    return pathogensdct
+
+    # No need to explicitly close the file, `with` statement handles it.
+    print(pathogens_dict)
+    return pathogens_dict
 
 def identify_pathogens(inputfile, pathogens):
     """Identify the pathogens in the input file"""
@@ -250,6 +237,8 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
 
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
+        # get total reads
+        total_reads = sum(1 for _ in bam_file)
         for ref in bam_file.header.references:
             reference_lengths[ref] = bam_file.get_reference_length(ref)
             reference_coverage[ref] = dict(
@@ -292,7 +281,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
         if not depthfile or not covfile:
             print("No depthfile or covfile supplied, reading input from bam file")
             for read in bam_file.fetch(until_eof=True):
-                total_reads += 1
                 if not read.is_unmapped:  # Check if the read is aligned
                     reference_name = bam_file.get_reference_name(read.reference_id)
                     aligned_reads +=1
@@ -403,7 +391,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
         organism_coverage[organism]['mean_coverage'] = mean_coverage
         organism_coverage[organism]['gini_coefficient'] = gini_coefficient
         organism_coverage[organism]['depth_of_coverage'] = mean_depth
-
     return organism_coverage, total_reads
 
 def main():

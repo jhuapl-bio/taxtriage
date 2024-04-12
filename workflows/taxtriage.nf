@@ -157,7 +157,7 @@ ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty
 // // // // MODULE:  Pathogens
 // // // //
 //// Get Pathogen sheet by default
-ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.txt", checkIfExists: true)
+ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
 // // // //
 // // // //
 

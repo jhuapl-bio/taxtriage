@@ -99,21 +99,28 @@ def format_cell_content(cell):
 def import_data(inputfile ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
-    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus
-    # Staphylococcus aureus\tshortreads\tstool\t0.0002\t0.0002\t2\tYes\tstool\tCommensal\t1280\testablished
-    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished
-    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tNo\t\t\t1778540\tN/A
-    # Pediococcus acidilactici\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A
-    # Neisseria gonorrhoeae\tlongreads\toral\t0.012\t0.012\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished
-    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A
-    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A
-    # Fluviibacter phosphoraccumulans\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A
-    # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t0\tNo\t\t\t1715720\tN/A
-
-
+    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus\tGini Coefficient\tMeanBaseQ\tMeanMapQ\tBreadth of Coverage\tDepth of Coverage
+    # Staphylococcus aureus\tshortreads\tstool\t0.0008\t0.0008\t2\tYes\tstool\tCommensal\t1280\testablished\t0.4
+    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished\t0.23
+    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tNo\t\t\t1778540\tN/A\t0.95
+    # Pediococcus acidilactici\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A\t0.9
+    # Neisseria gonorrhoeae\tlongreads\toral\t0.025\t0.025\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished\t0.02
+    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A\t0.48
+    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A\t0.80
+    # Fluviibacter phosphoraccumulans\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A\t0.96
+    # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t1\tNo\t\t\t1715720\tN/A\t0.97
     # """.strip()
-    df = pd.read_csv(inputfile, sep='\t')
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
+    # # Simulating additional data
+    # np.random.seed(42)
+    # # df['Gini Coefficient'] = np.random.uniform(0, 1, df.shape[0])
+    # df['MeanBaseQ'] = np.random.uniform(20, 40, df.shape[0])
+    # df['MeanMapQ'] = np.random.uniform(30, 60, df.shape[0])
+    # df['Breadth of Coverage'] = np.random.uniform(50, 100, df.shape[0])
+    # df['Depth of Coverage'] = np.random.uniform(10, 100, df.shape[0])
+
+    df = pd.read_csv(inputfile, sep='\t')
+
 
     # sort the dataframe by the Sample THEN the # Reads
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
@@ -280,16 +287,23 @@ def create_report(
     version = "1.3.2"  # Example version
     # get datetime of year-mont-day hour:min
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
+    # sort df_identified by Alignment Conf
+    df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
+    # filter out so only Class is PAthogen
+    df_identified['Class']
+    df_identified_paths = df_identified[df_identified['Class'] == 'Pathogen']
+    df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
 
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
-    if not df_identified.empty:
-        columns_yes = df_identified.columns.values
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Gini Coeff", "Locations"]
+    if not df_identified_paths.empty:
+        columns_yes = df_identified_paths.columns.values
+        # print only rows in df_identified with Gini Coeff above 0.2
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Locations"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_identified, plotbuffer, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_identified, color_pathogen=True)
+        data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_identified_paths, color_pathogen=True)
         table = make_table(
             data_yes,
             table_style=table_style
@@ -297,7 +311,9 @@ def create_report(
         # Add the title and subtitle
         title = Paragraph("Organism Discovery Analysis", title_style)
         subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
-        elements = [title, subtitle, Spacer(1, 12)]
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
     # Adding regular text
@@ -313,14 +329,28 @@ def create_report(
     elements.append(Spacer(1, 12))
     subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Green represents a match with your sample type", subtext_style)
     elements.append(subtext_para)
-    if len(plotbuffer.keys()) > 0:
-        subtext_para = Paragraph("HHS: Healthy Human Subjects from the Human Microbiome Project", subtext_style)
-        elements.append(subtext_para)
 
-        subtext_para = Paragraph("Distribution metrics gathered from HMP SRA Taxonomy Analysis and compared to each organism in \
-            each row. Organisms falling outside the interquartile range (IQR) should be considered for downstream analysis, whether pathogenic or commensal in nature.\
-            Coloring specified by z-score with the mapping of score < z = 1(green), 2(yellow), 3(orange), & >3(red)", subtext_style)
-        elements.append(subtext_para)
+    if not df_identified_others.empty:
+        columns_yes = df_identified_others.columns.values
+        # print only rows in df_identified with Gini Coeff above 0.2
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Locations"]
+        # Now, call prepare_data_with_headers for both tables without manually preparing headers
+        data_yes_others = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_identified_others, color_pathogen=True)
+        table = make_table(
+            data_yes_others,
+            table_style=table_style
+        )
+        # Add the title and subtitle
+        title = Paragraph("Other Organisms Annotated", title_style)
+        subtitle = Paragraph(f"All Organisms were identified but were not listed as a pathogen", subtitle_style)
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))  # Space between tables
+
+        elements.append(table)
+        elements.append(Spacer(1, 12))  # Space between tables
+    # # Adding regular text
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
@@ -330,7 +360,8 @@ def create_report(
         second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms contained within the samples that had atleast one read aligned"
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
-        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample', "Gini Coeff" ]
+
+        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample', "Alignment Conf" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
@@ -341,6 +372,7 @@ def create_report(
     elements.append(Spacer(1, 12))  # Space between tables
     ##########################################################################################
     #####  Build the PDF
+    print(len(elements))
     # Adjust the build method to include the draw_vertical_line function
     doc.build(elements, onFirstPage=draw_vertical_line, onLaterPages=draw_vertical_line)
 
@@ -404,9 +436,10 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     df_full['Sites'] = df_full['Sites'].fillna("Unknown")
-    print(df_full.shape)
-    df_identified, df_unidentified = split_df(df_full)
 
+    df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{1-x:.2f}" if not pd.isna(x) else 0)
+    print(f"Size of of full list of organisms: {df_full.shape[0]}")
+    df_identified, df_unidentified = split_df(df_full)
     remap_headers = {
         "Name": "Organism",
         "name": "Organism",
@@ -420,7 +453,6 @@ def main():
     }
     df_identified= df_identified.rename(columns=remap_headers)
     df_unidentified= df_unidentified.rename(columns=remap_headers)
-
     create_report(
         args.output,
         df_identified,
@@ -433,7 +465,6 @@ def main():
 
 
 
-    # create_report(args.output, df_identified, df_unidentified)
 if __name__ == "__main__":
     main()
 

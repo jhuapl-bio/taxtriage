@@ -91,6 +91,13 @@ def parse_args(argv=None):
         help="Input type, can be a list of taxids or names or from a file",
     )
     parser.add_argument(
+        "-m",
+        "--missingfile",
+        default=None,
+        required = False,
+        help="Missing taxids or names to a file",
+    )
+    parser.add_argument(
         "-g",
         "--gcf_map",
         default='file',
@@ -183,7 +190,7 @@ def import_genome_file(filename, kraken2output):
     return refs
 
 #
-def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
+def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, missingfile = None):
     assemblies  = dict()
     first = dict()
 
@@ -262,16 +269,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
                 pass
     # figure out which inputs are missing from seencols
 
-    missing = list(set(input) - set(seencols.keys()))
-    if len(missing) > 0:
-        # get dirname of input file and write missing to a file
-        dirname = os.path.dirname(filename)
-        print("Missing", missing, )
-        # print out missing inputs to a file
-        with open(os.path.join(dirname, "missing.txt"), "w") as w:
-            for m in missing:
-                w.write(f"{m}\n")
-            w.close()
+
     # iterate through priorities, if 0 then set refs to the 0 value, if not 0 then 1 and so on until 3 or not found at all
 
     for key, value in priorities.items():
@@ -295,7 +293,18 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             reference=item['reference'],
             chrs=item['chrs'],
         )
-
+    missing = list(set(input) - set(seencols.keys()))
+    print(assemblies.keys())
+    if len(missing) > 0:
+        # get dirname of input file and write missing to a file
+        print("Missing", missing, )
+        # print out missing inputs to a file
+        if missingfile:
+            with open(os.path.join(missingfile), "w") as w:
+                matchname = ""
+                for m in missing:
+                    w.write(f"{m}\n")
+            w.close()
     return assembliesformat
 
 
@@ -506,7 +515,7 @@ def main(argv=None):
         seen_in_tops = args.input
 
     assemblies = import_assembly_file(
-        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path
+        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile
     )
 
 

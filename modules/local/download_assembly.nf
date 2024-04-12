@@ -36,6 +36,7 @@ process DOWNLOAD_ASSEMBLY {
     tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: gcfids
     tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mapfile
     tuple val(meta),  path("missing.txt"), optional: true, emit: missings
+
     path "versions.yml"           , emit: versions
 
     when:
@@ -61,7 +62,7 @@ process DOWNLOAD_ASSEMBLY {
 
     download_fastas.py \\
             -i  ${hits_containing_file} \\
-            -o ${meta.id}.output.references.fasta ${refresh_download} \\
+            -o ${meta.id}.output.references.fasta ${refresh_download} -m ${meta.id}.missing.txt \\
             ${email} $type -g ${meta.id}.gcfmapping.tsv \\
             -t ${assembly} -k  $column $columnAssembly -y 7 -r
 
