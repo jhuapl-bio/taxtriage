@@ -491,9 +491,11 @@ workflow TAXTRIAGE {
             distributions = Channel.fromPath(params.distributions)
         }
         println "Combining Kraken2 reports and getting top hits per file..."
+        distributions.view()
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
+        TOP_HITS.out.krakenreport.view()
         MERGEDKRAKENREPORT(
             TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
         )
@@ -505,28 +507,28 @@ workflow TAXTRIAGE {
             ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
         }
 
-        // if (params.fuzzy){
-        //     ch_organisms = TOP_HITS.out.names
-        // } else {
-        //     ch_organisms = TOP_HITS.out.taxids
-        // }
-        // // mix ch_organisms_to_download with ch_organisms 2nd index list
-        // ch_organisms_to_download = ch_organisms_to_download.join(
-        //     ch_organisms
-        // ).map{
-        //     meta, report, organisms -> {
-        //         report.add(organisms)
-        //         return [meta, report]
-        //     }
-        // }
+        if (params.fuzzy){
+            ch_organisms = TOP_HITS.out.names
+        } else {
+            ch_organisms = TOP_HITS.out.taxids
+        }
+        // mix ch_organisms_to_download with ch_organisms 2nd index list
+        ch_organisms_to_download = ch_organisms_to_download.join(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
 
 
 
 
-        // ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
-        // ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
-        // ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-        // ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
     }
     // ch_mapped_assemblies = Channel.empty()
