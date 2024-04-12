@@ -88,23 +88,23 @@ workflow  REFERENCE_PREP {
                     }
                 }
             } else {
-                illuminaPresent = ch_samples
-                      .filter { it[0].platform == "ILLUMINA" }
-                      .count()
-                      .map { it > 0 }
-                ch_bt2_indices = Channel.empty()
-                // Then, depending on the presence of 'ILLUMINA' samples, optionally run BOWTIE2_BUILD
+                // illuminaPresent = ch_samples
+                //       .filter { it[0].platform == "ILLUMINA" }
+                //       .count()
+                //       .map { it > 0 }
+                // ch_bt2_indices = Channel.empty()
+                // // Then, depending on the presence of 'ILLUMINA' samples, optionally run BOWTIE2_BUILD
                 if (illuminaPresent) {
-                    // If there are 'ILLUMINA' samples, we prepare and run BOWTIE2_BUILD
+                    //// If there are 'ILLUMINA' samples, we prepare and run BOWTIE2_BUILD
                     println("ILLUMINA samples found, performing BOWTIE2_BUILD: Local.")
-                    ch_reference_fasta
-                        .map { fasta ->
-                            def basen = fasta.baseName
-                            return [ [id: basen], fasta ]
-                        }
-                        .set { fastaForBowtieBuild }
+                //     ch_reference_fasta
+                //         .map { fasta ->
+                //             def basen = fasta.baseName
+                //             return [ [id: basen], fasta ]
+                //         }
+                //         .set { fastaForBowtieBuild }
 
-                    BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
+                //     BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
 
 
                     // fastaForBowtieBuild
