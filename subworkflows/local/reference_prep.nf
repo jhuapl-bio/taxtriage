@@ -18,7 +18,6 @@ workflow  REFERENCE_PREP {
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
     ch_prepfiles = Channel.empty()
-    ch_empty_file = file("$projectDir/assets/NO_FILE")
 
 
     ch_mapped_assemblies = ch_samples.map{ meta, report -> {
