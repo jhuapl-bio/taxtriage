@@ -37,33 +37,33 @@ workflow  REFERENCE_PREP {
 
         }
     }
-//     if (params.organisms_file){
-//         // check if params.organisms is a file or a string
-//         ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
-//         ch_reports_to_download = ch_reports_to_download.combine(ch_organisms).map{
-//             meta, report, organisms -> {
-//                 report.add(organisms)
-//                 return [meta, report]
-//             }
-//         }
-//     }
-//     if (params.organisms) {
-//         ch_organisms_taxids = Channel.from(params.organisms)
-//         // print params.organisms as a tsv, separated by space per
-//         MAKE_FILE(
-//             ch_organisms_taxids
-//         )
-//         ch_organisms = MAKE_FILE.out.file
+    if (params.organisms_file){
+        // check if params.organisms is a file or a string
+        ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
+        ch_reports_to_download = ch_reports_to_download.combine(ch_organisms).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
+    }
+    if (params.organisms) {
+        ch_organisms_taxids = Channel.from(params.organisms)
+        // print params.organisms as a tsv, separated by space per
+        MAKE_FILE(
+            ch_organisms_taxids
+        )
+        ch_organisms = MAKE_FILE.out.file
 
-//         ch_reports_to_download = ch_reports_to_download.combine(
-//             ch_organisms
-//         ).map{
-//             meta, report, organisms -> {
-//                 report.add(organisms)
-//                 return [meta, report]
-//             }
-//         }
-//     }
+        ch_reports_to_download = ch_reports_to_download.combine(
+            ch_organisms
+        ).map{
+            meta, report, organisms -> {
+                report.add(organisms)
+                return [meta, report]
+            }
+        }
+    }
 
 //     if (params.reference_fasta || params.get_pathogens) { //
 //         // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
