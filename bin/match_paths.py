@@ -23,6 +23,7 @@ import sys
 import os
 import gzip
 import argparse
+import csv
 import pysam
 from math import log2
 
@@ -129,52 +130,38 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def import_pathogens(pathogens):
-    """Import the pathogens from the input file
-    """
-    pathogensdct = dict()
-    with open(pathogens, 'r') as f:
-        for line in f:
-            splitline = line.split('\t')
-            if len(splitline) > 0:
-                pathogenname = splitline[0]
-            else:
-                pathogenname = None
-            if len(splitline) > 1:
-                taxid = splitline[1]
-            else:
-                taxid = None
-            if len(splitline) > 2:
-                callclass = splitline[2]
-            else:
-                callclass = None
-            if len(splitline) > 3:
-                sites = splitline[3]
-            else:
-                sites = None
-            if len(splitline) > 4:
-                commensal = splitline[4]
-            else:
-                commensal = None
-            if len(splitline) > 5:
-                status = splitline[5]
-            else:
-                status = None
-            if len(splitline) > 6:
-                pathology = splitline[6]
-            else:
-                pathology = None
-            # assign these values into a dict where key is the pathogenname
-            pathogensdct[pathogenname] = {
+def import_pathogens(pathogens_file):
+    """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
+    pathogens_dict = {}
+    # Open the file using the `with` statement
+    with open(pathogens_file, 'r', newline='', encoding='ISO-8859-1') as file:
+        # Create a CSV reader object that handles commas inside quotes automatically
+        reader = csv.reader(file, delimiter=',', quotechar='"')
+
+        # Iterate over each row in the CSV file
+        for row in reader:
+            # Assign each part of the row to variables if available
+            pathogen_name = row[0] if len(row) > 0 else None
+            taxid = row[1] if len(row) > 1 else None
+            call_class = row[2] if len(row) > 2 else None
+            sites = row[3] if len(row) > 3 else None
+            commensal = row[4] if len(row) > 4 else None
+            status = row[5] if len(row) > 5 else None
+            pathology = row[6] if len(row) > 6 else None
+
+            # Store the data in the dictionary, keyed by pathogen name
+            pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
-                'callclass': callclass,
+                'callclass': call_class,
                 'sites': sites,
                 'commensal': commensal,
                 'status': status,
                 'pathology': pathology
             }
-    f.close()
-    return pathogensdct
+
+    # No need to explicitly close the file, `with` statement handles it.
+    print(pathogens_dict)
+    return pathogens_dict
 
 def identify_pathogens(inputfile, pathogens):
     """Identify the pathogens in the input file"""

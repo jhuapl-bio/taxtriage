@@ -99,21 +99,28 @@ def format_cell_content(cell):
 def import_data(inputfile ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
-    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus
-    # Staphylococcus aureus\tshortreads\tstool\t0.0002\t0.0002\t2\tYes\tstool\tCommensal\t1280\testablished
-    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished
-    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tNo\t\t\t1778540\tN/A
-    # Pediococcus acidilactici\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A
-    # Neisseria gonorrhoeae\tlongreads\toral\t0.012\t0.012\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished
-    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A
-    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A
-    # Fluviibacter phosphoraccumulans\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A
-    # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t0\tNo\t\t\t1715720\tN/A
-
-
+    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus\tGini Coefficient\tMeanBaseQ\tMeanMapQ\tBreadth of Coverage\tDepth of Coverage
+    # Staphylococcus aureus\tshortreads\tstool\t0.0008\t0.0008\t2\tYes\tstool\tCommensal\t1280\testablished\t0.4
+    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished\t0.23
+    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tNo\t\t\t1778540\tN/A\t0.95
+    # Pediococcus acidilactici\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A\t0.9
+    # Neisseria gonorrhoeae\tlongreads\toral\t0.025\t0.025\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished\t0.02
+    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A\t0.48
+    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A\t0.80
+    # Fluviibacter phosphoraccumulans\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A\t0.96
+    # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t1\tNo\t\t\t1715720\tN/A\t0.97
     # """.strip()
-    df = pd.read_csv(inputfile, sep='\t')
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
+    # # Simulating additional data
+    # np.random.seed(42)
+    # # df['Gini Coefficient'] = np.random.uniform(0, 1, df.shape[0])
+    # df['MeanBaseQ'] = np.random.uniform(20, 40, df.shape[0])
+    # df['MeanMapQ'] = np.random.uniform(30, 60, df.shape[0])
+    # df['Breadth of Coverage'] = np.random.uniform(50, 100, df.shape[0])
+    # df['Depth of Coverage'] = np.random.uniform(10, 100, df.shape[0])
+
+    df = pd.read_csv(inputfile, sep='\t')
+
 
     # sort the dataframe by the Sample THEN the # Reads
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
