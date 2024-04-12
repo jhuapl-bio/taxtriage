@@ -32,9 +32,9 @@ process DOWNLOAD_ASSEMBLY {
 
 
     output:
-    tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
-    tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: gcfids
-    tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mapfile
+    tuple val(meta),  path("*.dwnld.references.fasta"), optional: true, emit: fasta
+    tuple val(meta),  path("*.dwnld.gcfids.txt"), optional: false, emit: gcfids
+    tuple val(meta),  path("*.dwnld.gcfmapping.tsv"), optional: false, emit: mapfile
     tuple val(meta),  path("missing.txt"), optional: true, emit: missings
 
     path "versions.yml"           , emit: versions
@@ -62,11 +62,11 @@ process DOWNLOAD_ASSEMBLY {
 
     download_fastas.py \\
             -i  ${hits_containing_file} \\
-            -o ${meta.id}.output.references.fasta ${refresh_download} -m ${meta.id}.missing.txt \\
-            ${email} $type -g ${meta.id}.gcfmapping.tsv \\
+            -o ${meta.id}.dwnld.references.fasta ${refresh_download} -m ${meta.id}.missing.txt \\
+            ${email} $type -g ${meta.id}.dwnld.gcfmapping.tsv \\
             -t ${assembly} -k  $column $columnAssembly -y 7 -r
 
-    cut -f 2 ${meta.id}.gcfmapping.tsv  | sort | uniq  > ${meta.id}.output.gcfids.txt
+    cut -f 2 ${meta.id}.dwnld.gcfmapping.tsv  | sort | uniq  > ${meta.id}.dwnld.gcfids.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

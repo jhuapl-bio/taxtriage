@@ -1,6 +1,7 @@
 include { MAKE_FILE } from '../../modules/local/make_file'
 include { DOWNLOAD_ASSEMBLY } from '../../modules/local/download_assembly'
 include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../../modules/local/map_assembly_to_fasta'
+include { FEATURES_DOWNLOAD } from '../../modules/local/download_features'
 include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
 include { COMBINE_MAPFILES } from '../../modules/local/combine_mapfiles'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_LOCAL } from '../../modules/nf-core/bowtie2/build/main'

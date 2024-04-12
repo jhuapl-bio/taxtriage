@@ -232,7 +232,6 @@ include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
 include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
-include {  FEATURES_DOWNLOAD } from '../modules/local/download_features'
 include {  REFERENCE_REHEADER } from '../modules/local/reheader'
 include { FEATURES_MAP } from '../modules/local/features_map'
 
@@ -477,12 +476,14 @@ workflow TAXTRIAGE {
             )
             ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
         }
-        if (!params.distributions){
-            distributions = ch_empty_file
+        if (!params.unknown_sample){
+            distributions = Channel.fromPath(ch_empty_file)
+        } else if (!params.distributions){
+            distributions = Channel.fromPath("$projectDir/assets/taxid_abundance_stats.hmp.tsv.gz", checkIfExists: true)
         } else{
             distributions = Channel.fromPath(params.distributions)
         }
-
+        distributions.view()
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
@@ -521,6 +522,7 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
     }
+    ch_mapped_assemblies = Channel.empty()
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,
@@ -528,7 +530,11 @@ workflow TAXTRIAGE {
     )
 
     ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
-
+    ch_mapped_assemblies = ch_preppedfiles.map{
+        meta, fastas, map, gcfids -> {
+            return [meta, map]
+        }
+    }
 
 
     if (params.metaphlan) {
@@ -561,7 +567,7 @@ workflow TAXTRIAGE {
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
-    ch_mapped_assemblies = Channel.empty()
+
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
 
@@ -577,6 +583,7 @@ workflow TAXTRIAGE {
         )
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
+
 
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
@@ -597,37 +604,37 @@ workflow TAXTRIAGE {
                 // If mapping is not present, replace it with null or an empty placeholder
                 return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
-        // if (params.get_features){
+        if (params.get_features){
+            ch_bedfiles = REFERENCE_PREP.ch_feature_bedfiles
+            FEATURES_MAP(
+                ch_combined.map {
+                    meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+                }.join(ch_bedfiles)
+            )
+        }
 
-        //     FEATURES_MAP(
-        //         ch_combined.map {
-        //             meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
-        //         }.join(ch_bedfiles)
-        //     )
-        // }
+        if (!params.skip_confidence) {
+            CONFIDENCE_METRIC(
+                ch_combined
+            )
 
-        // if (!params.skip_confidence) {
-        //     CONFIDENCE_METRIC(
-        //         ch_combined
-        //     )
-
-        //     CONFIDENCE_MERGE(
-        //         CONFIDENCE_METRIC.out.tsv
-        //     )
+            CONFIDENCE_MERGE(
+                CONFIDENCE_METRIC.out.tsv
+            )
 
 
-        //     CONVERT_CONFIDENCE(
-        //         CONFIDENCE_MERGE.out.confidence
-        //     )
+            CONVERT_CONFIDENCE(
+                CONFIDENCE_MERGE.out.confidence
+            )
 
-        //     MERGE_CONFIDENCE(
-        //         CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
-        //     )
+            MERGE_CONFIDENCE(
+                CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+            )
 
-        //     ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
-        //     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
+            ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
+            ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
 
-        // }
+        }
     }
 
     if (params.denovo_assembly) {
