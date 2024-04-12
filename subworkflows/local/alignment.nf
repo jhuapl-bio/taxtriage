@@ -208,10 +208,10 @@ workflow ALIGNMENT {
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
         }
     }
-    RSEQC_BAMSTAT(
-        collected_bams
-    )
-    ch_bamstats = RSEQC_BAMSTAT.out.txt
+    // RSEQC_BAMSTAT(
+    //     collected_bams
+    // )
+    // ch_bamstats = RSEQC_BAMSTAT.out.txt
     ch_bams =  sorted_bams_with_index
     ch_depths = SAMTOOLS_DEPTH.out.tsv
     emit:
@@ -220,6 +220,6 @@ workflow ALIGNMENT {
         bams = ch_bams
         fasta  = ch_merged_fasta
         stats = ch_stats
-        bamstats = ch_bamstats
+        // bamstats = ch_bamstats
         versions = ch_versions
     }

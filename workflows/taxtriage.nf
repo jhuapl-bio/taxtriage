@@ -483,7 +483,6 @@ workflow TAXTRIAGE {
         } else{
             distributions = Channel.fromPath(params.distributions)
         }
-        distributions.view()
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
@@ -593,7 +592,7 @@ workflow TAXTRIAGE {
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        ch_bamstats = ALIGNMENT.out.bamstats
+        // ch_bamstats = ALIGNMENT.out.bamstats
         ch_depth = ALIGNMENT.out.depth
 
         ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
@@ -605,7 +604,7 @@ workflow TAXTRIAGE {
                 return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
         if (params.get_features){
-            ch_bedfiles = REFERENCE_PREP.ch_feature_bedfiles
+            ch_bedfiles = REFERENCE_PREP.out.ch_feature_bedfiles
             FEATURES_MAP(
                 ch_combined.map {
                     meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
