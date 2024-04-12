@@ -126,12 +126,19 @@ def import_data(inputfile ):
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
     # trim all of NAme column  of whitespace either side
     df['Name'] = df['Name'].str.strip()
+
+    dictnames = {
+        11250: "human respiratory syncytial virus B",
+        12814: "human respiratory syncytial virus A",
+    }
+
     # df['Organism'] = df['Name']
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
             #  update index of row to change organism name to bold
             df.at[row_idx, 'Name'] = f'{row.Name}*'
-
+        # change the Name column if the mapnames for taxid is in the dict
+        df['Name'] = df[['Name', 'Taxid']].apply(lambda x: dictnames[x['Taxid']] if x['Taxid'] in dictnames else x['Name'], axis=1)
     return df
 
 def split_df(df_full):
@@ -395,16 +402,28 @@ def main():
         "gut": "stool",
         "nose": "nasal",
         "vagina": "vaginal",
-        "teeth": "oral"
+        "teeth": "oral",
+        "resp": "nasal",
+        "abscess": "skin",
+        "absscess": "skin",
+        "sputum": "oral",
+        "mouth": "oral",
+        "urinary tract": "urine",
+        "ear": "skin",
+        "lung": "nasal",
+        "eye": "eye",
+        "sinus": "nasal",
+        "urogenital": "skin",
+        "cornea": "eye",
     }
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map[x] if x in body_site_map else x)
     plotbuffer = dict()
     if args.distributions and os.path.exists(args.distributions):
         stats_dict = import_distributions(
-            df_full,
             args.distributions,
-            args.type
+            args.type,
+            []
         )
 
         for index, row in df_full.iterrows():
@@ -436,6 +455,7 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     df_full['Sites'] = df_full['Sites'].fillna("Unknown")
+
     df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{1-x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
     df_identified, df_unidentified = split_df(df_full)

@@ -12,6 +12,7 @@ process MINIMAP2_ALIGN {
     val bam_format
     val cigar_paf_format
     val cigar_bam
+    val(minmapq)
 
     output:
     tuple val(meta), path("*.paf"), optional: true, emit: paf
@@ -24,7 +25,7 @@ process MINIMAP2_ALIGN {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def minmapq = params.minmapq ? " -q ${params.minmapq} " :  ""
+    def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def input_reads = meta.single_end ? "$reads" : "${reads[0]} ${reads[1]}"
     def bam_output = bam_format ? "-a | samtools sort | samtools view $minmapq -@ ${task.cpus} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''

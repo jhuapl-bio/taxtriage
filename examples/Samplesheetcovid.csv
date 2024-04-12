@@ -1,2 +1,2 @@
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim
-NB03,OXFORD,examples/data/fastq_demux/NB03,,,FALSE
+sample,platform,fastq_1,fastq_2,sequencing_summary,type
+NB03,OXFORD,examples/data/fastq_demux/NB03,,,nasal

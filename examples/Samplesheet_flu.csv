@@ -1,2 +1,2 @@
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim
-BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,FALSE
+sample,platform,fastq_1,fastq_2,sequencing_summary,type
+BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,nasal

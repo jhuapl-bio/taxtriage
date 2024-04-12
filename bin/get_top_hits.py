@@ -27,6 +27,8 @@ from collections import Counter
 from pathlib import Path
 import re
 import os
+from distributions import import_distributions
+import pandas as pd
 logger = logging.getLogger()
 
 
@@ -54,9 +56,33 @@ def parse_args(argv=None):
     parser.add_argument(
         "-s",
         "--top_hits_string",
-        metavar="TOP_HITS_STRING",
+        metavar="TOP_HITS_STRINGT",
         type=str, nargs="+", default=[],
         help="Top Hits ",
+    )
+    parser.add_argument(
+        "-d",
+        "--distributions",
+        metavar="DISTRIBUTIONS",
+        type=Path,
+        default = None,
+        help="Path to OPTIONAL file that contains distributions of zscores for each taxid in the input file.",
+    )
+    parser.add_argument(
+        "-p",
+        "--pathogens",
+        metavar="PATHOGENS",
+        type=Path,
+        default = None,
+        help="Path to OPTIONAL file that contains pathogens that have been annotated. Match taxids only",
+    )
+    parser.add_argument(
+        "-z",
+        "--zscore",
+        metavar="ZSCORE",
+        type=float,
+        default = 1.5,
+        help="OPTIONAL: If providing a distributions file, max zscore to consider for top hits",
     )
     parser.add_argument(
         "-o",
@@ -72,6 +98,14 @@ def parse_args(argv=None):
         metavar="TOP_PER_RANK",
         type=int,
         help="Max Top per rank code",
+    )
+    parser.add_argument(
+        "-b",
+        "--body_site",
+        default="Unknown",
+        metavar="BODYSITE",
+        type=str,
+        help="What body site to loook at distributions for. If empty and listed distributions enabled, this is assumed as Unknown",
     )
     parser.add_argument(
         "-l",
@@ -91,7 +125,6 @@ def import_file(input, filter_ranks):
     taxids = dict()
     header = ['abundance', 'clade_fragments_covered',
         'number_fragments_assigned', 'rank', 'taxid', 'name', 'parents']
-    total = []
     for row in read_tsv:
         entry = dict()
         for x in range(0, len(header)):
@@ -107,7 +140,6 @@ def import_file(input, filter_ranks):
                 entry[header[x]] = ""
         mapping.append(entry)
         taxids[entry['taxid']] = entry['name']
-
     # k2_regex = re.compile(r"^\s{0,2}(\d{1,3}\.\d{1,2})\t(\d+)\t(\d+)\t([\dUDKRPCOFGS-]{1,3})\t(\d+)(\s+)(.+)")
     k2_regex = re.compile(r"^(\s+)(.+)")
     depth = dict()
@@ -136,7 +168,7 @@ def import_file(input, filter_ranks):
         return mapping
 
 
-def top_hit(mapping, specific_limits, top_per_rank):
+def top_hit(mapping, specific_limits, top_per_rank, dist_orgs = []):
     uniq_ranks = list([x['rank'] for x in mapping])
     sorted_mapping = dict()
     for x in mapping:
@@ -148,14 +180,25 @@ def top_hit(mapping, specific_limits, top_per_rank):
         sorted_specific_rank = sorted(
             sorted_mapping[rank], key=lambda d: d['abundance'], reverse=True)
         sorted_mapping[rank] = sorted_specific_rank
-    # header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid','name','parents']
     newdata_seen = dict()
     countranks = dict()
     newdata = dict()
+    for org in dist_orgs:
+        if not org in newdata:
+            # find the index and get value of the org in mapping
+            row = None
+            for row in mapping:
+                rank = row['rank']
+                if row['taxid'] == org:
+                    newdata[row['taxid']] = row
+                    break
+                if not rank in countranks:
+                    countranks[rank] = 1
+                else:
+                    countranks[rank] += 1
     for specifics, value in specific_limits.items():
         rank = value['rank']
         limit = value['limit']
-
         if rank in sorted_mapping:
             i = 0
             for row in sorted_mapping[rank]:
@@ -169,7 +212,8 @@ def top_hit(mapping, specific_limits, top_per_rank):
                         else:
                             countranks[rank] += 1
                         i += 1
-                        newdata[row['taxid']] = row
+                        if not row['taxid'] in newdata:
+                            newdata[row['taxid']] = row
     for key, value in sorted_mapping.items():
         for row in value:
             if not key in countranks:
@@ -204,7 +248,12 @@ def make_files(mapping, outpath):
     path.close()
     print("Done exporting the top hits report ")
 
-
+def get_stats(row, stats_dict):
+    taxid = row['tax_id']
+    if (taxid, row['body_site']) in stats_dict:
+        return stats_dict[(taxid, row['body_site'])]
+    else:
+        return None
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
     args = parse_args(argv)
@@ -221,8 +270,118 @@ def main(argv=None):
             if len(fulllist) >= 3:
                 specific_limits[int(fulllist[0])] = dict(
                     limit=int(fulllist[1]), rank=fulllist[2])
+
+
     mapping = import_file(args.file_in, args.filter_ranks)
-    mapping = top_hit(mapping, specific_limits, args.top_per_rank)
+    seentaxids = dict()
+    for val in mapping:
+        seentaxids[val['taxid']] = True
+    # rename df_full['taxid'] to 'tax_id'
+    dist_orgs = None
+    pathogen_orgs = []
+    extra_orgs = []
+    if args.body_site == "Unknown" or not args.body_site:
+        body_sites = []
+    else:
+        body_sites = [args.body_site.lower()]
+
+    if args.pathogens:
+        with open(args.pathogens, 'r', encoding='utf-8', errors='replace') as f:
+            pathogen_sheet = pd.read_csv(f, sep=',')
+        f.close()
+        body_site_map = {
+            "gut": "stool",
+            "nose": "nasal",
+            "vagina": "vaginal",
+            "teeth": "oral",
+            "resp": "nasal",
+            "abscess": "skin",
+            "absscess": "skin",
+            "sputum": "oral",
+            "mouth": "oral",
+            "urinary tract": "urine",
+            "ear": "skin",
+            "lung": ["oral", "nasal"],
+            "eye": "eye",
+            "sinus": "nasal",
+            "urogenital": "skin",
+            "cornea": "eye",
+        }
+        # A function to apply the mapping and remove duplicates
+        def translate_and_deduplicate_sites(sites):
+            # Split the string by comma and space, and remove empty strings if any
+            sites_list = [site.strip() for site in sites.split(',') if site.strip()]
+            # Initialize an empty set for the translated sites
+            translated_sites = set()
+            for site in sites_list:
+                # Get the mapped value from the dictionary
+                mapped_value = body_site_map.get(site.lower(), site.lower())
+                # If the mapped value is a list, add all its items to the set
+                if isinstance(mapped_value, list):
+                    translated_sites.update(mapped_value)
+                else:
+                    translated_sites.add(mapped_value)
+            # Join the unique sites back into a string
+            return ', '.join(sorted(translated_sites))
+
+        # convert all pathogen_sites nan to "Unknown"
+        pathogen_sheet['pathogenic_sites'].fillna("Unknown", inplace=True)
+        pathogen_sheet['pathogenic_sites'] = pathogen_sheet['pathogenic_sites'].apply(translate_and_deduplicate_sites)
+        # check if (lowercase) args.body_site is anywhere in pathogen_orgs body_site column, if not filter
+        pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
+        # filter out where general_classification is pathogen or opportunistic pathogen
+        pathogen_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["primary", "opportunistic", "potential", "oportunistic"])]['taxid']
+        # remove all Nan values
+        pathogen_orgs = pathogen_orgs.dropna()
+        pathogen_orgs = pathogen_orgs.astype(int).tolist()
+
+        for orgn in pathogen_orgs:
+            if orgn in seentaxids:
+                extra_orgs.append(orgn)
+    if args.distributions:
+        dists = import_distributions(
+            args.distributions,
+            "tax_id",
+            body_sites
+        )
+        df_full = pd.DataFrame(mapping)
+        # only get dists where args.body_site is in body_site column
+        # only keep rank has S in it
+        df_full = df_full[df_full['rank'].str.contains('S')]
+        df_full['body_site'] = args.body_site
+
+        df_full.rename(columns={'taxid': 'tax_id'}, inplace=True)
+        # convert body_site to lowercase
+        df_full['body_site'] = df_full['body_site'].str.lower()
+        # only get rows where args.body_site is in body_site column
+        # filter out 2d dict of taxid, body_site of df_full where taxid AND body_site is in dists
+        datanew = []
+        for index, row in df_full.iterrows():
+            taxidsonly = [key[0] for key in dists.keys()]
+            if (row['tax_id'], row['body_site']) in dists or row['tax_id'] not in taxidsonly or len(body_sites)== 0:
+                datanew.append(row)
+        df_full = pd.DataFrame(datanew)
+        if len(df_full) == 0:
+            print("No data to process")
+        else:
+            df_full['stats'] = df_full.apply(lambda x: get_stats(x, dists), axis=1)
+            # get the mean, std, and zscore for each row
+            df_full['mean'] = df_full['stats'].apply(lambda x: x['mean'] if x else None)
+            df_full['std'] = df_full['stats'].apply(lambda x: x['std'] if x else None)
+            df_full['zscore'] = (df_full['abundance'] - df_full['mean']) / df_full['std']
+
+            # if zscore is NaN convert to -1
+            df_full['zscore'] = df_full['zscore'].fillna(-1)
+            # filter any row with zscore outside of absolute value of args.zscore
+            df_fullyes = df_full[  ( df_full['zscore'] <= args.zscore) & (df_full['zscore'] != -1)  ]
+            df_full = df_full[  ( df_full['zscore'] > args.zscore) | (df_full['zscore'] == -1)  ]
+            # get taxid is 2 stool body_site
+            # Get percentile of abundance relative to all abundances
+            # df_full['percentile'] = df_full['abundance'].rank(pct=True) * 100
+            dist_orgs = df_full['tax_id'].tolist()
+            extra_orgs = extra_orgs + dist_orgs
+    extra_orgs = list(set(extra_orgs))
+    mapping = top_hit(mapping, specific_limits, args.top_per_rank, extra_orgs)
     make_files(mapping, args.file_out)
 
 

@@ -7,25 +7,31 @@ from io import BytesIO
 import random
 
 def import_distributions(
-        abundance_data,
         distribution_data,
-        column_id
+        column_id,
+        body_sites = [],
     ):
-    body_sites = abundance_data['body_site'].unique()
     # convert any empty or NaN body site to "unknown"
-
+    distribution_data  = str(distribution_data)
     # Load the full dataset for comparison
     #if distribution_data is a .gz file, decompress otherwise read as is
-    stats_dict = {}
+    stats_dict_new = {}
     if distribution_data.endswith('.gz'):
         stats_dict = pd.read_csv(distribution_data, sep='\t', compression='gzip').to_dict(orient='records')
     else:
         stats_dict = pd.read_csv(distribution_data, sep='\t').to_dict(orient='records')
-    stats_dict = {(x[column_id], x['body_site']): x for x in stats_dict}
+    if len(body_sites) > 0:
+
+        for value in stats_dict:
+            if 'body_site' in value and value['body_site'] in body_sites:
+                stats_dict_new[(value[column_id], value['body_site'])] = value
+    else:
+        stats_dict_new = {(x[column_id], x['body_site']): x for x in stats_dict}
+    i = 0
     # convert all abundances to a list of floats
-    for key in stats_dict:
-        stats_dict[key]['abundances'] = [float(x) for x in stats_dict[key]['abundances'].split(",")]
-    return stats_dict
+    for key in stats_dict_new:
+        stats_dict_new[key]['abundances'] = [float(x) for x in stats_dict_new[key]['abundances'].split(",")]
+    return stats_dict_new
 def make_vplot(taxid, stats, column, result_df):
     # Calculate the standard deviation and mean
     std_dev = stats['std']
