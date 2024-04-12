@@ -494,16 +494,16 @@ workflow TAXTRIAGE {
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
-        // MERGEDKRAKENREPORT(
-        //     TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
-        // )
+        MERGEDKRAKENREPORT(
+            TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
+        )
 
-        // FILTERKRAKEN(
-        //     MERGEDKRAKENREPORT.out.krakenreport
-        // )
-        // if (ch_save_fastq_classified){
-        //     ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
-        // }
+        FILTERKRAKEN(
+            MERGEDKRAKENREPORT.out.krakenreport
+        )
+        if (ch_save_fastq_classified){
+            ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+        }
 
         // if (params.fuzzy){
         //     ch_organisms = TOP_HITS.out.names
