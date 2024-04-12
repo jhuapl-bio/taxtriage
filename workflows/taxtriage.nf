@@ -452,36 +452,37 @@ workflow TAXTRIAGE {
 
         ch_kraken2_report.view()
 
-        // KREPORT_TO_KRONATXT(
-        //     ch_kraken2_report
-        // )
+        KREPORT_TO_KRONATXT(
+            ch_kraken2_report
+        )
 
-        // ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+        ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
 
-        // ch_combined = ch_krona_txt
-        //             .map{ it[1] }        // Get the file path
-        //             .collect()            // Collect all file parts into a list
-        //             .map { files ->
-        //                 // Join the files with single quotes and space
-        //                 // String joinedFiles = files.collect { "'$it'" }.join(' ')
-        //                 // if single file then make it [files] otherwise just files
-        //                 [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
-        //             }
-        // KRONA_KTIMPORTTEXT(
-        //     ch_combined
-        // )
+        ch_combined = ch_krona_txt
+                    .map{ it[1] }        // Get the file path
+                    .collect()            // Collect all file parts into a list
+                    .map { files ->
+                        // Join the files with single quotes and space
+                        // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                        // if single file then make it [files] otherwise just files
+                        [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
+                    }
+        KRONA_KTIMPORTTEXT(
+            ch_combined
+        )
 
-        // if (params.remove_taxids) {
-        //     remove_input = ch_kraken2_report.map {
-        //         meta, report -> [
-        //             meta, report, params.remove_taxids
-        //         ]
-        //     }
-        //     REMOVETAXIDSCLASSIFICATION(
-        //         remove_input
-        //     )
-        //     ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
-        // }
+        if (params.remove_taxids) {
+            remove_input = ch_kraken2_report.map {
+                meta, report -> [
+                    meta, report, params.remove_taxids
+                ]
+            }
+            REMOVETAXIDSCLASSIFICATION(
+                remove_input
+            )
+            ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
+        }
+        ch_kraken2_report.view()
         // if (!params.unknown_sample){
         //     distributions = Channel.fromPath(ch_empty_file)
         // } else if (!params.distributions){
@@ -528,12 +529,12 @@ workflow TAXTRIAGE {
         // ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
     }
-    // ch_mapped_assemblies = Channel.empty()
-    // REFERENCE_PREP(
-    //     ch_organisms_to_download,
-    //     ch_reference_fasta,
-    //     ch_assembly_txt
-    // )
+    ch_mapped_assemblies = Channel.empty()
+    REFERENCE_PREP(
+        ch_organisms_to_download,
+        ch_reference_fasta,
+        ch_assembly_txt
+    )
 
     // ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
     // ch_mapped_assemblies = ch_preppedfiles.map{
