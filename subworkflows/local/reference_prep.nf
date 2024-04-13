@@ -83,56 +83,58 @@ workflow  REFERENCE_PREP {
                 println "bt2 indices being used"
                 // If bt2_indices parameter is provided, create a channel from the provided path
                 ch_bt2indices = Channel.fromPath(params.bt2_indices)
-                ch_reference_fasta.view()
-                // ch_mapped_assemblies.map { meta, fastas, listmaps, listids -> {
-                //         fastas.add([file(ch_reference_fasta), ch_bt2indices])
-                //         return [meta, fastas, listmaps, listids]
-                //     }
-                // }
+                ch_mapped_assemblies.combine(ch_bt2indices).combine(ch_reference_fasta).map{
+                    meta, fastas, listmaps, listids, bt2index, fasta -> {
+                        fastas.add([fasta, bt2index])
+                        return [meta, fastas, listmaps, listids]
+                    }
+                }.set{ ch_mapped_assemblies }
+
             } else {
-                // illuminaPresent = ch_samples
-                //       .filter { it[0].platform == "ILLUMINA" }
-                //       .count()
-                //       .map { it > 0 }
-                // ch_bt2_indices = Channel.empty()
+                illuminaPresent = ch_samples
+                      .filter { it[0].platform == "ILLUMINA" }
+                      .count()
+                      .map { it > 0 }
+                ch_bt2_indices = Channel.empty()
                 // // Then, depending on the presence of 'ILLUMINA' samples, optionally run BOWTIE2_BUILD
                 if (illuminaPresent) {
                     //// If there are 'ILLUMINA' samples, we prepare and run BOWTIE2_BUILD
                     println("ILLUMINA samples found, performing BOWTIE2_BUILD: Local.")
-                //     ch_reference_fasta
-                //         .map { fasta ->
-                //             def basen = fasta.baseName
-                //             return [ [id: basen], fasta ]
-                //         }
-                //         .set { fastaForBowtieBuild }
+                    ch_reference_fasta
+                        .map { fasta ->
+                            def basen = fasta.baseName
+                            return [ [id: basen], fasta ]
+                        }
+                        .set { fastaForBowtieBuild }
 
-                //     BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
+                    BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
 
 
-                    // fastaForBowtieBuild
-                    //     .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
-                    //     .set { fastaWithIndexChannel }
-                    // ch_mapped_assemblies.combine(fastaWithIndexChannel.map{
-                    //     meta, fasta, index -> {
-                    //         return [fasta, index]
-                    //     }
-                    // }).map{
-                    //     meta, fastas, listmaps, listids, singlefasta, fastaWithIndex -> {
-                    //         fastas.add([singlefasta, fastaWithIndex]) // Add FASTA and Index to 'fastas'
-                    //         return [meta, fastas, listmaps, listids]
-                    //     }
-                    // }.set { ch_mapped_assemblies }
+                    fastaForBowtieBuild
+                        .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
+                        .set { fastaWithIndexChannel }
+                    ch_mapped_assemblies.combine(fastaWithIndexChannel.map{
+                        meta, fasta, index -> {
+                            return [fasta, index]
+                        }
+                    }).map{
+                        meta, fastas, listmaps, listids, singlefasta, fastaWithIndex -> {
+                            fastas.add([singlefasta, fastaWithIndex]) // Add FASTA and Index to 'fastas'
+                            return [meta, fastas, listmaps, listids]
+                        }
+                    }.set { ch_mapped_assemblies }
                 } else {
                     println("No ILLUMINA samples found, skipping BOWTIE2_BUILD: Local.")
                 }
             }
         }
 
-        // ch_mapped_assemblies = ch_mapped_assemblies.combine(
-        //     MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }
-        // ).combine(
-        //     MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, gcfids ->  return gcfids  }
-        // )
+        ch_mapped_assemblies = ch_mapped_assemblies.combine(
+            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map {  meta, mapfile ->  return mapfile  }
+        ).combine(
+            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, gcfids ->  return gcfids  }
+        )
+        ch_mapped_assemblies.view()
 
         // ch_mapped_assemblies.map { meta, fastas, listmaps, listids, mapfile, gcfids -> {
         //         listmaps.add(mapfile)
