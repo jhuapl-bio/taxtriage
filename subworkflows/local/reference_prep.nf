@@ -134,7 +134,6 @@ workflow  REFERENCE_PREP {
         ).combine(
             MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map {  meta, gcfids ->  return gcfids  }
         )
-        ch_mapped_assemblies.view()
 
         ch_mapped_assemblies.map { meta, fastas, listmaps, listids, mapfile, gcfids -> {
                 listmaps.add(mapfile)
