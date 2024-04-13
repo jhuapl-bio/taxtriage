@@ -402,7 +402,6 @@ workflow TAXTRIAGE {
         ch_fastp_html = FASTP.out.html
     }
     println "Reads filtered and trimmed."
-    ch_reads.view()
 
     HOST_REMOVAL(
         ch_reads,
@@ -410,7 +409,6 @@ workflow TAXTRIAGE {
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
     println "Host removal complete."
-    ch_reads.view()
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
@@ -450,7 +448,6 @@ workflow TAXTRIAGE {
 
         ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
-        ch_kraken2_report.view()
 
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
@@ -482,7 +479,6 @@ workflow TAXTRIAGE {
             )
             ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
         }
-        ch_kraken2_report.view()
         if (!params.unknown_sample){
             distributions = Channel.fromPath(ch_empty_file)
         } else if (!params.distributions){
@@ -491,11 +487,9 @@ workflow TAXTRIAGE {
             distributions = Channel.fromPath(params.distributions)
         }
         println "Combining Kraken2 reports and getting top hits per file..."
-        distributions.view()
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
-        TOP_HITS.out.krakenreport.view()
         MERGEDKRAKENREPORT(
             TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
         )
