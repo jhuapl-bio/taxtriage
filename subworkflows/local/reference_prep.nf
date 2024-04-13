@@ -151,60 +151,60 @@ workflow  REFERENCE_PREP {
             ch_assembly_txt
         )
 
-        // // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
-        // // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
-        // DOWNLOAD_ASSEMBLY.out.fasta.branch{
-        //         longreads: it[0].platform =~ 'OXFORD'
-        //         shortreads: it[0].platform =~ 'ILLUMINA'
-        // }.set { ch_platform_split }
+        // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
+        // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
+        DOWNLOAD_ASSEMBLY.out.fasta.branch{
+                longreads: it[0].platform =~ 'OXFORD'
+                shortreads: it[0].platform =~ 'ILLUMINA'
+        }.set { ch_platform_split }
 
-//         BOWTIE2_BUILD_DWNLD(
-//             ch_platform_split.shortreads
-//         )
-//         ch_platform_split.shortreads.join(BOWTIE2_BUILD_DWNLD.out.index)
-//         .map{meta, fasta, index -> [meta, [fasta, index]] }.set { merged_shortreads_index }
+        BOWTIE2_BUILD_DWNLD(
+            ch_platform_split.shortreads
+        )
+        ch_platform_split.shortreads.join(BOWTIE2_BUILD_DWNLD.out.index)
+        .map{meta, fasta, index -> [meta, [fasta, index]] }.set { merged_shortreads_index }
 
-//         ch_platform_split.longreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_longreads_only }
+        ch_platform_split.longreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_longreads_only }
 
-//         ch_fullset = merged_shortreads_index.mix(merged_longreads_only)
-
-
-
-//         ch_mapped_assemblies.join(ch_fullset)
-//             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
-//             .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
+        ch_fullset = merged_shortreads_index.mix(merged_longreads_only)
 
 
-//         ch_mapped_assemblies.map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile -> {
-//                 listmaps.add(mapfile)
-//                 listids.add(gcfids)
-//                 fastas.add(fasta)
-//                 return [meta, fastas, listmaps, listids ]
-//         }
-//         }.set{ ch_mapped_assemblies }
-//     }
 
-//     COMBINE_MAPFILES(
-//         ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->  return [ meta, listmaps, listids ] }
-//     )
-//     ch_mapped_assemblies = ch_mapped_assemblies.join(COMBINE_MAPFILES.out.mergefiles)
-//         .map {
-//             meta, fastas, listmaps, listids, mergedmap, mergedids -> {
-//                 return [ meta, fastas, mergedmap, mergedids ]
-//             }
-//         }
+        ch_mapped_assemblies.join(ch_fullset)
+            .join(DOWNLOAD_ASSEMBLY.out.gcfids)
+            .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
 
-//     if (params.get_features){
-//         FEATURES_DOWNLOAD(
-//             ch_mapped_assemblies.map { meta, fastas, listmaps, listids  ->  return [ meta, listids ] },
-//             ch_assembly_txt
-//         )
 
-//         FEATURES_TO_BED(
-//             FEATURES_DOWNLOAD.out.features
-//         )
+        ch_mapped_assemblies.map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile -> {
+                listmaps.add(mapfile)
+                listids.add(gcfids)
+                fastas.add(fasta)
+                return [meta, fastas, listmaps, listids ]
+        }
+        }.set{ ch_mapped_assemblies }
+    }
 
-//         ch_bedfiles = FEATURES_TO_BED.out.bed
+    COMBINE_MAPFILES(
+        ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->  return [ meta, listmaps, listids ] }
+    )
+    ch_mapped_assemblies = ch_mapped_assemblies.join(COMBINE_MAPFILES.out.mergefiles)
+        .map {
+            meta, fastas, listmaps, listids, mergedmap, mergedids -> {
+                return [ meta, fastas, mergedmap, mergedids ]
+            }
+        }
+
+    if (params.get_features){
+        FEATURES_DOWNLOAD(
+            ch_mapped_assemblies.map { meta, fastas, listmaps, listids  ->  return [ meta, listids ] },
+            ch_assembly_txt
+        )
+
+        FEATURES_TO_BED(
+            FEATURES_DOWNLOAD.out.features
+        )
+
+        ch_bedfiles = FEATURES_TO_BED.out.bed
     }
 
     emit:
