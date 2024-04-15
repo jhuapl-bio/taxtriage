@@ -118,6 +118,38 @@ workflow ALIGNMENT {
         .groupTuple() // Group by oid
         .map { oid, files -> [[id:oid], files] } // Replace oid with id in the metadata
         .set{ merged_bams_channel }
+
+
+    if (params.get_variants || params.reference_assembly){
+    //     // // // branch out the samtools_sort output to nanopore and illumina
+
+
+        BCFTOOLS_MPILEUP_OXFORD(
+            ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
+            ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> fasta },
+            false
+        )
+        ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
+        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
+        BCFTOOLS_MPILEUP_ILLUMINA(
+            ch_fasta_shortreads_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
+            ch_fasta_shortreads_files_for_alignment.map{ m, bam, fasta -> fasta[0] },
+            false
+        )
+        .set{ transposed_fastas_oxford }
+
+        ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
+        ch_merged_mpileup_illumina = ch_merged_mpileup_illumina.join(ch_fasta_shortreads_files_for_alignment.map{ m, bam, fasta -> [m, fasta[0]] })
+
+        ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
+
+        if (params.reference_assembly){
+            BCFTOOLS_CONSENSUS(
+                ch_merged_mpileup
+            )
+            ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
+        }
+    }
     // Split the channel based on the condition
     merged_bams_channel
         .branch {
@@ -134,35 +166,31 @@ workflow ALIGNMENT {
     SAMTOOLS_SORT(
         SAMTOOLS_MERGE.out.bam
     )
-     // // Unified channel from both merged and non-merged BAMs
 
+     // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_SORT.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
 
-    collected_bams.view()
 
 
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
-    .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
-    .map { joinedItems ->
-        def item1 = joinedItems[1] // Original item from Channel1
-        def item2 = joinedItems[2] // Original item from Channel2
-        // Now you can merge item1 and item2 as needed
-        return [item1[0], item2[1]] // Adjust based on how you need the merged items
-    }.set{ collected_bams }
+        .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
+        .map { joinedItems ->
+            def item1 = joinedItems[1] // Original item from Channel1
+            def item2 = joinedItems[2] // Original item from Channel2
+            // Now you can merge item1 and item2 as needed
+            return [item1[0], item2[1]] // Adjust based on how you need the merged items
+        }.set{ collected_bams }
 
     // // Example to view the output
     SAMTOOLS_DEPTH(
         collected_bams
     )
-
-
-
     SAMTOOLS_INDEX(
-        SAMTOOLS_SORT.out.bam
+        collected_bams
     )
-    collected_bams  = SAMTOOLS_SORT.out.bam
     collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ sorted_bams_with_index }
+
 
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
@@ -177,44 +205,6 @@ workflow ALIGNMENT {
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
 
-    if (params.get_variants || params.reference_assembly){
-        // // // branch out the samtools_sort output to nanopore and illumina
-        ch_sorted_bam_split = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta[0][0]] })
-
-
-        ch_sorted_bam_split.branch{
-                longreads: it[0].platform =~ 'OXFORD'
-                shortreads: it[0].platform =~ 'ILLUMINA'
-        }.set { ch_sorted_bam_split }
-
-
-        BCFTOOLS_MPILEUP_OXFORD(
-            ch_sorted_bam_split.longreads.map{ m, bam, fasta -> [m, bam] },
-            ch_sorted_bam_split.longreads.map{ m, bam, fasta -> fasta },
-            false
-        )
-        ch_merged_mpileup_oxford = BCFTOOLS_MPILEUP_OXFORD.out.vcf.join(BCFTOOLS_MPILEUP_OXFORD.out.tbi)
-        ch_merged_mpileup_oxford = ch_merged_mpileup_oxford.join(ch_sorted_bam_split.longreads.map{ m, bam, fasta -> [m, fasta] })
-
-        BCFTOOLS_MPILEUP_ILLUMINA(
-            ch_sorted_bam_split.shortreads.map{ m, bam, fasta -> [m, bam] },
-            ch_sorted_bam_split.shortreads.map{ m, bam, fasta -> fasta },
-            false
-        )
-        .set{ transposed_fastas_oxford }
-
-        ch_merged_mpileup_illumina = BCFTOOLS_MPILEUP_ILLUMINA.out.vcf.join(BCFTOOLS_MPILEUP_ILLUMINA.out.tbi)
-        ch_merged_mpileup_illumina = ch_merged_mpileup_illumina.join(ch_sorted_bam_split.shortreads.map{ m, bam, fasta -> [m, fasta] })
-
-        ch_merged_mpileup = ch_merged_mpileup_illumina.mix(ch_merged_mpileup_oxford)
-
-        if (params.reference_assembly){
-            BCFTOOLS_CONSENSUS(
-                ch_merged_mpileup
-            )
-            ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
-        }
-    }
     // RSEQC_BAMSTAT(
     //     collected_bams
     // )

@@ -645,7 +645,6 @@ workflow TAXTRIAGE {
             illumina_reads
         )
 
-
         nanopore_reads = ch_filtered_reads.filter {
             it[0].platform == 'OXFORD'
         }.map {
