@@ -116,7 +116,7 @@ work                # Directory containing the nextflow working files
 | `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
 | `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                      
 
-### Import output locations
+### Important output locations
 
 - `reports`: Metagenomics Discovery Report PDF
 - `krona`: `<samplename>.html`  -combined_krona_kreports.html ”sunburst” plot for kraken2 – pre re-alignment step - optional
