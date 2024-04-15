@@ -25,7 +25,7 @@ Tax Triage is designed as a pipeline to democratize metagenomic sequence analysi
 - Quality control steps
 - In-silico host depletion
 - Classification of reads
-- Mapping of reads to reference genomes
+- Mapping of reads to reference genomes found to be "top hits"
 - Confidence metric generation (e.g., depth/breadth of coverage, %nt ID)
 - Threshold mechanisms
 - De-novo assembly
@@ -36,6 +36,9 @@ For the purpose of giving an initial triage of taxonomic classifications, using 
 
 Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August.
 
+See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#important-output-locations) for information on where to get the most important output files from the pipeline. 
+
+See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#top-hits-calculation) for information on how "top hits" is located
 
 #### Alerts
 
