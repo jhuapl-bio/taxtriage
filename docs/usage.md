@@ -116,6 +116,31 @@ work                # Directory containing the nextflow working files
 | `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
 | `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                      
 
+### Import output locations
+
+- `reports`: Metagenomics Discovery Report PDF
+- `krona`: `<samplename>.html`  -combined_krona_kreports.html ”sunburst” plot for kraken2 – pre re-alignment step - optional
+- `samtools`: Raw Alignment stats output
+  - Coverage (v1.2.2 or later) - `<samplename>.txt`
+  - `Histogram` (v1.3.0 or later) - `<samplename>.histo.txt`
+  - `Depth` (v1.2 or later) - `<samplename>.tsv`
+    - Each contig/chromosome is present in this file, 3rd column is depth at position (col 2). 
+- `bcftools`: Variant And Consensus – Optional Module (--reference_assembly called)
+  - Variants - `<samplename>.<taxid>.vcf.gz`
+  - Consensus - `<samplename>.consensus.fa`
+- `merge`: Aggregate Stats on Alignment + Kraken2
+- `confidence`: Confidence Table `confidences.merged_mqc.tsv`
+  - Contains post alignment and kraken2 confidence values for each sample + contig/chromosome per taxa
+- `multiqc` – Confidence Metrics and Supplemental Plots Location
+- `nanoplot`/`fastqc` – QC plots and stats 
+- `minimap2` / `bowtie2` – Location of raw re-alignment bam files
+- `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – Agnostic kraken2 only
+
+- 
+![image](https://github.com/jhuapl-bio/taxtriage/assets/50592701/58fef306-1f27-4f16-a94b-f7a37560aaa1)
+
+
+
 ### Supported Default databases (Kraken2 only)
 
 | Database Name | Location                                                                                                  | Size |
