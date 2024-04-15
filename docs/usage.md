@@ -140,7 +140,7 @@ work                # Directory containing the nextflow working files
 
 There are a lot of moving parts in the pipeline (see Figure 1) for a detailed railway map of modules
 
-![Figure 1](../assets/taxtriage_schematics.svg)
+![Figure 1](../assets/taxtriage_schematics.png)
 
 Ultimately, the pipeline has several mandatory and optional steps that can be defined as:
 
