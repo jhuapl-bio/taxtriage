@@ -116,6 +116,73 @@ work                # Directory containing the nextflow working files
 | `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
 | `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                      
 
+### Important output locations
+
+- `reports`: Metagenomics Discovery Report PDF
+- `krona`: `<samplename>.html`  -combined_krona_kreports.html ”sunburst” plot for kraken2 – pre re-alignment step - optional
+- `samtools`: Raw Alignment stats output
+  - Coverage (v1.2.2 or later) - `<samplename>.txt`
+  - `Histogram` (v1.3.0 or later) - `<samplename>.histo.txt`
+  - `Depth` (v1.2 or later) - `<samplename>.tsv`
+    - Each contig/chromosome is present in this file, 3rd column is depth at position (col 2). 
+- `bcftools`: Variant And Consensus – Optional Module (--reference_assembly called)
+  - Variants - `<samplename>.<taxid>.vcf.gz`
+  - Consensus - `<samplename>.consensus.fa`
+- `merge`: Aggregate Stats on Alignment + Kraken2
+- `confidence`: Confidence Table `confidences.merged_mqc.tsv`
+  - Contains post alignment and kraken2 confidence values for each sample + contig/chromosome per taxa
+- `multiqc` – Confidence Metrics and Supplemental Plots Location
+- `nanoplot`/`fastqc` – QC plots and stats 
+- `minimap2` / `bowtie2` – Location of raw re-alignment bam files
+- `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – Agnostic kraken2 only
+
+### General Procedure
+
+There are a lot of moving parts in the pipeline (see Figure 1) for a detailed railway map of modules
+
+![Figure 1](../assets/taxtriage_schematics.png)
+
+Ultimately, the pipeline has several mandatory and optional steps that can be defined as:
+
+1. Trimming and QC
+   - Includes plots of QC filtering metrics
+3. Host Removal (alignment-based)
+   - Duplicates unclassified (non-host) reads. 
+4. Kraken2 Metagenomics Classification
+   - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective. 
+   - This is skippable if you assign `--reference_fasta` FASTA file or the `--organisms/--organisms_file` parameters. (set: `--skip_kraken2`)
+   - Always consider limitations in your database of use. See [databases](https://benlangmead.github.io/aws-indexes/k2) publicly available. 
+5. Top Hits Assignments
+   - See Figure 2 for flow diagram on decision tree
+6. Reference Prep
+   - Assemblies based on top hits are pulled from NCBI - Required Internet connection and the relative assembly to be findable
+     - If skipping Kraken2 and using a local FASTA file, this part is skipped.
+   - Index built for each reference FASTA file (Bowtie2 only - Illumina reads)
+7. Alignment
+   - Pulled/local assemblies are aligned to ALL classified reads (if using Kraken2) or raw reads (if using local FASTA reference) post-QC steps. Currently, only the "best hits" are assigned per read. Soon to introduce a parameter to raise that limit.
+8. Stats
+   - Generate Coverage histogram (`samtools/samplename.histo.txt`)
+   - Generate Depth (`samtools/samplename.tsv`)
+9. Reference Assembly (optional - set `--reference_assembly` to enable)
+   - This is a long process
+   - Generates VCF (variant) files in `bcftools/samplename.vcf.txt`)
+   - Generates Assembly file(s) in `bcftools/samplename.consensus.fa`
+10. Organism Discovery Report Analysis
+    - MultiQC - Raw alignment information and stats found in `multiqc/multiqc_report.html`
+    - Simplified Report (Main Report) - Found in `report/pathogens.report.pdf`
+        - Contains all downstream-passed alignments and their classification in the first table (see example report in Figure 3)
+        - Primary report to understand and perform reflex reponse on.
+
+
+<span>Figure 3</span>
+<img src="https://github.com/jhuapl-bio/taxtriage/blob/main/docs/images/pathogens.report.example.jpg" width="50%" height="50%"></img>
+
+
+### Top Hits Calculation
+
+In order to retain an "agnostic" approach for organism while allowing adequate alignments to take place in a reasonable amount of time, we employ the "top hits" approach to the pipeline (see Figure 2). This is designed to allow users to still pull commensals or non-pathogens that have not been annotated in our curated [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) to still be available in the confidence metrics and reports. Users should adjust the `--top_per_taxa` and `--top_hits` as freely as needed based on the source of their sample(s). 
+![Figure 2](../assets/TASSDiagram.png)
+
 ### Supported Default databases (Kraken2 only)
 
 | Database Name | Location                                                                                                  | Size |
