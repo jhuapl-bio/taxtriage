@@ -28,6 +28,17 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
+Supported "type" available from HMP
+
+1. stool
+2. oral
+3. throat
+4. skin
+5. vaginal
+
+Any other body site not listed will not take HMP into consideration. Only abundances hitting the "threshold" for top hits `--top_hits` or `--top_per_taxa` will be considered. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/TASSDiagram.png) for decision tree information on how top hits are calculated at a high level. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#cli-parameters-possible-and-explained) for parameter descriptions.
+
+
 ### Multiple Samples AND Platforms
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
