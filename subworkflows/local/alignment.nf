@@ -8,6 +8,7 @@ include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 // include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
+include { SAMTOOLS_SORT } from '../../modules/nf-core/samtools/sort/main'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
@@ -41,7 +42,6 @@ workflow ALIGNMENT {
     ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
-
 
 
 
@@ -127,17 +127,18 @@ workflow ALIGNMENT {
         .set { branchedChannels }
 
 
-
-
     SAMTOOLS_MERGE(
         branchedChannels.mergeNeeded
     )
-    collected_bams_mergedneeded = SAMTOOLS_MERGE.out.bam
-    // // Unified channel from both merged and non-merged BAMs
-    collected_bams_mergedneeded.mix( branchedChannels.noMergeNeeded.map{ meta, bam -> {
-        return [meta, bam[0]]
-    }}).set { collected_bams }
+    // sort the multi bams from the merge
+    SAMTOOLS_SORT(
+        SAMTOOLS_MERGE.out.bam
+    )
+     // // Unified channel from both merged and non-merged BAMs
 
+    SAMTOOLS_SORT.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
+
+    collected_bams.view()
 
 
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
@@ -149,15 +150,20 @@ workflow ALIGNMENT {
         // Now you can merge item1 and item2 as needed
         return [item1[0], item2[1]] // Adjust based on how you need the merged items
     }.set{ collected_bams }
+
     // // Example to view the output
     SAMTOOLS_DEPTH(
         collected_bams
     )
-    SAMTOOLS_INDEX(
-        collected_bams
-    )
 
+
+
+    SAMTOOLS_INDEX(
+        SAMTOOLS_SORT.out.bam
+    )
+    collected_bams  = SAMTOOLS_SORT.out.bam
     collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ sorted_bams_with_index }
+
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
@@ -173,7 +179,8 @@ workflow ALIGNMENT {
 
     if (params.get_variants || params.reference_assembly){
         // // // branch out the samtools_sort output to nanopore and illumina
-        ch_sorted_bam_split = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] })
+        ch_sorted_bam_split = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta[0][0]] })
+
 
         ch_sorted_bam_split.branch{
                 longreads: it[0].platform =~ 'OXFORD'
