@@ -172,7 +172,9 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
     - Simplified Report (Main Report) - Found in `report/pathogens.report.pdf`
         - Contains all downstream-passed alignments and their classification in the first table (see example report in Figure 3)
         - Primary report to understand and perform reflex reponse on.
-          
+
+
+<span>Figure 3</span>
 <img src="https://github.com/jhuapl-bio/taxtriage/blob/main/docs/images/pathogens.report.example.jpg" width="50%" height="50%"></img>
 
 
