@@ -19,11 +19,13 @@
                     "schema": "assets/schema_input.json",
                     "description": "Path to comma-separated file containing information about the samples in the experiment.",
                     "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 6 columns in a header row and at least one row for info. See [usage docs](https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet_git.csv).",
-                    "fa_icon": "fas fa-file-csv"
+                    "fa_icon": "fas fa-file-csv",
+                    "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet.csv"
                 },
                 "db": {
                     "type": "string",
                     "fa_icon": "fas fa-book",
+                    "default": "test",
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
@@ -87,7 +89,7 @@
                     "type": "boolean",
                     "fa_icon": "fas fa-download",
                     "description": "Download the preset database indicated in --db to --outdir.",
-                    "default": false
+                    "default": true
                 },
                 "taxtab": {
                     "type": "string",
@@ -147,6 +149,13 @@
             "fa_icon": "fas fa-terminal",
             "description": "Alignment Parameter adjustments",
             "properties": {
+                "remove_reference_file": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2.",
+                    "fa_icon": "fas fa-file-signature"
+                    
+                },
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",
@@ -326,13 +335,13 @@
                     "type": "boolean",
                     "description": "Perform De Novo Assembly",
                     "fa_icon": "fas fa-file-signature",
-                    "default": true
+                    "default": false
                 },
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
                     "fa_icon": "fas fa-file-signature",
-                    "default": true
+                    "default": false
                 },
                 "get_features": {
                     "type": "boolean",

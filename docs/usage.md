@@ -28,6 +28,17 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
+Supported "type" available from HMP
+
+1. stool
+2. oral
+3. throat
+4. skin
+5. vaginal
+
+Any other body site not listed will not take HMP into consideration. Only abundances hitting the "threshold" for top hits `--top_hits` or `--top_per_taxa` will be considered. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/TASSDiagram.png) for decision tree information on how top hits are calculated at a high level. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#cli-parameters-possible-and-explained) for parameter descriptions.
+
+
 ### Multiple Samples AND Platforms
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
@@ -210,6 +221,41 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
 
 3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
+#### Running Within NF Tower
+
+By default, you should have access to TaxTriage's launchpad for your specific organization if your account was set up by JHU/APL. If you don't see it, please let an admin know. 
+
+To access your launchpad, select the drop-down and your organization name. There is also a "Shared" workspace that is viewable and public to all users of the TASS program on NF Tower. 
+
+1. Select the Dropdown near the top-left of the page.
+
+[Select Drop Down](dropdown_nftower.png)
+
+2. Then, select your organization that should appear:
+
+[Select Organization](Access_launchpad_NFTower.png)
+
+
+3. Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
+
+By default, the pipeline should be called TASS for the default instance. It comes pre-loaded with default inputs which can be used for a quick launch to see how things work in your space. For your own data, you'll need to upload the files (samplesheet and fastq reads, compressed as `.gz`) to the S3 bucket of your organization. See the instructions on how to do that [below](#working-with-your-own-data-nf-tower)
+
+In this below video, we see the default launchpad pipeline present. On loading there are some default values where you can edit as you see fit. When you've successfully completed all the inputs you need, you can either:
+
+A. Select "Launch" to start the pipeline or (see below) update and refine some additional environmental configurations (see below video). On a job starting, you will be redirected to your running list of all jobs, completed or otherwise.
+
+[cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
+
+In this page, instead of hitting "Launch" the user selected "launch settings". For this page, you can review the JSON of all parameter that are to be submitted and edit as you see fit directly in the text box. You can update the "branch" used from the Github Repo (default is "main"). This is expecially useful to learn about as when you "Relaunch" a pipeline, you will be redirected to this page which is the overview of all configurations you set for that specific job. 
+
+[cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
+
+Within a job, you can view the state of all steps and modules that are running/have completed. It is particularly useful in that you can check the "Execution Log" to see the current state of the pipeline in the form of stdout/stderr.
+
+[cloud_run_1.webm](https://user-images.githubusercontent.com/50592701/192596324-57162d50-2738-4b7f-ba8c-2fa473ca1433.webm)
+
+By clicking each of the module names closer to the bottom (e.g. Kraken2, FastQC, etc.) you can view the individual command used and general information on the data made and the log for that specific job. Any errors and successes will be noted with an icon.
+
 #### Working with your own data NF Tower
 
 When all necessary items have been setup, you'll need to load your data you want to run into an S3 bucket. Be aware that all filesystem refrences to files/directories need to be relative to the S3 bucket. However, with things like the Samplesheet, the paths can be relative only within the S3 bucket so you don't need to use things like `S3://bucketname/path/to/file `
@@ -225,21 +271,15 @@ Once the AWS system is setup, let's head back to Nextflow Tower. On the left, yo
 
 <img src="images/addpipeline.png"  width="20%" height="30%">
 
+
+
 <img src="images/taxtriagelaunchpad1.png"  width="50%" height="50%">
 
-MAKE SURE that the compute environment matches the one you set up when you set your credentials in AWS with NF tower
+MAKE SURE that the compute environment matches the one you set up when you set your credentials if you're not using the JHUAPL-provided NF Tower instance. See [official docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) for setting up your own compute system with its own billing. 
 
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
 <img src="images/taxtriagelaunchpad2.png"  width="50%" height="50%">
-
-Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
-
-[cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
-
-[cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
-
-[cloud_run_1.webm](https://user-images.githubusercontent.com/50592701/192596324-57162d50-2738-4b7f-ba8c-2fa473ca1433.webm)
 
 ### Reproducibility
 
