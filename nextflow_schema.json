@@ -147,6 +147,13 @@
             "fa_icon": "fas fa-terminal",
             "description": "Alignment Parameter adjustments",
             "properties": {
+                "remove_reference_file": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2.",
+                    "fa_icon": "fas fa-file-signature"
+                    
+                },
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",
