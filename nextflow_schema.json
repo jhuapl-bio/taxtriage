@@ -335,13 +335,13 @@
                     "type": "boolean",
                     "description": "Perform De Novo Assembly",
                     "fa_icon": "fas fa-file-signature",
-                    "default": true
+                    "default": false
                 },
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
                     "fa_icon": "fas fa-file-signature",
-                    "default": true
+                    "default": false
                 },
                 "get_features": {
                     "type": "boolean",
