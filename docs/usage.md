@@ -262,6 +262,8 @@ Once the AWS system is setup, let's head back to Nextflow Tower. On the left, yo
 
 <img src="images/addpipeline.png"  width="20%" height="30%">
 
+
+
 <img src="images/taxtriagelaunchpad1.png"  width="50%" height="50%">
 
 MAKE SURE that the compute environment matches the one you set up when you set your credentials if you're not using the JHUAPL-provided NF Tower instance. See [official docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) for setting up your own compute system with its own billing. 
