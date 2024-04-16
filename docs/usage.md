@@ -240,12 +240,21 @@ To access your launchpad, select the drop-down and your organization name. There
 
 By default, the pipeline should be called TASS for the default instance. It comes pre-loaded with default inputs which can be used for a quick launch to see how things work in your space. For your own data, you'll need to upload the files (samplesheet and fastq reads, compressed as `.gz`) to the S3 bucket of your organization. See the instructions on how to do that [below](#working-with-your-own-data-nf-tower)
 
+In this below video, we see the default launchpad pipeline present. On loading there are some default values where you can edit as you see fit. When you've successfully completed all the inputs you need, you can either:
+
+A. Select "Launch" to start the pipeline or (see below) update and refine some additional environmental configurations (see below video). On a job starting, you will be redirected to your running list of all jobs, completed or otherwise.
+
 [cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
+
+In this page, instead of hitting "Launch" the user selected "launch settings". For this page, you can review the JSON of all parameter that are to be submitted and edit as you see fit directly in the text box. You can update the "branch" used from the Github Repo (default is "main"). This is expecially useful to learn about as when you "Relaunch" a pipeline, you will be redirected to this page which is the overview of all configurations you set for that specific job. 
 
 [cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
 
+Within a job, you can view the state of all steps and modules that are running/have completed. It is particularly useful in that you can check the "Execution Log" to see the current state of the pipeline in the form of stdout/stderr.
+
 [cloud_run_1.webm](https://user-images.githubusercontent.com/50592701/192596324-57162d50-2738-4b7f-ba8c-2fa473ca1433.webm)
 
+By clicking each of the module names closer to the bottom (e.g. Kraken2, FastQC, etc.) you can view the individual command used and general information on the data made and the log for that specific job. Any errors and successes will be noted with an icon.
 
 #### Working with your own data NF Tower
 
