@@ -25,6 +25,7 @@
                 "db": {
                     "type": "string",
                     "fa_icon": "fas fa-book",
+                    "default": "test",
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
@@ -88,7 +89,7 @@
                     "type": "boolean",
                     "fa_icon": "fas fa-download",
                     "description": "Download the preset database indicated in --db to --outdir.",
-                    "default": false
+                    "default": true
                 },
                 "taxtab": {
                     "type": "string",
