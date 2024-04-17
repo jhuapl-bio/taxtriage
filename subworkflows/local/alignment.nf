@@ -109,7 +109,6 @@ workflow ALIGNMENT {
 
 
 
-
     sorted_bams = collected_bams
 
 
@@ -158,16 +157,15 @@ workflow ALIGNMENT {
         }
         .set { branchedChannels }
 
-
     SAMTOOLS_MERGE(
         branchedChannels.mergeNeeded
     )
+
     // sort the multi bams from the merge
     SAMTOOLS_SORT(
         SAMTOOLS_MERGE.out.bam
     )
-
-     // // Unified channel from both merged and non-merged BAMs
+    //  // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_SORT.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
 
 
@@ -182,7 +180,7 @@ workflow ALIGNMENT {
             return [item1[0], item2[1]] // Adjust based on how you need the merged items
         }.set{ collected_bams }
 
-    // // Example to view the output
+    // // // Example to view the output
     SAMTOOLS_DEPTH(
         collected_bams
     )
@@ -205,12 +203,13 @@ workflow ALIGNMENT {
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
 
-    // RSEQC_BAMSTAT(
-    //     collected_bams
-    // )
-    // ch_bamstats = RSEQC_BAMSTAT.out.txt
+    // // RSEQC_BAMSTAT(
+    // //     collected_bams
+    // // )
+    // // ch_bamstats = RSEQC_BAMSTAT.out.txt
     ch_bams =  sorted_bams_with_index
     ch_depths = SAMTOOLS_DEPTH.out.tsv
+
     emit:
         depth = ch_depths
         mpileup = ch_merged_mpileup

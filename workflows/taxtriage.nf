@@ -581,8 +581,6 @@ workflow TAXTRIAGE {
         )
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
-
-
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
             ch_pathogens
