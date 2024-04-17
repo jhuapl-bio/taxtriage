@@ -188,6 +188,12 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
 <span>Figure 3</span>
 <img src="https://github.com/jhuapl-bio/taxtriage/blob/main/docs/images/pathogens.report.example.jpg" width="50%" height="50%"></img>
 
+The distribution metrics are defined based on a all publicly available healthy human subjects (HHS) available from [HMP](https://hmpdacc.org/). Because these runs are lilsted as SRA accessions, they all contain NCBI's taxonomy analysis table metadata. That is, we are able to extract taxonomic abundances for each of the samples provided. Using standard distribution metrics, we designate a default z-score of 1.5 to mark irregularities outside of those bounds for any given species/subspecies/strain for each body site. This is, of course, limited in that the organism MUST be annotated and found within a given body site. Any organism (based on taxid mapping) **not** found is considered irregular, regardless of relative abundance. 
+
+
+Additionally, any organism deemed a potential or primary pathogen from our curated pathogen sheet of ~1600 taxa ([see here for more info](#top-hits-calculation)) is included in the Organism discovery analysis, regardless of relative abundance. 
+
+Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
 
 ### Top Hits Calculation
 
