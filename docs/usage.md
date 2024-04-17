@@ -158,7 +158,8 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
 1. Trimming and QC
    - Includes plots of QC filtering metrics
 3. Host Removal (alignment-based)
-   - Duplicates unclassified (non-host) reads. 
+   - Duplicates unclassified (non-host) reads.
+   - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on a [study](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
 4. Kraken2 Metagenomics Classification
    - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective. 
    - This is skippable if you assign `--reference_fasta` FASTA file or the `--organisms/--organisms_file` parameters. (set: `--skip_kraken2`)
@@ -171,6 +172,7 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
    - Index built for each reference FASTA file (Bowtie2 only - Illumina reads)
 7. Alignment
    - Pulled/local assemblies are aligned to ALL classified reads (if using Kraken2) or raw reads (if using local FASTA reference) post-QC steps. Currently, only the "best hits" are assigned per read. Soon to introduce a parameter to raise that limit.
+   - Currently, we separate short and long reads to be run between Bowtie2 & Minimap2, respectively. While various studies have been performed and declared minimap2 to be highly performative for short reads, a few indicate that from a taxonomic/metagenomics perspective [Minimap2 still underperforms relative to Bowtie2](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/). We will actively track performances as these platforms continue to be updated to ensure the optimal aligner is used for each data type. 
 8. Stats
    - Generate Coverage histogram (`samtools/samplename.histo.txt`)
    - Generate Depth (`samtools/samplename.tsv`)
