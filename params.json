@@ -3,7 +3,7 @@
     "db": null,
     "download_db": false,
     "outdir": "tmp_full",
-    "top_hits_count": 400,
+    "top_hits_count": 10,
     "demux": true,
     "assembly": "examples/assembly_summary_refseq.txt",
     "reference_assembly": false,
