@@ -4,6 +4,8 @@
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
 
+See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
+
 ## Introduction
 
 <!-- TODO nf-core: Add documentation about anything specific to running your pipeline. For general topics, please point to (and add to) the main nf-core website. -->
