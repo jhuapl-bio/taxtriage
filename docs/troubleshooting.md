@@ -164,6 +164,55 @@ The above error is the result of either:
 
 ### Bowtie2 (Index and Align) / Minimap2 (Align)
 
+- Incorrect or Unknown Ref. FASTA file
+    a. If using Kraken2 (default, no `--skip_kraken2` specified), ensure that you have Internet connectivity to pull the FASTA files. You can check the `download` folder and look for the `download/<samplename>.output.references.fasta`. If it is empty or not-present, then the sample failed to get the taxids.
+    b. Check that you have 1 or more tophits. You can see that in `tops/<samplename>.top_report.tsv` that there is more than one line
+    c. Out of Memory - This can be altered by raising the Memory in `Docker` (if using) or by limiting the number of top hits if your computer can't handle all of the FASTA file information.
+    - Minimap2: Loads the FASTA into RAM as an index so ensure that the FASTA **File** is under the limits on your RAM. The pipeline will re-attempt with more tries if the RAM is too low by raising it up to 3 consecutive times.
+ 
+```
+Command executed:
+
+  minimap2 \
+        -ax map-ont  \
+      -t 2 -I 0G \
+      longreads.dwnld.references.fasta \
+      longreads.classified.fastq.gz \
+       \
+      -L \
+      -a | samtools sort | samtools view  -q 5  -@ 2 -b -h -o longreads.bam  -q 5 
+  
+  
+  cat <<-END_VERSIONS > versions.yml
+  "NFCORE_TAXTRIAGE:TAXTRIAGE:ALIGNMENT:MINIMAP2_ALIGN":
+      minimap2: $(minimap2 --version 2>&1)
+  END_VERSIONS
+
+Command exit status:
+  1
+
+Command output:
+  (empty)
+
+Command error:
+  [M::mm_idx_gen::0.065*1.19] collected minimizers
+  [M::mm_idx_gen::0.102*1.09] sorted minimizers
+  [WARNING] For a multi-part index, no @SQ lines will be outputted. Please use --split-prefix.
+  [M::main::0.105*1.07] loaded/built the index for 1 target sequence(s)
+  [M::mm_mapopt_update::0.108*1.06] mid_occ = 10
+  [M::mm_idx_stat] kmer size: 15; skip: 10; is_hpc: 0; #seq: 1
+  [M::mm_idx_stat::0.110*1.06] distinct minimizers: 87097 (99.73% are singletons); average occurrences: 1.005; average spacing: 5.352; total length: 468348
+  [E::sam_parse1] no SQ lines present in the header
+  [W::sam_read1_sam] Parse error at line 4
+  samtools sort: truncated file. Aborting
+  [main_samview] fail to read the header from "-".
+```
+
+    - Bowtie2: Most of the is from the `build` portion of the pipeline. 
+
+
+
+
 ### SAMTOOLS_HIST_COVERAGE
 
 ### SpAdes  / Flye 
