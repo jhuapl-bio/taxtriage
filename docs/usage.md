@@ -58,9 +58,9 @@ Unless you are using NF Tower, most of the temporary directories and final outpu
 
 1. Find the start of the location of the specific module and its input/output file(s)
 
-  >This directory name is in `work/`>>[28/5412a9] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2 (longreads)  [100%] 2 of 2 ✔
+- This directory name is in `work/`>>[**28/5412a9**] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2 (longreads)  [100%] 2 of ✔
 
-3. Copy and Paste the `--work-dir` and then the start of the directory we see for that module. For example: `cd work/28/5412a9
+3. Copy and Paste the `--work-dir` and then the start of the directory we see for that module. For example: `cd work/28/5412a9`
 4. Hit "tab" to tab-complete the full path of the subdirectory within the first directory and `work`. For example, for my system it is `cd work/28/5412a9ea5c05fde928d8cf489bc48d/`
 5. View the command output from the run: `cat .command.out`
 6. Rerun the command: `bash .command.sh` in the same directory.
