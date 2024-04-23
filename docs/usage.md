@@ -67,7 +67,7 @@ Unless you are using NF Tower, most of the temporary directories and final outpu
 5. View the command output from the run: `cat .command.out`
 6. Rerun the command: `bash .command.sh` in the same directory.
    - If you have the command in your global env, you can run it directly without changing anything.
-   - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in from of the python/bash script and then run `bash .command.sh`
+   - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
 
 ### Samplesheet Information
 
