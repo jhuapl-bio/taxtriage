@@ -175,7 +175,7 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
    - Includes plots of QC filtering metrics
 3. Host Removal (alignment-based)
    - Duplicates unclassified (non-host) reads.
-   - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on a [study](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
+   - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on 2 studies [1](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) and [2](https://www.nature.com/articles/s41467-021-26865-w) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
 4. Kraken2 Metagenomics Classification
    - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective. 
    - This is skippable if you assign `--reference_fasta` FASTA file or the `--organisms/--organisms_file` parameters. (set: `--skip_kraken2`)
