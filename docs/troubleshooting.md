@@ -208,17 +208,27 @@ Command error:
   [main_samview] fail to read the header from "-".
 ```
 
-    - Bowtie2: Most of the is from the `build` portion of the pipeline. 
-
-
+- Bowtie2: Most of the is from the `build` portion of the pipeline. 
 
 
 ### SAMTOOLS_HIST_COVERAGE
 
+This step is very low level. Make sure that you have a `bam` file in the `minimap2/bowtie2` directories for each sample.
+
 ### SpAdes  / Flye 
 
+This step is not recommended but is useful for generating either contigs or complete chromosomes from your data. The biggest concern for these is memory allocation required. The best options for this are to
+
+1. Remove the `--reference_fasta` if specified and your FASTA is large
+2. Remove or lower the `--top_hits` or `--top_per_taxa` parameters to try to assembly with less reads
+
 ### SAMTOOLS_SORT 
+This step is usually CPU intensive rather than with RAM. However, you still need a sufficient amount of RAM so ensure that (above descriptions) that you've set memory limits as needed. 
+
+Or, ensure that you have a `bam` file that is **not** empty!
 
 ### SAMTOOLS_VIEW
+
+The only concern with this is either storage capacity (HDD/SSD) or timeouts. This is a low-compute-requiring command to run.
 
 
