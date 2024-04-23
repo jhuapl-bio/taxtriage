@@ -80,3 +80,96 @@ Please be aware that these options will not catch all organisms of interest, so 
 ### Why is my run taking so long?
 
 This could be a variety of reasons. Specific modules are prone to take much longer than others, namely the MultiQC (final step), consensus/assembly, or any of the alignment steps. Additionally, plotting for Oxford Nanopore can take a large amount of time when using NanoPlot. Consider disabling many of these features if you simply want the baseline kraken results with --skip\_{name_of_step(s)}.
+
+### Common errors seen
+
+For the most part, many of the steps do not have a mandatory success error code attached to them. That is, a sample can be incomplete or have errors at a certain step, but the pipeline can continue. A few pipelines **do** require successful completion, however. 
+
+Here is a list of steps that are required to complete successfully as well as probably solutions to your problem.
+
+### SAMPLESHEET_CHECK
+
+### FASTP
+
+**Description**: This is the QC step that removes low quality reads from your samples.
+
+**Possible Problems & Fixes**
+
+FASTP halts with a red error code:
+
+```
+ERROR ~ Error executing process > 'NFCORE_TAXTRIAGE:TAXTRIAGE:FASTP (shortreads)'
+
+Caused by:
+  Process `NFCORE_TAXTRIAGE:TAXTRIAGE:FASTP (shortreads)` terminated with an error exit status (255)
+
+Command executed:
+
+  [ ! -f  shortreads_1.fastq.gz ] && ln -sf iss_reads_R1.fastq.gz shortreads_1.fastq.gz
+  [ ! -f  shortreads_2.fastq.gz ] && ln -sf iss_reads_R2.fastq.gz shortreads_2.fastq.gz
+  fastp \
+      --in1 shortreads_1.fastq.gz \
+      --in2 shortreads_2.fastq.gz \
+      --out1 shortreads_1.fastp.fastq.gz \
+      --out2 shortreads_2.fastp.fastq.gz \
+      --json shortreads.fastp.json \
+      --html shortreads.fastp.html \
+       \
+       \
+       \
+      --thread 2 \
+      --detect_adapter_for_pe \
+        -q 500  \
+      2> shortreads.fastp.log
+  
+  cat <<-END_VERSIONS > versions.yml
+  "NFCORE_TAXTRIAGE:TAXTRIAGE:FASTP":
+      fastp: $(fastp --version 2>&1 | sed -e "s/fastp //g")
+  END_VERSIONS
+
+Command exit status:
+  255
+
+Command output:
+  (empty)
+
+Work dir:
+  /Users/merribb1/Documents/Projects/APHL/taxtriage/work/b5/6e19a5de67b703d5f44cbe1aed94fa
+
+Tip: when you have fixed the problem you can continue the execution adding the option `-resume` to the run command line
+
+ -- Check '.nextflow.log' file for details
+```
+
+The above error is the result of either:
+  a. The quality of the reads is lower than the default. For ONT, it is 7 and for Illumina it is 20.
+    - Solution: Update the `--minq` parameter to be lower or specify `--skip_fastp`
+  b. The reads themselves are empty. Make sure you are specifying the correct path to the files in your samplesheet.
+
+
+### KRAKEN2_KRAKEN2
+
+**Description**: This the metagenomics step "agnostically" search for all organisms in your samples files in a quick manner. It is tied into the "top hits" and pathogens discovery parameters to downsamples the downstream alignments that are needed. 
+
+**Possible Problems & Fixes**
+  - Memory error: Oftentime, Kraken2 requires loading the **entire** db into RAM by default. Ensure that your RAM limits are greater than the size of the db directory. You can check with `du -sh $DB` where $DB is the path of the database.
+    a. Set `--low_memory` to read the DB in by I/O.
+    b. Set `--max_memory` if your memory is lower than the default required (~36 GB). For example: `--max_memory 13GB`
+  - Invalild or corrupt DB:
+    a. Check that the $DB directory is not corrupt. Usually, this has 3 `k2d` files called:
+      1. `hash.k2d`
+      2. `opts.k2d` 
+      3. `taxo.k2d`
+
+
+### Bowtie2 (Index and Align) / Minimap2 (Align)
+
+### SAMTOOLS_HIST_COVERAGE
+
+### SpAdes  / Flye 
+
+### SAMTOOLS_SORT 
+
+### SAMTOOLS_VIEW
+
+
