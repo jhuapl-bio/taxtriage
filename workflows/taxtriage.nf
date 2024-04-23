@@ -206,8 +206,7 @@ include { FLYE                     } from '../modules/nf-core/flye/main'
 include { KRAKENTOOLS_COMBINEKREPORTS   } from '../modules/nf-core/krakentools/combinekreports/main'
 include { KRONA   } from '../modules/local/krona.nf'
 include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
-include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/spades/main'
-include { SPADES as SPADES_OXFORD } from '../modules/nf-core/spades/main'
+include { MEGAHIT } from '../modules/nf-core/megahit/main'
 include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
@@ -634,19 +633,20 @@ workflow TAXTRIAGE {
     }
 
     if (params.denovo_assembly) {
+        ch_filtered_reads.view()
         illumina_reads = ch_filtered_reads.filter {
             it[0].platform == 'ILLUMINA'
         }.map {
-            meta, reads, reference -> [meta, reads, [], []]
+            meta, reads -> [meta, reads]
         }
-        SPADES_ILLUMINA(
+        MEGAHIT(
             illumina_reads
         )
 
         nanopore_reads = ch_filtered_reads.filter {
             it[0].platform == 'OXFORD'
         }.map {
-            meta, reads, fasta -> [meta, reads]
+            meta, reads -> [meta, reads]
         }
 
         FLYE(
