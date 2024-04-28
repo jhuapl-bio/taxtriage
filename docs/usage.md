@@ -4,6 +4,8 @@
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
 
+See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
+
 ## Introduction
 
 <!-- TODO nf-core: Add documentation about anything specific to running your pipeline. For general topics, please point to (and add to) the main nf-core website. -->
@@ -50,6 +52,22 @@ BC05_flu,OXFORD,examples/data/BC05.fastq.gz,,,FALSE,nasal
 longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
+
+
+### Tips
+
+Unless you are using NF Tower, most of the temporary directories and final outputs will be present on your filesystem. By default, all temporary files are generated in `--work-dir` which is set to `work` by default. A handy tip is to look at the status of each module/step in the stdout if you want to debug a specific step for whatever reason. For example, you can navigate to the example dir like so:
+
+1. Find the start of the location of the specific module and its input/output file(s)
+
+- This directory name is in `work/`>>[**28/5412a9**] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2 (longreads)  [100%] 2 of ✔
+
+3. Copy and Paste the `--work-dir` and then the start of the directory we see for that module. For example: `cd work/28/5412a9`
+4. Hit "tab" to tab-complete the full path of the subdirectory within the first directory and `work`. For example, for my system it is `cd work/28/5412a9ea5c05fde928d8cf489bc48d/`
+5. View the command output from the run: `cat .command.out`
+6. Rerun the command: `bash .command.sh` in the same directory.
+   - If you have the command in your global env, you can run it directly without changing anything.
+   - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
 
 ### Samplesheet Information
 
@@ -159,7 +177,7 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
    - Includes plots of QC filtering metrics
 3. Host Removal (alignment-based)
    - Duplicates unclassified (non-host) reads.
-   - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on a [study](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
+   - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on 2 studies [1](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) and [2](https://www.nature.com/articles/s41467-021-26865-w) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
 4. Kraken2 Metagenomics Classification
    - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective. 
    - This is skippable if you assign `--reference_fasta` FASTA file or the `--organisms/--organisms_file` parameters. (set: `--skip_kraken2`)
