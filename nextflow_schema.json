@@ -213,6 +213,13 @@
                     "description": "Minimum reads threshold for realignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "zscore_accepted": {
+                    "type": "number",
+                    "default": 1.5,
+                    "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
+                    "description": "Minimum zscore for outline assumptions from HHS",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "minmapq": {
                     "type": "number",
                     "default": 5,

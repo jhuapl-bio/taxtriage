@@ -41,10 +41,11 @@ process TOP_HITS {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def id = "${meta.id}"
+    def zscore_accepted = params.zscore_accepted && params.zscore_accepted != "" ? " -z ${params.zscore_accepted} " : ' -z 1.5 '
     ch_top_per_taxa = ""
     def top_per_taxa  = params.top_per_taxa && params.top_per_taxa != "" ? " -s ${params.top_per_taxa} " : ''
     def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
-    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions -z 1.5  " : ""
+    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions  $zscore_accepted " : ""
     def site = meta.type ? " -b ${meta.type} " : ""
     def pathogen_sheet = pathogens.name != "NO_FILE" ? " -p $pathogens  " : ""
 
