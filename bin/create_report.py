@@ -111,6 +111,8 @@ def import_data(inputfile ):
     # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t1\tNo\t\t\t1715720\tN/A\t0.97
     # """.strip()
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
+
+
     # # Simulating additional data
     # np.random.seed(42)
     # # df['Gini Coefficient'] = np.random.uniform(0, 1, df.shape[0])
@@ -420,7 +422,7 @@ def main():
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map[x] if x in body_site_map else x)
     plotbuffer = dict()
     if args.distributions and os.path.exists(args.distributions):
-        stats_dict = import_distributions(
+        stats_dict, site_counts = import_distributions(
             args.distributions,
             args.type,
             []
@@ -429,6 +431,9 @@ def main():
         for index, row in df_full.iterrows():
             # taxid, body_site, stats, args, result_df
             # if taxid and body site not in stats dict then make it empty or 0
+            taxidsonly = [key[0] for key in stats_dict.keys()]
+            bodysites = [key[1] for key in stats_dict.keys()]
+            # if (row['tax_id'], row['body_site']) in dists or row['tax_id'] not in taxidsonly or len(body_sites)== 0:
             if (row[args.type], row['body_site']) not in stats_dict:
                 stats = {
                     'mean': 0,

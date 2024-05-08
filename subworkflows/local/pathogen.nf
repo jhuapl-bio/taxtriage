@@ -26,6 +26,7 @@ workflow PATHOGENS {
     take:
         alignments
         pathogens_list
+        distributions
     main:
         ch_pathogens_report = Channel.empty()
         if (!pathogens_list){
@@ -36,13 +37,8 @@ workflow PATHOGENS {
             )
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
             // and assign it to the variable pathogens_list
-            ch_empty_file = file("$projectDir/assets/NO_FILE")
 
-            if (!params.distributions){
-                distributions = ch_empty_file
-            } else{
-                distributions = file(params.distributions)
-            }
+
             full_list_pathogen_files = PATHOGENS_FIND_SAMPLE.out.txt.map{m, txt -> txt}.collect()
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files,

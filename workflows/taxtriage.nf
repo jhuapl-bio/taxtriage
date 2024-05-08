@@ -480,7 +480,6 @@ workflow TAXTRIAGE {
         } else{
             distributions = Channel.fromPath(params.distributions)
         }
-        distributions.view()
         println "Combining Kraken2 reports and getting top hits per file..."
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
@@ -583,7 +582,8 @@ workflow TAXTRIAGE {
         ch_covfiles = ALIGNMENT.out.stats
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
-            ch_pathogens
+            ch_pathogens,
+            distributions
         )
 
         ch_alignment_stats = ALIGNMENT.out.stats

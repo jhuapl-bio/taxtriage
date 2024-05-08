@@ -401,10 +401,8 @@ def main():
     output = args.output
     matcher = args.match
     matchdct = dict()
-    organisms = set()
     if args.match:
         # open the match file and import the match file
-
         with open (matcher, 'r') as f:
             accindex = args.accessioncol
             nameindex = args.namecol
@@ -432,11 +430,11 @@ def main():
         covfile,
         matchdct
     )
-
     if args.min_reads_align:
         # filter the reference_hits based on the minimum number of reads aligned
         print(f"Filtering for minimum reads aligned: {args.min_reads_align}")
         reference_hits = {k: v for k, v in reference_hits.items() if v['numreads'] >= int(args.min_reads_align)}
+
     for ref, data in reference_hits.items():
         print(f"Reference: {ref}")
         print(f"\tNumber of Reads: {data['numreads']}")

@@ -27,7 +27,8 @@ from collections import Counter
 from pathlib import Path
 import re
 import os
-from distributions import import_distributions
+import numpy as np
+from distributions import import_distributions, body_site_map
 import pandas as pd
 logger = logging.getLogger()
 
@@ -283,31 +284,14 @@ def main(argv=None):
     if args.body_site == "Unknown" or not args.body_site:
         body_sites = []
     else:
-        body_sites = [args.body_site.lower()]
+        body_sites = [body_site_map(args.body_site.lower())]
 
     if args.pathogens:
         try:
             with open(args.pathogens, 'r', encoding='utf-8', errors='replace') as f:
                 pathogen_sheet = pd.read_csv(f, sep=',')
             f.close()
-            body_site_map = {
-                "gut": "stool",
-                "nose": "nasal",
-                "vagina": "vaginal",
-                "teeth": "oral",
-                "resp": "nasal",
-                "abscess": "skin",
-                "absscess": "skin",
-                "sputum": "oral",
-                "mouth": "oral",
-                "urinary tract": "urine",
-                "ear": "skin",
-                "lung": ["oral", "nasal"],
-                "eye": "eye",
-                "sinus": "nasal",
-                "urogenital": "skin",
-                "cornea": "eye",
-            }
+
             # A function to apply the mapping and remove duplicates
             def translate_and_deduplicate_sites(sites):
                 # Split the string by comma and space, and remove empty strings if any
@@ -316,7 +300,7 @@ def main(argv=None):
                 translated_sites = set()
                 for site in sites_list:
                     # Get the mapped value from the dictionary
-                    mapped_value = body_site_map.get(site.lower(), site.lower())
+                    mapped_value = body_site_map(site.lower())
                     # If the mapped value is a list, add all its items to the set
                     if isinstance(mapped_value, list):
                         translated_sites.update(mapped_value)
@@ -343,7 +327,9 @@ def main(argv=None):
             print(e)
             print("Error reading pathogens file")
     if args.distributions:
-        dists = import_distributions(
+
+
+        dists, site_counts = import_distributions(
             args.distributions,
             "tax_id",
             body_sites
@@ -353,7 +339,6 @@ def main(argv=None):
         # only keep rank has S in it
         df_full = df_full[df_full['rank'].str.contains('S')]
         df_full['body_site'] = args.body_site
-
         df_full.rename(columns={'taxid': 'tax_id'}, inplace=True)
         # convert body_site to lowercase
         df_full['body_site'] = df_full['body_site'].str.lower()
@@ -371,13 +356,14 @@ def main(argv=None):
             df_full['stats'] = df_full.apply(lambda x: get_stats(x, dists), axis=1)
             # get the mean, std, and zscore for each row
             df_full['mean'] = df_full['stats'].apply(lambda x: x['mean'] if x else None)
+            df_full['norm_abundance'] = df_full['stats'].apply(lambda x: x['norm_abundance'] if x else None)
             df_full['std'] = df_full['stats'].apply(lambda x: x['std'] if x else None)
-            df_full['zscore'] = (df_full['abundance'] - df_full['mean']) / df_full['std']
+            ## calculate the stddev by considering both the "abundances" list and including empty values or 0 for missing length between site_counts and abundances
+            df_full['zscore'] = (df_full['abundance'] - df_full['norm_abundance']) / df_full['std']
 
             # if zscore is NaN convert to -1
             df_full['zscore'] = df_full['zscore'].fillna(-1)
             # filter any row with zscore outside of absolute value of args.zscore
-            df_fullyes = df_full[  ( df_full['zscore'] <= args.zscore) & (df_full['zscore'] != -1)  ]
             df_full = df_full[  ( df_full['zscore'] > args.zscore) | (df_full['zscore'] == -1)  ]
             # get taxid is 2 stool body_site
             # Get percentile of abundance relative to all abundances
