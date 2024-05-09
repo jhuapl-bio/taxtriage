@@ -237,7 +237,7 @@ In order to retain an "agnostic" approach for organism while allowing adequate a
 
 ## AWS with Nextflow Tower
 
-While we support Taxtriage in both Basestack and native and local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
+While we support Taxtriage in local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
 
 1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
 
