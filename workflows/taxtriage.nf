@@ -425,6 +425,13 @@ workflow TAXTRIAGE {
     ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
 
     def empty_organism_file = false
+    if (params.unknown_sample){
+        distributions = Channel.fromPath(ch_empty_file)
+    } else if (!params.distributions){
+        distributions = Channel.fromPath("$projectDir/assets/taxid_abundance_stats.hmp.tsv.gz", checkIfExists: true)
+    } else{
+        distributions = Channel.fromPath(params.distributions)
+    }
     if (!params.skip_kraken2){
         // // // // // //
         // // // // // // MODULE: Run Kraken2
@@ -473,13 +480,7 @@ workflow TAXTRIAGE {
             )
             ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
         }
-        if (params.unknown_sample){
-            distributions = Channel.fromPath(ch_empty_file)
-        } else if (!params.distributions){
-            distributions = Channel.fromPath("$projectDir/assets/taxid_abundance_stats.hmp.tsv.gz", checkIfExists: true)
-        } else{
-            distributions = Channel.fromPath(params.distributions)
-        }
+
         println "Combining Kraken2 reports and getting top hits per file..."
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
