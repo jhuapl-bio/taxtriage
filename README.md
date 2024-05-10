@@ -163,20 +163,17 @@ Please be aware that intermittent portions of the pipeline will still use intern
 
 ### Local Data
 
-1. Run the command:
+:warning: If you get an error on uncommitted changes please run the `nextflow drop -f https://github.com/jhuapl-bio/taxtriage`
 
 ```
 nextflow drop -f https://github.com/jhuapl-bio/taxtriage
-nextflow pull https://github.com/jhuapl-bio/taxtriage
-cp -r ~/.nextflow/assets/jhuapl-bio/taxtriage ~/taxtriage
-cd ~/taxtriage
 ```
 
-:warning: If you get an error on uncommitted changes please run the `nextflow drop -f https://github.com/jhuapl-bio/taxtriage`
+Then run the pipeline normally as described in previous steps
 
-2. Running Kraken2 and FASTQC report with the k2_viral db
 
-### Running it with the local config (for laptops/workstations) with limited RAM
+
+### Running it with the local config (for laptops/workstations) with limited RAM and a different (auto-downloadable) db
 
 ```
 nextflow run https://github.com/jhuapl-bio/taxtriage  \
