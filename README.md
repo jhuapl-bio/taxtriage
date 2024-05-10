@@ -126,6 +126,39 @@ nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile te
 
 Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 
+
+### Offline Local Mode
+
+In some cases, your compute may not always have online access. That is, you can't always pull the latest updates right as you want to run the pipeline. In that case, you have 2 options:
+
+#### 1. Reference remote url, don't specify latest
+```
+nextflow run https://github.com/jhuapl-bio/taxtriage -r main -profile test,docker -resume
+```
+
+Here, we remove the `-latest` which will not attempt to pull updates. This will only work if you've already run the pipeline (thus pulling the code locally) in online mode like in the initial example for a test run
+
+#### 2. Clone the repo first, reference local main file
+
+Here, we instead clone the repo. Then, we reference the launchfile called `main.nf` that is locally on our system. We need to ensure that we're always in the repo's directory each time we do this too
+
+First we clone
+```
+git clone https://github.com/jhuapl-bio/taxtriage.git
+```
+
+Then we `cd` into our directory 
+
+```
+cd taxtriage
+```
+
+Finally, we run a test run (feel free to edit inputs based on your own data needs after the first test run)
+
+```
+nextflow run main.nf -profile test,docker -resume
+```
+
 ### Local Data
 
 1. Run the command:
