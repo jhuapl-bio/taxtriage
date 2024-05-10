@@ -129,7 +129,7 @@ Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 
 ### Offline Local Mode
 
-In some cases, your compute may not always have online access. That is, you can't always pull the latest updates right as you want to run the pipeline. In that case, you have 2 options:
+In some cases, you may not want to always pull the latest update(s) each time your run the pipeline. To solve this issue, you have 2 primary options:
 
 #### A. Reference remote url, don't specify latest
 ```
@@ -156,8 +156,10 @@ cd taxtriage
 Finally, we run a test run (feel free to edit inputs based on your own data needs after the first test run)
 
 ```
-nextflow run main.nf -profile test,docker -resume
+nextflow run ./main.nf -profile test,docker -resume
 ```
+
+Please be aware that intermittent portions of the pipeline will still use internet by default. You can instead run other commands like the example [here](https://github.com/jhuapl-bio/taxtriage/blob/main/README.md#running-it-without-internet-availability) to remedy this problem.
 
 ### Local Data
 
@@ -214,6 +216,8 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
    -resume
 ```
 
+Note that the `--db` parameter is changed to a local path which contains the k2d files for kraken2 to operate. 
+
 ### Running it without internet availability
 
 This will use a local assembly text and reference fasta, assuming the reference FASTA is called `refer.fasta`
@@ -228,7 +232,7 @@ You will need 3 files locally on your system
 
 nextflow run https://github.com/jhuapl-bio/taxtriage \
    --input examples/Samplesheet.csv \
-   --db "k2_viral" -r main -latest \
+   --db "k2_viral" -r main -latest --skip_kraken2 \
    --outdir tmp --reference_fasta ./refer.fasta \
    -profile local,docker \
    -resume \
@@ -237,19 +241,8 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 
 ```
 
-#### Using a Custom Taxonomy
+Be aware that this skips the metagenomics portion of the pipeline and **only** does alignment using the local reference fasta.
 
-```
-
-nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --input examples/Samplesheet_flu.csv \
-   --db viral --download_db -r main -latest \
-   --outdir tmp_viral \
-   -profile local,docker  \
-   --assembly data/databases/flukraken2/library/influenza-fixed.fna --assembly_file_type kraken2 \
-   -resume
-
-```
 
 #### Running on local nf files (test config)
 
@@ -258,6 +251,8 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 ```
 nextflow run ./main.nf -profile test,docker
 ```
+
+See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#nf-coretaxtriage-usage) for a full list of input parameters and options available based on your own needs
 
 If you want to download the databases from scratch, you can see them here
 Make sure to Download these databases to your `Desktop` or wherever you are the most comfortable. Remember the location and specify the `--db` parameter as the absolute path. For example `~/Desktop/flukraken2`. Also, remove the `--download-db` parameter
@@ -273,7 +268,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 1. Read QC ([`FastQC`](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/))
 2. Present QC for raw reads ([`MultiQC`](http://multiqc.info/))
 
-## Quick Start
+## Quick Start Highlight
 
 1. Install [`Nextflow`](https://www.nextflow.io/docs/latest/getstarted.html#installation) (`>=21.10.3`)
 
