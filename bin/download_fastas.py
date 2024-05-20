@@ -204,11 +204,12 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, mis
     def get_url(utl, id):
         bb = os.path.basename(utl)
         return utl+"/"+bb+"_genomic.fna.gz"
+    priorities = dict()
+    seencols = dict()
     with open(filename, "r") as f:
         line = f.readline()
         next(f)
-        priorities = dict()
-        seencols = dict()
+
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
@@ -230,7 +231,7 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, mis
                 # get the value for which x in matchidcs is in input array
                 matchval = input[match_index]
 
-                if namecol not in priorities:
+                if matchval not in priorities:
                     priorities[matchval] = dict()
                 seencols[matchval] = True
                 obj = dict(
@@ -245,8 +246,8 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, mis
                     reference=get_url(urlcol, gcfidx),
                     name = formatted_header,
                 )
-
                 #If the refseq_category column in the assembly.txt is reference genome
+
                 if linesplit[4] == "representative genome" and priorities[matchval].get('0') is None:
                     obj['characteristic'] = "representative"
                     priorities[matchval]['0'] = obj
@@ -294,7 +295,6 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, mis
             chrs=item['chrs'],
         )
     missing = list(set(input) - set(seencols.keys()))
-    print(assemblies.keys())
     if len(missing) > 0:
         # get dirname of input file and write missing to a file
         print("Missing", missing, )
