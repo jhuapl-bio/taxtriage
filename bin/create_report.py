@@ -57,6 +57,8 @@ def parse_args(argv=None):
                         help="Name of abundance column, default is abundance")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default='Name',
                         help="Name of id column, default is id")
+    parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
+                        help="What version of TaxTriage is in use")
     parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',
                         help="Name of site column, default is body_site")
     parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='name',
@@ -122,7 +124,6 @@ def import_data(inputfile ):
     # df['Depth of Coverage'] = np.random.uniform(10, 100, df.shape[0])
 
     df = pd.read_csv(inputfile, sep='\t')
-
 
     # sort the dataframe by the Sample THEN the # Reads
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
@@ -270,7 +271,8 @@ def create_report(
     output,
     df_identified,
     df_unidentified,
-    plotbuffer
+    plotbuffer,
+    version=None
 ):
 
     # PDF file setup
@@ -293,16 +295,17 @@ def create_report(
         topMargin=top_margin,
         bottomMargin=bottom_margin
     )
-    version = "1.3.2"  # Example version
+    # version = "1.3.2"  # Example version
+    if not version:
+        version = "Local Build"
     # get datetime of year-mont-day hour:min
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
     # sort df_identified by Alignment Conf
-    df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
     # filter out so only Class is PAthogen
-    df_identified['Class']
+    df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
     df_identified_paths = df_identified[df_identified['Class'] == 'Pathogen']
     df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
-
+    df_unidentified = df_unidentified.sort_values(by=['% Reads in Sample'], ascending=False)
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
@@ -318,8 +321,9 @@ def create_report(
             table_style=table_style
         )
         # Add the title and subtitle
+
         title = Paragraph("Organism Discovery Analysis", title_style)
-        subtitle = Paragraph(f"This report was generated using TaxTriage {version} on {date} and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
+        subtitle = Paragraph(f"This report was generated using TaxTriage <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
@@ -477,11 +481,13 @@ def main():
     }
     df_identified= df_identified.rename(columns=remap_headers)
     df_unidentified= df_unidentified.rename(columns=remap_headers)
+    version = args.version
     create_report(
         args.output,
         df_identified,
         df_unidentified,
-        plotbuffer
+        plotbuffer,
+        version,
     )
 
 

@@ -335,6 +335,21 @@ workflow TAXTRIAGE {
     INPUT_CHECK(
         ch_input
     )
+    // Example nextflow.config file or within the script
+    println "Nextflow version: ${workflow.nextflow.version}"
+    // if commitId is null then set it to "local"
+    if (!workflow.commitId) {
+        workflow.commitId = 'local'
+    }
+    println "Commit ID: ${workflow.commitId}"
+    if (!workflow.repository) {
+        workflow.repository = 'local'
+    }
+    println "Repository URL: ${workflow.repository}"
+    // get the date and time of the run
+    def date = new Date()
+    println "Date: ${date}"
+
     ch_reads = INPUT_CHECK.out.reads
 
     ARTIC_GUPPYPLEX(
