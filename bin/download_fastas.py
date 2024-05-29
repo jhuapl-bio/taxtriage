@@ -321,6 +321,7 @@ def download_fasta(ftp_site):
         gzip.open, mode='rt') if encoding == 'gzip' else open
     try:
         with closing(request.urlopen(ftp_site, context=ctx)) as r:
+            # file.gz with basename of the inputfilename is opened
             with open('file.gz', 'wb') as f:
                 shutil.copyfileobj(r, f)
             f.close()

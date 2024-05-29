@@ -1261,9 +1261,9 @@
          transform="translate(-1.043125,-2.1544433)"><tspan
            x="496.91327"
            y="202.93719"
-           id="tspan2046"><tspan
+           id="tspan2964"><tspan
              style="font-weight:bold;font-family:'Maven Pro';-inkscape-font-specification:'Maven Pro Bold'"
-             id="tspan2044">Realignment</tspan></tspan></text><text
+             id="tspan2962">Realignment</tspan></tspan></text><text
          xml:space="preserve"
          style="font-size:6.35px;line-height:1.25;font-family:Commissioner;-inkscape-font-specification:Commissioner;letter-spacing:0px;stroke-width:0.264583"
          x="518.0094"
@@ -1776,7 +1776,10 @@
            id="path801" /></g><g
          style="fill:none"
          id="g812-9"
-         transform="matrix(0.38763138,0,0,0.38763141,703.29387,214.05524)"><path
+         transform="matrix(0.38763138,0,0,0.38763141,703.29387,214.05524)"
+         inkscape:export-filename="./g812-9.png"
+         inkscape:export-xdpi="96"
+         inkscape:export-ydpi="96"><path
            opacity="0.5"
            d="M 3.46447,20.5355 C 4.92893,22 7.28595,22 12,22 c 4.714,0 7.0711,0 8.5355,-1.4645 C 22,19.0711 22,16.714 22,12 22,7.28595 22,4.92893 20.5355,3.46447 19.0711,2 16.714,2 12,2 7.28595,2 4.92893,2 3.46447,3.46447 2,4.92893 2,7.28595 2,12 c 0,4.714 0,7.0711 1.46447,8.5355 z"
            fill="#1c274c"
