@@ -490,6 +490,7 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
         header =  "Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tBreadth of Coverage\tDepth of Coverage\n"
         file.write(f"{header}\n")
         for ref, count in reference_hits.items():
+
             if ref in pathogens:
                 if pathogens[ref]['callclass'] == "commensal":
                     is_pathogen = "Commensal"

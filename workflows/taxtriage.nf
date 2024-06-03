@@ -256,14 +256,19 @@ workflow TAXTRIAGE {
             'size': '7.5G'
         ],
         'standard8': [
-            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz',
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20240112.tar.gz',
             'checksum': 'a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac',
             'size': '7.5G'
         ],
         'viral': [
-            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz',
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20240112.tar.gz',
             'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
             'size': '553M'
+        ],
+        'pluspf': [
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_20240112.tar.gz',
+            'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
+            'size': '77G'
         ],
         'test': [
             'url': 'https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz',
