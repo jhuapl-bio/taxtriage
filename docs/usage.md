@@ -260,7 +260,7 @@ While we support Taxtriage in local CLI deployment, you can also import and run 
 
 ### Running the pipeline offline
 
-See [here](../../README.md#offline-local-mode)
+See [here](../README.md#offline-local-mode)
 
 ### Using a "backup" or baseline FASTA reference
 
