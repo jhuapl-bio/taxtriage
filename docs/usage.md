@@ -127,7 +127,7 @@ work                # Directory containing the nextflow working files
 | `--minmapq <number>`                                     | What minimum mapping quality would you want in your sample alignments. Default is 5   |
 | `--organisms_file <file>`                                     | A single file that contains what organisms (name or taxid) you want to pull. You can enable this if you are skipping kraken2 as well    |
 | `--subsample <number>`                                | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis                                                                                                                                                                                                                                                                                                         |
-| `--reference_fasta <filepath>`                        | Location of a reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references                                                                                                                                                                                                                                 |
+| `--reference_fasta <filepath>`                        | Location of a single reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references. Header format must be in the "all" format from NCBI's ftp [assembly site](https://ftp.ncbi.nlm.nih.gov/genomes/all/) and should be ">accession description" where there is a **space** following the accession with the organism chr/contig description of the sequence. Technically, the accession does not matter as the pipeline only needs to match the organism space that follows the first space in the header.              Example: **>NC_003663.2 Cowpox virus, complete genome**                                                                                                                                                                                                                           |
 | `--db <path_to_kraken2_database>`                     | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path. [See here for a full list](#supported-default-databases) |
 | `--download_db`                                       | Download the preset database indicated in `--db` to `--outdir`                                                                                                                                                                                                                                                                                                                                                                    |
 | `--metaphlan` | Use Metaphlan. Must specify a database path that contains .pkl and .btl2 (bowtie2 index) files                                                                                                                                                                    |
@@ -145,6 +145,14 @@ work                # Directory containing the nextflow working files
 | `-resume`                                             | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time                                                                                                                                                                                                                                                                                                               |
 | `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
 | `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                      
+
+⚠️ Please note that for the `--reference_fasta` parameter, you MUST use the designated header format from the FTP site that NCBI hosts for assemblies at [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). This format should looke like:
+
+```
+>NC_003663.2 Cowpox virus, complete genome
+```
+
+In this case, the accession (can be any value, default is NCBI's nt or refseq acc) is followed by a **space** and then the organism name. The pipeline must "fuzzy" match the organism name from this header from the assembly summary file (see NCBI's assembly file [here](https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt)) to understand how the parsing happens in regards to an organism. 
 
 ### Important output locations
 
@@ -249,6 +257,23 @@ While we support Taxtriage in local CLI deployment, you can also import and run 
 - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
 
 3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
+
+### Running the pipeline offline
+
+See [here](../README.md#offline-local-mode)
+
+### Using a "backup" or baseline FASTA reference
+
+Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
+
+A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
+```
+   >NC_003663.2 Cowpox virus, complete genome
+```
+
+In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
+
+B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
 
 #### Running Within Seqera
 
