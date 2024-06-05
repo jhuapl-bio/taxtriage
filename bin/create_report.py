@@ -23,9 +23,9 @@ import numpy as np
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from distributions import import_distributions, make_vplot
+from distributions import import_distributions, make_vplot, body_site_map
 
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, ListFlowable, ListItem
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from datetime import datetime
@@ -146,12 +146,14 @@ def import_data(inputfile ):
 
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
-    df_yes = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
-    df_no = df_full[df_full['IsAnnotated'] == 'No'].copy()
+    # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
+    df_yes = df_full[~df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, "Commensal"] ) ].copy()
+    df_no = df_full[df_full['Type'] == 'Commensal'].copy()
+    df_unidentified = df_full[ ( df_full['isSpecies'] ) & (df_full['Type'].isin([ 'Unknown', 'N/A', np.nan] ))].copy()
     # reset index
     df_yes.reset_index(drop=True, inplace=True)
     df_no.reset_index(drop=True, inplace=True)
-    return df_yes, df_no
+    return df_yes, df_no, df_unidentified
 
 
 
@@ -187,7 +189,7 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
     if include_headers:
         headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
         if len(plot_dict.keys()) > 0:
-            headers.append(Paragraph('<b>Percentile of Healthy Subject</b>', styles['Normal']))  # Plot column header
+            headers.append(Paragraph('<b>Percentile of Healthy Subject (HHS)</b>', styles['Normal']))  # Plot column header
         data.append(headers)
     for index, row in df.iterrows():
         row_data = [Paragraph(format_cell_content(str(cell)), styles['Normal']) for cell in row[columns][:]]  # Exclude plot data
@@ -228,10 +230,12 @@ def return_table_style(df, color_pathogen=False):
                 sites = ""
             # Get Sample Type value from row
             sampletype = row[sampleindx]
-            if val == 'Pathogen' and sampletype in sites:
+            if val != "Commensal" and sampletype in sites:
                 color = 'lightgreen'
-            elif val == 'Pathogen' :
-                color = 'lightyellow'
+            elif val != "Commensal" and row.AnnClass == 'Derived':
+                color = 'lightblue'
+            elif val != "Commensal":
+                color = "lightyellow"
             else:
                 color = 'white'
             # Ensure indices are within the table's dimensions
@@ -271,6 +275,7 @@ def create_report(
     output,
     df_identified,
     df_unidentified,
+    df_commensals,
     plotbuffer,
     version=None
 ):
@@ -303,8 +308,9 @@ def create_report(
     # sort df_identified by Alignment Conf
     # filter out so only Class is PAthogen
     df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
-    df_identified_paths = df_identified[df_identified['Class'] == 'Pathogen']
-    df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
+    df_identified_paths = df_identified
+    df_identified_others = df_commensals
+    # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
     df_unidentified = df_unidentified.sort_values(by=['% Reads in Sample'], ascending=False)
     elements = []
     ##########################################################################################
@@ -312,7 +318,7 @@ def create_report(
     if not df_identified_paths.empty:
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Locations"]
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Taxid"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -339,14 +345,30 @@ def create_report(
     subtext_style.leading = 12
     subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types", subtext_style)
     elements.append(subtext_para)
+    # Create a bullet list
+    bullet_list_items = [
+        "Primary: Exposure to the agent generally results in a diseased state in both immunocompromised and immunocompetent individuals.",
+        "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections",
+        "Commensal: Organisms typically found in the human microbiota.",
+        "Potential: Organisms that have been associated with disease states but are not extensively studied",
+
+    ]
+
+    bullet_list = ListFlowable(
+        [ListItem(Paragraph(item, subtext_style)) for item in bullet_list_items],
+        bulletType='bullet',  # '1' for numbered list
+        start='circle'  # 'circle', 'square', etc.
+    )
+
+    elements.append(bullet_list)
     elements.append(Spacer(1, 12))
-    subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Green represents a match with your sample type", subtext_style)
+    subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Light blue is derived from a species-level classification for a given strain. Green represents a match with your sample type", subtext_style)
     elements.append(subtext_para)
 
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Locations"]
+        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Taxid"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes_others = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=True)
@@ -355,8 +377,8 @@ def create_report(
             table_style=table_style
         )
         # Add the title and subtitle
-        title = Paragraph("Other Organisms Annotated", title_style)
-        subtitle = Paragraph(f"All Organisms were identified but were not listed as a pathogen", subtitle_style)
+        title = Paragraph("Commensals", title_style)
+        subtitle = Paragraph(f"These were identified & were listed as a commensal directly", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))  # Space between tables
@@ -370,7 +392,7 @@ def create_report(
         ##########################################################################################
         ### Section to Make the "Unannotated" Table
         second_title = "Unannotated Organisms"
-        second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms contained within the samples that had atleast one read aligned"
+        second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms (species only) contained within the samples that had atleast one read aligned"
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
@@ -385,7 +407,6 @@ def create_report(
     elements.append(Spacer(1, 12))  # Space between tables
     ##########################################################################################
     #####  Build the PDF
-    print(len(elements))
     # Adjust the build method to include the draw_vertical_line function
     doc.build(elements, onFirstPage=draw_vertical_line, onLaterPages=draw_vertical_line)
 
@@ -403,27 +424,9 @@ def main():
     df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
     df_full = df_full.dropna(subset=[args.type])
     # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
-    # Map several names for common groups for body_site
-    body_site_map = {
-        "gut": "stool",
-        "nose": "nasal",
-        "vagina": "vaginal",
-        "teeth": "oral",
-        "resp": "nasal",
-        "abscess": "skin",
-        "absscess": "skin",
-        "sputum": "oral",
-        "mouth": "oral",
-        "urinary tract": "urine",
-        "ear": "skin",
-        "lung": "nasal",
-        "eye": "eye",
-        "sinus": "nasal",
-        "urogenital": "skin",
-        "cornea": "eye",
-    }
+
     # convert all body_site with map
-    df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map[x] if x in body_site_map else x)
+    df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
     plotbuffer = dict()
     if args.distributions and os.path.exists(args.distributions):
         stats_dict, site_counts = import_distributions(
@@ -463,29 +466,31 @@ def main():
             )
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
-    df_full['Sites'] = df_full['Sites'].fillna("Unknown")
+    df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
 
     df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{1-x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
-    df_identified, df_unidentified = split_df(df_full)
+    df_identified, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
         "Name": "Organism",
         "name": "Organism",
         "# Aligned": "# Aligned to Sample",
         "body_site": "Sample Type",
         "abundance": "% Reads in Sample",
-        "Sites": "Locations",
+        "Pathogenic Sites": "Locations",
         "% Total Reads": "% Reads in Sample",
         "Type": "Class",
         "Gini Coefficient": "Gini Coeff",
     }
     df_identified= df_identified.rename(columns=remap_headers)
     df_unidentified= df_unidentified.rename(columns=remap_headers)
+    df_commensal = df_commensal.rename(columns=remap_headers)
     version = args.version
     create_report(
         args.output,
         df_identified,
         df_unidentified,
+        df_commensal,
         plotbuffer,
         version,
     )

@@ -1,6 +1,7 @@
 include { MAKE_FILE } from '../../modules/local/make_file'
 include { DOWNLOAD_ASSEMBLY } from '../../modules/local/download_assembly'
 include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../../modules/local/map_assembly_to_fasta'
+include { MAP_TAXID_ASSEMBLY } from '../../modules/local/map_taxid_assembly'
 include { FEATURES_DOWNLOAD } from '../../modules/local/download_features'
 include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
 include { COMBINE_MAPFILES } from '../../modules/local/combine_mapfiles'
@@ -186,12 +187,20 @@ workflow  REFERENCE_PREP {
     COMBINE_MAPFILES(
         ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->  return [ meta, listmaps, listids ] }
     )
+
+
     ch_mapped_assemblies = ch_mapped_assemblies.join(COMBINE_MAPFILES.out.mergefiles)
         .map {
             meta, fastas, listmaps, listids, mergedmap, mergedids -> {
                 return [ meta, fastas, mergedmap, mergedids ]
             }
         }
+
+    MAP_TAXID_ASSEMBLY(
+        ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
+        ch_assembly_txt
+    )
+
 
     if (params.get_features){
         FEATURES_DOWNLOAD(
@@ -205,6 +214,13 @@ workflow  REFERENCE_PREP {
 
         ch_bedfiles = FEATURES_TO_BED.out.bed
     }
+    ch_mapped_assemblies = MAP_TAXID_ASSEMBLY.out.taxidmerged.join(
+        ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, fastas, mergedids] }
+    ).map{ meta, mergedmap, fastas, mergedids -> {
+            return [meta, fastas, mergedmap, mergedids]
+        }
+    }
+
 
     emit:
         versions = ch_versions

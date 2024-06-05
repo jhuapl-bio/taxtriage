@@ -225,6 +225,7 @@ include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/m
 include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
+include { MERGEDSUBSPECIES } from '../modules/local/merged_subspecies'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
@@ -505,13 +506,20 @@ workflow TAXTRIAGE {
         TOP_HITS(
             ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
+        MERGEDSUBSPECIES(
+            ch_kraken2_report.map{
+                meta, report -> report
+            }.collect(),
+            ch_pathogens
+        )
+
         MERGEDKRAKENREPORT(
             TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
         )
-
         FILTERKRAKEN(
             MERGEDKRAKENREPORT.out.krakenreport
         )
+
         if (ch_save_fastq_classified){
             ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
         }
@@ -604,7 +612,8 @@ workflow TAXTRIAGE {
         PATHOGENS(
             ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
             ch_pathogens,
-            distributions
+            distributions,
+            ch_assembly_txt
         )
 
         ch_alignment_stats = ALIGNMENT.out.stats
@@ -655,7 +664,6 @@ workflow TAXTRIAGE {
     }
 
     if (params.denovo_assembly) {
-        ch_filtered_reads.view()
         illumina_reads = ch_filtered_reads.filter {
             it[0].platform == 'ILLUMINA'
         }.map {

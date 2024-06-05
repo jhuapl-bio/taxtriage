@@ -8,7 +8,7 @@ import random
 
 def body_site_map(x):
     body_sites = {
-        "gut": "stool",
+        "stool": "gut",
         "nose": "nasal",
         "vagina": "vaginal",
         "teeth": "oral",
@@ -68,7 +68,7 @@ def import_distributions(
             if 'body_site' in value and value['body_site'] in body_sites:
                 stats_dict_new[(value[column_id], value['body_site'])] = value
     else:
-        stats_dict_new = {(x[column_id], x['body_site']): x for x in stats_dict}
+        stats_dict_new = {(x[column_id], body_site_map(x['body_site'])): x for x in stats_dict}
     i = 0
     # Sort the saved_amts list of dicts on the "number_samples" key
     saved_amts = sorted(saved_amts, key=lambda x: x['proportion total'], reverse=False)

@@ -85,6 +85,13 @@ def parse_args(argv=None):
         help="Index of the column in mapfile (if specified) to match to the reference accession. 0 index start",
     )
     parser.add_argument(
+        "-q",
+        "--taxcol",
+        metavar="TAXCOL",
+        default=4, required =False,
+        help="Index of the column in mapfile (if specified) to add taxid col",
+    )
+    parser.add_argument(
         "-n",
         "--namecol",
         default=2,
@@ -97,6 +104,13 @@ def parse_args(argv=None):
         metavar="COVERAGEFILE",
         default=None,
         help="Samtools coverage file",
+    )
+    parser.add_argument(
+        "-j",
+        "--assembly",
+        metavar="ASSEMBLY",
+        default=None, required=False,
+        help="Assembly refseq file",
     )
     parser.add_argument(
         "-t",
@@ -144,8 +158,9 @@ def import_pathogens(pathogens_file):
             pathogen_name = row[0] if len(row) > 0 else None
             taxid = row[1] if len(row) > 1 else None
             call_class = row[2] if len(row) > 2 else None
-            sites = row[3] if len(row) > 3 else None
-            commensal = row[4] if len(row) > 4 else None
+
+            pathogenic_sites = row[3] if len(row) > 3 else None
+            commensal_sites = row[4] if len(row) > 4 else None
             status = row[5] if len(row) > 5 else None
             pathology = row[6] if len(row) > 6 else None
 
@@ -153,14 +168,16 @@ def import_pathogens(pathogens_file):
             pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
                 'callclass': call_class,
-                'sites': sites,
-                'commensal': commensal,
+                'pathogenic_sites': pathogenic_sites,
+                'name': pathogen_name,
+                'commensal_sites': commensal_sites,
                 'status': status,
                 'pathology': pathology
             }
+            pathogens_dict[taxid] = pathogens_dict[pathogen_name]
+
 
     # No need to explicitly close the file, `with` statement handles it.
-    print(pathogens_dict)
     return pathogens_dict
 
 def identify_pathogens(inputfile, pathogens):
@@ -249,6 +266,11 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                 depth_of_coverage = 0,
                 mapqs = [],
                 baseqs = [],
+                seenstrains = None,
+                taxid = None,
+                isSpecies = False,
+                species_taxid = None,
+                strainslist = None,
                 meanmapq = 0,
                 numreads = 0,
                 meanbaseq = 0,
@@ -312,23 +334,29 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                     data['meanmapq'] = sum(data['mapqs']) / len(data['mapqs'])
 
     bam_file.close()
-    if depthfile:
-        print("Reading depth information from depth file")
-        # read in depthfile and reference_coverage[reference_name][pos]  as value
-        with open(depthfile, 'r') as f:
-            for line in f:
-                splitline = line.split('\t')
-                reference_name = splitline[0]
-                pos = int(splitline[1])
-                depth = int(splitline[2])
-                reference_coverage[reference_name]['depths'][pos] = depth
-        f.close()
+    # if depthfile:
+    #     print("Reading depth information from depth file")
+    #     # read in depthfile and reference_coverage[reference_name][pos]  as value
+    #     with open(depthfile, 'r') as f:
+    #         for line in f:
+    #             splitline = line.split('\t')
+    #             reference_name = splitline[0]
+    #             pos = int(splitline[1])
+    #             depth = int(splitline[2])
+    #             reference_coverage[reference_name]['depths'][pos] = depth
+    #     f.close()
      # make a new dict which is name then count, percentage across total reads and percentage across aligned reads
     i=0
     # Aggregate coverage by organism
     organism_coverage = {}
+    seen_strains = dict()
     for ref, data in reference_coverage.items():
-        organism = matchdct.get(ref)
+        organismf = matchdct.get(ref)
+        organism = organismf['name']
+        taxid = organismf['taxid']
+        species_taxid = organismf['species_taxid']
+        isSpecies = organismf['isSpecies']
+        strainslist = organismf['strainslist']
         if organism:
             if organism not in organism_coverage:
                 organism_coverage[organism] = {
@@ -342,11 +370,21 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                     "accessions": [],
                     "mapqs": [],
                     "baseqs": [],
+                    "seenstrains": None,
                     "meanmapq": 0,
-                    "meanbaseq": 0
+                    "meanbaseq": 0,
+                    "isSpecies": False,
+                    "species_taxid": None,
+                    "taxid": None
 
                 }
             organism_info = organism_coverage[organism]
+            organism_info['isSpecies'] = isSpecies
+            organism_info['species_taxid'] = species_taxid
+            organism_info['strainslist'] = strainslist
+            if not isSpecies:
+                seen_strains[taxid] = True
+            organism_info['taxid'] = taxid
             organism_info['numreads'] += data['numreads']
             organism_info['total_length'] += data['length']
             organism_info['mapqs'].append([data['length'], data['meanmapq']])
@@ -357,7 +395,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                 adjusted_pos = pos + organism_info['total_length'] - data['length']
                 organism_info['depths'][adjusted_pos] += depth
     # Now, calculate metrics for each organism based on aggregated coverage
-
     for organism, data in organism_coverage.items():
         # calulcate mean baseq and meanmapq for 2 index list, relative to first index length with baseq
         # and mapq as second index
@@ -384,13 +421,17 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
         # Mean Depth of Coverage
         mean_depth = sum(depths) / data['total_length'] if data['total_length'] > 0 else 0
 
-
-
+        if data['isSpecies']:
+            # remove all strains from strainslist if not in seen_strains
+            data['seenstrains'] = [strain for strain in data['strainslist'] if strain in seen_strains]
+        else:
+            data['seenstrains'] = None
         # Update the organism info with the calculated metrics
         organism_coverage[organism]['breadth_of_coverage'] = breadth_of_coverage
         organism_coverage[organism]['mean_coverage'] = mean_coverage
         organism_coverage[organism]['gini_coefficient'] = gini_coefficient
         organism_coverage[organism]['depth_of_coverage'] = mean_depth
+
     return organism_coverage, total_reads
 
 def main():
@@ -401,22 +442,73 @@ def main():
     output = args.output
     matcher = args.match
     matchdct = dict()
+    header = True
+    i =0
+    spectaxidmatch = dict()
+    collect_subspecies = defaultdict(list)
+    if args.assembly:
+        with open(args.assembly, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if header and i<2:
+                    header = False
+                    continue
+                splitline = line.split('\t')
+                if len(splitline) > 0:
+                    accession = splitline[0]
+                    taxid = splitline[5]
+                    species_taxid = splitline[6]
+                    name = splitline[7]
+                    strain = splitline[8].replace("strain=", "")
+                    isSpecies = False if species_taxid != taxid else True
+                    spectaxidmatch[taxid] = dict(isSpecies=isSpecies, species_taxid=species_taxid, strain=strain, name=name)
+                    if species_taxid not in collect_subspecies:
+                        collect_subspecies[species_taxid] = []
+                    if not isSpecies:
+                        collect_subspecies[species_taxid].append(taxid)
+                i+=1
+
+        f.close()
+    # for taxid, val in spectaxidmatch.items():
+    #     print(taxid, val['isSpecies'], val['species_taxid'], val['strain'], val['name'])
+    # for species_taxid, subspecies in collect_subspecies.items():
+    #     print(f"Species Taxid: {species_taxid}")
+    #     for sub in subspecies:
+    #         print(f"\tSubspecies: {sub}")
+    # exit()
     if args.match:
         # open the match file and import the match file
         with open (matcher, 'r') as f:
             accindex = args.accessioncol
             nameindex = args.namecol
+            taxcol = args.taxcol
             for line in f:
+                line = line.strip()
+                if header and i==0:
+                    header = False
+                    continue
+                taxid=None
                 splitline = line.split('\t')
                 if len(splitline) > 0:
                     accession = splitline[accindex]
                 else:
                     accession = None
+                if len(splitline) > taxcol:
+                    taxid = splitline[taxcol]
                 if len(splitline) > 1:
                     name = splitline[nameindex]
                 else:
                     name = None
-                matchdct[accession] = name
+                matchdct[accession] = dict(name=name, taxid=taxid, species_taxid=None, isSpecies=None, strain=None, strainslist=None)
+                if taxid in spectaxidmatch:
+                    matchdct[accession]['species_taxid'] = spectaxidmatch[taxid]['species_taxid']
+                    matchdct[accession]['isSpecies'] = spectaxidmatch[taxid]['isSpecies']
+                    matchdct[accession]['strain'] = spectaxidmatch[taxid]['strain']
+                    if spectaxidmatch[taxid]['isSpecies'] and spectaxidmatch[taxid]['species_taxid'] in collect_subspecies:
+                        matchdct[accession]['strainslist'] = collect_subspecies[spectaxidmatch[taxid]['species_taxid']]
+                    else:
+                        matchdct[accession]['strainslist'] = None
+                i+=1
 
         f.close()
     pathogens = import_pathogens(pathogenfile)
@@ -436,14 +528,16 @@ def main():
         reference_hits = {k: v for k, v in reference_hits.items() if v['numreads'] >= int(args.min_reads_align)}
 
     for ref, data in reference_hits.items():
-        print(f"Reference: {ref}")
+        print(f"Reference: {ref} (Taxid: {data['taxid']})")
         print(f"\tNumber of Reads: {data['numreads']}")
         print(f"\tMean Coverage: {data['mean_coverage']}")
         print(f"\tGini Coefficient: {data['gini_coefficient']}")
         print(f"\tBreadth of Coverage: {data['breadth_of_coverage']}")
         print(f"\tDepth of Coverage: {data['depth_of_coverage']}")
         print(f"\tMean BaseQ: {data['meanbaseq']}")
-        print(f"\tMean MapQ: {data['meanmapq']}")
+        print(f"\tMean BaseQ: {data['meanbaseq']}")
+        print(f"\tisSpecies: {data['isSpecies']}")
+        print(f"\tSpeciesTaxid: {data['species_taxid']}")
         print()
     write_to_tsv(
         reference_hits=reference_hits,
@@ -487,28 +581,115 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
         for ref, data in reference_hits.items():
             total_reads_aligned += data['numreads']
 
-        header =  "Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tBreadth of Coverage\tDepth of Coverage\n"
+        header =  "Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tBreadth of Coverage\tDepth of Coverage\tAnnClass\tisSpecies\tPathogenic Species/Strains\n"
         file.write(f"{header}\n")
+        print("________________________________________")
         for ref, count in reference_hits.items():
-
-            if ref in pathogens:
-                if pathogens[ref]['callclass'] == "commensal":
-                    is_pathogen = "Commensal"
-                else :
-                    is_pathogen = "Pathogen"
-                taxid = pathogens[ref]['taxid']
-                is_annotated = "Yes"
-                callclass = pathogens[ref]['callclass']
-                sites = pathogens[ref]['sites']
-                status = pathogens[ref]['status']
-
+            taxid = count['taxid']
+            isSpecies = count['isSpecies']
+            strainlist = count['strainslist']
+            is_pathogen = "Unknown"
+            species_taxid = count['species_taxid']
+            callfamclass = ""
+            derived_pathogen = False
+            isPath = False
+            annClass = "None"
+            pathogenic_sites = []
+            if taxid in pathogens:
+                refpath = pathogens[taxid]
+                pathogenic_sites = refpath['pathogenic_sites'] if 'pathogenic_sites' in refpath else []
+            elif ref in pathogens:
+                refpath = pathogens[ref]
+                pathogenic_sites = refpath['pathogenic_sites'] if 'pathogenic_sites' in refpath else []
             else:
+                refpath = None
+            def pathogen_label(ref):
                 is_pathogen = "N/A"
+                isPathi = False
+                callclass= ref['callclass']
+                pathogenic_sites = ref['pathogenic_sites']
+                commensal_sites = ref['commensal_sites']
+                if sample_type in pathogenic_sites:
+                    if callclass != "commensal":
+                        is_pathogen = callclass.capitalize()
+                        isPathi = True
+                    else:
+                        is_pathogen = "Potential"
+
+                elif sample_type in commensal_sites:
+                    is_pathogen = "Commensal"
+                elif callclass and callclass != "":
+                    is_pathogen = callclass.capitalize()
+                    isPathi = True
+                return is_pathogen, isPathi
+
+            if refpath:
+                is_pathogen, isPathi = pathogen_label(refpath)
+                isPath = isPathi
+                if isPathi:
+                    annClass = "Direct"
+                if 'taxid' in refpath and refpath['taxid']:
+                    taxid = refpath['taxid']
+                else:
+                    taxid = count['taxid'] if count['taxid'] else ""
+                is_annotated = "Yes"
+                commsites = refpath['commensal_sites']
+                status = refpath['status']
+
+                if is_pathogen == "Commensal":
+                    callfamclass = "Commensal Listing"
+                elif is_pathogen != "N/A":
+                    callfamclass = "Listed Pathogen"
+                else:
+                    callfamclass = "Unknown Listing"
+            else:
                 is_annotated = "No"
-                taxid = ""
-                callclass = ""
+                taxid = count['taxid'] if count['taxid'] else ""
                 sites = ""
                 status = ""
+            listpathogensstrains = []
+            refspecies = None
+            if not isSpecies and species_taxid in pathogens:
+                refspecies = pathogens[species_taxid]
+
+            if count['strainslist']:
+                lenstrains = len(count['strainslist'])
+                seenstrains = count['seenstrains']
+                # check, for each strainslist, if it is listed as a pathogen in pathogens[taxid], get count
+                for x in count['strainslist']:
+                    if x in pathogens and pathogens[x]['callclass'] != "commensal":
+                        listpathogensstrains.append(x)
+                if callfamclass == "":
+                    callfamclass = f"{len(listpathogensstrains)} Pathogenic Strains/Subsp. Possible"
+            elif refspecies:
+                is_pathogen_species, isPathi = pathogen_label(refspecies)
+                if is_annotated != "Yes":
+                    is_pathogen = f"{is_pathogen_species}"
+                    if refspecies['pathogenic_sites'] and len(refspecies['pathogenic_sites']) > 0:
+                        pathogenic_sites = refspecies['pathogenic_sites']
+                    if isPathi:
+                        isPath = True
+                        annClass = "Derived"
+                if is_pathogen_species != "Commensal":
+                    callfamclass = "Species-level Pathogen"
+                else:
+                    callfamclass = "Species-level Commensal"
+            strainsseen = count['seenstrains']
+            seenpathogens = 0
+            if strainsseen and isSpecies:
+                for strain in strainsseen:
+                    if strain in pathogens and pathogens[strain]['callclass'] != "commensal":
+                        seenpathogens += 1
+            if seenpathogens > 0:
+                # print(f"Strains seen: {seenpathogens} for {ref}")
+                if is_pathogen == "Unknown":
+                    is_pathogen = "Potential"
+                    if not isPath:
+                        annClass = "Unlikely"
+                callfamclass = f"{callfamclass}, {seenpathogens} in sample"
+            if callfamclass == "":
+                callfamclass = "N/A"
+
             meanbaseq = format_non_zero_decimals(count['meanbaseq'])
             gini_coefficient = format_non_zero_decimals(count['gini_coefficient'])
             meanmapq = format_non_zero_decimals(count['meanmapq'])
@@ -524,8 +705,10 @@ def write_to_tsv(reference_hits, pathogens, output_file_path, sample_name="No_Na
                 percent_total = 0
             else:
                 percent_total = format_non_zero_decimals(100*countreads / total_reads)
+            if len(pathogenic_sites) == 0:
+                pathogenic_sites = ""
             # Assuming 'count' is a simple value; if it's a dictionary or complex structure, adjust accordingly.
-            file.write(f"{ref}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{sites}\t{is_pathogen}\t{taxid}\t{status}\t{gini_coefficient}\t{meanbaseq}\t{meanmapq}\t{breadth_of_coverage}\t{depth_of_coverage}\n")
+            file.write(f"{ref}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{pathogenic_sites}\t{is_pathogen}\t{taxid}\t{status}\t{gini_coefficient}\t{meanbaseq}\t{meanmapq}\t{breadth_of_coverage}\t{depth_of_coverage}\t{annClass}\t{isSpecies}\t{callfamclass}\n")
 
 if __name__ == "__main__":
     sys.exit(main())
