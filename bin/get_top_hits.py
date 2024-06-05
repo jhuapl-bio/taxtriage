@@ -369,8 +369,6 @@ def main(argv=None):
             # df_full['percentile'] = df_full['abundance'].rank(pct=True) * 100
             dist_orgs = df_full['tax_id'].tolist()
             extra_orgs = extra_orgs + dist_orgs
-            print(df_full[['rank', 'zscore', 'name', 'body_site']])
-            exit()
     extra_orgs = list(set(extra_orgs))
     mapping = top_hit(mapping, specific_limits, args.top_per_rank, extra_orgs)
     make_files(mapping, args.file_out)
