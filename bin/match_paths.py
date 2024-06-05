@@ -334,17 +334,17 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                     data['meanmapq'] = sum(data['mapqs']) / len(data['mapqs'])
 
     bam_file.close()
-    # if depthfile:
-    #     print("Reading depth information from depth file")
-    #     # read in depthfile and reference_coverage[reference_name][pos]  as value
-    #     with open(depthfile, 'r') as f:
-    #         for line in f:
-    #             splitline = line.split('\t')
-    #             reference_name = splitline[0]
-    #             pos = int(splitline[1])
-    #             depth = int(splitline[2])
-    #             reference_coverage[reference_name]['depths'][pos] = depth
-    #     f.close()
+    if depthfile:
+        print("Reading depth information from depth file")
+        # read in depthfile and reference_coverage[reference_name][pos]  as value
+        with open(depthfile, 'r') as f:
+            for line in f:
+                splitline = line.split('\t')
+                reference_name = splitline[0]
+                pos = int(splitline[1])
+                depth = int(splitline[2])
+                reference_coverage[reference_name]['depths'][pos] = depth
+        f.close()
      # make a new dict which is name then count, percentage across total reads and percentage across aligned reads
     i=0
     # Aggregate coverage by organism
