@@ -285,7 +285,6 @@ def main(argv=None):
         body_sites = []
     else:
         body_sites = [body_site_map(args.body_site.lower())]
-
     if args.pathogens:
         try:
             with open(args.pathogens, 'r', encoding='utf-8', errors='replace') as f:
@@ -338,7 +337,7 @@ def main(argv=None):
         # only get dists where args.body_site is in body_site column
         # only keep rank has S in it
         df_full = df_full[df_full['rank'].str.contains('S')]
-        df_full['body_site'] = args.body_site
+        df_full['body_site'] = body_sites[0] if len(body_sites) >= 1 else None
         df_full.rename(columns={'taxid': 'tax_id'}, inplace=True)
         # convert body_site to lowercase
         df_full['body_site'] = df_full['body_site'].str.lower()
@@ -370,6 +369,8 @@ def main(argv=None):
             # df_full['percentile'] = df_full['abundance'].rank(pct=True) * 100
             dist_orgs = df_full['tax_id'].tolist()
             extra_orgs = extra_orgs + dist_orgs
+            print(df_full[['rank', 'zscore', 'name', 'body_site']])
+            exit()
     extra_orgs = list(set(extra_orgs))
     mapping = top_hit(mapping, specific_limits, args.top_per_rank, extra_orgs)
     make_files(mapping, args.file_out)

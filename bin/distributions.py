@@ -49,6 +49,9 @@ def import_distributions(
         stats_dict = pd.read_csv(distribution_data, sep='\t', compression='gzip').to_dict(orient='records')
     else:
         stats_dict = pd.read_csv(distribution_data, sep='\t').to_dict(orient='records')
+    for value in stats_dict:
+        value['body_site'] = body_site_map(value['body_site'])
+    uniquesites = set([x['body_site'] for x in stats_dict])
     if len(body_sites) > 0:
         for value in stats_dict:
             if value['body_site'] not in site_counts:
@@ -72,8 +75,8 @@ def import_distributions(
     i = 0
     # Sort the saved_amts list of dicts on the "number_samples" key
     saved_amts = sorted(saved_amts, key=lambda x: x['proportion total'], reverse=False)
-    for val in saved_amts:
-        print(f"{val['name']}, {val['site_counts']} - {val['number_samples']} - {val['rank']} - {val['body_site']}, Found in {(100*val['proportion total']):.2f}% of samples")
+    # for val in saved_amts:
+    #     print(f"{val['name']}, {val['site_counts']} - {val['number_samples']} - {val['rank']} - {val['body_site']}, Found in {(100*val['proportion total']):.2f}% of samples")
 
 
 
