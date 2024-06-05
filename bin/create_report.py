@@ -101,19 +101,18 @@ def format_cell_content(cell):
 def import_data(inputfile ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
-    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tSites\tType\tTaxid\tStatus\tGini Coefficient\tMeanBaseQ\tMeanMapQ\tBreadth of Coverage\tDepth of Coverage
-    # Staphylococcus aureus\tshortreads\tstool\t0.0008\t0.0008\t2\tYes\tstool\tCommensal\t1280\testablished\t0.4
-    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished\t0.23
-    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tNo\t\t\t1778540\tN/A\t0.95
-    # Pediococcus acidilactici\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A\t0.9
-    # Neisseria gonorrhoeae\tlongreads\toral\t0.025\t0.025\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished\t0.02
-    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A\t0.48
-    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A\t0.80
-    # Fluviibacter phosphoraccumulans\tlongreads\toral\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A\t0.96
-    # Diaphorobacter ruginosibacter\tlongreads\toral\t0.00003\t0.00003\t1\tNo\t\t\t1715720\tN/A\t0.97
+    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMeanBaseQ\tMeanMapQ\tBreadth of Coverage\tDepth of Coverage\tisSpecies\tAnnClass
+    # Staphylococcus aureus\tshortreads\tstool\t0.0008\t0.0008\t2\tYes\tstool\tCommensal\t1280\testablished\t0.4\t\t\t\t\tTrue\tNone
+    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished\t0.23\t\t\t\t\tTrue\tDerived
+    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tYes\t\t\t1778540\tN/A\t0.95\t\t\t\t\tTrue\tDirect
+    # Pediococcus acidilactici\tlongreads\tnasal\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A\t0.9\t\t\t\t\tTrue\tDerived
+    # Neisseria gonorrhoeae\tlongreads\tnasal\t0.0629\t0.0629\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished\t0.02\t\t\t\t\tTrue\tDirect
+    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A\t0.48\t\t\t\t\tTrue\tDerived
+    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A\t0.80\t\t\t\t\tTrue\tDirect
+    # Fluviibacter phosphoraccumulans\tlongreads\tnasal\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A\t0.96\t\t\t\t\tTrue\tDirect
+    # Diaphorobacter ruginosibacter\tlongreads\tnasal\t0.00003\t0.00003\t1\tNo\t\t\t1715720\tN/A\t0.97\t\t\t\t\tTrue\tDerived
     # """.strip()
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
-
 
     # # Simulating additional data
     # np.random.seed(42)
@@ -129,7 +128,7 @@ def import_data(inputfile ):
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
     # trim all of NAme column  of whitespace either side
     df['Name'] = df['Name'].str.strip()
-
+    # print(df[['Name', 'AnnClass', 'isSpecies', 'Depth of Coverage']])
     dictnames = {
         11250: "human respiratory syncytial virus B",
         12814: "human respiratory syncytial virus A",
@@ -236,8 +235,11 @@ def return_table_style(df, color_pathogen=False):
                 color = 'lightblue'
             elif val != "Commensal":
                 color = "lightyellow"
+            elif val == "Commensal" and row.AnnClass == "Derived":
+                color = 'lightblue'
             else:
-                color = 'white'
+                color = "white"
+            # print(val, "<<<<",  color, row.Organism, row.AnnClass)
             # Ensure indices are within the table's dimensions
             style_command = ('BACKGROUND', (colorindexcol, row_idx+1), (colorindexcol, row_idx+1), color)  # Or lightorange based on condition
             table_style.add(*style_command)
@@ -307,11 +309,11 @@ def create_report(
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
     # sort df_identified by Alignment Conf
     # filter out so only Class is PAthogen
-    df_identified = df_identified.sort_values(by=['Alignment Conf'], ascending=False)
+    df_identified = df_identified.sort_values(by=['Sample', 'Alignment Conf'], ascending=False)
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
-    df_unidentified = df_unidentified.sort_values(by=['% Reads in Sample'], ascending=False)
+    df_unidentified = df_unidentified.sort_values(by=['Sample', '% Reads in Sample'], ascending=False)
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
@@ -362,7 +364,7 @@ def create_report(
 
     elements.append(bullet_list)
     elements.append(Spacer(1, 12))
-    subtext_para = Paragraph("Light yellow cells represent pathogens annotated in sample type(s) other than your listed one. Light blue is derived from a species-level classification for a given strain. Green represents a match with your sample type", subtext_style)
+    subtext_para = Paragraph("Yellow cells represent pathogens annotated in sample type(s) other than your listed one. Blue is derived from a species-level classification for a given strain. White/Green represents a direct match for the taxid/organism name with your sample type form the database.", subtext_style)
     elements.append(subtext_para)
 
     if not df_identified_others.empty:
