@@ -24,10 +24,14 @@ from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from distributions import import_distributions, make_vplot, body_site_map
+from reportlab.graphics.shapes import Line
 
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, ListFlowable, ListItem
+from reportlab.platypus.flowables import HRFlowable, Flowable
+
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+
 from datetime import datetime
 from io import StringIO
 from reportlab.lib.colors import Color
@@ -53,7 +57,7 @@ def parse_args(argv=None):
         required=False,
         help="TSV file that contains all the distribution information for body sites and organisms",
     )
-    parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Total Reads',
+    parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Aligned Reads',
                         help="Name of abundance column, default is abundance")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default='Name',
                         help="Name of id column, default is id")
@@ -79,7 +83,7 @@ def parse_args(argv=None):
 
 
 # Function to adjust font size based on text length
-def adjust_font_size(text, max_length=40, default_font_size=10, min_font_size=6):
+def adjust_font_size(text, max_length=10, default_font_size=10, min_font_size=6):
     if len(text) > max_length:
         # Calculate new font size (simple linear reduction, could be improved)
         new_size = max(default_font_size - (len(text) - max_length) // 5, min_font_size)
@@ -128,7 +132,6 @@ def import_data(inputfile ):
     df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
     # trim all of NAme column  of whitespace either side
     df['Name'] = df['Name'].str.strip()
-    # print(df[['Name', 'AnnClass', 'isSpecies', 'Depth of Coverage']])
     dictnames = {
         11250: "human respiratory syncytial virus B",
         12814: "human respiratory syncytial virus A",
@@ -150,6 +153,7 @@ def split_df(df_full):
     df_no = df_full[df_full['Type'] == 'Commensal'].copy()
     df_unidentified = df_full[ ( df_full['isSpecies'] ) & (df_full['Type'].isin([ 'Unknown', 'N/A', np.nan] ))].copy()
     # reset index
+
     df_yes.reset_index(drop=True, inplace=True)
     df_no.reset_index(drop=True, inplace=True)
     return df_yes, df_no, df_unidentified
@@ -161,14 +165,14 @@ left_align_style = ParagraphStyle(
     name='leftAlign',
     parent=getSampleStyleSheet()['Normal'],
     alignment=0,  # 2 is for right alignment
-    fontSize=12,
+    # fontSize=12,
     spaceAfter=10,
 )
 subtitle_style = ParagraphStyle(
     name='leftAlignSubtitle',
     parent=getSampleStyleSheet()['Normal'],
     alignment=0,  # Right align
-    fontSize=12,
+    # fontSize=12,
     spaceAfter=10,
 )
 
@@ -176,12 +180,14 @@ title_style = ParagraphStyle(
     name='leftAlignTitle',
     parent=getSampleStyleSheet()['Title'],
     alignment=0,  # Right align
-    fontSize=14,
+    # fontSize=14,
     spaceAfter=10,
 )
+styles = getSampleStyleSheet()
+small_font_style = ParagraphStyle(name='SmallFont', parent=styles['Normal'], fontSize=2)
+normal_style = styles['Normal']
 
 def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
-    styles = getSampleStyleSheet()
     data = []
     if not columns:
         columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
@@ -191,10 +197,19 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
             headers.append(Paragraph('<b>Percentile of Healthy Subject (HHS)</b>', styles['Normal']))  # Plot column header
         data.append(headers)
     for index, row in df.iterrows():
-        row_data = [Paragraph(format_cell_content(str(cell)), styles['Normal']) for cell in row[columns][:]]  # Exclude plot data
+        row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
+        # row_data = []
+        # for col in columns:
+        #     cell_content = format_cell_content(str(row[col]))
+        #     if col in ["# Aligned to Sample", "Sample"]:
+        #         print(col)
+        #         # row_data.append(Paragraph(cell_content, small_font_style))
+        #         row_data.append(Paragraph(cell_content, small_font_style))
+        #     else:
+        #         row_data.append(Paragraph(cell_content,small_font_style))
         # Insert the plot image
         if len(plot_dict.keys()) > 0:
-            plot_key = (row['Organism'], row['Sample Type'])
+            plot_key = (row['Organism'], row['Type'])
             if plot_key in plot_dict:
                 plot_image = Image(plot_dict[plot_key])
                 plot_image.drawHeight = 0.5 * inch  # Height of the image
@@ -216,9 +231,9 @@ def return_table_style(df, color_pathogen=False):
     if color_pathogen:
         # Placeholder for cells to color (row_index, col_index) format
         cells_to_color = []
-        colorindexcol = 3
+        colorindexcol = 2
 
-        sampleindx = df.columns.get_loc('Sample Type')
+        sampleindx = df.columns.get_loc('Type')
         # Example post-processing to mark cells
         for row_idx, row in enumerate(df.itertuples(index=False)):
             val = row.Class
@@ -234,12 +249,11 @@ def return_table_style(df, color_pathogen=False):
             elif val != "Commensal" and row.AnnClass == 'Derived':
                 color = 'lightblue'
             elif val != "Commensal":
-                color = "lightyellow"
+                color = "papayawhip"
             elif val == "Commensal" and row.AnnClass == "Derived":
                 color = 'lightblue'
             else:
                 color = "white"
-            # print(val, "<<<<",  color, row.Organism, row.AnnClass)
             # Ensure indices are within the table's dimensions
             style_command = ('BACKGROUND', (colorindexcol, row_idx+1), (colorindexcol, row_idx+1), color)  # Or lightorange based on condition
             table_style.add(*style_command)
@@ -313,14 +327,14 @@ def create_report(
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
-    df_unidentified = df_unidentified.sort_values(by=['Sample', '% Reads in Sample'], ascending=False)
+    df_unidentified = df_unidentified.sort_values(by=['Sample', '# Aligned'], ascending=False)
     elements = []
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
     if not df_identified_paths.empty:
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Taxid"]
+        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -345,8 +359,9 @@ def create_report(
     subtext_style = styles["BodyText"]
     subtext_style.fontSize = 10  # Smaller font size for subtext
     subtext_style.leading = 12
-    subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types", subtext_style)
+    subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types. Classifications of pathogens are described as:", subtext_style)
     elements.append(subtext_para)
+
     # Create a bullet list
     bullet_list_items = [
         "Primary: Exposure to the agent generally results in a diseased state in both immunocompromised and immunocompetent individuals.",
@@ -363,14 +378,54 @@ def create_report(
     )
 
     elements.append(bullet_list)
-    elements.append(Spacer(1, 12))
-    subtext_para = Paragraph("Yellow cells represent pathogens annotated in sample type(s) other than your listed one. Blue is derived from a species-level classification for a given strain. White/Green represents a direct match for the taxid/organism name with your sample type form the database.", subtext_style)
+    # Create an HRFlowable for the horizontal line
+    horizontal_line = HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=12, spaceAfter=12)
+
+    # Add the horizontal line to the elements
+    elements.append(horizontal_line)
+
+
+
+    subtext_para = Paragraph("The following information highlights the description for the color combinations for each organism class in the annotated table(s)", subtext_style)
     elements.append(subtext_para)
+
+    bullet_list_items = [
+        "Green/White: Direct match for the taxid/organism name with your sample type from the database.",
+        "Blue: Derived Pathogenicity from any listed pathogenic strains of a given organism.",
+        "Beige: Pathogens annotated in sample type(s) other than your listed one.",
+
+    ]
+
+    # Create a list of bullet items with specified colors
+    bullet_colors = [colors.lightgreen, colors.lightblue, colors.papayawhip,  ]
+    style = styles['Normal']
+
+    # Create custom ListItems with colored bullets
+    custom_list_items = [
+        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], )
+        for idx, item in enumerate(bullet_list_items)
+    ]
+
+    # Create the ListFlowable
+    bullet_list = ListFlowable(
+        custom_list_items,
+        start="square",
+
+        bulletType='bullet'  # '1' for numbered list
+    )
+
+    # add horizontal line in reportlab
+    elements.append(bullet_list)
+
+    subtext_para = Paragraph("Read amounts are represented as the <b>total number of aligned reads</b> of sufficient mapping quality <b>(% aligned for all reads in sample)</b>", subtext_style)
+    elements.append(subtext_para)
+
+    elements.append(horizontal_line)
 
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample", "Sample Type", "Organism", "Class", "% Reads in Sample", "# Aligned to Sample", "Alignment Conf", "Taxid"]
+        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid"]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes_others = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=True)
@@ -398,7 +453,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Sample',  "Sample Type", 'Organism', '% Reads in Sample', '# Aligned to Sample', "Alignment Conf" ]
+        columns_no = ['Sample', 'Organism','# Aligned', "Alignment Conf" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
@@ -426,9 +481,20 @@ def main():
     df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
     df_full = df_full.dropna(subset=[args.type])
     # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
-
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
+    # make new column that is # of reads aligned to sample (% reads in sample) string format
+    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Aligned']} ({x['abundance']:.2f}%)", axis=1)
+    # add body sit to Sample col with ()
+    def make_sample(x):
+        if not x['body_site']:
+            return ""
+        else:
+            return f"{x['Sample']} ({x['body_site']})"
+    df_full['Sample (Type)'] = df_full.apply(lambda x: make_sample(x), axis=1)
+    # group on sampletype and get sum of abundance col
+    # get the sum of abundance for each sample
+
     plotbuffer = dict()
     if args.distributions and os.path.exists(args.distributions):
         stats_dict, site_counts = import_distributions(
@@ -476,12 +542,13 @@ def main():
     remap_headers = {
         "Name": "Organism",
         "name": "Organism",
-        "# Aligned": "# Aligned to Sample",
-        "body_site": "Sample Type",
-        "abundance": "% Reads in Sample",
+        "# Aligned": "# Reads Aligned to Sample",
+        "body_site": "Type",
+        "abundance": "% of Aligned",
         "Pathogenic Sites": "Locations",
-        "% Total Reads": "% Reads in Sample",
+        "% Reads": "% Reads of Organism",
         "Type": "Class",
+        'Quant': "# Aligned",
         "Gini Coefficient": "Gini Coeff",
     }
     df_identified= df_identified.rename(columns=remap_headers)
