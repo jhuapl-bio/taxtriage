@@ -198,6 +198,7 @@ def calculate_entropy(values):
     total = sum(values)
     probabilities = [value / total for value in values]
     return -sum(p * log2(p) for p in probabilities if p > 0)
+
 def calculate_gini(array):
     """Calculate the Gini coefficient of a list."""
     # Check for zero-size list to avoid ValueError
@@ -226,12 +227,13 @@ def calculate_gini(array):
     return numerator / (n * sum(array_sorted))
 
 
+
+
 # Function to calculate weighted mean
 def calculate_weighted_mean(data, numreads):
     if len(numreads) > 0:
         total_weight = sum(numreads)  # Sum of all weights (numreads)
         weighted_sum = []
-        print(data, numreads)
         for x in range(0, len(numreads)):
             if x >= len(data):
                 break
@@ -385,7 +387,6 @@ def main():
     )
     testacc = "CP000253.1"
     for key, value in reference_hits.items():
-        print(key, value,"\n\n")
         if not testacc:
             testacc = key
         break
@@ -497,7 +498,6 @@ def main():
 
         # Gini Coefficient
         gini_coefficient = calculate_gini(depths)
-        print(gini_coefficient)
         return gini_coefficient
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
@@ -517,7 +517,6 @@ def main():
                     'strainslist': [],
                     'name': data['name'],  # Assuming the species name is the same for all strains
                 }
-            print(data['name'])
             gini_strain = getGiniCoeff(data['depths'])
             species_aggregated[top_level_key]['coeffs'].append(gini_strain)
             species_aggregated[top_level_key]['numreads'].append(data['numreads'])
@@ -658,7 +657,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             else:
                 refpath = None
             def pathogen_label(ref):
-                is_pathogen = "N/A"
+                is_pathogen = "Unknown"
                 isPathi = False
                 callclass= ref['callclass']
                 pathogenic_sites = ref['pathogenic_sites']
@@ -673,7 +672,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 elif sample_type in commensal_sites:
                     is_pathogen = "Commensal"
                 elif callclass and callclass != "":
-                    is_pathogen = callclass.capitalize()
+                    is_pathogen = callclass.capitalize() if callclass and callclass !="" else "Unknown"
                     isPathi = True
                 return is_pathogen, isPathi
             formatname = count['name']
@@ -756,6 +755,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             print(f"\tPathogenic Reads: {pathogenic_reads} - {percentreads}%")
             print(f"\tAligned Strains: {fullstrains}")
             print(f"\tTotal reads: {sum(count['numreads'])}")
+            print(f"\tGini Coefficient: {count['meangini']}")
             print()
 
             meanbaseq = format_non_zero_decimals(count['meanbaseq'])

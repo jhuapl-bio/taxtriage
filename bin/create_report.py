@@ -150,11 +150,10 @@ def import_data(inputfile ):
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
-    df_yes = df_full[~df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Opportunistic", "Potential"] ) ].copy()
+    df_yes = df_full[~df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Opportunistic", "Potential" ] ) ].copy()
     df_opp = df_full[df_full['Type'].isin([ 'Opportunistic', "Potential"])].copy()
     df_comm = df_full[df_full['Type'].isin(['Commensal'])].copy()
-    df_unidentified = df_full[ ( df_full['isSpecies'] ) & (df_full['Type'].isin([ 'Unknown', 'N/A', np.nan] ))].copy()
-    # reset index
+    df_unidentified = df_full[(df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
 
     df_yes.reset_index(drop=True, inplace=True)
     df_opp.reset_index(drop=True, inplace=True)
