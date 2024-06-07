@@ -21,6 +21,7 @@
 from collections import defaultdict
 import sys
 import os
+import numpy as np
 import gzip
 import argparse
 import csv
@@ -146,7 +147,72 @@ def parse_args(argv=None):
 
     return parser.parse_args(argv)
 
+def lorenz_curve(depths):
+    """Compute the Lorenz curve for a list of depths."""
+    sorted_depths = np.sort(depths)
+    cumulative_depths = np.cumsum(sorted_depths)
+    cumulative_depths = np.insert(cumulative_depths, 0, 0)
+    lorenz_curve = cumulative_depths / cumulative_depths[-1]
+    return lorenz_curve
 
+def gini_coefficient(depths):
+    """Calculate the Gini coefficient for a list of depths."""
+    lorenz = lorenz_curve(depths)
+    n = len(lorenz)
+    area_under_lorenz = np.trapz(lorenz, dx=1/(n-1))
+    gini = 1 - 2 * area_under_lorenz
+    return gini
+
+def breadth_of_coverage(depths, genome_length):
+    """Calculate the breadth of coverage for a list of depths."""
+    non_zero_positions = [depth for depth in depths if depth > 0]
+    # get length of non_zero_postions
+    return len(non_zero_positions) / genome_length if genome_length > 0 else 0
+
+def adjusted_fair_distribution_score(depths, genome_length):
+    """Calculate the adjusted score for fair distribution of depths."""
+    gini = gini_coefficient(depths)
+    breadth = breadth_of_coverage(depths, genome_length)
+
+    total_depth = sum(depths)
+    if total_depth == 0:
+        return 0  # If there's no coverage, we consider it the lowest score
+
+    # Compute penalty based on the distribution of depths
+    max_depth = max(depths)
+    avg_depth = np.mean(depths)
+
+    # Define a penalty factor that reduces the impact of high depths
+    penalty_factor = 0.5  # You can adjust this factor based on desired sensitivity
+
+    if avg_depth > 0:
+        penalty = penalty_factor * (max_depth / avg_depth - 1) / (max_depth / avg_depth + 1)
+    else:
+        penalty = penalty_factor * max_depth
+
+    # Adjust the score: 1 - Gini coefficient, penalized by the penalty factor
+    gini_score = (1 - gini) * (1 - penalty)
+
+    # Ensure both scores are between 0 and 1
+    gini_score = max(0, min(1, gini_score))
+    breadth = max(0, min(1, breadth))
+    # log transform breadth to 0 and 1, more weight closer to 1
+    if breadth >0:
+        breadth = np.log(breadth + 1) / np.log(2)
+
+    # Combine the Gini score and breadth of coverage with equal weight
+    final_score = 0.1 * gini_score + 0.9 * breadth
+    return final_score
+
+def get_fair_distribution_score(data):
+    # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int
+    depths = data.get('depths', [])
+    genome_length = data.get('total_length', len(depths))  # Use provided total length or length of depths
+
+    # Calculate the adjusted fair distribution score
+    fair_distribution_score = adjusted_fair_distribution_score(depths, genome_length)
+
+    return fair_distribution_score
 def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
     pathogens_dict = {}
@@ -198,34 +264,6 @@ def calculate_entropy(values):
     total = sum(values)
     probabilities = [value / total for value in values]
     return -sum(p * log2(p) for p in probabilities if p > 0)
-
-def calculate_gini(array):
-    """Calculate the Gini coefficient of a list."""
-    # Check for zero-size list to avoid ValueError
-    if len(array) == 0:
-        return 0  # Define behavior for empty lists, perhaps Gini = 0
-
-    # Ensure all values are treated equally, lists must be 1D.
-    array = [val for sublist in array for val in (sublist if isinstance(sublist, list) else [sublist])]
-
-    # Check for negative values
-    if any(i < 0 for i in array):
-        raise ValueError("Array cannot contain negative values.")
-
-    # Ensure the list does not sum to zero
-    if sum(array) == 0:
-        return 0  # No inequality if there is no coverage
-
-    # Sort the list
-    array_sorted = sorted(array)
-    n = len(array)
-
-    # Gini coefficient calculation
-    index = range(1, n + 1)  # Create a list of indexes
-    numerator = sum((2 * idx - n - 1) * value for idx, value in zip(index, array_sorted))
-
-    return numerator / (n * sum(array_sorted))
-
 
 
 
@@ -485,19 +523,20 @@ def main():
             final_format[valtoplevel][valkey] = value
     # for key, value in final_format.items():
     #     for key2, value2 in value.items():
-    #         if value2['accession'] == testacc:
-    #             # print(f"Step4: {key}, {key2}","\n\n")
-    #             break
+    #         print(value2.keys())
+            # if value2['accession'] == testacc:
+            #     print(f"Step4: {key}, {key2}","\n\n")
+            # break
     # Dictionary to store aggregated species-level data
     species_aggregated = {}
-    def getGiniCoeff(data):
+    def getGiniCoeff(data, acc_length=0):
         # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int.
         depths = list(data.values()) if data.values() else [0]
         # Get get proportion of depths in increments 10 or higher like 0-10 x 11-20 x etc
 
 
         # Gini Coefficient
-        gini_coefficient = calculate_gini(depths)
+        gini_coefficient = get_fair_distribution_score({"depths": depths, 'total_length': acc_length})
         return gini_coefficient
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
@@ -517,7 +556,7 @@ def main():
                     'strainslist': [],
                     'name': data['name'],  # Assuming the species name is the same for all strains
                 }
-            gini_strain = getGiniCoeff(data['depths'])
+            gini_strain = getGiniCoeff(data['depths'], data['length'])
             species_aggregated[top_level_key]['coeffs'].append(gini_strain)
             species_aggregated[top_level_key]['numreads'].append(data['numreads'])
             species_aggregated[top_level_key]['coverages'].append(data['coverage'])
@@ -553,6 +592,7 @@ def main():
         aggregated_data['meandepth'] = calculate_weighted_mean(aggregated_data['depths'],numreads)
         aggregated_data['meancoverage'] = calculate_weighted_mean(aggregated_data['coverages'],numreads)
         aggregated_data['meangini'] = calculate_weighted_mean(aggregated_data['coeffs'],numreads)
+
     # Print the final aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
         print(f"Entry Top Key: {top_level_key}")
@@ -586,7 +626,7 @@ def main():
         # print(f"\tStrains seen: {', '.join(strainnames)}")
         print(f"\tNumber of Reads: {data['numreads']}")
         print(f"\tMean Coverage: {data['meancoverage']}")
-        print(f"\tGini Coefficient: {data['meangini']}")
+        print(f"\Alignment Conf: {data['meangini']}")
         print(f"\tDepth of Coverage: {data['meandepth']}")
         print(f"\tMean BaseQ: {data['meanbaseq']}")
         print(f"\tMean MapQ: {data['meanmapq']}")
@@ -755,7 +795,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             print(f"\tPathogenic Reads: {pathogenic_reads} - {percentreads}%")
             print(f"\tAligned Strains: {fullstrains}")
             print(f"\tTotal reads: {sum(count['numreads'])}")
-            print(f"\tGini Coefficient: {count['meangini']}")
+            print(f"\tAlignment Conf: {count['meangini']}")
             print()
 
             meanbaseq = format_non_zero_decimals(count['meanbaseq'])
