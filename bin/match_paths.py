@@ -492,9 +492,12 @@ def main():
     def getGiniCoeff(data):
         # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int.
         depths = list(data.values()) if data.values() else [0]
+        # Get get proportion of depths in increments 10 or higher like 0-10 x 11-20 x etc
+
+
         # Gini Coefficient
         gini_coefficient = calculate_gini(depths)
-
+        print(gini_coefficient)
         return gini_coefficient
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
@@ -514,6 +517,7 @@ def main():
                     'strainslist': [],
                     'name': data['name'],  # Assuming the species name is the same for all strains
                 }
+            print(data['name'])
             gini_strain = getGiniCoeff(data['depths'])
             species_aggregated[top_level_key]['coeffs'].append(gini_strain)
             species_aggregated[top_level_key]['numreads'].append(data['numreads'])
@@ -737,7 +741,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                             listpathogensstrains.append(f"{x['strainname']} ({percentreads}%)")
                             # listpathogensstrains.append(f"{x['strainname']} ({taxx}: {x['numreads']} reads - {percentreads}%)")
                 if callfamclass == "":
-                    callfamclass = f"{len(listpathogensstrains)}"
+                    callfamclass = f"{len(listpathogensstrains) if len(listpathogensstrains) > 0 else ''}"
                     if len(listpathogensstrains) > 0:
                         callfamclass = f"{', '.join(listpathogensstrains)}"
                 if (is_pathogen == "N/A" or is_pathogen == "Unknown") and len(listpathogensstrains) > 0:

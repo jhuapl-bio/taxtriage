@@ -136,7 +136,6 @@ def import_data(inputfile ):
         11250: "human respiratory syncytial virus B",
         12814: "human respiratory syncytial virus A",
     }
-
     # df['Organism'] = df['Name']
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
@@ -144,19 +143,22 @@ def import_data(inputfile ):
             df.at[row_idx, 'Name'] = f'{row.Name}*'
         # change the Name column if the mapnames for taxid is in the dict
         df['Name'] = df[['Name', 'Taxid']].apply(lambda x: dictnames[x['Taxid']] if x['Taxid'] in dictnames else x['Name'], axis=1)
+    # replace all NaN with ""
+    df = df.fillna("")
     return df
 
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
-    df_yes = df_full[~df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, "Commensal"] ) ].copy()
-    df_no = df_full[df_full['Type'] == 'Commensal'].copy()
+    df_yes = df_full[~df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Opportunistic", "Potential"] ) ].copy()
+    df_opp = df_full[df_full['Type'].isin([ 'Opportunistic', "Potential"])].copy()
+    df_comm = df_full[df_full['Type'].isin(['Commensal'])].copy()
     df_unidentified = df_full[ ( df_full['isSpecies'] ) & (df_full['Type'].isin([ 'Unknown', 'N/A', np.nan] ))].copy()
     # reset index
 
     df_yes.reset_index(drop=True, inplace=True)
-    df_no.reset_index(drop=True, inplace=True)
-    return df_yes, df_no, df_unidentified
+    df_opp.reset_index(drop=True, inplace=True)
+    return df_yes, df_opp, df_comm, df_unidentified
 
 
 
@@ -290,6 +292,7 @@ def draw_vertical_line(canvas, doc):
 def create_report(
     output,
     df_identified,
+    df_opportunistic,
     df_unidentified,
     df_commensals,
     plotbuffer,
@@ -324,11 +327,13 @@ def create_report(
     # sort df_identified by Alignment Conf
     # filter out so only Class is PAthogen
     df_identified = df_identified.sort_values(by=['Sample', 'Alignment Conf'], ascending=False)
+    df_opportunistic = df_opportunistic.sort_values(by=['Sample', 'Alignment Conf'], ascending=False)
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
     df_unidentified = df_unidentified.sort_values(by=['Sample', '# Aligned'], ascending=False)
     elements = []
+    ##########################################################################################
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
     if not df_identified_paths.empty:
@@ -393,7 +398,6 @@ def create_report(
         "Green/White: Direct match for the taxid/organism name with your sample type from the database.",
         "Blue: Derived Pathogenicity from any listed pathogenic strains of a given organism.",
         "Beige: Pathogens annotated in sample type(s) other than your listed one.",
-
     ]
 
     # Create a list of bullet items with specified colors
@@ -422,6 +426,26 @@ def create_report(
 
     elements.append(horizontal_line)
 
+    ##########################################################################################
+    #### Table on opportunistic pathogens
+    if not df_opportunistic.empty:
+        columns_opp =  ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains"]
+        data_opp = prepare_data_with_headers(df_opportunistic, plotbuffer, include_headers=True, columns=columns_opp)
+        table_style = return_table_style(df_opportunistic, color_pathogen=True)
+        table = make_table(
+            data_opp,
+            table_style=table_style
+        )
+        # Add the title and subtitle
+
+        Title = Paragraph("Opportunistic Pathogens", title_style)
+        elements.append(Title)
+        elements.append(Spacer(1, 12))
+        elements.append(table)
+        elements.append(Spacer(1, 12))  # Space between tables
+
+    ################################################################################################
+    ### Table on commensals
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
@@ -536,9 +560,9 @@ def main():
     # convert all locations nan to "Unknown"
     df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
 
-    df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{1-x:.2f}" if not pd.isna(x) else 0)
+    df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
-    df_identified, df_commensal, df_unidentified= split_df(df_full)
+    df_identified, df_opportunistic, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
         "Name": "Organism",
         "name": "Organism",
@@ -554,10 +578,12 @@ def main():
     df_identified= df_identified.rename(columns=remap_headers)
     df_unidentified= df_unidentified.rename(columns=remap_headers)
     df_commensal = df_commensal.rename(columns=remap_headers)
+    df_opportunistic = df_opportunistic.rename(columns=remap_headers)
     version = args.version
     create_report(
         args.output,
         df_identified,
+        df_opportunistic,
         df_unidentified,
         df_commensal,
         plotbuffer,
