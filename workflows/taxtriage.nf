@@ -305,7 +305,7 @@ workflow TAXTRIAGE {
         } else if (params.db)  {
             ch_db = file(params.db, checkIfExists: true)
         } else {
-            println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
+            println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>. You may also retrieve them, locally, from https://benlangmead.github.io/aws-indexes/k2. Make sure to download and decompress/untar the .tar.gz file which contains a folder you can specify with --db <localpath>. "
         }
     } else {
         if (params.db) {
