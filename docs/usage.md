@@ -238,8 +238,8 @@ In order to retain an "agnostic" approach for organism while allowing adequate a
 | flukraken2    | [Download](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz) | 180M |
 | test          | [Download](https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz)      | 112M |
 | minikraken2   | [Download](https://genome-idx.s3.amazonaws.com/kraken/minikraken2_v2_8GB_201904.tgz)                      | 7.5G |
-| PlusPF   | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_20240112.tar.gz)                      | 77G |
-| PlusPF-8   | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_08gb_20240112.tar.gz)                      | 7.5G |
+| pluspf   | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_20240112.tar.gz)                      | 77G |
+| pluspf8   | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_08gb_20240112.tar.gz)                      | 7.5G |
 
 - Kraken2 additional AWS databases [here](https://benlangmead.github.io/aws-indexes/k2)
 - Metaphlan4 [here](http://cmprod1.cibio.unitn.it/biobakery4/metaphlan_databases/) - Download the .tar files
