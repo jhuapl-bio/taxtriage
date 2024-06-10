@@ -21,7 +21,6 @@
 from collections import defaultdict
 import sys
 import os
-import numpy as np
 import gzip
 import argparse
 import csv
