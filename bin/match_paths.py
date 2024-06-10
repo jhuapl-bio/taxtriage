@@ -21,6 +21,7 @@
 from collections import defaultdict
 import sys
 import os
+import numpy as np
 import gzip
 import argparse
 import csv
@@ -145,6 +146,7 @@ def parse_args(argv=None):
 
 
     return parser.parse_args(argv)
+
 def lorenz_curve(depths):
     """Compute the Lorenz curve for a list of depths."""
     sorted_depths = sorted(depths)
@@ -152,8 +154,9 @@ def lorenz_curve(depths):
     total = sum(sorted_depths)
     for depth in sorted_depths:
         cumulative_depths.append(cumulative_depths[-1] + depth)
-    lorenz_curve = [x / total for x in cumulative_depths]
+    lorenz_curve = [x / total if x >0 else 0 for x in cumulative_depths]
     return lorenz_curve
+
 
 def gini_coefficient(depths):
     """Calculate the Gini coefficient for a list of depths."""
@@ -179,10 +182,41 @@ def adjusted_fair_distribution_score(depths, genome_length):
 
     # Compute penalty based on the distribution of depths
     max_depth = max(depths)
-    avg_depth = total_depth / len(depths) if depths else 0
+    avg_depth = sum(depths) / len(depths) if len(depths) > 0 else 0
 
     # Define a penalty factor that reduces the impact of high depths
     penalty_factor = 0.5  # You can adjust this factor based on desired sensitivity
+
+    if avg_depth > 0:
+        penalty = penalty_factor * (max_depth / avg_depth - 1) / (max_depth / avg_depth + 1)
+    else:
+        penalty = penalty_factor * max_depth
+
+    # Adjust the score: 1 - Gini coefficient, penalized by the penalty factor
+    gini_score = (1 - gini) * (1 - penalty)
+
+    # Ensure both scores are between 0 and 1
+    gini_score = max(0, min(1, gini_score))
+    breadth = max(0, min(1, breadth))
+    # log transform breadth to 0 and 1, more weight closer to 1
+    if breadth > 0:
+        breadth = log2(breadth + 1) / log2(2)
+
+    # Combine the Gini score and breadth of coverage with equal weight
+    final_score = 0.1 * gini_score + 0.9 * breadth
+    return final_score
+
+
+def get_fair_distribution_score(data):
+    # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int
+    depths = data.get('depths', [])
+    genome_length = data.get('total_length', len(depths))  # Use provided total length or length of depths
+
+    # Calculate the adjusted fair distribution score
+    fair_distribution_score = adjusted_fair_distribution_score(depths, genome_length)
+
+    return fair_distribution_score
+
 
 def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
