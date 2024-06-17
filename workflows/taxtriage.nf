@@ -435,6 +435,30 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+
+
+    if (params.denovo_assembly) {
+            illumina_reads = ch_reads.filter {
+                it[0].platform == 'ILLUMINA'
+            }.map {
+                meta, reads -> [meta, reads]
+            }
+            MEGAHIT(
+                illumina_reads
+            )
+
+            nanopore_reads = ch_reads.filter {
+                it[0].platform == 'OXFORD'
+            }.map {
+                meta, reads -> [meta, reads]
+            }
+
+            FLYE(
+                nanopore_reads,
+                '--nano-raw'
+            )
+        }
+
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
@@ -533,6 +557,8 @@ workflow TAXTRIAGE {
         if (ch_save_fastq_classified){
             ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
         }
+
+
 
         if (params.fuzzy){
             ch_organisms = TOP_HITS.out.names
@@ -673,27 +699,7 @@ workflow TAXTRIAGE {
         }
     }
 
-    if (params.denovo_assembly) {
-        illumina_reads = ch_filtered_reads.filter {
-            it[0].platform == 'ILLUMINA'
-        }.map {
-            meta, reads -> [meta, reads]
-        }
-        MEGAHIT(
-            illumina_reads
-        )
 
-        nanopore_reads = ch_filtered_reads.filter {
-            it[0].platform == 'OXFORD'
-        }.map {
-            meta, reads -> [meta, reads]
-        }
-
-        FLYE(
-            nanopore_reads,
-            '--nano-raw'
-        )
-    }
 
     CUSTOM_DUMPSOFTWAREVERSIONS(
         ch_versions.unique().collectFile(name: 'collated_versions.yml')

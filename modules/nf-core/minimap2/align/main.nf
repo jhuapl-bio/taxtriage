@@ -31,7 +31,8 @@ process MINIMAP2_ALIGN {
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     def I_value = "${(task.memory.toGiga() * 0.9).longValue()}G" // 90% of allocated memory, append GB to end as a string
-    def mapx = reads.size() > 1 ? " -ax map-ont " : " -x sr "
+    // if input is illumina then use -ax sr else use -ax map-ont
+    def mapx = meta.platform == "ILLUMINA" ? "-ax sr" : "-ax map-ont"
     """
     
     minimap2 \\

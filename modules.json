@@ -80,6 +80,11 @@
                         "git_sha": "82501fe6d0d12614db67751d30af98d16e63dc59",
                         "installed_by": ["modules"]
                     },
+                    "diamond/makedb": {
+                        "branch": "master",
+                        "git_sha": "b29f6beb86d1d24d680277fb1a3f4de7b8b8a92c",
+                        "installed_by": ["modules"]
+                    },
                     "fastp": {
                         "branch": "master",
                         "git_sha": "d497a4868ace3302016ea8ed4b395072d5e833cd",
@@ -248,11 +253,6 @@
                     "seqtk/seq": {
                         "branch": "master",
                         "git_sha": "90aef30f432332bdf0ce9f4b9004aa5d5c4960bb",
-                        "installed_by": ["modules"]
-                    },
-                    "spades": {
-                        "branch": "master",
-                        "git_sha": "682f789f93070bd047868300dd018faf3d434e7c",
                         "installed_by": ["modules"]
                     },
                     "taxpasta/merge": {

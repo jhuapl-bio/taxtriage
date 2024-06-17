@@ -27,8 +27,11 @@ process KRAKEN2_KRAKEN2 {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def paired       = meta.single_end ? "" : "--paired"
-    def classified   = meta.single_end ? "${prefix}.classified.fastq"   : "${prefix}.classified#.fastq"
-    def unclassified = meta.single_end ? "${prefix}.unclassified.fastq" : "${prefix}.unclassified#.fastq"
+    // get basename of the db 
+    def db_basename = db.getName()
+
+    def classified   = meta.single_end ? "${prefix}.${db_basename}.classified.fastq"   : "${prefix}.${db_basename}.classified#.fastq"
+    def unclassified = meta.single_end ? "${prefix}.${db_basename}.unclassified.fastq" : "${prefix}.${db_basename}.unclassified#.fastq"
     def classified_command = save_output_fastqs ? "--classified-out ${classified}" : ""
     def confidence = params.k2_confidence ? "--confidence ${params.k2_confidence}" : ""
     def unclassified_command = save_output_fastqs ? "--unclassified-out ${unclassified}" : ""

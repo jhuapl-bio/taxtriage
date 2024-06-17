@@ -19,11 +19,13 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
+include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
 include { REMOVE_HOSTREADS } from '../../modules/local/remove_unaligned'
 include { SAMTOOLS_INDEX as FILTERED_SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_STATS as FILTERED_STATS } from '../../modules/nf-core/samtools/stats/main'
 include { CHECK_GZIPPED_READS } from '../../modules/local/check_reads_exist'
+include { DOWNLOAD_DB as FILTER_DB_DOWNLOAD } from '../../modules/local/download_db'
 
 workflow HOST_REMOVAL {
     take:
@@ -37,7 +39,20 @@ workflow HOST_REMOVAL {
         ch_filt_oxfo = Channel.empty()
         ch_filtered_stats = Channel.empty()
         ch_reference_fasta = Channel.empty()
+        ch_filter_db = Channel.empty()
+        supported_filter_dbs = [
+            'human': [
+                'url': 'https://zenodo.org/records/8339700/files/k2_Human_20230629.tar.gz?download=1',
+                'checksum': '9d388703b1fa7c2e269bb63acf1043dbec7bb62da0a57c4fb1c41d8ab7f9c953',
+                'size': '5G'
+            ],
+            'viral': [
+                'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20240112.tar.gz',
+                'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
+                'size': '553M'
+            ],
 
+        ]
         if (params.remove_reference_file){
             ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
         } else if (params.genome) {
@@ -64,8 +79,8 @@ workflow HOST_REMOVAL {
             REMOVE_HOSTREADS (ch_bam_hosts)
 
             ch_reads = REMOVE_HOSTREADS.out.reads
-            CHECK_GZIPPED_READS(ch_reads, 4 )
-            FILTERED_SAMTOOLS_INDEX ( ch_bam_hosts )
+            CHECK_GZIPPED_READS(ch_reads, 4)
+            FILTERED_SAMTOOLS_INDEX (ch_bam_hosts )
 
             // remove filter channels where CHECK_GZIPPED_READS.out.check_result is not empty
             ch_reads = ch_reads.join(CHECK_GZIPPED_READS.out.check_result).map{
@@ -73,7 +88,7 @@ workflow HOST_REMOVAL {
                     return [meta, reads]
                 }
             }
-            ch_reads.view()
+
 
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS (
@@ -82,6 +97,28 @@ workflow HOST_REMOVAL {
             )
             ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
 
+        } else if (params.filter_kraken2){
+            if (supported_filter_dbs.containsKey(params.filter_kraken2)) {
+                println "Kraken db ${params.filter_kraken2} will be downloaded if it cannot be found. This requires ${supported_filter_dbs[params.filter_kraken2]['size']} of space."
+                FILTER_DB_DOWNLOAD(
+                    params.filter_kraken2,
+                    supported_filter_dbs[params.filter_kraken2]['url'],
+                    supported_filter_dbs[params.filter_kraken2]['checksum']
+                )
+                /* groovylint-disable-next-line UnnecessaryGetter */
+                ch_db = FILTER_DB_DOWNLOAD.out.k2d.map { file -> file.getParent() }
+                ch_filter_db = ch_db
+            } else {
+                println "Kraken local filter db ${params.filter_kraken2} will be used."
+                ch_filter_db = file(params.filter_kraken2)
+            }
+            FILTER_KRAKEN2 (
+                ch_reads,
+                ch_filter_db,
+                true,
+                false,
+            )
+            ch_reads = FILTER_KRAKEN2.out.unclassified_reads_fastq
         }
         // filter out all ch_reads fastq files that are empty
 
