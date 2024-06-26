@@ -200,10 +200,8 @@ def adjusted_fair_distribution_score(depths, genome_length):
     # log transform breadth to 0 and 1, more weight closer to 1
     if breadth > 0:
         breadth = log2(breadth + 1) / log2(2)
-    print(gini_score, breadth)
     # Combine the Gini score and breadth of coverage with equal weight
     final_score = 0.1 * (1-gini_score) + 0.9 * breadth
-    print(final_score)
     return final_score
 
 
@@ -553,6 +551,7 @@ def main():
                     'numreads': [],
                     'mapqs': [],
                     'depths': [],
+                    "taxids": [],
                     "accs": [],
                     "coverages": [],
                     "coeffs": [],
@@ -561,19 +560,20 @@ def main():
                     'strainslist': [],
                     'name': data['name'],  # Assuming the species name is the same for all strains
             }
-            # # if the taxid is 36809 then print else continue
-            # if data['taxid'] == "36809" or data['taxid']=="292":
-            #     print(f"Step4: {top_level_key}, {data['name']}","\n\n")
+            # if the taxid is 36809 then print else continue
+            # if data['taxid'] == "28450" or data['taxid'] == "1249658" or data['taxid'] == "1439852":
+            #     print(f"Step4: {top_level_key}, {data['name']}", data['accession'], data['numreads'])
             #     # print all non 0 depth as a length
-            #     print(len([x for x in data['depths'].values() if x > 0]), (data['length']))
-            #     print(data['accession'], data['name'])
-            #     gini_strain = getGiniCoeff(data['depths'], data['length'])
-            #     print(gini_strain)
+            #     # print(len([x for x in data['depths'].values() if x > 0]), (data['length']))
+            #     # print(data['accession'], data['name'])
+            #     # gini_strain = getGiniCoeff(data['depths'], data['length'])
+            #     # print(gini_strain)
             #     # br
             # else:
             #     continue
             gini_strain = getGiniCoeff(data['depths'], data['length'])
             species_aggregated[top_level_key]['coeffs'].append(gini_strain)
+            species_aggregated[top_level_key]['taxids'].append(data['taxid'])
             species_aggregated[top_level_key]['numreads'].append(data['numreads'])
             species_aggregated[top_level_key]['coverages'].append(data['coverage'])
             species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
@@ -598,8 +598,6 @@ def main():
                 })
 
 
-            species_aggregated[top_level_key]['mapqs'].append(20)
-            species_aggregated[top_level_key]['numreads'].append(data['numreads'])
     # Calculate weighted means for aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
         numreads = aggregated_data['numreads']
