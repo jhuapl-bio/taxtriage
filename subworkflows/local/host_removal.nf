@@ -60,7 +60,7 @@ workflow HOST_REMOVAL {
         }
 
         if (params.remove_reference_file || params.genome){
-            // Run minimap2 module on all OXFORD platform reads and Bowtie2 on ILLUMINA  reads
+            // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
             // if ch_aligned_for_filter.shorteads is not empty
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
 

@@ -60,11 +60,11 @@ if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && param
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
 if (params.minq) {
-    ch_minq_illumina = params.minq
-    ch_minq_oxford = params.minq
+    ch_minq_shortreads = params.minq
+    ch_minq_longreads = params.minq
 } else {
-    ch_minq_illumina = 20
-    ch_minq_oxford = 7
+    ch_minq_shortreads = 20
+    ch_minq_longreads = 7
     println 'Min Quality set to default'
 }
 
@@ -408,7 +408,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
 
     PORECHOP(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
+        ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
     )
     ch_porechop_out  = PORECHOP.out.reads
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
@@ -438,26 +438,26 @@ workflow TAXTRIAGE {
 
 
     if (params.denovo_assembly) {
-            illumina_reads = ch_reads.filter {
-                it[0].platform == 'ILLUMINA'
-            }.map {
-                meta, reads -> [meta, reads]
-            }
-            MEGAHIT(
-                illumina_reads
-            )
-
-            nanopore_reads = ch_reads.filter {
-                it[0].platform == 'OXFORD'
-            }.map {
-                meta, reads -> [meta, reads]
-            }
-
-            FLYE(
-                nanopore_reads,
-                '--nano-raw'
-            )
+        illumina_reads = ch_reads.filter {
+            it[0].platform == 'ILLUMINA'
+        }.map {
+            meta, reads -> [meta, reads]
         }
+        MEGAHIT(
+            illumina_reads
+        )
+
+        longreads = ch_reads.filter {
+            it[0].platform == 'OXFORD' || it[0].platform == 'PACBIO'
+        }.map {
+            meta, reads -> [meta, reads]
+        }
+
+        FLYE(
+            longreads,
+            '--nano-raw'
+        )
+    }
 
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
@@ -468,7 +468,7 @@ workflow TAXTRIAGE {
         )
         ch_versions = ch_versions.mix(FASTQC.out.versions.first())
         NANOPLOT(
-            ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
+            ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
         )
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
@@ -645,12 +645,14 @@ workflow TAXTRIAGE {
         )
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
-        PATHOGENS(
-            ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
-            ch_pathogens,
-            distributions,
-            ch_assembly_txt
-        )
+        if (!params.skip_report){
+            PATHOGENS(
+                ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
+                ch_pathogens,
+                distributions,
+                ch_assembly_txt
+            )
+        }
 
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))

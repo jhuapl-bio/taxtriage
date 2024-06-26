@@ -46,6 +46,11 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.fastq_2 = row.fastq_2
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
     meta.single_end = row.fastq_2  ? false : true
+    meta.aligner  = row.aligner ? row.aligner : 'minimap2'
+    // if meta.aligner is not minimap2, hisat2, or bowtie2 then exit and send error
+    if (meta.aligner != 'minimap2' && meta.aligner != 'hisat2' && meta.aligner != 'bowtie2') {
+        exit 1, "ERROR: Please check input samplesheet -> aligner is not specified as minimap2, hisat2, or bowtie2 \n${meta.sample}"
+    }
     // Check if fastq_1 exists if not then error out and print error
     if (!file(meta.fastq_1).exists()) {
         exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
@@ -65,10 +70,10 @@ def create_fastq_channel(LinkedHashMap row) {
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
     if (meta.directory ){
-        if (meta.platform == 'OXFORD'){
+        if (meta.platform == 'OXFORD' || meta.platform == "PACBIO"){
             fastq_meta = [ meta, [ file(meta.fastq_1) ]  ]
         } else {
-            exit 1, "ERROR: Please check input samplesheet -> the platform is not specified as OXFORD \n${meta.sample}"
+            exit 1, "ERROR: Please check input samplesheet -> the platform is not specified as OXFORD or PACBIO \n${meta.sample}"
         }
     } else {
         if (!file(meta.fastq_1).exists()) {

@@ -7,6 +7,8 @@ include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
 include { COMBINE_MAPFILES } from '../../modules/local/combine_mapfiles'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_LOCAL } from '../../modules/nf-core/bowtie2/build/main'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_DWNLD } from '../../modules/nf-core/bowtie2/build/main'
+include { HISAT2_BUILD as HISAT2_BUILD_LOCAL } from '../../modules/nf-core/hisat2/build/main'
+include { HISAT2_BUILD as HISAT2_BUILD_DWNLD } from '../../modules/nf-core/hisat2/build/main'
 
 workflow  REFERENCE_PREP {
     take:
@@ -154,7 +156,7 @@ workflow  REFERENCE_PREP {
         // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
         // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
         DOWNLOAD_ASSEMBLY.out.fasta.branch{
-                longreads: it[0].platform =~ 'OXFORD'
+                longreads: it[0].platform =~ 'OXFORD' || it[0].platform =~ 'PACBIO'
                 shortreads: it[0].platform =~ 'ILLUMINA'
         }.set { ch_platform_split }
 

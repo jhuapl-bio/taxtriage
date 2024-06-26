@@ -133,7 +133,7 @@
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "filter": {
+                "filter_kraken2":{
                     "type": "string",
                     "format": "directory-path",
                     "schema": "assets/schema_input.json",
