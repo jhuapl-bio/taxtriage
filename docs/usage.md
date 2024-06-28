@@ -4,6 +4,8 @@
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
 
+See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
+
 ## Introduction
 
 <!-- TODO nf-core: Add documentation about anything specific to running your pipeline. For general topics, please point to (and add to) the main nf-core website. -->
@@ -15,6 +17,8 @@ You will need to create a samplesheet with information about the samples you wou
 ```console
 --input '[path to samplesheet file]'
 ```
+
+:warning: Be aware that you **MUST** have different sample name values for each line. These must be unique!
 
 ### Multiple Samples
 
@@ -28,6 +32,17 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
+Supported "type" available from HMP
+
+1. stool
+2. oral
+3. throat
+4. skin
+5. vaginal
+
+Any other body site not listed will not take HMP into consideration. Only abundances hitting the "threshold" for top hits `--top_hits` or `--top_per_taxa` will be considered. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/TASSDiagram.png) for decision tree information on how top hits are calculated at a high level. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#cli-parameters-possible-and-explained) for parameter descriptions.
+
+
 ### Multiple Samples AND Platforms
 
 The `sample` identifiers have to be the same when you have re-sequenced the same sample more than once e.g. to increase sequencing depth. The pipeline will concatenate the raw reads before performing any downstream analysis. Below is an example for the same sample sequenced across 3 lanes:
@@ -40,12 +55,28 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
+
+### Tips
+
+Unless you are using Seqera, most of the temporary directories and final outputs will be present on your filesystem. By default, all temporary files are generated in `--work-dir` which is set to `work` by default. A handy tip is to look at the status of each module/step in the stdout if you want to debug a specific step for whatever reason. For example, you can navigate to the example dir like so:
+
+1. Find the start of the location of the specific module and its input/output file(s)
+
+- This directory name is in `work/`>>[**28/5412a9**] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2 (longreads)  [100%] 2 of ✔
+
+3. Copy and Paste the `--work-dir` and then the start of the directory we see for that module. For example: `cd work/28/5412a9`
+4. Hit "tab" to tab-complete the full path of the subdirectory within the first directory and `work`. For example, for my system it is `cd work/28/5412a9ea5c05fde928d8cf489bc48d/`
+5. View the command output from the run: `cat .command.out`
+6. Rerun the command: `bash .command.sh` in the same directory.
+   - If you have the command in your global env, you can run it directly without changing anything.
+   - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
+
 ### Samplesheet Information
 
 | Column               | Description                                                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sample`             | **MANDATORY** Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`). |
-| `platform`           | **MANDATORY** Platform used, [ILLUMINA, OXFORD]. If omitted or left blank, assumes ILLUMINA                                                                                                                                                     |
+| `platform`           | **MANDATORY** Platform used, [ILLUMINA, OXFORD]. If omitted or left blank, assumes ILLUMINA. If using PacBio, specify OXFORD. An additional update in the near future will allow PACBIO as an input but has not yet been integrated.                                                                                                                                                   |
 | `fastq_1`            | **MANDATORY** Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".               |
 | `fastq_2`            | OPTIONAL Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                     |
 | `trim`               | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                 |
@@ -88,14 +119,17 @@ work                # Directory containing the nextflow working files
 | `--k2_confidence  <numbers[]>`                        | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information.  |
 | `--organisms  <numbers[] or strings[]>`    |  Organisms list (names or taxids)  you want to pull from to get a reference. Used if you are skipping kraken2 only. Separate by a list of spaces like "1254 573"  |
 | `--fuzzy`                                  | TRUE/FALSE, Match names of organisms by their names (enabled) rather than taxids  |
+| `--get_pathogens`                                        | TRUE/FALSE, Use the pathogens sheet FASTA file instead of k2's top hits. Default is FALSE    |
 | `--skip_realignment`                                  | TRUE/FALSE, Skip realignment step. You will not get a metrics report as a result   |
 | `--skip_kraken2`                                  | TRUE/FALSE, Skip kraken2. If you do not provide a --reference_fasta value and you enable this skip then your pipeline will fail.    |
 | `--pathogens`                                  | OPTIONAL. Enable pathogen discovery mode. See assets/pathogen_sheet.txt for the default sheet. You can ue your own designation so long as it is in the same format as the provided example. This is an ongoing list of annotated known human-pathogens that are mapped to your alignments. Requires alignment to be performed. The "test" config profile automatically uses this.  |
+| `--distributions`                                  | This is set, by default to use this [file](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/taxid_abundance_stats.hmp.tsv.gz). However, if you have your own set of distributions for any number of species and their abundances, please specify it here. For example, run `--distributions assets/taxid_abundance_stats.hmp.tsv.gz` for the default. The file can be either in the `.tsv.gz` format or a decompressed `.tsv`  |
 | `--skip_multiqc`                                  | TRUE/FALSE, Skip multiqc final report   |
 | `--minq <number>`                                     | What minimum quality would you want in your samples. Disabled if you run --skip_fastp. Default is 7 for Oxford Nanopore, 20 for Illumina   |
+| `--minmapq <number>`                                     | What minimum mapping quality would you want in your sample alignments. Default is 5   |
 | `--organisms_file <file>`                                     | A single file that contains what organisms (name or taxid) you want to pull. You can enable this if you are skipping kraken2 as well    |
 | `--subsample <number>`                                | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis                                                                                                                                                                                                                                                                                                         |
-| `--reference_fasta <filepath>`                        | Location of a reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references                                                                                                                                                                                                                                 |
+| `--reference_fasta <filepath>`                        | Location of a single reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references. Header format must be in the "all" format from NCBI's ftp [assembly site](https://ftp.ncbi.nlm.nih.gov/genomes/all/) and should be ">accession description" where there is a **space** following the accession with the organism chr/contig description of the sequence. Technically, the accession does not matter as the pipeline only needs to match the organism space that follows the first space in the header.              Example: **>NC_003663.2 Cowpox virus, complete genome**                                                                                                                                                                                                                           |
 | `--db <path_to_kraken2_database>`                     | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path. [See here for a full list](#supported-default-databases) |
 | `--download_db`                                       | Download the preset database indicated in `--db` to `--outdir`                                                                                                                                                                                                                                                                                                                                                                    |
 | `--metaphlan` | Use Metaphlan. Must specify a database path that contains .pkl and .btl2 (bowtie2 index) files                                                                                                                                                                    |
@@ -114,6 +148,89 @@ work                # Directory containing the nextflow working files
 | `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
 | `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                      
 
+⚠️ Please note that for the `--reference_fasta` parameter, you MUST use the designated header format from the FTP site that NCBI hosts for assemblies at [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). This format should looke like:
+
+```
+>NC_003663.2 Cowpox virus, complete genome
+```
+
+In this case, the accession (can be any value, default is NCBI's nt or refseq acc) is followed by a **space** and then the organism name. The pipeline must "fuzzy" match the organism name from this header from the assembly summary file (see NCBI's assembly file [here](https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt)) to understand how the parsing happens in regards to an organism. 
+
+### Important output locations
+
+- `reports`: Metagenomics Discovery Report PDF
+- `krona`: `<samplename>.html`  -combined_krona_kreports.html ”sunburst” plot for kraken2 – pre re-alignment step - optional
+- `samtools`: Raw Alignment stats output
+  - Coverage (v1.2.2 or later) - `<samplename>.txt`
+  - `Histogram` (v1.3.0 or later) - `<samplename>.histo.txt`
+  - `Depth` (v1.2 or later) - `<samplename>.tsv`
+    - Each contig/chromosome is present in this file, 3rd column is depth at position (col 2). 
+- `bcftools`: Variant And Consensus – Optional Module (--reference_assembly called)
+  - Variants - `<samplename>.<taxid>.vcf.gz`
+  - Consensus - `<samplename>.consensus.fa`
+- `merge`: Aggregate Stats on Alignment + Kraken2
+- `confidence`: Confidence Table `confidences.merged_mqc.tsv`
+  - Contains post alignment and kraken2 confidence values for each sample + contig/chromosome per taxa
+- `multiqc` – Confidence Metrics and Supplemental Plots Location
+- `nanoplot`/`fastqc` – QC plots and stats 
+- `minimap2` / `bowtie2` – Location of raw re-alignment bam files
+- `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – Agnostic kraken2 only
+
+### General Procedure
+
+There are a lot of moving parts in the pipeline (see Figure 1) for a detailed railway map of modules
+
+![Figure 1](../assets/taxtriage_schematics.png)
+
+Ultimately, the pipeline has several mandatory and optional steps that can be defined as:
+
+1. Trimming and QC
+   - Includes plots of QC filtering metrics
+3. Host Removal (alignment-based)
+   - Duplicates unclassified (non-host) reads.
+   - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on 2 studies [1](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) and [2](https://www.nature.com/articles/s41467-021-26865-w) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
+4. Kraken2 Metagenomics Classification
+   - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective. 
+   - This is skippable if you assign `--reference_fasta` FASTA file or the `--organisms/--organisms_file` parameters. (set: `--skip_kraken2`)
+   - Always consider limitations in your database of use. See [databases](https://benlangmead.github.io/aws-indexes/k2) publicly available. 
+5. Top Hits Assignments
+   - See Figure 2 for flow diagram on decision tree
+6. Reference Prep
+   - Assemblies based on top hits are pulled from NCBI - Required Internet connection and the relative assembly to be findable
+     - If skipping Kraken2 and using a local FASTA file, this part is skipped.
+   - Index built for each reference FASTA file (Bowtie2 only - Illumina reads)
+7. Alignment
+   - Pulled/local assemblies are aligned to ALL classified reads (if using Kraken2) or raw reads (if using local FASTA reference) post-QC steps. Currently, only the "best hits" are assigned per read. Soon to introduce a parameter to raise that limit.
+   - Currently, we separate short and long reads to be run between Bowtie2 & Minimap2, respectively. While various studies have been performed and declared minimap2 to be highly performative for short reads, a few indicate that from a taxonomic/metagenomics perspective [Minimap2 still underperforms relative to Bowtie2](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/). We will actively track performances as these platforms continue to be updated to ensure the optimal aligner is used for each data type. 
+8. Stats
+   - Generate Coverage histogram (`samtools/samplename.histo.txt`)
+   - Generate Depth (`samtools/samplename.tsv`)
+9. Reference Assembly (optional - set `--reference_assembly` to enable)
+   - This is a long process
+   - Generates VCF (variant) files in `bcftools/samplename.vcf.txt`)
+   - Generates Assembly file(s) in `bcftools/samplename.consensus.fa`
+10. Organism Discovery Report Analysis
+    - MultiQC - Raw alignment information and stats found in `multiqc/multiqc_report.html`
+    - Simplified Report (Main Report) - Found in `report/pathogens.report.pdf`
+        - Contains all downstream-passed alignments and their classification in the first table (see example report in Figure 3)
+        - Primary report to understand and perform reflex reponse on.
+
+
+<span>Figure 3</span>
+<img src="https://github.com/jhuapl-bio/taxtriage/blob/main/docs/images/pathogens.report.example.jpg" width="50%" height="50%"></img>
+
+The distribution metrics are defined based on a all publicly available healthy human subjects (HHS) available from [HMP](https://hmpdacc.org/). Because these runs are lilsted as SRA accessions, they all contain NCBI's taxonomy analysis table metadata. That is, we are able to extract taxonomic abundances for each of the samples provided. Using standard distribution metrics, we designate a default z-score of 1.5 to mark irregularities outside of those bounds for any given species/subspecies/strain for each body site. This is, of course, limited in that the organism MUST be annotated and found within a given body site. Any organism (based on taxid mapping) **not** found is considered irregular, regardless of relative abundance. 
+
+
+Additionally, any organism deemed a potential or primary pathogen from our curated pathogen sheet of ~1600 taxa ([see here for more info](#top-hits-calculation)) is included in the Organism discovery analysis, regardless of relative abundance. 
+
+Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
+
+### Top Hits Calculation
+
+In order to retain an "agnostic" approach for organism while allowing adequate alignments to take place in a reasonable amount of time, we employ the "top hits" approach to the pipeline (see Figure 2). This is designed to allow users to still pull commensals or non-pathogens that have not been annotated in our curated [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) to still be available in the confidence metrics and reports. Users should adjust the `--top_per_taxa` and `--top_hits` as freely as needed based on the source of their sample(s). 
+![Figure 2](../assets/TASSDiagram.png)
+
 ### Supported Default databases (Kraken2 only)
 
 | Database Name | Location                                                                                                  | Size |
@@ -123,13 +240,17 @@ work                # Directory containing the nextflow working files
 | flukraken2    | [Download](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz) | 180M |
 | test          | [Download](https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz)      | 112M |
 | minikraken2   | [Download](https://genome-idx.s3.amazonaws.com/kraken/minikraken2_v2_8GB_201904.tgz)                      | 7.5G |
+| pluspf   | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_20240112.tar.gz)                      | 77G |
+| pluspf8   | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_08gb_20240112.tar.gz)                      | 7.5G |
+| eupath | [Download](https://genome-idx.s3.amazonaws.com/kraken/k2_eupathdb48_20230407.tar.gz)   | 11G |
+
 
 - Kraken2 additional AWS databases [here](https://benlangmead.github.io/aws-indexes/k2)
 - Metaphlan4 [here](http://cmprod1.cibio.unitn.it/biobakery4/metaphlan_databases/) - Download the .tar files
 
 ## AWS with Nextflow Tower
 
-While we support Taxtriage in both Basestack and native and local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
+While we support Taxtriage in local CLI deployment, you can also import and run code from Nextflow Tower. This process can be convoluted in order to get it applicable for cloud environments but, once fully setup, becauses very easy to reproduce at low cost on AWS. Please be aware of sensitivity of data when working in the cloud
 
 1. First, you must create a [Nextflow Tower](https://cloud.tower.nf/) account
 
@@ -141,7 +262,59 @@ While we support Taxtriage in both Basestack and native and local CLI deployment
 
 3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
 
-#### Working with your own data NF Tower
+### Running the pipeline offline
+
+See [here](../README.md#offline-local-mode)
+
+### Using a "backup" or baseline FASTA reference
+
+Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
+
+A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
+```
+   >NC_003663.2 Cowpox virus, complete genome
+```
+
+In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
+
+B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
+
+#### Running Within Seqera
+
+By default, you should have access to TaxTriage's launchpad for your specific organization if your account was set up by JHU/APL. If you don't see it, please let an admin know. 
+
+To access your launchpad, select the drop-down and your organization name. There is also a "Shared" workspace that is viewable and public to all users of the TASS program on Seqera. 
+
+1. Select the Dropdown near the top-left of the page.
+
+[Select Drop Down](dropdown_nftower.png)
+
+2. Then, select your organization that should appear:
+
+[Select Organization](Access_launchpad_NFTower.png)
+
+
+3. Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
+
+By default, the pipeline should be called TASS for the default instance. It comes pre-loaded with default inputs which can be used for a quick launch to see how things work in your space. For your own data, you'll need to upload the files (samplesheet and fastq reads, compressed as `.gz`) to the S3 bucket of your organization. See the instructions on how to do that [below](#working-with-your-own-data-nf-tower)
+
+In this below video, we see the default launchpad pipeline present. On loading there are some default values where you can edit as you see fit. When you've successfully completed all the inputs you need, you can either:
+
+A. Select "Launch" to start the pipeline or (see below) update and refine some additional environmental configurations (see below video). On a job starting, you will be redirected to your running list of all jobs, completed or otherwise.
+
+[cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
+
+In this page, instead of hitting "Launch" the user selected "launch settings". For this page, you can review the JSON of all parameter that are to be submitted and edit as you see fit directly in the text box. You can update the "branch" used from the Github Repo (default is "main"). This is expecially useful to learn about as when you "Relaunch" a pipeline, you will be redirected to this page which is the overview of all configurations you set for that specific job. 
+
+[cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
+
+Within a job, you can view the state of all steps and modules that are running/have completed. It is particularly useful in that you can check the "Execution Log" to see the current state of the pipeline in the form of stdout/stderr.
+
+[cloud_run_1.webm](https://user-images.githubusercontent.com/50592701/192596324-57162d50-2738-4b7f-ba8c-2fa473ca1433.webm)
+
+By clicking each of the module names closer to the bottom (e.g. Kraken2, FastQC, etc.) you can view the individual command used and general information on the data made and the log for that specific job. Any errors and successes will be noted with an icon.
+
+#### Working with your own data Seqera
 
 When all necessary items have been setup, you'll need to load your data you want to run into an S3 bucket. Be aware that all filesystem refrences to files/directories need to be relative to the S3 bucket. However, with things like the Samplesheet, the paths can be relative only within the S3 bucket so you don't need to use things like `S3://bucketname/path/to/file `
 
@@ -156,21 +329,15 @@ Once the AWS system is setup, let's head back to Nextflow Tower. On the left, yo
 
 <img src="images/addpipeline.png"  width="20%" height="30%">
 
+
+
 <img src="images/taxtriagelaunchpad1.png"  width="50%" height="50%">
 
-MAKE SURE that the compute environment matches the one you set up when you set your credentials in AWS with NF tower
+MAKE SURE that the compute environment matches the one you set up when you set your credentials if you're not using the JHUAPL-provided Seqera instance. See [official docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) for setting up your own compute system with its own billing. 
 
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
 <img src="images/taxtriagelaunchpad2.png"  width="50%" height="50%">
-
-Next, Run the pipeline from the Launchpad. Be aware that all inputs to the S3 bucket are tailored for my example. You own inputs will vary including things like `low_memory` or database name used
-
-[cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
-
-[cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
-
-[cloud_run_1.webm](https://user-images.githubusercontent.com/50592701/192596324-57162d50-2738-4b7f-ba8c-2fa473ca1433.webm)
 
 ### Reproducibility
 

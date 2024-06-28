@@ -1,5 +1,6 @@
 process MINIMAP2_INDEX {
-    label 'process_medium'
+    label 'process_high'
+    tag "$meta.id"
 
     conda (params.enable_conda ? 'bioconda::minimap2=2.21' : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -7,10 +8,10 @@ process MINIMAP2_INDEX {
         'biocontainers/minimap2:2.21--h5bf99c6_0' }"
 
     input:
-    path fasta
+    tuple val(meta), path(fasta)
 
     output:
-    path "*.mmi"        , emit: index
+    tuple val(meta), path("*.mmi"), emit: index
     path "versions.yml" , emit: versions
 
     when:

@@ -32,10 +32,11 @@ process DOWNLOAD_ASSEMBLY {
 
 
     output:
-    tuple val(meta),  path("*.output.references.fasta"), optional: true, emit: fasta
-    tuple val(meta),  path("*.output.gcfids.txt"), optional: false, emit: accessions
-    tuple val(meta),  path("*.gcfmapping.tsv"), optional: false, emit: mappings
+    tuple val(meta),  path("*.dwnld.references.fasta"), optional: true, emit: fasta
+    tuple val(meta),  path("*.dwnld.gcfids.txt"), optional: false, emit: gcfids
+    tuple val(meta),  path("*.dwnld.gcfmapping.tsv"), optional: false, emit: mapfile
     tuple val(meta),  path("missing.txt"), optional: true, emit: missings
+
     path "versions.yml"           , emit: versions
 
     when:
@@ -49,8 +50,8 @@ process DOWNLOAD_ASSEMBLY {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def email = params.email ? " -e ${params.email}" : ""
     def column = " -c 1 "
-    def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5 "
-    def matchcol = params.fuzzy ? " -a 7 "  : " -a 5 "
+    def columnAssembly = params.fuzzy ? " -a 7 "  : " -a 5,6 "
+    def matchcol = params.fuzzy ? " -a 7 "  : " -a 5,6 "
     def refresh_download = params.refresh_download ? " -r " : ""
     def type = hits_containing_file ? " -f file " : " -f list  "
 
@@ -61,11 +62,11 @@ process DOWNLOAD_ASSEMBLY {
 
     download_fastas.py \\
             -i  ${hits_containing_file} \\
-            -o ${meta.id}.output.references.fasta ${refresh_download} \\
-            ${email} $type -g ${meta.id}.gcfmapping.tsv \\
+            -o ${meta.id}.dwnld.references.fasta ${refresh_download} -m ${meta.id}.missing.txt \\
+            ${email} $type -g ${meta.id}.dwnld.gcfmapping.tsv \\
             -t ${assembly} -k  $column $columnAssembly -y 7 -r
 
-    cut -f 2 ${meta.id}.gcfmapping.tsv > ${meta.id}.output.gcfids.txt
+    cut -f 2 ${meta.id}.dwnld.gcfmapping.tsv  | sort | uniq  > ${meta.id}.dwnld.gcfids.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

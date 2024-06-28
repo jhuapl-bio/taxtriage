@@ -96,7 +96,7 @@ if ! command -v samtools &> /dev/null; then
     exit 1
 fi
 # Run samtools coverage and process the output
-samtools coverage $args "${bam_file}"  | awk -v mapcol=$mapcol -v mapFile="${mapping_file}" '
+samtools coverage $args "${bam_file}"  | awk -F '\t' -v mapcol=$mapcol -v mapFile="${mapping_file}" '
     BEGIN {
         FS=OFS="\t"
         # Load the mapping from the mapping file

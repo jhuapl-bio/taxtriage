@@ -19,11 +19,13 @@
                     "schema": "assets/schema_input.json",
                     "description": "Path to comma-separated file containing information about the samples in the experiment.",
                     "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 6 columns in a header row and at least one row for info. See [usage docs](https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet_git.csv).",
-                    "fa_icon": "fas fa-file-csv"
+                    "fa_icon": "fas fa-file-csv",
+                    "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet.csv"
                 },
                 "db": {
                     "type": "string",
                     "fa_icon": "fas fa-book",
+                    "default": "test",
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
@@ -75,7 +77,7 @@
                     "type": "string",
                     "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
                     "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
-                    "default": ""
+                    "default": "10239:10:S 2:10:S"
                 },
                 "low_memory": {
                     "type": "boolean",
@@ -87,17 +89,19 @@
                     "type": "boolean",
                     "fa_icon": "fas fa-download",
                     "description": "Download the preset database indicated in --db to --outdir.",
-                    "default": false
+                    "default": true
                 },
                 "taxtab": {
                     "type": "string",
                     "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
                     "default": "default",
+                    "format": "file-path",
                     "description": "Taxonomy tab file for krona plots",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "taxdump": {
                     "type": "string",
+                    "format": "file-path",
                     "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
                     "description": "",
                     "fa_icon": "fas fa-file-signature"
@@ -115,6 +119,7 @@
                 },
                 "top_hits_count": {
                     "type": "number",
+                    "default": 20,
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -144,6 +149,13 @@
             "fa_icon": "fas fa-terminal",
             "description": "Alignment Parameter adjustments",
             "properties": {
+                "remove_reference_file": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2.",
+                    "fa_icon": "fas fa-file-signature"
+
+                },
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",
@@ -162,6 +174,13 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "get_pathogens": {
+                    "type": "boolean",
+                    "schema": "assets/schema_input.json",
+                    "description": "Pull remote pathogens reference file from GH",
+                    "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
+                    "fa_icon": "fas fa-file-csv"
+                },
                 "pathogens": {
                     "type": "string",
                     "format": "file-path",
@@ -177,6 +196,7 @@
                 },
                 "organisms_file": {
                     "type": "string",
+                    "format": "file-path",
                     "hint": "Options: [string or single column list of taxids or organism names]. If using organism names, make sure to set it to fuzzy-matching with --fuzzy ",
                     "description": "Either a file or string of taxids separated by a space, or organisms names with '' enclosure",
                     "fa_icon": "fas fa-file-signature"
@@ -193,15 +213,24 @@
                     "description": "Minimum reads threshold for realignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "zscore_accepted": {
+                    "type": "number",
+                    "default": 1.5,
+                    "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
+                    "description": "Minimum zscore for outline assumptions from HHS",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "minmapq": {
                     "type": "number",
                     "default": 5,
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+
                 "bt2_indices": {
                     "type": "string",
-                    "description": "Path to Bowtie2 indices (directory). If not called, it auto creates it from the relevant FASTA file for each sample",
+                    "format": "file-path",
+                    "description": "Path to Bowtie2 indices (directory). If not called, it auto creates it from the relevant FASTA file for each sample. Only usable with --reference_fasta",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "bt2_scoremin": {
@@ -258,6 +287,7 @@
                     "schema": "assets/schema_input.json",
                     "description": "List of all metagenome distributions that contain abundances found in public HMP data for each taxa and body site combination",
                     "help_text": "",
+                    "default":  "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/assets/taxid_abundance_stats.hmp.tsv.gz",
                     "fa_icon": "fas fa-file-csv"
                 }
             }
@@ -302,17 +332,23 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
+                "unknown_sample": {
+                    "type": "boolean",
+                    "description": "Dont consider HMP distributions",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "denovo_assembly": {
                     "type": "boolean",
                     "description": "Perform De Novo Assembly",
                     "fa_icon": "fas fa-file-signature",
-                    "default": true
+                    "default": false
                 },
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
                     "fa_icon": "fas fa-file-signature",
-                    "default": true
+                    "default": false
                 },
                 "get_features": {
                     "type": "boolean",
@@ -361,6 +397,7 @@
                 },
                 "multiqc_config": {
                     "type": "string",
+                    "format": "file-path",
                     "description": "Config file for multiqc",
                     "fa_icon": "fas fa-file-signature"
                 }

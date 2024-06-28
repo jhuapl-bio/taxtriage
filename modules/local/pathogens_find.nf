@@ -24,7 +24,7 @@ process PATHOGENS_FIND_SAMPLE {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(depthfile), path(covfile), path(pathogens_list), path(assembly)
 
     output:
         path "versions.yml"           , emit: versions
@@ -43,13 +43,13 @@ process PATHOGENS_FIND_SAMPLE {
     def id = meta.id
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
-
+    def assemblyi = assembly ? " -j ${assembly} " : " "
     """
 
     match_paths.py \\
         -i $bamfiles \\
-        -o $output \\
-        -s $id \\
+        -o $output -x $covfile -d $depthfile \\
+        -s $id $assemblyi \\
         $type \\
         $min_reads_align \\
         -p $pathogens_list \\

@@ -28,6 +28,7 @@ process FASTP {
     script:
     def args = task.ext.args ?: ''
     def ff = params.minq ? "-q ${params.minq}" : (meta.platform == 'OXFORD' ? '-q 7' : '-q 20')
+    // def ff = " -q 500 "
     args = args + ' ' + ff
     def prefix = task.ext.prefix ?: "${meta.id}"
     def adapter_list = adapter_fasta ? "--adapter_fasta ${adapter_fasta}" : ""

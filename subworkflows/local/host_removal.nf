@@ -19,12 +19,11 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
-include { BOWTIE2_ALIGN as FILTER_BOWTIE2 } from '../../modules/nf-core/bowtie2/align/main'
-include { BOWTIE2_BUILD  as FILTER_BOWTIE2_IDX } from '../../modules/nf-core/bowtie2/build/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
-include { SAMTOOLS_FASTQ } from '../../modules/nf-core/samtools/fastq/main'
+include { REMOVE_HOSTREADS } from '../../modules/local/remove_unaligned'
 include { SAMTOOLS_INDEX as FILTERED_SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_STATS as FILTERED_STATS } from '../../modules/nf-core/samtools/stats/main'
+include { CHECK_GZIPPED_READS } from '../../modules/local/check_reads_exist'
 
 workflow HOST_REMOVAL {
     take:
@@ -38,11 +37,6 @@ workflow HOST_REMOVAL {
         ch_filt_oxfo = Channel.empty()
         ch_filtered_stats = Channel.empty()
         ch_reference_fasta = Channel.empty()
-        ch_reads.branch{
-            longreads: it[0].platform =~ /(?i)OXFORD/
-            shortreads: it[0].platform =~ /(?i)ILLUMINA/
-        }.set { ch_aligned_for_filter }
-
 
         if (params.remove_reference_file){
             ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
@@ -53,55 +47,43 @@ workflow HOST_REMOVAL {
         if (params.remove_reference_file || params.genome){
             // Run minimap2 module on all OXFORD platform reads and Bowtie2 on ILLUMINA  reads
             // if ch_aligned_for_filter.shorteads is not empty
-            // then run bowtie2 on it
-            // else run minimap2 on ch_aligned_for_filter.longreads
-            if (ch_aligned_for_filter.shortreads){
-                ch_meta_reference_fasta = [ [id: 'filterreadsbt2'] , ch_reference_fasta_removal]
-                FILTER_BOWTIE2_IDX(
-                    ch_meta_reference_fasta
-                )
-                ch_bt2_index = FILTER_BOWTIE2_IDX.out.index
-            }
-            FILTER_BOWTIE2(
-                ch_aligned_for_filter.shortreads.map{ m, fastq -> return [m, fastq] },
-                ch_bt2_index,
-                true,
-                true
-            )
+            // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
+
             FILTER_MINIMAP2(
-                ch_aligned_for_filter.longreads.map{ m, fastq -> return [m, fastq] },
-                ch_reference_fasta_removal,
+                ch_reads.map{ m, fastq -> return [m, fastq, ch_reference_fasta_removal] },
                 true,
                 true,
-                true
+                true,
+                0
             )
 
+            ch_bam_hosts = FILTER_MINIMAP2.out.bam
 
-            SAMTOOLS_VIEW (
-                FILTER_MINIMAP2.out.bam.map{ m, bam ->
-                    return [m, bam, []
-                ]},
-                [ [],[] ],
-                []
-            )
-            SAMTOOLS_FASTQ ( SAMTOOLS_VIEW.out.bam, false )
-            ch_reads = SAMTOOLS_FASTQ.out.other.mix(
-                FILTER_BOWTIE2.out.fastq
-            )
-            ch_all_Bams = FILTER_MINIMAP2.out.bam.mix(FILTER_BOWTIE2.out.aligned)
 
-            FILTERED_SAMTOOLS_INDEX ( ch_all_Bams )
-            ch_bai_files = ch_all_Bams.join(FILTERED_SAMTOOLS_INDEX.out.bai)
+
+            REMOVE_HOSTREADS (ch_bam_hosts)
+
+            ch_reads = REMOVE_HOSTREADS.out.reads
+            CHECK_GZIPPED_READS(ch_reads, 4 )
+            FILTERED_SAMTOOLS_INDEX ( ch_bam_hosts )
+
+            // remove filter channels where CHECK_GZIPPED_READS.out.check_result is not empty
+            ch_reads = ch_reads.join(CHECK_GZIPPED_READS.out.check_result).map{
+                meta, reads, check_result -> {
+                    return [meta, reads]
+                }
+            }
+            ch_reads.view()
+
+            ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS (
                 ch_bai_files,
-                [ [], file(params.remove_reference_file, checkIfExists: true) ]
+                [ [], file(params.remove_reference_file) ]
             )
             ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
 
         }
-        // if (params.pre_remove_taxids){
-        //     ch_pre_remove_taxids = Channel.of(params.pre_remove_taxids)
-        // }
+        // filter out all ch_reads fastq files that are empty
 
 
     emit:

@@ -83,6 +83,7 @@ def validateBt2Scoremin(String scoremin) {
 }
 String value = "G,-10,-2"
 boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$' )
+ch_empty_file = file("$projectDir/assets/NO_FILE")
 
 if (matches) {
     println("The value matches the pattern.")
@@ -95,17 +96,19 @@ if (matches) {
 // }
 
 // if skip_kraken2 and reference_fasta is empty AND organisms is empty and organisms_file is empty print and exit that organisms is required
-if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
-    exit 1, "If you are skipping kraken2, you must provide a reference fasta, organisms or organisms_file"
+if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+    exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
 }
 
 // if params.pathogens, check if file ends with .tsv or .txt
 if (params.pathogens) {
-    if (params.pathogens.endsWith('.tsv') || params.pathogens.endsWith('.txt')) {
+    if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
         ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
     } else {
-        exit 1, "Pathogens file must end with .tsv or .txt i.e. it is a .tsv file!"
+        exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
     }
+} else {
+    ch_pathogens = ch_empty_file
 }
 if (!params.assembly) {
     println 'No assembly file given, downloading the standard ncbi one'
@@ -154,7 +157,7 @@ ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty
 // // // // MODULE:  Pathogens
 // // // //
 //// Get Pathogen sheet by default
-ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.txt", checkIfExists: true)
+ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
 // // // //
 // // // //
 
@@ -173,8 +176,8 @@ include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { PATHOGENS } from '../subworkflows/local/pathogen'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
-include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
-include { MAKE_FILE } from '../modules/local/make_file'
+include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
+include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT NF-CORE MODULES/SUBWORKFLOWS
@@ -186,6 +189,7 @@ include { MAKE_FILE } from '../modules/local/make_file'
 //
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
+include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
@@ -201,8 +205,8 @@ include { MULTIQC                     } from '../modules/nf-core/multiqc/main'
 include { FLYE                     } from '../modules/nf-core/flye/main'
 include { KRAKENTOOLS_COMBINEKREPORTS   } from '../modules/nf-core/krakentools/combinekreports/main'
 include { KRONA   } from '../modules/local/krona.nf'
-include { SPADES as SPADES_ILLUMINA } from '../modules/nf-core/spades/main'
-include { SPADES as SPADES_OXFORD } from '../modules/nf-core/spades/main'
+include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
+include { MEGAHIT } from '../modules/nf-core/megahit/main'
 include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
@@ -221,19 +225,15 @@ include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/m
 include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
+include { MERGEDSUBSPECIES } from '../modules/local/merged_subspecies'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
-include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
-include { DOWNLOAD_ASSEMBLY } from '../modules/local/download_assembly'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
-include { FEATURES_TO_BED } from '../modules/local/convert_features_to_bed'
-include { FEATURES_MAP } from '../modules/local/features_map'
 include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
-include {  FEATURES_DOWNLOAD } from '../modules/local/download_features'
 include {  REFERENCE_REHEADER } from '../modules/local/reheader'
-include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../modules/local/map_assembly_to_fasta'
+include { FEATURES_MAP } from '../modules/local/features_map'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -257,14 +257,29 @@ workflow TAXTRIAGE {
             'size': '7.5G'
         ],
         'standard8': [
-            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz',
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20240112.tar.gz',
             'checksum': 'a184ae5c1e382abfff34574e135ceaaace4ac27605b205f4fb83dca11cfa42ac',
             'size': '7.5G'
         ],
         'viral': [
-            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz',
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20240112.tar.gz',
             'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
             'size': '553M'
+        ],
+        'pluspf': [
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_20240112.tar.gz',
+            'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
+            'size': '77G'
+        ],
+        'pluspf8': [
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_08gb_20240112.tar.gz',
+            'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
+            'size': '7.5G'
+        ],
+        'eupath': [
+            'url': 'https://genome-idx.s3.amazonaws.com/kraken/k2_eupathdb48_20230407.tar.gz',
+            'checksum': 'adf5deba8a62f995609592aa86e2f7aac7e49162e995e132a765b96edb456f99',
+            'size': '11G'
         ],
         'test': [
             'url': 'https://github.com/jhuapl-bio/datasets/raw/main/databases/kraken2/test_metagenome.tar.gz',
@@ -273,6 +288,12 @@ workflow TAXTRIAGE {
         ],
 
     ]
+    ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+
+    if (params.get_pathogens){
+        DOWNLOAD_PATHOGENS()
+        ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
+    }
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
     if (params.download_db) {
@@ -286,11 +307,10 @@ workflow TAXTRIAGE {
             /* groovylint-disable-next-line UnnecessaryGetter */
             ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
 
-            println('_____________')
         } else if (params.db)  {
             ch_db = file(params.db, checkIfExists: true)
         } else {
-            println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>"
+            println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>. You may also retrieve them, locally, from https://benlangmead.github.io/aws-indexes/k2. Make sure to download and decompress/untar the .tar.gz file which contains a folder you can specify with --db <localpath>. "
         }
     } else {
         if (params.db) {
@@ -309,7 +329,6 @@ workflow TAXTRIAGE {
 
 
     if (!ch_assembly_txt) {
-        println 'empty'
         GET_ASSEMBLIES()
         GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
     }
@@ -318,7 +337,6 @@ workflow TAXTRIAGE {
     ch_mergedtsv = Channel.empty()
     // make an empty path channel
     ch_accession_mapping  = Channel.empty()
-    ch_empty_file = file("$projectDir/assets/NO_FILE")
     ch_organisms = Channel.empty()
 
 
@@ -333,6 +351,21 @@ workflow TAXTRIAGE {
     INPUT_CHECK(
         ch_input
     )
+    // Example nextflow.config file or within the script
+    println "Nextflow version: ${workflow.nextflow.version}"
+    // if commitId is null then set it to "local"
+    if (!workflow.commitId) {
+        workflow.commitId = 'local'
+    }
+    println "Commit ID: ${workflow.commitId}"
+    if (!workflow.repository) {
+        workflow.repository = 'local'
+    }
+    println "Repository URL: ${workflow.repository}"
+    // get the date and time of the run
+    def date = new Date()
+    println "Date: ${date}"
+
     ch_reads = INPUT_CHECK.out.reads
 
     ARTIC_GUPPYPLEX(
@@ -402,6 +435,7 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+    // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
     if (!params.skip_plots) {
@@ -418,9 +452,17 @@ workflow TAXTRIAGE {
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
+    ch_preppedfiles = Channel.empty()
     ch_organisms_to_download = ch_filtered_reads.map { meta, reads -> return [meta, []] }
 
     def empty_organism_file = false
+    if (params.unknown_sample){
+        distributions = Channel.fromPath(ch_empty_file)
+    } else if (!params.distributions){
+        distributions = Channel.fromPath("$projectDir/assets/taxid_abundance_stats.hmp.tsv.gz", checkIfExists: true)
+    } else{
+        distributions = Channel.fromPath(params.distributions)
+    }
     if (!params.skip_kraken2){
         // // // // // //
         // // // // // // MODULE: Run Kraken2
@@ -437,7 +479,7 @@ workflow TAXTRIAGE {
         )
 
         ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
-        ch_kraken2_report.view()
+
 
         KREPORT_TO_KRONATXT(
             ch_kraken2_report
@@ -470,16 +512,24 @@ workflow TAXTRIAGE {
             ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
         }
 
+        println "Combining Kraken2 reports and getting top hits per file..."
         TOP_HITS(
-            ch_kraken2_report
+            ch_kraken2_report.combine(distributions).combine(ch_pathogens)
         )
+        MERGEDSUBSPECIES(
+            ch_kraken2_report.map{
+                meta, report -> report
+            }.collect(),
+            ch_pathogens
+        )
+
         MERGEDKRAKENREPORT(
             TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
         )
-
         FILTERKRAKEN(
             MERGEDKRAKENREPORT.out.krakenreport
         )
+
         if (ch_save_fastq_classified){
             ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
         }
@@ -508,36 +558,20 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
 
     }
+    ch_mapped_assemblies = Channel.empty()
+    REFERENCE_PREP(
+        ch_organisms_to_download,
+        ch_reference_fasta,
+        ch_assembly_txt
+    )
 
-
-    if (params.organisms_file){
-        // check if params.organisms is a file or a string
-        ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
-        ch_organisms_to_download = ch_organisms_to_download.combine(
-            ch_organisms
-        ).map{
-            meta, report, organisms -> {
-                report.add(organisms)
-                return [meta, report]
-            }
-        }
-    } else if (params.organisms) {
-        ch_organisms_taxids = Channel.from(params.organisms)
-        // print params.organisms as a tsv, separated by space per
-        MAKE_FILE(
-            ch_organisms_taxids
-        )
-        ch_organisms = MAKE_FILE.out.file
-
-        ch_organisms_to_download = ch_organisms_to_download.combine(
-            ch_organisms
-        ).map{
-            meta, report, organisms -> {
-                report.add(organisms)
-                return [meta, report]
-            }
+    ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
+    ch_mapped_assemblies = ch_preppedfiles.map{
+        meta, fastas, map, gcfids -> {
+            return [meta, map]
         }
     }
+
 
     if (params.metaphlan) {
 
@@ -569,86 +603,33 @@ workflow TAXTRIAGE {
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
-    ch_mapped_assemblies = Channel.empty()
-    ch_reads_to_align = Channel.empty()
-
 
     // If you use a local genome Refseq FASTA file
-    if (params.reference_fasta) { //
-        // format of the FASTA file MUST be "kraken:taxid|<taxidnumber>" in each reference accession
-        ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+    // if ch_refernece_fasta is empty
 
-        // merge ch_reference_fasta on all of the krakenreports. single channel merged to multiple
-        ch_filtered_reads = ch_filtered_reads.combine(
-            ch_reference_fasta
-        )
-
-        MAP_LOCAL_ASSEMBLY_TO_FASTA(
-            ch_filtered_reads.map {
-                meta, readsclass, fasta ->  return [ meta, fasta ]
-            },
-            ch_assembly_txt
-        )
-
-        ch_mapped_assemblies = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
-        ch_accessions = MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
-    }
-
-
-    DOWNLOAD_ASSEMBLY(
-        ch_organisms_to_download.map {
-            meta, report ->  return [ meta, report ]
-        },
-        ch_assembly_txt
-    )
-    ch_filtered_reads = ch_filtered_reads.join(DOWNLOAD_ASSEMBLY.out.fasta)
-
-    ch_accessions = DOWNLOAD_ASSEMBLY.out.accessions
-    ch_mapped_assemblies = DOWNLOAD_ASSEMBLY.out.mappings
-
-    if (params.get_features){
-
-        FEATURES_DOWNLOAD(
-            ch_accessions,
-            ch_assembly_txt
-        )
-
-        FEATURES_TO_BED(
-            FEATURES_DOWNLOAD.out.features
-        )
-
-        ch_bedfiles = FEATURES_TO_BED.out.bed
-
-
-
-    }
 
 
     if (!params.skip_realignment) {
-        if (params.get_features){
-            ch_reads_to_align  = ch_filtered_reads.join(ch_bedfiles, remainder: true)
-        } else {
-            ch_reads_to_align = ch_filtered_reads.map {
-                meta, reads, fasta -> [ meta, reads, fasta, null ]
+        ch_prepfiles = ch_filtered_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
+                return [meta, fastas, map]
             }
-        }
-
-        ch_reads_to_align = ch_reads_to_align.join(ch_mapped_assemblies, remainder: true)
-
+        })
         ALIGNMENT(
-            ch_reads_to_align
+            ch_prepfiles
         )
-
-
+        ch_depthfiles = ALIGNMENT.out.depth
+        ch_covfiles = ALIGNMENT.out.stats
         PATHOGENS(
-            ALIGNMENT.out.bams.join(ch_mapped_assemblies),
-            ch_pathogens
+            ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
+            ch_pathogens,
+            distributions,
+            ch_assembly_txt
         )
 
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        ch_bamstats = ALIGNMENT.out.bamstats
+        // ch_bamstats = ALIGNMENT.out.bamstats
         ch_depth = ALIGNMENT.out.depth
 
         ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
@@ -660,7 +641,7 @@ workflow TAXTRIAGE {
                 return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
         if (params.get_features){
-
+            ch_bedfiles = REFERENCE_PREP.out.ch_feature_bedfiles
             FEATURES_MAP(
                 ch_combined.map {
                     meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
@@ -696,17 +677,16 @@ workflow TAXTRIAGE {
         illumina_reads = ch_filtered_reads.filter {
             it[0].platform == 'ILLUMINA'
         }.map {
-            meta, reads, reference -> [meta, reads, [], []]
+            meta, reads -> [meta, reads]
         }
-        SPADES_ILLUMINA(
+        MEGAHIT(
             illumina_reads
         )
-
 
         nanopore_reads = ch_filtered_reads.filter {
             it[0].platform == 'OXFORD'
         }.map {
-            meta, reads, fasta -> [meta, reads]
+            meta, reads -> [meta, reads]
         }
 
         FLYE(

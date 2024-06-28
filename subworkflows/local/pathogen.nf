@@ -26,23 +26,20 @@ workflow PATHOGENS {
     take:
         alignments
         pathogens_list
+        distributions
+        assemblyfile
     main:
         ch_pathogens_report = Channel.empty()
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
             PATHOGENS_FIND_SAMPLE(
-                alignments.combine(pathogens_list)
+                alignments.combine(pathogens_list).combine(assemblyfile)
             )
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
             // and assign it to the variable pathogens_list
-            ch_empty_file = file("$projectDir/assets/NO_FILE")
 
-            if (!params.distributions){
-                distributions = ch_empty_file
-            } else{
-                distributions = file(params.distributions)
-            }
+
             full_list_pathogen_files = PATHOGENS_FIND_SAMPLE.out.txt.map{m, txt -> txt}.collect()
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files,

@@ -15,7 +15,7 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 # OR OTHER DEALINGS IN THE SOFTWARE.
 ##############################################################################################
-
+import gzip
 import argparse
 import time
 import re
@@ -64,6 +64,7 @@ def extract_after_colon(text):
     else:
         return text  # Return the original text if no ': ' is found
 
+
 def main():
     args = parse_args()
     assemblies = dict()
@@ -97,23 +98,33 @@ def main():
     final_list = []
     missing_elements = []
     if os.path.exists(args.input):
-        for seq_record in SeqIO.parse(args.input, "fasta"):
-            id, desc = format_description(seq_record.id, seq_record.description)
-            desc = desc.replace("TPA_inf: ", "")
-            desc = desc.replace("MAG: ", "")
-            desc = desc.replace("MAGL: ", "")
-            # if there is something like MAG: or TPA_inf: in the description, remove it but use fuzzy match so that if it is up : and a space then remove it, dont hardcode the values.
-            # desc = extract_after_colon(desc)
-            total +=1
-            name = long_match_names(desc, assemblies.keys())
-            # organism, gcf = search_in_dicts(organism_name, explicit_strain, assemblies, gcfs)
-            if name:
-                count+=1
-                # print(f"{seq_record.id}\t{gcfs[name]}\t{name}\t{desc}")
-                final_list.append(f"{seq_record.id}\t{gcfs[name]}\t{name}\t{desc}")
-            else:
-                print(f"No match found for {seq_record.id}\t{desc}")
-                missing_elements.append(f"{seq_record.id}\t{desc}")
+        # Determine the file type based on the extension
+        file_mode = 'rt'  # text mode for reading
+
+        # Use gzip.open if it's a gzipped file, otherwise open normally
+        if args.input.endswith('.gz'):
+            file_handler = gzip.open(args.input, file_mode)
+        else:
+            file_handler = open(args.input, file_mode)
+        # if the file is compressed decompress and read otherwise just read
+        with file_handler as file:
+            for seq_record in SeqIO.parse(file, "fasta"):
+                id, desc = format_description(seq_record.id, seq_record.description)
+                desc = desc.replace("TPA_inf: ", "")
+                desc = desc.replace("MAG: ", "")
+                desc = desc.replace("MAGL: ", "")
+                # if there is something like MAG: or TPA_inf: in the description, remove it but use fuzzy match so that if it is up : and a space then remove it, dont hardcode the values.
+                # desc = extract_after_colon(desc)
+                total +=1
+                name = long_match_names(desc, assemblies.keys())
+                # organism, gcf = search_in_dicts(organism_name, explicit_strain, assemblies, gcfs)
+                if name:
+                    count+=1
+                    # print(f"{seq_record.id}\t{gcfs[name]}\t{name}\t{desc}")
+                    final_list.append(f"{seq_record.id}\t{gcfs[name]}\t{name}\t{desc}")
+                else:
+                    print(f"No match found for {seq_record.id}\t{desc}")
+                    missing_elements.append(f"{seq_record.id}\t{desc}")
     if total > 0:
         print(f"Found {count} out of {total} FASTA accessions ({count/total*100:.2f}%) in the assembly file.")
     if len(final_list) == 0:

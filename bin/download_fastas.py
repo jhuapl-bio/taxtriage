@@ -65,7 +65,7 @@ def parse_args(argv=None):
         help="List of taxIDs or names",
     )
     parser.add_argument(
-        "-d",
+        "-b",
         "--db",
         metavar="DB",
         default="nuccore",
@@ -91,6 +91,13 @@ def parse_args(argv=None):
         help="Input type, can be a list of taxids or names or from a file",
     )
     parser.add_argument(
+        "-m",
+        "--missingfile",
+        default=None,
+        required = False,
+        help="Missing taxids or names to a file",
+    )
+    parser.add_argument(
         "-g",
         "--gcf_map",
         default='file',
@@ -107,8 +114,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "-a",
         "--assembly_names",
-        type=int,
-        default=5,
+        type=str,
+        default="5,6",
         help="Assembly refseq accession and taxid or name to be matched to the imported taxids",
     )
     parser.add_argument(
@@ -145,6 +152,14 @@ def parse_args(argv=None):
         help="Email for entrez querying, optional",
     )
     parser.add_argument(
+        "-d",
+        "--dry_run",
+        action='store_true',
+        default=False,
+        help="Only Dry run the total filesizes of download",
+    )
+
+    parser.add_argument(
         "-o",
         "--file_out",
         metavar="FILE_OUT",
@@ -175,7 +190,7 @@ def import_genome_file(filename, kraken2output):
     return refs
 
 #
-def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
+def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, missingfile = None):
     assemblies  = dict()
     first = dict()
 
@@ -184,28 +199,41 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
     # nameidx is the column where the name to the fasta file is to be
     if (not isinstance(input, list)):
         input = input.split(" ")
+    matchcol = str(matchcol)
+    assembly_cols = [int(x) for x in matchcol.split(",")]
     def get_url(utl, id):
         bb = os.path.basename(utl)
         return utl+"/"+bb+"_genomic.fna.gz"
+    priorities = dict()
+    seencols = dict()
     with open(filename, "r") as f:
         line = f.readline()
         next(f)
-        priorities = dict()
-        seencols = dict()
+
         for line in f:
             line = line.strip()
             linesplit = line.split("\t")
             gcfidx = linesplit[idx]
-            matchidx = str(linesplit[matchcol])
+            matchidces = [linesplit[x] for x in assembly_cols]
+            # get values of linepslit for indexes in assembly_cols
+            # namecol = linesplit[nameidx]
             namecol = linesplit[nameidx]
             urlcol = linesplit[index_ftp]
             formatted_header = namecol.replace(" ", "_")
             formatted_header = str(formatted_header)
-            if len(linesplit) >= 12 and (matchidx in input):
+            match_index = -1
+            for match in matchidces:
+                if match in input:
+                    # If a match is found, get the index from 'input_list'
+                    match_index = input.index(match)
+                    break  # Stop searching after the first match is found
+            if len(linesplit) >= 12 and ( match_index > -1):
+                # get the value for which x in matchidcs is in input array
+                matchval = input[match_index]
 
-                if namecol not in priorities:
-                    priorities[namecol] = dict()
-                seencols[matchidx] = True
+                if matchval not in priorities:
+                    priorities[matchval] = dict()
+                seencols[matchval] = True
                 obj = dict(
                     id="{}|{}".format(
                         gcfidx,
@@ -214,42 +242,35 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
                     accession = gcfidx,
                     characteristic = None,
                     chrs = [],
+                    organism = namecol,
                     reference=get_url(urlcol, gcfidx),
                     name = formatted_header,
                 )
-
                 #If the refseq_category column in the assembly.txt is reference genome
-                if linesplit[4] == "representative genome" and priorities[namecol].get('0') is None:
+
+                if linesplit[4] == "representative genome" and priorities[matchval].get('0') is None:
                     obj['characteristic'] = "representative"
-                    priorities[namecol]['0'] = obj
-                elif linesplit[4] == "reference genome" and priorities[namecol].get('1') is None:
+                    priorities[matchval]['0'] = obj
+                elif linesplit[4] == "reference genome" and priorities[matchval].get('1') is None:
                     obj['characteristic'] = "reference"
-                    priorities[namecol]['1'] = obj
-                elif linesplit[11] == "Complete Genome" and priorities[namecol].get('2') is None:
+                    priorities[matchval]['1'] = obj
+                elif linesplit[11] == "Complete Genome" and priorities[matchval].get('2') is None:
                     obj['characteristic'] = "complete genome"
-                    priorities[namecol]['2'] = obj
+                    priorities[matchval]['2'] = obj
                 #If there is no reference genome
                 else:
                     #If this is the first time the taxa without reference genome is seen
                     if formatted_header not in first:
                         #Save reference to dict
                         obj['characteristic'] = "other"
-                        if priorities[namecol].get('3') is None:
-                            priorities[namecol]['3'] = obj
+                        if priorities[matchval].get('3') is None:
+                            priorities[matchval]['3'] = obj
             #If no complete genome found, pass
             else:
                 pass
     # figure out which inputs are missing from seencols
-    missing = list(set(input) - set(seencols.keys()))
-    if len(missing) > 0:
-        # get dirname of input file and write missing to a file
-        dirname = os.path.dirname(filename)
-        print("Missing", missing, )
-        # print out missing inputs to a file
-        with open(os.path.join(dirname, "missing.txt"), "w") as w:
-            for m in missing:
-                w.write(f"{m}\n")
-            w.close()
+
+
     # iterate through priorities, if 0 then set refs to the 0 value, if not 0 then 1 and so on until 3 or not found at all
 
     for key, value in priorities.items():
@@ -263,7 +284,28 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp):
             assemblies[key] = value['3']
         else:
             print("No reference genome found for", key)
-    return assemblies
+    assembliesformat = dict()
+    for key, item in assemblies.items():
+
+        assembliesformat[item['organism']] = dict(
+            accession=item['accession'],
+            id=item['id'],
+            name=item['name'],
+            reference=item['reference'],
+            chrs=item['chrs'],
+        )
+    missing = list(set(input) - set(seencols.keys()))
+    if len(missing) > 0:
+        # get dirname of input file and write missing to a file
+        print("Missing", missing, )
+        # print out missing inputs to a file
+        if missingfile:
+            with open(os.path.join(missingfile), "w") as w:
+                matchname = ""
+                for m in missing:
+                    w.write(f"{m}\n")
+            w.close()
+    return assembliesformat
 
 
 def get_assembly_summary(id):
@@ -279,6 +321,7 @@ def download_fasta(ftp_site):
         gzip.open, mode='rt') if encoding == 'gzip' else open
     try:
         with closing(request.urlopen(ftp_site, context=ctx)) as r:
+            # file.gz with basename of the inputfilename is opened
             with open('file.gz', 'wb') as f:
                 shutil.copyfileobj(r, f)
             f.close()
@@ -405,8 +448,46 @@ def get_hits_from_file(filenames, colnumber):
                 if name not in taxids:
                     taxids.append(name)
     return taxids
+def return_format_size(size_in_bytes):
+    # convert bytes to gb, mb or tb
+    format = "bytes"
+    if size_in_bytes > 1000000000000:
+        format = "tb"
+        size_in_bytes = size_in_bytes/1000000000000
+    elif size_in_bytes > 1000000000:
+        format = "gb"
+        size_in_bytes = size_in_bytes/1000000000
+    elif size_in_bytes > 1000000:
+        format = "mb"
+        size_in_bytes = size_in_bytes/1000000
+    elif size_in_bytes > 1000:
+        format = "kb"
+        size_in_bytes = size_in_bytes/1000
+    return size_in_bytes, format
+def check_size(assemblies, GCFs_to_skip):
+    final_size = 0
+    i = 0
+    for key, value in assemblies.items():
+        # retrieve the expected size of the file at value.reference
+        ftp_site = value['reference']
+        try:
+            with closing(request.urlopen(ftp_site, context=ctx)) as r:
+                final_size = final_size + int(r.info()['Content-Length'])
+                r.close()
+        except Exception as ex:
+            print("Could not get info for file", ftp_site, ex)
+            raise ex
+        finally:
+            i+=1
+            if i % 100== 0:
+                print("Checked", i, "files")
+                format_size, format = return_format_size(final_size)
+                print("Current size is", format_size, format)
+    format_size, format = return_format_size(final_size)
 
+    print("Total size of files to download is", format_size, format)
 
+    return final_size
 def main(argv=None):
     """Coordinate argument parsing and program execution."""
     args = parse_args(argv)
@@ -433,8 +514,9 @@ def main(argv=None):
         seen_in_tops = get_hits_from_file(args.input, args.colnumber_file_hits)
     else:
         seen_in_tops = args.input
+
     assemblies = import_assembly_file(
-        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path
+        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile
     )
 
 
@@ -479,20 +561,22 @@ def main(argv=None):
     # Now use the assembly refseq file to get the ftp path and download the fasta files
     print("Get assemblies now")
 
-
-    get_assemblies(
-        assemblies, #this is the top hits from the input file you want to retrieve
-        args.file_out, # this is the file you want to write to
-        GCFs_to_skip, # this is the list of GCFs you want to skip
-        args.refresh # this is the boolean to check if you want to refresh the file
-    )
-    if args.gcf_map:
-        with open(args.gcf_map, "w") as w:
-            for key, value in assemblies.items():
-                for chr in value['chrs']:
-                    outstring = f"{chr['acc']}\t{value['accession']}\t{key}\t{chr['name']}"
-                    w.write(f"{outstring}\n")
-        w.close()
+    if args.dry_run:
+        check_size(assemblies, GCFs_to_skip)
+    else:
+        get_assemblies(
+            assemblies, #this is the top hits from the input file you want to retrieve
+            args.file_out, # this is the file you want to write to
+            GCFs_to_skip, # this is the list of GCFs you want to skip
+            args.refresh # this is the boolean to check if you want to refresh the file
+        )
+        if args.gcf_map:
+            with open(args.gcf_map, "w") as w:
+                for key, value in assemblies.items():
+                    for chr in value['chrs']:
+                        outstring = f"{chr['acc']}\t{value['accession']}\t{key}\t{chr['name']}"
+                        w.write(f"{outstring}\n")
+            w.close()
 
 if __name__ == "__main__":
     sys.exit(main())
