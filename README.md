@@ -32,7 +32,7 @@ Tax Triage is designed as a pipeline to democratize metagenomic sequence analysi
 - Detailed MultiQC reports
 - Concise final report (intended to have all data fields required for use in clinical settings)
 
-For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). 
+For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable.
 
 Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August.
 
