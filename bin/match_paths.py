@@ -835,4 +835,3 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 if __name__ == "__main__":
     sys.exit(main())
 
-
