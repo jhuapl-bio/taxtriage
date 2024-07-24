@@ -44,6 +44,7 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.platform = row.platform ? row.platform : 'ILLUMINA'
     meta.fastq_1 = row.fastq_1
     meta.fastq_2 = row.fastq_2
+    meta.needscompressing = row.needscompressing ? row.needscompressing : null
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
     meta.single_end = row.fastq_2  ? false : true
     // Check if fastq_1 exists if not then error out and print error

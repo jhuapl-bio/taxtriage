@@ -193,6 +193,7 @@ include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
+include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/kraken2/kraken2/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -367,12 +368,27 @@ workflow TAXTRIAGE {
     println "Date: ${date}"
 
     ch_reads = INPUT_CHECK.out.reads
+    // branch needscompressing meta key
+    // ch_reads
+    //     .branch {
+    //         compressNeeded: it[0].needscompressing
+    //         skipCompress: !it[0].needscompressing
+    //     }
+    //     .set { branched_compress_reads }
+    // // if compressNeeded is true then compress the fastq files
+    // PIGZ_COMPRESS(
+    //     branched_compress_reads.compressNeeded
+    // )
+
+    // ch_reads = PIGZ_COMPRESS.out.archive.mix(branched_compress_reads.skipCompress)
+
+
+
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
     )
-    ch_reads = ARTIC_GUPPYPLEX.out.fastq
-    ch_reads = ch_reads.mix(INPUT_CHECK.out.reads.filter { !it[0].directory   })
+    ch_reads = ch_reads.filter({ !it[0].directory   }).mix(ARTIC_GUPPYPLEX.out.fastq)
 
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
@@ -417,7 +433,6 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]))
 //
     // }
-
     if (!params.skip_fastp) {
         FASTP(
             ch_reads,

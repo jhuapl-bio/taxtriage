@@ -518,7 +518,7 @@ def main():
     else:
         # We don't aggregate, so do final format on the organism name only
         for key, value in reference_hits.items():
-            if value['toplevelkey']:
+            if 'toplevelkey' in value and  value['toplevelkey']:
                 valtoplevel = value['toplevelkey']
             else:
                 valtoplevel = key
