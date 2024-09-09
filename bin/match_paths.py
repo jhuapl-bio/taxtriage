@@ -518,7 +518,7 @@ def main():
     else:
         # We don't aggregate, so do final format on the organism name only
         for key, value in reference_hits.items():
-            if value['toplevelkey']:
+            if 'toplevelkey' in value and value['toplevelkey']:
                 valtoplevel = value['toplevelkey']
             else:
                 valtoplevel = key
@@ -544,7 +544,6 @@ def main():
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
         for val_key, data in entries.items():
-
             if top_level_key not in species_aggregated:
                 species_aggregated[top_level_key] = {
                     'key': top_level_key,
@@ -571,31 +570,35 @@ def main():
             #     # br
             # else:
             #     continue
-            gini_strain = getGiniCoeff(data['depths'], data['length'])
-            species_aggregated[top_level_key]['coeffs'].append(gini_strain)
-            species_aggregated[top_level_key]['taxids'].append(data['taxid'])
-            species_aggregated[top_level_key]['numreads'].append(data['numreads'])
-            species_aggregated[top_level_key]['coverages'].append(data['coverage'])
-            species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
-            species_aggregated[top_level_key]['accs'].append(data['accession'])
-            species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
-            species_aggregated[top_level_key]['depths'].append(data['meandepth'])
-            if 'strain' in data:
-                species_aggregated[top_level_key]['strainslist'].append({
-                    "strainname":data['strain'],
-                    "fullname":data['name'],
-                    "subkey": val_key,
-                    "numreads": data['numreads'],
-                    "taxid": data['taxid'] if "taxid" in data else None,
-                })
-            else:
-                species_aggregated[top_level_key]['strainslist'].append({
-                    "strainname":val_key,
-                    "fullname":val_key,
-                    "subkey": val_key,
-                    "numreads": data['numreads'],
-                    "taxid": data['taxid'] if "taxid" in data else None,
-                })
+            try:
+                gini_strain = getGiniCoeff(data['depths'], data['length'])
+                species_aggregated[top_level_key]['coeffs'].append(gini_strain)
+                species_aggregated[top_level_key]['taxids'].append(data['taxid'])
+                species_aggregated[top_level_key]['numreads'].append(data['numreads'])
+                species_aggregated[top_level_key]['coverages'].append(data['coverage'])
+                species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
+                species_aggregated[top_level_key]['accs'].append(data['accession'])
+                species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
+                species_aggregated[top_level_key]['depths'].append(data['meandepth'])
+                if 'strain' in data:
+                    species_aggregated[top_level_key]['strainslist'].append({
+                        "strainname":data['strain'],
+                        "fullname":data['name'],
+                        "subkey": val_key,
+                        "numreads": data['numreads'],
+                        "taxid": data['taxid'] if "taxid" in data else None,
+                    })
+                else:
+                    species_aggregated[top_level_key]['strainslist'].append({
+                        "strainname":val_key,
+                        "fullname":val_key,
+                        "subkey": val_key,
+                        "numreads": data['numreads'],
+                        "taxid": data['taxid'] if "taxid" in data else None,
+                    })
+            except Exception as e:
+                print(top_level_key, val_key,"___")
+                print(f"Error: {e}")
 
 
     # Calculate weighted means for aggregated data
@@ -834,5 +837,4 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
 if __name__ == "__main__":
     sys.exit(main())
-
 

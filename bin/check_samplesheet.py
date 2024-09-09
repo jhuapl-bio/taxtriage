@@ -26,7 +26,7 @@ import logging
 import sys
 from collections import Counter
 from pathlib import Path
-
+import gzip
 
 logger = logging.getLogger()
 
@@ -57,6 +57,7 @@ class RowChecker:
         second_col="fastq_2",
         single_col="single_end",
         dir_col="directory",
+        needscompressing="needscompressing",
         **kwargs,
     ):
         """
@@ -82,6 +83,7 @@ class RowChecker:
         self._second_col = second_col
         self._dir_col = dir_col
         self._single_col = single_col
+        self._needscompressing = needscompressing
         self._seen = set()
         self.modified = []
 
@@ -126,17 +128,27 @@ class RowChecker:
         row[self._sample_col] = row[self._sample_col].replace(" ", "_")
         for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '(', ')', '[', ']', '{', '}', '#', '%', '&', '+', '!', '@', '$', '^', '`', '~', ';', ',']:
             row[self._sample_col] = row[self._sample_col].replace(char, "")
-
+    def compress_fastq(self,  fastqfile):
+        # use gzip to compress the fastq file
+        gzipfile = fastqfile + ".gz"
+        with open(fastqfile, 'rb') as f_in:
+            with gzip.open(gzipfile, 'wb') as f_out:
+                f_out.writelines(f_in)
+            f_out.close()
+        f_in.close()
+        return
 
     def _validate_first(self, row):
         """Assert that the first FASTQ entry is non-empty and has the right format."""
         assert len(row[self._first_col]) > 0, "At least the first FASTQ file is required."
-        self._validate_fastq_format(row[self._first_col])
+        row[self._needscompressing] = self._validate_fastq_format(row[self._first_col])
+        return row
 
     def _validate_second(self, row):
         """Assert that the second FASTQ entry has the right format if it exists."""
         if row[self._second_col] and len(row[self._second_col]) > 0:
-            self._validate_fastq_format(row[self._second_col])
+            row[self._needscompressing] = self._validate_fastq_format(row[self._second_col])
+        return row
 
     def _validate_pair(self, row):
         """Assert that read pairs have the same file extension. Report pair status."""
@@ -148,6 +160,7 @@ class RowChecker:
             ), "FASTQ pairs must have the same file extensions."
         else:
             row[self._single_col] = True
+        return row
 
     def _validate_fastq_format(self, filename):
         """Assert that a given filename has one of the expected FASTQ extensions."""
@@ -155,6 +168,11 @@ class RowChecker:
             f"The FASTQ file has an unrecognized extension: {filename}\n"
             f"It should be one of: {', '.join(self.VALID_FORMATS)}"
         )
+
+        if filename.endswith('.gz'):
+            return None
+        else:
+            raise ValueError("The fastq file must be compressed with gzip")
 
     def validate_unique_samples(self):
         """
@@ -250,6 +268,7 @@ def check_samplesheet(file_in, file_out):
     header = list(reader.fieldnames)
     header.insert(1, "single_end")
     header.insert(1, "directory")
+    header.insert(1, "needscompressing")
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_out.open(mode="w", newline="") as out_handle:
         writer = csv.DictWriter(out_handle, header, delimiter=",")
