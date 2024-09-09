@@ -368,22 +368,6 @@ workflow TAXTRIAGE {
     println "Date: ${date}"
 
     ch_reads = INPUT_CHECK.out.reads
-    // branch needscompressing meta key
-    // ch_reads
-    //     .branch {
-    //         compressNeeded: it[0].needscompressing
-    //         skipCompress: !it[0].needscompressing
-    //     }
-    //     .set { branched_compress_reads }
-    // // if compressNeeded is true then compress the fastq files
-    // PIGZ_COMPRESS(
-    //     branched_compress_reads.compressNeeded
-    // )
-
-    // ch_reads = PIGZ_COMPRESS.out.archive.mix(branched_compress_reads.skipCompress)
-
-
-
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
