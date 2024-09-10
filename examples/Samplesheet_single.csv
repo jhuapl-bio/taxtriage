@@ -1,2 +1,2 @@
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
-longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,nasal
+longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
