@@ -5,6 +5,7 @@
 include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
 include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_ALIGN as MINIMAP2_ALIGN_SHORT } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 // include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
@@ -97,20 +98,30 @@ workflow ALIGNMENT {
         params.minmapq
     )
 
-    BOWTIE2_ALIGN(
-        ch_fasta_shortreads_files_for_alignment,
-        true,
-        true,
-        params.minmapq
-    )
+    if (params.use_bt2){
+        BOWTIE2_ALIGN(
+            ch_fasta_shortreads_files_for_alignment,
+            true,
+            true,
+            params.minmapq
+        )
 
-    collected_bams = BOWTIE2_ALIGN.out.aligned
-        .mix(MINIMAP2_ALIGN.out.bam)
+        collected_bams = BOWTIE2_ALIGN.out.aligned
+            .mix(MINIMAP2_ALIGN.out.bam)
+    } else {
+        MINIMAP2_ALIGN_SHORT(
+            ch_fasta_shortreads_files_for_alignment,
+            true,
+            true,
+            true,
+            params.minmapq
+        )
 
-
+        collected_bams = MINIMAP2_ALIGN_SHORT.out.bam
+            .mix(MINIMAP2_ALIGN.out.bam)
+    }
 
     sorted_bams = collected_bams
-
 
     sorted_bams
         .map { meta, file -> [meta.oid, file] } // Extract oid and file

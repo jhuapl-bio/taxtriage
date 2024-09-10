@@ -98,34 +98,36 @@ workflow  REFERENCE_PREP {
                       .map { it > 0 }
                 ch_bt2_indices = Channel.empty()
                 // // Then, depending on the presence of 'ILLUMINA' samples, optionally run BOWTIE2_BUILD
-                if (illuminaPresent) {
-                    //// If there are 'ILLUMINA' samples, we prepare and run BOWTIE2_BUILD
-                    println("ILLUMINA samples found, performing BOWTIE2_BUILD: Local.")
-                    ch_reference_fasta
-                        .map { fasta ->
-                            def basen = fasta.baseName
-                            return [ [id: basen], fasta ]
-                        }
-                        .set { fastaForBowtieBuild }
+                if (params.use_bt2) {
+                    if (illuminaPresent) {
+                        //// If there are 'ILLUMINA' samples, we prepare and run BOWTIE2_BUILD
+                        println("ILLUMINA samples found, performing BOWTIE2_BUILD: Local.")
+                        ch_reference_fasta
+                            .map { fasta ->
+                                def basen = fasta.baseName
+                                return [ [id: basen], fasta ]
+                            }
+                            .set { fastaForBowtieBuild }
 
-                    BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
+                        BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
 
 
-                    fastaForBowtieBuild
-                        .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
-                        .set { fastaWithIndexChannel }
-                    ch_mapped_assemblies.combine(fastaWithIndexChannel.map{
-                        meta, fasta, index -> {
-                            return [fasta, index]
-                        }
-                    }).map{
-                        meta, fastas, listmaps, listids, singlefasta, fastaWithIndex -> {
-                            fastas.add([singlefasta, fastaWithIndex]) // Add FASTA and Index to 'fastas'
-                            return [meta, fastas, listmaps, listids]
-                        }
-                    }.set { ch_mapped_assemblies }
-                } else {
-                    println("No ILLUMINA samples found, skipping BOWTIE2_BUILD: Local.")
+                        fastaForBowtieBuild
+                            .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
+                            .set { fastaWithIndexChannel }
+                        ch_mapped_assemblies.combine(fastaWithIndexChannel.map{
+                            meta, fasta, index -> {
+                                return [fasta, index]
+                            }
+                        }).map{
+                            meta, fastas, listmaps, listids, singlefasta, fastaWithIndex -> {
+                                fastas.add([singlefasta, fastaWithIndex]) // Add FASTA and Index to 'fastas'
+                                return [meta, fastas, listmaps, listids]
+                            }
+                        }.set { ch_mapped_assemblies }
+                    } else {
+                        println("No ILLUMINA samples found, skipping BOWTIE2_BUILD: Local.")
+                    }
                 }
             }
         }
@@ -157,18 +159,19 @@ workflow  REFERENCE_PREP {
                 longreads: it[0].platform =~ 'OXFORD'
                 shortreads: it[0].platform =~ 'ILLUMINA'
         }.set { ch_platform_split }
-
-        BOWTIE2_BUILD_DWNLD(
-            ch_platform_split.shortreads
-        )
-        ch_platform_split.shortreads.join(BOWTIE2_BUILD_DWNLD.out.index)
-        .map{meta, fasta, index -> [meta, [fasta, index]] }.set { merged_shortreads_index }
+        if (params.use_bt2){
+            BOWTIE2_BUILD_DWNLD(
+                ch_platform_split.shortreads
+            )
+            ch_platform_split.shortreads.join(BOWTIE2_BUILD_DWNLD.out.index)
+            .map{meta, fasta, index -> [meta, [fasta, index]] }.set { merged_shortreads_index }
+        } else {
+            merged_shortreads_index = ch_platform_split.shortreads.map{meta, fasta -> [meta, fasta] }
+        }
 
         ch_platform_split.longreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_longreads_only }
 
         ch_fullset = merged_shortreads_index.mix(merged_longreads_only)
-
-
 
         ch_mapped_assemblies.join(ch_fullset)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
