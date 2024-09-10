@@ -24,18 +24,14 @@ process PATHOGENS_FIND_SAMPLE {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(depthfile), path(covfile), path(pathogens_list), path(assembly)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(depthfile), path(covfile), path(k2_report), path(pathogens_list),  path(assembly)
 
     output:
         path "versions.yml"           , emit: versions
         tuple val(meta), path("*.txt")    , optional:false, emit: txt
 
-
     when:
     task.ext.when == null || task.ext.when
-
-
-
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
@@ -44,6 +40,12 @@ process PATHOGENS_FIND_SAMPLE {
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     def assemblyi = assembly ? " -j ${assembly} " : " "
+
+    // if k2_report exists and is not null add --k2 flag
+    // if k2_report != NO_FILE, add --k2 flag
+
+    def k2 = k2_report.name != "NO_FILE" ? " " : " --k2 ${k2_report} "
+
     """
 
     match_paths.py \\
@@ -53,7 +55,7 @@ process PATHOGENS_FIND_SAMPLE {
         $type \\
         $min_reads_align \\
         -p $pathogens_list \\
-        -m $mapping
+        -m $mapping $k2
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

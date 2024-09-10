@@ -602,6 +602,7 @@ workflow TAXTRIAGE {
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
+    ch_kraken2_report = Channel.empty()
 
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
@@ -618,8 +619,14 @@ workflow TAXTRIAGE {
         )
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
+        // if ch_kraken2_report is empty join on empty
+        input_pathogen_files = ALIGNMENT.out.bams
+            .join(ch_mapped_assemblies)
+            .join(ch_depthfiles)
+            .join(ch_covfiles)
+            .join(ch_kraken2_report.map { it } ?: Channel.value(Channel.fromPath("$projectDir/assets/NO_FILE")))
         PATHOGENS(
-            ALIGNMENT.out.bams.join(ch_mapped_assemblies).join(ch_depthfiles).join(ch_covfiles),
+            input_pathogen_files,
             ch_pathogens,
             distributions,
             ch_assembly_txt
