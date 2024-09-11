@@ -44,7 +44,7 @@ process PATHOGENS_FIND_SAMPLE {
     // if k2_report exists and is not null add --k2 flag
     // if k2_report != NO_FILE, add --k2 flag
 
-    def k2 = k2_report.name != "NO_FILE" ? " " : " --k2 ${k2_report} "
+    def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
 
     """
 
