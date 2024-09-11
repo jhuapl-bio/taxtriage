@@ -43,25 +43,19 @@ workflow ALIGNMENT {
     ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
-
-
-
+    ch_versions = 1
 
     fastq_reads
         .branch{
             longreads: it[0].platform =~ 'OXFORD'
             shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
-
-    ch_versions = 1
-
     def idx = 0
 
     ch_aligners.shortreads
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
             fastas.collect{ fasta ->
-
                 def id = "${meta.id}"
                 if (size > 1){
                     def basen = fasta[0].getBaseName()
@@ -74,6 +68,7 @@ workflow ALIGNMENT {
             }
         }
         .set { ch_fasta_shortreads_files_for_alignment }
+
     ch_aligners.longreads
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
@@ -89,6 +84,7 @@ workflow ALIGNMENT {
             }
         }
         .set { ch_fasta_longreads_files_for_alignment }
+
 
     MINIMAP2_ALIGN(
         ch_fasta_longreads_files_for_alignment,
