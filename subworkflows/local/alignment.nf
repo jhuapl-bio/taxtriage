@@ -61,7 +61,7 @@ workflow ALIGNMENT {
                     def basen = fasta[0].getBaseName()
                     id = "${id}.${basen}"
                 }
-                def mm = [id: id, oid: meta.id, single_end: meta.single_end  ]
+                def mm = [id: id, oid: meta.id, single_end: meta.single_end, platform: meta.platform ]
                 idx++
 
                 return [ mm, fastq, fasta]
@@ -78,7 +78,7 @@ workflow ALIGNMENT {
                     def basen = fasta[0].getBaseName()
                     id = "${id}.${basen}"
                 }
-                def mm = [id: id,  oid: meta.id, single_end: meta.single_end  ]
+                def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
                 idx++
                 return [ mm, fastq, fasta[0]]
             }

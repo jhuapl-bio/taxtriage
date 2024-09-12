@@ -28,9 +28,6 @@ process REMOVE_HOSTREADS {
         ${cmd} \\
         ${args} -n
 
-
-
-
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         samtools: \$(echo \$(samtools --version 2>&1) | sed 's/^.*samtools //; s/Using.*\$//')

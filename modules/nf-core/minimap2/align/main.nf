@@ -25,7 +25,15 @@ process MINIMAP2_ALIGN {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def mapx = reads.size() > 1 ? " -ax map-ont " : " -x sr "
+    // define mapx if paired end reads or single end illumina or single end oxford, match with regex ignore case
+    def mapx = ''
+    if (meta.platform =~ /(?i)illumina/) {
+        mapx = '-ax sr'
+    } else if (meta.platform =~ /(?i)pacbio/) {
+        mapx = '-ax map-hifi'
+    } else {
+        mapx = '-ax map-ont'
+    }
     def input_reads = reads.findAll { it != null }.join(' ')
     def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def bam_output = bam_format ? "-a | samtools sort | samtools view $minmapq -@ ${task.cpus} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
