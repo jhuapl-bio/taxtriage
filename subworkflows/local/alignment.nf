@@ -7,7 +7,7 @@ include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_ALIGN as MINIMAP2_ALIGN_SHORT } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
-// include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
+include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_SORT } from '../../modules/nf-core/samtools/sort/main'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
@@ -103,6 +103,16 @@ workflow ALIGNMENT {
         )
 
         collected_bams = BOWTIE2_ALIGN.out.aligned
+            .mix(MINIMAP2_ALIGN.out.bam)
+    } else if (params.use_hisat2) {
+        // Set null for hisat2 splicesites
+        HISAT2_ALIGN(
+            ch_fasta_shortreads_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
+            ch_fasta_shortreads_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
+            ch_fasta_shortreads_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
+        )
+
+        collected_bams = HISAT2_ALIGN.out.bam
             .mix(MINIMAP2_ALIGN.out.bam)
     } else {
         MINIMAP2_ALIGN_SHORT(

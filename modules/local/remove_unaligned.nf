@@ -11,7 +11,7 @@ process REMOVE_HOSTREADS {
     tuple val(meta), path(input)
 
     output:
-    tuple val(meta), path("*hostremoved.fastq.gz")      , optional:true, emit: reads
+    tuple val(meta), path("*.hostremoved.{fastq,fq}.gz"), optional: true, emit: reads
     path  "versions.yml"                           , emit: versions
 
     when:
@@ -27,6 +27,9 @@ process REMOVE_HOSTREADS {
         samtools fastq - \\
         ${cmd} \\
         ${args} -n
+
+
+
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
