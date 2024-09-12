@@ -110,6 +110,11 @@
                         "git_sha": "2c6b1144ed58b6184ad58fc4e6b6a90219b4bf4f",
                         "installed_by": ["modules"]
                     },
+                    "hisat2/align": {
+                        "branch": "master",
+                        "git_sha": "06c8865e36741e05ad32ef70ab3fac127486af48",
+                        "installed_by": ["modules"]
+                    },
                     "kraken2/kraken2": {
                         "branch": "master",
                         "git_sha": "409a308ba46284d8ebb48c2c1befd6f6433db3f7",

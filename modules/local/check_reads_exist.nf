@@ -7,11 +7,12 @@ process CHECK_GZIPPED_READS {
         'biocontainers/samtools:1.17--h00cdaf9_0' }"
 
     input:
-    tuple val(meta),path(fastq_files)
+    tuple val(meta), path(fastq_files)
     val(minimum_reads_check)
 
     output:
-    tuple val(meta), path("minimum_reads_check.txt"), optional: true, emit: check_result
+    tuple val(meta), path("{emptyfile,minimum_reads_check}.txt"), optional: true, emit: check_result
+
 
     script:
     // Create a Bash command string that checks each file
@@ -27,6 +28,7 @@ process CHECK_GZIPPED_READS {
         mv minimum_reads_check.tmp minimum_reads_check.txt
     else
         rm minimum_reads_check.tmp
+        touch emptyfile.txt
     fi
     """
 }
