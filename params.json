@@ -16,6 +16,7 @@
     "profile": "docker",
     "bt2_indices": null,
     "blastdb": null,
+    "use_bt2": false,
     "distributions": null,
     "remoteblast": false,
     "skip_fastp": false,

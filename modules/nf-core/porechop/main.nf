@@ -21,11 +21,21 @@ process PORECHOP {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
+   
     porechop \\
         -i $reads \\
         -t $task.cpus \\
         $args \\
-        -o ${prefix}.fastq.gz
+        -o ${prefix}.tmp.fastq.gz
+
+    if [ -s ${prefix}.tmp.fastq.gz ]
+    then
+        mv ${prefix}.tmp.fastq.gz ${prefix}.fastq.gz
+    else
+        rm ${prefix}.tmp.fastq.gz
+        cp $reads ${prefix}.fastq.gz
+    fi
+    
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

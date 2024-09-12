@@ -6,6 +6,8 @@ include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
 include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_ALIGN as MINIMAP2_ALIGN_SHORT } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 // include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_SORT } from '../../modules/nf-core/samtools/sort/main'
@@ -40,15 +42,13 @@ workflow ALIGNMENT {
     ch_merged_mpileup = Channel.empty()
 
 
-    ch_default_aligner = params.default_aligner
-    fastq_reads
-        .branch{
-            bowtie2: params.default_aligner =~ /(?i)bowtie2/ && it[0].platform =~ /(?i)illumina/ || it[0].aligner =~ /(?i)bowtie2/
-            hisat2: params.default_aligner =~ /(?i)hisat2/ || it[0].aligner =~ /(?i)hisat2/
-            minimap2: true
+
+
+    fastq_reads.branch{
+        bowtie2: params.use_bt2  && it[0].platform =~ /(?i)illumina/
+        hisat2: params.use_hisat2  || it[0].aligner =~ /(?i)hisat2/
+        minimap2: true
     }.set { ch_aligners }
-
-
 
     ch_versions = 1
 
@@ -58,7 +58,6 @@ workflow ALIGNMENT {
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
             fastas.collect{ fasta ->
-
                 def id = "${meta.id}"
                 if (size > 1){
                     def basen = fasta[0].getBaseName()
@@ -71,6 +70,7 @@ workflow ALIGNMENT {
             }
         }
         .set { ch_fasta_bowtie2_files_for_alignment }
+
     ch_aligners.minimap2
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
@@ -86,6 +86,7 @@ workflow ALIGNMENT {
             }
         }
         .set { ch_fasta_minimap2_files_for_alignment }
+
     ch_aligners.hisat2
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
@@ -116,14 +117,13 @@ workflow ALIGNMENT {
         .map{ m, fastq, fasta -> { return [ m, fastq, fasta[0] ] }  }
         .join(MINIMAP2_ALIGN.out.bam)
 
-
-
     BOWTIE2_ALIGN(
         ch_fasta_bowtie2_files_for_alignment,
         true,
         true,
         params.minmapq
     )
+
     ch_fasta_bowtie2_files_for_alignment = ch_fasta_bowtie2_files_for_alignment
         .map{ m, fastq, fasta -> { return [ m, fastq, fasta[0] ] }  }
         .join(BOWTIE2_ALIGN.out.aligned)
@@ -143,18 +143,18 @@ workflow ALIGNMENT {
         .mix(ch_fasta_bowtie2_files_for_alignment)
         .mix(ch_fasta_hisat2_files_for_alignment)
 
-
-
-    if (params.get_variants || params.reference_assembly){
-        REFERENCE_ASSEMBLY(
-            ch_aligned_output
-        )
-    }
     collected_bams = ch_aligned_output.map { meta, fastqs, fasta, bam -> [meta.oid, bam] } // Extract oid and file
         .groupTuple() // Group by oid
         .map { oid, files -> [[id:oid], files ] } // Replace oid with id in the metadata
         .set{ merged_bams_channel }
 
+    sorted_bams = collected_bams
+
+    sorted_bams
+        .map { meta, file -> [meta.oid, file] } // Extract oid and file
+        .groupTuple() // Group by oid
+        .map { oid, files -> [[id:oid], files ] } // Replace oid with id in the metadata
+        .set{ merged_bams_channel }
 
     // // Split the channel based on the condition
     merged_bams_channel
@@ -174,8 +174,6 @@ workflow ALIGNMENT {
     )
     //  // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_SORT.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
-
-
 
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]

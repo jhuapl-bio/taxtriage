@@ -12,7 +12,7 @@
 
 ## About
 
-TaxTriage a flexible, containerized bioinformatics pipeline for identification of pathogens within short- or long-read metagenomic sequence data, generated from complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood). The workflow includes various software packages to perform quality control, classification, read mapping, as well as generation of confidence metrics and a final report listing anticipated pathogens of relevance. 
+TaxTriage a flexible, containerized bioinformatics pipeline for identification of pathogens within short- (Illumina) or long-read (ONT, PacBio) metagenomic sequence data, generated from complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood). The workflow includes various software packages to perform quality control, classification, read mapping, as well as generation of confidence metrics and a final report listing anticipated pathogens of relevance. 
 
 ![](assets/taxtriage_schematics.png)
 
@@ -338,7 +338,7 @@ You can cite the `nf-core` publication as follows:
 
 ##############################################################################################
 Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
-All rights reserved.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy of this
 software and associated documentation files (the "Software"), to deal in the Software
 without restriction, including without limitation the rights to use, copy, modify,

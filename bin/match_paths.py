@@ -200,10 +200,9 @@ def adjusted_fair_distribution_score(depths, genome_length):
     # log transform breadth to 0 and 1, more weight closer to 1
     if breadth > 0:
         breadth = log2(breadth + 1) / log2(2)
-    print(gini_score, breadth)
+
     # Combine the Gini score and breadth of coverage with equal weight
     final_score = 0.1 * (1-gini_score) + 0.9 * breadth
-    print(final_score)
     return final_score
 
 
@@ -520,7 +519,7 @@ def main():
     else:
         # We don't aggregate, so do final format on the organism name only
         for key, value in reference_hits.items():
-            if value['toplevelkey']:
+            if 'toplevelkey' in value and value['toplevelkey']:
                 valtoplevel = value['toplevelkey']
             else:
                 valtoplevel = key
@@ -546,13 +545,13 @@ def main():
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
         for val_key, data in entries.items():
-
             if top_level_key not in species_aggregated:
                 species_aggregated[top_level_key] = {
                     'key': top_level_key,
                     'numreads': [],
                     'mapqs': [],
                     'depths': [],
+                    "taxids": [],
                     "accs": [],
                     "coverages": [],
                     "coeffs": [],
@@ -560,6 +559,47 @@ def main():
                     "isSpecies": True if  args.compress_species  else data['isSpecies'],
                     'strainslist': [],
                     'name': data['name'],  # Assuming the species name is the same for all strains
+            }
+            # if the taxid is 36809 then print else continue
+            # if data['taxid'] == "28450" or data['taxid'] == "1249658" or data['taxid'] == "1439852":
+            #     print(f"Step4: {top_level_key}, {data['name']}", data['accession'], data['numreads'])
+            #     # print all non 0 depth as a length
+            #     # print(len([x for x in data['depths'].values() if x > 0]), (data['length']))
+            #     # print(data['accession'], data['name'])
+            #     # gini_strain = getGiniCoeff(data['depths'], data['length'])
+            #     # print(gini_strain)
+            #     # br
+            # else:
+            #     continue
+            try:
+                gini_strain = getGiniCoeff(data['depths'], data['length'])
+                species_aggregated[top_level_key]['coeffs'].append(gini_strain)
+                species_aggregated[top_level_key]['taxids'].append(data['taxid'])
+                species_aggregated[top_level_key]['numreads'].append(data['numreads'])
+                species_aggregated[top_level_key]['coverages'].append(data['coverage'])
+                species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
+                species_aggregated[top_level_key]['accs'].append(data['accession'])
+                species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
+                species_aggregated[top_level_key]['depths'].append(data['meandepth'])
+                if 'strain' in data:
+                    species_aggregated[top_level_key]['strainslist'].append({
+                        "strainname":data['strain'],
+                        "fullname":data['name'],
+                        "subkey": val_key,
+                        "numreads": data['numreads'],
+                        "taxid": data['taxid'] if "taxid" in data else None,
+                    })
+                else:
+                    species_aggregated[top_level_key]['strainslist'].append({
+                        "strainname":val_key,
+                        "fullname":val_key,
+                        "subkey": val_key,
+                        "numreads": data['numreads'],
+                        "taxid": data['taxid'] if "taxid" in data else None,
+                    })
+            except Exception as e:
+                print(top_level_key, val_key,"___")
+                print(f"Error: {e}")
             }
             # # if the taxid is 36809 then print else continue
             # if data['taxid'] == "36809" or data['taxid']=="292":
@@ -836,5 +876,4 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
 if __name__ == "__main__":
     sys.exit(main())
-
 

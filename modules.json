@@ -195,6 +195,11 @@
                         "git_sha": "5e34754d42cd2d5d248ca8673c0a53cdf5624905",
                         "installed_by": ["modules"]
                     },
+                    "pigz/compress": {
+                        "branch": "master",
+                        "git_sha": "0eab94fc1e48703c1b0a8704bd665f554905c39d",
+                        "installed_by": ["modules"]
+                    },
                     "porechop": {
                         "branch": "master",
                         "git_sha": "911696ea0b62df80e900ef244d7867d177971f73",
