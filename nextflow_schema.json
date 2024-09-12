@@ -161,6 +161,11 @@
                     "description": "Dont use minimap2 for short reads, use bowtie2 instead",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "skip_report": {
+                    "type": "boolean",
+                    "description": "Skip the pathogen report",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",

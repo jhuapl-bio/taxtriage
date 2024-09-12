@@ -200,7 +200,6 @@ def adjusted_fair_distribution_score(depths, genome_length):
     # log transform breadth to 0 and 1, more weight closer to 1
     if breadth > 0:
         breadth = log2(breadth + 1) / log2(2)
-
     # Combine the Gini score and breadth of coverage with equal weight
     final_score = 0.1 * (1-gini_score) + 0.9 * breadth
     return final_score
@@ -600,46 +599,8 @@ def main():
             except Exception as e:
                 print(top_level_key, val_key,"___")
                 print(f"Error: {e}")
-            }
-            # # if the taxid is 36809 then print else continue
-            # if data['taxid'] == "36809" or data['taxid']=="292":
-            #     print(f"Step4: {top_level_key}, {data['name']}","\n\n")
-            #     # print all non 0 depth as a length
-            #     print(len([x for x in data['depths'].values() if x > 0]), (data['length']))
-            #     print(data['accession'], data['name'])
-            #     gini_strain = getGiniCoeff(data['depths'], data['length'])
-            #     print(gini_strain)
-            #     # br
-            # else:
-            #     continue
-            gini_strain = getGiniCoeff(data['depths'], data['length'])
-            species_aggregated[top_level_key]['coeffs'].append(gini_strain)
-            species_aggregated[top_level_key]['numreads'].append(data['numreads'])
-            species_aggregated[top_level_key]['coverages'].append(data['coverage'])
-            species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
-            species_aggregated[top_level_key]['accs'].append(data['accession'])
-            species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
-            species_aggregated[top_level_key]['depths'].append(data['meandepth'])
-            if 'strain' in data:
-                species_aggregated[top_level_key]['strainslist'].append({
-                    "strainname":data['strain'],
-                    "fullname":data['name'],
-                    "subkey": val_key,
-                    "numreads": data['numreads'],
-                    "taxid": data['taxid'] if "taxid" in data else None,
-                })
-            else:
-                species_aggregated[top_level_key]['strainslist'].append({
-                    "strainname":val_key,
-                    "fullname":val_key,
-                    "subkey": val_key,
-                    "numreads": data['numreads'],
-                    "taxid": data['taxid'] if "taxid" in data else None,
-                })
 
 
-            species_aggregated[top_level_key]['mapqs'].append(20)
-            species_aggregated[top_level_key]['numreads'].append(data['numreads'])
     # Calculate weighted means for aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
         numreads = aggregated_data['numreads']
@@ -876,4 +837,3 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
 if __name__ == "__main__":
     sys.exit(main())
-
