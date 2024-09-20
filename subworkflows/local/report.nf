@@ -44,7 +44,6 @@ workflow REPORT {
             ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
-            full_list_pathogen_files.view()
 
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions)
