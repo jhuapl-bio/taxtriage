@@ -42,10 +42,11 @@ workflow REPORT {
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
             // and assign it to the variable pathogens_list
             ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{
-                [[id: "all"], it[0]]
+                [[id: "all"], it]
             }.set{ full_list_pathogen_files }
+            full_list_pathogen_files.view()
 
-            SINGLE_REPORT (
+            SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions)
             )
 

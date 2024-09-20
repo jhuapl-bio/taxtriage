@@ -31,7 +31,7 @@ workflow ASSEMBLY {
         postalignmentfiles
         assemblyfile
     main:
-        ch_empty_file = file("$projectDir/assets/NO_FILE")
+        ch_empty_file = file("$projectDir/assets/NO_FILE2")
         ch_assembly_report = Channel.empty()
         ch_diamond_output = Channel.empty()
         ch_diamond_analysis = Channel.empty()
