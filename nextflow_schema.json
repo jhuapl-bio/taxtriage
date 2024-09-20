@@ -156,6 +156,11 @@
                     "fa_icon": "fas fa-file-signature"
 
                 },
+                "use_megahit_longreads": {
+                    "type": "boolean",
+                    "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "use_bt2": {
                     "type": "boolean",
                     "description": "Dont use minimap2 for short reads, use bowtie2 instead",
@@ -165,6 +170,12 @@
                     "type": "boolean",
                     "description": "Skip the pathogen report",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "skip_denovo": {
+                    "type": "boolean",
+                    "description": "Skip De Novo Assembly",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
                 },
                 "skip_realignment": {
                     "type": "boolean",
@@ -348,12 +359,7 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
-                "denovo_assembly": {
-                    "type": "boolean",
-                    "description": "Perform De Novo Assembly",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
-                },
+
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",

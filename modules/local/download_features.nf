@@ -10,9 +10,12 @@ process FEATURES_DOWNLOAD {
     input:
     tuple val(meta), path(gcfs)
     path(assembly)
+    val(get_aas)
 
     output:
-    tuple val(meta), path("**/*feature_table.txt"), emit: features, optional: false
+    tuple val(meta), path("${meta.id}_features.txt"), emit: features, optional: false
+    tuple val(meta), path("${meta.id}_proteins.faa"), emit: proteins, optional: true
+    tuple val(meta), path("${meta.id}.map.txt"), emit: mapfile, optional: true
     path "versions.yml"           , emit: versions
 
     when:
@@ -23,19 +26,29 @@ process FEATURES_DOWNLOAD {
     def prefix = task.ext.prefix ?: "${meta.id}"
     def outputdir = "${meta.id}_features"
     def output = "${meta.id}_features.txt"
+    def aa_output = "${meta.id}_proteins.faa"
+    def mapfile = "${meta.id}.map.txt"
+    def geta = get_aas ? "-p" : ""
 
     """
-
     download_features.py \\
         -i ${gcfs} \\
-        -a  ${assembly} \\
-        -o  ${outputdir} \\
-        -d
+        -a ${assembly} \\
+        -o ${outputdir} \\
+        -m ${mapfile} \\
+        -d ${geta}
 
     for f in \$(find ${outputdir} -name "*feature_table.txt"); do
         cat \$f
     done > ${output}
 
+    for f in \$(find ${outputdir} -name "*protein.faa"); do
+        cat \$f
+    done > ${aa_output}
+
+    # remove all faa files that is not full.faa
+    find ${outputdir} -name "*.faa" -not -name "${aa_output}" -exec rm {} \\;
+    find ${outputdir} -name "*_feature_table.txt" -not -name "${output}" -exec rm {} \\;
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

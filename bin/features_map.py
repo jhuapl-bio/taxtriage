@@ -35,11 +35,13 @@ def count_features(args):
         print(f"Index file found  ")
     # Load mapping file
     map_dict = {}
+    mapname = dict()
     with open(args.map, 'r') as mapfile:
         reader = csv.reader(mapfile, delimiter='\t')
         for row in reader:
             map_dict[row[0]] = row[2]  # Assuming the third column is organism name
-
+            if len(row) > 4:
+                mapname[row[0]] = row[4]
     # Read BED file and initialize count structures
     feature_counts = {}
     with open(args.bed, 'r') as bedfile:
@@ -83,15 +85,15 @@ def count_features(args):
     # Write the output files
     with open(args.output, 'w', newline='') as outfile:
         writer = csv.writer(outfile, delimiter='\t')
-        writer.writerow([ 'Assembly Name','Accession', 'Feature', '# reads align', 'Percent Read Align'])
+        writer.writerow([ 'Assembly Name', 'Mapped Value', 'Accession', 'Feature', '# reads align', 'Percent Read Align'])
         for acc, data in feature_counts.items():
             # sort feature items by count
+            mapv = mapname.get(acc, 'Unknown')
             data['features'] = dict(sorted(data['features'].items(), key=lambda item: item[1], reverse=True))
             for feature, count in data['features'].items():
                 if count > 0:
                     percent_read_align = (100 * count / total_fragments) if total_fragments > 0 else 0
-                    writer.writerow([  map_dict.get(acc, 'Unknown'), acc, feature, count, f"{percent_read_align:.2f}"])
-
+                    writer.writerow([  map_dict.get(acc, 'Unknown'), mapv, acc, feature, count, f"{percent_read_align:.2f}"])
     # Aggregate per organism and feature
     organism_feature_counts = {}
 
@@ -112,14 +114,15 @@ def count_features(args):
     # Now, write the organism and feature-specific counts to the group output file
     with open(args.group_output, 'w', newline='') as groupfile:
         writer = csv.writer(groupfile, delimiter='\t')
-        writer.writerow(['Organism Name', 'Feature', '# reads align', 'Percent Read Align'])
+        writer.writerow(['Organism Name', 'Mapped Value', 'Feature', '# reads align', 'Percent Read Align'])
+        mapv = mapname.get(acc, 'Unknown')
 
         for organism, features in organism_feature_counts.items():
             # sort feature items9 by count
             features = dict(sorted(features.items(), key=lambda item: item[1], reverse=True))
             for feature, count in features.items():
                 percent_read_align = (100 * count / total_fragments) if total_fragments > 0 else 0
-                writer.writerow([organism, feature, count, "{:.2f}".format(percent_read_align)])
+                writer.writerow([organism,  mapv, feature, count, "{:.2f}".format(percent_read_align)])
 
 if __name__ == "__main__":
     args = parse_args()

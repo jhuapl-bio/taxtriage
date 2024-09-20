@@ -2,7 +2,7 @@ reports:
   multiqc_report.html:
     display: "MultiQC HTML report"
   "**/report/*report.pdf":
-    display: "Pathogen Table Report"
+    display: "Organism Discovery Report(s)"
   "**/convert/*merged.tsv":
     display: "Confidence Table"
   "**/krona/*.html":

@@ -21,15 +21,14 @@ workflow  REFERENCE_PREP {
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
     ch_prepfiles = Channel.empty()
-
+    ch_cds = Channel.empty()
+    ch_cds_to_taxids = Channel.empty()
+    ch_bedfiles = Channel.empty()
 
     ch_mapped_assemblies = ch_samples.map{ meta, report -> {
             return [meta, [], [], []  ]
         }
     }
-
-
-    ch_bedfiles = Channel.empty()
 
     ch_reports_to_download = ch_samples.map{ meta, report -> {
             if (report){
@@ -206,19 +205,19 @@ workflow  REFERENCE_PREP {
         ch_assembly_txt
     )
 
+    FEATURES_DOWNLOAD(
+        ch_mapped_assemblies.map { meta, fastas, listmaps, listids  ->  return [ meta, listids ] },
+        ch_assembly_txt,
+        true
+    )
+    ch_cds = FEATURES_DOWNLOAD.out.proteins
+    ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
+    FEATURES_TO_BED(
+        FEATURES_DOWNLOAD.out.features
+    )
 
-    if (params.get_features){
-        FEATURES_DOWNLOAD(
-            ch_mapped_assemblies.map { meta, fastas, listmaps, listids  ->  return [ meta, listids ] },
-            ch_assembly_txt
-        )
+    ch_bedfiles = FEATURES_TO_BED.out.bed
 
-        FEATURES_TO_BED(
-            FEATURES_DOWNLOAD.out.features
-        )
-
-        ch_bedfiles = FEATURES_TO_BED.out.bed
-    }
     ch_mapped_assemblies = MAP_TAXID_ASSEMBLY.out.taxidmerged.join(
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, fastas, mergedids] }
     ).map{ meta, mergedmap, fastas, mergedids -> {
@@ -228,6 +227,8 @@ workflow  REFERENCE_PREP {
 
     emit:
         versions = ch_versions
-        ch_feature_bedfiles = ch_bedfiles
+        ch_bedfiles
         ch_preppedfiles = ch_mapped_assemblies
+        ch_reference_cds = ch_cds
+        ch_cds_to_taxids
 }

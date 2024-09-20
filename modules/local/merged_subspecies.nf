@@ -1,6 +1,6 @@
 process MERGEDSUBSPECIES {
     label 'process_medium'
-    tag "MergeTopSpecies"
+    tag "MergeTopSpeciesAllSamples"
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

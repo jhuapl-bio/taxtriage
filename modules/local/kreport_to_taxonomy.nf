@@ -1,5 +1,6 @@
+
 // ##############################################################################################
-// # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
+// # Copyright 2023 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
 // # Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // # software and associated documentation files (the "Software"), to deal in the Software
@@ -14,26 +15,42 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process DOWNLOAD_TAXDUMP {
-
+process KREPORT_TO_TAXONOMY {
+    tag "$meta.id"
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/gnu-wget%3A1.18--h7132678_6' :
-        'biocontainers/gnu-wget:1.18--h36e9172_9' }"
+        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
+        'biocontainers/biopython:1.75' }"
+
+    input:
+    tuple val(meta),  path(report)
 
     output:
-        path("names.dmp"), optional: false, emit: names
-        path("nodes.dmp"), optional: false, emit: nodes
+    path "versions.yml"           , emit: versions
+    tuple val(meta), path("*nodes.dmp"), optional:false, emit: nodes
+    tuple val(meta), path("*names.dmp"), optional:false, emit: names
 
     when:
     task.ext.when == null || task.ext.when
 
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def url = 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz'
+    def id = "${meta.id}"
     """
-    wget $url -O taxdump.tar.gz && tar -xvzf  taxdump.tar.gz && rm taxdump.tar.gz
+    echo ${meta.id} "-----------------Transferring Classifications to names and nodes.dmp files------------------"
+    mkdir -p taxonomy
+    create_taxonomy.py \\
+        --nodes nodes.dmp \\
+        --names names.dmp \\
+        --report ${report}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        python3: \$(python3 --version | sed 's/Python //g')
+    END_VERSIONS
+
     """
 }
+
+
