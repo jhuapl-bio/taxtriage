@@ -20,9 +20,8 @@
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
 from collections import defaultdict
 import sys
-import os
-import gzip
 import argparse
+import re
 import csv
 import pysam
 from math import log2
@@ -61,6 +60,12 @@ def parse_args(argv=None):
         metavar="MINREADSALIGN",
         default=3,
         help="Filter for minimum reads aligned to reference per organism. Default is 1",
+    )
+    parser.add_argument(
+        "--k2",
+        metavar="K2FILE",
+        default=None,
+        help="Provide kraken2 output report to match taxid to reference",
     )
     parser.add_argument(
         "-v",
@@ -291,6 +296,48 @@ def calculate_weighted_mean(data, numreads):
         weighted_mean = 0
     return weighted_mean
 
+def import_k2_file(filename):
+    """Import the kraken2 output file"""
+    tsv_file = open(filename, newline='')
+    read_tsv = csv.reader(tsv_file, delimiter="\t")
+    k2_regex = re.compile(r"^(\s+)(.+)")
+    mapping = []
+
+    taxids = dict()
+    header = ['abundance', 'clade_fragments_covered',
+        'number_fragments_assigned', 'rank', 'taxid', 'name', 'parents']
+    for row in read_tsv:
+        entry = dict()
+        for x in range(0, len(header)):
+
+            if (header[x] != 'name' and header[x] != 'rank' and header[x] != 'taxid' and x < len(row)):
+                entry[header[x]] = float(row[x])
+            elif x < len(row):
+                if header[x] == 'taxid':
+                    entry[header[x]] = str(row[x])
+                else:
+                    entry[header[x]] = row[x]
+            else:
+                entry[header[x]] = ""
+            # use regex to adjust entry['name']
+            if header[x] == 'name':
+                match = k2_regex.match(row[x])
+                if match:
+                    entry['name'] = match.group(2)
+        mapping.append(entry)
+        taxids[str(entry['taxid'])] = dict(
+            name=entry['name'],
+            abundance=entry['abundance'],
+            taxid = str(entry['taxid']),
+            number_fragments_assigned = entry['number_fragments_assigned'],
+            rank = entry['rank'],
+            clades_covered = entry['clade_fragments_covered'],
+
+        )
+        taxids[entry['name']] = taxids[str(entry['taxid'])]
+
+    return taxids
+
 
 def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
     """
@@ -415,11 +462,14 @@ def main():
     covfile = args.coverage
     output = args.output
     matcher = args.match
+    k2_mapping = dict()
     matchdct = dict()
     header = True
     i =0
     capval  = args.capval
     mincov = args.mincoverage
+    if args.k2:
+        k2_mapping = import_k2_file(args.k2)
     reference_hits, total_reads = count_reference_hits(
         inputfile,
         args.depth,
@@ -431,6 +481,7 @@ def main():
         if not testacc:
             testacc = key
         break
+
     assembly_to_accession = defaultdict(set)
     if args.match:
         # open the match file and import the match file
@@ -524,12 +575,6 @@ def main():
                 valtoplevel = key
             valkey = key
             final_format[valtoplevel][valkey] = value
-    # for key, value in final_format.items():
-    #     for key2, value2 in value.items():
-    #         print(value2.keys())
-            # if value2['accession'] == testacc:
-            #     print(f"Step4: {key}, {key2}","\n\n")
-            # break
     # Dictionary to store aggregated species-level data
     species_aggregated = {}
     def getGiniCoeff(data, acc_length=0):
@@ -559,17 +604,7 @@ def main():
                     'strainslist': [],
                     'name': data['name'],  # Assuming the species name is the same for all strains
             }
-            # if the taxid is 36809 then print else continue
-            # if data['taxid'] == "28450" or data['taxid'] == "1249658" or data['taxid'] == "1439852":
-            #     print(f"Step4: {top_level_key}, {data['name']}", data['accession'], data['numreads'])
-            #     # print all non 0 depth as a length
-            #     # print(len([x for x in data['depths'].values() if x > 0]), (data['length']))
-            #     # print(data['accession'], data['name'])
-            #     # gini_strain = getGiniCoeff(data['depths'], data['length'])
-            #     # print(gini_strain)
-            #     # br
-            # else:
-            #     continue
+
             try:
                 gini_strain = getGiniCoeff(data['depths'], data['length'])
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
@@ -600,7 +635,6 @@ def main():
                 print(top_level_key, val_key,"___")
                 print(f"Error: {e}")
 
-
     # Calculate weighted means for aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
         numreads = aggregated_data['numreads']
@@ -609,6 +643,31 @@ def main():
         aggregated_data['meandepth'] = calculate_weighted_mean(aggregated_data['depths'],numreads)
         aggregated_data['meancoverage'] = calculate_weighted_mean(aggregated_data['coverages'],numreads)
         aggregated_data['meangini'] = calculate_weighted_mean(aggregated_data['coeffs'],numreads)
+        # if taxid is in taxid_mapping, use that, otherwise use the strainname
+        k2_reads = 0
+        if args.k2:
+            taxid = aggregated_data.get('key', None)
+            name = aggregated_data.get('name', None)
+            if taxid and taxid in k2_mapping:
+                k2_reads = k2_mapping[taxid].get('clades_covered', 0)
+            elif name and name in k2_mapping:
+                k2_reads = k2_mapping[name].get('clades_covered', 0)
+            else:
+                # get all taxids from strainslist
+                taxids = [x.get('taxid', None) for x in aggregated_data['strainslist']]
+                # remove None from taxids
+                taxids = [x for x in taxids if x]
+                k2_reads = 0
+                for taxid in taxids:
+                    if taxid in k2_mapping:
+                        k2_reads += k2_mapping[taxid].get('clades_covered', 0)
+        aggregated_data['k2_numreads'] = k2_reads
+
+    for top_level_key, aggregated_data in species_aggregated.items():
+        print(f"Entry Top Key: {top_level_key}")
+        print(f"\tName: {aggregated_data['name']}")
+        print(f"\tNum Reads: {aggregated_data['numreads']}")
+        print(f"\tK2 Reads: {aggregated_data['k2_numreads']}")
 
     # Print the final aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
@@ -619,11 +678,11 @@ def main():
         print(f"\tStrains List: {aggregated_data['strainslist']}")
         print()
 
+
     for key, value in species_aggregated.items():
         if testacc in value['accs']:
             print(f"Step5: {key}, {value['name']}","\n\n")
             break
-
     pathogens = import_pathogens(pathogenfile)
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -632,15 +691,10 @@ def main():
         # filter the reference_hits based on the minimum number of reads aligned
         print(f"Filtering for minimum reads aligned: {args.min_reads_align}")
         species_aggregated = {k: v for k, v in species_aggregated.items() if sum(v['numreads']) >= int(args.min_reads_align)}
-    # print("Step 6:\n")
-    # for key, value in species_aggregated.items():
-    #     print(f"\t{key}, {value}","\n\n")
     # Create a new dictionary to store aggregated species-level data
     species_references = defaultdict(dict)
     for top_level_key, data in species_aggregated.items():
         print(f"Reference: {data['name']} (Taxid: {data['key']})")
-        strainnames = [f"{strain['strainname']} ({strain['taxid']})" for strain in data['strainslist']]
-        # print(f"\tStrains seen: {', '.join(strainnames)}")
         print(f"\tNumber of Reads: {data['numreads']}")
         print(f"\tMean Coverage: {data['meancoverage']}")
         print(f"\Alignment Conf: {data['meangini']}")
@@ -649,7 +703,6 @@ def main():
         print(f"\tMean MapQ: {data['meanmapq']}")
         print(f"\tisSpecies: {data['isSpecies']}")
         print()
-
 
 
     write_to_tsv(
@@ -691,7 +744,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
     with open(output_file_path, 'w') as file:
         # Write the header row
 
-        header =  "Name\tSample\tSample Type\t% Reads\t% Aligned Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\n"
+        header =  "Name\tSample\tSample Type\t% Reads\t% Aligned Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\n"
         file.write(f"{header}")
         print("________________________________________")
         total_reads_aligned = 0
@@ -749,10 +802,6 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 formatname = refpath['name']
                 if is_pathogen == "Commensal":
                     callfamclass = "Commensal Listing"
-                # elif is_pathogen != "N/A":
-                #     callfamclass = "Listed Pathogen"
-                # else:
-                #     callfamclass = "Unknown Listing"
             else:
                 is_annotated = "No"
                 taxid = count[ref] if ref in count and count[ref]  else ""
@@ -813,13 +862,16 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             print(f"\tAligned Strains: {fullstrains}")
             print(f"\tTotal reads: {sum(count['numreads'])}")
             print(f"\tAlignment Conf: {count['meangini']}")
+            print(f"\tK2 Reads: {count['k2_numreads']}")
             print()
 
-            meanbaseq = format_non_zero_decimals(count['meanbaseq'])
-            gini_coefficient = format_non_zero_decimals(count['meangini'])
-            meanmapq = format_non_zero_decimals(count['meanmapq'])
-            meancoverage = format_non_zero_decimals(count['meancoverage'])
-            meandepth = format_non_zero_decimals(count['meandepth'])
+            meanbaseq = format_non_zero_decimals(count.get('meanbaseq',0))
+            gini_coefficient = format_non_zero_decimals(count.get('meangini'))
+            meanmapq = format_non_zero_decimals(count.get('meanmapq',0))
+            meancoverage = format_non_zero_decimals(count.get('meancoverage',0))
+            meandepth = format_non_zero_decimals(count.get('meandepth', 0))
+            k2_reads = count.get('k2_numreads', 0)
+
             # if total_reads_aligned is 0 then set percent_aligned to 0
             countreads = sum(count['numreads'])
             if total_reads_aligned == 0:
@@ -833,7 +885,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             if len(pathogenic_sites) == 0:
                 pathogenic_sites = ""
             # Assuming 'count' is a simple value; if it's a dictionary or complex structure, adjust accordingly.
-            file.write(f"{formatname}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{pathogenic_sites}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient}\t{meanbaseq}\t{meanmapq}\t{meancoverage}\t{meandepth}\t{annClass}\t{isSpecies}\t{callfamclass}\n")
+            file.write(f"{formatname}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{pathogenic_sites}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient}\t{meanbaseq}\t{meanmapq}\t{meancoverage}\t{meandepth}\t{annClass}\t{isSpecies}\t{callfamclass}\t{k2_reads}\n")
 
 if __name__ == "__main__":
     sys.exit(main())

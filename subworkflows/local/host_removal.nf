@@ -58,22 +58,26 @@ workflow HOST_REMOVAL {
             )
 
             ch_bam_hosts = FILTER_MINIMAP2.out.bam
+            REMOVE_HOSTREADS(ch_bam_hosts)
+            ch_filtered_reads = REMOVE_HOSTREADS.out.reads
 
+            // Check the filtered output and fallback to original reads if filtered reads are empty
+            CHECK_GZIPPED_READS(ch_filtered_reads, 4)
+            ch_valid_reads = CHECK_GZIPPED_READS.out.check_result
+            ch_orig_reads = ch_valid_reads.filter({
+                it[1].name == 'emptyfile.txt'
+            }).join(ch_reads).map({
+                meta, result, reads -> return [meta, reads]
+            })
+            ch_filtered_reads = ch_valid_reads.filter({
+                it[1].name == 'minimum_reads_check.txt'
+            }).join(ch_filtered_reads).map({
+                meta, result, reads -> return [meta, reads]
+            })
+            ch_reads = ch_orig_reads.mix(ch_filtered_reads)
 
-
-            REMOVE_HOSTREADS (ch_bam_hosts)
-
-            ch_reads = REMOVE_HOSTREADS.out.reads
-            CHECK_GZIPPED_READS(ch_reads, 4 )
-            FILTERED_SAMTOOLS_INDEX ( ch_bam_hosts )
-
-            // remove filter channels where CHECK_GZIPPED_READS.out.check_result is not empty
-            ch_reads = ch_reads.join(CHECK_GZIPPED_READS.out.check_result).map{
-                meta, reads, check_result -> {
-                    return [meta, reads]
-                }
-            }
-            ch_reads.view()
+            // Continue processing the final reads
+            FILTERED_SAMTOOLS_INDEX(ch_bam_hosts)
 
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS (
@@ -84,7 +88,6 @@ workflow HOST_REMOVAL {
 
         }
         // filter out all ch_reads fastq files that are empty
-
 
     emit:
         unclassified_reads = ch_reads

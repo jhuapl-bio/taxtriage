@@ -105,22 +105,25 @@ def format_cell_content(cell):
 def import_data(inputfile ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
-    # Name\tSample\tSample Type\t% Aligned\t% Total Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMeanBaseQ\tMeanMapQ\tBreadth of Coverage\tDepth of Coverage\tisSpecies\tAnnClass
-    # Staphylococcus aureus\tshortreads\tstool\t0.0008\t0.0008\t2\tYes\tstool\tCommensal\t1280\testablished\t0.4\t\t\t\t\tTrue\tNone
-    # Klebsiella pneumoniae\tshortreads\tstool\t0.002\t0.002\t20\tYes\t"abscess, stool, skin, urine"\tCommensal\t573\testablished\t0.23\t\t\t\t\tTrue\tDerived
-    # Dickeya fangzhongdai\tshortreads\tstool\t0.0002\t0.0002\t2\tYes\t\t\t1778540\tN/A\t0.95\t\t\t\t\tTrue\tDirect
-    # Pediococcus acidilactici\tlongreads\tnasal\t0.0005\t0.0005\t5\tNo\t\t\t1254\tN/A\t0.9\t\t\t\t\tTrue\tDerived
-    # Neisseria gonorrhoeae\tlongreads\tnasal\t0.0629\t0.0629\t120\tYes\t"blood, oral, stool, urine"\tPathogen\t485\testablished\t0.02\t\t\t\t\tTrue\tDirect
-    # Escherichia coli\tshortreads\tstool\t0.01\t0.01\t100\tNo\t\t\t93061\tN/A\t0.48\t\t\t\t\tTrue\tDerived
-    # Metabacillus litoralis\tshortreads\tstool\t0.08\t0.08\t800\tNo\t\t\t152268\tN/A\t0.80\t\t\t\t\tTrue\tDirect
-    # Fluviibacter phosphoraccumulans\tlongreads\tnasal\t0.0005\t0.0005\t5\tNo\t\t\t1751046\tN/A\t0.96\t\t\t\t\tTrue\tDirect
-    # Diaphorobacter ruginosibacter\tlongreads\tnasal\t0.00003\t0.00003\t1\tNo\t\t\t1715720\tN/A\t0.97\t\t\t\t\tTrue\tDerived
+    # Name\tSample\tSample Type\t% Reads\t% Aligned Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
+    # Escherichia coli\tNasal Swab\tnasal\t100.0\t1.28\t22\tYes\tblood, urine\tCommensal\t562\testablished\t0.054\t14.0\t26.0\t2.59\t0.028\tDirect\tFalse\tCommensal Listing
+    # Salmonella enterica\tNasal Swab\tnasal\t24.13\t0.49\t7\tYes\tstool\tPrimary\t28901\testablished\t0.061\t14.0\t16.3\t1.63\t0.016\tDirect\tFalse\t
+    # Staphylococcus aureus\tNasal Swab\tnasal\t96.86\t52.39\t896\tYes\tblood\tCommensal\t1280\testablished\t0.63\t14.0\t59.0\t57.66\t0.85\tDirect\tFalse\tCommensal Listing
+    # Pseudomonas aeruginosa\tNasal Swab\tnasal\t0.32\t0.21\t3\tYes\tabscess, blood, urine\tPrimary\t287\testablished\t0.024\t14.0\t59.7\t1.86\t0.018\tDirect\tFalse\t
+    # Listeria monocytogenes\tNasal Swab\tnasal\t17.44\t11.52\t197\tYes\tblood, gut\tPrimary\t1639\testablished\t.87\t14.0\t52.4\t29.28\t0.35\tDirect\tFalse\t
+    # Bacillus subtilis\tNasal Swab\tnasal\t2.75\t1.87\t32\tYes\t\tCommensal\t1423\testablished\t0.055\t14.0\t18.1\t1.75\t0.021\tDirect\tFalse\tCommensal Listing
+    # Limosilactobacillus fermentum\tNasal Swab\tnasal\t15.88\t12.74\t218\tNo\t\tUnknown\t1613\t\t0.65\t14.0\t59.72\t66.56\t9.37\tNone\tTrue\t
+    # Enterococcus faecalis\tNasal Swab\tnasal\t6.44\t5.55\t95\tYes\tblood, urine\tOpportunistic\t1351\testablished\t0.53\t14.0\t60.0\t53.42\t2.19\tDirect\tFalse\t
+    # Saccharomyces cerevisiae\tNasal Swab\tnasal\t13.81\t13.81\t236\tNo\t\tPotential\t4932\t0.17\t13.97\t59.42\t13.099\t0.14\tDerived\tFalse\tS288C (0.1%)
+    # Staphylococcus aureus\tStool Sample\tgut\t100.0\t63.62\t1427\tYes\tblood\tCommensal\t1280\testablished\t0.083\t40.0\t15.33\t4.57\t0.047\tDirect\tFalse\tCommensal Listing
+    # Neisseria gonorrhoeae\tStool Sample\tgut\t36.15\t36.023\t808\tYes\tblood, urine\tPrimary\t485\testablished\t0.775\t40.0\t41.4\t4.55\t0.046\tDirect\tTrue\tTUM19854 (0.4%)
+    # Metabacillus litoralis\tStool Sample\tgut\t0.35\t0.35\t8\tNo\t\tUnknown\t152268\t\t0.0078\t40.0\t17.87\t0.61\t0.0061\tNone\tTrue\t
     # """.strip()
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
 
-    # # Simulating additional data
+    # # # Simulating additional data
     # np.random.seed(42)
-    # # df['Gini Coefficient'] = np.random.uniform(0, 1, df.shape[0])
+    # df['Gini Coefficient'] = np.random.uniform(0, 1, df.shape[0])
     # df['MeanBaseQ'] = np.random.uniform(20, 40, df.shape[0])
     # df['MeanMapQ'] = np.random.uniform(30, 60, df.shape[0])
     # df['Breadth of Coverage'] = np.random.uniform(50, 100, df.shape[0])
@@ -190,6 +193,9 @@ normal_style = styles['Normal']
 
 def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
     data = []
+    # convert k2 reads to int
+    df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
+
     if not columns:
         columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
     if include_headers:
@@ -199,15 +205,6 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
         data.append(headers)
     for index, row in df.iterrows():
         row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
-        # row_data = []
-        # for col in columns:
-        #     cell_content = format_cell_content(str(row[col]))
-        #     if col in ["# Aligned to Sample", "Sample"]:
-        #         print(col)
-        #         # row_data.append(Paragraph(cell_content, small_font_style))
-        #         row_data.append(Paragraph(cell_content, small_font_style))
-        #     else:
-        #         row_data.append(Paragraph(cell_content,small_font_style))
         # Insert the plot image
         if len(plot_dict.keys()) > 0:
             plot_key = (row['Organism'], row['Type'])
@@ -217,7 +214,6 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
                 plot_image.drawWidth = 1* inch  # Width of the image, adjusted from your figsize
                 row_data.append(plot_image)
         data.append(row_data)
-
     return data
 
 def return_table_style(df, color_pathogen=False):
@@ -338,7 +334,10 @@ def create_report(
     if not df_identified_paths.empty:
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains"]
+        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains", "K2 Reads"]
+        # check if all K2 reads column are 0 or nan
+        if df_identified_paths['K2 Reads'].sum() == 0:
+            columns_yes = columns_yes[:-1]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -348,7 +347,7 @@ def create_report(
         )
         # Add the title and subtitle
 
-        title = Paragraph("Organism Discovery Analysis", title_style)
+        title = Paragraph("Organism Discovery Report", title_style)
         subtitle = Paragraph(f"This report was generated using TaxTriage <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
@@ -428,7 +427,9 @@ def create_report(
     ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_opportunistic.empty:
-        columns_opp =  ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains"]
+        columns_opp =  ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains", "K2 Reads"]
+        if df_opportunistic['K2 Reads'].sum() == 0:
+            columns_opp = columns_opp[:-1]
         data_opp = prepare_data_with_headers(df_opportunistic, plotbuffer, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_opportunistic, color_pathogen=True)
         table = make_table(
@@ -448,7 +449,9 @@ def create_report(
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid"]
+        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "K2 Reads"]
+        if df_identified_others['K2 Reads'].sum() == 0:
+            columns_yes = columns_yes[:-1]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes_others = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=True)
@@ -476,8 +479,10 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Sample', 'Organism','# Aligned', "Alignment Conf" ]
+        columns_no = ['Sample', 'Organism','# Aligned', "Alignment Conf", "K2 Reads" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
+        if df_unidentified['K2 Reads'].sum() == 0:
+            columns_no = columns_no[:-1]
         table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
             data_no,
@@ -503,6 +508,7 @@ def main():
     df_full = df_full.rename(columns={args.sitecol: 'body_site'})
     df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
     df_full = df_full.dropna(subset=[args.type])
+    print(df_full.columns.values)
     # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )

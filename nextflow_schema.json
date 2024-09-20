@@ -156,6 +156,11 @@
                     "fa_icon": "fas fa-file-signature"
 
                 },
+                "use_bt2": {
+                    "type": "boolean",
+                    "description": "Dont use minimap2 for short reads, use bowtie2 instead",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",

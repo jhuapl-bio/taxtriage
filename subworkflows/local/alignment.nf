@@ -5,8 +5,9 @@
 include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
 include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_ALIGN as MINIMAP2_ALIGN_SHORT } from '../../modules/nf-core/minimap2/align/main'
 include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
-// include { BAM_TO_SAM } from "../../modules/local/bam_to_sam"
+include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_SORT } from '../../modules/nf-core/samtools/sort/main'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
@@ -42,37 +43,32 @@ workflow ALIGNMENT {
     ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
-
-
-
+    ch_versions = 1
 
     fastq_reads
         .branch{
             longreads: it[0].platform =~ 'OXFORD'
             shortreads: it[0].platform =~ 'ILLUMINA'
     }.set { ch_aligners }
-
-    ch_versions = 1
-
     def idx = 0
 
     ch_aligners.shortreads
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
             fastas.collect{ fasta ->
-
                 def id = "${meta.id}"
                 if (size > 1){
                     def basen = fasta[0].getBaseName()
                     id = "${id}.${basen}"
                 }
-                def mm = [id: id, oid: meta.id, single_end: meta.single_end  ]
+                def mm = [id: id, oid: meta.id, single_end: meta.single_end, platform: meta.platform ]
                 idx++
 
                 return [ mm, fastq, fasta]
             }
         }
         .set { ch_fasta_shortreads_files_for_alignment }
+
     ch_aligners.longreads
         .flatMap { meta, fastq, fastas, _ ->
             def size = fastas.size()
@@ -82,12 +78,13 @@ workflow ALIGNMENT {
                     def basen = fasta[0].getBaseName()
                     id = "${id}.${basen}"
                 }
-                def mm = [id: id,  oid: meta.id, single_end: meta.single_end  ]
+                def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
                 idx++
                 return [ mm, fastq, fasta[0]]
             }
         }
         .set { ch_fasta_longreads_files_for_alignment }
+
 
     MINIMAP2_ALIGN(
         ch_fasta_longreads_files_for_alignment,
@@ -97,20 +94,40 @@ workflow ALIGNMENT {
         params.minmapq
     )
 
-    BOWTIE2_ALIGN(
-        ch_fasta_shortreads_files_for_alignment,
-        true,
-        true,
-        params.minmapq
-    )
+    if (params.use_bt2){
+        BOWTIE2_ALIGN(
+            ch_fasta_shortreads_files_for_alignment,
+            true,
+            true,
+            params.minmapq
+        )
 
-    collected_bams = BOWTIE2_ALIGN.out.aligned
-        .mix(MINIMAP2_ALIGN.out.bam)
+        collected_bams = BOWTIE2_ALIGN.out.aligned
+            .mix(MINIMAP2_ALIGN.out.bam)
+    } else if (params.use_hisat2) {
+        // Set null for hisat2 splicesites
+        HISAT2_ALIGN(
+            ch_fasta_shortreads_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
+            ch_fasta_shortreads_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
+            ch_fasta_shortreads_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
+        )
 
+        collected_bams = HISAT2_ALIGN.out.bam
+            .mix(MINIMAP2_ALIGN.out.bam)
+    } else {
+        MINIMAP2_ALIGN_SHORT(
+            ch_fasta_shortreads_files_for_alignment,
+            true,
+            true,
+            true,
+            params.minmapq
+        )
 
+        collected_bams = MINIMAP2_ALIGN_SHORT.out.bam
+            .mix(MINIMAP2_ALIGN.out.bam)
+    }
 
     sorted_bams = collected_bams
-
 
     sorted_bams
         .map { meta, file -> [meta.oid, file] } // Extract oid and file

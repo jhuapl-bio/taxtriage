@@ -1,6 +1,6 @@
 process MAP_TAXID_ASSEMBLY {
     label 'process_medium'
-    tag "MergeTopSpecies"
+    tag "$meta.id"
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
