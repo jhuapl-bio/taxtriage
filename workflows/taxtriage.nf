@@ -482,7 +482,11 @@ workflow TAXTRIAGE {
         ALIGNMENT(
             ch_prepfiles
         )
-
+        ch_postalignmentfiles = ch_reads.map{
+            meta, reads -> {
+                return [meta, null, null, null, null, null, null,  []]
+            }
+        }
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
@@ -499,9 +503,12 @@ workflow TAXTRIAGE {
                 return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
+
+
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
-        }.join(ch_bedfiles).join(REFERENCE_PREP.out.ch_reference_cds)
+        }.join(ch_bedfiles)
+        .join(REFERENCE_PREP.out.ch_reference_cds)
         .join(REFERENCE_PREP.out.ch_cds_to_taxids)
         .join(
             ch_filtered_reads.map{
@@ -510,6 +517,7 @@ workflow TAXTRIAGE {
                 }
             }
         )
+
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ASSEMBLY(
             ch_postalignmentfiles,

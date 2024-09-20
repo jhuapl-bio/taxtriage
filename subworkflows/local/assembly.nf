@@ -61,27 +61,29 @@ workflow ASSEMBLY {
                 branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
             )
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
+            try{
+                FEATURES_MAP(
+                    postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bam, bai, mapping, bed]}
+                )
+                valid_aligners  = postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds]}.filter { it[1] != [] }
+                DIAMOND_MAKEDB(
+                    valid_aligners.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds]}
+                )
+                DIAMOND_BLASTX(
+                    ch_assembled_files.join(DIAMOND_MAKEDB.out.db),
+                    'txt',
+                    false
+                )
+                ch_diamond_analysis = MAP_PROT_ASSEMBLY(
+                    DIAMOND_BLASTX.out.txt.join(postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapcd]}),
+                    assemblyfile
+                ).out.promap
 
-            FEATURES_MAP(
-                postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bam, bai, mapping, bed]}
-            )
-
-            DIAMOND_MAKEDB(
-                postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds]}
-            )
-            DIAMOND_BLASTX(
-                ch_assembled_files.join(DIAMOND_MAKEDB.out.db),
-                'txt',
-                false
-            )
-            MAP_PROT_ASSEMBLY(
-                DIAMOND_BLASTX.out.txt.join(postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapcd]}),
-                assemblyfile
-            )
-
-            // Run minimap2 on the contigs against reference fasta files
-            ch_diamond_output = DIAMOND_BLASTX.out.txt
-            ch_diamond_analysis = MAP_PROT_ASSEMBLY.out.promap
+                // Run minimap2 on the contigs against reference fasta files
+                ch_diamond_output = DIAMOND_BLASTX.out.txt
+            } catch (Exception e){
+                println e
+            }
         } else {
             postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads  -> {
                     return [ meta,  ch_empty_file]

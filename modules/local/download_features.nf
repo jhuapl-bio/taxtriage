@@ -31,6 +31,7 @@ process FEATURES_DOWNLOAD {
     def geta = get_aas ? "-p" : ""
 
     """
+    exit 1
     download_features.py \\
         -i ${gcfs} \\
         -a ${assembly} \\
