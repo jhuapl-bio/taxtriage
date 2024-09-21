@@ -37,8 +37,8 @@ workflow REPORT {
             ALIGNMENT_PER_SAMPLE(
                 alignments.combine(pathogens_list),
                 assemblyfile
-
             )
+
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
             // and assign it to the variable pathogens_list
             ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{

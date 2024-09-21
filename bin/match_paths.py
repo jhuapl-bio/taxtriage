@@ -996,7 +996,6 @@ def main():
         print(f"\tisSpecies: {data['isSpecies']}")
         print()
 
-
     write_to_tsv(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
@@ -1176,10 +1175,10 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 pathogenic_sites = ""
             # Write to file in a newline format
             weights = {
-                'mapq_score': 0.35,
+                'mapq_score': 0.25,
                 'diamond_identity': 0.35,
                 'disparity_score': 0.2,
-                'gini_coefficient': 0.1,
+                'gini_coefficient': 0.2,
                 'siblings_score': 0
             }
             # if sum of vals in weights isnt 1 then normalize to 1

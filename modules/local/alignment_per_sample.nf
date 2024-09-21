@@ -49,7 +49,7 @@ process ALIGNMENT_PER_SAMPLE {
     def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
     def covfile = covfile.name != "NO_FILE" ?  "-x $covfile" : " "
     def depthfile = depthfile.name != "NO_FILE" ? "-d $depthfile" :  " "
-    def diamond_output = ch_diamond_analysis.name =~ "NO_FILE*" ? " --diamond $ch_diamond_analysis" : " "
+    def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
 
     """
 
