@@ -65,9 +65,9 @@ workflow ASSEMBLY {
                 FEATURES_MAP(
                     postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bam, bai, mapping, bed] }
                 )
-                valid_aligners  = postalignmentfiles.filter(
-                    meta, bam, bai, mapping, bed, cds, mapcd, reads != []
-                )
+                valid_aligners  = postalignmentfiles.filter{
+                    return it[5] != []
+                }
                 DIAMOND_MAKEDB(
                     valid_aligners.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds] }
                 )
