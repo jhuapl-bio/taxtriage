@@ -217,7 +217,7 @@ normal_style = styles['Normal']
 def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
     data = []
     # convert k2 reads to int
-    # df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
+    df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
     if not columns:
         columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
     if include_headers:
@@ -362,10 +362,11 @@ def create_report(
             "# Reads Aligned",
             "Confidence Metric (0-1)",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
+            "K2 Reads"
             ]
         # check if all K2 reads column are 0 or nan
-        # if df_identified_paths['K2 Reads'].sum() == 0:
-        #     columns_yes = columns_yes[:-1]
+        if df_identified_paths['K2 Reads'].sum() == 0:
+            columns_yes = columns_yes[:-1]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -470,10 +471,10 @@ def create_report(
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "Microbial Category", "# Reads Aligned",
                        "Confidence Metric (0-1)", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains",
+                       "Pathogenic Subsp/Strains", "K2 Reads"
                        ]
-        # if df_opportunistic['K2 Reads'].sum() == 0:
-        #     columns_opp = columns_opp[:-1]
+        if df_opportunistic['K2 Reads'].sum() == 0:
+            columns_opp = columns_opp[:-1]
         data_opp = prepare_data_with_headers(df_opportunistic, plotbuffer, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_opportunistic, color_pathogen=True)
         table = make_table(
@@ -492,7 +493,10 @@ def create_report(
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Specimen ID (Type)", "Detected Organism", "Microbial Category", "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #"]
+        columns_yes = ["Specimen ID (Type)",
+                       "Detected Organism", "Microbial Category",
+                       "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #",
+                       "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         # if df_identified_paths['K2 Reads'].sum() == 0:
         #     columns_yes = columns_yes[:-1]
@@ -522,10 +526,10 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)" ]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "K2 Reads" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
-        # if df_unidentified['K2 Reads'].sum() == 0:
-        #     columns_no = columns_no[:-1]
+        if df_unidentified['K2 Reads'].sum() == 0:
+            columns_no = columns_no[:-1]
         table_style = return_table_style(df_unidentified, color_pathogen=False)
         table_no = make_table(
             data_no,
