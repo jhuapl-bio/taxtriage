@@ -611,14 +611,17 @@ def main():
             next(reader)
             for line in reader:
                 if len(line) > 0:
-                    dmnd[line[0]] = dict(
-                        contigs= int(line[1]),
-                        cds = int(line[2]),
-                        identity= line[3],
-                        lengthmedian = line[4],
-                        mismatchedmedian= line[5],
-                        medianevalue= line[6],
-                    )
+                    try:
+                        dmnd[line[0]] = dict(
+                            contigs= int(line[1]),
+                            cds = int(line[2]),
+                            identity= float(line[3])/100,
+                            lengthmedian = line[4],
+                            mismatchedmedian= line[5],
+                            medianevalue= line[6],
+                        )
+                    except Exception as e:
+                        print(f"Error: {e}")
                 i+=1
     reference_hits, total_reads = count_reference_hits(
         inputfile,
@@ -945,7 +948,7 @@ def main():
                     mean_cds = calculate_mean(allstrains, 'cds')
                     max_val_reached =  mean_cds > args.min_cds_found
                     dmnd_results = {
-                        'identity': mean_identity/100,
+                        'identity': mean_identity,
                         'lengthmean': mean_length,
                         'mismatchedmean': mean_mismatched,
                         'meanevalue': mean_evalue,
@@ -1175,8 +1178,8 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 pathogenic_sites = ""
             # Write to file in a newline format
             weights = {
-                'mapq_score': 0.25,
-                'diamond_identity': 0.35,
+                'mapq_score': 0.2,
+                'diamond_identity': 0.4,
                 'disparity_score': 0.2,
                 'gini_coefficient': 0.2,
                 'siblings_score': 0
