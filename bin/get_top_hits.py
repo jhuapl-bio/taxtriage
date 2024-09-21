@@ -53,7 +53,9 @@ def parse_args(argv=None):
         type=str, nargs="+", default=['S2', 'S1', 'S', 'C', 'O', 'F', 'G', 'P', 'K', 'D', 'U'],
         help="Filter on only showing specific ranks ",
     )
-
+    parser.add_argument(
+        "--remove_commensals", default=False,  help="Remove any and all commensals that are listed in the pathogen sheet",  action='store_true'
+    )
     parser.add_argument(
         "-s",
         "--top_hits_string",
@@ -285,12 +287,12 @@ def main(argv=None):
         body_sites = []
     else:
         body_sites = [body_site_map(args.body_site.lower())]
+    remove_taxids = []
     if args.pathogens:
         try:
             with open(args.pathogens, 'r', encoding='utf-8', errors='replace') as f:
                 pathogen_sheet = pd.read_csv(f, sep=',')
             f.close()
-
             # A function to apply the mapping and remove duplicates
             def translate_and_deduplicate_sites(sites):
                 # Split the string by comma and space, and remove empty strings if any
@@ -307,7 +309,6 @@ def main(argv=None):
                         translated_sites.add(mapped_value)
                 # Join the unique sites back into a string
                 return ', '.join(sorted(translated_sites))
-
             # convert all pathogen_sites nan to "Unknown"
             pathogen_sheet['pathogenic_sites'].fillna("Unknown", inplace=True)
             pathogen_sheet['pathogenic_sites'] = pathogen_sheet['pathogenic_sites'].apply(translate_and_deduplicate_sites)
@@ -315,19 +316,33 @@ def main(argv=None):
             pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
             # filter out where general_classification is pathogen or opportunistic pathogen
             pathogen_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["primary", "opportunistic", "potential", "oportunistic"])]['taxid']
+
             # remove all Nan values
             pathogen_orgs = pathogen_orgs.dropna()
             pathogen_orgs = pathogen_orgs.astype(int).tolist()
 
+            # do the same for commensals and sites
+            pathogen_sheet['commensal_sites'].fillna("", inplace=True)
+            pathogen_sheet['commensal_sites'] = pathogen_sheet['commensal_sites'].apply(translate_and_deduplicate_sites)
+            pathogen_sheet['commensal_sites'] = pathogen_sheet['commensal_sites'].str.lower()
+
+
+            # Check if `remove_commensals` is True, and if so, remove taxids from the mapping
+            if args.remove_commensals:
+                # get all taxids where general classification is commensal
+                commensal_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["commensal"])]['taxid']
+                remove_taxids.extend(commensal_orgs)
+            # even if general classification is commensal and it is a pathogen, add it back in since it is a pathogen for that body site likely
             for orgn in pathogen_orgs:
                 if orgn in seentaxids:
                     extra_orgs.append(orgn)
         except Exception as e:
             print(e)
             print("Error reading pathogens file")
+
+
+
     if args.distributions:
-
-
         dists, site_counts = import_distributions(
             args.distributions,
             "tax_id",
@@ -363,13 +378,32 @@ def main(argv=None):
             # if zscore is NaN convert to -1
             df_full['zscore'] = df_full['zscore'].fillna(-1)
             # filter any row with zscore outside of absolute value of args.zscore
-            df_full = df_full[  ( df_full['zscore'] > args.zscore) | (df_full['zscore'] == -1)  ]
+            df_full = df_full[  ( df_full['zscore'] > args.zscore)   ]
+            # get all where zscore is less than or equal to args.zscore and is not -1
+            if args.remove_commensals:
+                taxa_non = df_full[  ( df_full['zscore'] <= args.zscore)   ]['tax_id'].tolist()
+                remove_taxids.extend(taxa_non)
+
+            # Removed -1 from distributions - need to figure out a better way as too many things are downloaded currently
+
             # get taxid is 2 stool body_site
             # Get percentile of abundance relative to all abundances
             # df_full['percentile'] = df_full['abundance'].rank(pct=True) * 100
             dist_orgs = df_full['tax_id'].tolist()
             extra_orgs = extra_orgs + dist_orgs
     extra_orgs = list(set(extra_orgs))
+    # remove all taxids from mapping that are in remove_taxids
+    mapping_taxids = [x['taxid'] for x in mapping]
+    if len(remove_taxids) > 0:
+        for taxid in remove_taxids:
+            # find the index and get value of the org in mapping
+            if taxid in mapping_taxids:
+                idx = mapping_taxids.index(taxid)
+                del mapping[idx]
+                print(f"Removed {taxid} commensal organisms from the mapping")
+            if taxid in extra_orgs:
+                idx_extra = extra_orgs.index(taxid)
+                del extra_orgs[idx_extra]
     mapping = top_hit(mapping, specific_limits, args.top_per_rank, extra_orgs)
     make_files(mapping, args.file_out)
 

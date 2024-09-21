@@ -45,16 +45,17 @@ process TOP_HITS {
     ch_top_per_taxa = ""
     def top_per_taxa  = params.top_per_taxa && params.top_per_taxa != "" ? " -s ${params.top_per_taxa} " : ''
     def top_hits_count = params.top_hits_count ? " -t ${params.top_hits_count}" : ' -t 10 '
-    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions  $zscore_accepted " : ""
+    def distribution_arg = params.add_irregular_top_hits && distributions.name != "NO_FILE" ? " -d $distributions  $zscore_accepted " : ""
     def site = meta.type ? " -b ${meta.type} " : ""
     def pathogen_sheet = pathogens.name != "NO_FILE" ? " -p $pathogens  " : ""
+    def remove_commensal = params.remove_commensal ? " --remove_commensals " : ""
 
     """
     echo ${meta.id} "-----------------META variable------------------"
     get_top_hits.py \\
         -i \"$report\" \\
         -o ${id}.top_report.tsv  ${distribution_arg} ${pathogen_sheet} ${site} \\
-        $top_hits_count  $top_per_taxa
+        $top_hits_count  $top_per_taxa $remove_commensal
 
 
 

@@ -99,6 +99,12 @@
                     "description": "Taxonomy tab file for krona plots",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "add_irregular_top_hits": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Add irregular distribution genomes to the top hits",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "taxdump": {
                     "type": "string",
                     "format": "file-path",
