@@ -144,7 +144,7 @@ def import_data(inputfile ):
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
             #  update index of row to change organism name to bold
-            df.at[row_idx, "Detected Organism"] = f'{row.Name}*'
+            df.at[row_idx, "Detected Organism"] = f'{row["Detected Organism"]}*'
         # change the Name column if the mapnames for taxid is in the dict
         df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
