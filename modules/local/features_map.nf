@@ -50,7 +50,7 @@ process FEATURES_MAP {
 
     features_map.py \\
         -b $bed \\
-        -a  $bam \\
+        -a $bam \\
         -i $bai \\
         -m  $mapping \\
         -o $outputoi \\

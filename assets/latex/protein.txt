@@ -1,0 +1,3 @@
+\text{Protein Alignment Score} = \frac{\sum_{i=1}^{n} \text{DIAMOND CDs identity \%}_i}{n}
+\\
+\text n = \text{total number of proteins aligned for each organism.}

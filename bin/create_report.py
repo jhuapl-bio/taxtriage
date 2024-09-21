@@ -20,6 +20,7 @@
 import os
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -59,7 +60,7 @@ def parse_args(argv=None):
     )
     parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Aligned Reads',
                         help="Name of abundance column, default is abundance")
-    parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default='Name',
+    parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
                         help="Name of id column, default is id")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
@@ -105,7 +106,7 @@ def format_cell_content(cell):
 def import_data(inputfile ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
-    # Name\tSample\tSample Type\t% Reads\t% Aligned Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
+    # Name\Specimen ID\tSpecimen Type\t% Reads\t% Aligned Reads\t# Reads Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
     # Escherichia coli\tNasal Swab\tnasal\t100.0\t1.28\t22\tYes\tblood, urine\tCommensal\t562\testablished\t0.054\t14.0\t26.0\t2.59\t0.028\tDirect\tFalse\tCommensal Listing
     # Salmonella enterica\tNasal Swab\tnasal\t24.13\t0.49\t7\tYes\tstool\tPrimary\t28901\testablished\t0.061\t14.0\t16.3\t1.63\t0.016\tDirect\tFalse\t
     # Staphylococcus aureus\tNasal Swab\tnasal\t96.86\t52.39\t896\tYes\tblood\tCommensal\t1280\testablished\t0.63\t14.0\t59.0\t57.66\t0.85\tDirect\tFalse\tCommensal Listing
@@ -115,9 +116,9 @@ def import_data(inputfile ):
     # Limosilactobacillus fermentum\tNasal Swab\tnasal\t15.88\t12.74\t218\tNo\t\tUnknown\t1613\t\t0.65\t14.0\t59.72\t66.56\t9.37\tNone\tTrue\t
     # Enterococcus faecalis\tNasal Swab\tnasal\t6.44\t5.55\t95\tYes\tblood, urine\tOpportunistic\t1351\testablished\t0.53\t14.0\t60.0\t53.42\t2.19\tDirect\tFalse\t
     # Saccharomyces cerevisiae\tNasal Swab\tnasal\t13.81\t13.81\t236\tNo\t\tPotential\t4932\t0.17\t13.97\t59.42\t13.099\t0.14\tDerived\tFalse\tS288C (0.1%)
-    # Staphylococcus aureus\tStool Sample\tgut\t100.0\t63.62\t1427\tYes\tblood\tCommensal\t1280\testablished\t0.083\t40.0\t15.33\t4.57\t0.047\tDirect\tFalse\tCommensal Listing
-    # Neisseria gonorrhoeae\tStool Sample\tgut\t36.15\t36.023\t808\tYes\tblood, urine\tPrimary\t485\testablished\t0.775\t40.0\t41.4\t4.55\t0.046\tDirect\tTrue\tTUM19854 (0.4%)
-    # Metabacillus litoralis\tStool Sample\tgut\t0.35\t0.35\t8\tNo\t\tUnknown\t152268\t\t0.0078\t40.0\t17.87\t0.61\t0.0061\tNone\tTrue\t
+    # Staphylococcus aureus\tStool\tgut\t100.0\t63.62\t1427\tYes\tblood\tCommensal\t1280\testablished\t0.083\t40.0\t15.33\t4.57\t0.047\tDirect\tFalse\tCommensal Listing
+    # Neisseria gonorrhoeae\tStool\tgut\t36.15\t36.023\t808\tYes\tblood, urine\tPrimary\t485\testablished\t0.775\t40.0\t41.4\t4.55\t0.046\tDirect\tTrue\tTUM19854 (0.4%)
+    # Metabacillus litoralis\tStool\tgut\t0.35\t0.35\t8\tNo\t\tUnknown\t152268\t\t0.0078\t40.0\t17.87\t0.61\t0.0061\tNone\tTrue\t
     # """.strip()
     # df = pd.read_csv(StringIO(tsv_data), sep='\t')
 
@@ -132,20 +133,20 @@ def import_data(inputfile ):
     df = pd.read_csv(inputfile, sep='\t')
 
     # sort the dataframe by the Sample THEN the # Reads
-    df = df.sort_values(by=[ "Type", "Sample", "# Aligned"], ascending=[False, True, False])
+    df = df.sort_values(by=[ "Microbial Category", "Specimen ID", "# Reads Aligned"], ascending=[False, True, False])
     # trim all of NAme column  of whitespace either side
-    df['Name'] = df['Name'].str.strip()
+    df["Detected Organism"] = df["Detected Organism"].str.strip()
     dictnames = {
         11250: "human respiratory syncytial virus B",
         12814: "human respiratory syncytial virus A",
     }
-    # df['Organism'] = df['Name']
+    # df['Organism'] = df["Detected Organism"]
     for row_idx, row in df.iterrows():
         if row['Status'] == 'putative':
             #  update index of row to change organism name to bold
-            df.at[row_idx, 'Name'] = f'{row.Name}*'
+            df.at[row_idx, "Detected Organism"] = f'{row.Name}*'
         # change the Name column if the mapnames for taxid is in the dict
-        df['Name'] = df[['Name', 'Taxid']].apply(lambda x: dictnames[x['Taxid']] if x['Taxid'] in dictnames else x['Name'], axis=1)
+        df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
     df = df.fillna("")
     return df
@@ -153,15 +154,37 @@ def import_data(inputfile ):
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
-    df_yes = df_full[~df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Opportunistic", "Potential" ] ) ].copy()
-    df_opp = df_full[df_full['Type'].isin([ 'Opportunistic', "Potential"])].copy()
-    df_comm = df_full[df_full['Type'].isin(['Commensal'])].copy()
-    df_unidentified = df_full[(df_full['Type'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
+    df_yes = df_full[~df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Opportunistic", "Potential" ] ) ].copy()
+    df_opp = df_full[df_full['Microbial Category'].isin([ 'Opportunistic', "Potential"])].copy()
+    df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
+    df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
 
     df_yes.reset_index(drop=True, inplace=True)
     df_opp.reset_index(drop=True, inplace=True)
     return df_yes, df_opp, df_comm, df_unidentified
 
+
+def safe_get(row, column_name):
+    """
+    Safely access a value from a Pandas row (Series) and handle missing or empty values.
+
+    Parameters:
+    - row: Pandas Series representing a row.
+    - column_name: The column name to access.
+
+    Returns:
+    - The value if present, stripped of leading/trailing spaces if it's a string.
+    - None if the column is missing or the value is empty.
+    """
+    # Check if the column exists in the row
+    if column_name in row.index:
+        val = row[column_name]
+        # Handle string values by stripping spaces
+        if isinstance(val, str):
+            val = val.strip()
+            return val if val else None  # Return None if the string is empty after stripping
+        return val  # Return the value directly if it's not a string
+    return None  # Return None if the column is not present
 
 
 # Custom styles for title and subtitle with right alignment
@@ -195,7 +218,6 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
     data = []
     # convert k2 reads to int
     df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
-
     if not columns:
         columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
     if include_headers:
@@ -207,7 +229,7 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
         row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
         # Insert the plot image
         if len(plot_dict.keys()) > 0:
-            plot_key = (row['Organism'], row['Type'])
+            plot_key = (row['Detected Organism'], row['Specimen Type'])
             if plot_key in plot_dict:
                 plot_image = Image(plot_dict[plot_key])
                 plot_image.drawHeight = 0.5 * inch  # Height of the image
@@ -230,17 +252,16 @@ def return_table_style(df, color_pathogen=False):
         cells_to_color = []
         colorindexcol = 2
 
-        sampleindx = df.columns.get_loc('Type')
+        sampleindx = df.columns.get_loc('Microbial Category')
         # Example post-processing to mark cells
-        for row_idx, row in enumerate(df.itertuples(index=False)):
-            val = row.Class
-            status = row.Status
-            sites = row.Locations
+        for row_idx, row in df.iterrows():
+            val = row['Microbial Category']
+            sites =  row['Locations']
             # if nan then set to empty string
             if pd.isna(sites):
                 sites = ""
             # Get Sample Type value from row
-            sampletype = row[sampleindx]
+            sampletype = row['Specimen Type']
             if val != "Commensal" and sampletype in sites:
                 color = 'lightgreen'
             elif val != "Commensal" and row.AnnClass == 'Derived':
@@ -319,14 +340,14 @@ def create_report(
         version = "Local Build"
     # get datetime of year-mont-day hour:min
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
-    # sort df_identified by Alignment Conf
+    # sort df_identified by Confidence Metric (0-1)
     # filter out so only Class is PAthogen
-    df_identified = df_identified.sort_values(by=['Sample', 'Alignment Conf'], ascending=False)
-    df_opportunistic = df_opportunistic.sort_values(by=['Sample', 'Alignment Conf'], ascending=False)
+    df_identified = df_identified.sort_values(by=['Specimen ID', 'Confidence Metric (0-1)'], ascending=False)
+    df_opportunistic = df_opportunistic.sort_values(by=['Specimen ID', 'Confidence Metric (0-1)'], ascending=False)
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
-    df_unidentified = df_unidentified.sort_values(by=['Sample', '# Aligned'], ascending=False)
+    df_unidentified = df_unidentified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=False)
     elements = []
     ##########################################################################################
     ##########################################################################################
@@ -334,7 +355,15 @@ def create_report(
     if not df_identified_paths.empty:
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains", "K2 Reads"]
+        columns_yes = [
+            "Specimen ID (Type)",
+            "Detected Organism",
+            "Microbial Category",
+            "# Reads Aligned",
+            "Confidence Metric (0-1)",
+            "Taxonomic ID #", "Pathogenic Subsp/Strains",
+            "K2 Reads"
+            ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
@@ -346,9 +375,8 @@ def create_report(
             table_style=table_style
         )
         # Add the title and subtitle
-
         title = Paragraph("Organism Discovery Report", title_style)
-        subtitle = Paragraph(f"This report was generated using TaxTriage <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of human-host pathogens. It will likely change performance as a result of rapid development practices.", subtitle_style)
+        subtitle = Paragraph(f"This report was generated using TaxTriage <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of human-host pathogens.", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
@@ -357,30 +385,43 @@ def create_report(
     # Adding regular text
 
     styles = getSampleStyleSheet()
-
     # Adding subtext (you can adjust the style to make it look like subtext)
     subtext_style = styles["BodyText"]
     subtext_style.fontSize = 10  # Smaller font size for subtext
     subtext_style.leading = 12
     subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types. Classifications of pathogens are described as:", subtext_style)
     elements.append(subtext_para)
+    elements.append(Spacer(1, 12))  # Space between tables
+    # Generate the explanation paragraph and append it to the elements
+    # After adding your table to the elements
+    subtext_style = styles['Normal']
 
-    # Create a bullet list
+    # Create explanatory bullets with better formatting
     bullet_list_items = [
         "Primary: Exposure to the agent generally results in a diseased state in both immunocompromised and immunocompetent individuals.",
-        "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections",
+        "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections.",
         "Commensal: Organisms typically found in the human microbiota.",
-        "Potential: Organisms that have been associated with disease states but are not extensively studied",
-
+        "Potential: Organisms that have been associated with disease states but are not extensively studied.",
     ]
 
     bullet_list = ListFlowable(
         [ListItem(Paragraph(item, subtext_style)) for item in bullet_list_items],
-        bulletType='bullet',  # '1' for numbered list
-        start='circle'  # 'circle', 'square', etc.
+        bulletType='bullet',
+        start='circle'
     )
-
     elements.append(bullet_list)
+    elements.append(Spacer(1, 12))
+
+
+
+
+
+
+
+
+    elements.append(Spacer(1, 12))  # Space between tables
+
+
     # Create an HRFlowable for the horizontal line
     horizontal_line = HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=12, spaceAfter=12)
 
@@ -427,7 +468,11 @@ def create_report(
     ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_opportunistic.empty:
-        columns_opp =  ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "Pathogenic Subsp/Strains", "K2 Reads"]
+        columns_opp = ["Specimen ID (Type)", "Detected Organism",
+                       "Microbial Category", "# Reads Aligned",
+                       "Confidence Metric (0-1)", "Taxonomic ID #",
+                       "Pathogenic Subsp/Strains", "K2 Reads"
+                       ]
         if df_opportunistic['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
         data_opp = prepare_data_with_headers(df_opportunistic, plotbuffer, include_headers=True, columns=columns_opp)
@@ -437,29 +482,31 @@ def create_report(
             table_style=table_style
         )
         # Add the title and subtitle
-
         Title = Paragraph("Opportunistic Pathogens", title_style)
         elements.append(Title)
         elements.append(Spacer(1, 12))
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
 
-    ################################################################################################
+    # ################################################################################################
     ### Table on commensals
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Sample (Type)", "Organism", "Class", "# Aligned", "Alignment Conf", "Taxid", "K2 Reads"]
-        if df_identified_others['K2 Reads'].sum() == 0:
-            columns_yes = columns_yes[:-1]
+        columns_yes = ["Specimen ID (Type)",
+                       "Detected Organism", "Microbial Category",
+                       "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #",
+                       "K2 Reads"]
+        # check if all K2 reads column are 0 or nan
+        # if df_identified_paths['K2 Reads'].sum() == 0:
+        #     columns_yes = columns_yes[:-1]
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes_others = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_identified_others, color_pathogen=True)
+        data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_identified_others, color_pathogen=False)
         table = make_table(
-            data_yes_others,
+            data_yes,
             table_style=table_style
         )
-        # Add the title and subtitle
         title = Paragraph("Commensals", title_style)
         subtitle = Paragraph(f"These were identified & were listed as a commensal directly", subtitle_style)
         elements.append(title)
@@ -479,7 +526,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Sample', 'Organism','# Aligned', "Alignment Conf", "K2 Reads" ]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "K2 Reads" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -490,6 +537,9 @@ def create_report(
         )
         elements.append(table_no)
     elements.append(Spacer(1, 12))  # Space between tables
+    ##########################################################################################
+    ##### Add equations HERE - Work in progress ##################################################
+
     ##########################################################################################
     #####  Build the PDF
     # Adjust the build method to include the draw_vertical_line function
@@ -503,24 +553,23 @@ def main():
     args = parse_args()
     df_full = import_data(args.input)
 
-    # change column "id" in avbundance_data to "tax_id" if args.type is "name"
+    # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
     df_full = df_full.rename(columns={args.id_col: args.type})
     df_full = df_full.rename(columns={args.sitecol: 'body_site'})
     df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
     df_full = df_full.dropna(subset=[args.type])
-    print(df_full.columns.values)
     # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
     # make new column that is # of reads aligned to sample (% reads in sample) string format
-    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Aligned']} ({x['abundance']:.2f}%)", axis=1)
+    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)", axis=1)
     # add body sit to Sample col with ()
     def make_sample(x):
         if not x['body_site']:
             return ""
         else:
-            return f"{x['Sample']} ({x['body_site']})"
-    df_full['Sample (Type)'] = df_full.apply(lambda x: make_sample(x), axis=1)
+            return f"{x['Specimen ID']} ({x['body_site']})"
+    df_full['Specimen ID (Type)'] = df_full.apply(lambda x: make_sample(x), axis=1)
     # group on sampletype and get sum of abundance col
     # get the sum of abundance for each sample
 
@@ -547,9 +596,10 @@ def main():
                     "variance": 0,
                     "body_site": "Unknown",
                     "tax_id": "Unknown",
-                    "name": "Unknown",
+                    "Detected Organism": "Unknown",
                     "rank": "Unknown",
                     "abundances": [],
+                    "TASS Score": 0,
                     "gini_coefficient": 0,
                 }
             else:
@@ -565,19 +615,19 @@ def main():
     # convert all locations nan to "Unknown"
     df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
 
-    df_full['Alignment Conf'] = df_full['Gini Coefficient'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
+    df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
     df_identified, df_opportunistic, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
-        "Name": "Organism",
-        "name": "Organism",
-        "# Aligned": "# Reads Aligned to Sample",
-        "body_site": "Type",
+        "name": "Detected Organism",
+        'taxid': "Taxonomic ID #",
+        "# Reads Aligned": "# Reads Aligned to Sample",
+        "body_site": "Specimen Type",
         "abundance": "% of Aligned",
         "Pathogenic Sites": "Locations",
         "% Reads": "% Reads of Organism",
-        "Type": "Class",
-        'Quant': "# Aligned",
+        "Microbial Category": "Microbial Category",
+        'Quant': "# Reads Aligned",
         "Gini Coefficient": "Gini Coeff",
     }
     df_identified= df_identified.rename(columns=remap_headers)

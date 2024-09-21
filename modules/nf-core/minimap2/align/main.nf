@@ -40,7 +40,8 @@ process MINIMAP2_ALIGN {
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     def I_value = "${(task.memory.toGiga() * 0.9).longValue()}G" // 90% of allocated memory, append GB to end as a string
-
+    // if input is illumina then use -ax sr else use -ax map-ont
+    
     """
     
     minimap2 \\
@@ -50,7 +51,7 @@ process MINIMAP2_ALIGN {
         $input_reads \\
         $cigar_paf \\
         $set_cigar_bam \\
-        $bam_output $minmapq
+        $bam_output 
 
 
     cat <<-END_VERSIONS > versions.yml

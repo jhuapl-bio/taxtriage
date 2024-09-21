@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process PATHOGENS_FIND_SAMPLE {
+process ALIGNMENT_PER_SAMPLE {
     tag "$meta.id"
     label 'process_medium'
 
@@ -24,7 +24,8 @@ process PATHOGENS_FIND_SAMPLE {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(depthfile), path(covfile), path(k2_report), path(pathogens_list),  path(assembly)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(depthfile), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
+    file assembly
 
     output:
         path "versions.yml"           , emit: versions
@@ -45,17 +46,20 @@ process PATHOGENS_FIND_SAMPLE {
     // if k2_report != NO_FILE, add --k2 flag
 
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
+    def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
+    def covfile = covfile.name != "NO_FILE" ?  "-x $covfile" : " "
+    def depthfile = depthfile.name != "NO_FILE" ? "-d $depthfile" :  " "
+    def diamond_output = ch_diamond_analysis.name =~ "NO_FILE*" ? " --diamond $ch_diamond_analysis" : " "
 
     """
 
     match_paths.py \\
         -i $bamfiles \\
-        -o $output -x $covfile -d $depthfile \\
+        -o $output $covfile $depthfile \\
         -s $id $assemblyi \\
         $type \\
         $min_reads_align \\
-        -p $pathogens_list \\
-        -m $mapping $k2
+        -p $pathogens_list  $k2 $diamond_output $mapping
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

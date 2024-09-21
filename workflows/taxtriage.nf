@@ -31,12 +31,6 @@ WorkflowTaxtriage.initialise(params, log)
 // def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
 
 // print wfsummary to json file to working directory
-
-
-
-
-
-
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
 def checkPathParamList = [
@@ -60,11 +54,11 @@ if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && param
 if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
 
 if (params.minq) {
-    ch_minq_illumina = params.minq
-    ch_minq_oxford = params.minq
+    ch_minq_shortreads = params.minq
+    ch_minq_longreads = params.minq
 } else {
-    ch_minq_illumina = 20
-    ch_minq_oxford = 7
+    ch_minq_shortreads = 20
+    ch_minq_longreads = 7
     println 'Min Quality set to default'
 }
 
@@ -82,7 +76,7 @@ def validateBt2Scoremin(String scoremin) {
     }
 }
 String value = "G,-10,-2"
-boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$' )
+boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
 ch_empty_file = file("$projectDir/assets/NO_FILE")
 
 if (matches) {
@@ -124,11 +118,6 @@ if (!params.assembly_file_type) {
     ch_assembly_file_type = params.assembly_file_type
 }
 
-if (params.assembly && ch_assembly_txt.isEmpty()) {
-    exit 1, "File provided with --assembly is empty: ${ch_assembly_txt.getName()}!"
-}  else if (params.assembly) {
-    println "Assembly file present, using it to pull genomes from ncbi... ${params.assembly}"
-}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,8 +150,6 @@ ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIf
 // // // //
 // // // //
 
-
-
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT LOCAL MODULES/SUBWORKFLOWS
@@ -174,10 +161,13 @@ ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIf
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
-include { PATHOGENS } from '../subworkflows/local/pathogen'
+include { REPORT } from '../subworkflows/local/report'
 include { READSFILTER } from '../subworkflows/local/filter_reads'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
+include { ASSEMBLY } from '../subworkflows/local/assembly'
+include { CLASSIFIER } from '../subworkflows/local/classifier'
+
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT NF-CORE MODULES/SUBWORKFLOWS
@@ -187,6 +177,7 @@ include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 //
 // MODULE: Installed directly from nf-core/modules
 //
+
 include { DOWNLOAD_DB } from '../modules/local/download_db'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
 include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
@@ -195,7 +186,6 @@ include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
-include { KRAKEN2_KRAKEN2                      } from '../modules/nf-core/kraken2/kraken2/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
 include { ARTIC_GUPPYPLEX } from '../modules/nf-core/artic/guppyplex/main'
 include { MOVE_FILES } from '../modules/local/moveFiles.nf'
@@ -203,38 +193,20 @@ include { MOVE_NANOPLOT } from '../modules/local/move_nanoplot.nf'
 include { PORECHOP } from '../modules/nf-core/porechop/main'
 include { SEQTK_SAMPLE } from '../modules/nf-core/seqtk/sample/main'
 include { MULTIQC                     } from '../modules/nf-core/multiqc/main'
-include { FLYE                     } from '../modules/nf-core/flye/main'
-include { KRAKENTOOLS_COMBINEKREPORTS   } from '../modules/nf-core/krakentools/combinekreports/main'
-include { KRONA   } from '../modules/local/krona.nf'
-include { KRONA_KTIMPORTTEXT  } from '../modules/nf-core/krona/ktimporttext/main'
-include { MEGAHIT } from '../modules/nf-core/megahit/main'
 include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/custom/dumpsoftwareversions/main'
 include { CONFIDENCE_METRIC } from '../modules/local/confidence'
 include { CONVERT_CONFIDENCE } from '../modules/local/convert_confidence'
 include { PULL_TAXID } from '../modules/local/pull_taxid'
 include { REFERENCE } from '../modules/local/download_reference'
-include { PULL_FASTA } from '../modules/local/pullFASTA'
-include { TOP_HITS } from '../modules/local/top_hits'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
-include { REMOVETAXIDSCLASSIFICATION } from '../modules/local/remove_taxids.nf'
-include { KRAKENREPORT } from '../modules/local/krakenreport'
-//include { CENTRIFUGE_CENTRIFUGE } from '../modules/nf-core/centrifuge/centrifuge/main'
-//include { CENTRIFUGE_KREPORT } from '../modules/nf-core/centrifuge/kreport/main'
-include { METAPHLAN_METAPHLAN } from '../modules/nf-core/metaphlan/metaphlan/main'
-include { TAXPASTA_STANDARDISE } from '../modules/nf-core/taxpasta/standardise/main'
-include { TAXPASTA_MERGE } from '../modules/nf-core/taxpasta/merge/main'
-include { MERGEDKRAKENREPORT } from '../modules/local/merged_krakenreport'
-include { FILTERKRAKEN } from '../modules/local/filter_krakenreport'
-include { MERGEDSUBSPECIES } from '../modules/local/merged_subspecies'
+include { PULL_FASTA } from '../modules/local/pullFASTA'
 include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
-include { KREPORT_TO_KRONATXT } from '../modules/local/generate_krona_txtfile'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
 include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include {  REFERENCE_REHEADER } from '../modules/local/reheader'
-include { FEATURES_MAP } from '../modules/local/features_map'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -307,7 +279,6 @@ workflow TAXTRIAGE {
             )
             /* groovylint-disable-next-line UnnecessaryGetter */
             ch_db = DOWNLOAD_DB.out.k2d.map { file -> file.getParent() }
-
         } else if (params.db)  {
             ch_db = file(params.db, checkIfExists: true)
         } else {
@@ -327,8 +298,6 @@ workflow TAXTRIAGE {
     } else {
         ch_classifier = ['kraken2']
     }
-
-
     if (!ch_assembly_txt) {
         GET_ASSEMBLIES()
         GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
@@ -339,9 +308,7 @@ workflow TAXTRIAGE {
     // make an empty path channel
     ch_accession_mapping  = Channel.empty()
     ch_organisms = Channel.empty()
-
-
-
+    ch_pass_files = Channel.empty()
     // // // //
     // // // //
     // // // //
@@ -352,6 +319,7 @@ workflow TAXTRIAGE {
     INPUT_CHECK(
         ch_input
     )
+
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
     // if commitId is null then set it to "local"
@@ -368,22 +336,10 @@ workflow TAXTRIAGE {
     println "Date: ${date}"
 
     ch_reads = INPUT_CHECK.out.reads
-    // branch needscompressing meta key
-    // ch_reads
-    //     .branch {
-    //         compressNeeded: it[0].needscompressing
-    //         skipCompress: !it[0].needscompressing
-    //     }
-    //     .set { branched_compress_reads }
-    // // if compressNeeded is true then compress the fastq files
-    // PIGZ_COMPRESS(
-    //     branched_compress_reads.compressNeeded
-    // )
-
-    // ch_reads = PIGZ_COMPRESS.out.archive.mix(branched_compress_reads.skipCompress)
-
-
-
+    ch_pass_files = ch_reads.map{ meta, reads -> {
+            return [ meta ]
+        }
+    }
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
@@ -406,12 +362,13 @@ workflow TAXTRIAGE {
     )
 
     // // // //
-
     // // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
     ch_porechop_out = Channel.empty()
     ch_fastp_reads = Channel.empty()
     ch_fastp_html = Channel.empty()
+    ch_mapaa_taxid = Channel.empty()
+    ch_diamond_output = Channel.empty()
     params.pathogens ? ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true) : ''
 
 
@@ -424,7 +381,7 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
 
     PORECHOP(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].trim  }
+        ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
     )
     ch_porechop_out  = PORECHOP.out.reads
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
@@ -450,6 +407,7 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
@@ -459,11 +417,10 @@ workflow TAXTRIAGE {
         )
         ch_versions = ch_versions.mix(FASTQC.out.versions.first())
         NANOPLOT(
-            ch_reads.filter { it[0].platform  =~ /(?i)OXFORD/ }
+            ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
         )
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
         ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
-
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
@@ -478,152 +435,40 @@ workflow TAXTRIAGE {
     } else{
         distributions = Channel.fromPath(params.distributions)
     }
-    if (!params.skip_kraken2){
-        // // // // // //
-        // // // // // // MODULE: Run Kraken2
-        // // // // // //
-
-        // // // // // // //
-        // // // // // // // MODULE: Run Kraken2
-        // // // // // // //
-        KRAKEN2_KRAKEN2(
-            ch_reads,
-            ch_db,
-            ch_save_fastq_classified,
-            true
-        )
-
-        ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
-
-
-        KREPORT_TO_KRONATXT(
-            ch_kraken2_report
-        )
-
-        ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
-
-        ch_combined = ch_krona_txt
-                    .map{ it[1] }        // Get the file path
-                    .collect()            // Collect all file parts into a list
-                    .map { files ->
-                        // Join the files with single quotes and space
-                        // String joinedFiles = files.collect { "'$it'" }.join(' ')
-                        // if single file then make it [files] otherwise just files
-                        [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
-                    }
-        KRONA_KTIMPORTTEXT(
-            ch_combined
-        )
-
-        if (params.remove_taxids) {
-            remove_input = ch_kraken2_report.map {
-                meta, report -> [
-                    meta, report, params.remove_taxids
-                ]
-            }
-            REMOVETAXIDSCLASSIFICATION(
-                remove_input
-            )
-            ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
-        }
-
-        println "Combining Kraken2 reports and getting top hits per file..."
-        TOP_HITS(
-            ch_kraken2_report.combine(distributions).combine(ch_pathogens)
-        )
-        MERGEDSUBSPECIES(
-            ch_kraken2_report.map{
-                meta, report -> report
-            }.collect(),
-            ch_pathogens
-        )
-
-        MERGEDKRAKENREPORT(
-            TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
-        )
-        FILTERKRAKEN(
-            MERGEDKRAKENREPORT.out.krakenreport
-        )
-
-        if (ch_save_fastq_classified){
-            ch_filtered_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
-        }
-
-        if (params.fuzzy){
-            ch_organisms = TOP_HITS.out.names
-        } else {
-            ch_organisms = TOP_HITS.out.taxids
-        }
-        // mix ch_organisms_to_download with ch_organisms 2nd index list
-        ch_organisms_to_download = ch_organisms_to_download.join(
-            ch_organisms
-        ).map{
-            meta, report, organisms -> {
-                report.add(organisms)
-                return [meta, report]
-            }
-        }
-
-
-
-
-        ch_multiqc_files = ch_multiqc_files.mix(MERGEDKRAKENREPORT.out.krakenreport.collect().ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(ch_kraken2_report.collect { it[1] }.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(FILTERKRAKEN.out.reports.collect().ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(TOP_HITS.out.krakenreport.collect { it[1] }.ifEmpty([]))
-
-    } else {
-        // set ch_kraken2_report to meta, null
-        ch_kraken2_report = ch_filtered_reads.map{ meta, reads -> {
-                return [ meta,  ch_empty_file]
-            }
-        }
-    }
-    ch_mapped_assemblies = Channel.empty()
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    CLASSIFIER(
+        ch_filtered_reads,
+        ch_db,
+        ch_save_fastq_classified,
+        distributions,
+        ch_pathogens,
+        ch_organisms_to_download
+    )
+    ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
+    ch_reads = CLASSIFIER.out.ch_reads
+    ch_pass_files = ch_pass_files.join(ch_kraken2_report)
+    ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,
         ch_assembly_txt
     )
+    ////////////////////////////////////////////////////////////////////////////////////////////////
 
+    // todo - add alignment for contigs
+    ch_mapped_assemblies = Channel.empty()
     ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
     ch_mapped_assemblies = ch_preppedfiles.map{
         meta, fastas, map, gcfids -> {
             return [meta, map]
         }
     }
-
-
-    if (params.metaphlan) {
-
-        METAPHLAN_METAPHLAN(
-            ch_reads,
-            params.metaphlan
-        )
-        ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
-                return [ meta, file, 'metaphlan' ]
-            }
-        }
-        // make ch_metaphlan  from params.metaphlan database path
-        if (!params.taxdump){
-            DOWNLOAD_TAXDUMP()
-            ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
-        } else if (params.taxdump) {
-            ch_taxdump_dir = Channel.fromPath(params.taxdump)
-            println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
-        }
-        // append METAPHLAN_METAPHLAN.out.report to ch_profile
-        TAXPASTA_STANDARDISE(
-            ch_metaphlan_report,
-            ch_taxdump_dir
-        )
-        ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
-    }
-
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
+    ch_assembly_analysis = Channel.empty()
 
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
@@ -633,30 +478,20 @@ workflow TAXTRIAGE {
                 return [meta, fastas, map]
             }
         })
+        ////////////////////////////////////////////////////////////////////////////////////////////////
         ALIGNMENT(
             ch_prepfiles
         )
+        ch_postalignmentfiles = ch_reads.map{
+            meta, reads -> {
+                return [meta, null, null, null, null, null, null,  []]
+            }
+        }
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
-        // if ch_kraken2_report is empty join on empty
-        // Define a channel that emits a placeholder value if ch_kraken2_report is empty
-        input_pathogen_files = ALIGNMENT.out.bams
-            .join(ch_mapped_assemblies)
-            .join(ch_depthfiles)
-            .join(ch_covfiles)
-            .join(ch_kraken2_report)
-
-        PATHOGENS(
-            input_pathogen_files,
-            ch_pathogens,
-            distributions,
-            ch_assembly_txt
-        )
-
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        // ch_bamstats = ALIGNMENT.out.bamstats
         ch_depth = ALIGNMENT.out.depth
 
         ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
@@ -667,14 +502,50 @@ workflow TAXTRIAGE {
                 // If mapping is not present, replace it with null or an empty placeholder
                 return [meta, bam, bai, depth, mapping ?: ch_empty_file]
             }
-        if (params.get_features){
-            ch_bedfiles = REFERENCE_PREP.out.ch_feature_bedfiles
-            FEATURES_MAP(
-                ch_combined.map {
-                    meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
-                }.join(ch_bedfiles)
+        ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
+
+
+        ch_postalignmentfiles = ch_combined.map {
+            meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+        }.join(ch_bedfiles)
+        .join(REFERENCE_PREP.out.ch_reference_cds)
+        .join(REFERENCE_PREP.out.ch_cds_to_taxids)
+        .join(
+            ch_filtered_reads.map{
+                meta, reads -> {
+                    return [meta, reads]
+                }
+            }
+        )
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        ASSEMBLY(
+            ch_postalignmentfiles,
+            ch_assembly_txt
+        )
+        ch_diamond_output = ASSEMBLY.out.ch_diamond_output
+        ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
+        // ch_assembly_alignment = ASSEMBLY.out.ch_assembly_alignment
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        if (!params.skip_report){
+            // if ch_kraken2_report is empty join on empty
+            // Define a channel that emits a placeholder value if ch_kraken2_report is empty
+
+            input_alignment_files = ALIGNMENT.out.bams
+                .join(ch_mapped_assemblies)
+                .join(ch_depthfiles)
+                .join(ch_covfiles)
+                .join(ch_kraken2_report)
+                .join(ch_assembly_analysis)
+            REPORT(
+                input_alignment_files,
+                ch_pathogens,
+                distributions,
+                ch_assembly_txt
             )
         }
+        ////////////////////////////////////////////////////////////////////////////////////////////////
 
         if (!params.skip_confidence) {
             CONFIDENCE_METRIC(
@@ -684,8 +555,6 @@ workflow TAXTRIAGE {
             CONFIDENCE_MERGE(
                 CONFIDENCE_METRIC.out.tsv
             )
-
-
             CONVERT_CONFIDENCE(
                 CONFIDENCE_MERGE.out.confidence
             )
@@ -696,30 +565,7 @@ workflow TAXTRIAGE {
 
             ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
             ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
-
         }
-    }
-
-    if (params.denovo_assembly) {
-        illumina_reads = ch_filtered_reads.filter {
-            it[0].platform == 'ILLUMINA'
-        }.map {
-            meta, reads -> [meta, reads]
-        }
-        MEGAHIT(
-            illumina_reads
-        )
-
-        nanopore_reads = ch_filtered_reads.filter {
-            it[0].platform == 'OXFORD'
-        }.map {
-            meta, reads -> [meta, reads]
-        }
-
-        FLYE(
-            nanopore_reads,
-            '--nano-raw'
-        )
     }
 
     CUSTOM_DUMPSOFTWAREVERSIONS(

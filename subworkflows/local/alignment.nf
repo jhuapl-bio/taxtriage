@@ -135,11 +135,8 @@ workflow ALIGNMENT {
         .map { oid, files -> [[id:oid], files] } // Replace oid with id in the metadata
         .set{ merged_bams_channel }
 
-
     if (params.get_variants || params.reference_assembly){
     //     // // // branch out the samtools_sort output to nanopore and illumina
-
-
         BCFTOOLS_MPILEUP_OXFORD(
             ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
             ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> fasta },

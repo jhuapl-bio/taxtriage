@@ -80,6 +80,16 @@
                         "git_sha": "82501fe6d0d12614db67751d30af98d16e63dc59",
                         "installed_by": ["modules"]
                     },
+                    "diamond/blastx": {
+                        "branch": "master",
+                        "git_sha": "06c8865e36741e05ad32ef70ab3fac127486af48",
+                        "installed_by": ["modules"]
+                    },
+                    "diamond/makedb": {
+                        "branch": "master",
+                        "git_sha": "b29f6beb86d1d24d680277fb1a3f4de7b8b8a92c",
+                        "installed_by": ["modules"]
+                    },
                     "fastp": {
                         "branch": "master",
                         "git_sha": "d497a4868ace3302016ea8ed4b395072d5e833cd",
@@ -97,12 +107,17 @@
                     },
                     "gunzip": {
                         "branch": "master",
-                        "git_sha": "4e5f4687318f24ba944a13609d3ea6ebd890737d",
+                        "git_sha": "06c8865e36741e05ad32ef70ab3fac127486af48",
                         "installed_by": ["modules"]
                     },
                     "hisat2/align": {
                         "branch": "master",
                         "git_sha": "06c8865e36741e05ad32ef70ab3fac127486af48",
+                        "installed_by": ["modules"]
+                    },
+                    "hisat2/build": {
+                        "branch": "master",
+                        "git_sha": "2c6b1144ed58b6184ad58fc4e6b6a90219b4bf4f",
                         "installed_by": ["modules"]
                     },
                     "kraken2/kraken2": {

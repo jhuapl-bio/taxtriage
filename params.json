@@ -10,6 +10,7 @@
     "max_memory": "10GB",
     "max_cpus": 3,
     "low_memory": false,
+    "filter_kraken2": null,
     "taxtab": "default",
     "remove_taxids": "9606",
     "profile": "docker",

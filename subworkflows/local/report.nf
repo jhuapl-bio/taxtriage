@@ -1,5 +1,5 @@
 //
-// Cross-check alignment abundances with pathogen list
+// Cross-check all upstream steps for final confidence report
 //
 // ##############################################################################################
 // # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
@@ -18,11 +18,11 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
-
-include { PATHOGENS_FIND_SAMPLE } from '../../modules/local/pathogens_find'
+include { ALIGNMENT_PER_SAMPLE } from '../../modules/local/alignment_per_sample'
 include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
+include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
 
-workflow PATHOGENS {
+workflow REPORT {
     take:
         alignments
         pathogens_list
@@ -30,23 +30,30 @@ workflow PATHOGENS {
         assemblyfile
     main:
         ch_pathogens_report = Channel.empty()
+        ch_pathognes_list = Channel.empty()
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
-            PATHOGENS_FIND_SAMPLE(
-                alignments.combine(pathogens_list).combine(assemblyfile)
+            ALIGNMENT_PER_SAMPLE(
+                alignments.combine(pathogens_list),
+                assemblyfile
+
             )
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
             // and assign it to the variable pathogens_list
+            ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{
+                [[id: "all"], it]
+            }.set{ full_list_pathogen_files }
 
+            SINGLE_REPORT(
+                ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions)
+            )
 
-            full_list_pathogen_files = PATHOGENS_FIND_SAMPLE.out.txt.map{m, txt -> txt}.collect()
             ORGANISM_MERGE_REPORT(
-                full_list_pathogen_files,
-                distributions
+                full_list_pathogen_files.combine(distributions)
             )
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
         }
     emit:
-        pathogens_list = ch_pathogens_report
+        merged_report_txt = ch_pathogens_report
 }

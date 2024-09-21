@@ -7,6 +7,8 @@ include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
 include { COMBINE_MAPFILES } from '../../modules/local/combine_mapfiles'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_LOCAL } from '../../modules/nf-core/bowtie2/build/main'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_DWNLD } from '../../modules/nf-core/bowtie2/build/main'
+include { HISAT2_BUILD as HISAT2_BUILD_LOCAL } from '../../modules/nf-core/hisat2/build/main'
+include { HISAT2_BUILD as HISAT2_BUILD_DWNLD } from '../../modules/nf-core/hisat2/build/main'
 
 workflow  REFERENCE_PREP {
     take:
@@ -20,14 +22,24 @@ workflow  REFERENCE_PREP {
     ch_accessions = Channel.empty()
     ch_prepfiles = Channel.empty()
 
+    ch_cds_to_taxids = ch_samples.map{ meta, report -> {
+            return [ meta,  []]
+        }
+    }
+
+    ch_cds = ch_samples.map{ meta, report -> {
+            return [ meta,  []]
+        }
+    }
+
+    ch_bedfiles = ch_samples.map { meta, report ->
+        return [meta, []]
+    }
 
     ch_mapped_assemblies = ch_samples.map{ meta, report -> {
             return [meta, [], [], []  ]
         }
     }
-
-
-    ch_bedfiles = Channel.empty()
 
     ch_reports_to_download = ch_samples.map{ meta, report -> {
             if (report){
@@ -157,7 +169,7 @@ workflow  REFERENCE_PREP {
         // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
         // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
         DOWNLOAD_ASSEMBLY.out.fasta.branch{
-                longreads: it[0].platform =~ 'OXFORD'
+                longreads: it[0].platform =~ 'OXFORD' || it[0].platform =~ 'PACBIO'
                 shortreads: it[0].platform =~ 'ILLUMINA'
         }.set { ch_platform_split }
 
@@ -204,18 +216,36 @@ workflow  REFERENCE_PREP {
         ch_assembly_txt
     )
 
-
-    if (params.get_features){
+    try {
+        // Attempt to use the FEATURES_DOWNLOAD process
         FEATURES_DOWNLOAD(
-            ch_mapped_assemblies.map { meta, fastas, listmaps, listids  ->  return [ meta, listids ] },
-            ch_assembly_txt
+            ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->
+                return [meta, listids]
+            },
+            ch_assembly_txt,
+            true
         )
-
+        ch_cds = FEATURES_DOWNLOAD.out.proteins
+        ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
+    /* groovylint-disable-next-line CatchException */
+    } catch (Exception e) {
+        // On failure, fallback to an alternative channel
+        ch_cds = ch_samples.map { meta, report ->
+            return [meta, []]
+        }
+        ch_cds_to_taxids = ch_samples.map { meta, report ->
+            return [meta, []]
+        }
+    }
+    try {
         FEATURES_TO_BED(
             FEATURES_DOWNLOAD.out.features
         )
-
         ch_bedfiles = FEATURES_TO_BED.out.bed
+    } catch (Exception e) {
+        ch_bedfiles = ch_samples.map { meta, report ->
+            return [meta, []]
+        }
     }
     ch_mapped_assemblies = MAP_TAXID_ASSEMBLY.out.taxidmerged.join(
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, fastas, mergedids] }
@@ -226,6 +256,8 @@ workflow  REFERENCE_PREP {
 
     emit:
         versions = ch_versions
-        ch_feature_bedfiles = ch_bedfiles
+        ch_bedfiles
         ch_preppedfiles = ch_mapped_assemblies
+        ch_reference_cds = ch_cds
+        ch_cds_to_taxids
 }

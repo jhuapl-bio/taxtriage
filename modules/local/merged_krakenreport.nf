@@ -1,5 +1,6 @@
 process MERGEDKRAKENREPORT {
     label 'process_medium'
+    tag 'MergeKrakenReportsAllSamples'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

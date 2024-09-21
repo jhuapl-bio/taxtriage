@@ -20,9 +20,11 @@
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
 from collections import defaultdict
 import sys
+import statistics
 import argparse
 import re
 import csv
+import math
 import pysam
 from math import log2
 
@@ -62,6 +64,13 @@ def parse_args(argv=None):
         help="Filter for minimum reads aligned to reference per organism. Default is 1",
     )
     parser.add_argument(
+        "--min_cds_found",
+        metavar="MINCDSFOUND",
+        default=3,
+        type=int,
+        help="Filter for minimum coding regions found per organism post denovo assembly. Default is 3",
+    )
+    parser.add_argument(
         "--k2",
         metavar="K2FILE",
         default=None,
@@ -75,12 +84,27 @@ def parse_args(argv=None):
         type=int,
     )
     parser.add_argument(
+        "--diamond",
+        metavar="Output of diamond txt file (outfmt:6)",
+        default=None,
+        type=str,
+        help="DIAMOND BLASTX Output file",
+    )
+    parser.add_argument(
         "-c",
         "--capval",
         metavar="Cap val for depth for entropy calculation. Default: 15",
         default=15,
         type=int,
         help="At what threshold to cutoff for determining shannon entropy stats for organism depth of cov. Default is 15, -1 for no cap value",
+    )
+    parser.add_argument(
+        "--parent_k2_match",
+        metavar="PARENTK2MATCH",
+        default="G",
+        type=str,
+        choices=["G", "F", "O", "C", "P", "K", "D", "R"],
+        help="Which parent to match for k2 hierarchy of taxonomy for disparity across genus, family, etc calls",
     )
     parser.add_argument(
         "-a",
@@ -273,6 +297,50 @@ def calculate_entropy(values):
     probabilities = [value / total for value in values]
     return -sum(p * log2(p) for p in probabilities if p > 0)
 
+def calculate_mean(diamond_list, key):
+    """
+    Calculate the weighted mean of a key, weighted by 'cds' values.
+
+    Parameters:
+    diamond_list (list of dict): List of dictionaries containing the data.
+    key (str): The key for which the weighted mean is to be calculated.
+
+    Returns:
+    float: The weighted mean of the values.
+    """
+    total_weighted_value = 0
+    total_cds = 0
+
+    # Loop through each item in the list and calculate the weighted value
+    for item in diamond_list:
+        value = float(item[key])  # Convert the key value to a float
+        cds = int(item['cds'])    # Get the cds value (as the weight)
+
+        # Add to the weighted sum
+        total_weighted_value += value * cds
+        total_cds += cds
+
+    # Return the weighted mean
+    return total_weighted_value / total_cds if total_cds != 0 else 0
+# Function to calculate disparity based on the sum of numreads and k2_reads
+def calculate_disparity(numreads, k2_reads):
+    sumreads = sum(numreads)
+
+    if sumreads + k2_reads > 0:
+        # Calculate the harmonic mean
+        harmonic_mean = 2 * (sumreads * k2_reads) / (sumreads + k2_reads)
+
+        # Calculate the arithmetic mean for normalization
+        arithmetic_mean = (sumreads + k2_reads) / 2
+
+        # Normalize the harmonic mean by dividing by the arithmetic mean
+        normalized_harmonic_mean = harmonic_mean / arithmetic_mean
+    else:
+        normalized_harmonic_mean = 0  # No disparity if both reads are 0
+
+    return normalized_harmonic_mean
+
+
 
 
 # Function to calculate weighted mean
@@ -297,19 +365,27 @@ def calculate_weighted_mean(data, numreads):
     return weighted_mean
 
 def import_k2_file(filename):
-    """Import the kraken2 output file"""
+    """Import the Kraken2 output file with parent-child relationships based on name indentation"""
+
+    # Open the Kraken2 file
     tsv_file = open(filename, newline='')
     read_tsv = csv.reader(tsv_file, delimiter="\t")
-    k2_regex = re.compile(r"^(\s+)(.+)")
-    mapping = []
 
+    # Regex to capture the indentation in the name
+    k2_regex = re.compile(r"^(\s+)(.+)")
+
+    # Initialize variables
     taxids = dict()
-    header = ['abundance', 'clade_fragments_covered',
-        'number_fragments_assigned', 'rank', 'taxid', 'name', 'parents']
+    depth = dict()  # To store the depth (level of indentation) of each taxid
+    lastparents = dict()  # To track the last parent at each depth level
+
+    # Define header columns
+    header = ['abundance', 'clade_fragments_covered', 'number_fragments_assigned', 'rank', 'taxid', 'name', 'parents']
+
+    # Iterate through each row in the Kraken2 file
     for row in read_tsv:
         entry = dict()
         for x in range(0, len(header)):
-
             if (header[x] != 'name' and header[x] != 'rank' and header[x] != 'taxid' and x < len(row)):
                 entry[header[x]] = float(row[x])
             elif x < len(row):
@@ -319,23 +395,43 @@ def import_k2_file(filename):
                     entry[header[x]] = row[x]
             else:
                 entry[header[x]] = ""
-            # use regex to adjust entry['name']
-            if header[x] == 'name':
-                match = k2_regex.match(row[x])
-                if match:
-                    entry['name'] = match.group(2)
-        mapping.append(entry)
+
+        # Use regex to adjust entry['name'] and determine depth (indentation level)
+        match = k2_regex.match(row[5])  # row[5] corresponds to the 'name' field
+        if match:
+            indent = len(match.group(1)) // 2  # Determine depth based on the number of spaces (2 spaces per level)
+            entry['name'] = match.group(2)  # Remove indentation from the name
+        else:
+            indent = 0  # If no match, it is at the top level
+
+        # Set depth for the current entry
+        depth[entry['taxid']] = indent
+        entry['depth'] = indent
+
+        # Determine parents for the current entry (2D list of [taxid, rank])
+        parents = []
+        for i in range(indent - 1, 0, -1):
+            parents.append([lastparents[i], taxids.get(lastparents[i], {}).get('rank', '')])
+
+        # Store the parent taxid at the current depth
+        lastparents[indent] = entry['taxid']
+
+        # Add parents to the entry
+        entry['parents'] = parents
+
+        # Add taxid information to the taxids dictionary
         taxids[str(entry['taxid'])] = dict(
             name=entry['name'],
             abundance=entry['abundance'],
-            taxid = str(entry['taxid']),
-            number_fragments_assigned = entry['number_fragments_assigned'],
-            rank = entry['rank'],
-            clades_covered = entry['clade_fragments_covered'],
-
+            taxid=str(entry['taxid']),
+            number_fragments_assigned=entry['number_fragments_assigned'],
+            rank=entry['rank'],
+            clades_covered=entry['clade_fragments_covered'],
+            depth=entry['depth'],
+            parents=entry['parents']
         )
-        taxids[entry['name']] = taxids[str(entry['taxid'])]
 
+    # Return the mapping with parent-child relationships
     return taxids
 
 
@@ -359,7 +455,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
     total_reads = 0
     amount_pre_read = dict()
     # Open the BAM file for reading
-    testacc = None
 
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
@@ -460,6 +555,43 @@ def main():
     inputfile = args.input
     pathogenfile = args.pathogens
     covfile = args.coverage
+    """
+    # Final Score Calculation
+
+    The final score is calculated as the average of four tests, each contributing 25% (or 0.25 proportion) to the overall score. The four tests are based on the following criteria:
+
+    1. **Gini Coefficient (25% of final score)**:
+        - The Gini coefficient is a measure of inequality and is expected to be between 0 and 1. It directly contributes to 25% of the final score.
+        - Expected Range: [0, 1]
+
+    2. **MAPQ Score (25% of final score)**:
+        - The MAPQ (Mapping Quality) score is derived from the Phred score using the formula:
+            \[
+            \text{MAPQ} = 10 \times \log_{10}(\text{Phred score})
+            \]
+        - This score represents the average quality of the alignment and contributes 25% to the final score.
+        - Handle cases where the Phred score is 0 to avoid logarithmic errors.
+        - Expected Range: [0, ~60] depending on the Phred score.
+
+    3. **Disparity between k2 reads (25% of final score)**:
+        - The disparity represents the difference between two sets of reads. This value is provided or calculated externally.
+        - Expected Range: [0, 1] (assuming the disparity is normalized for the calculation).
+
+    4. **CD Limit (25% of final score)**:
+        - The CD (Cutoff Determination) limit is a binary value (0 or 1) indicating whether a certain threshold or limit has been reached.
+        - It directly contributes to 25% of the final score.
+        - Expected Range: {0, 1} (binary)
+
+    # Formula to Calculate Final Score:
+
+        final_score = gini_coeff * gini_coeff_weight \
+            + mapq_score * mapq_score_weight \
+            + disparity * disparity_weight \
+            + CD_limit * CD_limit_weight
+
+    Each component contributes equally (25%) to the final score.
+    """
+    accumulated_scores = defaultdict(dict)
     output = args.output
     matcher = args.match
     k2_mapping = dict()
@@ -470,19 +602,33 @@ def main():
     mincov = args.mincoverage
     if args.k2:
         k2_mapping = import_k2_file(args.k2)
+    dmnd = defaultdict()
+    if args.diamond:
+        # read in diamond file as dataframe
+        with open(args.diamond, 'r') as f:
+            # use csv reader
+            reader = csv.reader(f, delimiter="\t")
+            next(reader)
+            for line in reader:
+                if len(line) > 0:
+                    dmnd[line[0]] = dict(
+                        contigs= int(line[1]),
+                        cds = int(line[2]),
+                        identity= line[3],
+                        lengthmedian = line[4],
+                        mismatchedmedian= line[5],
+                        medianevalue= line[6],
+                    )
+                i+=1
     reference_hits, total_reads = count_reference_hits(
         inputfile,
         args.depth,
         covfile,
         matchdct
     )
-    testacc = "CP000253.1"
-    for key, value in reference_hits.items():
-        if not testacc:
-            testacc = key
-        break
 
     assembly_to_accession = defaultdict(set)
+
     if args.match:
         # open the match file and import the match file
         header = True
@@ -520,9 +666,7 @@ def main():
                 i+=1
 
         f.close()
-    # print(f"Step2: {testacc}, {reference_hits[testacc]}","\n\n")
-    spectaxidmatch = dict()
-    collect_subspecies = defaultdict(list)
+
     if args.assembly:
         i=0
         with open(args.assembly, 'r') as f:
@@ -550,7 +694,6 @@ def main():
                                 reference_hits[acc]['name'] = name
 
         f.close()
-    # print(f"Step3: {testacc}, {reference_hits[testacc]}","\n\n")
 
     final_format = defaultdict(dict)
 
@@ -563,9 +706,8 @@ def main():
             else:
                 valtoplevel = key
             valkey = value['accession']
-
-            final_format[valtoplevel][valkey]= value
-
+            if value['numreads'] > 0 and value['meandepth'] > 0:
+                final_format[valtoplevel][valkey]= value
     else:
         # We don't aggregate, so do final format on the organism name only
         for key, value in reference_hits.items():
@@ -574,7 +716,8 @@ def main():
             else:
                 valtoplevel = key
             valkey = key
-            final_format[valtoplevel][valkey] = value
+            if value['numreads'] > 0 and value['meandepth'] > 0:
+                final_format[valtoplevel][valkey] = value
     # Dictionary to store aggregated species-level data
     species_aggregated = {}
     def getGiniCoeff(data, acc_length=0):
@@ -588,7 +731,12 @@ def main():
         return gini_coefficient
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
+        # all_assemblies = [[x['assemblyname'], x['meanmapq'], x['numreads'], x['taxid']] for x in entries.values()]
         for val_key, data in entries.items():
+            # get all organisms that are NOT the same assemblyname from all_assemblies
+            # filtered_assemblies = [x for x in all_assemblies if x[0] != data['assemblyname']]
+            # if len(filtered_assemblies) > 0:
+            #     print(data['assemblyname'], data['meanmapq'], data['taxid'], data['numreads'], filtered_assemblies)
             if top_level_key not in species_aggregated:
                 species_aggregated[top_level_key] = {
                     'key': top_level_key,
@@ -597,6 +745,7 @@ def main():
                     'depths': [],
                     "taxids": [],
                     "accs": [],
+                    'assemblies': [],
                     "coverages": [],
                     "coeffs": [],
                     'baseqs': [],
@@ -635,6 +784,7 @@ def main():
                 print(top_level_key, val_key,"___")
                 print(f"Error: {e}")
 
+
     # Calculate weighted means for aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
         numreads = aggregated_data['numreads']
@@ -669,20 +819,162 @@ def main():
         print(f"\tNum Reads: {aggregated_data['numreads']}")
         print(f"\tK2 Reads: {aggregated_data['k2_numreads']}")
 
-    # Print the final aggregated data
-    for top_level_key, aggregated_data in species_aggregated.items():
-        print(f"Entry Top Key: {top_level_key}")
-        print(f"\tNum Reads: {aggregated_data['numreads']}")
-        print(f"\tMean MapQ: {aggregated_data['meanmapq']}")
-        print(f"\tMean BaseQ: {aggregated_data['meanbaseq']}")
-        print(f"\tStrains List: {aggregated_data['strainslist']}")
-        print()
 
+    # Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
+    def normalize_mapq(mapq_score, max_mapq=60):
+        # Normalize the MAPQ score to be between 0 and 1
+        probability = 10 ** (-mapq_score / 10)
+        return 1-probability  # Ensure values stay between 0 and 1
+
+    def calculate_disparity_cv(numreads):
+        if len(numreads) > 1:
+            mean_reads = statistics.mean(numreads)
+            stddev_reads = statistics.stdev(numreads)
+            return stddev_reads / mean_reads if mean_reads != 0 else 0
+        return 0
+    def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_mapping_match):
+        """
+        Get all species that have the specified rank (e.g., 'S' for species) and belong to a parent with the
+        specified taxonomic rank (e.g., 'F' for family).
+
+        Parameters:
+            species_aggregated (dict): Dictionary of species.
+            parent_taxid (str): The parent taxid to match (e.g., for family 'F').
+            my_rank (str): The rank to filter species by (e.g., 'S').
+            rank_mapping_match (str): The taxonomic rank to check for the parent (e.g., 'F').
+
+        Returns:
+            List of species that match the specified rank and belong to the parent with the given taxonomic rank.
+        """
+        sibling_species = []
+
+        # Loop through all species in species_aggregated
+        for species in species_aggregated.values():
+            parents = species.get('parents', [])
+            rank = species.get('rank', '')
+
+            # Check if the species rank matches `my_rank` (e.g., 'S' for species)
+            if rank == my_rank:
+                # Look through the parents to find the one that matches the `rank_mapping_match` (e.g., 'F')
+                for parent in parents:
+                    if parent[1] == rank_mapping_match and parent[0] == parent_taxid:
+                        sibling_species.append(species)
+                        break  # Exit loop after finding the match
+
+        return sibling_species
 
     for key, value in species_aggregated.items():
-        if testacc in value['accs']:
-            print(f"Step5: {key}, {value['name']}","\n\n")
-            break
+        ## Test: Disaprity across genus and its species
+
+        if args.k2 and key in k2_mapping:
+            # Define the rank code you're looking for, for example "G" for Genus
+            rank_mapping_match = None
+            if args.parent_k2_match:
+                rank_mapping_match = args.parent_k2_match
+
+            # Step 1: Get the 'parents' list for the current key from k2_mapping
+            parents = k2_mapping.get(key, {}).get('parents', [])
+            my_rank = k2_mapping.get(key, {}).get('rank', 'U')
+
+            # Step 2: Find the parent taxid where the rank matches rank_mapping_match (e.g., "F" for Family)
+            parent_taxid = None
+            if rank_mapping_match:
+                for parent in parents:
+                    if parent[1] == rank_mapping_match:
+                        parent_taxid = parent[0]
+                        break
+            else:
+                parent_taxid = parents[0][0]  # Use the first parent if no rank_mapping_match is provided
+
+            # If no parent_taxid was found, skip the rest of the steps for this key
+            if not parent_taxid and parent_taxid != 0:
+                continue
+
+            # Step 3: Get all species ('S') that belong to the same family ('F') using the found parent taxid
+            related_species = get_species_by_parent_rank(k2_mapping, parent_taxid, my_rank, rank_mapping_match)
+
+            # Step 4: Aggregate k2_numreads for all species in the same genus
+            sibling_k2_reads = [[species.get('clades_covered', 0), species.get('taxid')] for species in related_species]
+            # Save the aggregated k2 reads as 'parent_k2_reads'
+            value['parent_k2_reads'] = sum([species.get('clades_covered', 0) for species in related_species])
+            value['sibling_k2_reads'] = sibling_k2_reads
+
+            # Step 5: Run disparity calculations between the species-specific numreads and genus_k2_reads
+            # Get the numreads from k2_mapping for this key
+            numreads = value.get('k2_numreads', 0)
+
+            # Disparity calculations
+            value['disparity_cv'] = 1-calculate_disparity_cv([x[0] for x in sibling_k2_reads])
+            # Optionally calculate disparity_ratio or disparity_harmonic
+            # k2_mapping[key]['disparity_ratio'] = calculate_disparity_ratio(numreads, genus_k2_reads)
+            # k2_mapping[key]['disparity_harmonic'] = calculate_normalized_harmonic_mean(numreads, genus_k2_reads)
+
+        ## Test: Disparity of k2 or other classifier to alignment stats of NTs
+        if value.get('k2_numreads', None):
+            value['raw_disparity'] = abs(calculate_disparity(value['numreads'], value['k2_numreads']))
+        else:
+            value['raw_disparity'] = 0
+        ## Test: Mapq of NT,
+        normalized_mapq = normalize_mapq(value.get('meanmapq', 0))
+        value['alignment_score'] = normalized_mapq
+
+
+        ## Test: Min threshold of CDs found  - are there coding regions at the min amount?
+        species_aggregated[key]['diamond'] = {'identity': 0, 'maxvalereached': False}
+        if args.diamond:
+
+            if key in dmnd:
+                dmnd[key]['maxvalereached'] = dmnd[key].get('cds', 0) > args.min_cds_found
+                species_aggregated[key]['diamond'] = dmnd[key]
+            elif species_aggregated[key].get('strainslist', None):
+                # get all taxids in strainslist
+                taxids = set([x.get('taxid', None) for x in value['strainslist']])
+                # check if any of the taxids are in diamond
+                allstrains = []
+                for taxid in taxids:
+                    if taxid in dmnd:
+                        allstrains.append(dmnd[taxid])
+                if len(allstrains) > 0:
+                    # aggregate all as medians
+                    # Calculate medians for 'identity', 'lengthmedian', 'mismatchedmedian', and 'medianevalue'
+                    mean_identity = calculate_mean(allstrains, 'identity')
+                    mean_length = calculate_mean(allstrains, 'lengthmedian')
+                    mean_mismatched = calculate_mean(allstrains, 'mismatchedmedian')
+                    mean_evalue = calculate_mean(allstrains, 'medianevalue')
+                    mean_contigs = calculate_mean(allstrains, 'contigs')
+                    mean_cds = calculate_mean(allstrains, 'cds')
+                    max_val_reached =  mean_cds > args.min_cds_found
+                    dmnd_results = {
+                        'identity': mean_identity/100,
+                        'lengthmean': mean_length,
+                        'mismatchedmean': mean_mismatched,
+                        'meanevalue': mean_evalue,
+                        'contigs': mean_contigs,
+                        'cds': mean_cds,
+                        'maxvalereached': max_val_reached
+                    }
+
+                    species_aggregated[key]['diamond'] = dmnd_results
+            else:
+                print(f"Key {key} not found in diamond file")
+
+     # Print the final aggregated data
+    for top_level_key, aggregated_data in species_aggregated.items():
+        print(f"Entry Top Key: {top_level_key}")
+        print(f"\tNum Reads: {sum(aggregated_data['numreads'])}, {aggregated_data['numreads']}")
+        print(f"\tMean MapQ: {aggregated_data.get('meanmapq', 0)}")
+        print(f"\tMean BaseQ: {aggregated_data.get('meanbaseq', 0)}")
+        print(f"\tStrains List: {[x.get('fullname', '') for x in aggregated_data['strainslist']]}")
+        print(f"\tK2 Reads: {aggregated_data.get('k2_numreads', 0)}")
+        print(f"\tParent K2 Reads: {aggregated_data.get('parent_k2_reads', 0)}")
+        print(f"\tDisparity: {aggregated_data.get('raw_disparity',0)}")
+        print(f"\tParent-Level Disparity: {aggregated_data.get('disparity_cv', 0)}")
+        print(f"\tDiamond Identity: {aggregated_data.get('diamond', {}).get('identity',0)}")
+        print(f"\tScore MapQ: {aggregated_data.get('alignment_score', 0)}")
+        print(f"\tGini Score: {aggregated_data.get('meangini', 0)}")
+        print()
+    # exit()
+
     pathogens = import_pathogens(pathogenfile)
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -692,7 +984,7 @@ def main():
         print(f"Filtering for minimum reads aligned: {args.min_reads_align}")
         species_aggregated = {k: v for k, v in species_aggregated.items() if sum(v['numreads']) >= int(args.min_reads_align)}
     # Create a new dictionary to store aggregated species-level data
-    species_references = defaultdict(dict)
+
     for top_level_key, data in species_aggregated.items():
         print(f"Reference: {data['name']} (Taxid: {data['key']})")
         print(f"\tNumber of Reads: {data['numreads']}")
@@ -744,112 +1036,105 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
     with open(output_file_path, 'w') as file:
         # Write the header row
 
-        header =  "Name\tSample\tSample Type\t% Reads\t% Aligned Reads\t# Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxid\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\n"
+        header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t% Aligned Reads\t# Reads Aligned\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tProtein Identity Score\tSiblings score\tTASS Score\n"
         file.write(f"{header}")
         print("________________________________________")
         total_reads_aligned = 0
+
         for ref, count in aggregated_stats.items():
-            strainlist = count['strainslist']
-            isSpecies = count['isSpecies']
+            strainlist = count.get('strainslist', [])
+            isSpecies = count.get('isSpecies', False)
             is_pathogen = "Unknown"
             callfamclass = ""
             derived_pathogen = False
             isPath = False
             annClass = "None"
             pathogenic_sites = []
-            total_reads_aligned += sum(count['numreads'])
-            if ref in pathogens:
-                refpath = pathogens[ref]
-                pathogenic_sites = refpath['pathogenic_sites'] if 'pathogenic_sites' in refpath else []
-            elif ref in pathogens:
-                refpath = pathogens[ref]
-                pathogenic_sites = refpath['pathogenic_sites'] if 'pathogenic_sites' in refpath else []
-            else:
-                refpath = None
+            total_reads_aligned += sum(count.get('numreads', [0]))  # Safely sum reads
+
+            refpath = pathogens.get(ref)
+            pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
+
             def pathogen_label(ref):
                 is_pathogen = "Unknown"
                 isPathi = False
-                callclass= ref['callclass']
-                pathogenic_sites = ref['pathogenic_sites']
-                commensal_sites = ref['commensal_sites']
+                callclass = ref.get('callclass', "N/A")
+                pathogenic_sites = ref.get('pathogenic_sites', [])
+                commensal_sites = ref.get('commensal_sites', [])
                 if sample_type in pathogenic_sites:
                     if callclass != "commensal":
                         is_pathogen = callclass.capitalize()
                         isPathi = True
                     else:
                         is_pathogen = "Potential"
-
                 elif sample_type in commensal_sites:
                     is_pathogen = "Commensal"
                 elif callclass and callclass != "":
-                    is_pathogen = callclass.capitalize() if callclass and callclass !="" else "Unknown"
+                    is_pathogen = callclass.capitalize() if callclass else "Unknown"
                     isPathi = True
                 return is_pathogen, isPathi
-            formatname = count['name']
+
+            formatname = count.get('name', "N/A")
 
             if refpath:
                 is_pathogen, isPathi = pathogen_label(refpath)
                 isPath = isPathi
                 if isPathi:
                     annClass = "Direct"
-                if ref in refpath and refpath[ref]:
-                    taxid = refpath[ref]
-                else:
-                    taxid = count[ref] if ref in count and count[ref] else ""
+                taxid = refpath.get(ref, count.get(ref, ""))
                 is_annotated = "Yes"
-                commsites = refpath['commensal_sites']
-                status = refpath['status']
-                formatname = refpath['name']
+                commsites = refpath.get('commensal_sites', [])
+                status = refpath.get('status', "N/A")
+                formatname = refpath.get('name', formatname)
                 if is_pathogen == "Commensal":
                     callfamclass = "Commensal Listing"
             else:
                 is_annotated = "No"
-                taxid = count[ref] if ref in count and count[ref]  else ""
-                sites = ""
+                taxid = count.get(ref, "")
                 status = ""
+
             listpathogensstrains = []
             fullstrains = []
-            if count['strainslist']:
+
+            if strainlist:
                 pathogenic_reads = 0
-                lenstrains = len(count['strainslist'])
-                # fullstrains = [x['fullname'] for x in count['strainslist']]
-                # check, for each strainslist, if it is listed as a pathogen in pathogens[taxid], get count
-                # merge all strainslist on the strainname attribute, sum the numreads
-                # if taxid is present, use that, otherwise use the strainname
                 merged_strains = defaultdict(dict)
-                for x in count['strainslist']:
-                    keyx = x['strainname'] if not x['taxid'] else x['taxid']
-                    if formatname != x['strainname']:
-                        formatname= formatname.replace(x['strainname'], "")
+
+                for x in strainlist:
+                    keyx = x.get('strainname', x.get('taxid', ""))
+                    if formatname != x.get('strainname', ""):
+                        formatname = formatname.replace(x.get('strainname', ""), "")
                     if keyx in merged_strains:
-                        merged_strains[keyx]['numreads'] += x['numreads']
-                        merged_strains[keyx]['subkeys'].append(x['subkey'])
+                        merged_strains[keyx]['numreads'] += x.get('numreads', 0)
+                        merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
                     else:
                         merged_strains[keyx] = x
-                        merged_strains[keyx]['subkeys'] = [x['subkey']]
+                        merged_strains[keyx]['numreads'] = x.get('numreads', 0)
+                        merged_strains[keyx]['subkeys'] = [x.get('subkey', "")]
 
                 for xref, x in merged_strains.items():
                     pathstrain = None
-                    if x['taxid']:
-                        fullstrains.append(f"{x['strainname']} ({x['taxid']}: {x['numreads']} reads)")
+                    if x.get('taxid'):
+                        fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('taxid', '')}: {x.get('numreads', 0)} reads)")
                     else:
-                        fullstrains.append(f"{x['strainname']} ({x['numreads']} reads)")
-                    if x['taxid'] in pathogens:
-                        pathstrain = pathogens[x['taxid']]
-                    elif x['fullname'] in pathogens:
-                        pathstrain = pathogens[x['fullname']]
+                        fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('numreads', 0)} reads)")
+
+                    if x.get('taxid') in pathogens:
+                        pathstrain = pathogens.get(x.get('taxid'))
+                    elif x.get('fullname') in pathogens:
+                        pathstrain = pathogens.get(x.get('fullname'))
+
                     if pathstrain:
-                        taxx  = f"{x['taxid']}" if x['taxid'] else ""
-                        if sample_type in pathstrain['pathogenic_sites'] or pathstrain['callclass'] != "commensal":
-                            pathogenic_reads+= x['numreads']
-                            percentreads = f"{x['numreads']/total_reads:.1f}" if total_reads > 0 and x['numreads'] > 0 else 0
-                            listpathogensstrains.append(f"{x['strainname']} ({percentreads}%)")
-                            # listpathogensstrains.append(f"{x['strainname']} ({taxx}: {x['numreads']} reads - {percentreads}%)")
+                        taxx = x.get('taxid', "")
+                        if sample_type in pathstrain.get('pathogenic_sites', []) or pathstrain.get('callclass') != "commensal":
+                            pathogenic_reads += x.get('numreads', 0)
+                            percentreads = f"{x.get('numreads', 0)/total_reads:.1f}" if total_reads > 0 and x.get('numreads', 0) > 0 else "0"
+                            listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
+
                 if callfamclass == "":
-                    callfamclass = f"{len(listpathogensstrains) if len(listpathogensstrains) > 0 else ''}"
-                    if len(listpathogensstrains) > 0:
-                        callfamclass = f"{', '.join(listpathogensstrains)}"
-                if (is_pathogen == "N/A" or is_pathogen == "Unknown") and len(listpathogensstrains) > 0:
+                    callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
+
+                if (is_pathogen == "N/A" or is_pathogen == "Unknown") and listpathogensstrains:
                     is_pathogen = "Potential"
                     annClass = "Derived"
 
@@ -865,12 +1150,17 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             print(f"\tK2 Reads: {count['k2_numreads']}")
             print()
 
-            meanbaseq = format_non_zero_decimals(count.get('meanbaseq',0))
-            gini_coefficient = format_non_zero_decimals(count.get('meangini'))
-            meanmapq = format_non_zero_decimals(count.get('meanmapq',0))
-            meancoverage = format_non_zero_decimals(count.get('meancoverage',0))
+            meanbaseq = format_non_zero_decimals(count.get('meanbaseq', 0))
+            gini_coefficient = format_non_zero_decimals(count.get('meangini', 0))
+            meanmapq = format_non_zero_decimals(count.get('meanmapq', 0))
+            meancoverage = format_non_zero_decimals(count.get('meancoverage', 0))
             meandepth = format_non_zero_decimals(count.get('meandepth', 0))
-            k2_reads = count.get('k2_numreads', 0)
+            k2_reads = format_non_zero_decimals(count.get('k2_numreads', 0))
+            k2_parent_reads = format_non_zero_decimals(count.get('parent_k2_reads', 0))
+            disparity_score = format_non_zero_decimals(count.get('disparity_cv', 0))
+            mapq_score = format_non_zero_decimals(count.get('alignment_score', 0))
+            diamond_identity = format_non_zero_decimals(count.get('diamond', {}).get('identity', 0))
+            siblings_score = format_non_zero_decimals(count.get('raw_disparity', 0))
 
             # if total_reads_aligned is 0 then set percent_aligned to 0
             countreads = sum(count['numreads'])
@@ -884,9 +1174,46 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 percent_total = format_non_zero_decimals(100*countreads / total_reads)
             if len(pathogenic_sites) == 0:
                 pathogenic_sites = ""
-            # Assuming 'count' is a simple value; if it's a dictionary or complex structure, adjust accordingly.
-            file.write(f"{formatname}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t{is_annotated}\t{pathogenic_sites}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient}\t{meanbaseq}\t{meanmapq}\t{meancoverage}\t{meandepth}\t{annClass}\t{isSpecies}\t{callfamclass}\t{k2_reads}\n")
+            # Write to file in a newline format
+            weights = {
+                'mapq_score': 0.35,
+                'diamond_identity': 0.35,
+                'disparity_score': 0.2,
+                'gini_coefficient': 0.1,
+                'siblings_score': 0
+            }
+            # if sum of vals in weights isnt 1 then normalize to 1
+            total_weight = sum(weights.values())
+            if total_weight != 1:
+                for key in weights:
+                    weights[key] = weights[key] / total_weight
 
+            # Function to apply weights and format the result (assuming `format_non_zero_decimals` is defined)
+            def apply_weight(value, weight):
+                try:
+                    # Convert the value to float before multiplying by the weight
+                    value = float(value)
+                    return value * weight
+                except (TypeError, ValueError):
+                    # If value cannot be converted to a float, return 0 or handle as needed
+                    return 0
+
+
+            # Apply weights to the relevant scores
+            tass_score = format_non_zero_decimals(sum([
+                apply_weight(count.get('disparity_cv', 0), weights.get('disparity_score',0)),
+                apply_weight(count.get('alignment_score', 0), weights.get('mapq_score',0)),
+                apply_weight(count.get('gini_coefficient', 0), weights.get('gini_coefficient',0)),
+                apply_weight(count.get('diamond', {}).get('identity', 0), weights.get('diamond_identity', 0)),
+                apply_weight(count.get('raw_disparity', 0), weights.get('siblings_score',0))
+            ]))
+
+            file.write(
+                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t"
+                f"{is_annotated}\t{pathogenic_sites}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient}\t"
+                f"{meanbaseq}\t{meanmapq}\t{meancoverage}\t{meandepth}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
+                f"{k2_reads}\t{k2_parent_reads}\t{mapq_score}\t{disparity_score}\t{diamond_identity}\t"
+                f"{siblings_score}\t{tass_score}\n"
+            )
 if __name__ == "__main__":
     sys.exit(main())
-
