@@ -218,13 +218,14 @@ workflow  REFERENCE_PREP {
 
     try {
         // Attempt to use the FEATURES_DOWNLOAD process
-        ch_cds = FEATURES_DOWNLOAD(
+        FEATURES_DOWNLOAD(
             ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->
                 return [meta, listids]
             },
             ch_assembly_txt,
             true
-        ).out.proteins
+        )
+        ch_cds = FEATURES_DOWNLOAD.out.proteins
         ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
     /* groovylint-disable-next-line CatchException */
     } catch (Exception e) {
@@ -237,9 +238,10 @@ workflow  REFERENCE_PREP {
         }
     }
     try {
-        ch_bedfiles = FEATURES_TO_BED(
+        FEATURES_TO_BED(
             FEATURES_DOWNLOAD.out.features
-        ).out.bed
+        )
+        ch_bedfiles = FEATURES_TO_BED.out.bed
     } catch (Exception e) {
         ch_bedfiles = ch_samples.map { meta, report ->
             return [meta, []]

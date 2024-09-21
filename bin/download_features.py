@@ -142,6 +142,7 @@ def download_feature_file(dir_out: str, url: str,  outfile: str, featurefile: bo
                 # remove the gz file
                 os.remove(outpath)
             f.close()
+        print(f"DONE: Downloaded feature file")
         return accessions
     except Exception as e:
         logger.error(f"Failed to download assembly file from {url} with error {e}")
@@ -189,7 +190,6 @@ def main():
                 if args.force or not os.path.exists(f"{dir_out}/{gcf}_feature_table.txt") or os.path.getsize(f"{dir_out}/{gcf}_feature_table.txt") == 0:
                     print(f"Downloading feature file for {gcf} at {url}")
                     download_feature_file(dir_out, url, f"{gcf}_feature_table.txt.gz", featurefile=True)
-                    print(f"DONE: Downloaded feature file for {gcf} at {url} to {dir_out}/{gcf}_feature_table.txt")
                 else:
                     print(f"Feature file for {gcf} at {url} already exists, skipping")
                     # read in the file and get the accessions
@@ -200,7 +200,6 @@ def main():
                     if args.force or not os.path.exists(f"{dir_out}/{gcf}_protein.faa") or os.path.getsize(f"{dir_out}/{gcf}_protein.faa") == 0:
                         accessions = download_feature_file(dir_out, url_aa, f"{gcf}_protein.faa.gz", featurefile=False)
                         accessions_map[gcf] = accessions
-                        print(f"DONE: Downloaded amino acid sequence file for {gcf} at {url_aa} to {dir_out}/{gcf}_protein.faa")
                     else:
                         print(f"Amino acid sequence file for {gcf} at {dir_out}/{gcf}_protein.faa already exists, skipping")
                         # read in only header lines, parse and add to accessions set
@@ -218,11 +217,14 @@ def main():
         seen = dict()
         for gcf, accessions in accessions_map.items():
             taxid = maptaixd.get(gcf, None)
-            if taxid:
-                for acc_n in accessions:
-                    if acc_n not in seen:
-                        mfa.write(f"{acc_n}\t{taxid}\t{gcf}\n")
-                        seen[acc_n] = True
+            if taxid and accessions:
+                try:
+                    for acc_n in accessions:
+                        if acc_n not in seen:
+                            mfa.write(f"{acc_n}\t{taxid}\t{gcf}\n")
+                            seen[acc_n] = True
+                except Exception as ex:
+                    print(ex)
 if __name__ == "__main__":
     sys.exit(main())
 
