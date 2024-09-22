@@ -831,9 +831,21 @@ def main():
 
     def calculate_disparity_cv(numreads):
         if len(numreads) > 1:
+            # Ensure the values are positive
+            numreads = [max(0, x) for x in numreads]
+
             mean_reads = statistics.mean(numreads)
             stddev_reads = statistics.stdev(numreads)
-            return stddev_reads / mean_reads if mean_reads != 0 else 0
+
+            # Calculate CV
+            if mean_reads != 0:
+                cv = stddev_reads / mean_reads
+            else:
+                cv = 0
+
+            # Clamp the CV value to be between 0 and 1
+            return max(0, min(cv, 1))
+
         return 0
     def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_mapping_match):
         """
@@ -1207,7 +1219,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 apply_weight(count.get('alignment_score', 0), weights.get('mapq_score',0)),
                 apply_weight(count.get('gini_coefficient', 0), weights.get('gini_coefficient',0)),
                 apply_weight(count.get('diamond', {}).get('identity', 0), weights.get('diamond_identity', 0)),
-                apply_weight(count.get('raw_disparity', 0), weights.get('siblings_score',0))
+                # apply_weight(count.get('raw_disparity', 0), weights.get('siblings_score',0))
             ]))
 
             file.write(
