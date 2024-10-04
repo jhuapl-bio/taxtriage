@@ -71,12 +71,16 @@ Unless you are using Seqera, most of the temporary directories and final outputs
    - If you have the command in your global env, you can run it directly without changing anything.
    - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
 
-### Confidence Scoring (Weight: 20% - Work in Progress)
+## Confidence Scoring
 
 In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
 
+Weighted Confidence Score: The final score is a weighted sum of several factors:
 
-### A. Coefficient of Variation (CV) Calculation
+![](../assets/svgs/full_score.svg)
+
+
+### A. Coefficient of Variation (CV) Calculation (Weight: 20% - WIP)
 
 The **Coefficient of Variation (CV)** is calculated as follows:
 
@@ -125,6 +129,12 @@ It is calculated as followed:
 <img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
 
 ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
+
+### D. MapQ Score. (Weight: 20%)
+
+This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
+
+![](../assets/svgs/mapq_score.svg)
 
 
 ### Samplesheet Information
