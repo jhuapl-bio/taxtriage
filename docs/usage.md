@@ -71,6 +71,62 @@ Unless you are using Seqera, most of the temporary directories and final outputs
    - If you have the command in your global env, you can run it directly without changing anything.
    - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
 
+### Confidence Scoring (Weight: 20% - Work in Progress)
+
+In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
+
+
+### A. Coefficient of Variation (CV) Calculation
+
+The **Coefficient of Variation (CV)** is calculated as follows:
+
+![CV Formula](../assets/svgs/cv_0.svg)
+
+Where:
+- **σ** is the standard deviation of the reads relative to all other siblings at that rank classified by kraken2.
+- **μ** is the mean of the reads.
+
+Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there. 
+
+##### Clamping the CV Value
+
+To ensure that the CV value remains between 0 and 1, the following clamping function is applied:
+
+![Clamping Formula](../assets/svgs/cv_0.5.svg)
+
+This ensures that:
+- If **CV** is greater than 1, it is set to 1.
+- If **CV** is negative, it is set to 0.
+
+If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**. 
+
+#### Disparity Calculation
+
+The **disparity** is calculated as:
+
+![Disparity Formula](../assets/svgs/cv_1.svg)
+
+### B. DIAMOND Identity (Weight: 40%)
+
+Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
+
+### C. Gini Coeff. (Weight: 20% - WIP)
+
+Gini Coefficient for Coverage Depth Calculation
+The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
+
+The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
+
+1: Perfect equality (all positions in the genome are equally covered by reads).
+0: Maximum inequality (some positions have much higher coverage than others).
+
+It is calculated as followed:
+
+<img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
+
+ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
+
+
 ### Samplesheet Information
 
 | Column               | Description                                                                                                                                                                            |
