@@ -36,10 +36,11 @@ process MINIMAP2_ALIGN {
     }
     def input_reads = reads.findAll { it != null }.join(' ')
     def minmapq = minmapq ? " -q ${minmapq} " :  ""
-    def bam_output = bam_format ? "-a | samtools sort | samtools view $minmapq -@ ${task.cpus} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
+    def I_value = "${(task.memory.toGiga() * 0.8).longValue()}G" // 80% of allocated memory, append GB to end as a string
+    def S_value = "${(task.memory.toGiga() * 0.1).longValue()}G" // 20% of allocated memory, append GB to end as a string
+    def bam_output = bam_format ? "-a | samtools sort -@ ${task.cpus} -m $S_value | samtools view $minmapq -@ ${task.cpus} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
-    def I_value = "${(task.memory.toGiga() * 0.9).longValue()}G" // 90% of allocated memory, append GB to end as a string
     // if input is illumina then use -ax sr else use -ax map-ont
     
     """

@@ -123,6 +123,12 @@
                     "description": "Save all read classifications as a txt file",
                     "default": true
                 },
+                "remove_commensal": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-book",
+                    "description": "Save all read classifications as a txt file",
+                    "default": true
+                },
                 "top_hits_count": {
                     "type": "number",
                     "default": 20,
