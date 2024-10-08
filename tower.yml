@@ -27,6 +27,9 @@ reports:
     display: "Top Taxa Per Rank post-Kraken2"
   "**/top/krakenreport.merged_mqc.tsv":
     display: "All Samples Top Hits Post-Kraken2"
+  "**/kraken2/*report.txt":
+    display: "Raw Kraken2 Reports"
+
 
 
 
