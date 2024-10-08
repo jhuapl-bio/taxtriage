@@ -1147,7 +1147,6 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                             pathogenic_reads += x.get('numreads', 0)
                             percentreads = f"{x.get('numreads', 0)*100/total_reads:.1f}" if total_reads > 0 and x.get('numreads', 0) > 0 else "0"
                             listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
-                            print(pathstrain)
 
                 if callfamclass == "":
                     callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
@@ -1156,17 +1155,6 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                     is_pathogen = "Potential"
                     annClass = "Derived"
 
-            print(f"Reference: {ref} - {formatname}")
-            print(f"\tIsPathogen: {is_pathogen}")
-            print(f"\tCallClass: {callfamclass}")
-            print(f"\tPathogenic Strains: {listpathogensstrains}")
-            percentreads = f"{pathogenic_reads/total_reads:.1f}" if total_reads > 0 and pathogenic_reads>0 else 0
-            print(f"\tPathogenic Reads: {pathogenic_reads} - {percentreads}%")
-            print(f"\tAligned Strains: {fullstrains}")
-            print(f"\tTotal reads: {sum(count['numreads'])}")
-            print(f"\tAlignment Conf: {count['meangini']}")
-            print(f"\tK2 Reads: {count['k2_numreads']}")
-            print()
 
             meanbaseq = format_non_zero_decimals(count.get('meanbaseq', 0))
             gini_coefficient = format_non_zero_decimals(count.get('meangini', 0))
@@ -1179,6 +1167,8 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             mapq_score = format_non_zero_decimals(count.get('alignment_score', 0))
             diamond_identity = format_non_zero_decimals(count.get('diamond', {}).get('identity', 0))
             siblings_score = format_non_zero_decimals(count.get('raw_disparity', 0))
+
+
 
             # if total_reads_aligned is 0 then set percent_aligned to 0
             countreads = sum(count['numreads'])
@@ -1194,9 +1184,9 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 pathogenic_sites = ""
             # Write to file in a newline format
             weights = {
-                'mapq_score': 0.2,
+                'mapq_score': 0.3,
                 'diamond_identity': 0.4,
-                'disparity_score': 0.2,
+                'disparity_score': 0.1,
                 'gini_coefficient': 0.2,
                 'siblings_score': 0
             }
@@ -1221,10 +1211,26 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             tass_score = format_non_zero_decimals(sum([
                 apply_weight(count.get('disparity_cv', 0), weights.get('disparity_score',0)),
                 apply_weight(count.get('alignment_score', 0), weights.get('mapq_score',0)),
-                apply_weight(count.get('gini_coefficient', 0), weights.get('gini_coefficient',0)),
+                apply_weight(count.get('meangini', 0), weights.get('gini_coefficient',0)),
                 apply_weight(count.get('diamond', {}).get('identity', 0), weights.get('diamond_identity', 0)),
                 # apply_weight(count.get('raw_disparity', 0), weights.get('siblings_score',0))
             ]))
+            if is_pathogen == "Primary":
+                print(f"Reference: {ref} - {formatname}")
+                print(f"\tIsPathogen: {is_pathogen}")
+                print(f"\tCallClass: {callfamclass}")
+                print(f"\tPathogenic Strains: {listpathogensstrains}")
+                percentreads = f"{100*pathogenic_reads/total_reads:.1f}" if total_reads > 0 and pathogenic_reads>0 else 0
+                print(f"\tPathogenic SubStrain Reads: {pathogenic_reads} - {percentreads}%")
+                print(f"\tAligned Strains: {fullstrains}")
+                print(f"\tTotal reads: {sum(count['numreads'])}")
+                print(f"\tGini Conf: {count.get('meangini', 0)}")
+                print(f"\tAlignment Score: {count.get('alignment_score', 0)}")
+                print(f"\tDisparity Score: {count.get('disparity_cv', 0)}")
+                print(f"\tDiamond Identity: {count.get('diamond', {}).get('identity', 0)}")
+                print(f"\tFinal Score: {tass_score}")
+                print(f"\tK2 Reads: {count['k2_numreads']}")
+                print()
 
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t"

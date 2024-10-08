@@ -214,6 +214,13 @@
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "min_conf": {
+                    "type": "number",
+                    "default": 0.75,
+                    "description": "Minimum Confidence for reporting.",
+                    "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "pathogens": {
                     "type": "string",
                     "format": "file-path",

@@ -60,6 +60,8 @@ def parse_args(argv=None):
     )
     parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Aligned Reads',
                         help="Name of abundance column, default is abundance")
+    parser.add_argument("-c", "--min_conf", metavar="MINCONF", required=False, default=0.75, type=float,
+                        help="Value that must be met for a table to report an organism due to confidence column.")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
                         help="Name of id column, default is id")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
@@ -84,7 +86,7 @@ def parse_args(argv=None):
 
 
 # Function to adjust font size based on text length
-def adjust_font_size(text, max_length=10, default_font_size=10, min_font_size=6):
+def adjust_font_size(text, max_length=8, default_font_size=8, min_font_size=6):
     if len(text) > max_length:
         # Calculate new font size (simple linear reduction, could be improved)
         new_size = max(default_font_size - (len(text) - max_length) // 5, min_font_size)
@@ -154,8 +156,9 @@ def import_data(inputfile ):
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
-    df_yes = df_full[~df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Opportunistic", "Potential" ] ) ].copy()
-    df_opp = df_full[df_full['Microbial Category'].isin([ 'Opportunistic', "Potential"])].copy()
+
+    df_yes = df_full[~df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Potential" ] ) ].copy()
+    df_opp = df_full[df_full['Microbial Category'].isin([  "Potential"])].copy()
     df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
     df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
 
@@ -482,7 +485,7 @@ def create_report(
             table_style=table_style
         )
         # Add the title and subtitle
-        Title = Paragraph("Opportunistic Pathogens", title_style)
+        Title = Paragraph("Low Potential Pathogens", title_style)
         elements.append(Title)
         elements.append(Spacer(1, 12))
         elements.append(table)
@@ -614,6 +617,8 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
+    if args.min_conf and args.min_conf > 0:
+        df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
 
     df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
