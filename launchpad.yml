@@ -1,6 +1,0 @@
-launchpad:
-  title: "My Nextflow Pipeline"
-  description: |
-    Welcome to the Nextflow Tower Launchpad! This pipeline allows you to process and analyze genomic data efficiently. 
-    Please configure the parameters below to get started. For more information, refer to the documentation.
-  
