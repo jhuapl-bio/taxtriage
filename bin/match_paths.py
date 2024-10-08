@@ -685,6 +685,9 @@ def main():
                     species_taxid = splitline[6]
                     name = splitline[7]
                     strain = splitline[8].replace("strain=", "")
+                    if strain == "na":
+                        strain = None
+
                     isSpecies = False if species_taxid != taxid else True
                     # fine value where assembly == accession from reference_hits
                     if accession in assembly_to_accession:
@@ -697,9 +700,7 @@ def main():
                                 reference_hits[acc]['name'] = name
 
         f.close()
-
     final_format = defaultdict(dict)
-
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
@@ -734,6 +735,7 @@ def main():
         return gini_coefficient
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
+
         # all_assemblies = [[x['assemblyname'], x['meanmapq'], x['numreads'], x['taxid']] for x in entries.values()]
         for val_key, data in entries.items():
             # get all organisms that are NOT the same assemblyname from all_assemblies
@@ -767,9 +769,10 @@ def main():
                 species_aggregated[top_level_key]['accs'].append(data['accession'])
                 species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
                 species_aggregated[top_level_key]['depths'].append(data['meandepth'])
+                name = data['name']
                 if 'strain' in data:
                     species_aggregated[top_level_key]['strainslist'].append({
-                        "strainname":data['strain'],
+                        "strainname": data['strain'],
                         "fullname":data['name'],
                         "subkey": val_key,
                         "numreads": data['numreads'],
@@ -821,7 +824,6 @@ def main():
         print(f"\tName: {aggregated_data['name']}")
         print(f"\tNum Reads: {aggregated_data['numreads']}")
         print(f"\tK2 Reads: {aggregated_data['k2_numreads']}")
-
 
     # Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
     def normalize_mapq(mapq_score, max_mapq=60):
@@ -1116,8 +1118,9 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
                 for x in strainlist:
                     keyx = x.get('strainname', x.get('taxid', ""))
-                    if formatname != x.get('strainname', ""):
-                        formatname = formatname.replace(x.get('strainname', ""), "")
+                    strainanme = x.get('strainname', None)
+                    if formatname != strainanme and strainanme:
+                        formatname = formatname.replace(strainanme, "")
                     if keyx in merged_strains:
                         merged_strains[keyx]['numreads'] += x.get('numreads', 0)
                         merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
@@ -1144,6 +1147,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                             pathogenic_reads += x.get('numreads', 0)
                             percentreads = f"{x.get('numreads', 0)/total_reads:.1f}" if total_reads > 0 and x.get('numreads', 0) > 0 else "0"
                             listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
+                            print(pathstrain)
 
                 if callfamclass == "":
                     callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
