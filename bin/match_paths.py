@@ -1145,7 +1145,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                         taxx = x.get('taxid', "")
                         if sample_type in pathstrain.get('pathogenic_sites', []) or pathstrain.get('callclass') != "commensal":
                             pathogenic_reads += x.get('numreads', 0)
-                            percentreads = f"{x.get('numreads', 0)/total_reads:.1f}" if total_reads > 0 and x.get('numreads', 0) > 0 else "0"
+                            percentreads = f"{x.get('numreads', 0)*100/total_reads:.1f}" if total_reads > 0 and x.get('numreads', 0) > 0 else "0"
                             listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
                             print(pathstrain)
 
