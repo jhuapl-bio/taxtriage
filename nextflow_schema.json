@@ -1,13 +1,14 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema",
     "$id": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/nextflow_schema.json",
-    "title": "nf-core/taxtriage pipeline parameters.\n Submitters should remove host reads in the sequencing files/data prior to identification of unknown pathogens and sharing of sequencing files/data sets. Additionally, all specimens should be de-identified, such that no personal identifying information (PII) can be associated with the sample. To prevent unauthorized use of the data, sequencing files/data shared between submitting parties and JHU/APL should only be used for activities related to this project. JHU/APL will not share data or results with any partner other than the originating lab without express-written consent.",
-    "description": "APHL pipeline for triage classification reports. Submitters should remove host reads in the sequencing files/data prior to identification of unknown pathogens and sharing of sequencing files/data sets. Additionally, all specimens should be de-identified, such that no personal identifying information (PII) can be associated with the sample. To prevent unauthorized use of the data, sequencing files/data shared between submitting parties and JHU/APL should only be used for activities related to this project. JHU/APL will not share data or results with any partner other than the originating lab without express-written consent.",
+    "title": "nf-core/taxtriage pipeline parameters",
+    "description": "APHL pipeline for triage classification reports.",
     "type": "object",
     "definitions": {
         "input_output_options": {
             "title": "Input/output options (Required)",
             "type": "object",
+            "hint": "Submitters should remove host reads in the sequencing files/data prior to identification of unknown pathogens and sharing of sequencing files/data sets. Additionally, all specimens should be de-identified, such that no personal identifying information (PII) can be associated with the sample. To prevent unauthorized use of the data, sequencing files/data shared between submitting parties and JHU/APL should only be used for activities related to this project. JHU/APL will not share data or results with any partner other than the originating lab without express-written consent."
             "fa_icon": "fas fa-terminal",
             "description": "Define where the pipeline should find input data samplesheet, database, and save output data.",
             "properties": {
