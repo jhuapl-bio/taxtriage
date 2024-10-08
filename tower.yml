@@ -1,7 +1,3 @@
-launchpad:
-  title: "JHUAPL TaxTriage Cloud Instance"
-  description: |
-    "Submitters should remove host reads in the sequencing files/data prior to identification of unknown pathogens and sharing of sequencing files/data sets. Additionally, all specimens should be de-identified, such that no personal identifying information (PII) can be associated with the sample. To prevent unauthorized use of the data, sequencing files/data shared between submitting parties and JHU/APL should only be used for activities related to this project. JHU/APL will not share data or results with any partner other than the originating lab without express-written consent."
 reports:
   multiqc_report.html:
     display: "MultiQC HTML report"
