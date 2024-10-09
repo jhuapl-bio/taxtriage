@@ -32,9 +32,7 @@ Tax Triage is designed as a pipeline to democratize metagenomic sequence analysi
 - Detailed MultiQC reports
 - Concise final report (intended to have all data fields required for use in clinical settings)
 
-For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). 
-
-Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August.
+For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. 
 
 See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#important-output-locations) for information on where to get the most important output files from the pipeline. 
 
@@ -50,7 +48,7 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 
 On release, automated continuous integration tests run the pipeline on a full-sized dataset on the AWS cloud infrastructure. This ensures that the pipeline runs on AWS, has sensible resource allocation defaults set to run on real-world datasets, and permits the persistent storage of results to benchmark between pipeline releases and other analysis sources. The results obtained from the full-sized test can be viewed on the [nf-core website](https://nf-co.re/taxtriage/results).
 
-Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. This pipeline uses the `nextflow` ecosystem and is also available as a module in [Basestack](https://github.com/jhuapl-bio/Basestack). Currently, Basestack is undergoing improvements to allow easier usage of nextflow pipelines (includes TaxTriage) that is scheduled for release in early August.
+Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. 
 
 Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (*CE ONLY* v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
 
@@ -250,6 +248,8 @@ nextflow run ./main.nf -profile test,docker
 ```
 
 See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#nf-coretaxtriage-usage) for a full list of input parameters and options available based on your own needs
+
+If you would like more information on the confidence metrics, view it [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring)
 
 If you want to download the databases from scratch, you can see them here
 Make sure to Download these databases to your `Desktop` or wherever you are the most comfortable. Remember the location and specify the `--db` parameter as the absolute path. For example `~/Desktop/flukraken2`. Also, remove the `--download-db` parameter
