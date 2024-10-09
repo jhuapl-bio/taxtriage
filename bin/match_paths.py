@@ -61,6 +61,7 @@ def parse_args(argv=None):
         "--min_reads_align",
         metavar="MINREADSALIGN",
         default=3,
+        type=int,
         help="Filter for minimum reads aligned to reference per organism. Default is 1",
     )
     parser.add_argument(
@@ -435,7 +436,90 @@ def import_k2_file(filename):
     return taxids
 
 
-def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
+def calculate_overlap(read_start, read_end, prev_start, prev_end):
+    # Calculate the overlap between two regions
+    overlap_start = max(read_start, prev_start)
+    overlap_end = min(read_end, prev_end)
+    if overlap_start < overlap_end:
+        overlap = overlap_end - overlap_start
+    else:
+        overlap = 0
+    return overlap
+def check_minimum_unique_coverage_by_position(reference_coverage, min_reads_align, max_overlap_percentage=0.1):
+    """Check unique coverage by analyzing the positions from the depth file."""
+    for ref, data in reference_coverage.items():
+        positions_covered = sorted(data['depths'].keys())  # Get the list of covered positions
+        # If no positions are covered, skip to the next reference
+        if not positions_covered:
+            # print(f"Reference {ref} filtered out: no positions covered")
+            continue
+
+        unique_regions = []
+        current_region_start = positions_covered[0]
+        current_region_end = positions_covered[0]
+
+        for pos in positions_covered[1:]:
+            # Check if this position is contiguous with the previous one
+            if pos == current_region_end + 1:
+                current_region_end = pos
+            else:
+                # Save the completed region
+                unique_regions.append((current_region_start, current_region_end))
+                # Start a new region
+                current_region_start = pos
+                current_region_end = pos
+
+        # Don't forget to add the last region
+        unique_regions.append((current_region_start, current_region_end))
+
+        # Now we check if there are at least 'min_reads_align' unique regions
+        non_overlapping_regions = []
+        for start, end in unique_regions:
+            is_unique = True
+            for prev_start, prev_end in non_overlapping_regions:
+                overlap = calculate_overlap(start, end, prev_start, prev_end)
+                overlap_percentage = overlap / (end - start)
+                if overlap_percentage > max_overlap_percentage:
+                    is_unique = False
+                    break
+            if is_unique:
+                non_overlapping_regions.append((start, end))
+            # if len(non_overlapping_regions) >= min_reads_align:
+            #     break
+
+        # Check if the reference passes the filter
+        if len(non_overlapping_regions) < min_reads_align:
+            print(f"Reference {ref} filtered out: only {len(non_overlapping_regions)} unique regions covered from depth file")
+        else:
+            print(f"Reference {ref} passed: {len(non_overlapping_regions)} unique regions covered from depth file")
+
+        reference_coverage[ref]['covered_regions'] = non_overlapping_regions
+
+def check_minimum_unique_coverage(reference_coverage, min_reads_align, max_overlap_percentage=0.1):
+    """Check if at least 'min_reads_align' unique portions of the reference are covered."""
+    for ref, data in reference_coverage.items():
+        positions_covered = []
+        for read_start, read_end in sorted(data['covered_regions']):
+            # Check overlap with previously covered regions
+            unique_region = True
+            for prev_start, prev_end in positions_covered:
+                overlap = calculate_overlap(read_start, read_end, prev_start, prev_end)
+                overlap_percentage = overlap / (read_end - read_start)
+
+                if overlap_percentage > max_overlap_percentage:
+                    unique_region = False
+                    break
+            if unique_region:
+                positions_covered.append((read_start, read_end))
+            # Stop early if we already reached the required number of unique regions
+        # Check if the reference passes the filter
+        if len(positions_covered) < min_reads_align:
+            print(f"Reference {ref} filtered out: only {len(positions_covered)} unique regions covered")
+        else:
+            print(f"Reference {ref} passed: {len(positions_covered)} unique regions covered")
+        reference_coverage[ref]['covered_regions'] = positions_covered
+
+def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_align):
     """
     Count the number of reads aligned to each reference in a BAM file.
 
@@ -476,7 +560,9 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                 name = ref,
                 accession = ref,
                 isSpecies = False,
+                covered_regions = [],  # Store regions covered by reads
             )
+
         if covfile:
             print("Reading coverage information from coverage file")
             with open(covfile, 'r') as f:
@@ -502,7 +588,7 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
             f.close()
         if not depthfile or not covfile:
             print("No depthfile or covfile supplied, reading input from bam file")
-            for read in bam_file.fetch(until_eof=True):
+            for read in bam_file.fetch():
                 if not read.is_unmapped:  # Check if the read is aligned
                     reference_name = bam_file.get_reference_name(read.reference_id)
                     aligned_reads +=1
@@ -524,6 +610,7 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                     if not depthfile:
                         for pos in range(read.reference_start, read.reference_end):
                             reference_coverage[reference_name]['depths'][pos] += 1
+                    reference_coverage[reference_name]['covered_regions'].append((read.reference_start, read.reference_end))
                 else:
                     unaligned += 1
 
@@ -535,6 +622,8 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                     data['meanmapq'] = sum(data['mapqs']) / len(data['mapqs'])
 
     bam_file.close()
+
+    # After processing all reads, check for minimum unique coverage
     if depthfile:
         print("Reading depth information from depth file")
         # read in depthfile and reference_coverage[reference_name][pos]  as value
@@ -546,7 +635,13 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct):
                 depth = int(splitline[2])
                 reference_coverage[reference_name]['depths'][pos] = depth
         f.close()
+        # Now check minimum unique coverage based on depthfile data
+        check_minimum_unique_coverage_by_position(reference_coverage, min_reads_align)
+
      # make a new dict which is name then count, percentage across total reads and percentage across aligned reads
+    else:
+        # Check uniqueness based on BAM data
+        check_minimum_unique_coverage(reference_coverage, min_reads_align)
     i=0
     return reference_coverage, total_reads
 
@@ -627,7 +722,8 @@ def main():
         inputfile,
         args.depth,
         covfile,
-        matchdct
+        matchdct,
+        args.min_reads_align
     )
 
     assembly_to_accession = defaultdict(set)
@@ -756,6 +852,7 @@ def main():
                     'baseqs': [],
                     "isSpecies": True if  args.compress_species  else data['isSpecies'],
                     'strainslist': [],
+                    'covered_regions': 0,
                     'name': data['name'],  # Assuming the species name is the same for all strains
             }
 
@@ -764,6 +861,7 @@ def main():
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
                 species_aggregated[top_level_key]['taxids'].append(data['taxid'])
                 species_aggregated[top_level_key]['numreads'].append(data['numreads'])
+                species_aggregated[top_level_key]['covered_regions'] += len(data['covered_regions'])
                 species_aggregated[top_level_key]['coverages'].append(data['coverage'])
                 species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
                 species_aggregated[top_level_key]['accs'].append(data['accession'])
@@ -999,9 +1097,9 @@ def main():
     if args.min_reads_align:
         # filter the reference_hits based on the minimum number of reads aligned
         print(f"Filtering for minimum reads aligned: {args.min_reads_align}")
+        species_aggregated = {k: v for k, v in species_aggregated.items() if ((v['covered_regions'])) >= int(args.min_reads_align)}
         species_aggregated = {k: v for k, v in species_aggregated.items() if sum(v['numreads']) >= int(args.min_reads_align)}
     # Create a new dictionary to store aggregated species-level data
-
     for top_level_key, data in species_aggregated.items():
         print(f"Reference: {data['name']} (Taxid: {data['key']})")
         print(f"\tNumber of Reads: {data['numreads']}")
