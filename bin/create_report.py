@@ -60,7 +60,7 @@ def parse_args(argv=None):
     )
     parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Aligned Reads',
                         help="Name of abundance column, default is abundance")
-    parser.add_argument("-c", "--min_conf", metavar="MINCONF", required=False, default=0.75, type=float,
+    parser.add_argument("-c", "--min_conf", metavar="MINCONF", required=False, default=0.5, type=float,
                         help="Value that must be met for a table to report an organism due to confidence column.")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
                         help="Name of id column, default is id")
