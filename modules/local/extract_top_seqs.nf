@@ -14,45 +14,36 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process ORGANISM_MERGE_REPORT {
+process EXTRACT_TOP_SEQS {
     tag "$meta.id"
     label 'process_medium'
-    publishDir "${params.outdir}/report", mode: 'copy'
 
-    conda (params.enable_conda ? "bioconda::pysam" : null)
+    conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.7' :
-        'jhuaplbio/reportlab-pdf:4.0.7' }"
+        'https://depot.galaxyproject.org/singularity/biopython:1.78' :
+        'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta), file(files_of_pathogens), file(distributions)
+    tuple val(meta),  path(taxids)
 
     output:
-        path "versions.yml"           , emit: versions
-        path("*organisms.report.txt")    , optional: false, emit: report
-        path("*organisms.report.pdf")    , optional: false, emit: pdf
+    path("*fastq.gz"), optional: true, emit: fastq
+    path "versions.yml"           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output_txt = "${meta.id}.organisms.report.txt"
-    def output_pdf = "${meta.id}.organisms.report.pdf"
-    def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
-    def min_conf = params.min_conf ? " -c $params.min_conf " : ""
     """
 
-    awk 'NR==1{print; next} FNR>1' $files_of_pathogens > $output_txt
 
-    create_report.py -i $output_txt  -o $output_pdf $distribution_arg $min_conf
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        awk: \$(awk --version 2>&1)
+        python: \$(python3 --version )
     END_VERSIONS
 
     """
 }
-
 

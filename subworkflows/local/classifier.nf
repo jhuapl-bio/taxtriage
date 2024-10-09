@@ -31,6 +31,7 @@ include { FILTERKRAKEN } from '../../modules/local/filter_krakenreport'
 include { KREPORT_TO_KRONATXT } from '../../modules/local/generate_krona_txtfile'
 include { KREPORT_TO_TAXONOMY } from '../../modules/local/kreport_to_taxonomy'
 include { KRONA   } from '../../modules/local/krona.nf'
+include { EXTRACT_TOP_SEQS   } from '../../modules/local/extract_top_seqs.nf'
 include { KRONA_KTIMPORTTEXT  } from '../../modules/nf-core/krona/ktimporttext/main'
 include { KRAKENTOOLS_COMBINEKREPORTS   } from '../../modules/nf-core/krakentools/combinekreports/main'
 include { MERGEDSUBSPECIES } from '../../modules/local/merged_subspecies'
@@ -124,6 +125,9 @@ workflow CLASSIFIER {
 
             if (ch_save_fastq_classified){
                 ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+                // EXTRACT_TOP_SEQS(
+                //     TOP_HITS.out.taxids
+                // )
             }
 
             if (params.fuzzy){

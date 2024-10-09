@@ -19,6 +19,7 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_INDEX as FILTER_MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
 include { REMOVE_HOSTREADS } from '../../modules/local/remove_unaligned'
@@ -63,9 +64,18 @@ workflow HOST_REMOVAL {
             // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
             // if ch_aligned_for_filter.shorteads is not empty
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
+            // FILTER_MINIMAP2_INDEX(
+            //     [[id: 'reference'], ch_reference_fasta_removal]
+            // )
+
+            // ch_reads_indx = ch_reads.join(
+            //     FILTER_MINIMAP2_INDEX.out.index
+            // )
+            // ch_reads_indx.view()
+
 
             FILTER_MINIMAP2(
-                ch_reads.map{ m, fastq -> return [m, fastq, ch_reference_fasta_removal] },
+                ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
                 true,
                 true,
                 true,
@@ -95,12 +105,11 @@ workflow HOST_REMOVAL {
             FILTERED_SAMTOOLS_INDEX(ch_bam_hosts)
 
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
-            FILTERED_STATS (
+            FILTERED_STATS(
                 ch_bai_files,
-                [ [], file(params.remove_reference_file) ]
+                [ [], ch_reference_fasta_removal  ]
             )
             ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
-
         } else if (params.filter_kraken2){
             if (supported_filter_dbs.containsKey(params.filter_kraken2)) {
                 println "Kraken db ${params.filter_kraken2} will be downloaded if it cannot be found. This requires ${supported_filter_dbs[params.filter_kraken2]['size']} of space."
