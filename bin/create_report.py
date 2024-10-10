@@ -428,10 +428,10 @@ def create_report(
         "Specimen ID (Type): The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
         "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
-        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence.",
+        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample.",
         "Confidence Metric (0-1): A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species.",
-        "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample.",
+        "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
     ]
 
