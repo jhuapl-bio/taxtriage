@@ -1,4 +1,4 @@
-# nf-core/taxtriage: Usage
+# taxtriage: Usage
 
 ## :warning: Please read this documentation on the nf-core website: [https://nf-co.re/taxtriage/usage](https://nf-co.re/taxtriage/usage)
 
@@ -155,7 +155,7 @@ An [example samplesheet](../examples/Samplesheet.csv) has been provided with the
 The typical command for running the pipeline is as follows:
 
 ```console
-nextflow run nf-core/taxtriage --input samplesheet.csv --outdir ./$OUTDIR -profile docker
+nextflow run https://github.com/jhuapl-bio/taxtriage --input samplesheet.csv --outdir OUTDIR -profile docker
 ```
 
 :warning: please be aware that for local instances, due to limited resources, we have defined several config profiles. Please try `-profile test,docker` for a trial run of dummy data and then use `-profile local,docker` first on your own data before manually adjusting parameters
