@@ -23,7 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from distributions import import_distributions, make_vplot, body_site_map
 from reportlab.graphics.shapes import Line
 
@@ -156,6 +156,7 @@ def import_data(inputfile ):
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
+    # append (taxid) from taxid column to Detected Organism
 
     df_yes = df_full[~df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Potential" ] ) ].copy()
     df_opp = df_full[df_full['Microbial Category'].isin([  "Potential"])].copy()
@@ -320,19 +321,19 @@ def create_report(
 
     # PDF file setup
     pdf_file = output
-    doc = SimpleDocTemplate(pdf_file, pagesize=letter)
+    doc = SimpleDocTemplate(pdf_file, pagesize=landscape(letter))
     # Placeholder values for version and date
     #### Section to style things up a bit
     # Set the left margin to 10% of the width of a letter size page (8.5 inches)
-    left_margin = 0.1 * letter[0]
-    right_margin = left_margin / 5
-    top_margin = bottom_margin = 0.1 * letter[1]
+    # Set custom margins based on percentage of the page size
+    left_margin = 0.1 * letter[0]  # 10% of the width of a letter page (landscape width)
+    right_margin = left_margin / 5  # 1/5th of the left margin for right margin
+    top_margin = bottom_margin = 0.1 * letter[1]  # 10% of the height of a letter page
 
-
-    # Modify the doc setup to include custom margins
+    # Modify the doc setup to include custom margins and landscape mode
     doc = SimpleDocTemplate(
         pdf_file,
-        pagesize=letter,
+        pagesize=landscape(letter),  # Ensure the document is landscape
         leftMargin=left_margin,
         rightMargin=right_margin,
         topMargin=top_margin,
@@ -399,12 +400,16 @@ def create_report(
     # After adding your table to the elements
     subtext_style = styles['Normal']
 
+    # Create an HRFlowable for the horizontal line
+    horizontal_line = HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=12, spaceAfter=12)
+
     # Create explanatory bullets with better formatting
     bullet_list_items = [
         "Primary: Exposure to the agent generally results in a diseased state in both immunocompromised and immunocompetent individuals.",
         "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections.",
         "Commensal: Organisms typically found in the human microbiota.",
         "Potential: Organisms that have been associated with disease states but are not extensively studied.",
+        "≡: Indicates a pathogenic subspecies/serotype/strain/etc with the same name as the species listed, just different taxids."
     ]
 
     bullet_list = ListFlowable(
@@ -413,23 +418,49 @@ def create_report(
         start='circle'
     )
     elements.append(bullet_list)
+
+    elements.append(horizontal_line)
+
     elements.append(Spacer(1, 12))
 
+    # Define the column explanations
+    column_explanations = [
+        "Specimen ID (Type): The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
+        "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
+        "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
+        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence.",
+        "Confidence Metric (0-1): A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
+        "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species.",
+        "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample.",
+        "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
+    ]
 
+    # Create bullet points for each column explanation
+    bullet_list_items = [
+        Paragraph(item, subtext_style) for item in column_explanations
+    ]
 
+    # Create the bullet list
+    bullet_list = ListFlowable(
+        [ListItem(item) for item in bullet_list_items],
+        bulletType='bullet',
+        start='circle'
+    )
 
-
-
-
-
-    elements.append(Spacer(1, 12))  # Space between tables
-
-
-    # Create an HRFlowable for the horizontal line
-    horizontal_line = HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=12, spaceAfter=12)
+    # Append the bullet list to the elements
+    elements.append(bullet_list)
 
     # Add the horizontal line to the elements
     elements.append(horizontal_line)
+
+    paragraph_style = styles['Normal']
+
+    # Create a paragraph with a clickable URL
+    url = "https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring"
+    text_with_url = f'Please visit our <a href="{url}"><b><font color="blue">DOCUMENTATION PAGE</font></b></a> for more information on how confidence is calculated.'
+
+    # Add the paragraph with the URL
+    elements.append(Paragraph(text_with_url, paragraph_style))
 
 
 
@@ -459,7 +490,6 @@ def create_report(
 
         bulletType='bullet'  # '1' for numbered list
     )
-
     # add horizontal line in reportlab
     elements.append(bullet_list)
 
@@ -573,6 +603,8 @@ def main():
         else:
             return f"{x['Specimen ID']} ({x['body_site']})"
     df_full['Specimen ID (Type)'] = df_full.apply(lambda x: make_sample(x), axis=1)
+    # remove anything in name where "phage" is in it
+    df_full = df_full[~df_full[args.type].str.contains("phage")]
     # group on sampletype and get sum of abundance col
     # get the sum of abundance for each sample
 
@@ -619,7 +651,7 @@ def main():
     df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
     if args.min_conf and args.min_conf > 0:
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-
+    # df_full['name'] = df_full['name'] + " (" + df_full['Taxonomic ID #'].astype(str) + ")"
     df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
     df_identified, df_opportunistic, df_commensal, df_unidentified= split_df(df_full)

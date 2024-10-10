@@ -21,6 +21,7 @@
 from collections import defaultdict
 import sys
 import statistics
+import math as Math
 import argparse
 import re
 import csv
@@ -436,88 +437,79 @@ def import_k2_file(filename):
     return taxids
 
 
-def calculate_overlap(read_start, read_end, prev_start, prev_end):
-    # Calculate the overlap between two regions
-    overlap_start = max(read_start, prev_start)
-    overlap_end = min(read_end, prev_end)
-    if overlap_start < overlap_end:
-        overlap = overlap_end - overlap_start
-    else:
-        overlap = 0
-    return overlap
-def check_minimum_unique_coverage_by_position(reference_coverage, min_reads_align, max_overlap_percentage=0.1):
-    """Check unique coverage by analyzing the positions from the depth file."""
+
+def detect_regions_from_depth(reference_coverage, depthfile, avg_read_length):
+    """
+    Detect regions based on gaps in depth and the average read length.
+
+    Args:
+    - reference_coverage (dict): Dictionary holding reference coverage information.
+    - depthfile (str): Path to the depth file.
+    - avg_read_length (int): The average read length for aligning reads.
+
+    Returns:
+    - reference_coverage (dict): Updated reference coverage with detected regions.
+    """
+
+    # Read the depth information from the depth file
+    print("Reading depth information from depth file")
+    with open(depthfile, 'r') as f:
+        for line in f:
+            splitline = line.split('\t')
+            reference_name = splitline[0]
+            pos = int(splitline[1])
+            depth = int(splitline[2])
+            reference_coverage[reference_name]['depths'][pos] = depth
+
+    # Process each reference to detect regions
     for ref, data in reference_coverage.items():
-        positions_covered = sorted(data['depths'].keys())  # Get the list of covered positions
-        # If no positions are covered, skip to the next reference
-        if not positions_covered:
-            # print(f"Reference {ref} filtered out: no positions covered")
-            continue
+        depths = data['depths']
+        regions = []
+        current_region_start = None
+        previous_depth = None
 
-        unique_regions = []
-        current_region_start = positions_covered[0]
-        current_region_end = positions_covered[0]
+        # Traverse through all positions
+        for pos in range(1, data['length'] + 1):
+            depth = depths.get(pos, 0)  # Default to 0 if no depth recorded
 
-        for pos in positions_covered[1:]:
-            # Check if this position is contiguous with the previous one
-            if pos == current_region_end + 1:
-                current_region_end = pos
-            else:
-                # Save the completed region
-                unique_regions.append((current_region_start, current_region_end))
-                # Start a new region
+            # Check for the start of a new region
+            if current_region_start is None and depth >= 1:
                 current_region_start = pos
-                current_region_end = pos
 
-        # Don't forget to add the last region
-        unique_regions.append((current_region_start, current_region_end))
+            # Check for gaps or the end of a region
+            if depth == 0 and current_region_start is not None:
+                regions.append((current_region_start, pos - 1))
+                current_region_start = None
 
-        # Now we check if there are at least 'min_reads_align' unique regions
-        non_overlapping_regions = []
-        for start, end in unique_regions:
-            is_unique = True
-            for prev_start, prev_end in non_overlapping_regions:
-                overlap = calculate_overlap(start, end, prev_start, prev_end)
-                overlap_percentage = overlap / (end - start)
-                if overlap_percentage > max_overlap_percentage:
-                    is_unique = False
-                    break
-            if is_unique:
-                non_overlapping_regions.append((start, end))
-            # if len(non_overlapping_regions) >= min_reads_align:
-            #     break
+            # Update the previous depth
+            previous_depth = depth
 
-        # Check if the reference passes the filter
-        if len(non_overlapping_regions) < min_reads_align:
-            print(f"Reference {ref} filtered out: only {len(non_overlapping_regions)} unique regions covered from depth file")
-        else:
-            print(f"Reference {ref} passed: {len(non_overlapping_regions)} unique regions covered from depth file")
+        # Handle the last region (if there was no gap at the end)
+        if current_region_start is not None:
+            regions.append((current_region_start, data['length']))
 
-        reference_coverage[ref]['covered_regions'] = non_overlapping_regions
+        # Adjust regions based on the average read length
+        adjusted_regions = []
+        for region_start, region_end in regions:
+            region_length = region_end - region_start + 1
+            if region_length > avg_read_length:
+                # Split region into multiple parts if it spans more than the average read length
+                num_subregions = max(1, region_length // avg_read_length)
+                subregion_size = region_length // num_subregions
+                for i in range(num_subregions):
+                    subregion_start = region_start + i * subregion_size
+                    subregion_end = min(region_start + (i + 1) * subregion_size - 1, region_end)
+                    adjusted_regions.append((subregion_start, subregion_end))
+            else:
+                # Keep the region as is
+                adjusted_regions.append((region_start, region_end))
 
-def check_minimum_unique_coverage(reference_coverage, min_reads_align, max_overlap_percentage=0.1):
-    """Check if at least 'min_reads_align' unique portions of the reference are covered."""
-    for ref, data in reference_coverage.items():
-        positions_covered = []
-        for read_start, read_end in sorted(data['covered_regions']):
-            # Check overlap with previously covered regions
-            unique_region = True
-            for prev_start, prev_end in positions_covered:
-                overlap = calculate_overlap(read_start, read_end, prev_start, prev_end)
-                overlap_percentage = overlap / (read_end - read_start)
+        # Update the reference coverage with the detected regions
+        reference_coverage[ref]['covered_regions'] = adjusted_regions
 
-                if overlap_percentage > max_overlap_percentage:
-                    unique_region = False
-                    break
-            if unique_region:
-                positions_covered.append((read_start, read_end))
-            # Stop early if we already reached the required number of unique regions
-        # Check if the reference passes the filter
-        if len(positions_covered) < min_reads_align:
-            print(f"Reference {ref} filtered out: only {len(positions_covered)} unique regions covered")
-        else:
-            print(f"Reference {ref} passed: {len(positions_covered)} unique regions covered")
-        reference_coverage[ref]['covered_regions'] = positions_covered
+    return reference_coverage
+
+
 
 def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_align):
     """
@@ -543,8 +535,10 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
-        total_reads = sum(1 for _ in bam_file)
+
+
         for ref in bam_file.header.references:
+            # get average read length
             reference_lengths[ref] = bam_file.get_reference_length(ref)
             reference_coverage[ref] = dict(
                 length = reference_lengths[ref],
@@ -562,6 +556,32 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_
                 isSpecies = False,
                 covered_regions = [],  # Store regions covered by reads
             )
+        # Open BAM file
+        unique_read_ids = set()  # To track unique read IDs
+        total_length = 0
+        total_reads = 0
+        readlengths = []
+
+        for read in bam_file.fetch():
+            read_id = read.query_name
+
+            # Check if the read is already processed (to handle multiple alignments)
+            if read_id not in unique_read_ids:
+                unique_read_ids.add(read_id)
+                total_reads += 1
+                readlengths.append(read.query_length)
+                total_length += read.query_length  # Add the length of the read
+            if not read.is_unmapped:  # Check if the read is aligned
+                aligned_reads += 1
+        # Calculate average read length
+        average_read_length = Math.ceil(total_length / total_reads if total_reads > 0 else 0)
+
+        print(f"Total unique reads: {total_reads}")
+        print(f"Average read length: {average_read_length}")
+
+        if depthfile:
+            # Detect regions based on the depth file and average read length
+            reference_coverage = detect_regions_from_depth(reference_coverage, depthfile, average_read_length)
 
         if covfile:
             print("Reading coverage information from coverage file")
@@ -607,6 +627,7 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_
                         reference_coverage[reference_name]['mapqs'].append(mapq)
                         reference_coverage[reference_name]['baseqs'].append(baseq)
                         reference_coverage[reference_name]['numreads']+=1
+                    ### This needs updating.
                     if not depthfile:
                         for pos in range(read.reference_start, read.reference_end):
                             reference_coverage[reference_name]['depths'][pos] += 1
@@ -622,29 +643,8 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_
                     data['meanmapq'] = sum(data['mapqs']) / len(data['mapqs'])
 
     bam_file.close()
-
-    # After processing all reads, check for minimum unique coverage
-    if depthfile:
-        print("Reading depth information from depth file")
-        # read in depthfile and reference_coverage[reference_name][pos]  as value
-        with open(depthfile, 'r') as f:
-            for line in f:
-                splitline = line.split('\t')
-                reference_name = splitline[0]
-                pos = int(splitline[1])
-                depth = int(splitline[2])
-                reference_coverage[reference_name]['depths'][pos] = depth
-        f.close()
-        # Now check minimum unique coverage based on depthfile data
-        check_minimum_unique_coverage_by_position(reference_coverage, min_reads_align)
-
-     # make a new dict which is name then count, percentage across total reads and percentage across aligned reads
-    else:
-        # Check uniqueness based on BAM data
-        check_minimum_unique_coverage(reference_coverage, min_reads_align)
     i=0
-    return reference_coverage, total_reads
-
+    return reference_coverage, aligned_reads, total_reads
 def main():
     args = parse_args()
     inputfile = args.input
@@ -718,7 +718,7 @@ def main():
                     except Exception as e:
                         print(f"Error: {e}")
                 i+=1
-    reference_hits, total_reads = count_reference_hits(
+    reference_hits, aligned_total, total_reads = count_reference_hits(
         inputfile,
         args.depth,
         covfile,
@@ -782,7 +782,7 @@ def main():
                     name = splitline[7]
                     strain = splitline[8].replace("strain=", "")
                     if strain == "na":
-                        strain = None
+                        strain = f"≡"
 
                     isSpecies = False if species_taxid != taxid else True
                     # fine value where assembly == accession from reference_hits
@@ -791,6 +791,8 @@ def main():
                             if acc in reference_hits:
                                 reference_hits[acc]['isSpecies'] = isSpecies
                                 reference_hits[acc]['toplevelkey'] = species_taxid
+                                if strain == "na":
+                                    strain = "≡"
                                 reference_hits[acc]['strain'] = strain
                                 reference_hits[acc]['assemblyname'] = name
                                 reference_hits[acc]['name'] = name
@@ -887,7 +889,6 @@ def main():
             except Exception as e:
                 print(top_level_key, val_key,"___")
                 print(f"Error: {e}")
-
 
     # Calculate weighted means for aggregated data
     for top_level_key, aggregated_data in species_aggregated.items():
@@ -1104,20 +1105,20 @@ def main():
         print(f"Reference: {data['name']} (Taxid: {data['key']})")
         print(f"\tNumber of Reads: {data['numreads']}")
         print(f"\tMean Coverage: {data['meancoverage']}")
-        print(f"\Alignment Conf: {data['meangini']}")
+        print(f"\tAlignment Conf: {data['meangini']}")
         print(f"\tDepth of Coverage: {data['meandepth']}")
         print(f"\tMean BaseQ: {data['meanbaseq']}")
         print(f"\tMean MapQ: {data['meanmapq']}")
         print(f"\tisSpecies: {data['isSpecies']}")
         print()
-
     write_to_tsv(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
         output_file_path=output,
         sample_name=args.samplename,
         sample_type = args.sampletype,
-        total_reads = total_reads
+        total_reads = total_reads,
+        aligned_total = aligned_total
     )
 def format_non_zero_decimals(number):
     # Convert the number to a string
@@ -1138,7 +1139,7 @@ def format_non_zero_decimals(number):
 
 
 
-def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_Name", sample_type="Unknown", total_reads=0):
+def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_Name", sample_type="Unknown", total_reads=0, aligned_total = 0):
     """
     Write reference hits and pathogen information to a TSV file.
 
@@ -1153,7 +1154,6 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
         header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t% Aligned Reads\t# Reads Aligned\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tProtein Identity Score\tSiblings score\tTASS Score\n"
         file.write(f"{header}")
         print("________________________________________")
-        total_reads_aligned = 0
 
         for ref, count in aggregated_stats.items():
             strainlist = count.get('strainslist', [])
@@ -1164,11 +1164,8 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             isPath = False
             annClass = "None"
             pathogenic_sites = []
-            total_reads_aligned += sum(count.get('numreads', [0]))  # Safely sum reads
-
             refpath = pathogens.get(ref)
             pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
-
             def pathogen_label(ref):
                 is_pathogen = "Unknown"
                 isPathi = False
@@ -1216,9 +1213,12 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
                 for x in strainlist:
                     keyx = x.get('strainname', x.get('taxid', ""))
-                    strainanme = x.get('strainname', None)
-                    if formatname != strainanme and strainanme:
-                        formatname = formatname.replace(strainanme, "")
+                    # strainanme = x.get('strainname', None)
+
+                    # if formatname != strainanme and strainanme:
+                    #     formatname = formatname.replace(strainanme, "")
+                    # elif not strainanme or not formatname:
+                    #     formatname = x.get('fullname', "Unnamed Organism")
                     if keyx in merged_strains:
                         merged_strains[keyx]['numreads'] += x.get('numreads', 0)
                         merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
@@ -1243,14 +1243,14 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                         taxx = x.get('taxid', "")
                         if sample_type in pathstrain.get('pathogenic_sites', []) or pathstrain.get('callclass') != "commensal":
                             pathogenic_reads += x.get('numreads', 0)
-                            percentreads = f"{x.get('numreads', 0)*100/total_reads:.1f}" if total_reads > 0 and x.get('numreads', 0) > 0 else "0"
+                            percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
                             listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
 
                 if callfamclass == "":
                     callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
 
-                if (is_pathogen == "N/A" or is_pathogen == "Unknown") and listpathogensstrains:
-                    is_pathogen = "Potential"
+                if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
+                    is_pathogen = "Primary"
                     annClass = "Derived"
 
 
@@ -1270,10 +1270,10 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
             # if total_reads_aligned is 0 then set percent_aligned to 0
             countreads = sum(count['numreads'])
-            if total_reads_aligned == 0:
+            if aligned_total == 0:
                 percent_aligned = 0
             else:
-                percent_aligned = format_non_zero_decimals(100*countreads / total_reads_aligned)
+                percent_aligned = format_non_zero_decimals(100*countreads / aligned_total)
             if total_reads == 0:
                 percent_total = 0
             else:
@@ -1313,12 +1313,12 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 apply_weight(count.get('diamond', {}).get('identity', 0), weights.get('diamond_identity', 0)),
                 # apply_weight(count.get('raw_disparity', 0), weights.get('siblings_score',0))
             ]))
-            if is_pathogen == "Primary":
+            if is_pathogen == "Primary" or is_pathogen=="Potential":
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tCallClass: {callfamclass}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
-                percentreads = f"{100*pathogenic_reads/total_reads:.1f}" if total_reads > 0 and pathogenic_reads>0 else 0
+                percentreads = f"{100*pathogenic_reads/aligned_total:.1f}" if aligned_total > 0 and pathogenic_reads>0 else 0
                 print(f"\tPathogenic SubStrain Reads: {pathogenic_reads} - {percentreads}%")
                 print(f"\tAligned Strains: {fullstrains}")
                 print(f"\tTotal reads: {sum(count['numreads'])}")
@@ -1327,11 +1327,12 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 print(f"\tDisparity Score: {count.get('disparity_cv', 0)}")
                 print(f"\tDiamond Identity: {count.get('diamond', {}).get('identity', 0)}")
                 print(f"\tFinal Score: {tass_score}")
+                print(f"\tCovered Regions: {count.get('covered_regions', 0)}")
                 print(f"\tK2 Reads: {count['k2_numreads']}")
                 print()
 
             file.write(
-                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_aligned}\t{percent_total}\t{countreads}\t"
+                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{percent_aligned}\t{countreads}\t"
                 f"{is_annotated}\t{pathogenic_sites}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient}\t"
                 f"{meanbaseq}\t{meanmapq}\t{meancoverage}\t{meandepth}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score}\t{disparity_score}\t{diamond_identity}\t"
