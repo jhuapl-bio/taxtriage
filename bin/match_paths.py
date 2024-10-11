@@ -1246,7 +1246,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                             percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
                             listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
 
-                if callfamclass == "":
+                if callfamclass == "" or len(listpathogensstrains) > 0:
                     callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
 
                 if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
