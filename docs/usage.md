@@ -55,88 +55,6 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
-
-### Tips
-
-Unless you are using Seqera, most of the temporary directories and final outputs will be present on your filesystem. By default, all temporary files are generated in `--work-dir` which is set to `work` by default. A handy tip is to look at the status of each module/step in the stdout if you want to debug a specific step for whatever reason. For example, you can navigate to the example dir like so:
-
-1. Find the start of the location of the specific module and its input/output file(s)
-
-- This directory name is in `work/`>>[**28/5412a9**] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2 (longreads)  [100%] 2 of ✔
-
-3. Copy and Paste the `--work-dir` and then the start of the directory we see for that module. For example: `cd work/28/5412a9`
-4. Hit "tab" to tab-complete the full path of the subdirectory within the first directory and `work`. For example, for my system it is `cd work/28/5412a9ea5c05fde928d8cf489bc48d/`
-5. View the command output from the run: `cat .command.out`
-6. Rerun the command: `bash .command.sh` in the same directory.
-   - If you have the command in your global env, you can run it directly without changing anything.
-   - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
-
-## Confidence Scoring
-
-In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
-
-Weighted Confidence Score: The final score is a weighted sum of several factors:
-
-![](../assets/svgs/full_score.svg)
-
-
-### A. Coefficient of Variation (CV) Calculation (Weight: 20% - WIP)
-
-The **Coefficient of Variation (CV)** is calculated as follows:
-
-![CV Formula](../assets/svgs/cv_0.svg)
-
-Where:
-- **σ** is the standard deviation of the reads relative to all other siblings at that rank classified by kraken2.
-- **μ** is the mean of the reads.
-
-Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there. 
-
-##### Clamping the CV Value
-
-To ensure that the CV value remains between 0 and 1, the following clamping function is applied:
-
-![Clamping Formula](../assets/svgs/cv_0.5.svg)
-
-This ensures that:
-- If **CV** is greater than 1, it is set to 1.
-- If **CV** is negative, it is set to 0.
-
-If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**. 
-
-#### Disparity Calculation
-
-The **disparity** is calculated as:
-
-![Disparity Formula](../assets/svgs/cv_1.svg)
-
-### B. DIAMOND Identity (Weight: 40%)
-
-Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
-
-### C. Gini Coeff. (Weight: 20% - WIP)
-
-Gini Coefficient for Coverage Depth Calculation
-The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
-
-The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
-
-1: Perfect equality (all positions in the genome are equally covered by reads).
-0: Maximum inequality (some positions have much higher coverage than others).
-
-It is calculated as followed:
-
-<img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
-
-ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
-
-### D. MapQ Score. (Weight: 20%)
-
-This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
-
-![](../assets/svgs/mapq_score.svg)
-
-
 ### Samplesheet Information
 
 | Column               | Description                                                                                                                                                                            |
@@ -295,6 +213,89 @@ Additionally, any organism deemed a potential or primary pathogen from our curat
 
 Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
 
+
+### Tips
+
+Unless you are using Seqera, most of the temporary directories and final outputs will be present on your filesystem. By default, all temporary files are generated in `--work-dir` which is set to `work` by default. A handy tip is to look at the status of each module/step in the stdout if you want to debug a specific step for whatever reason. For example, you can navigate to the example dir like so:
+
+1. Find the start of the location of the specific module and its input/output file(s)
+
+- This directory name is in `work/`>>[**28/5412a9**] process > NFCORE_TAXTRIAGE:TAXTRIAGE:KRAKEN2_KRAKEN2 (longreads)  [100%] 2 of ✔
+
+3. Copy and Paste the `--work-dir` and then the start of the directory we see for that module. For example: `cd work/28/5412a9`
+4. Hit "tab" to tab-complete the full path of the subdirectory within the first directory and `work`. For example, for my system it is `cd work/28/5412a9ea5c05fde928d8cf489bc48d/`
+5. View the command output from the run: `cat .command.out`
+6. Rerun the command: `bash .command.sh` in the same directory.
+   - If you have the command in your global env, you can run it directly without changing anything.
+   - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
+  
+
+## Confidence Scoring
+
+In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
+
+Weighted Confidence Score: The final score is a weighted sum of several factors:
+
+![](../assets/svgs/full_score.svg)
+
+
+### A. Coefficient of Variation (CV) Calculation (Weight: 20% - WIP)
+
+The **Coefficient of Variation (CV)** is calculated as follows:
+
+![CV Formula](../assets/svgs/cv_0.svg)
+
+Where:
+- **σ** is the standard deviation of the reads relative to all other siblings at that rank classified by kraken2.
+- **μ** is the mean of the reads.
+
+Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there. 
+
+##### Clamping the CV Value
+
+To ensure that the CV value remains between 0 and 1, the following clamping function is applied:
+
+![Clamping Formula](../assets/svgs/cv_0.5.svg)
+
+This ensures that:
+- If **CV** is greater than 1, it is set to 1.
+- If **CV** is negative, it is set to 0.
+
+If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**. 
+
+#### Disparity Calculation
+
+The **disparity** is calculated as:
+
+![Disparity Formula](../assets/svgs/cv_1.svg)
+
+### B. DIAMOND Identity (Weight: 40%)
+
+Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
+
+### C. Gini Coeff. (Weight: 20% - WIP)
+
+Gini Coefficient for Coverage Depth Calculation
+The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
+
+The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
+
+1: Perfect equality (all positions in the genome are equally covered by reads).
+0: Maximum inequality (some positions have much higher coverage than others).
+
+It is calculated as followed:
+
+<img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
+
+ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
+
+### D. MapQ Score. (Weight: 20%)
+
+This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
+
+![](../assets/svgs/mapq_score.svg)
+
+
 ### Top Hits Calculation
 
 In order to retain an "agnostic" approach for organism while allowing adequate alignments to take place in a reasonable amount of time, we employ the "top hits" approach to the pipeline (see Figure 2). This is designed to allow users to still pull commensals or non-pathogens that have not been annotated in our curated [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) to still be available in the confidence metrics and reports. Users should adjust the `--top_per_taxa` and `--top_hits` as freely as needed based on the source of their sample(s). 
@@ -329,24 +330,7 @@ While we support Taxtriage in local CLI deployment, you can also import and run 
 
 - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
 
-3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
-
-### Running the pipeline offline
-
-See [here](../README.md#offline-local-mode)
-
-### Using a "backup" or baseline FASTA reference
-
-Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
-
-A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
-```
-   >NC_003663.2 Cowpox virus, complete genome
-```
-
-In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
-
-B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
+3. Follow the next sections for using Seqera and AWS for data upload. Make sure to define all samplesheets/parameter files relative to the cloud locations of your files. While the documentation is tailored for AWS, TaxTriage does not strictly limit other services such as Google Cloud or Azure.
 
 #### Running Within Seqera
 
@@ -407,6 +391,25 @@ MAKE SURE that the compute environment matches the one you set up when you set y
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
 <img src="images/taxtriagelaunchpad2.png"  width="50%" height="50%">
+
+
+### Running the pipeline offline
+
+See [here](../README.md#offline-local-mode)
+
+### Using a "backup" or baseline FASTA reference
+
+Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
+
+A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
+```
+   >NC_003663.2 Cowpox virus, complete genome
+```
+
+In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
+
+B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
+
 
 ### Reproducibility
 
