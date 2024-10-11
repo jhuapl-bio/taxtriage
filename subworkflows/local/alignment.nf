@@ -182,8 +182,6 @@ workflow ALIGNMENT {
     //  // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_SORT.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
 
-
-
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
         .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
@@ -201,7 +199,7 @@ workflow ALIGNMENT {
     SAMTOOLS_INDEX(
         collected_bams
     )
-    collected_bams.join(SAMTOOLS_INDEX.out.bai).set{ sorted_bams_with_index }
+    collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
 
 
     SAMTOOLS_COVERAGE(
