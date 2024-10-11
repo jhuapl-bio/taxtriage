@@ -329,24 +329,7 @@ While we support Taxtriage in local CLI deployment, you can also import and run 
 
 - Information for accessing the S3 Buckets and creating a credential-specific Compute environment will be included in the email
 
-3. At this point follow all steps for setting up AWS in the following link. [View Steps Here](images/Cloud_AWS_NFTower_only/Cloud_AWS_NFTower_only.pdf)
-
-### Running the pipeline offline
-
-See [here](../README.md#offline-local-mode)
-
-### Using a "backup" or baseline FASTA reference
-
-Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
-
-A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
-```
-   >NC_003663.2 Cowpox virus, complete genome
-```
-
-In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
-
-B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
+3. Follow the next sections for using Seqera and AWS for data upload. Make sure to define all samplesheets/parameter files relative to the cloud locations of your files. While the documentation is tailored for AWS, TaxTriage does not strictly limit other services such as Google Cloud or Azure.
 
 #### Running Within Seqera
 
@@ -407,6 +390,25 @@ MAKE SURE that the compute environment matches the one you set up when you set y
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
 <img src="images/taxtriagelaunchpad2.png"  width="50%" height="50%">
+
+
+### Running the pipeline offline
+
+See [here](../README.md#offline-local-mode)
+
+### Using a "backup" or baseline FASTA reference
+
+Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
+
+A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
+```
+   >NC_003663.2 Cowpox virus, complete genome
+```
+
+In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
+
+B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
+
 
 ### Reproducibility
 
