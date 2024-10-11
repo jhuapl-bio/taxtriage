@@ -1282,10 +1282,10 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 pathogenic_sites = ""
             # Write to file in a newline format
             weights = {
-                'mapq_score': 0.3,
-                'diamond_identity': 0.4,
-                'disparity_score': 0.1,
-                'gini_coefficient': 0.2,
+                'mapq_score': 0.2,
+                'diamond_identity': 0.3,
+                'disparity_score': 0.2,
+                'gini_coefficient': 0.3,
                 'siblings_score': 0
             }
             # if sum of vals in weights isnt 1 then normalize to 1

@@ -135,7 +135,7 @@ def import_data(inputfile ):
     df = pd.read_csv(inputfile, sep='\t')
 
     # sort the dataframe by the Sample THEN the # Reads
-    df = df.sort_values(by=[ "Microbial Category", "Specimen ID", "# Reads Aligned"], ascending=[False, True, False])
+    df = df.sort_values(by=["Specimen ID", "Microbial Category",  "# Reads Aligned"], ascending=[True, False, False])
     # trim all of NAme column  of whitespace either side
     df["Detected Organism"] = df["Detected Organism"].str.strip()
     dictnames = {
@@ -346,8 +346,8 @@ def create_report(
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
     # sort df_identified by Confidence Metric (0-1)
     # filter out so only Class is PAthogen
-    df_identified = df_identified.sort_values(by=['Specimen ID', 'Confidence Metric (0-1)'], ascending=False)
-    df_opportunistic = df_opportunistic.sort_values(by=['Specimen ID', 'Confidence Metric (0-1)'], ascending=False)
+    df_identified = df_identified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=False)
+    df_opportunistic = df_opportunistic.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=False)
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
