@@ -230,11 +230,12 @@ def main(argv=None):
     depth, total_positions = load_depth_file(DEPTHFILE)
 
     def ensure_bam_index(bam_path):
-        # if not os.path.exists(bam_path + ".bai"):
-        pysam.index(bam_path)
+        if not os.path.exists(bam_path + ".csi"):
+            pysam.index(bam_path, csi = True, force = True)
+
 
     # Usage
-    ensure_bam_index(BAMFILE)
+    # ensure_bam_index(BAMFILE)
     coverage, count, sumsq, ireads, ilen, total_reads_aligned = process_bam_file(
         BAMFILE, depth, total_positions)
     output_statistics(depth, total_positions, coverage, count,
