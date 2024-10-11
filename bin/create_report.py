@@ -466,6 +466,10 @@ def create_report(
 
     subtext_para = Paragraph("The following information highlights the description for the color combinations for each organism class in the annotated table(s)", subtext_style)
     elements.append(subtext_para)
+    elements.append(Spacer(1, 12))
+    subtext_para = Paragraph("Please see the relevant Discovery Analysis txt file for low confidence annotations that were not present in the pdf", subtext_style)
+    elements.append(subtext_para)
+    elements.append(Spacer(1, 12))
 
     bullet_list_items = [
         "Green/White: Direct match for the taxid/organism name with your sample type from the database.",
