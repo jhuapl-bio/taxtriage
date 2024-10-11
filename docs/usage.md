@@ -70,73 +70,7 @@ Unless you are using Seqera, most of the temporary directories and final outputs
 6. Rerun the command: `bash .command.sh` in the same directory.
    - If you have the command in your global env, you can run it directly without changing anything.
    - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
-
-## Confidence Scoring
-
-In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
-
-Weighted Confidence Score: The final score is a weighted sum of several factors:
-
-![](../assets/svgs/full_score.svg)
-
-
-### A. Coefficient of Variation (CV) Calculation (Weight: 20% - WIP)
-
-The **Coefficient of Variation (CV)** is calculated as follows:
-
-![CV Formula](../assets/svgs/cv_0.svg)
-
-Where:
-- **σ** is the standard deviation of the reads relative to all other siblings at that rank classified by kraken2.
-- **μ** is the mean of the reads.
-
-Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there. 
-
-##### Clamping the CV Value
-
-To ensure that the CV value remains between 0 and 1, the following clamping function is applied:
-
-![Clamping Formula](../assets/svgs/cv_0.5.svg)
-
-This ensures that:
-- If **CV** is greater than 1, it is set to 1.
-- If **CV** is negative, it is set to 0.
-
-If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**. 
-
-#### Disparity Calculation
-
-The **disparity** is calculated as:
-
-![Disparity Formula](../assets/svgs/cv_1.svg)
-
-### B. DIAMOND Identity (Weight: 40%)
-
-Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
-
-### C. Gini Coeff. (Weight: 20% - WIP)
-
-Gini Coefficient for Coverage Depth Calculation
-The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
-
-The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
-
-1: Perfect equality (all positions in the genome are equally covered by reads).
-0: Maximum inequality (some positions have much higher coverage than others).
-
-It is calculated as followed:
-
-<img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
-
-ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
-
-### D. MapQ Score. (Weight: 20%)
-
-This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
-
-![](../assets/svgs/mapq_score.svg)
-
-
+  
 ### Samplesheet Information
 
 | Column               | Description                                                                                                                                                                            |
@@ -294,6 +228,73 @@ The distribution metrics are defined based on a all publicly available healthy h
 Additionally, any organism deemed a potential or primary pathogen from our curated pathogen sheet of ~1600 taxa ([see here for more info](#top-hits-calculation)) is included in the Organism discovery analysis, regardless of relative abundance. 
 
 Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
+
+
+## Confidence Scoring
+
+In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
+
+Weighted Confidence Score: The final score is a weighted sum of several factors:
+
+![](../assets/svgs/full_score.svg)
+
+
+### A. Coefficient of Variation (CV) Calculation (Weight: 20% - WIP)
+
+The **Coefficient of Variation (CV)** is calculated as follows:
+
+![CV Formula](../assets/svgs/cv_0.svg)
+
+Where:
+- **σ** is the standard deviation of the reads relative to all other siblings at that rank classified by kraken2.
+- **μ** is the mean of the reads.
+
+Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there. 
+
+##### Clamping the CV Value
+
+To ensure that the CV value remains between 0 and 1, the following clamping function is applied:
+
+![Clamping Formula](../assets/svgs/cv_0.5.svg)
+
+This ensures that:
+- If **CV** is greater than 1, it is set to 1.
+- If **CV** is negative, it is set to 0.
+
+If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**. 
+
+#### Disparity Calculation
+
+The **disparity** is calculated as:
+
+![Disparity Formula](../assets/svgs/cv_1.svg)
+
+### B. DIAMOND Identity (Weight: 40%)
+
+Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
+
+### C. Gini Coeff. (Weight: 20% - WIP)
+
+Gini Coefficient for Coverage Depth Calculation
+The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
+
+The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
+
+1: Perfect equality (all positions in the genome are equally covered by reads).
+0: Maximum inequality (some positions have much higher coverage than others).
+
+It is calculated as followed:
+
+<img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
+
+ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
+
+### D. MapQ Score. (Weight: 20%)
+
+This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
+
+![](../assets/svgs/mapq_score.svg)
+
 
 ### Top Hits Calculation
 
