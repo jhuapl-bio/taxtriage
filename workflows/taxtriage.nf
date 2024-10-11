@@ -474,7 +474,7 @@ workflow TAXTRIAGE {
     // if ch_refernece_fasta is empty
 
     if (!params.skip_realignment) {
-        ch_prepfiles = ch_filtered_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
+        ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
                 return [meta, fastas, map]
             }
         })
