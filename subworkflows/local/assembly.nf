@@ -62,9 +62,10 @@ workflow ASSEMBLY {
             )
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
             try{
-                FEATURES_MAP(
-                    postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bam, bai, mapping, bed] }
-                )
+                // Disable as it takes a very long time.
+                // FEATURES_MAP(
+                //     postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bam, bai, mapping, bed] }
+                // )
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []
                 }

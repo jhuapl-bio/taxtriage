@@ -22,6 +22,7 @@ from collections import defaultdict
 import sys
 import statistics
 import math as Math
+import numpy as np
 import argparse
 import re
 import csv
@@ -799,6 +800,8 @@ def main():
 
         f.close()
     final_format = defaultdict(dict)
+
+
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
@@ -831,6 +834,32 @@ def main():
         # Gini Coefficient
         gini_coefficient = get_fair_distribution_score({"depths": depths, 'total_length': acc_length})
         return gini_coefficient
+
+    # Step 2: Define a function to calculate disparity for each organism
+    # Define a function to calculate disparity with softer variance influence
+    # Step 2: Define a function to dynamically dampen variance based on the proportion of reads
+    def calculate_disparity(numreads, total_reads, variance_reads, k=10):
+        """
+        Dynamically dampens the variance effect based on the proportion of reads.
+        numreads: Total number of reads aligned to the organism (sum of reads)
+        total_reads: Total number of reads aligned in the sample
+        variance_reads: Variance of the aligned reads across all organisms
+        k: Damping factor to control the influence of the proportion on the penalty
+        """
+        if total_reads == 0:
+            return 0  # Avoid division by zero
+
+        # Calculate the proportion of aligned reads
+        proportion = numreads / total_reads
+
+        # Dynamically adjust the variance penalty based on the proportion of reads
+        dampened_variance = variance_reads / (1 + k * proportion)
+
+        # Calculate disparity based on the proportion and the dynamically dampened variance
+        disparity = proportion * (1 + dampened_variance)
+
+        return disparity
+
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
 
@@ -850,6 +879,7 @@ def main():
                     "accs": [],
                     'assemblies': [],
                     "coverages": [],
+                    "prevalence_disparity": 0,
                     "coeffs": [],
                     'baseqs': [],
                     "isSpecies": True if  args.compress_species  else data['isSpecies'],
@@ -889,8 +919,9 @@ def main():
             except Exception as e:
                 print(top_level_key, val_key,"___")
                 print(f"Error: {e}")
-
-    # Calculate weighted means for aggregated data
+    all_readscounts = [sum(x['numreads']) for x in species_aggregated.values()]
+    variance_reads = np.var(all_readscounts)
+    print(f"Variance of reads: {variance_reads}")
     for top_level_key, aggregated_data in species_aggregated.items():
         numreads = aggregated_data['numreads']
         aggregated_data['meanmapq'] = calculate_weighted_mean(aggregated_data['mapqs'], numreads)
@@ -898,6 +929,9 @@ def main():
         aggregated_data['meandepth'] = calculate_weighted_mean(aggregated_data['depths'],numreads)
         aggregated_data['meancoverage'] = calculate_weighted_mean(aggregated_data['coverages'],numreads)
         aggregated_data['meangini'] = calculate_weighted_mean(aggregated_data['coeffs'],numreads)
+        # Step 4: Calculate the disparity for this organism
+        aggregated_data['disparity'] = calculate_disparity(sum(numreads), total_reads, variance_reads)
+
         # if taxid is in taxid_mapping, use that, otherwise use the strainname
         k2_reads = 0
         if args.k2:
@@ -918,11 +952,27 @@ def main():
                         k2_reads += k2_mapping[taxid].get('clades_covered', 0)
         aggregated_data['k2_numreads'] = k2_reads
 
+    # Step 4: Find the min and max disparity values
+    disparities = [aggregated_data['disparity'] for aggregated_data in species_aggregated.values()]
+    min_disparity = min(disparities)
+    max_disparity = max(disparities)
+
     for top_level_key, aggregated_data in species_aggregated.items():
+        disparity = aggregated_data['disparity']
+        if max_disparity > min_disparity:
+            normalized_disparity = (disparity - min_disparity) / (max_disparity - min_disparity)
+        else:
+            normalized_disparity = 0  # If all disparities are the same, set to 0
+
+        # Store the normalized disparity
+        aggregated_data['normalized_disparity'] = normalized_disparity
         print(f"Entry Top Key: {top_level_key}")
         print(f"\tName: {aggregated_data['name']}")
         print(f"\tNum Reads: {aggregated_data['numreads']}")
         print(f"\tK2 Reads: {aggregated_data['k2_numreads']}")
+        print(f"\tPrev. Disparity: {aggregated_data['disparity']}")
+        print(f"\t^Norm. Disparity: {aggregated_data['normalized_disparity']}")
+    # exit()
 
     # Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
     def normalize_mapq(mapq_score, max_mapq=60):
@@ -1074,22 +1124,24 @@ def main():
             else:
                 print(f"Key {key} not found in diamond file")
 
-     # Print the final aggregated data
-    for top_level_key, aggregated_data in species_aggregated.items():
-        print(f"Entry Top Key: {top_level_key}")
-        print(f"\tNum Reads: {sum(aggregated_data['numreads'])}, {aggregated_data['numreads']}")
-        print(f"\tMean MapQ: {aggregated_data.get('meanmapq', 0)}")
-        print(f"\tMean BaseQ: {aggregated_data.get('meanbaseq', 0)}")
-        print(f"\tStrains List: {[x.get('fullname', '') for x in aggregated_data['strainslist']]}")
-        print(f"\tK2 Reads: {aggregated_data.get('k2_numreads', 0)}")
-        print(f"\tParent K2 Reads: {aggregated_data.get('parent_k2_reads', 0)}")
-        print(f"\tDisparity: {aggregated_data.get('raw_disparity',0)}")
-        print(f"\tParent-Level Disparity: {aggregated_data.get('disparity_cv', 0)}")
-        print(f"\tDiamond Identity: {aggregated_data.get('diamond', {}).get('identity',0)}")
-        print(f"\tScore MapQ: {aggregated_data.get('alignment_score', 0)}")
-        print(f"\tGini Score: {aggregated_data.get('meangini', 0)}")
-        print()
-    # exit()
+
+    #  # Print the final aggregated data
+    # for top_level_key, aggregated_data in species_aggregated.items():
+    #     print(f"Entry Top Key: {top_level_key}")
+    #     print(f"\tNum Reads: {sum(aggregated_data['numreads'])}, {aggregated_data['numreads']}")
+    #     print(f"\tMean MapQ: {aggregated_data.get('meanmapq', 0)}")
+    #     print(f"\tMean BaseQ: {aggregated_data.get('meanbaseq', 0)}")
+    #     print(f"\tStrains List: {[x.get('fullname', '') for x in aggregated_data['strainslist']]}")
+    #     print(f"\tK2 Reads: {aggregated_data.get('k2_numreads', 0)}")
+    #     print(f"\tParent K2 Reads: {aggregated_data.get('parent_k2_reads', 0)}")
+    #     print(f"\tK2 Disparity: {aggregated_data.get('raw_disparity',0)}")
+    #     print(f"\tK2 Parent-Level Disparity: {aggregated_data.get('disparity_cv', 0)}")
+    #     print(f"\tPrev. Disparity: {aggregated_data.get('disparity', 0)}")
+    #     print(f"\tNorma. Prev. Disparity: {aggregated_data.get('normalized_disparity', 0)}")
+    #     print(f"\tDiamond Identity: {aggregated_data.get('diamond', {}).get('identity',0)}")
+    #     print(f"\tScore MapQ: {aggregated_data.get('alignment_score', 0)}")
+    #     print(f"\tGini Score: {aggregated_data.get('meangini', 0)}")
+    #     print()
 
     pathogens = import_pathogens(pathogenfile)
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
@@ -1110,6 +1162,8 @@ def main():
         print(f"\tMean BaseQ: {data['meanbaseq']}")
         print(f"\tMean MapQ: {data['meanmapq']}")
         print(f"\tisSpecies: {data['isSpecies']}")
+        print(f"\tPathogenic Strains: {len(data['strainslist'])}")
+        print(f"\tRegions: {data['covered_regions']}")
         print()
     write_to_tsv(
         aggregated_stats=species_aggregated,
@@ -1248,11 +1302,9 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
                 if callfamclass == "" or len(listpathogensstrains) > 0:
                     callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-
                 if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
                     is_pathogen = "Primary"
                     annClass = "Derived"
-
 
             meanbaseq = format_non_zero_decimals(count.get('meanbaseq', 0))
             gini_coefficient = format_non_zero_decimals(count.get('meangini', 0))
@@ -1261,7 +1313,8 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             meandepth = format_non_zero_decimals(count.get('meandepth', 0))
             k2_reads = format_non_zero_decimals(count.get('k2_numreads', 0))
             k2_parent_reads = format_non_zero_decimals(count.get('parent_k2_reads', 0))
-            disparity_score = format_non_zero_decimals(count.get('disparity_cv', 0))
+            k2_disparity_score = format_non_zero_decimals(count.get('disparity_cv', 0))
+            disparity_score = format_non_zero_decimals(count.get('normalized_disparity', 0))
             mapq_score = format_non_zero_decimals(count.get('alignment_score', 0))
             diamond_identity = format_non_zero_decimals(count.get('diamond', {}).get('identity', 0))
             siblings_score = format_non_zero_decimals(count.get('raw_disparity', 0))
@@ -1282,10 +1335,11 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 pathogenic_sites = ""
             # Write to file in a newline format
             weights = {
-                'mapq_score': 0.2,
-                'diamond_identity': 0.3,
-                'disparity_score': 0.2,
-                'gini_coefficient': 0.3,
+                'mapq_score': 0.05,
+                'diamond_identity': 0.2,
+                'disparity_score': 0.5,
+                'gini_coefficient': 0.2,
+                "k2_disparity": 0.05,
                 'siblings_score': 0
             }
             # if sum of vals in weights isnt 1 then normalize to 1
@@ -1307,11 +1361,11 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
 
             # Apply weights to the relevant scores
             tass_score = format_non_zero_decimals(sum([
-                apply_weight(count.get('disparity_cv', 0), weights.get('disparity_score',0)),
+                apply_weight(count.get('normalized_disparity', 0), weights.get('disparity_score',0)),
                 apply_weight(count.get('alignment_score', 0), weights.get('mapq_score',0)),
                 apply_weight(count.get('meangini', 0), weights.get('gini_coefficient',0)),
                 apply_weight(count.get('diamond', {}).get('identity', 0), weights.get('diamond_identity', 0)),
-                # apply_weight(count.get('raw_disparity', 0), weights.get('siblings_score',0))
+                apply_weight(count.get('k2_disparity', 0), weights.get('k2_disparity',0))
             ]))
             if is_pathogen == "Primary" or is_pathogen=="Potential":
                 print(f"Reference: {ref} - {formatname}")
@@ -1324,7 +1378,8 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 print(f"\tTotal reads: {sum(count['numreads'])}")
                 print(f"\tGini Conf: {count.get('meangini', 0)}")
                 print(f"\tAlignment Score: {count.get('alignment_score', 0)}")
-                print(f"\tDisparity Score: {count.get('disparity_cv', 0)}")
+                print(f"\tK2 Disparity Score: {count.get('disparity_cv', 0)}")
+                print(f"\tDisparity Score: {count.get('normalized_disparity', 0)}")
                 print(f"\tDiamond Identity: {count.get('diamond', {}).get('identity', 0)}")
                 print(f"\tFinal Score: {tass_score}")
                 print(f"\tCovered Regions: {count.get('covered_regions', 0)}")
