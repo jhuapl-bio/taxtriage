@@ -22,7 +22,6 @@ from collections import defaultdict
 import sys
 import statistics
 import math as Math
-import numpy as np
 import argparse
 import re
 import csv
@@ -920,7 +919,26 @@ def main():
                 print(top_level_key, val_key,"___")
                 print(f"Error: {e}")
     all_readscounts = [sum(x['numreads']) for x in species_aggregated.values()]
-    variance_reads = np.var(all_readscounts)
+    def calculate_var(read_counts):
+        """
+        Manually calculate variance for a list of read counts.
+        read_counts: A list of aligned reads for each organism
+        """
+        n = len(read_counts)
+        if n == 0:
+            return 0  # Avoid division by zero if no organisms
+
+        # Step 1: Calculate the mean of the reads
+        mean_reads = sum(read_counts) / n
+
+        # Step 2: Calculate the squared differences
+        squared_diffs = [(x - mean_reads) ** 2 for x in read_counts]
+
+        # Step 3: Calculate variance
+        variance = sum(squared_diffs) / n
+        return variance
+
+    variance_reads = calculate_var(all_readscounts)
     print(f"Variance of reads: {variance_reads}")
     for top_level_key, aggregated_data in species_aggregated.items():
         numreads = aggregated_data['numreads']
