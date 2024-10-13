@@ -325,7 +325,7 @@ def calculate_mean(diamond_list, key):
     # Return the weighted mean
     return total_weighted_value / total_cds if total_cds != 0 else 0
 # Function to calculate disparity based on the sum of numreads and k2_reads
-def calculate_disparity(numreads, k2_reads):
+def calculate_disparity_siblings(numreads, k2_reads):
     sumreads = sum(numreads)
 
     if sumreads + k2_reads > 0:
@@ -1095,7 +1095,7 @@ def main():
 
         ## Test: Disparity of k2 or other classifier to alignment stats of NTs
         if value.get('k2_numreads', None):
-            value['raw_disparity'] = abs(calculate_disparity(value['numreads'], value['k2_numreads']))
+            value['raw_disparity'] = abs(calculate_disparity_siblings(value['numreads'], value['k2_numreads']))
         else:
             value['raw_disparity'] = 0
         ## Test: Mapq of NT,
