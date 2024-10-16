@@ -24,7 +24,7 @@ process FEATURES_MAP {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bam), path(bai), path(mapping), path(bed)
+    tuple val(meta), path(covfile), path(mapping)
 
     output:
     tuple val(meta), path("*.features.individual.contig.tsv"), optional: false, emit: features_contig
@@ -47,18 +47,11 @@ process FEATURES_MAP {
 
     """
 
-
-    features_map.py \\
-        -b $bed \\
-        -a $bam \\
-        -i $bai \\
-        -m  $mapping \\
+    features_map.py \
+        -c $covfile \
+        -m $mapping \
         -o $outputoi \\
         -g $outputo
-
-
-
-
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

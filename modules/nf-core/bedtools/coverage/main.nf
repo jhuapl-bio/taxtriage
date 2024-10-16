@@ -9,7 +9,7 @@ process BEDTOOLS_COVERAGE {
 
     input:
     tuple val(meta), path(input_A), path(input_B)
-    path genome_file
+    // path genome_file
 
     output:
     tuple val(meta), path("*.bed"), emit: bed
@@ -21,12 +21,11 @@ process BEDTOOLS_COVERAGE {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def reference = genome_file ? "-g ${genome_file} -sorted" : ""
+    // def reference = genome_file ? "-g ${genome_file} -sorted" : ""
     """
     bedtools \\
         coverage \\
         $args \\
-        $reference \\
         -a $input_A \\
         -b $input_B \\
         > ${prefix}.bed

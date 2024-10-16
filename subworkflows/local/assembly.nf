@@ -22,6 +22,7 @@ include { MEGAHIT } from '../../modules/nf-core/megahit/main'
 include { MEGAHIT as MEGAHIT_LONG } from '../../modules/nf-core/megahit/main'
 include { DIAMOND_MAKEDB } from '../../modules/nf-core/diamond/makedb/main'
 include { DIAMOND_BLASTX } from '../../modules/nf-core/diamond/blastx/main'
+include { BEDTOOLS_COVERAGE } from '../../modules/nf-core/bedtools/coverage/main'
 include { FEATURES_MAP } from '../../modules/local/features_map'
 include { MAP_PROT_ASSEMBLY } from '../../modules/local/map_prot_assembly'
 include { FLYE } from '../../modules/nf-core/flye/main'
@@ -62,10 +63,15 @@ workflow ASSEMBLY {
             )
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
             try{
-                // Disable as it takes a very long time.
-                // FEATURES_MAP(
-                //     postalignmentfiles.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bam, bai, mapping, bed] }
-                // )
+                BEDTOOLS_COVERAGE(
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
+                )
+                ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
+                )
+                FEATURES_MAP(
+                    ch_bedout
+                )
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []
                 }

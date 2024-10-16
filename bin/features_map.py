@@ -1,129 +1,105 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import argparse
-import pysam
 import csv
-import os
+from collections import defaultdict
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Count unique feature occurrences in BAM file regions and report counts both per accession and aggregated per organism.",
-        epilog="Example usage: python count_features.py --bed my_features.bed --bam my_alignments.bam --map my_mapping.txt --output feature_counts.txt --group_output organism_feature_counts.txt",
+        epilog="Example usage: python count_features.py --cov my_features.bed --map my_mapping.txt --output feature_counts.txt --group_output organism_feature_counts.txt",
     )
-    parser.add_argument("-b", "--bed", required=True, help="BED file with feature annotations")
-    parser.add_argument("-a", "--bam", required=True, help="Indexed BAM file with alignment data")
+    parser.add_argument("-c", "--cov", required=True, help="BED file coverage input file")
     parser.add_argument("-m", "--map", required=True, help="Mapping file correlating accessions to organisms")
     parser.add_argument("-o", "--output", required=True, help="Output file to write feature counts per accession")
-    parser.add_argument("-i", "--index", required=False, help="BAM Bai file")
-    parser.add_argument("-g", "--group_output", required=True, help="Output file to write aggregated feature counts per organism")
+    parser.add_argument("-g", "--group_output", help="Output file to write aggregated feature counts per organism")
     return parser.parse_args(argv)
 
-def determine_paired_single(bam_file):
-    max_reads_to_check = 5
-    read_count = 0
-
-    for read in bam_file.head(max_reads_to_check):
-        if read.is_paired:
-            return True
-        read_count += 1
-
-    return False
-
-def count_features(args):
-    if not args.index and not os.path.exists(args.bam+".bai"):
-        pysam.index(args.bam)
-    else:
-        print(f"Index file found  ")
-    # Load mapping file
-    map_dict = {}
-    mapname = dict()
-    with open(args.map, 'r') as mapfile:
-        reader = csv.reader(mapfile, delimiter='\t')
+def read_mapping(map_file):
+    """
+    Read the accession to organism mapping file and return a dictionary of mappings.
+    """
+    accession_to_organism = {}
+    with open(map_file, "r") as mapf:
+        reader = csv.reader(mapf, delimiter='\t')
         for row in reader:
-            map_dict[row[0]] = row[2]  # Assuming the third column is organism name
-            if len(row) > 4:
-                mapname[row[0]] = row[4]
-    # Read BED file and initialize count structures
-    feature_counts = {}
-    with open(args.bed, 'r') as bedfile:
-        reader = csv.reader(bedfile, delimiter='\t')
+            accession = row[0]
+            organism = row[2]
+            taxid = row[4]  # Assuming taxid is in the 5th column (index 4)
+            accession_to_organism[accession] = (organism, taxid)
+    return accession_to_organism
+
+def process_coverage_file(cov_file, accession_to_organism):
+    """
+    Process the BED coverage file and return counts per accession and per organism.
+    """
+    counts_per_accession = defaultdict(lambda: defaultdict(lambda: [0, 0.0]))  # {accession: {feature_name: [count, sum_fraction]}}
+    counts_per_organism = defaultdict(lambda: defaultdict(lambda: [0, 0.0]))   # {organism: {feature_name: [count, sum_fraction]}}
+
+    with open(cov_file, "r") as covf:
+        reader = csv.reader(covf, delimiter='\t')
         for row in reader:
-            feature_counts[row[0]] = { 'features': {}, 'total_reads': 0 }
+            accession = row[0]
+            start = row[1]
+            end = row[2]
+            feature_name = row[3]
+            count = int(row[4])
+            fraction = float(row[7])
 
-    bam_file = pysam.AlignmentFile(args.bam, "rb")
-    is_paired = determine_paired_single(bam_file)
-    bam_file.close()
-    bam_file = pysam.AlignmentFile(args.bam, "rb")
+            if accession in accession_to_organism:
+                organism, taxid = accession_to_organism[accession]
 
-    total_fragments = 0
-    read_names = set()
+                # Update counts per accession
+                counts_per_accession[accession][feature_name][0] += count
+                counts_per_accession[accession][feature_name][1] += fraction
 
-    if is_paired:
-        for read in bam_file.fetch(until_eof=True):
-            if (read.is_read1 or read.is_read2) and not read.is_secondary and not read.is_supplementary and read.query_name not in read_names:
-                total_fragments += 1
-                read_names.add(read.query_name)
-    else:
-        for read in bam_file.fetch(until_eof=True):
-            if not read.is_secondary and not read.is_supplementary:
-                total_fragments += 1
+                # Update counts per organism
+                counts_per_organism[organism][feature_name][0] += count
+                counts_per_organism[organism][feature_name][1] += fraction
 
-    print(f"Total fragments: {total_fragments}")
+    return counts_per_accession, counts_per_organism
 
-    # Count reads for each feature
-    for acc in feature_counts.keys():
-        with open(args.bed, 'r') as bedfile:
-            reader = csv.reader(bedfile, delimiter='\t')
-            for row in reader:
-                if row[0] == acc:
-                    try:
-                        count = bam_file.count(contig=row[0], start=int(row[1]), end=int(row[2]))
-                        feature_counts[acc]['total_reads'] += count
-                        feature_counts[acc]['features'][row[3]] = count
-                    except ValueError:
-                        continue
+def write_output(output_file, counts_per_accession, accession_to_organism):
+    """
+    Write the per accession output to a file, skipping features with count == 0.
+    """
+    with open(output_file, "w") as outf:
+        writer = csv.writer(outf, delimiter='\t')
+        writer.writerow(["Organism", "TaxID", "Accession", "Feature", "Count", "Fraction"])
 
-    # Write the output files
-    with open(args.output, 'w', newline='') as outfile:
-        writer = csv.writer(outfile, delimiter='\t')
-        writer.writerow([ 'Assembly Name', 'Mapped Value', 'Accession', 'Feature', '# reads align', 'Percent Read Align'])
-        for acc, data in feature_counts.items():
-            # sort feature items by count
-            mapv = mapname.get(acc, 'Unknown')
-            data['features'] = dict(sorted(data['features'].items(), key=lambda item: item[1], reverse=True))
-            for feature, count in data['features'].items():
-                if count > 0:
-                    percent_read_align = (100 * count / total_fragments) if total_fragments > 0 else 0
-                    writer.writerow([  map_dict.get(acc, 'Unknown'), mapv, acc, feature, count, f"{percent_read_align:.2f}"])
-    # Aggregate per organism and feature
-    organism_feature_counts = {}
+        for accession, features in counts_per_accession.items():
+            organism, taxid = accession_to_organism[accession]
+            for feature, (count, fraction) in features.items():
+                if count > 0:  # Skip if count is 0
+                    writer.writerow([organism, taxid, accession, feature, count, f"{fraction:.2f}"])
 
-    for acc, data in feature_counts.items():
-        organism = map_dict.get(acc, 'Unknown')
-        for feature, count in data['features'].items():
-            if count > 0:
-                # Check if we have this organism already
-                if organism not in organism_feature_counts:
-                    organism_feature_counts[organism] = {}
+def write_grouped_output(group_output_file, counts_per_organism):
+    """
+    Write the aggregated per organism output to a file, skipping features with count == 0.
+    """
+    with open(group_output_file, "w") as outf:
+        writer = csv.writer(outf, delimiter='\t')
+        writer.writerow(["Organism", "Feature", "Count", "Fraction"])
 
-                # Check if we have this feature for the organism already
-                if feature in organism_feature_counts[organism]:
-                    organism_feature_counts[organism][feature] += count
-                else:
-                    organism_feature_counts[organism][feature] = count
+        for organism, features in counts_per_organism.items():
+            for feature, (count, fraction) in features.items():
+                if count > 0:  # Skip if count is 0
+                    writer.writerow([organism, feature, count, f"{fraction:.2f}"])
 
-    # Now, write the organism and feature-specific counts to the group output file
-    with open(args.group_output, 'w', newline='') as groupfile:
-        writer = csv.writer(groupfile, delimiter='\t')
-        writer.writerow(['Organism Name', 'Mapped Value', 'Feature', '# reads align', 'Percent Read Align'])
-        mapv = mapname.get(acc, 'Unknown')
+def main(argv=None):
+    args = parse_args(argv)
 
-        for organism, features in organism_feature_counts.items():
-            # sort feature items9 by count
-            features = dict(sorted(features.items(), key=lambda item: item[1], reverse=True))
-            for feature, count in features.items():
-                percent_read_align = (100 * count / total_fragments) if total_fragments > 0 else 0
-                writer.writerow([organism,  mapv, feature, count, "{:.2f}".format(percent_read_align)])
+    # Read the accession to organism mapping file
+    accession_to_organism = read_mapping(args.map)
+
+    # Process the coverage file
+    counts_per_accession, counts_per_organism = process_coverage_file(args.cov, accession_to_organism)
+
+    # Write output per accession
+    write_output(args.output, counts_per_accession, accession_to_organism)
+
+    # Write aggregated output per organism if -g is provided
+    if args.group_output:
+        write_grouped_output(args.group_output, counts_per_organism)
 
 if __name__ == "__main__":
-    args = parse_args()
-    count_features(args)
+    main()
