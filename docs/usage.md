@@ -236,10 +236,73 @@ In order to properly identify, with confidence, the organisms present post-align
 
 Weighted Confidence Score: The final score is a weighted sum of several factors:
 
+<!-- https://latex.codecogs.com/svg.latex?\text{Final%20Score}%20=%20w_{\text{MAPQ}}%20\times%20\text{MAPQ}%20+%20w_{\text{Diamond%20Identity}}%20\times%20\text{Diamond%20Identity}%20+%20w_{\text{Original%20Disparity}}%20\times%20\text{Original%20Disparity}%20+%20w_{\text{Classifier%20Disparity}}%20\times%20\text{Classifier%20Disparity}%20+%20w_{\text{Gini%20Coefficient}}%20\times%20\text{Gini%20Coefficient} -->
+
 ![](../assets/svgs/full_score.svg)
 
 
-### A. Coefficient of Variation (CV) Calculation (Weight: 20% - WIP)
+### A. Disparity Score Explanation (Weight: 50% - WIP)
+
+### 
+
+The **Disparity Score** is a measure that assesses how skewed the aligned reads for an organism are relative to the total aligned reads in a sample. The disparity score is calculated by adjusting the **proportion of reads** aligned for an organism using the **variance** of the reads across all organisms. The idea is to account for how evenly or unevenly reads are distributed across the organisms in a sample.
+
+#### Formula:
+
+
+<!--  https://latex.codecogs.com/svg.latex?\text{Disparity}%20=%20\text{Proportion}%20\times%20\left(1%20+%20\frac{\text{Variance}}{1%20+%20k%20\times%20\text{Proportion}}\right) -->
+
+![](../assets/svgs/disparity.svg)
+
+
+Where:
+- **Proportion** is the number of reads aligned for the organism divided by the total number of reads aligned in the sample
+- **Variance** is the variance of the number of reads aligned across all organisms, which gives an idea of how spread out or concentrated the read counts are.
+
+- **k** is a **damping factor** used to control the impact of the proportion on the variance penalty. The larger the proportion, the smaller the penalty.
+
+### Steps for Calculation:
+
+1. **Calculate the Proportion**: The proportion is simply the fraction of reads aligned to the organism relative to the total aligned reads.
+
+2. **Dynamically Dampen the Variance**: The variance of the reads across all organisms is dynamically adjusted based on the proportion. The formula for adjusting the variance is:
+
+<!-- https://latex.codecogs.com/svg.latex?\text{Dampened%20Variance}%20=%20\frac{\text{Variance}}{1%20+%20k%20\times%20\text{Proportion}} -->
+
+![](../assets/svgs/dv_disparity.svg)
+
+
+3. **Calculate the Disparity**: The final disparity score is the proportion of reads multiplied by \( 1 + \text{Dampened Variance} \), which ensures that organisms with a higher proportion of aligned reads are penalized less by variance.
+
+### Example:
+
+If an organism has **35%** of the total aligned reads and the variance of 1000 of read counts across the sample is high, the **disparity score** will be calculated as:
+
+<!-- https://latex.codecogs.com/svg.latex?\text{Disparity}%20=%200.35%20\times%20\left(1%20+%20\frac{1000}{1%20+%2010%20\times%200.35}\right) -->
+
+![](../assets/svgs/dv_disparity_example.svg)
+
+This dynamic adjustment ensures that organisms with a high proportion of reads (like 35%) are not overly penalized by variance, while organisms with fewer aligned reads still feel the impact of the variance.
+
+### Key Points:
+- The **damping factor `k`** controls how much the variance impacts the disparity score. A larger `k` reduces the variance penalty for high-proportion organisms.
+- **High-Proportion Organisms** (like those with 35% or more reads) are penalized less for variance, making their disparity score more reflective of their prevalence in the sample.
+- **Low-Proportion Organisms** feel more of the variance penalty, ensuring that they don't unduly inflate the disparity score.
+
+This approach gives a **balanced view** of how skewed the alignment is for each organism, factoring in both the **proportion** of reads and the **variance** across the entire sample.
+
+Variance is the variance of the number of reads across all organisms.
+k is a damping factor controlling the influence of the proportion on the penalty.
+
+The normalized value is then calcualted across all other organisms in the sample like so:
+
+<!-- https://latex.codecogs.com/svg.latex?\text{Disparity}%20=%200.35%20\times%20\left(1%20+%20\frac{1000}{1%20+%2010%20\times%200.35}\right) -->
+
+
+![](../assets/svgs/dv_disparity_fullnormalized.svg)
+
+
+### B. Coefficient of Variation (CV) Calculation (Weight: 5% - WIP)
 
 The **Coefficient of Variation (CV)** is calculated as follows:
 
@@ -255,6 +318,8 @@ Where the standard deviation refers to all other sibling reads for a given taxon
 
 To ensure that the CV value remains between 0 and 1, the following clamping function is applied:
 
+<!-- https://latex.codecogs.com/png.latex?disparity_%7Bcv%7D%20%3D%201%20-%20CV_%7Bclamped%7D -->
+
 ![Clamping Formula](../assets/svgs/cv_0.5.svg)
 
 This ensures that:
@@ -269,11 +334,11 @@ The **disparity** is calculated as:
 
 ![Disparity Formula](../assets/svgs/cv_1.svg)
 
-### B. DIAMOND Identity (Weight: 40%)
+### C. DIAMOND Identity (Weight: 20%)
 
 Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
 
-### C. Gini Coeff. (Weight: 20% - WIP)
+### D. Gini Coeff. (Weight: 5% - WIP)
 
 Gini Coefficient for Coverage Depth Calculation
 The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
@@ -289,9 +354,11 @@ It is calculated as followed:
 
 ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
 
-### D. MapQ Score. (Weight: 20%)
+### D. MapQ Score. (Weight: 0.05%)
 
 This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
+
+<!-- https://latex.codecogs.com/svg.latex?\text{MAPQ}%20=%201%20-%2010^{-\frac{\text{MAPQ%20Score}}{10}} -->
 
 ![](../assets/svgs/mapq_score.svg)
 
