@@ -62,16 +62,19 @@ workflow ASSEMBLY {
                 branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
             )
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
-            try{
-                BEDTOOLS_COVERAGE(
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
-                )
-                ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
-                )
-                FEATURES_MAP(
-                    ch_bedout
-                )
+
+            BEDTOOLS_COVERAGE(
+                postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
+            )
+            ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
+                postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
+            )
+            FEATURES_MAP(
+                ch_bedout
+            )
+
+            try {
+
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []
                 }
