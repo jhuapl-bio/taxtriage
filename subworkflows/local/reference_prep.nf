@@ -47,7 +47,6 @@ workflow  REFERENCE_PREP {
             } else {
                 return [meta, []]
             }
-
         }
     }
     if (params.organisms_file){
@@ -82,11 +81,11 @@ workflow  REFERENCE_PREP {
     if (!params.skip_realignment) {
         if (params.reference_fasta || params.get_pathogens) {
             MAP_LOCAL_ASSEMBLY_TO_FASTA(
-                ch_reference_fasta.map {  fasta ->  {
-                        // get basename of fasta path
-                        def basen = fasta.getName()
-                        return [ [id: basen ], fasta ]
-                    }
+                ch_reference_fasta
+                .map { fasta ->
+                    // Now fasta is an individual file, not a list
+                    def basename = fasta.baseName
+                    return [ [id: basename],  fasta]
                 },
                 ch_assembly_txt
             )
@@ -137,18 +136,24 @@ workflow  REFERENCE_PREP {
                 }
             } else {
                 // Case when `use_bt2` is false, just add the fastas directly
+                ch_mapped_assemblies.view()
                 ch_mapped_assemblies.combine(ch_reference_fasta).map {
                     meta, fastas, listmaps, listids, fasta ->
-                        fastas.add([fasta]) // Add the fasta with `null` in place of `bt2index`
+                        fastas.add(fasta) // Add the fasta with `null` in place of `bt2index`
                         return [meta, fastas, listmaps, listids]
                 }.set { ch_mapped_assemblies }
             }
+            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.collect{
+                meta, gcfids -> return gcfids
+            }.set { merged }
 
             ch_mapped_assemblies = ch_mapped_assemblies.combine(
-                MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map { meta, mapfile -> return mapfile }
-            ).combine(
-                MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map { meta, gcfids -> return gcfids }
+                merged
             )
+            // .combine(
+            //     MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.collect { meta,  gcfids -> return gcfids }
+            // )
+            // ch_mapped_assemblies.view()
 
             ch_mapped_assemblies.map { meta, fastas, listmaps, listids, mapfile, gcfids -> {
                     listmaps.add(mapfile)

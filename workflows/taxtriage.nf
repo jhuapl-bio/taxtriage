@@ -271,12 +271,21 @@ workflow TAXTRIAGE {
         ],
 
     ]
-    ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+    // ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+
+    ch_reference_fasta = params.reference_fasta ? Channel.from(params.reference_fasta.split(" ").collect { it  }) : Channel.empty()
+
+    ch_reference_fasta
+        .map { fasta ->
+            def normalizedPath = fasta.replace('~', System.getProperty('user.home'))  // Replace home dir with tilde
+            return file(normalizedPath)  // Return tuple with basename and normalized path
+        }.set { ch_reference_fasta }
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
+
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
     if (params.download_db) {
