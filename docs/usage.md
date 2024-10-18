@@ -64,7 +64,8 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 | `fastq_1`            | **MANDATORY** Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".               |
 | `fastq_2`            | OPTIONAL Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                     |
 | `trim`               | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                 |
-| `sequencing_summary` | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample                                                                                           |
+| `sequencing_summary` | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample  |
+| `type`               | OPTIONAL But Recommended. Type of sample such as blood, stool etc.     |
 
 An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
