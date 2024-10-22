@@ -1,7 +1,5 @@
 # taxtriage: Usage
 
-## :warning: Please read this documentation on the nf-core website: [https://nf-co.re/taxtriage/usage](https://nf-co.re/taxtriage/usage)
-
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
 
 See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
