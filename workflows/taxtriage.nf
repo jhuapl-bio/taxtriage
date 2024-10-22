@@ -273,13 +273,13 @@ workflow TAXTRIAGE {
     ]
     // ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
 
-    ch_reference_fasta = params.reference_fasta ? Channel.from(params.reference_fasta.split(" ").collect { it  }) : Channel.empty()
-
-    ch_reference_fasta
-        .map { fasta ->
-            def normalizedPath = fasta.replace('~', System.getProperty('user.home'))  // Replace home dir with tilde
-            return file(normalizedPath)  // Return tuple with basename and normalized path
-        }.set { ch_reference_fasta }
+    // ch_reference_fasta = params.reference_fasta ? Channel.from(params.reference_fasta.split(" ").collect { it  }) : Channel.empty()
+    ch_reference_fasta = Channel.empty()
+    // ch_reference_fasta
+    //     .map { fasta ->
+    //         def normalizedPath = fasta.replace('~', System.getProperty('user.home'))  // Replace home dir with tilde
+    //         return file(normalizedPath)  // Return tuple with basename and normalized path
+    //     }.set { ch_reference_fasta }
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
@@ -455,41 +455,41 @@ workflow TAXTRIAGE {
         distributions = Channel.fromPath(params.distributions)
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    CLASSIFIER(
-        ch_filtered_reads,
-        ch_db,
-        ch_save_fastq_classified,
-        distributions,
-        ch_pathogens,
-        ch_organisms_to_download
-    )
-    ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
-    ch_reads = CLASSIFIER.out.ch_reads
-    ch_pass_files = ch_pass_files.join(ch_kraken2_report)
-    // add ch_kraken2_report to ch_multiqc, only unique names
-    ch_multiqc_files = ch_multiqc_files.mix(
-    ch_kraken2_report
-            .map { it[1] } // Correctly map to the second element of each tuple
-            .ifEmpty(Channel.empty()) // Handle empty channels appropriately
-            .distinct() // Remove duplicates if necessary
-    )
-    ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    REFERENCE_PREP(
-        ch_organisms_to_download,
-        ch_reference_fasta,
-        ch_assembly_txt
-    )
+    // CLASSIFIER(
+    //     ch_filtered_reads,
+    //     ch_db,
+    //     ch_save_fastq_classified,
+    //     distributions,
+    //     ch_pathogens,
+    //     ch_organisms_to_download
+    // )
+    // ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
+    // ch_reads = CLASSIFIER.out.ch_reads
+    // ch_pass_files = ch_pass_files.join(ch_kraken2_report)
+    // // add ch_kraken2_report to ch_multiqc, only unique names
+    // ch_multiqc_files = ch_multiqc_files.mix(
+    // ch_kraken2_report
+    //         .map { it[1] } // Correctly map to the second element of each tuple
+    //         .ifEmpty(Channel.empty()) // Handle empty channels appropriately
+    //         .distinct() // Remove duplicates if necessary
+    // )
+    // ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
+    // ////////////////////////////////////////////////////////////////////////////////////////////////
+    // REFERENCE_PREP(
+    //     ch_organisms_to_download,
+    //     ch_reference_fasta,
+    //     ch_assembly_txt
+    // )
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     // todo - add alignment for contigs
-    ch_mapped_assemblies = Channel.empty()
-    ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
-    ch_mapped_assemblies = ch_preppedfiles.map{
-        meta, fastas, map, gcfids -> {
-            return [meta, map]
-        }
-    }
+    // ch_mapped_assemblies = Channel.empty()
+    // ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
+    // ch_mapped_assemblies = ch_preppedfiles.map{
+    //     meta, fastas, map, gcfids -> {
+    //         return [meta, map]
+    //     }
+    // }
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
