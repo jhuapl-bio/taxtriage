@@ -397,7 +397,7 @@ workflow TAXTRIAGE {
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
     )
 
-    ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]).distinct() )
 
     PORECHOP(
         ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
@@ -405,8 +405,8 @@ workflow TAXTRIAGE {
     ch_porechop_out  = PORECHOP.out.reads
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
-    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]).distinct() )
+    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]).distinct() )
 //
     // }
     if (!params.skip_fastp) {
@@ -438,8 +438,8 @@ workflow TAXTRIAGE {
         NANOPLOT(
             ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
         )
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]).distinct() )
+        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]).distinct() )
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
@@ -466,6 +466,13 @@ workflow TAXTRIAGE {
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
     ch_reads = CLASSIFIER.out.ch_reads
     ch_pass_files = ch_pass_files.join(ch_kraken2_report)
+    // add ch_kraken2_report to ch_multiqc, only unique names
+    ch_multiqc_files = ch_multiqc_files.mix(
+    ch_kraken2_report
+            .map { it[1] } // Correctly map to the second element of each tuple
+            .ifEmpty(Channel.empty()) // Handle empty channels appropriately
+            .distinct() // Remove duplicates if necessary
+    )
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ////////////////////////////////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
@@ -509,7 +516,7 @@ workflow TAXTRIAGE {
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
-        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]).distinct() )
 
         ch_depth = ALIGNMENT.out.depth
 
@@ -606,7 +613,6 @@ workflow TAXTRIAGE {
         multiqc_report = MULTIQC.out.report.toList()
         ch_versions    = ch_versions.mix(MULTIQC.out.versions)
     }
-
 }
 
 /*
