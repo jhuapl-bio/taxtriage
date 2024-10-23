@@ -55,8 +55,6 @@ process MAP_GCF {
         -o $output\\
         $assembly_file
 
-
-
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         awk: \$(awk --version 2>&1)

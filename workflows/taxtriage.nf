@@ -271,12 +271,45 @@ workflow TAXTRIAGE {
         ],
 
     ]
-    ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+    // ch_reference_fasta = params.reference_fasta ? Channel.fromPath(params.reference_fasta, checkIfExists: true) : Channel.empty()
+
+    ch_reference_fasta = params.reference_fasta ? Channel.from(params.reference_fasta.split(" ").collect { it  }) : Channel.empty()
+    ch_reference_fasta
+    .flatMap { fasta ->
+        // Replace tilde with home directory
+        def normalizedPath = fasta.replaceFirst('^~', System.getProperty('user.home'))
+        // Convert to Path object
+        def path = file(normalizedPath)
+
+        if (path.isDirectory()) {
+            // If the path is a directory, list all .fa and .fasta files
+            def filesArray = path.listFiles()
+            if (!filesArray) {
+                println "Warning: The directory '${normalizedPath}' is empty or inaccessible."
+                return []
+            }
+            // Convert array to list
+            def fastaFiles = filesArray.toList().findAll { file ->
+                file.name.toLowerCase().endsWith('.fa') || file.name.toLowerCase().endsWith('.fasta')
+            }
+            // Return the list of files
+            return fastaFiles
+        } else if (path.isFile()) {
+            // Return the file itself
+            return [path]
+        } else {
+            // Handle cases where the path is neither a file nor a directory
+            println "Warning: The path '${normalizedPath}' is not a valid file or directory and will be skipped."
+            return []
+        }
+    }
+    .set { ch_reference_fasta }
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
+
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
     if (params.download_db) {
@@ -388,7 +421,7 @@ workflow TAXTRIAGE {
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
     )
 
-    ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(TRIMGALORE.out.reads.collect { it[1] }.ifEmpty([]) )
 
     PORECHOP(
         ch_reads.filter { (it[0].platform == 'OXFORD' || it[0].platform == "PACBIO") && it[0].trim  }
@@ -397,7 +430,7 @@ workflow TAXTRIAGE {
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
-    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]) )
 //
     // }
     if (!params.skip_fastp) {
@@ -429,8 +462,8 @@ workflow TAXTRIAGE {
         NANOPLOT(
             ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
         )
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
-        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]) )
+        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]) )
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
@@ -457,6 +490,13 @@ workflow TAXTRIAGE {
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
     ch_reads = CLASSIFIER.out.ch_reads
     ch_pass_files = ch_pass_files.join(ch_kraken2_report)
+    // add ch_kraken2_report to ch_multiqc, only unique names
+    ch_multiqc_files = ch_multiqc_files.mix(
+    ch_kraken2_report
+            .map { it[1] } // Correctly map to the second element of each tuple
+            .ifEmpty(Channel.empty()) // Handle empty channels appropriately
+            .distinct() // Remove duplicates if necessary
+    )
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ////////////////////////////////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
@@ -500,7 +540,7 @@ workflow TAXTRIAGE {
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
-        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]) )
 
         ch_depth = ALIGNMENT.out.depth
 
@@ -578,9 +618,9 @@ workflow TAXTRIAGE {
         }
     }
 
-    CUSTOM_DUMPSOFTWAREVERSIONS(
-        ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    )
+    // CUSTOM_DUMPSOFTWAREVERSIONS(
+    //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
+    // )
     // // //
     // // // MODULE: MultiQC Pt 2
     // // //
@@ -597,7 +637,6 @@ workflow TAXTRIAGE {
         multiqc_report = MULTIQC.out.report.toList()
         ch_versions    = ch_versions.mix(MULTIQC.out.versions)
     }
-
 }
 
 /*

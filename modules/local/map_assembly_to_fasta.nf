@@ -33,7 +33,6 @@ process MAP_LOCAL_ASSEMBLY_TO_FASTA {
 
     cut -f 2 ${output} > ${meta.id}.output.gcfids.txt
 
-
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python: \$(python3 --version )
