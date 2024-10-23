@@ -837,7 +837,7 @@ def main():
     # Step 2: Define a function to calculate disparity for each organism
     # Define a function to calculate disparity with softer variance influence
     # Step 2: Define a function to dynamically dampen variance based on the proportion of reads
-    def calculate_disparity(numreads, total_reads, variance_reads, k=10):
+    def calculate_disparity(numreads, total_reads, variance_reads, k=1000):
         """
         Dynamically dampens the variance effect based on the proportion of reads.
         numreads: Total number of reads aligned to the organism (sum of reads)
@@ -1354,9 +1354,9 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
             # Write to file in a newline format
             weights = {
                 'mapq_score': 0.05,
-                'diamond_identity': 0.2,
-                'disparity_score': 0.5,
-                'gini_coefficient': 0.2,
+                'diamond_identity': 0.3,
+                'disparity_score': 0.3,
+                'gini_coefficient': 0.3,
                 "k2_disparity": 0.05,
                 'siblings_score': 0
             }

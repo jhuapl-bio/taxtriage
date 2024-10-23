@@ -71,7 +71,6 @@ ch_save_fastq_classified = params.skip_classified_fastq ? false : true
 ch_assembly_txt = null
 ch_kraken_reference = false
 
-
 def validateBt2Scoremin(String scoremin) {
     def pattern = /^(G|L),-?\d+(\.\d+)?,-?\d+(\.\d+)?$/
     if (!scoremin || !pattern.matcher(scoremin).matches()) {
