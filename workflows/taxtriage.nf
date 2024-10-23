@@ -304,7 +304,6 @@ workflow TAXTRIAGE {
         }
     }
     .set { ch_reference_fasta }
-    ch_reference_fasta.view()
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
