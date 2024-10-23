@@ -22,7 +22,10 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.FileVisitOption
 
 def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
 // Validate input parameters
@@ -282,23 +285,36 @@ workflow TAXTRIAGE {
         def path = file(normalizedPath)
 
         if (path.isDirectory()) {
-            // If the path is a directory, list all .fa and .fasta files
-            def filesArray = path.listFiles()
-            if (!filesArray) {
-                println "Warning: The directory '${normalizedPath}' is empty or inaccessible."
-                return []
+            // Use Files.walk to traverse the directory recursively
+            def fastaFiles = []
+            if (params.recursive_reference){
+                Files.walk(path)
+                    .filter { p ->
+                        Files.isRegularFile(p) &&
+                        (p.fileName.toString().toLowerCase().endsWith('.fa') || p.fileName.toString().toLowerCase().endsWith('.fasta'))
+                    }
+                    .forEach { p -> fastaFiles << file(p.toString()) } // Use Nextflow's 'file' for consistency
+            } else {
+                def filesArray = path.listFiles()
+                if (!filesArray) {
+                    println "Warning: The directory '${normalizedPath}' is empty or inaccessible."
+                    return []
+                }
+                fastaFiles = filesArray.toList().findAll { file ->
+                    file.name.toLowerCase().endsWith('.fa') || file.name.toLowerCase().endsWith('.fasta')
+                }
             }
-            // Convert array to list
-            def fastaFiles = filesArray.toList().findAll { file ->
-                file.name.toLowerCase().endsWith('.fa') || file.name.toLowerCase().endsWith('.fasta')
+            if (fastaFiles.isEmpty()) {
+                println "Warning: No .fa or .fasta files found in directory '${normalizedPath}'."
+                return []
             }
             // Return the list of files
             return fastaFiles
         } else if (path.isFile()) {
-            // Return the file itself
+            // Return the file itself as a single-item list
             return [path]
         } else {
-            // Handle cases where the path is neither a file nor a directory
+            // Warn about invalid paths
             println "Warning: The path '${normalizedPath}' is not a valid file or directory and will be skipped."
             return []
         }

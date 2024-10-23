@@ -113,7 +113,8 @@ work                # Directory containing the nextflow working files
 | `--minmapq <number>`                                     | What minimum mapping quality would you want in your sample alignments. Default is 5   |
 | `--organisms_file <file>`                                     | A single file that contains what organisms (name or taxid) you want to pull. You can enable this if you are skipping kraken2 as well    |
 | `--subsample <number>`                                | Take a subsample of n reads from each sample. Useful if your data size is very large and you want a quick triage analysis                                                                                                                                                                                                                                                                                                         |
-| `--reference_fasta <filepath>`                        | Location of a single reference fasta to run alignment on RATHER than downloading references from NCBI. Useful if you know what you're looking for or have no internet connection to pull said references. Header format must be in the "all" format from NCBI's ftp [assembly site](https://ftp.ncbi.nlm.nih.gov/genomes/all/) and should be ">accession description" where there is a **space** following the accession with the organism chr/contig description of the sequence. Technically, the accession does not matter as the pipeline only needs to match the organism space that follows the first space in the header.              Example: **>NC_003663.2 Cowpox virus, complete genome**                                                                                                                                                                                                                           |
+| `--reference_fasta <filepath>`                        | Location of a single reference fasta, multiple files (separate by space and within quotations ""), or a directory of fasta files to run alignment on RATHER than (or in addition to) downloading references from NCBI from post K2 or manual organism taxids/names. Useful if you know what you're looking for or have no internet connection to pull said references. Header format must be in the "all" format from NCBI's ftp [assembly site](https://ftp.ncbi.nlm.nih.gov/genomes/all/) and should be ">accession description" where there is a **space** following the accession with the organism chr/contig description of the sequence. Technically, the accession does not matter as the pipeline only needs to match the organism space that follows the first space in the header.              Example: **>NC_003663.2 Cowpox virus, complete genome**                                                                                                                                                                                                                           |
+| `--recursive_reference`                                  | TRUE/FALSE (default). Search recursively through a directory provided in the `--reference_fasta` parameter   |
 | `--db <path_to_kraken2_database>`                     | Database to be used. IF `--low_memory` is called it will read the database from the fileystem. If not called, it will load it all into memory first so ensure that the memory available (limited as well by `--max_memory` is enough to hold the database). If using with --download-db, choose from download options {minikraken2, flukraken2} instead of using a path. [See here for a full list](#supported-default-databases) |
 | `--download_db`                                       | Download the preset database indicated in `--db` to `--outdir`                                                                                                                                                                                                                                                                                                                                                                    |
 | `--metaphlan` | Use Metaphlan. Must specify a database path that contains .pkl and .btl2 (bowtie2 index) files                                                                                                                                                                    |
@@ -132,7 +133,7 @@ work                # Directory containing the nextflow working files
 | `--get_variants`                                    | Perform mpileup on your assemblies against your reads. Disabled by default. Auto-called if you are doing a reference-based assembly                                                                                                                                                                                                                                                                                |
 | `-resume`                                             | Resume the run from where it left off. IF not called the pipeline will restart from the Samplesheet check each time                                                                                                                                                                                                                                                                                                               |
 | `-r [main, stable, etc.]`                             | Specify the branch/revision name to use if pulling from github (not local main.nf file)                                                                                                                                                                                                                                                                                                                                           |
-| `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons                                                                                                                                      
+| `-profile [local,test,test_viral,docker,singularity]` | Default profile, 2 tests, Docker, or Singularity for execution reasons
 
 ⚠️ Please note that for the `--reference_fasta` parameter, you MUST use the designated header format from the FTP site that NCBI hosts for assemblies at [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). This format should looke like:
 
@@ -140,7 +141,7 @@ work                # Directory containing the nextflow working files
 >NC_003663.2 Cowpox virus, complete genome
 ```
 
-In this case, the accession (can be any value, default is NCBI's nt or refseq acc) is followed by a **space** and then the organism name. The pipeline must "fuzzy" match the organism name from this header from the assembly summary file (see NCBI's assembly file [here](https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt)) to understand how the parsing happens in regards to an organism. 
+In this case, the accession (can be any value, default is NCBI's nt or refseq acc) is followed by a **space** and then the organism name. The pipeline must "fuzzy" match the organism name from this header from the assembly summary file (see NCBI's assembly file [here](https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt)) to understand how the parsing happens in regards to an organism.
 
 ### Important output locations
 
@@ -150,7 +151,7 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
   - Coverage (v1.2.2 or later) - `<samplename>.txt`
   - `Histogram` (v1.3.0 or later) - `<samplename>.histo.txt`
   - `Depth` (v1.2 or later) - `<samplename>.tsv`
-    - Each contig/chromosome is present in this file, 3rd column is depth at position (col 2). 
+    - Each contig/chromosome is present in this file, 3rd column is depth at position (col 2).
 - `bcftools`: Variant And Consensus – Optional Module (--reference_assembly called)
   - Variants - `<samplename>.<taxid>.vcf.gz`
   - Consensus - `<samplename>.consensus.fa`
@@ -158,7 +159,7 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
 - `confidence`: Confidence Table `confidences.merged_mqc.tsv`
   - Contains post alignment and kraken2 confidence values for each sample + contig/chromosome per taxa
 - `multiqc` – Confidence Metrics and Supplemental Plots Location
-- `nanoplot`/`fastqc` – QC plots and stats 
+- `nanoplot`/`fastqc` – QC plots and stats
 - `minimap2` / `bowtie2` – Location of raw re-alignment bam files
 - `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – Agnostic kraken2 only
 
@@ -176,9 +177,9 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
    - Duplicates unclassified (non-host) reads.
    - [Minimap2](https://github.com/lh3/minimap2) is used for both data types (short or long reads) based on 2 studies [1](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/) and [2](https://www.nature.com/articles/s41467-021-26865-w) conducted showing a slightly lower false negative rate relative to [Bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
 4. Kraken2 Metagenomics Classification
-   - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective. 
+   - Includes Krona Plots - a **very** important file for initial understanding abundance from a metagenomics perspective.
    - This is skippable if you assign `--reference_fasta` FASTA file or the `--organisms/--organisms_file` parameters. (set: `--skip_kraken2`)
-   - Always consider limitations in your database of use. See [databases](https://benlangmead.github.io/aws-indexes/k2) publicly available. 
+   - Always consider limitations in your database of use. See [databases](https://benlangmead.github.io/aws-indexes/k2) publicly available.
 5. Top Hits Assignments
    - See Figure 2 for flow diagram on decision tree
 6. Reference Prep
@@ -187,7 +188,7 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
    - Index built for each reference FASTA file (Bowtie2 only - Illumina reads)
 7. Alignment
    - Pulled/local assemblies are aligned to ALL classified reads (if using Kraken2) or raw reads (if using local FASTA reference) post-QC steps. Currently, only the "best hits" are assigned per read. Soon to introduce a parameter to raise that limit.
-   - Currently, we separate short and long reads to be run between Bowtie2 & Minimap2, respectively. While various studies have been performed and declared minimap2 to be highly performative for short reads, a few indicate that from a taxonomic/metagenomics perspective [Minimap2 still underperforms relative to Bowtie2](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/). We will actively track performances as these platforms continue to be updated to ensure the optimal aligner is used for each data type. 
+   - Currently, we separate short and long reads to be run between Bowtie2 & Minimap2, respectively. While various studies have been performed and declared minimap2 to be highly performative for short reads, a few indicate that from a taxonomic/metagenomics perspective [Minimap2 still underperforms relative to Bowtie2](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/). We will actively track performances as these platforms continue to be updated to ensure the optimal aligner is used for each data type.
 8. Stats
    - Generate Coverage histogram (`samtools/samplename.histo.txt`)
    - Generate Depth (`samtools/samplename.tsv`)
@@ -205,10 +206,10 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
 <span>Figure 3</span>
 <img src="https://github.com/jhuapl-bio/taxtriage/blob/main/docs/images/pathogens.report.example.jpg" width="50%" height="50%"></img>
 
-The distribution metrics are defined based on a all publicly available healthy human subjects (HHS) available from [HMP](https://hmpdacc.org/). Because these runs are lilsted as SRA accessions, they all contain NCBI's taxonomy analysis table metadata. That is, we are able to extract taxonomic abundances for each of the samples provided. Using standard distribution metrics, we designate a default z-score of 1.5 to mark irregularities outside of those bounds for any given species/subspecies/strain for each body site. This is, of course, limited in that the organism MUST be annotated and found within a given body site. Any organism (based on taxid mapping) **not** found is considered irregular, regardless of relative abundance. 
+The distribution metrics are defined based on a all publicly available healthy human subjects (HHS) available from [HMP](https://hmpdacc.org/). Because these runs are lilsted as SRA accessions, they all contain NCBI's taxonomy analysis table metadata. That is, we are able to extract taxonomic abundances for each of the samples provided. Using standard distribution metrics, we designate a default z-score of 1.5 to mark irregularities outside of those bounds for any given species/subspecies/strain for each body site. This is, of course, limited in that the organism MUST be annotated and found within a given body site. Any organism (based on taxid mapping) **not** found is considered irregular, regardless of relative abundance.
 
 
-Additionally, any organism deemed a potential or primary pathogen from our curated pathogen sheet of ~1600 taxa ([see here for more info](#top-hits-calculation)) is included in the Organism discovery analysis, regardless of relative abundance. 
+Additionally, any organism deemed a potential or primary pathogen from our curated pathogen sheet of ~1600 taxa ([see here for more info](#top-hits-calculation)) is included in the Organism discovery analysis, regardless of relative abundance.
 
 Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
 
@@ -227,11 +228,11 @@ Unless you are using Seqera, most of the temporary directories and final outputs
 6. Rerun the command: `bash .command.sh` in the same directory.
    - If you have the command in your global env, you can run it directly without changing anything.
    - Be aware that for non-globally installed commands/tools you need to reference the location of the python/bash scripts. They are usually in the dir: `../../../bin/command.py`. So, simply edit with `nano` or `vim` and add `../../../bin/` in front of the python/bash script and then run `bash .command.sh`
-  
+
 
 ## Confidence Scoring
 
-In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores. 
+In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores.
 
 Weighted Confidence Score: The final score is a weighted sum of several factors:
 
@@ -242,7 +243,7 @@ Weighted Confidence Score: The final score is a weighted sum of several factors:
 
 ### A. Disparity Score Explanation (Weight: 50% - WIP)
 
-### 
+###
 
 The **Disparity Score** is a measure that assesses how skewed the aligned reads for an organism are relative to the total aligned reads in a sample. The disparity score is calculated by adjusting the **proportion of reads** aligned for an organism using the **variance** of the reads across all organisms. The idea is to account for how evenly or unevenly reads are distributed across the organisms in a sample.
 
@@ -311,7 +312,7 @@ Where:
 - **σ** is the standard deviation of the reads relative to all other siblings at that rank classified by kraken2.
 - **μ** is the mean of the reads.
 
-Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there. 
+Where the standard deviation refers to all other sibling reads for a given taxonomic identification at the species level that has been identified with kraken2. The goal here is to determine if their is a disparate or heavily identified number of a specific organisms RELATIVE to all others in the same taxonomic rank code, in this case species (S) from K2. If Kraken2 is identifying relatively equal proportions of Escherichia (genus) species then we are less confident that that species (*E. Coli* for example) is there.
 
 ##### Clamping the CV Value
 
@@ -325,7 +326,7 @@ This ensures that:
 - If **CV** is greater than 1, it is set to 1.
 - If **CV** is negative, it is set to 0.
 
-If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**. 
+If Kraken2 is disabled, then the pipeline will automatically reduce the exact specified weight (see default parameters for adjusting weighting) from the final confidence score. Default: 0.2. Be aware that this weight is a **WIP**.
 
 #### Disparity Calculation
 
@@ -351,7 +352,7 @@ It is calculated as followed:
 
 <img src="../assets/Gini_coeff.png" alt="drawing" style="width:400px;"/>
 
-ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process. 
+ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process.
 
 ### D. MapQ Score. (Weight: 0.05%)
 
@@ -364,7 +365,7 @@ This metric is simply the mean of all reads MapQ scores across an entire species
 
 ### Top Hits Calculation
 
-In order to retain an "agnostic" approach for organism while allowing adequate alignments to take place in a reasonable amount of time, we employ the "top hits" approach to the pipeline (see Figure 2). This is designed to allow users to still pull commensals or non-pathogens that have not been annotated in our curated [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) to still be available in the confidence metrics and reports. Users should adjust the `--top_per_taxa` and `--top_hits` as freely as needed based on the source of their sample(s). 
+In order to retain an "agnostic" approach for organism while allowing adequate alignments to take place in a reasonable amount of time, we employ the "top hits" approach to the pipeline (see Figure 2). This is designed to allow users to still pull commensals or non-pathogens that have not been annotated in our curated [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) to still be available in the confidence metrics and reports. Users should adjust the `--top_per_taxa` and `--top_hits` as freely as needed based on the source of their sample(s).
 ![Figure 2](../assets/TASSDiagram.png)
 
 ### Supported Default databases (Kraken2 only)
@@ -400,9 +401,9 @@ While we support Taxtriage in local CLI deployment, you can also import and run 
 
 #### Running Within Seqera
 
-By default, you should have access to TaxTriage's launchpad for your specific organization if your account was set up by JHU/APL. If you don't see it, please let an admin know. 
+By default, you should have access to TaxTriage's launchpad for your specific organization if your account was set up by JHU/APL. If you don't see it, please let an admin know.
 
-To access your launchpad, select the drop-down and your organization name. There is also a "Shared" workspace that is viewable and public to all users of the TASS program on Seqera. 
+To access your launchpad, select the drop-down and your organization name. There is also a "Shared" workspace that is viewable and public to all users of the TASS program on Seqera.
 
 1. Select the Dropdown near the top-left of the page.
 
@@ -423,7 +424,7 @@ A. Select "Launch" to start the pipeline or (see below) update and refine some a
 
 [cloud_run_2.webm](https://user-images.githubusercontent.com/50592701/192596313-7e30f285-dc1d-4c62-99d2-5791a5d8c0e9.webm)
 
-In this page, instead of hitting "Launch" the user selected "launch settings". For this page, you can review the JSON of all parameter that are to be submitted and edit as you see fit directly in the text box. You can update the "branch" used from the Github Repo (default is "main"). This is expecially useful to learn about as when you "Relaunch" a pipeline, you will be redirected to this page which is the overview of all configurations you set for that specific job. 
+In this page, instead of hitting "Launch" the user selected "launch settings". For this page, you can review the JSON of all parameter that are to be submitted and edit as you see fit directly in the text box. You can update the "branch" used from the Github Repo (default is "main"). This is expecially useful to learn about as when you "Relaunch" a pipeline, you will be redirected to this page which is the overview of all configurations you set for that specific job.
 
 [cloud_run_3.webm](https://user-images.githubusercontent.com/50592701/192596272-46007980-cc07-46c3-978f-e1846adbfffb.webm)
 
@@ -452,7 +453,7 @@ Once the AWS system is setup, let's head back to Nextflow Tower. On the left, yo
 
 <img src="images/taxtriagelaunchpad1.png"  width="50%" height="50%">
 
-MAKE SURE that the compute environment matches the one you set up when you set your credentials if you're not using the JHUAPL-provided Seqera instance. See [official docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) for setting up your own compute system with its own billing. 
+MAKE SURE that the compute environment matches the one you set up when you set your credentials if you're not using the JHUAPL-provided Seqera instance. See [official docs](https://abhi18av.github.io/nf-tower-docs-orgs-and-teams/21.04.temp3/compute-envs/overview/) for setting up your own compute system with its own billing.
 
 If you expand the pipeline parameters, you can mimic what I've written for my example with your own paths for the S3 bucket and example data. Note that these are going to be identical to the parameters available at [here](#cli-parameters-possible-and-explained)
 
@@ -467,12 +468,12 @@ See [here](../README.md#offline-local-mode)
 
 Depending on your needs or uncertainty with K2 performance of identifying very low thresholds/quantities of reads, you may want to supply your own reference FASTA to ensure that that organism will be aligned no matter what. You have 2 options (pick one):
 
-A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help: 
+A. Provide a local FASTA file with the header style of `>accession organism/chromosome description` where the organism name is listed in the 2nd column (space delimiter) of the file. See this example for help:
 ```
    >NC_003663.2 Cowpox virus, complete genome
 ```
 
-In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet. 
+In this case, Cowpox virus will attempt to be matched for post-alignment processes. IF your headers do not have this format, the pipeline will fail. You can pull assemblies for organisms through NCBI's Genome site OR from the ftp location [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). We (the JHU/APL team) are working on the ability to provide a local directory of GCF/A files that can be mapped without the need to provide a single FASTA, but this feature has not been implemented yet.
 
 B. (Requires **Internet capabilities**) Add the `--organisms` parameter with any taxid(s) you would like to ensure are downloaded. This will merge these taxids with anything that kraken2 finds and can be written, for example, like `--organisms 10243`. Make sure to enclose multiple taxids like so: `--organisms "10243 2331"`
 
@@ -495,7 +496,7 @@ Use this parameter to choose a configuration profile. Profiles can give configur
 
 Several generic profiles are bundled with the pipeline which instruct the pipeline to use software packaged using different methods (Docker, Singularity, Podman, Shifter, Charliecloud, Conda) - see below. When using Biocontainers, most of these software packaging methods pull Docker containers from quay.io e.g [FastQC](https://quay.io/repository/biocontainers/fastqc) except for Singularity which directly downloads Singularity images via https hosted by the [Galaxy project](https://depot.galaxyproject.org/singularity/) and Conda which downloads and installs software locally from [Bioconda](https://bioconda.github.io/).
 
-> Only Docker and Singularity are currently supported for profile types. There may be efforts to update for additional platforms in the future. 
+> Only Docker and Singularity are currently supported for profile types. There may be efforts to update for additional platforms in the future.
 
 The pipeline also dynamically loads configurations from [https://github.com/nf-core/configs](https://github.com/nf-core/configs) when it runs, making multiple config profiles for various institutional clusters available at run time. For more information and to see if your system is available in these configs please see the [nf-core/configs documentation](https://github.com/nf-core/configs#documentation).
 

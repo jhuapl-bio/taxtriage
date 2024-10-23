@@ -321,6 +321,12 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "recursive_reference": {
+                    "type": "boolean",
+                    "description": "Search for the FASTA files in a directory from the --reference_fasta param",
+                    "fa_icon": "fas fa-ban",
+                    "default": false
+                },
                 "distributions": {
                     "type": "string",
                     "format": "file-path",
