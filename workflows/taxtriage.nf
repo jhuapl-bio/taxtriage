@@ -275,10 +275,36 @@ workflow TAXTRIAGE {
 
     ch_reference_fasta = params.reference_fasta ? Channel.from(params.reference_fasta.split(" ").collect { it  }) : Channel.empty()
     ch_reference_fasta
-        .map { fasta ->
-            def normalizedPath = fasta.replace('~', System.getProperty('user.home'))  // Replace home dir with tilde
-            return file(normalizedPath)  // Return tuple with basename and normalized path
-        }.set { ch_reference_fasta }
+    .flatMap { fasta ->
+        // Replace tilde with home directory
+        def normalizedPath = fasta.replaceFirst('^~', System.getProperty('user.home'))
+        // Convert to Path object
+        def path = file(normalizedPath)
+
+        if (path.isDirectory()) {
+            // If the path is a directory, list all .fa and .fasta files
+            def filesArray = path.listFiles()
+            if (!filesArray) {
+                println "Warning: The directory '${normalizedPath}' is empty or inaccessible."
+                return []
+            }
+            // Convert array to list
+            def fastaFiles = filesArray.toList().findAll { file ->
+                file.name.toLowerCase().endsWith('.fa') || file.name.toLowerCase().endsWith('.fasta')
+            }
+            // Return the list of files
+            return fastaFiles
+        } else if (path.isFile()) {
+            // Return the file itself
+            return [path]
+        } else {
+            // Handle cases where the path is neither a file nor a directory
+            println "Warning: The path '${normalizedPath}' is not a valid file or directory and will be skipped."
+            return []
+        }
+    }
+    .set { ch_reference_fasta }
+    ch_reference_fasta.view()
 
     if (params.get_pathogens){
         DOWNLOAD_PATHOGENS()
