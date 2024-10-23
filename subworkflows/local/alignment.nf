@@ -53,57 +53,63 @@ workflow ALIGNMENT {
     def idx = 0
 
     ch_aligners.shortreads
-    .flatMap { meta, fastq, fastas, _ ->
-        // Print 'fastas' for debugging purposes
+        .flatMap { meta, fastq, fastas, _ ->
+            // Print 'fastas' for debugging purposes
 
-        def outputs = []
+            def outputs = []
 
-        // Flatten 'fastas' by one level if it's nested
-        def flattenedFastas = fastas.collectMany { it }
+            // Flatten 'fastas' by one level if it's nested
+            def flattenedFastas = fastas.collectMany { it }
 
-        flattenedFastas.each { fastaItem -> {
-            // if fastaItem is a list
-                if (fastaItem instanceof List) {
-                    // If the item is a list of files, return each file separately
-                    def fasta = fastaItem[0]
-                    def id = "${meta.id}.${fasta.getBaseName()}"
-                    def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                    outputs << [mm, fastq, fastaItem]
-                } else {
-                    // If the item is a single file, return it as is
-                    def id = "${meta.id}.${fastaItem.getBaseName()}"
-                    def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                    outputs.add([mm, fastq, fastaItem])
+            flattenedFastas.each { fastaItem -> {
+                    // if fastaItem is a list
+                    if (fastaItem instanceof List) {
+                        // If the item is a list of files, return each file separately
+                        def fasta = fastaItem[0]
+                        def id = "${meta.id}.${fasta.getBaseName()}"
+                        def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
+                        outputs << [mm, fastq, fastaItem]
+                    } else {
+                        // If the item is a single file, return it as is
+                        def id = "${meta.id}.${fastaItem.getBaseName()}"
+                        def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
+                        outputs.add([mm, fastq, fastaItem])
+                    }
                 }
             }
-        }
-        // Return the collected outputs
-        return outputs
-    }
-    .set { ch_fasta_shortreads_files_for_alignment }
+            // Return the collected outputs
+            return outputs
+        }.set { ch_fasta_shortreads_files_for_alignment }
+
     ch_aligners.longreads
         .flatMap { meta, fastq, fastas, _ ->
-            def size = fastas.size()
-            fastas.collect{ fasta ->
-                def id = "${meta.id}"
-                // if fasta[0] is a list
-                if (fasta[0] instanceof List) {
-                    def fasta1 = fasta[0]
-                    def basen = fasta1.baseName
-                    id = "${id}.${basen}"
-                }
-                else if (size > 1){
-                    def basen = fasta[0].baseName
-                    id = "${id}.${basen}"
-                }
-                def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                idx++
-                return [ mm, fastq, fasta[0]]
-            }
-        }
-        .set { ch_fasta_longreads_files_for_alignment }
+        // Print 'fastas' for debugging purposes
 
-    ch_fasta_longreads_files_for_alignment.view()
+            def outputs = []
+
+            // Flatten 'fastas' by one level if it's nested
+            def flattenedFastas = fastas.collectMany { it }
+
+            flattenedFastas.each { fastaItem -> {
+                    // if fastaItem is a list
+                    if (fastaItem instanceof List) {
+                        // If the item is a list of files, return each file separately
+                        def fasta = fastaItem[0]
+                        def id = "${meta.id}.${fasta.getBaseName()}"
+                        def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
+                        outputs << [mm, fastq, fastaItem[0]]
+                    } else {
+                        // If the item is a single file, return it as is
+                        def id = "${meta.id}.${fastaItem.getBaseName()}"
+                        def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
+                        outputs.add([mm, fastq, fastaItem])
+                    }
+                }
+            }
+            // Return the collected outputs
+            return outputs
+        }.set { ch_fasta_longreads_files_for_alignment }
+
 
     MINIMAP2_ALIGN(
         ch_fasta_longreads_files_for_alignment,
@@ -155,7 +161,7 @@ workflow ALIGNMENT {
         .set{ merged_bams_channel }
 
     if (params.get_variants || params.reference_assembly){
-    //     // // // branch out the samtools_sort output to nanopore and illumina
+        //     // // // branch out the samtools_sort output to nanopore and illumina
         BCFTOOLS_MPILEUP_OXFORD(
             ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
             ch_fasta_longreads_files_for_alignment.map{ m, bam, fasta -> fasta },
@@ -249,4 +255,4 @@ workflow ALIGNMENT {
         stats = ch_stats
         // bamstats = ch_bamstats
         versions = ch_versions
-    }
+}

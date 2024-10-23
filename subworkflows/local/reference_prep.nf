@@ -1,3 +1,4 @@
+/* groovylint-disable Indentation */
 include { MAKE_FILE } from '../../modules/local/make_file'
 include { DOWNLOAD_ASSEMBLY } from '../../modules/local/download_assembly'
 include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../../modules/local/map_assembly_to_fasta'
@@ -16,7 +17,6 @@ workflow  REFERENCE_PREP {
     ch_reference_fasta
     ch_assembly_txt
 
-
     main:
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
@@ -24,12 +24,12 @@ workflow  REFERENCE_PREP {
 
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
             return [ meta,  []]
-        }
     }
+}
 
     ch_cds = ch_samples.map{ meta, report -> {
             return [ meta,  []]
-        }
+    }
     }
 
     ch_bedfiles = ch_samples.map { meta, report ->
@@ -38,7 +38,7 @@ workflow  REFERENCE_PREP {
 
     ch_mapped_assemblies = ch_samples.map{ meta, report -> {
             return [meta, [], [], []  ]
-        }
+    }
     }
 
     ch_reports_to_download = ch_samples.map{ meta, report -> {
@@ -47,8 +47,7 @@ workflow  REFERENCE_PREP {
             } else {
                 return [meta, []]
             }
-
-        }
+    }
     }
     if (params.organisms_file){
         // check if params.organisms is a file or a string
@@ -78,14 +77,15 @@ workflow  REFERENCE_PREP {
         }
     }
 
+
     if (!params.skip_realignment) {
         if (params.reference_fasta || params.get_pathogens) {
             MAP_LOCAL_ASSEMBLY_TO_FASTA(
-                ch_reference_fasta.map {  fasta ->  {
-                        // get basename of fasta path
-                        def basen = fasta.getName()
-                        return [ [id: basen ], fasta ]
-                    }
+                ch_reference_fasta
+                .map { fasta ->
+                    // Now fasta is an individual file, not a list
+                    def basename = fasta.baseName
+                    return [ [id: basename],  fasta]
                 },
                 ch_assembly_txt
             )
@@ -93,71 +93,101 @@ workflow  REFERENCE_PREP {
                 if (params.bt2_indices) {
                     println "bt2 indices being used"
                     // If bt2_indices parameter is provided, create a channel from the provided path
-                    ch_bt2indices = Channel.fromPath(params.bt2_indices)
-                    ch_mapped_assemblies.combine(ch_bt2indices).combine(ch_reference_fasta).map {
-                        meta, fastas, listmaps, listids, bt2index, fasta ->
-                            fastas.add([fasta, bt2index])
+                    ch_bt2_indices = params.bt2_indices ? Channel.from(params.bt2_indices.split(" ").collect { it  }) : Channel.empty()
+
+                    fastaWithIndexChannel = ch_reference_fasta.merge(ch_bt2_indices)
+                    ch_mapped_assemblies.combine(fastaWithIndexChannel.collect({
+                        return [it[0], it[1]]
+                    }, flat:false).toList()).map {
+                        meta, fastas, listmaps, listids, fastaWithIndex ->
+                            fastas.addAll([fastaWithIndex])
                             return [meta, fastas, listmaps, listids]
                     }.set { ch_mapped_assemblies }
+
                 } else {
-                    illuminaPresent = ch_samples
-                        .filter { it[0].platform == "ILLUMINA" }
+                    // 1. Filter ch_samples to get only Illumina samples
+                    illuminaSamples = ch_samples.filter { it[0].platform == "ILLUMINA" }
+
+                    // 2. Count the number of Illumina samples
+                    illuminaCountChannel = illuminaSamples
                         .count()
-                        .map { it > 0 }
+                        .ifEmpty { 0 }
+                        .map { count -> println "Number of Illumina samples: $count"; count }
 
-                    ch_bt2_indices = Channel.empty()
-                    illuminaPresent.subscribe{ present ->
-                        if (present) {
-                            println("ILLUMINA samples found, performing BOWTIE2_BUILD: Local.")
-                            ch_reference_fasta
-                                .map { fasta ->
-                                    def basen = fasta.baseName
-                                    return [ [id: basen], fasta ]
-                                }
-                                .set { fastaForBowtieBuild }
-
-                            BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
-
-                            fastaForBowtieBuild
-                                .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
-                                .set { fastaWithIndexChannel }
-
-                            ch_mapped_assemblies.combine(fastaWithIndexChannel.map {
-                                meta, fasta, index ->
-                                    return [fasta, index]
-                            }).map {
-                                meta, fastas, listmaps, listids, singlefasta, fastaWithIndex ->
-                                    fastas.add([singlefasta, fastaWithIndex])
-                                    return [meta, fastas, listmaps, listids]
-                            }.set { ch_mapped_assemblies }
+                    // 3. Conditionally run the code if Illumina samples exist
+                    def run_context = false
+                    illuminaCountChannel.subscribe { count ->
+                        if (count > 0) {
+                            println "Illumina samples found, proceeding with Bowtie2 build."
+                            run_context = true
                         } else {
-                            println("No ILLUMINA samples found, skipping BOWTIE2_BUILD: Local.")
+                            println "No Illumina samples found, skipping Bowtie2 build."
                         }
+                    }
+                    if (run_context){
+                        // 4. Execute your pipeline logic
+                        fastaForBowtieBuild = ch_reference_fasta
+                            .map { fasta ->
+                                def basen = fasta.baseName
+                                return [ [id: basen], fasta ]
+                            }
+
+                        BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
+
+                        fastaWithIndexChannel = fastaForBowtieBuild
+                            .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
+
+                        ch_mapped_assemblies = ch_mapped_assemblies
+                            .combine(fastaWithIndexChannel.collect({ return [it[1], it[2]] }, flat: false).toList())
+                            .map { meta, fastas, listmaps, listids, fastaWithIndex ->
+                                fastas.addAll([fastaWithIndex])
+                                return [meta, fastas, listmaps, listids]
+                            }
+                    } else {
+                        ch_mapped_assemblies.combine(ch_reference_fasta.collect().toList()).map {
+                            meta, fastas, listmaps, listids, fasta ->
+                                fasta.each{ f -> {
+                                        return fastas.add([f])
+                                    }
+                                }
+                                return [meta, fastas, listmaps, listids]
+                        }.set { ch_mapped_assemblies }
                     }
                 }
             } else {
                 // Case when `use_bt2` is false, just add the fastas directly
-                ch_mapped_assemblies.view()
-                ch_mapped_assemblies.combine(ch_reference_fasta.toList()).map {
+                ch_mapped_assemblies.combine(ch_reference_fasta.collect().toList()).map {
                     meta, fastas, listmaps, listids, fasta ->
-                        fastas.add(fasta) // Add the fasta with `null` in place of `bt2index`
+                        fasta.each{ f -> {
+                                return fastas.add([f])
+                            }
+                        }
                         return [meta, fastas, listmaps, listids]
                 }.set { ch_mapped_assemblies }
-                ch_mapped_assemblies.view()
             }
+            // Collect the maps from `MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map`
+            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
+            .collect { meta, gcfmaps -> return gcfmaps }
+            .set { merged_map }
 
+            MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
+            .collect { meta, accessions -> return accessions }
+            .set { merged_map_ids }
 
-            ch_mapped_assemblies = ch_mapped_assemblies.combine(
-                MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map.map { meta, mapfile -> return mapfile }
-            ).combine(
-                MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions.map { meta, gcfids -> return gcfids }
-            )
-
-            ch_mapped_assemblies.map { meta, fastas, listmaps, listids, mapfile, gcfids -> {
-                    listmaps.add(mapfile)
-                    listids.add(gcfids)
+            // Combine the maps into the third list (listmaps) of the ch_mapped_assemblies structure
+            ch_mapped_assemblies.combine(merged_map.toList())
+            .map{
+                meta, fastas, listmaps, listids, map -> {
+                    listmaps.addAll(map)
                     return [meta, fastas, listmaps, listids]
-            }
+                }
+            }.combine(
+                merged_map_ids.toList()
+            ).map{
+                meta, fastas, listmaps, listids, ids -> {
+                    listids.addAll(ids)
+                    return [meta, fastas, listmaps, listids]
+                }
             }.set{ ch_mapped_assemblies }
         }
     }
@@ -188,6 +218,7 @@ workflow  REFERENCE_PREP {
 
         ch_platform_split.longreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_longreads_only }
         ch_fullset = merged_shortreads_index.mix(merged_longreads_only)
+
         ch_mapped_assemblies.join(ch_fullset)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
             .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
@@ -195,11 +226,11 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile -> {
                 listmaps.add(mapfile)
                 listids.add(gcfids)
-                fastas.add(fasta)
+                fastas.add([fasta])
                 return [meta, fastas, listmaps, listids ]
-            }
+        }
         }.set{ ch_mapped_assemblies }
-    }
+        }
 
     COMBINE_MAPFILES(
         ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->  return [ meta, listmaps, listids ] }
@@ -252,7 +283,7 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, fastas, mergedids] }
     ).map{ meta, mergedmap, fastas, mergedids -> {
             return [meta, fastas, mergedmap, mergedids]
-        }
+    }
     }
 
     emit:
