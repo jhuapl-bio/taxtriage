@@ -40,10 +40,18 @@ workflow INPUT_CHECK {
 def create_fastq_channel(LinkedHashMap row) {
     // create meta map
     def meta = [:]
+    // if fastq_2 is not a column then set it as null for all rows
+
+
     meta.id         = row.sample
     meta.platform = row.platform ? row.platform : 'ILLUMINA'
     meta.fastq_1 = row.fastq_1
-    meta.fastq_2 = row.fastq_2
+    // Check if 'fastq_2' exists in 'row'
+    if (row.containsKey('fastq_2')) {
+        meta.fastq_2 = row.fastq_2
+    } else {
+        meta.fastq_2 = null
+    }
     meta.needscompressing = row.needscompressing ? row.needscompressing : null
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
     meta.single_end = row.fastq_2  ? false : true

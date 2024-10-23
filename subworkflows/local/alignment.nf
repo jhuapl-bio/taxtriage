@@ -103,6 +103,8 @@ workflow ALIGNMENT {
         }
         .set { ch_fasta_longreads_files_for_alignment }
 
+    ch_fasta_longreads_files_for_alignment.view()
+
     MINIMAP2_ALIGN(
         ch_fasta_longreads_files_for_alignment,
         true,

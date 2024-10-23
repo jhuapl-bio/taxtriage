@@ -146,6 +146,9 @@ class RowChecker:
 
     def _validate_second(self, row):
         """Assert that the second FASTQ entry has the right format if it exists."""
+
+        if self._second_col not in row:
+            row[self._second_col] = None
         if row[self._second_col] and len(row[self._second_col]) > 0:
             row[self._needscompressing] = self._validate_fastq_format(row[self._second_col])
         return row
@@ -266,6 +269,8 @@ def check_samplesheet(file_in, file_out):
                 sys.exit(1)
         checker.validate_unique_samples()
     header = list(reader.fieldnames)
+    if "fastq_2" not in header:
+        header.insert(1, "fastq_2")
     header.insert(1, "single_end")
     header.insert(1, "directory")
     header.insert(1, "needscompressing")
