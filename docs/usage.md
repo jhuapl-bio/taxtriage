@@ -241,7 +241,7 @@ Weighted Confidence Score: The final score is a weighted sum of several factors:
 ![](../assets/svgs/full_score.svg)
 
 
-### A. Disparity Score Explanation (Weight: 50% - WIP)
+### A. Disparity Score Explanation (Weight: 30% - WIP)
 
 ###
 
@@ -334,11 +334,11 @@ The **disparity** is calculated as:
 
 ![Disparity Formula](../assets/svgs/cv_1.svg)
 
-### C. DIAMOND Identity (Weight: 20%)
+### C. DIAMOND Identity (Weight: 30%)
 
 Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
 
-### D. Gini Coeff. (Weight: 5% - WIP)
+### D. Gini Coeff. (Weight: 30% - WIP)
 
 The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
 
@@ -353,7 +353,7 @@ It is calculated as followed:
 
 ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process.
 
-### D. MapQ Score. (Weight: 0.05%)
+### E. MapQ Score. (Weight: 5%)
 
 This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
 
