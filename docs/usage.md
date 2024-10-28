@@ -340,10 +340,9 @@ Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
 
 ### D. Gini Coeff. (Weight: 5% - WIP)
 
-Gini Coefficient for Coverage Depth Calculation
 The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
 
-The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
+The score is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
 
 1: Perfect equality (all positions in the genome are equally covered by reads).
 0: Maximum inequality (some positions have much higher coverage than others).
