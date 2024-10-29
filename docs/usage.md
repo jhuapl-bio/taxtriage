@@ -99,6 +99,9 @@ work                # Directory containing the nextflow working files
 | `--skip_fastp`                                        | TRUE/FALSE, do not filter with fastp     |
 | `--skip_plots`                                        | TRUE/FALSE, do not make any plots  |
 | `--remove_taxids  <numbers[]>`                        | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "9606" for human reads    |
+| `--show_commensals`                                        | TRUE/FALSE, Do/Don't (default: Don't) show commensals in the final report |
+| `--show_potentials`                                        | TRUE/FALSE, Do/Don't (default: Don't) show potential pathogens in the final report  |
+| `--show_unidentified`                                        | TRUE/FALSE, Do/Don't (default: Don't) show unknown or unannotated pathogens in the final report |
 | `--k2_confidence  <numbers[]>`                        | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information.  |
 | `--organisms  <numbers[] or strings[]>`    |  Organisms list (names or taxids)  you want to pull from to get a reference. Used if you are skipping kraken2 only. Separate by a list of spaces like "1254 573"  |
 | `--fuzzy`                                  | TRUE/FALSE, Match names of organisms by their names (enabled) rather than taxids  |
