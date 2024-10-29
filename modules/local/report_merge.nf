@@ -26,6 +26,7 @@ process ORGANISM_MERGE_REPORT {
 
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)
+    val(missing_samples)
 
     output:
         path "versions.yml"           , emit: versions
@@ -41,11 +42,25 @@ process ORGANISM_MERGE_REPORT {
     def output_pdf = "${meta.id}.organisms.report.pdf"
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     def min_conf = params.min_conf ? " -c $params.min_conf " : ""
+    def missing_arg = ''
+    if (missing_samples) {
+        missing_arg = "-m \"${missing_samples.join(' ')}\""
+    }
+    def show_potentials = params.show_potentials ? " --show_potentials " : ""
+    def show_commensals = params.show_commensals ? " --show_commensals " : ""
+    def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
     """
 
     awk 'NR==1{print; next} FNR>1' $files_of_pathogens > $output_txt
 
-    create_report.py -i $output_txt  -o $output_pdf $distribution_arg $min_conf
+    create_report.py -i $output_txt  \\
+        -o $output_pdf \\
+        $show_potentials \\
+        $show_commensals \\
+        $show_unidentified \\
+        $distribution_arg \\
+        $min_conf \\
+        $missing_arg
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

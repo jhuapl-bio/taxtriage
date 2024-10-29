@@ -62,7 +62,6 @@ workflow ASSEMBLY {
                 branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
             )
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
-
             BEDTOOLS_COVERAGE(
                 postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
             )

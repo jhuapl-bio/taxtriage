@@ -401,6 +401,21 @@
                     "description": "Start generating variant call analysis relative to aligned reads to references",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "show_potentials": {
+                    "type": "boolean",
+                    "description": "Show all known/listed potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_commensals": {
+                    "type": "boolean",
+                    "description": "Show all known/listed commensal organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_unidentified": {
+                    "type": "boolean",
+                    "description": "Show all non or non-identification organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_multiqc": {
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",

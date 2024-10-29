@@ -173,27 +173,19 @@ workflow  REFERENCE_PREP {
             ch_assembly_txt
         )
 
-        // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
-        // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
-        DOWNLOAD_ASSEMBLY.out.fasta.branch{
-                longreads: it[0].platform =~ 'OXFORD' || it[0].platform =~ 'PACBIO'
-                shortreads: it[0].platform =~ 'ILLUMINA'
-        }.set { ch_platform_split }
 
         if (params.use_bt2) {
             BOWTIE2_BUILD_DWNLD(
-                ch_platform_split.shortreads
+                DOWNLOAD_ASSEMBLY.out.fasta
             )
-            ch_platform_split.shortreads.join(BOWTIE2_BUILD_DWNLD.out.index)
-            .map{meta, fasta, index -> [meta, [fasta, index]] }.set { merged_shortreads_index }
+            DOWNLOAD_ASSEMBLY.out.fasta.join(BOWTIE2_BUILD_DWNLD.out.index)
+            .map{ meta, fasta, index -> [meta, [fasta, index]] }.set { merged_index }
         } else {
-            ch_platform_split.shortreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_shortreads_index }
+            DOWNLOAD_ASSEMBLY.out.fasta.map{meta, fasta -> [meta, [fasta]] }.set { merged_index }
         }
 
-        ch_platform_split.longreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_longreads_only }
-        ch_fullset = merged_shortreads_index.mix(merged_longreads_only)
 
-        ch_mapped_assemblies.join(ch_fullset)
+        ch_mapped_assemblies.join(merged_index)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
             .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
 
