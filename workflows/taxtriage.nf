@@ -404,6 +404,20 @@ workflow TAXTRIAGE {
     )
     ch_reads = ch_reads.filter({ !it[0].directory   }).mix(ARTIC_GUPPYPLEX.out.fastq)
 
+
+    // compress reads if needed
+
+    ch_reads.branch {
+        needsCompress: it[0].needscompressing
+        noCompress: !it[0].needscompressing
+    }.set{ split_compressing }
+
+    PIGZ_COMPRESS(
+        split_compressing.needsCompress
+    )
+    ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
+
+    ch_reads.view()
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
         SEQTK_SAMPLE(
@@ -416,7 +430,7 @@ workflow TAXTRIAGE {
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
             meta, reads -> meta.sequencing_summary
-}
+        }
     )
 
     // // // //
