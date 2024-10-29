@@ -327,6 +327,13 @@
                     "fa_icon": "fas fa-ban",
                     "default": false
                 },
+                "decompress_pre_megahit": {
+                    "type": "boolean",
+                    "description": "Decompress your fastq file(s) pre assembly with megahit only",
+                    "help_text": "For a minor bug on cluster environments where megahit can't work on compressed files",
+                    "fa_icon": "fas fa-ban",
+                    "default": false
+                },
                 "distributions": {
                     "type": "string",
                     "format": "file-path",
