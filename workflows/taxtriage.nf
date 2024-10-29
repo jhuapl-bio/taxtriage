@@ -417,7 +417,6 @@ workflow TAXTRIAGE {
     )
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
-    ch_reads.view()
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
         SEQTK_SAMPLE(
