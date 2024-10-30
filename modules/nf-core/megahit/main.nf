@@ -47,12 +47,11 @@ process MEGAHIT {
     if (meta.single_end) {
         """
         ${decompress_files}
-        
         megahit \\
             -r $reads \\
             -t $task.cpus \\
             $args \\
-            --out-prefix $prefix
+            --out-prefix $prefix; ${remove_files}
 
         pigz \\
             --no-name \\
@@ -60,8 +59,6 @@ process MEGAHIT {
             $args2 \\
             megahit_out/*.fa \\
             megahit_out/intermediate_contigs/*.fa
-    
-        ${remove_files}
 
         cat <<-END_VERSIONS > versions.yml
         "${task.process}":
@@ -76,9 +73,7 @@ process MEGAHIT {
             -2 ${reads[1]} \\
             -t $task.cpus \\
             $args \\
-            --out-prefix $prefix
-        
-        ${remove_files}
+            --out-prefix $prefix; ${remove_files}
 
         pigz \\
             --no-name \\
@@ -93,4 +88,5 @@ process MEGAHIT {
         END_VERSIONS
         """
     }
+    
 }
