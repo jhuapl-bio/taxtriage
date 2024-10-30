@@ -43,6 +43,7 @@
                 },
                 "outdir": {
                     "type": "string",
+                    "format": "directory-path",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
                 }
