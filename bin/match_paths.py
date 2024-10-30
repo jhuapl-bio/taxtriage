@@ -980,7 +980,10 @@ def main():
         if max_disparity > min_disparity:
             normalized_disparity = (disparity - min_disparity) / (max_disparity - min_disparity)
         else:
-            normalized_disparity = 0  # If all disparities are the same, set to 0
+            if len(disparities) > 1:
+                normalized_disparity = 0  # If all disparities are the same, set to 0
+            else:
+                normalized_disparity = 1
 
         # Store the normalized disparity
         aggregated_data['normalized_disparity'] = normalized_disparity
