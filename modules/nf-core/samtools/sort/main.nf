@@ -23,8 +23,11 @@ process SAMTOOLS_SORT {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def minmapq = minmapq ? " -q ${minmapq} " :  ""
-    def I_value = "${(task.memory.toMega() * 0.85).longValue()}M" // 80% of allocated memory, append GB to end as a string
-    
+
+    def I_value = "${(task.memory.toMega() * Math.min(0.85 / task.cpus, 0.85)).longValue()}M"
+
+
+
     if ("$bam" == "${prefix}.bam") error "Input and output names are the same, use \"task.ext.prefix\" to disambiguate!"
     """
     samtools sort \\
