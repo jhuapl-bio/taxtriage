@@ -19,6 +19,7 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
+include { SAMTOOLS_SORT as FILTER_MINIMAP2_SORT } from '../../modules/nf-core/samtools/sort/main'
 include { MINIMAP2_INDEX as FILTER_MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
@@ -78,12 +79,17 @@ workflow HOST_REMOVAL {
                 ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
                 true,
                 true,
-                true,
-                30
+                true
             )
 
-            ch_bam_hosts = FILTER_MINIMAP2.out.bam
-            REMOVE_HOSTREADS(ch_bam_hosts)
+            FILTER_MINIMAP2_SORT(
+                FILTER_MINIMAP2.out.bam,
+                false
+            )
+            ch_bam_hosts = FILTER_MINIMAP2_SORT.out.bam
+            REMOVE_HOSTREADS(
+                ch_bam_hosts
+            )
             ch_filtered_reads = REMOVE_HOSTREADS.out.reads
 
             // Check the filtered output and fallback to original reads if filtered reads are empty
@@ -102,7 +108,9 @@ workflow HOST_REMOVAL {
             ch_reads = ch_orig_reads.mix(ch_filtered_reads)
 
             // Continue processing the final reads
-            FILTERED_SAMTOOLS_INDEX(ch_bam_hosts)
+            FILTERED_SAMTOOLS_INDEX(
+                ch_bam_hosts
+            )
 
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS(

@@ -28,9 +28,18 @@ workflow REPORT {
         pathogens_list
         distributions
         assemblyfile
+        all_samples
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
+        // get the list of meta.id from alignments
+        // and assign it to the variable accepted_list
+        accepted_list = alignments.map { it[0].id }.collect()
+        accepted_list = accepted_list.flatten().toSortedList()
+
+        // Perform the difference operation
+        missing_samples = all_samples - accepted_list
+        missing_samples = missing_samples.flatten().toSortedList()
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
@@ -46,11 +55,13 @@ workflow REPORT {
             }.set{ full_list_pathogen_files }
 
             SINGLE_REPORT(
-                ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions)
+                ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
+                false
             )
 
             ORGANISM_MERGE_REPORT(
-                full_list_pathogen_files.combine(distributions)
+                full_list_pathogen_files.combine(distributions),
+                missing_samples
             )
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
         }

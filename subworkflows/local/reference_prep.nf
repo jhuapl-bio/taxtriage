@@ -105,54 +105,28 @@ workflow  REFERENCE_PREP {
                     }.set { ch_mapped_assemblies }
 
                 } else {
-                    // 1. Filter ch_samples to get only Illumina samples
-                    illuminaSamples = ch_samples.filter { it[0].platform == "ILLUMINA" }
+                    // If bt2_indices parameter is not provided, build the indices locally
+                    // ////////////////////////////////////////////////////////////////////////////////
 
-                    // 2. Count the number of Illumina samples
-                    illuminaCountChannel = illuminaSamples
-                        .count()
-                        .ifEmpty { 0 }
-                        .map { count -> println "Number of Illumina samples: $count"; count }
-
-                    // 3. Conditionally run the code if Illumina samples exist
-                    def run_context = false
-                    illuminaCountChannel.subscribe { count ->
-                        if (count > 0) {
-                            println "Illumina samples found, proceeding with Bowtie2 build."
-                            run_context = true
-                        } else {
-                            println "No Illumina samples found, skipping Bowtie2 build."
+                    fastaForBowtieBuild = ch_reference_fasta
+                        .map { fasta ->
+                            def basen = fasta.baseName
+                            return [ [id: basen], fasta ]
                         }
-                    }
-                    if (run_context){
-                        // 4. Execute your pipeline logic
-                        fastaForBowtieBuild = ch_reference_fasta
-                            .map { fasta ->
-                                def basen = fasta.baseName
-                                return [ [id: basen], fasta ]
-                            }
 
-                        BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
+                    BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
 
-                        fastaWithIndexChannel = fastaForBowtieBuild
-                            .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
+                    fastaWithIndexChannel = fastaForBowtieBuild
+                        .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
 
-                        ch_mapped_assemblies = ch_mapped_assemblies
-                            .combine(fastaWithIndexChannel.collect({ return [it[1], it[2]] }, flat: false).toList())
-                            .map { meta, fastas, listmaps, listids, fastaWithIndex ->
-                                fastas.addAll([fastaWithIndex])
-                                return [meta, fastas, listmaps, listids]
-                            }
-                    } else {
-                        ch_mapped_assemblies.combine(ch_reference_fasta.collect().toList()).map {
-                            meta, fastas, listmaps, listids, fasta ->
-                                fasta.each{ f -> {
-                                        return fastas.add([f])
-                                    }
-                                }
-                                return [meta, fastas, listmaps, listids]
-                        }.set { ch_mapped_assemblies }
-                    }
+                    ch_mapped_assemblies = ch_mapped_assemblies
+                        .combine(fastaWithIndexChannel.collect({ return [it[1], it[2]] }, flat: false).toList())
+                        .map { meta, fastas, listmaps, listids, fastaWithIndex ->
+                            fastas.addAll([fastaWithIndex])
+                            return [meta, fastas, listmaps, listids]
+                        }
+
+                    //////////////////////////////////////////////////////////////////////////////////
                 }
             } else {
                 // Case when `use_bt2` is false, just add the fastas directly
@@ -199,27 +173,19 @@ workflow  REFERENCE_PREP {
             ch_assembly_txt
         )
 
-        // get all where meta.platform == ILLUMINA and run BOWTIE2_BUILD on the fasta
-        // get all where meta.platform == OXFORD and run MINIMAP2_BUILD on the fasta
-        DOWNLOAD_ASSEMBLY.out.fasta.branch{
-                longreads: it[0].platform =~ 'OXFORD' || it[0].platform =~ 'PACBIO'
-                shortreads: it[0].platform =~ 'ILLUMINA'
-        }.set { ch_platform_split }
 
         if (params.use_bt2) {
             BOWTIE2_BUILD_DWNLD(
-                ch_platform_split.shortreads
+                DOWNLOAD_ASSEMBLY.out.fasta
             )
-            ch_platform_split.shortreads.join(BOWTIE2_BUILD_DWNLD.out.index)
-            .map{meta, fasta, index -> [meta, [fasta, index]] }.set { merged_shortreads_index }
+            DOWNLOAD_ASSEMBLY.out.fasta.join(BOWTIE2_BUILD_DWNLD.out.index)
+            .map{ meta, fasta, index -> [meta, [fasta, index]] }.set { merged_index }
         } else {
-            ch_platform_split.shortreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_shortreads_index }
+            DOWNLOAD_ASSEMBLY.out.fasta.map{meta, fasta -> [meta, [fasta]] }.set { merged_index }
         }
 
-        ch_platform_split.longreads.map{meta, fasta -> [meta, [fasta]] }.set { merged_longreads_only }
-        ch_fullset = merged_shortreads_index.mix(merged_longreads_only)
 
-        ch_mapped_assemblies.join(ch_fullset)
+        ch_mapped_assemblies.join(merged_index)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
             .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
 

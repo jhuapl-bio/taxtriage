@@ -66,6 +66,14 @@ def parse_args(argv=None):
                         help="Name of id column, default is id")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
+    parser.add_argument("--show_commensals", action="store_true", required=False,
+                        help="Show the commensals table")
+    parser.add_argument("--show_unidentified",   action="store_true", required=False,
+                        help="Show the all organisms now listed as commensal or pathogen")
+    parser.add_argument("--show_potentials",  action="store_true", required=False,
+                        help="Show the potentials table")
+    parser.add_argument("-m", "--missing_samples", metavar="MISSING", required=False, default=None,
+                        help="Missing samples if any", nargs="+")
     parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',
                         help="Name of site column, default is body_site")
     parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='name',
@@ -164,7 +172,7 @@ def split_df(df_full):
     # append (taxid) from taxid column to Detected Organism
 
     df_yes = df_full[~df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Potential" ] ) ].copy()
-    df_opp = df_full[df_full['Microbial Category'].isin([  "Potential"])].copy()
+    df_opp = df_full[df_full['Microbial Category'].isin([ "Potential"])].copy()
     df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
     df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
 
@@ -317,11 +325,13 @@ def draw_vertical_line(canvas, doc):
 def create_report(
     output,
     df_identified,
-    df_opportunistic,
+    df_potentials,
     df_unidentified,
     df_commensals,
     plotbuffer,
-    version=None
+    version=None,
+    missing_samples=None,
+    min_conf=None,
 ):
 
     # PDF file setup
@@ -352,7 +362,7 @@ def create_report(
     # sort df_identified by Confidence Metric (0-1)
     # filter out so only Class is PAthogen
     # df_identified = df_identified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, True])
-    # df_opportunistic = df_opportunistic.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
+    # df_potentials = df_potentials.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
@@ -384,13 +394,30 @@ def create_report(
             table_style=table_style
         )
         # Add the title and subtitle
+        if missing_samples:
+            samples_missing = f"Missing Samples due to filtering, failed step(s), or non-presence of organisms: <b>{', '.join(missing_samples)}</b><br></br> "
+        else:
+            samples_missing = ""
         title = Paragraph("Organism Discovery Report", title_style)
-        subtitle = Paragraph(f"This report was generated using TaxTriage <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of human-host pathogens.", subtitle_style)
+        subtitle = Paragraph(f"This report was generated using TaxTriage \
+            <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of \
+            human-host pathogens.<br></br><br></br> \
+            {samples_missing}\
+            Samples with confidence score below <b>{str(min_conf)}</b> were filtered out. \
+            ",
+            subtitle_style
+        )
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
+    ##########################################################################################
+
+    if min_conf:
+        subtitle = Paragraph(f"Samples with confidence score below {str(min_conf)} were filtered out. See the `paths.txt` file for a full list of organisms", subtitle_style)
+        elements.append(subtitle)
+
     # Adding regular text
 
     styles = getSampleStyleSheet()
@@ -509,16 +536,16 @@ def create_report(
 
     ##########################################################################################
     #### Table on opportunistic pathogens
-    if not df_opportunistic.empty:
+    if not df_potentials.empty:
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "Microbial Category", "# Reads Aligned",
                        "Confidence Metric (0-1)", "Taxonomic ID #",
                        "Pathogenic Subsp/Strains", "K2 Reads"
                        ]
-        if df_opportunistic['K2 Reads'].sum() == 0:
+        if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
-        data_opp = prepare_data_with_headers(df_opportunistic, plotbuffer, include_headers=True, columns=columns_opp)
-        table_style = return_table_style(df_opportunistic, color_pathogen=True)
+        data_opp = prepare_data_with_headers(df_potentials, plotbuffer, include_headers=True, columns=columns_opp)
+        table_style = return_table_style(df_potentials, color_pathogen=True)
         table = make_table(
             data_opp,
             table_style=table_style
@@ -557,7 +584,7 @@ def create_report(
 
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
-    # # Adding regular text
+
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
@@ -579,6 +606,7 @@ def create_report(
         )
         elements.append(table_no)
     elements.append(Spacer(1, 12))  # Space between tables
+
     ##########################################################################################
     ##### Add equations HERE - Work in progress ##################################################
 
@@ -666,7 +694,7 @@ def main():
     # df_full['name'] = df_full['name'] + " (" + df_full['Taxonomic ID #'].astype(str) + ")"
     df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
-    df_identified, df_opportunistic, df_commensal, df_unidentified= split_df(df_full)
+    df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
         "name": "Detected Organism",
         'taxid': "Taxonomic ID #",
@@ -680,18 +708,33 @@ def main():
         "Gini Coefficient": "Gini Coeff",
     }
     df_identified= df_identified.rename(columns=remap_headers)
-    df_unidentified= df_unidentified.rename(columns=remap_headers)
-    df_commensal = df_commensal.rename(columns=remap_headers)
-    df_opportunistic = df_opportunistic.rename(columns=remap_headers)
+
+    if args.show_unidentified:
+        df_unidentified= df_unidentified.rename(columns=remap_headers)
+    else:
+        df_unidentified = pd.DataFrame()
+
+    if args.show_commensals:
+        df_commensal = df_commensal.rename(columns=remap_headers)
+    else:
+        df_commensal = pd.DataFrame()
+
+    if args.show_potentials:
+        df_potentials = df_potentials.rename(columns=remap_headers)
+    else:
+        df_potentials = pd.DataFrame()
     version = args.version
+    missing_samples = args.missing_samples
     create_report(
         args.output,
         df_identified,
-        df_opportunistic,
+        df_potentials,
         df_unidentified,
         df_commensal,
         plotbuffer,
         version,
+        missing_samples,
+        args.min_conf
     )
 
 

@@ -71,7 +71,6 @@ ch_save_fastq_classified = params.skip_classified_fastq ? false : true
 ch_assembly_txt = null
 ch_kraken_reference = false
 
-
 def validateBt2Scoremin(String scoremin) {
     def pattern = /^(G|L),-?\d+(\.\d+)?,-?\d+(\.\d+)?$/
     if (!scoremin || !pattern.matcher(scoremin).matches()) {
@@ -405,6 +404,19 @@ workflow TAXTRIAGE {
     )
     ch_reads = ch_reads.filter({ !it[0].directory   }).mix(ARTIC_GUPPYPLEX.out.fastq)
 
+
+    // compress reads if needed
+
+    ch_reads.branch {
+        needsCompress: it[0].needscompressing
+        noCompress: !it[0].needscompressing
+    }.set{ split_compressing }
+
+    PIGZ_COMPRESS(
+        split_compressing.needsCompress
+    )
+    ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
+
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
         SEQTK_SAMPLE(
@@ -417,7 +429,7 @@ workflow TAXTRIAGE {
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
             meta, reads -> meta.sequencing_summary
-}
+        }
     )
 
     // // // //
@@ -556,24 +568,34 @@ workflow TAXTRIAGE {
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
-        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]) )
+        ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
         ch_depth = ALIGNMENT.out.depth
-
         ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
 
-        ch_combined = ch_alignment_outmerg
+        ch_alignment_outmerg
             .join(ch_mapped_assemblies, by: 0, remainder: true)
+            .filter{
+                it[1]
+            }
             .map { meta, bam, bai, depth, mapping ->
                 // If mapping is not present, replace it with null or an empty placeholder
                 return [meta, bam, bai, depth, mapping ?: ch_empty_file]
-            }
-        ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
+            }.set{ ch_combined }
 
+        ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
 
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
-        }.join(ch_bedfiles)
+        }.filter{
+            it[1]
+        }
+        ch_postalignmentfiles = ch_combined.map {
+            meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+        }.filter{
+            it[1]
+        }
+        .join(ch_bedfiles)
         .join(REFERENCE_PREP.out.ch_reference_cds)
         .join(REFERENCE_PREP.out.ch_cds_to_taxids)
         .join(
@@ -583,7 +605,6 @@ workflow TAXTRIAGE {
                 }
             }
         )
-
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ASSEMBLY(
             ch_postalignmentfiles,
@@ -591,7 +612,6 @@ workflow TAXTRIAGE {
         )
         ch_diamond_output = ASSEMBLY.out.ch_diamond_output
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
-        // ch_assembly_alignment = ASSEMBLY.out.ch_assembly_alignment
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////
         if (!params.skip_report){
@@ -604,11 +624,16 @@ workflow TAXTRIAGE {
                 .join(ch_covfiles)
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
+
+
+            all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
+
             REPORT(
                 input_alignment_files,
                 ch_pathogens,
                 distributions,
-                ch_assembly_txt
+                ch_assembly_txt,
+                all_samples
             )
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////

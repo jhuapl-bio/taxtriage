@@ -43,6 +43,7 @@
                 },
                 "outdir": {
                     "type": "string",
+                    "format": "directory-path",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
                 }
@@ -327,6 +328,13 @@
                     "fa_icon": "fas fa-ban",
                     "default": false
                 },
+                "decompress_pre_megahit": {
+                    "type": "boolean",
+                    "description": "Decompress your fastq file(s) pre assembly with megahit only",
+                    "help_text": "For a minor bug on cluster environments where megahit can't work on compressed files",
+                    "fa_icon": "fas fa-ban",
+                    "default": false
+                },
                 "distributions": {
                     "type": "string",
                     "format": "file-path",
@@ -399,6 +407,21 @@
                 "get_variants": {
                     "type": "boolean",
                     "description": "Start generating variant call analysis relative to aligned reads to references",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_potentials": {
+                    "type": "boolean",
+                    "description": "Show all known/listed potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_commensals": {
+                    "type": "boolean",
+                    "description": "Show all known/listed commensal organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_unidentified": {
+                    "type": "boolean",
+                    "description": "Show all non or non-identification organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_multiqc": {

@@ -99,6 +99,9 @@ work                # Directory containing the nextflow working files
 | `--skip_fastp`                                        | TRUE/FALSE, do not filter with fastp     |
 | `--skip_plots`                                        | TRUE/FALSE, do not make any plots  |
 | `--remove_taxids  <numbers[]>`                        | "taxidA taxidB..." a list of one or more taxids to remove from the kraken report prior to downstream analysis. Use "9606" for human reads    |
+| `--show_commensals`                                        | TRUE/FALSE, Do/Don't (default: Don't) show commensals in the final report |
+| `--show_potentials`                                        | TRUE/FALSE, Do/Don't (default: Don't) show potential pathogens in the final report  |
+| `--show_unidentified`                                        | TRUE/FALSE, Do/Don't (default: Don't) show unknown or unannotated pathogens in the final report |
 | `--k2_confidence  <numbers[]>`                        | Minimum confidence to classify a read using KRAKEN2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information.  |
 | `--organisms  <numbers[] or strings[]>`    |  Organisms list (names or taxids)  you want to pull from to get a reference. Used if you are skipping kraken2 only. Separate by a list of spaces like "1254 573"  |
 | `--fuzzy`                                  | TRUE/FALSE, Match names of organisms by their names (enabled) rather than taxids  |
@@ -127,6 +130,7 @@ work                # Directory containing the nextflow working files
 | `--remove_reference_file`                             | Remove all reads that align to a set of accessions in a single fasta file                                                                                                                                                                                                                                                                                                                                                         |
 | `--demux`                                             | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag                                                                                                                                                                                                                                                                                                                                      |
 | `--use_megahit_longreads`                                             | If running denovo assembly, use MEGAHIT for longreads. Default is disabled = FLYE                                                                                                                                                                                                                                                                                                                                      |
+| `--decompress_pre_megahit`                                             | Some HPC envs cant use megahit with gz files, enable if this is the case or you experience INPUT/OUTPUT errors at this step.                                                                                                                                                                                                                                                                                                                                  |
 | `--top_hits_count`                                    | Minimum taxa to filter out per rank level. If top_per_taxa specified, whatever is the larger of the 2 values for the results takes priority.                                                                                                                                                                                                                                                                                      |
 | `--get_features`                                    | Pull Features (CDS) for each assembly present. Performs Coverage on each feature                                                                                                                                                                                                                                                                                |
 | `--use_bt2`                                    | Use  Bowtie2 instead of minimap2 for Illumina reads                                                                                                                                                                                                                                                                        |
@@ -241,7 +245,7 @@ Weighted Confidence Score: The final score is a weighted sum of several factors:
 ![](../assets/svgs/full_score.svg)
 
 
-### A. Disparity Score Explanation (Weight: 50% - WIP)
+### A. Disparity Score Explanation (Weight: 30% - WIP)
 
 ###
 
@@ -334,16 +338,15 @@ The **disparity** is calculated as:
 
 ![Disparity Formula](../assets/svgs/cv_1.svg)
 
-### C. DIAMOND Identity (Weight: 20%)
+### C. DIAMOND Identity (Weight: 30%)
 
 Percent Identity = (Number of Matching Bases / Total Aligned Bases) * 100
 
-### D. Gini Coeff. (Weight: 5% - WIP)
+### D. Gini Coeff. (Weight: 30% - WIP)
 
-Gini Coefficient for Coverage Depth Calculation
 The Gini coefficient is a measure of inequality in the coverage depth of reads across a genome after alignment. It is calculated based on the Lorenz curve, which represents the cumulative proportion of the genome covered versus the cumulative proportion of the reads.
 
-The Gini coefficient is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
+The score is used to quantify how evenly the reads are distributed across the genome, with values ranging from:
 
 1: Perfect equality (all positions in the genome are equally covered by reads).
 0: Maximum inequality (some positions have much higher coverage than others).
@@ -354,7 +357,7 @@ It is calculated as followed:
 
 ℹ️ It is important to note that different laboratory protocols can oftentimes lead to an unavoidable disparity in coverage across a genome that can't be avoided. We are working on integrations to consider coverage differences using a positive control as a baseline for this process.
 
-### D. MapQ Score. (Weight: 0.05%)
+### E. MapQ Score. (Weight: 5%)
 
 This metric is simply the mean of all reads MapQ scores across an entire species/strain/subspecies, converted into a percentage like so:
 

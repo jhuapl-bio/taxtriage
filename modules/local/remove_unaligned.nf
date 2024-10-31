@@ -21,11 +21,14 @@ process REMOVE_HOSTREADS {
     def args = task.ext.args ?: ''
     def paired = meta.paired ? "-1 ${input[0]} -2 ${input[1]}" : "-U ${input}"
     def flag = !meta.single_end ? "-f 12" : "-f 4"
-    def cmd = !meta.single_end ? " -1 ${meta.id}_1.hostremoved.fastq.gz -2 ${meta.id}_2.hostremoved.fastq.gz" : " -0 ${meta.id}.hostremoved.fastq.gz "
+    def cmd = !meta.single_end ? \
+        " -1 ${meta.id}_1.hostremoved.fastq.gz -2 ${meta.id}_2.hostremoved.fastq.gz" : \
+        meta.platform == "OXFORD" ? "-0 ${meta.id}.hostremoved.fastq.gz -s /dev/null" : \
+        " -o ${meta.id}.hostremoved.fastq.gz -s /dev/null -0 /dev/null"
     """
     samtools view -b ${flag} ${input} | \\
-        samtools fastq - \\
-        ${cmd} \\
+        samtools fastq \\
+        ${cmd} - \\
         ${args} -n
 
     cat <<-END_VERSIONS > versions.yml

@@ -174,8 +174,10 @@ class RowChecker:
 
         if filename.endswith('.gz'):
             return None
+        elif filename.endswith('.fastq') or filename.endswith('.fq'):
+            return True
         else:
-            raise ValueError("The fastq file must be compressed with gzip")
+            raise ValueError("The fastq file must be compressed with gzip and in fq or fastq format.")
 
     def validate_unique_samples(self):
         """
@@ -274,11 +276,15 @@ def check_samplesheet(file_in, file_out):
     header.insert(1, "single_end")
     header.insert(1, "directory")
     header.insert(1, "needscompressing")
+    # remove any header that is empty string
+    header = [x for x in header if x != '']
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_out.open(mode="w", newline="") as out_handle:
         writer = csv.DictWriter(out_handle, header, delimiter=",")
         writer.writeheader()
         for row in checker.modified:
+            # remove any key that is empty string
+            row = {k: v for k, v in row.items() if k != ''}
             writer.writerow(row)
 
 
