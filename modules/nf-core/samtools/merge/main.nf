@@ -26,14 +26,16 @@ process SAMTOOLS_MERGE {
     prefix   = task.ext.prefix ?: "${meta.id}"
     def file_type = input_files[0].getExtension()
     // def reference = fasta ? "--reference ${fasta}" : ""
+    def cpus = task.cpus > 1 ? task.cpus - 1 : 1
+    def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
 
     """
     samtools \\
-        merge \\
-        --threads ${task.cpus-1} \\
+        merge -f \\
         $args \\
-        ${prefix}.${file_type} \\
-        $input_files
+        --threads ${cpus} \\
+        -u - \\
+        $input_files | samtools sort -@ ${cpus} -m $S_value -o ${prefix}.bam
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

@@ -18,8 +18,7 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
-include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
-include { SAMTOOLS_SORT as FILTER_MINIMAP2_SORT } from '../../modules/nf-core/samtools/sort/main'
+include { UNMAPPED_MINIMAP2 } from '../../modules/local/unmapped_minimap2'
 include { MINIMAP2_INDEX as FILTER_MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
@@ -65,28 +64,13 @@ workflow HOST_REMOVAL {
             // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
             // if ch_aligned_for_filter.shorteads is not empty
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
-            // FILTER_MINIMAP2_INDEX(
-            //     [[id: 'reference'], ch_reference_fasta_removal]
-            // )
 
-            // ch_reads_indx = ch_reads.join(
-            //     FILTER_MINIMAP2_INDEX.out.index
-            // )
-            // ch_reads_indx.view()
-
-
-            FILTER_MINIMAP2(
+            UNMAPPED_MINIMAP2(
                 ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
-                true,
-                true,
-                true
             )
 
-            FILTER_MINIMAP2_SORT(
-                FILTER_MINIMAP2.out.bam,
-                false
-            )
-            ch_bam_hosts = FILTER_MINIMAP2_SORT.out.bam
+
+            ch_bam_hosts = UNMAPPED_MINIMAP2.out.bam
             REMOVE_HOSTREADS(
                 ch_bam_hosts
             )
