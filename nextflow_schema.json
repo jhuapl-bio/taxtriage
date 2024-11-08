@@ -267,7 +267,18 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
-
+                "mmap2_window": {
+                    "type": "number",
+                    "default": null ,
+                    "description": "Window size for minimap2 alignment",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "mmap2_fraction_filter": {
+                    "type": "number",
+                    "default": null ,
+                    "description": "filter out top FLOAT fraction of repetitive minimizers",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "bt2_indices": {
                     "type": "string",
                     "format": "file-path",
@@ -392,7 +403,6 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
-
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",

@@ -36,19 +36,23 @@ process MINIMAP2_ALIGN {
     def input_reads = reads.findAll { it != null }.join(' ')
     def I_value = "${(task.memory.toMega() * 0.85).longValue()}M" // 80% of allocated memory, append GB to end as a string
     def S_value = "${( ( task.memory.toMega() / task.cpus ) * 0.1).longValue()}M" // 20% of allocated memory, append GB to end as a string
-    def bam_output = bam_format ? "-a | samtools view -@ ${task.cpus} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
+    // Set def cpu_limit to task.cpus rounded down / 2 else 1 if less than 1 
+    def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
+    def minmapq = params.minmapq ? "-q ${params.minmapq}" : ""
+    def bam_output = bam_format ? "-a | samtools sort -m $S_value | samtools view -@ ${cpu_limit} $minmapq -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     // if input is illumina then use -ax sr else use -ax map-ont
-    
+    def mmap2_window   = params.mmap2_window  ? "-w ${params.mmap2_window}" : ''
+    def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
     """
     
     minimap2 \\
         $args $mapx \\
-        -t $task.cpus -I $I_value \\
+        -t $cpu_limit -I $I_value \\
         $reference \\
         $input_reads \\
-        $cigar_paf \\
+        $cigar_paf $mmap2_window $mmap2_fraction_filter \\
         $set_cigar_bam \\
         $bam_output
 

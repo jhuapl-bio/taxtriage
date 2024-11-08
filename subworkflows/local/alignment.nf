@@ -150,17 +150,13 @@ workflow ALIGNMENT {
         branchedChannels.mergeNeeded
     )
     //  // // Unified channel from both merged and non-merged BAMs
-    SAMTOOLS_MERGE.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
+    SAMTOOLS_MERGE.out.bam.mix ( branchedChannels.noMergeNeeded ).set { collected_bams }
 
     // sort the multi bams from the merge
-    SAMTOOLS_SORT(
-        collected_bams,
-        params.minmapq
-    )
 
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
-        .join(SAMTOOLS_SORT.out.bam.map { item -> [item[0].id, item] }, by: 0)
+        .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
         .map { joinedItems ->
             def item1 = joinedItems[1] // Original item from Channel1
             def item2 = joinedItems[2] // Original item from Channel2

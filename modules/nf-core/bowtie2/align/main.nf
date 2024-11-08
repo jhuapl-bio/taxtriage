@@ -39,8 +39,10 @@ process BOWTIE2_ALIGN {
         unaligned = save_unaligned ? "--un-conc-gz ${prefix}.unmapped.fastq.gz" : ""
         reads_args = "-1 ${reads[0]} -2 ${reads[1]}"
     }
-
-    def samtools_command = sort_bam ? 'sort' : 'view'
+    def minmapq = params.minmapq ? "-q ${params.minmapq}" : ""
+    def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
+    def S_value = "${( ( task.memory.toMega() / task.cpus ) * 0.1).longValue()}M" // 20% of allocated memory, append GB to end as a string
+    def samtools_command = sort_bam ? "sort -m ${S_value}  | samtools view -b -h $minmapq -o ${prefix}.bam" : "view  $minmapq -b -h -o ${prefix}.bam"
     def extension_pattern = /(--output-fmt|-O)+\s+(\S+)/
     def extension_matcher =  (args2 =~ extension_pattern)
     def extension = extension_matcher.getCount() > 0 ? extension_matcher[0][2].toLowerCase() : "bam"
@@ -53,11 +55,11 @@ process BOWTIE2_ALIGN {
     bowtie2 \\
         -x \$INDEX \\
         $reads_args \\
-        --threads $task.cpus \\
+        --threads $cpu_limit \\
         $unaligned  \\
         $args \\
         2> >(tee ${prefix}.bowtie2.log >&2) \\
-        | samtools $samtools_command $args2 --threads $task.cpus  -o ${prefix}.${extension} -
+        | samtools $samtools_command $args2 --threads $cpu_limit  -o ${prefix}.${extension} -
 
     if [ -f ${prefix}.unmapped.fastq.1.gz ]; then
         mv ${prefix}.unmapped.fastq.1.gz ${prefix}.unmapped_1.fastq.gz
