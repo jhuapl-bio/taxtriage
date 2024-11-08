@@ -149,7 +149,8 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
 
 ### Important output locations
 
-- `reports`: Metagenomics Discovery Report PDF
+- `report`: Metagenomics Discovery Report PDF
+- `alignments`: Raw organisms detection file regardless of filtering or confidence passing
 - `krona`: `<samplename>.html`  -combined_krona_kreports.html ”sunburst” plot for kraken2 – pre re-alignment step - optional
 - `samtools`: Raw Alignment stats output
   - Coverage (v1.2.2 or later) - `<samplename>.txt`
@@ -160,9 +161,9 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
   - Variants - `<samplename>.<taxid>.vcf.gz`
   - Consensus - `<samplename>.consensus.fa`
 - `merge`: Aggregate Stats on Alignment + Kraken2
-- `confidence`: Confidence Table `confidences.merged_mqc.tsv`
+- `confidence`: Confidence Table `confidences.merged_mqc.tsv`  (**DEPRECATED**)
   - Contains post alignment and kraken2 confidence values for each sample + contig/chromosome per taxa
-- `multiqc` – Confidence Metrics and Supplemental Plots Location
+- `multiqc` – Confidence Metrics and Supplemental Plots Location (**DEPRECATED**)
 - `nanoplot`/`fastqc` – QC plots and stats
 - `minimap2` / `bowtie2` – Location of raw re-alignment bam files
 - `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – Agnostic kraken2 only
