@@ -21,8 +21,14 @@ reports:
     display: "Consensus Generation File"
   "**/bcftools/*consensus.fa":
     display: "Consensus Generation File"
-  "**/samtools/*sorted.bam":
-    display: "MAPQ Filtered and Sorted BAM File(s)"
+  "**/minimap2/*.bam":
+    display: "MAPQ Filtered and Sorted Minimap2 BAM File(s)"
+  "**/hisat2/*.bam":
+    display: "MAPQ Filtered and Sorted Hisat2 BAM File(s)"
+  "**/bowtie2/*.bam":
+    display: "MAPQ Filtered and Sorted Bowtie2 BAM File(s)"
+  "**/samtools/*.bam":
+    display: "MAPQ Filtered and Sorted and Merged (if multiple reference files) BAM File(s)"
   "**/top/*top_report.tsv":
     display: "Top Taxa Per Rank post-Kraken2"
   "**/top/krakenreport.merged_mqc.tsv":
