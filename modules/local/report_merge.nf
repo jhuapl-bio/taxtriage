@@ -41,7 +41,7 @@ process ORGANISM_MERGE_REPORT {
     def output_txt = "${meta.id}.organisms.report.txt"
     def output_pdf = "${meta.id}.organisms.report.pdf"
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
-    def min_conf = params.min_conf ? " -c $params.min_conf " : ""
+    def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""
     def missing_arg = ''
     if (missing_samples) {
         missing_arg = "-m \"${missing_samples.join(' ')}\""

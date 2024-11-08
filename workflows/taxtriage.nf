@@ -612,6 +612,9 @@ workflow TAXTRIAGE {
         )
         ch_diamond_output = ASSEMBLY.out.ch_diamond_output
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
+        ch_assembly_analysis_opt = ch_assembly_analysis.ifEmpty {
+            Channel.value(null)
+        }
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////
         if (!params.skip_report){

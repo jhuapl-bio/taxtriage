@@ -54,8 +54,9 @@ mapping_file=""
 output_file=""
 args=""
 mapcol=2
+format="tsv"
 # Parse command-line arguments
-while getopts "hb:m:o:a:c:" opt; do
+while getopts "hb:m:o:a:c:f:" opt; do
     case ${opt} in
         h )
             usage
@@ -63,6 +64,9 @@ while getopts "hb:m:o:a:c:" opt; do
             ;;
         b )
             bam_file=${OPTARG}
+            ;;
+        f )
+            format=${OPTARG}
             ;;
         c )
             mapcol=${OPTARG}
@@ -95,25 +99,61 @@ if ! command -v samtools &> /dev/null; then
     echo "Error: samtools could not be found. Please install samtools and try again."
     exit 1
 fi
-# Run samtools coverage and process the output
-samtools coverage $args "${bam_file}"  | awk -F '\t' -v mapcol=$mapcol -v mapFile="${mapping_file}" '
-    BEGIN {
-        FS=OFS="\t"
-        # Load the mapping from the mapping file
-        while ((getline < mapFile) > 0) {
-            map[$1] = $mapcol;
-            # print $1,$2
-        }
-    }
-    /^[^>]/ {
-        # Replace the reference name if it exists in the mapping
-        # split on space, get first index
-        split($1, a, " ");
 
-        if (a[1] in map) {
-            $1 =a[1]" "map[a[1]];
+if [[ $format != "fasta" ]]; then
+    # Run samtools coverage and process the output
+    samtools coverage $args "${bam_file}"  | awk -F '\t' -v mapcol=$mapcol -v mapFile="${mapping_file}" '
+        BEGIN {
+            FS=OFS="\t"
+            # Load the mapping from the mapping file
+            while ((getline < mapFile) > 0) {
+                map[$1] = $mapcol;
+                # print $1,$2
+            }
         }
-    } {print}
-' > "${output_file}"
+        /^[^>]/ {
+            # Replace the reference name if it exists in the mapping
+            # split on space, get first index
+            split($1, a, " ");
 
+            if (a[1] in map) {
+                $1 =a[1]" "map[a[1]];
+            }
+        } {print}
+    ' > "${output_file}"
+else
+    # Run samtools coverage and process the output
+    # get the headers from fasta file and
+
+    echo "header coverage"
+
+    samtools coverage $args "${bam_file}" | awk -F '\t' -v mapFile="${mapping_file}" '
+        BEGIN {
+            FS = OFS = "\t"
+            while ((getline < mapFile) > 0) {
+                if ($1 ~ /^>/) {
+                    split($0, a, " ")
+                    mapped = ""
+                    # loop through all elemnts start at 2 to end for a and append to mapped
+
+                    n = split($0, a, " ")
+                    for (i = 2; i <= n; i++) {
+                        mapped = mapped""a[i]" "
+                    }
+                    # remove > from a[1]
+                    a[1] = substr(a[1], 2)
+                    map[a[1]] = mapped
+                }
+            }
+            close(mapFile)
+        }
+        /^[^>]/ {
+            split($1, a, " ")
+            if (a[1] in map) {
+                # split on " " and get first index
+                $1 = $1" "map[a[1]]
+            }
+        }
+        { print }'  > "${output_file}"
+fi
 echo "Modified samtools coverage output saved to ${output_file}"

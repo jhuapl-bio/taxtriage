@@ -89,7 +89,18 @@ workflow ASSEMBLY {
                     DIAMOND_BLASTX.out.txt.join(valid_aligners.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapcd]}),
                     assemblyfile
                 )
-                ch_diamond_analysis = MAP_PROT_ASSEMBLY.out.promap
+                ch_diamond_analysis = ch_diamond_analysis.join(MAP_PROT_ASSEMBLY.out.promap, remainder: true)
+                ch_diamond_analysis = ch_diamond_analysis.map{
+                    meta, nullfile, promap-> {
+                        if (promap == null){
+                            return [meta, ch_empty_file]
+                        } else {
+                            return [meta, promap]
+                        }
+                    }
+                }
+                // for any meta.id missing from diamond analysis, add empty file
+
                 // Run minimap2 on the contigs against reference fasta files
                 ch_diamond_output = DIAMOND_BLASTX.out.txt
             } catch (Exception e){

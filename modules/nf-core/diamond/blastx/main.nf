@@ -32,6 +32,8 @@ process DIAMOND_BLASTX {
     def is_compressed = fasta.getExtension() == "gz" ? true : false
     def fasta_name = is_compressed ? fasta.getBaseName() : fasta
     def columns = blast_columns ? "${blast_columns}" : ''
+
+
     switch ( out_ext ) {
         case "blast": outfmt = 0; break
         case "xml": outfmt = 5; break
