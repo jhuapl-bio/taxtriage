@@ -1,4 +1,4 @@
-process MINIMAP2_ALIGN {
+process UNMAPPED_MINIMAP2 {
     tag "$meta.id"
     label 'process_medium'
 
@@ -9,13 +9,8 @@ process MINIMAP2_ALIGN {
 
     input:
     tuple val(meta), path(reads), path(reference)
-    val bam_format
-    val cigar_paf_format
-    val cigar_bam
-    val(minmapq)
 
     output:
-    tuple val(meta), path("*.paf"), optional: true, emit: paf
     tuple val(meta), path("*.bam"), optional: true, emit: bam
     path "versions.yml"           , emit: versions
 
@@ -35,28 +30,20 @@ process MINIMAP2_ALIGN {
         mapx = '-ax map-ont'
     }
     def input_reads = reads.findAll { it != null }.join(' ')
-    
-    def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
-
-    def minmapq = minmapq ? " -q ${minmapq} " :  ""
+    // def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def I_value = "${(task.memory.toMega() * Math.min(0.8 / task.cpus, 0.8)).longValue()}M"
     def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
-    def bam_output = bam_format ? "-a | samtools sort -@ ${cpu_limit} -m $S_value | samtools view $minmapq -@ ${cpu_limit} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
-    def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
-    def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     // if input is illumina then use -ax sr else use -ax map-ont
-    def mmap2_window   = params.mmap2_window  ? "-w ${params.mmap2_window}" : ''
-    def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
+
     """
-    
+
     minimap2 \\
         $args $mapx \\
-        -t $cpu_limit -I $I_value \\
+        -a -t $task.cpus -I $I_value \\
         $reference \\
-        $input_reads \\
-        $cigar_paf $mmap2_window $mmap2_fraction_filter \\
-        $set_cigar_bam \\
-        $bam_output 
+        $input_reads | \\
+        samtools sort -@ ${task.cpus} -m $S_value | \\
+        samtools view -@ ${task.cpus} -b -h -o ${prefix}.bam
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

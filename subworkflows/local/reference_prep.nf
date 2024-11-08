@@ -213,36 +213,37 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
         ch_assembly_txt
     )
-
-    try {
-        // Attempt to use the FEATURES_DOWNLOAD process
-        FEATURES_DOWNLOAD(
-            ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->
-                return [meta, listids]
-            },
-            ch_assembly_txt,
-            true
-        )
-        ch_cds = FEATURES_DOWNLOAD.out.proteins
-        ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
-    /* groovylint-disable-next-line CatchException */
-    } catch (Exception e) {
-        // On failure, fallback to an alternative channel
-        ch_cds = ch_samples.map { meta, report ->
-            return [meta, []]
+    if (!params.skip_realignment && !params.skip_features) {
+        try {
+            // Attempt to use the FEATURES_DOWNLOAD process
+            FEATURES_DOWNLOAD(
+                ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->
+                    return [meta, listids]
+                },
+                ch_assembly_txt,
+                true
+            )
+            ch_cds = FEATURES_DOWNLOAD.out.proteins
+            ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
+        /* groovylint-disable-next-line CatchException */
+        } catch (Exception e) {
+            // On failure, fallback to an alternative channel
+            ch_cds = ch_samples.map { meta, report ->
+                return [meta, []]
+            }
+            ch_cds_to_taxids = ch_samples.map { meta, report ->
+                return [meta, []]
+            }
         }
-        ch_cds_to_taxids = ch_samples.map { meta, report ->
-            return [meta, []]
-        }
-    }
-    try {
-        FEATURES_TO_BED(
-            FEATURES_DOWNLOAD.out.features
-        )
-        ch_bedfiles = FEATURES_TO_BED.out.bed
-    } catch (Exception e) {
-        ch_bedfiles = ch_samples.map { meta, report ->
-            return [meta, []]
+        try {
+            FEATURES_TO_BED(
+                FEATURES_DOWNLOAD.out.features
+            )
+            ch_bedfiles = FEATURES_TO_BED.out.bed
+        } catch (Exception e) {
+            ch_bedfiles = ch_samples.map { meta, report ->
+                return [meta, []]
+            }
         }
     }
     ch_mapped_assemblies = MAP_TAXID_ASSEMBLY.out.taxidmerged.join(

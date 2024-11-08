@@ -397,6 +397,12 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
+                "skip_features": {
+                    "type": "boolean",
+                    "description": "Skip the feature download step(s). Used during the protein alignment step",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "unknown_sample": {
                     "type": "boolean",
                     "description": "Dont consider HMP distributions",
