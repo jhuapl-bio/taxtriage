@@ -74,8 +74,6 @@ workflow ALIGNMENT {
             return outputs
         }.set { ch_fasta_files_for_alignment }
 
-
-
     if (params.use_bt2){
         BOWTIE2_ALIGN(
             ch_fasta_files_for_alignment,
@@ -84,7 +82,6 @@ workflow ALIGNMENT {
             params.minmapq
         )
         collected_bams = BOWTIE2_ALIGN.out.aligned
-
     } else if (params.use_hisat2) {
         // Set null for hisat2 splicesites
         HISAT2_ALIGN(
