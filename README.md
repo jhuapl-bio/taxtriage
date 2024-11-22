@@ -12,7 +12,7 @@
 
 ## About
 
-TaxTriage a flexible, containerized bioinformatics pipeline for identification of pathogens within short- (Illumina) or long-read (ONT, PacBio) metagenomic sequence data, generated from complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood). The workflow includes various software packages to perform quality control, classification, read mapping, as well as generation of confidence metrics and a final report listing anticipated pathogens of relevance. 
+TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage incorporates intermediate data into a unified confidence metric for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability. 
 
 ![](assets/taxtriage_schematics.png)
 
@@ -20,7 +20,7 @@ TaxTriage a flexible, containerized bioinformatics pipeline for identification o
 ### Description
 
 
-Tax Triage is designed as a pipeline to democratize metagenomic sequence analysis for use in public health for early warning, outbreak investigation, and potentially in clinical settings. To this end, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from tissues (human or animal). The intent is to provide non-bioinformaticians a tool capable of generating species-level identifications of pathogens from raw metagenomic or targeted sequencing data. Specific modules to be used depend on sequencing chemistry and settings are anticipated to vary based on specimen type. Strain, variant, or clade-level distinction may be possible with specialized datasets, but it is anticipated that level of granularity would require subsequent, specialized analyses.
+The TaxTriage pipeline aims to democratize metagenomic sequence analysis for early warning and outbreak investigations, both in public health and potentially clinical settings. To enable this capability, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from tissues (human or animal). The intent is to provide non-bioinformaticians a tool capable of generating species-level identifications of pathogens from raw metagenomic or targeted sequencing data. Specific modules are developed to consider sequencing chemistry and sample types (e.g. blood vs. saliva, etc.). Strain, variant, or clade-level distinction may be possible with specialized datasets, but it is anticipated that the level of granularity would require subsequent, specialized analyses.
 
 - Quality control steps
 - In-silico host depletion
@@ -32,7 +32,7 @@ Tax Triage is designed as a pipeline to democratize metagenomic sequence analysi
 - Detailed MultiQC reports
 - Concise final report (intended to have all data fields required for use in clinical settings)
 
-For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. 
+For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. This component is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output formats include PDF and `HTML` which are highly interactive and distributable. 
 
 See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#important-output-locations) for information on where to get the most important output files from the pipeline. 
 

@@ -268,14 +268,14 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_window": {
-                    "type": "number",
+                    "type": "string",
                     "default": null ,
                     "description": "Window size for minimap2 alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_fraction_filter": {
-                    "type": "number",
-                    "default": null ,
+                    "type": "string",
+                    "default": null,
                     "description": "filter out top FLOAT fraction of repetitive minimizers",
                     "fa_icon": "fas fa-file-signature"
                 },
