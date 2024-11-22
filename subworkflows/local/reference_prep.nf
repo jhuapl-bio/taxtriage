@@ -165,7 +165,7 @@ workflow  REFERENCE_PREP {
             }.set{ ch_mapped_assemblies }
         }
     }
-    if (!params.skip_kraken2 && !params.skip_realignment){
+    if (!params.skip_realignment){
         DOWNLOAD_ASSEMBLY(
             ch_reports_to_download.map {
                 meta, report ->  return [ meta, report ]

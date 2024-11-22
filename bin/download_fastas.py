@@ -158,7 +158,12 @@ def parse_args(argv=None):
         default=False,
         help="Only Dry run the total filesizes of download",
     )
-
+    parser.add_argument(
+        "--skip_incomplete",
+        action='store_true',
+        default=False,
+        help="Skip any genome that doesnt have a complete genome",
+    )
     parser.add_argument(
         "-o",
         "--file_out",
@@ -190,7 +195,7 @@ def import_genome_file(filename, kraken2output):
     return refs
 
 #
-def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, missingfile = None):
+def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, missingfile = None, skip_incomplete = False):
     assemblies  = dict()
     first = dict()
 
@@ -246,6 +251,8 @@ def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, mis
                     reference=get_url(urlcol, gcfidx),
                     name = formatted_header,
                 )
+                if linesplit[11] != "Complete Genome" and skip_incomplete:
+                    continue
                 #If the refseq_category column in the assembly.txt is reference genome
 
                 if linesplit[4] == "representative genome" and priorities[matchval].get('0') is None:
@@ -516,7 +523,7 @@ def main(argv=None):
         seen_in_tops = args.input
 
     assemblies = import_assembly_file(
-        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile
+        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile, args.skip_incomplete
     )
 
 

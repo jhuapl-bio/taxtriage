@@ -527,6 +527,7 @@ workflow TAXTRIAGE {
     )
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ////////////////////////////////////////////////////////////////////////////////////////////////
+
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,

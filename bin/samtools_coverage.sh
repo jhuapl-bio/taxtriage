@@ -53,7 +53,7 @@ bam_file=""
 mapping_file=""
 output_file=""
 args=""
-mapcol=2
+mapcol=4
 format="tsv"
 # Parse command-line arguments
 while getopts "hb:m:o:a:c:f:" opt; do
