@@ -147,6 +147,9 @@ def parse_args(argv=None):
         "-k",  "--compress_species", default=False,  help="Compress species to species level",  action='store_true'
     )
     parser.add_argument(
+        "--ignore_missing_inputs", default=False,  help="If K2 or Dimaond output is not provided, dont reduce confidence",  action='store_true'
+    )
+    parser.add_argument(
         "-t",
         "--sampletype",
         metavar="SAMPLETYPE",
@@ -650,6 +653,15 @@ def main():
     inputfile = args.input
     pathogenfile = args.pathogens
     covfile = args.coverage
+    # Write to file in a newline format
+    weights = {
+        'mapq_score': 0.05,
+        'diamond_identity': 0.3,
+        'disparity_score': 0.3,
+        'gini_coefficient': 0.3,
+        "k2_disparity": 0.05,
+        'siblings_score': 0
+    }
     """
     # Final Score Calculation
 
@@ -968,6 +980,9 @@ def main():
                 for taxid in taxids:
                     if taxid in k2_mapping:
                         k2_reads += k2_mapping[taxid].get('clades_covered', 0)
+        else:
+            if args.ignore_missing_inputs:
+                weights['k2_disparity'] = 0
         aggregated_data['k2_numreads'] = k2_reads
 
     # Step 4: Find the min and max disparity values
@@ -1144,7 +1159,9 @@ def main():
                     species_aggregated[key]['diamond'] = dmnd_results
             else:
                 print(f"Key {key} not found in diamond file")
-
+        else:
+            if args.ignore_missing_inputs:
+                weights['diamond_identity'] = 0
 
     #  # Print the final aggregated data
     # for top_level_key, aggregated_data in species_aggregated.items():
@@ -1186,6 +1203,12 @@ def main():
         print(f"\tPathogenic Strains: {len(data['strainslist'])}")
         print(f"\tRegions: {data['covered_regions']}")
         print()
+
+    # if sum of vals in weights isnt 1 then normalize to 1
+    total_weight = sum(weights.values())
+    if total_weight != 1:
+        for key in weights:
+            weights[key] = weights[key] / total_weight
     write_to_tsv(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
@@ -1193,7 +1216,8 @@ def main():
         sample_name=args.samplename,
         sample_type = args.sampletype,
         total_reads = total_reads,
-        aligned_total = aligned_total
+        aligned_total = aligned_total,
+        weights = weights
     )
 def format_non_zero_decimals(number):
     # Convert the number to a string
@@ -1214,7 +1238,7 @@ def format_non_zero_decimals(number):
 
 
 
-def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_Name", sample_type="Unknown", total_reads=0, aligned_total = 0):
+def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_Name", sample_type="Unknown", total_reads=0, aligned_total = 0, weights={}):
     """
     Write reference hits and pathogen information to a TSV file.
 
@@ -1354,20 +1378,7 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 percent_total = format_non_zero_decimals(100*countreads / total_reads)
             if len(pathogenic_sites) == 0:
                 pathogenic_sites = ""
-            # Write to file in a newline format
-            weights = {
-                'mapq_score': 0.05,
-                'diamond_identity': 0.3,
-                'disparity_score': 0.3,
-                'gini_coefficient': 0.3,
-                "k2_disparity": 0.05,
-                'siblings_score': 0
-            }
-            # if sum of vals in weights isnt 1 then normalize to 1
-            total_weight = sum(weights.values())
-            if total_weight != 1:
-                for key in weights:
-                    weights[key] = weights[key] / total_weight
+
 
             # Function to apply weights and format the result (assuming `format_non_zero_decimals` is defined)
             def apply_weight(value, weight):
