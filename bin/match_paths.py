@@ -716,7 +716,7 @@ def main():
                             medianevalue= line[6],
                         )
                     except Exception as e:
-                        print(f"Error: {e}")
+                        print(f"Error in: {e}")
                 i+=1
     reference_hits, aligned_total, total_reads = count_reference_hits(
         inputfile,
@@ -890,7 +890,7 @@ def main():
             try:
                 gini_strain = getGiniCoeff(data['depths'], data['length'])
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
-                species_aggregated[top_level_key]['taxids'].append(data['taxid'])
+                species_aggregated[top_level_key]['taxids'].append(data.get('taxid', "None"))
                 species_aggregated[top_level_key]['numreads'].append(data['numreads'])
                 species_aggregated[top_level_key]['covered_regions'] += len(data['covered_regions'])
                 species_aggregated[top_level_key]['coverages'].append(data['coverage'])
@@ -917,7 +917,7 @@ def main():
                     })
             except Exception as e:
                 print(top_level_key, val_key,"___")
-                print(f"Error: {e}")
+                print(f"Error in top level: {e}")
     all_readscounts = [sum(x['numreads']) for x in species_aggregated.values()]
     def calculate_var(read_counts):
         """
