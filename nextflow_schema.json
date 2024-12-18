@@ -314,8 +314,7 @@
                 "ignore_missing": {
                     "type": "boolean",
                     "description": "Ignore Missing K2 or DIAMOND Scores for final TASS Score confidence",
-                    "fa_icon": "fas fa-ban",
-                    "hidden": false
+                    "fa_icon": "fas fa-ban"
                 },
                 "igenomes_ignore": {
                     "type": "boolean",
