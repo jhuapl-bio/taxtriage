@@ -50,6 +50,7 @@ process ALIGNMENT_PER_SAMPLE {
     def covfile = covfile.name != "NO_FILE" ?  "-x $covfile" : " "
     def depthfile = depthfile.name != "NO_FILE" ? "-d $depthfile" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
+    def ignore_alignment = params.ignore_missing ? " --ignore_missing " : " "
 
     """
 
@@ -58,7 +59,7 @@ process ALIGNMENT_PER_SAMPLE {
         -o $output $covfile $depthfile \\
         -s $id $assemblyi \\
         $type \\
-        $min_reads_align \\
+        $min_reads_align $ignore_alignment \\
         -p $pathogens_list  $k2 $diamond_output $mapping
 
     cat <<-END_VERSIONS > versions.yml
