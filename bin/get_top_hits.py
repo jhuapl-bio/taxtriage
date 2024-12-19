@@ -313,7 +313,9 @@ def main(argv=None):
             pathogen_sheet['pathogenic_sites'].fillna("Unknown", inplace=True)
             pathogen_sheet['pathogenic_sites'] = pathogen_sheet['pathogenic_sites'].apply(translate_and_deduplicate_sites)
             # check if (lowercase) args.body_site is anywhere in pathogen_orgs body_site column, if not filter
-            pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
+            if len(body_sites) > 0:
+                pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
+
             # filter out where general_classification is pathogen or opportunistic pathogen
             pathogen_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["primary", "opportunistic", "potential", "oportunistic"])]['taxid']
 
