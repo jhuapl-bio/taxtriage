@@ -796,8 +796,9 @@ def main():
                     isolate = splitline[9]
                     if strain == "na":
                         strain = f"≡"
-                    if isolate:
+                    if isolate and isolate != "":
                         strain = f"{isolate} {strain}"
+
                     isSpecies = False if species_taxid != taxid else True
                     # fine value where assembly == accession from reference_hits
                     if accession in assembly_to_accession:

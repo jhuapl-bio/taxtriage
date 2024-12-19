@@ -52,7 +52,7 @@ def parse_args(argv=None):
         help="Base pathogen discovery table file, TSV format",
     )
     parser.add_argument(
-        "-distributions",
+        "-d",
         "--distributions",
         metavar="DISTRIBUTIONS",
         required=False,
@@ -649,7 +649,9 @@ def main():
     # get the sum of abundance for each sample
 
     plotbuffer = dict()
-    if args.distributions and os.path.exists(args.distributions):
+    # check if all of the 'Sample Type' is Unknown only, if so then set vairbale
+    isUnknownAll = df_full['body_site'].str.contains("Unknown").all()
+    if not isUnknownAll and args.distributions and os.path.exists(args.distributions):
         stats_dict, site_counts = import_distributions(
             args.distributions,
             args.type,
