@@ -50,7 +50,7 @@ def parse_args(argv=None):
         "-f",
         "--filter_ranks",
         metavar="TOP_HITS_STRING",
-        type=str, nargs="+", default=['S2', 'S1', 'S', 'C', 'O', 'F', 'G', 'P', 'K', 'D', 'U'],
+        type=str, nargs="+", default=['S5', 'S4', 'S3', 'S2', 'S1', 'S', 'C', 'O', 'F', 'G', 'P', 'K', 'D', 'U'],
         help="Filter on only showing specific ranks ",
     )
     parser.add_argument(
@@ -142,6 +142,7 @@ def import_file(input, filter_ranks):
             else:
                 entry[header[x]] = ""
         mapping.append(entry)
+
         taxids[entry['taxid']] = entry['name']
     # k2_regex = re.compile(r"^\s{0,2}(\d{1,3}\.\d{1,2})\t(\d+)\t(\d+)\t([\dUDKRPCOFGS-]{1,3})\t(\d+)(\s+)(.+)")
     k2_regex = re.compile(r"^(\s+)(.+)")
@@ -162,6 +163,7 @@ def import_file(input, filter_ranks):
             parents.append(int(lastparents[i]))
         lastdepth = depth[l['taxid']]
         lastparents[depth[l['taxid']]] = l['taxid']
+
         l['depth'] = depth[l['taxid']]
         l['parents'] = parents
     if len(filter_ranks) > 0:
@@ -276,6 +278,7 @@ def main(argv=None):
 
 
     mapping = import_file(args.file_in, args.filter_ranks)
+    # find mapping where taxid == 335341
     seentaxids = dict()
     for val in mapping:
         seentaxids[val['taxid']] = True
