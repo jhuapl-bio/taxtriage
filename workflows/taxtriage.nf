@@ -531,7 +531,9 @@ workflow TAXTRIAGE {
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,
-        ch_assembly_txt
+        ch_assembly_txt,
+        ch_pathogens
+
     )
     ////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -10,6 +10,7 @@ process MAP_LOCAL_ASSEMBLY_TO_FASTA {
     input:
     tuple val(meta), path(fasta)
     path(assembly)
+    path(pathogens_file)
 
     output:
     tuple val(meta), path("*localmap.tsv"), emit: map, optional: false
@@ -23,13 +24,14 @@ process MAP_LOCAL_ASSEMBLY_TO_FASTA {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def output = "${meta.id}.localmap.tsv"
+    def pathogens  = pathogens_file  ? "-p ${pathogens_file}" : ""
 
     """
 
     fuzzy_match_assembly.py  \\
         -i ${fasta} \\
         -a ${assembly} \\
-        -o ${output}
+        -o ${output} $pathogens
 
     cut -f 2 ${output} > ${meta.id}.output.gcfids.txt
 

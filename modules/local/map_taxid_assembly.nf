@@ -16,6 +16,7 @@ process MAP_TAXID_ASSEMBLY {
     tuple val(meta), path("*merged.taxid.tsv"), optional:false, emit: taxidmerged
 
 
+
     script:
 
 
@@ -25,7 +26,6 @@ process MAP_TAXID_ASSEMBLY {
         -i $gcfmapping \\
         -r $assembly \\
         -o ${meta.id}.merged.taxid.tsv
-
 
 
     cat <<-END_VERSIONS > versions.yml
