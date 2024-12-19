@@ -657,8 +657,8 @@ def main():
     weights = {
         'mapq_score': 0.05,
         'diamond_identity': 0.3,
-        'disparity_score': 0.3,
-        'gini_coefficient': 0.3,
+        'disparity_score': 0.1,
+        'gini_coefficient': 0.5,
         "k2_disparity": 0.05,
         'siblings_score': 0
     }
@@ -794,28 +794,24 @@ def main():
                     name = splitline[7]
                     strain = splitline[8].replace("strain=", "")
                     isolate = splitline[9]
-                    if strain == "na":
-                        strain = f"≡"
-                    if isolate and isolate != "":
-                        strain = f"{isolate} {strain}"
 
                     isSpecies = False if species_taxid != taxid else True
                     # fine value where assembly == accession from reference_hits
                     if accession in assembly_to_accession:
                         for acc in assembly_to_accession[accession]:
                             if acc in reference_hits:
-
                                 reference_hits[acc]['isSpecies'] = isSpecies
                                 if args.compress_species:
                                     reference_hits[acc]['toplevelkey'] = species_taxid
                                 else:
                                     reference_hits[acc]['toplevelkey'] = taxid
                                 if strain == "na":
-                                    strain = "≡"
+                                    strain = f"≡"
+                                if isolate and isolate != "" and isolate != "na":
+                                    strain = f"{strain} {isolate}"
                                 reference_hits[acc]['strain'] = strain
                                 reference_hits[acc]['assemblyname'] = name
                                 reference_hits[acc]['name'] = name
-
         f.close()
     final_format = defaultdict(dict)
     if args.compress_species:
