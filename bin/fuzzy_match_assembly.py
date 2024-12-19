@@ -19,6 +19,7 @@ import gzip
 import argparse
 import time
 import re
+import csv
 from Bio import SeqIO
 import os
 # import function determine_priority_assembly from fil in same dir
@@ -28,6 +29,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Fetch assembly accessions for a list of nuccore accessions.")
     parser.add_argument("-i", "--input", required=True, help="Path to a file containing nuccore accessions, one per line.")
     parser.add_argument("-a", "--assembly", required=True, help="Path to a file of assembly refseq information")
+    parser.add_argument("-p", "--pathogens", required=False, help="OPTIONAL - if assembly mapping fails for an organism, attempt to query using the  pathogen sheet's name and or taxid columns")
     parser.add_argument("-o", "--output", required=True, help="Output File for GCFs")
     return parser.parse_args()
 
@@ -64,11 +66,31 @@ def extract_after_colon(text):
     else:
         return text  # Return the original text if no ': ' is found
 
+from collections import defaultdict
 
 def main():
     args = parse_args()
     assemblies = dict()
     gcfs = dict()
+    backup_mapping = defaultdict(list )
+
+    if args.pathogens:
+        # import the csv file and read the columns using csv writer/reader
+        with open(args.pathogens, 'r') as csvfile:
+            # read file as dictionary
+            csvreader = csv.DictReader(csvfile)
+            for row in csvreader:
+                backup_mapping[row['name']].append(
+                    dict(taxid=row['taxid'], basename=row['name'])
+                )
+                alternative_names = row.get('alternative_names', []).split(";")
+                if len(alternative_names) > 0:
+                    for altname in alternative_names:
+                        backup_mapping[altname].append(
+                            dict(taxid=row['taxid'], basename=row['name'])
+                        )
+    parent_taxids = dict()
+    taxids = dict()
     with open(args.assembly, 'r') as assembly_file:
         lines = assembly_file.readlines()
         for line in lines:
@@ -89,8 +111,11 @@ def main():
                 priority = determine_priority_assembly(line)
                 if name not in assemblies or (name in assemblies and priority < assemblies[name]):
                     assemblies[name] = priority
+                    taxid = cols[5]
                     # extract value of strain=value. If strain=value is not present, set to just the same value for strain
                     gcfs[name] = cols[0]
+                    taxids[taxid] = cols[0]
+                    parent_taxids[taxid] = cols[6]
     assembly_file.close()
     accessions = dict()
     total = 0
@@ -120,13 +145,32 @@ def main():
                 # organism, gcf = search_in_dicts(organism_name, explicit_strain, assemblies, gcfs)
                 if name:
                     count+=1
-                    # print(f"{seq_record.id}\t{gcfs[name]}\t{name}\t{desc}")
                     final_list.append(f"{seq_record.id}\t{gcfs[name]}\t{name}\t{desc}")
                 else:
-                    print(f"No match found for {seq_record.id}\t{desc}")
-                    missing_elements.append(f"{seq_record.id}\t{desc}")
+                    # print(f"No match found in teh assembly refseq file for {seq_record.id}\t{desc}")
+                    # print(f"Attempting to match through backup sheet of name->taxid")
+                    name = long_match_names(desc, backup_mapping.keys())
+                    if name:
+                        count+=1
+                        # try to get GCFS from the backup sheet
+                        gcf = None
+                        for taxid_names in backup_mapping.get(name, []):
+                            taxid = taxid_names.get('taxid', None)
+                            gcf = taxids.get(taxid, None)
+                            basename = taxid_names.get('basename', name)
+                            if gcf:
+                                break
+                        if gcf:
+                            final_list.append(f"{seq_record.id}\t{gcf}\t{basename}\t{desc}")
+                        else:
+                            missing_elements.append(f"{seq_record.id}\t{desc}")
+                    else:
+                        # print(f"No match found in the backup sheet for {seq_record.id}\t{desc}")
+                        missing_elements.append(f"{seq_record.id}\t{desc}")
     if total > 0:
         print(f"Found {count} out of {total} FASTA accessions ({count/total*100:.2f}%) in the assembly file.")
+
+
     if len(final_list) == 0:
         print("No assemblies found")
     else:
