@@ -311,11 +311,6 @@
                     "fa_icon": "fas fa-cloud-download-alt",
                     "hidden": true
                 },
-                "ignore_missing": {
-                    "type": "boolean",
-                    "description": "Ignore Missing K2 or DIAMOND Scores for final TASS Score confidence",
-                    "fa_icon": "fas fa-ban"
-                },
                 "igenomes_ignore": {
                     "type": "boolean",
                     "description": "Do not load the iGenomes reference config.",
@@ -413,6 +408,11 @@
                     "description": "Dont consider HMP distributions",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
+                },
+                "ignore_missing": {
+                    "type": "boolean",
+                    "description": "Ignore Missing K2 or DIAMOND Scores for final TASS Score confidence",
+                    "fa_icon": "fas fa-ban"
                 },
                 "reference_assembly": {
                     "type": "boolean",
