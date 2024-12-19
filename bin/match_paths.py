@@ -841,7 +841,6 @@ def main():
                 final_format[valtoplevel][valkey] = value
     # Dictionary to store aggregated species-level data
     species_aggregated = {}
-    exit()
     def getGiniCoeff(data, acc_length=0):
         # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int.
         depths = list(data.values()) if data.values() else [0]
