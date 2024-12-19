@@ -793,16 +793,22 @@ def main():
                     species_taxid = splitline[6]
                     name = splitline[7]
                     strain = splitline[8].replace("strain=", "")
+                    isolate = splitline[9]
                     if strain == "na":
                         strain = f"≡"
-
+                    if isolate:
+                        strain = f"{isolate} {strain}"
                     isSpecies = False if species_taxid != taxid else True
                     # fine value where assembly == accession from reference_hits
                     if accession in assembly_to_accession:
                         for acc in assembly_to_accession[accession]:
                             if acc in reference_hits:
+
                                 reference_hits[acc]['isSpecies'] = isSpecies
-                                reference_hits[acc]['toplevelkey'] = species_taxid
+                                if args.compress_species:
+                                    reference_hits[acc]['toplevelkey'] = species_taxid
+                                else:
+                                    reference_hits[acc]['toplevelkey'] = taxid
                                 if strain == "na":
                                     strain = "≡"
                                 reference_hits[acc]['strain'] = strain
@@ -811,8 +817,6 @@ def main():
 
         f.close()
     final_format = defaultdict(dict)
-
-
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
@@ -833,9 +837,11 @@ def main():
                 valtoplevel = key
             valkey = key
             if value['numreads'] > 0 and value['meandepth'] > 0:
+                print(valtoplevel)
                 final_format[valtoplevel][valkey] = value
     # Dictionary to store aggregated species-level data
     species_aggregated = {}
+    exit()
     def getGiniCoeff(data, acc_length=0):
         # Assuming 'data' is a dictionary with 'depths' as a list and 'total_length' as an int.
         depths = list(data.values()) if data.values() else [0]
