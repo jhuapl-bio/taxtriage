@@ -30,6 +30,7 @@ import pysam
 from math import log2
 
 
+import time
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -455,7 +456,7 @@ def detect_regions_from_depth(reference_coverage, depthfile, avg_read_length):
     """
 
     # Read the depth information from the depth file
-    print("Reading depth information from depth file")
+    print("Reading depth information from depth file, this can take quite some time....")
     with open(depthfile, 'r') as f:
         for line in f:
             splitline = line.split('\t')
@@ -463,7 +464,9 @@ def detect_regions_from_depth(reference_coverage, depthfile, avg_read_length):
             pos = int(splitline[1])
             depth = int(splitline[2])
             reference_coverage[reference_name]['depths'][pos] = depth
-
+    print(f"Finished reading depth")
+    print("Getting coverage of regions")
+    start = time.time()
     # Process each reference to detect regions
     for ref, data in reference_coverage.items():
         depths = data['depths']
@@ -472,20 +475,21 @@ def detect_regions_from_depth(reference_coverage, depthfile, avg_read_length):
         previous_depth = None
 
         # Traverse through all positions
-        for pos in range(1, data['length'] + 1):
-            depth = depths.get(pos, 0)  # Default to 0 if no depth recorded
+        sumdepths = sum(depths.values())
+        # get start time
+        if sumdepths > 0:
+            for pos in range(1, data['length'] + 1):
+                depth = depths.get(pos, 0)  # Default to 0 if no depth recorded
+                # Check for the start of a new region
+                if current_region_start is None and depth >= 1:
+                    current_region_start = pos
 
-            # Check for the start of a new region
-            if current_region_start is None and depth >= 1:
-                current_region_start = pos
+                # Check for gaps or the end of a region
+                if depth == 0 and current_region_start is not None:
+                    regions.append((current_region_start, pos - 1))
+                    current_region_start = None
 
-            # Check for gaps or the end of a region
-            if depth == 0 and current_region_start is not None:
-                regions.append((current_region_start, pos - 1))
-                current_region_start = None
 
-            # Update the previous depth
-            previous_depth = depth
 
         # Handle the last region (if there was no gap at the end)
         if current_region_start is not None:
@@ -509,7 +513,7 @@ def detect_regions_from_depth(reference_coverage, depthfile, avg_read_length):
 
         # Update the reference coverage with the detected regions
         reference_coverage[ref]['covered_regions'] = adjusted_regions
-
+    print("Done getting covered regions")
     return reference_coverage
 
 
@@ -584,7 +588,11 @@ def count_reference_hits(bam_file_path, depthfile, covfile, matchdct, min_reads_
 
         if depthfile:
             # Detect regions based on the depth file and average read length
-            reference_coverage = detect_regions_from_depth(reference_coverage, depthfile, average_read_length)
+            reference_coverage = detect_regions_from_depth(
+                reference_coverage,
+                depthfile,
+                average_read_length
+            )
 
         if covfile:
             print("Reading coverage information from coverage file")
@@ -805,11 +813,12 @@ def main():
                                     reference_hits[acc]['toplevelkey'] = species_taxid
                                 else:
                                     reference_hits[acc]['toplevelkey'] = taxid
-                                if strain == "na":
-                                    strain = f"≡"
+                                current_strain = strain  # Start with the original strain value
+                                if current_strain == "na":
+                                    current_strain = "≡"
                                 if isolate and isolate != "" and isolate != "na":
-                                    strain = f"{strain} {isolate}"
-                                reference_hits[acc]['strain'] = strain
+                                    current_strain = f"{current_strain} {isolate}"
+                                reference_hits[acc]['strain'] = current_strain
                                 reference_hits[acc]['assemblyname'] = name
                                 reference_hits[acc]['name'] = name
         f.close()
@@ -1202,7 +1211,9 @@ def main():
         print(f"\tMean BaseQ: {data['meanbaseq']}")
         print(f"\tMean MapQ: {data['meanmapq']}")
         print(f"\tisSpecies: {data['isSpecies']}")
-        print(f"\tPathogenic Strains: {len(data['strainslist'])}")
+        for strain in data['strainslist']:
+            print(f"\t\tStrain: {strain['strainname']} (Taxid: {strain['taxid']})")
+            print(f"\t\t\tNumber of Reads: {strain['numreads']}")
         print(f"\tRegions: {data['covered_regions']}")
         print()
 
@@ -1408,7 +1419,9 @@ def write_to_tsv(aggregated_stats, pathogens, output_file_path, sample_name="No_
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
                 percentreads = f"{100*pathogenic_reads/aligned_total:.1f}" if aligned_total > 0 and pathogenic_reads>0 else 0
                 print(f"\tPathogenic SubStrain Reads: {pathogenic_reads} - {percentreads}%")
-                print(f"\tAligned Strains: {fullstrains}")
+                print(f"\tAligned Strains:")
+                for f in fullstrains:
+                    print(f"\t\t{f}")
                 print(f"\tTotal reads: {sum(count['numreads'])}")
                 print(f"\tGini Conf: {count.get('meangini', 0)}")
                 print(f"\tAlignment Score: {count.get('alignment_score', 0)}")
