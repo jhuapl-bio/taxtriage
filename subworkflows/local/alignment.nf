@@ -22,6 +22,7 @@ include { SPLIT_VCF } from '../../modules/local/split_vcf'
 include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
 include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
 include { BEDTOOLS_DEPTHCOVERAGE } from '../../modules/local/bedtools_coverage'
+include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
 
 workflow ALIGNMENT {
     take:
@@ -40,6 +41,7 @@ workflow ALIGNMENT {
     ch_bamstats = Channel.empty()
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
+    ch_bedgraphs = Channel.empty()
     ch_versions = 1
 
     fastq_reads.set { ch_aligners }
@@ -112,6 +114,8 @@ workflow ALIGNMENT {
         .map { oid, files -> [[id:oid], files] } // Replace oid with id in the metadata
         .set{ merged_bams_channel }
 
+
+
     if (params.get_variants || params.reference_assembly){
         //     // // // branch out the samtools output to nanopore and illumina and pacbio
         BCFTOOLS_MPILEUP(
@@ -171,6 +175,15 @@ workflow ALIGNMENT {
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
+    // Run the bedtools genomecoverage for downstream stats
+    BEDTOOLS_GENOMECOVERAGE(
+        sorted_bams_with_index.map{
+            m, bam, csi -> return [m, bam]
+        }
+    )
+    // merge bedgraph on the same channel
+    BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
+
     ch_stats = SAMTOOLS_COVERAGE.out.coverage
 
     gcf_with_bam = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, map] })
@@ -194,6 +207,7 @@ workflow ALIGNMENT {
         bams = ch_bams
         fasta  = ch_merged_fasta
         stats = ch_stats
+        bedgraphs = ch_bedgraphs
         // bamstats = ch_bamstats
         versions = ch_versions
 }

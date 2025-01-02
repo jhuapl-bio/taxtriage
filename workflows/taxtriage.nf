@@ -571,9 +571,10 @@ workflow TAXTRIAGE {
         ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
+        ch_bedgraphs = ALIGNMENT.out.bedgraphs
+        ch_depth = ALIGNMENT.out.depth
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        ch_depth = ALIGNMENT.out.depth
         ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
 
         ch_alignment_outmerg
@@ -626,11 +627,10 @@ workflow TAXTRIAGE {
 
             input_alignment_files = ALIGNMENT.out.bams
                 .join(ch_mapped_assemblies)
-                .join(ch_depthfiles)
+                .join(ch_bedgraphs)
                 .join(ch_covfiles)
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
-
 
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
 

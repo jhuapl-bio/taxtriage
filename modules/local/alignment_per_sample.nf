@@ -24,7 +24,7 @@ process ALIGNMENT_PER_SAMPLE {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(depthfile), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
     file assembly
 
     output:
@@ -48,7 +48,7 @@ process ALIGNMENT_PER_SAMPLE {
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
     def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
     def covfile = covfile.name != "NO_FILE" ?  "-x $covfile" : " "
-    def depthfile = depthfile.name != "NO_FILE" ? "-d $depthfile" :  " "
+    def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing " : " "
 
@@ -56,7 +56,7 @@ process ALIGNMENT_PER_SAMPLE {
 
     match_paths.py \\
         -i $bamfiles \\
-        -o $output $covfile $depthfile \\
+        -o $output $covfile $bedgraph \\
         -s $id $assemblyi \\
         $type \\
         $min_reads_align $ignore_alignment \\
