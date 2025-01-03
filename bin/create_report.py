@@ -148,7 +148,7 @@ def import_data(inputfile ):
     df['# Reads Aligned'] = df['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
 
     # sort the dataframe by the Sample THEN the # Reads
-    df = df.sort_values(by=["Specimen ID", "Microbial Category",  "# Reads Aligned"], ascending=[True, False, True])
+    df = df.sort_values(by=["Specimen ID",  "TASS Score", "Microbial Category"], ascending=[True, False, True])
     # trim all of NAme column  of whitespace either side
     df["Detected Organism"] = df["Detected Organism"].str.strip()
     dictnames = {
@@ -381,6 +381,7 @@ def create_report(
             "# Reads Aligned",
             "Confidence Metric (0-1)",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
+            "Coverage",
             "K2 Reads"
             ]
         # check if all K2 reads column are 0 or nan
@@ -540,7 +541,7 @@ def create_report(
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "Microbial Category", "# Reads Aligned",
                        "Confidence Metric (0-1)", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "K2 Reads"
+                       "Pathogenic Subsp/Strains", "Coverage", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
@@ -564,7 +565,7 @@ def create_report(
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism", "Microbial Category",
-                       "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #",
+                       "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #", "Coverage",
                        "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         # if df_identified_paths['K2 Reads'].sum() == 0:
@@ -595,7 +596,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "K2 Reads" ]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage", "K2 Reads" ]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -633,7 +634,7 @@ def main():
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
     # Sort on # Reads aligned
-    df_full = df_full.sort_values(by=["# Reads Aligned"], ascending=False)
+    df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)", axis=1)
     # add body sit to Sample col with ()

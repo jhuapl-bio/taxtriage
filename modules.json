@@ -280,6 +280,11 @@
                         "git_sha": "90aef30f432332bdf0ce9f4b9004aa5d5c4960bb",
                         "installed_by": ["modules"]
                     },
+                    "sourmash/sketch": {
+                        "branch": "master",
+                        "git_sha": "666652151335353eef2fcd58880bcef5bc2928e1",
+                        "installed_by": ["modules"]
+                    },
                     "taxpasta/merge": {
                         "branch": "master",
                         "git_sha": "516189e968feb4ebdd9921806988b4c12b4ac2dc",

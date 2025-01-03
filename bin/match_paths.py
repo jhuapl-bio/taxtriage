@@ -27,6 +27,7 @@ import re
 import csv
 import math
 import pysam
+
 from math import log2
 import random
 
@@ -67,7 +68,7 @@ def parse_args(argv=None):
         "-r",
         "--min_reads_align",
         metavar="MINREADSALIGN",
-        default=3,
+        default=2,
         type=int,
         help="Filter for minimum reads aligned to reference per organism. Default is 1",
     )
@@ -231,10 +232,17 @@ def parse_args(argv=None):
         help="Maximum number of random tweaks to explore if you provide a gt file and want to optimize"
     )
     parser.add_argument(
+        '--breadth_weight',
+        metavar="BREADTHSCORE",
+        type=float,
+        default=0.15,
+        help="value of weight for breadth of coverage in final TASS Score",
+    )
+    parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.9,
+        default=0.85,
         help="value of weight for gini coefficient in final TASS Score",
     )
 
@@ -393,10 +401,8 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, breadth, genome_length, breadthweight=0.25, giniweight=0.75):
+def getGiniCoeff(regions, genome_length, alpha=1.2):
     """Calculate the adjusted score for fair distribution of depths."""
-    if breadth == 0: # if the breadth is 0 then no need to do the rest, skip and return 0
-        return 0
     # 1) Build a histogram of coverage
     # start = time.time()
     coverage_hist = build_coverage_hist(regions, genome_length)
@@ -431,14 +437,23 @@ def getGiniCoeff(regions, breadth, genome_length, breadthweight=0.25, giniweight
     #
     gini_log = 0.0
     if gini <= 1.0:
-        gini_log = math.log2(2 - gini)  # range ~ [0..1]
+        # gini_log = math.log2(2 - gini)  # range ~ [0..1]
+        gini_log = alpha* math.sqrt(1 - gini)
+        # gini_log = 1-gini
         # clamp
         gini_log = max(0.0, min(1.0, gini_log))
-
+        # multiply by alpha
     #
     # Option B: also log-transform the breadth
     # breadth = fraction in [0..1]
     #
+
+    #
+    # Now combine them.  Suppose we do an equal-weighted average:
+    #
+    return gini_log
+
+def getBreadthOfCoverage(breadth, genome_length):
     breadth = max(0.0, min(1.0, breadth))
     if breadth > 0:
         # log2(1 + breadth) maps [0..1] -> [0..1] but “compresses” near 1
@@ -450,13 +465,7 @@ def getGiniCoeff(regions, breadth, genome_length, breadthweight=0.25, giniweight
 
     # clamp to [0..1]
     breadth_log = max(0.0, min(1.0, breadth_log))
-
-    #
-    # Now combine them.  Suppose we do an equal-weighted average:
-    #
-    final_score = giniweight * gini_log +  breadthweight * breadth_log
-    return final_score
-
+    return breadth_log
 
 def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
@@ -895,7 +904,7 @@ def compute_tass_score(count, weights):
       'alignment_score': <some_value>,
       'meangini': <some_value>,
       'diamond': {'identity': <some_value>},
-      'k2_disparity': <some_value>,
+      'k2_disparity_score': <some_value>,
       ...
     }
     We apply the known formula for TASS Score using the provided weights.
@@ -905,9 +914,10 @@ def compute_tass_score(count, weights):
         apply_weight(count.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
         apply_weight(count.get('alignment_score', 0),       weights.get('mapq_score', 0)),
         apply_weight(count.get('meangini', 0),             weights.get('gini_coefficient', 0)),
+        apply_weight(count.get('breadth_total', 0),             weights.get('breadth_total', 0)),
         apply_weight(count.get('diamond', {}).get('identity', 0),
                      weights.get('diamond_identity', 0)),
-        apply_weight(count.get('k2_disparity', 0),         weights.get('k2_disparity', 0))
+        apply_weight(count.get('k2_disparity_score', 0),         weights.get('k2_disparity_score', 0))
     ])
     return tass_score
 
@@ -941,7 +951,7 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
             # get average read length
             reference_lengths[ref] = bam_file.get_reference_length(ref)
             reference_coverage[ref] = dict(
-                length = reference_lengths[ref],
+                length = reference_lengths.get(ref, 0),
                 depths =  defaultdict(int),
                 gini_coefficient = 0,
                 mapqs = [],
@@ -961,7 +971,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
         total_length = 0
         total_reads = 0
         readlengths = []
-
         for read in bam_file.fetch():
             read_id = read.query_name
 
@@ -975,7 +984,6 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
                 aligned_reads += 1
         # Calculate average read length
         average_read_length = Math.ceil(total_length / total_reads if total_reads > 0 else 0)
-
         print(f"Total unique reads: {total_reads}")
         print(f"Average read length: {average_read_length}")
         if bedgraph:
@@ -1006,15 +1014,15 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
         else:
             print(f"Please provide a bedgraph from bedtools genomecov -ibam OR a depth file from samtools")
 
-        for reference_name, reference_data in reference_coverage.items():
+        for reference_name, refd in reference_coverage.items():
             # get the % of positions > 0 vs. the length
-            total_positions = reference_data['length']
+            total_positions = refd['length']
             sum_of_positions_covered = 0
-            for region in reference_data['covered_regions']:
+            for region in refd['covered_regions']:
                 start, end, depth = region
                 sum_of_positions_covered += end - start
             coverage = (100*sum_of_positions_covered) / total_positions if total_positions > 0 else 0
-            reference_data['coverage'] = f"{coverage:.2f}"
+            refd['coverage'] = f"{coverage:.2f}"
 
         if not covfile:
             for read in bam_file.fetch():
@@ -1082,7 +1090,8 @@ def main():
         'diamond_identity': args.diamond_identity_weight,
         'disparity_score': args.disparity_score_weight,
         'gini_coefficient': args.gini_weight,
-        "k2_disparity": args.k2_disparity_score_weight,
+        "breadth_weight": args.breadth_weight,
+        "k2_disparity_score": args.k2_disparity_score_weight,
         'siblings_score': 0
     }
 
@@ -1117,6 +1126,7 @@ def main():
 
         final_score = gini_coeff * gini_coeff_weight \
             + mapq_score * mapq_score_weight \
+            + breadth * breadth_weight \
             + disparity * disparity_weight \
             + CD_limit * CD_limit_weight
 
@@ -1301,11 +1311,13 @@ def main():
                     'key': top_level_key,
                     'numreads': [],
                     'mapqs': [],
+                    'lengths': [],
                     'depths': [],
                     "taxids": [],
                     "accs": [],
                     'assemblies': [],
                     "coverages": [],
+                    "breadth_total": 0,
                     "prevalence_disparity": 0,
                     "coeffs": [],
                     'baseqs': [],
@@ -1318,7 +1330,7 @@ def main():
             try:
                 # if accession isn't NC_042114.1 skip
                 if len(data.get('covered_regions', [])) > 0 :
-                    gini_strain = getGiniCoeff(data['covered_regions'], data['coverage'], data['length'])
+                    gini_strain = getGiniCoeff(data['covered_regions'], data['length'])
                 else:
                     gini_strain = 0
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
@@ -1327,6 +1339,7 @@ def main():
                 species_aggregated[top_level_key]['covered_regions'] += len(data['covered_regions'])
                 species_aggregated[top_level_key]['coverages'].append(data['coverage'])
                 species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
+                species_aggregated[top_level_key]['lengths'].append(data['length'])
                 species_aggregated[top_level_key]['accs'].append(data['accession'])
                 species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
                 species_aggregated[top_level_key]['depths'].append(data['meandepth'])
@@ -1381,7 +1394,11 @@ def main():
         aggregated_data['meangini'] = calculate_weighted_mean(aggregated_data['coeffs'],numreads)
         # Step 4: Calculate the disparity for this organism
         aggregated_data['disparity'] = calculate_disparity(sum(numreads), total_reads, variance_reads)
-
+        # calcualte the total coverage by summing all lengths and getting covered bases
+        total_length = sum(aggregated_data['lengths'])
+        covered_bases = sum([x * y for x, y in zip(aggregated_data['lengths'], aggregated_data['coverages'])])
+        aggregated_data['breadth_total'] = covered_bases / total_length if total_length > 0 else 0
+        aggregated_data['total_length'] = total_length
         # if taxid is in taxid_mapping, use that, otherwise use the strainname
         k2_reads = 0
         if args.k2:
@@ -1402,7 +1419,7 @@ def main():
                         k2_reads += k2_mapping[taxid].get('clades_covered', 0)
         else:
             if args.ignore_missing_inputs:
-                weights['k2_disparity'] = 0
+                weights['k2_disparity_score'] = 0
         aggregated_data['k2_numreads'] = k2_reads
 
     # Step 4: Find the min and max disparity values
@@ -1429,10 +1446,12 @@ def main():
         # print(f"\t^Norm. Disparity: {aggregated_data['normalized_disparity']}")
 
     # Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
-    def normalize_mapq(mapq_score, max_mapq=60):
+    def normalize_mapq(mapq_score, max_mapq=60, min_mapq=0):
         # Normalize the MAPQ score to be between 0 and 1
-        probability = 10 ** (-mapq_score / 10)
-        return 1-probability  # Ensure values stay between 0 and 1
+        probability = 1-(10 ** (-mapq_score / 10))
+        # convert the min and max mapq
+        # Normalize the MAPQ score to be between 0 and 1 based on the min and max
+        return probability  # Ensure values stay between 0 and 1
 
     def calculate_disparity_cv(numreads):
         if len(numreads) > 1:
@@ -1482,6 +1501,10 @@ def main():
                         break  # Exit loop after finding the match
 
         return sibling_species
+    all_mapqs = [x['meanmapq'] for x in species_aggregated.values()]
+    # get min, max of all mapqs
+    min_mapq = min(all_mapqs)
+    max_mapq = max(all_mapqs)
 
     for key, value in species_aggregated.items():
         ## Test: Disaprity across genus and its species
@@ -1528,14 +1551,14 @@ def main():
             # Optionally calculate disparity_ratio or disparity_harmonic
             # k2_mapping[key]['disparity_ratio'] = calculate_disparity_ratio(numreads, genus_k2_reads)
             # k2_mapping[key]['disparity_harmonic'] = calculate_normalized_harmonic_mean(numreads, genus_k2_reads)
-
         ## Test: Disparity of k2 or other classifier to alignment stats of NTs
         if value.get('k2_numreads', None):
             value['raw_disparity'] = abs(calculate_disparity_siblings(value['numreads'], value['k2_numreads']))
         else:
             value['raw_disparity'] = 0
         ## Test: Mapq of NT,
-        normalized_mapq = normalize_mapq(value.get('meanmapq', 0))
+        # get all mapq scores
+        normalized_mapq = normalize_mapq(value.get('meanmapq', 0), max_mapq, min_mapq)
         value['alignment_score'] = normalized_mapq
 
 
@@ -1621,29 +1644,43 @@ def main():
         aligned_total = aligned_total,
         weights = weights
     )
-
+    # print("Final Scores:")
+    # for entry in final_scores:
+    #     if entry['tass_score'] < 0.4:
+    #         continue
+    #     print("\t",entry['formatname'])
+    #     print("\t\tTASS Score:",entry['tass_score'],
+    #           "\n\t\tGini:", entry['gini_coefficient'],
+    #           "\n\t\tAlignment:", entry['alignment_score'],
+    #           "\n\t\tSiblings:", entry['siblings_score'],
+    #           "\n\t\tDMND:", entry['diamond_identity'],
+    #           "\n\t\tDisparity:", entry['disparity_score'],
+    #           "\n\t\tK2 Disparity:", entry['k2_disparity_score'],
+    #           "\n\t\tBreadth:", entry['breadth_total'],
+    #           "\n\t\tBreadth2:", ((entry['breadth_total'])**2),
+    #           "\n\t\tBreadthLog:", math.log2(2-entry['breadth_total']),
+    #           "\n\t\tBreadthsqrt:", math.sqrt(1-entry['breadth_total'])
+    #     )
+    write_to_tsv(output, final_scores)
     if (args.gt and args.optimize):
-        best_weights, top_three = optimize_weights(
+        from scipy.optimize import minimize
+        # Usage
+        best_weights = optimize_weights(
             aggregated_stats=species_aggregated,
             pathogens=pathogens,
             sample_name="Test_Sample",
             sample_type="Unknown",
-            total_reads = total_reads,
-            aligned_total = aligned_total,
-            initial_weights=weights,
+            total_reads=total_reads,
+            aligned_total=aligned_total,
+            initial_weights=[1, 1, 1, 1, 1, 1, 0],
             max_iterations=args.max_iterations
         )
-        # print(f"Best cost found: {top_three[0][0]:.4f}")
-        # print("Best weights:")
-        # for k, v in best_weights.items():
-        #     print(f"  {k}: {v:.4f}")
-        # print("\nTop 3 combinations:")
-        # for rank, (cst, wts) in enumerate(top_three, start=1):
-        #     if wts is not None:
-        #         print(f"Rank: {rank}, Cost={cst:.4f}")
-        #         for key, value in wts.items():
-        #             print(f"\t{key}: {value:.4f}")
-    write_to_tsv(output, final_scores)
+        print("Optimized Weights:")
+        for key, value in best_weights.items():
+            print(f"\t{key}: {value:.3f}")
+        # convert all np floats
+
+
 
 
 
@@ -1663,6 +1700,8 @@ def format_non_zero_decimals(number):
         formatted_number = f"{integer_part}.{('0' * leading_zeros) + non_zero_decimals}"
         # Convert back to float, then to string to remove trailing zeros
         return str(float(formatted_number))
+
+
 def compute_cost(
     aggregated_stats,
     pathogens,
@@ -1695,6 +1734,7 @@ def compute_cost(
 
     cost = 0.0
     # print("__________")
+    perrefcost = {}
     for rec in final_scores:
         ref = rec.get('ref')
         tass_score = rec['tass_score']
@@ -1710,7 +1750,7 @@ def compute_cost(
             # or the bigger the actual coverage (contradiction),
             # the larger this penalty.
             cost += (1.0 + actual_coverage) * (tass_score ** 2)
-
+            perrefcost[ref] = (1.0 + actual_coverage) * (tass_score ** 2)
         else:
             # CASE 2: coverage > 0 => we want TASS near 1 for big coverage.
             #  (A) penalize if TASS is low => cost ~ coverage * (1 - TASS)^2
@@ -1725,8 +1765,9 @@ def compute_cost(
             cost2 = (tass_score ** 2) * coverage_short
 
             cost += (cost1 + cost2)
+            perrefcost[ref] =  (cost1 + cost2)
         # print("\t",ref, actual_coverage, coverage, tass_score, rec['gini_coefficient'])
-    return cost
+    return cost, perrefcost
 
 def random_tweak(weights, scale=0.2):
     """
@@ -1748,61 +1789,108 @@ def optimize_weights(
     pathogens,
     sample_name="No_Name",
     sample_type="Unknown",
-    aligned_total = 0,
-    total_reads = 0,
+    aligned_total=0,
+    total_reads=0,
     initial_weights=None,
-    max_iterations=1000,
-    gtdata={}
+    max_iterations=1000
 ):
-
     if initial_weights is None:
-        # default guess
-        initial_weights = {
-            'mapq_score': 1.0,
-            'diamond_identity': 1.0,
-            'disparity_score': 1.0,
-            'gini_coefficient': 1.0,
-            'k2_disparity': 1.0,
-            'siblings_score': 0.0,
-        }
+        # Initialize with equal weights
+        initial_weights = [1, 1, 1, 1, 1, 1, 0]  # Using dtype=object for mixed types
 
-    best_weights = initial_weights
-    best_cost = compute_cost(
-        aggregated_stats,
-        pathogens,
-        sample_name,
-        sample_type,
-        total_reads,
-        aligned_total,
-        best_weights
-    )
-    # Find top 3 combos: list of (cost, weight_dict)
-    top_three = [(best_cost, best_weights)]
-    top_three.sort(key=lambda x: x[0], reverse=True)
-    for i in range(max_iterations):
-        # Tweak from the best-so-far
-        candidate_weights = random_tweak(best_weights, scale=1)
-        candidate_cost = compute_cost(
+
+    # Normalize initial weights
+    total_sum = 0
+    for weight in initial_weights:
+        if isinstance(weight, (list)):
+            total_sum += sum(weight)
+        else:
+            total_sum += weight
+    normalized_weights = []
+    for weight in initial_weights:
+        if isinstance(weight, list):
+            # Normalize each element in the list
+            normalized_sub_weights = [w / total_sum for w in weight]
+            normalized_weights.append(normalized_sub_weights)
+        else:
+            # Normalize the single weight
+            normalized_weight = weight / total_sum
+            normalized_weights.append(normalized_weight)
+    # Define bounds for each weight
+    bounds = [(0, 1) for _ in initial_weights]
+
+    # Define the constraint that weights sum to 1
+    constraints = {'type': 'eq', 'fun': lambda w: sum(w) - 1}
+
+    # Objective function to minimize
+    def objective(w):
+        weight_dict = {
+            'mapq_score': w[0],
+            'diamond_identity': w[1],
+            'disparity_score': w[2],
+            'gini_coefficient': w[3],
+            'breadth_score': w[4],
+            'k2_disparity_score': w[5],
+            'siblings_score': w[6],
+        }
+        cost, perrefcost = compute_cost(
             aggregated_stats,
             pathogens,
             sample_name,
             sample_type,
             total_reads,
             aligned_total,
-            candidate_weights
+            weight_dict
+        )
+        return -cost  # Negate if you want to maximize the cost
+
+    # Perform optimization
+    result = minimize(
+        objective,
+        initial_weights,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints,
+        options={'maxiter': max_iterations, 'disp': True}
+    )
+
+    if result.success:
+        optimized_weights = {
+            'mapq_score': result.x[0],
+            'diamond_identity': result.x[1],
+            'disparity_score': result.x[2],
+            'gini_coefficient': result.x[3],
+            'breadth_score': result.x[4],
+            'k2_disparity_score': result.x[5],
+            'siblings_score': result.x[6],
+        }
+        # Extract the optimized weights
+        optimized_weights = {
+            'mapq_score': result.x[0],
+            'diamond_identity': result.x[1],
+            'disparity_score': result.x[2],
+            'gini_coefficient': result.x[3],
+            'breadth_score': result.x[4],
+            'k2_disparity_score': result.x[5],
+            'siblings_score': result.x[6],
+        }
+
+        # Compute final cost and per-reference scores with optimized weights
+        final_cost, final_per_reference_scores = compute_cost(
+            aggregated_stats,
+            pathogens,
+            sample_name,
+            sample_type,
+            total_reads,
+            aligned_total,
+            optimized_weights
         )
 
-        # If better, update "best"
-        if float(candidate_cost) > float(best_cost):
-            best_cost = candidate_cost
-            best_weights = candidate_weights
-        # Possibly update top_three
-        # remove inf from top_three
-        if candidate_cost > top_three[-1][0]:  # compare with worst in top 3
-            top_three[-1] = (candidate_cost, candidate_weights)
-            top_three.sort(key=lambda x: x[0], reverse=True)
-    return best_weights, top_three
-
+        for k, v in final_per_reference_scores.items():
+            print(f"\t{k}: {v:.4f}")
+        return optimized_weights
+    else:
+        raise RuntimeError(f"Optimization failed: {result.message}")
 
 
 def calculate_scores(
@@ -1928,6 +2016,7 @@ def calculate_scores(
 
         meanbaseq = format_non_zero_decimals(count.get('meanbaseq', 0))
         gini_coefficient = format_non_zero_decimals(count.get('meangini', 0))
+        breadth_total = count.get('breadth_total', 0) / 100 if count.get('breadth_total', 0) else 0
         meanmapq = format_non_zero_decimals(count.get('meanmapq', 0))
         meancoverage = format_non_zero_decimals(count.get('meancoverage', 0))
         meandepth = format_non_zero_decimals(count.get('meandepth', 0))
@@ -1972,6 +2061,8 @@ def calculate_scores(
                 total_reads=sum(count['numreads']),
                 reads_aligned=countreads,
                 meancoverage=count.get('meancoverage', 0),
+                breadth_total = breadth_total,
+                total_length = count.get('total_length', 0),
                 is_annotated=is_annotated,
                 pathogenic_sites=pathogenic_sites,
                 is_pathogen=is_pathogen,
@@ -2030,6 +2121,7 @@ def write_to_tsv(output_path, final_scores):
             pathogenic_sites = entry.get('pathogenic_sites', "")
             listpathogensstrains = entry.get('listpathogensstrains', [])
             countreads = entry.get('reads_aligned', 0)
+            breadth_of_coverage = entry.get('breadth_total', 0)
             aligned_total = entry.get('total_reads', 0)
             pathogenic_reads = entry.get('pathogenic_reads', 0)
             percent_total = entry.get('percent_total', 0)
@@ -2043,26 +2135,27 @@ def write_to_tsv(output_path, final_scores):
                 for f in entry.get('fullstrains', []):
                     print(f"\t\t{f}")
                 print(f"\tTotal reads: {entry.get('total_reads', 0)}")
-                print(f"\tGini Conf: {entry.get('gini_coefficient', 0)}")
-                print(f"\tAlignment Score: {entry.get('alignment_score', 0)}")
-                print(f"\tK2 Disparity Score: {entry.get('k2_disparity_score', 0)}")
+                print(f"\tGini Conf: {entry.get('gini_coefficient', 0):.4f}")
+                print(f"\tAlignment Score: {entry.get('alignment_score', 0):.2f}")
+                print(f"\tK2 Disparity Score: {entry.get('k2_disparity_score', 0):.2f}")
                 print(f"\t# Reads Aligned: {entry.get('reads_aligned', 0)}")
-                print(f"\tDisparity Score: {entry.get('disparity_score', 0)}")
-                print(f"\tDiamond Identity: {entry.get('diamond_identity', 0)}")
-                print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0)}")
-                print(f"\tDepth (Mean): {entry.get('meandepth', 0)}")
-                print(f"\tGT Coverage: {entry.get('gtcov', 0)}")
-                print(f"\tFinal Score: {entry.get('tass_score', 0)}")
+                print(f"\tDisparity Score: {entry.get('disparity_score', 0):.2f}")
+                print(f"\tDiamond Identity: {entry.get('diamond_identity', 0):.2f}")
+                print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
+                print(f"\tBreadth: {entry.get('breadth_total', 0):.2f}")
+                print(f"\tDepth (Mean): {entry.get('meandepth', 0):.2f}")
+                print(f"\tGT Coverage: {entry.get('gtcov', 0):.2f}")
+                print(f"\tFinal Score: {entry.get('tass_score', 0):.2f}")
                 print(f"\tCovered Regions: {entry.get('covered_regions', 0)}")
                 print(f"\tK2 Reads: {entry.get('k2_reads', 0)}")
                 print()
                 total+=1
             file.write(
-                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{meancoverage}\t"
-                f"{is_annotated}\t{entry.get('pathogenic_sites')}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient}\t"
-                f"{meanbaseq}\t{meanmapq}\t{meancoverage}\t{meandepth}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
-                f"{k2_reads}\t{k2_parent_reads}\t{mapq_score}\t{disparity_score}\t{diamond_identity}\t"
-                f"{siblings_score}\t{tass_score}\n"
+                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t"
+                f"{is_annotated}\t{entry.get('pathogenic_sites')}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
+                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
+                f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{diamond_identity:.2f}\t"
+                f"{siblings_score:.2f}\t{tass_score:.2f}\n"
             )
             fulltotal+=1
     print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")
