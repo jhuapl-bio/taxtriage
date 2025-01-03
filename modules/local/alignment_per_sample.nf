@@ -50,7 +50,7 @@ process ALIGNMENT_PER_SAMPLE {
     def covfile = covfile.name != "NO_FILE" ?  "-x $covfile" : " "
     def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
-    def ignore_alignment = params.ignore_missing ? " --ignore_missing " : " "
+    def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
 
     """
 
