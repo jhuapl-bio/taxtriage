@@ -208,6 +208,13 @@ def parse_args(argv=None):
         help="value of weight for disparity of diamond_identity in final TASS Score",
     )
     parser.add_argument(
+        "--alpha",
+        metavar="MAPQWEIGHT",
+        type=float,
+        default=1.2,
+        help="alpha value for lorenz curve with gini calculation",
+    )
+    parser.add_argument(
         "--mapq_weight",
         metavar="MAPQWEIGHT",
         type=float,
@@ -235,14 +242,14 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.15,
+        default=0.05,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.85,
+        default=0.75,
         help="value of weight for gini coefficient in final TASS Score",
     )
 
@@ -401,7 +408,7 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.2):
+def getGiniCoeff(regions, genome_length, alpha=1.8):
     """Calculate the adjusted score for fair distribution of depths."""
     # 1) Build a histogram of coverage
     # start = time.time()
@@ -1330,7 +1337,7 @@ def main():
             try:
                 # if accession isn't NC_042114.1 skip
                 if len(data.get('covered_regions', [])) > 0 :
-                    gini_strain = getGiniCoeff(data['covered_regions'], data['length'])
+                    gini_strain = getGiniCoeff(data['covered_regions'], data['length'], alpha=args.alpha)
                 else:
                     gini_strain = 0
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
