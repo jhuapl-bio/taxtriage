@@ -385,6 +385,13 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
+                "skip_refpull": {
+                    "type": "boolean",
+                    "description": "Skip downloading references from NCBI",
+                    "default": false,
+                    "hint": "Must provide a local reference fasta file. This is only useful if you want K2 outputs in tandem with a local ref file output",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_krona": {
                     "type": "boolean",
                     "description": "Skip Krona Plots",

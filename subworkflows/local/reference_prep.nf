@@ -170,14 +170,13 @@ workflow  REFERENCE_PREP {
     }
     // get the size of the ch_reports_to_download
     // if the size is greater than 0, then download the reports
-    if ( !params.skip_realignment && !(params.skip_kraken2 && (!params.organisms && !params.organisms_file)) ){
+    if ((!params.skip_refpull ) && (!params.skip_realignment && !(params.skip_kraken2 && (!params.organisms && !params.organisms_file)) ) ){
         DOWNLOAD_ASSEMBLY(
             ch_reports_to_download.map {
                 meta, report ->  return [ meta, report ]
             },
             ch_assembly_txt
         )
-
 
         if (params.use_bt2) {
             BOWTIE2_BUILD_DWNLD(
@@ -201,7 +200,6 @@ workflow  REFERENCE_PREP {
                 return [meta, fastas, listmaps, listids ]
         }
         }.set{ ch_mapped_assemblies }
-
     }
 
     COMBINE_MAPFILES(
@@ -219,7 +217,7 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
         ch_assembly_txt
     )
-    if (!params.skip_realignment && !params.skip_features) {
+    if (!params.skip_refpull && (!params.skip_realignment && !params.skip_features)) {
         try {
             // Attempt to use the FEATURES_DOWNLOAD process
             FEATURES_DOWNLOAD(
