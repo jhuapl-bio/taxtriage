@@ -399,16 +399,24 @@ def main(argv=None):
     extra_orgs = list(set(extra_orgs))
     # remove all taxids from mapping that are in remove_taxids
     mapping_taxids = [x['taxid'] for x in mapping]
+    mark_for_removal = []
+    mark_for_removal_extra = []
     if len(remove_taxids) > 0:
         for taxid in remove_taxids:
             # find the index and get value of the org in mapping
             if taxid in mapping_taxids:
                 idx = mapping_taxids.index(taxid)
-                del mapping[idx]
-                print(f"Removed {taxid} commensal organisms from the mapping")
+                mark_for_removal.append(idx)
+                print(f"removing {taxid} commensal organisms from the mapping")
             if taxid in extra_orgs:
                 idx_extra = extra_orgs.index(taxid)
-                del extra_orgs[idx_extra]
+                mark_for_removal_extra.append(idx_extra)
+    # Remove from mapping_taxids
+    for idx in sorted(mark_for_removal, reverse=True):
+        del mapping_taxids[idx]
+    # Remove from extra_orgs
+    for idx_extra in sorted(mark_for_removal_extra, reverse=True):
+        del extra_orgs[idx_extra]
     mapping = top_hit(mapping, specific_limits, args.top_per_rank, extra_orgs)
     make_files(mapping, args.file_out)
 
