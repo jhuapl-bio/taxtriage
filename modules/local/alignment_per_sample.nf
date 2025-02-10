@@ -21,7 +21,7 @@ process ALIGNMENT_PER_SAMPLE {
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
-        'biocontainers/pysam:0.21.0--py39hcada746_1' }"
+        'jhuaplbio/taxtriage_confidence:2.0' }"
 
     input:
     tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
@@ -51,6 +51,7 @@ process ALIGNMENT_PER_SAMPLE {
     def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
+    def output_dir = "search_results"
 
     """
 
@@ -59,8 +60,17 @@ process ALIGNMENT_PER_SAMPLE {
         -o $output $covfile $bedgraph \\
         -s $id $assemblyi \\
         $type \\
-        $min_reads_align $ignore_alignment \\
-        -p $pathogens_list  $k2 $diamond_output $mapping
+        --output_dir $output_dir \\
+        --scaled 50 \\
+        --alpha 2.5 \\
+        --min_threshold 0.002 \\
+        -p $pathogens_list  $mapping \\
+        --min_similarity_comparable 0.8 \\
+        --gini_weight 0.5  \\
+        --disparity_score_weight 0.0  \\
+        --breadth_weight 0.2 --minhash_weight 0.05 --mapq_weight 0.0 --hmp_weight 0.0 \\
+        --fast \\
+        $min_reads_align $ignore_alignment
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

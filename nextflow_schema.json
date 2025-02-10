@@ -179,16 +179,22 @@
                     "description": "Dont use minimap2 for short reads, use bowtie2 instead",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "use_diamond": {
+                    "type": "boolean",
+                    "description": "Use DIAMOND BLASTX on the following BAM from the alignment step(s)",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "use_denovo": {
+                    "type": "boolean",
+                    "description": "Use De Novo Assembly. Default is Flye for Longreads and Megahit for short",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_report": {
                     "type": "boolean",
                     "description": "Skip the pathogen report",
                     "fa_icon": "fas fa-file-signature"
-                },
-                "skip_denovo": {
-                    "type": "boolean",
-                    "description": "Skip De Novo Assembly",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
                 },
                 "skip_realignment": {
                     "type": "boolean",

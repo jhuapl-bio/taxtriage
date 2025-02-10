@@ -1,208 +1,16 @@
 #!/usr/bin/env python3
-
-import argparse
 import os
-import subprocess
 import csv
 import pysam
+import time
+from sourmash.sbt import SBT, GraphFactory
+from sourmash.sbtmh import SigLeaf
 from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_signatures
+from itertools import groupby
 
+
+from tqdm import tqdm  # For progress bar
 from collections import defaultdict
-
-def apply_proportional_scaling(conflict_sets, region_coverage, all_reads, fetch_reads_in_region, passed_regions):
-    reads_to_keep = set()
-
-    if not conflict_sets:
-        # No conflict sets at all, just keep all reads from passed_regions.
-        for reg in passed_regions:
-            r, s, e = reg
-            reads = fetch_reads_in_region(all_reads, r, s, e)
-            for (read_id, refname, seq) in reads:
-                reads_to_keep.add(read_id)
-        return reads_to_keep
-
-    # If we do have conflict sets:
-    for conflict_set in conflict_sets:
-        coverages = [region_coverage.get(reg,0) for reg in conflict_set]
-        if not coverages:
-            # No coverage info, keep all reads from these regions in this set
-            for reg in conflict_set:
-                r, s, e = reg
-                reads = fetch_reads_in_region(all_reads, r, s, e)
-                for (read_id, refname, seq) in reads:
-                    reads_to_keep.add(read_id)
-            continue
-
-        min_cov = min(coverages)
-        # Compute fractions
-        fractions = {}
-        for reg in conflict_set:
-            c = region_coverage.get(reg,0)
-            if c > 0:
-                fractions[reg] = min_cov / c
-                ref, s, end = reg
-                if ref == "NC_066642.1":
-                    print(conflict_set)
-                    print(f"Region: {reg}, Coverage: {c}, Fraction: {fractions[reg]}")
-                    print(coverages,"<")
-            else:
-                fractions[reg] = 1.0
-        # Apply scaling
-        for reg in conflict_set:
-            (r, s, e) = reg
-            reads = fetch_reads_in_region(all_reads, r, s, e)
-            fraction = fractions[reg]
-            # Ensure at least 1 if fraction > 0, or skip if fraction=0
-            if fraction > 0 and len(reads) > 0:
-                num_to_keep = max(1, int(len(reads)*fraction + 0.9999))
-                sampled_reads = reads[:num_to_keep]
-                for (read_id, refname, seq) in sampled_reads:
-                    reads_to_keep.add(read_id)
-
-    # Now, for regions that are passed and not in any conflict sets, we still need to keep their reads.
-    # Identify all regions that are not part of any conflict set:
-    conflict_region_set = set().union(*conflict_sets) if conflict_sets else set()
-    non_conflict_regions = [reg for reg in passed_regions if reg not in conflict_region_set]
-    for reg in non_conflict_regions:
-        r, s, e = reg
-        reads = fetch_reads_in_region(all_reads, r, s, e)
-        for (read_id, refname, seq) in reads:
-            reads_to_keep.add(read_id)
-
-    return reads_to_keep
-def transform_sum_comparisons(sum_comparisons):
-    """
-    Transform from:
-    {
-      'NC_066642.1': [
-        {'jaccard': ..., 'to': 'NC_003310.1', 's1':..., 'e1':..., 's2':..., 'e2':...},
-        ...
-      ],
-      ...
-    }
-    to:
-    {
-      (ref, s1, e1): [
-        {'jaccard': ..., 'to': to_ref, 's2':..., 'e2':..., 's1':..., 'e1':...}
-      ],
-      ...
-    }
-    """
-    new_sum = defaultdict(list)
-    for ref, conflicts in sum_comparisons.items():
-        for c in conflicts:
-            # Construct the key region for 'ref' using s1, e1 from the conflict dict
-            region = (ref, c['s1'], c['e1'])
-            new_sum[region].append(c)
-    return dict(new_sum)
-
-def build_conflict_graph(passed_regions, sum_comparisons, min_threshold=0.1):
-    """
-    Build a graph where each node is a region (ref, start, end) and edges represent conflicts.
-    Only consider edges if both regions are in passed_regions and jaccard >= min_threshold.
-    """
-    graph = defaultdict(set)
-    for region, conflicts in sum_comparisons.items():
-
-        if region not in passed_regions:
-            continue
-        for c in conflicts:
-            jaccard = c['jaccard']
-            if jaccard >= min_threshold:
-                to_ref = c['to']
-                s2 = c['s2']
-                e2 = c['e2']
-                other_region = (to_ref, s2, e2)
-                if other_region in passed_regions:
-                    graph[region].add(other_region)
-                    graph[other_region].add(region)
-    return graph
-
-def identify_conflict_sets(graph):
-    visited = set()
-    conflict_sets = []
-
-    def dfs(node, comp):
-        comp.add(node)
-        visited.add(node)
-        for neigh in graph[node]:
-            if neigh not in visited:
-                dfs(neigh, comp)
-
-    for node in graph:
-        if node not in visited:
-            comp = set()
-            dfs(node, comp)
-            conflict_sets.append(comp)
-
-    return conflict_sets
-
-def compute_region_coverage(passed_regions, all_reads, fetch_reads_in_region):
-    region_coverage = {}
-    for (ref, start, end) in passed_regions:
-        reads = fetch_reads_in_region(all_reads, ref, start, end)
-        coverage_approx = len(reads)
-        region_coverage[(ref, start, end)] = coverage_approx
-    return region_coverage
-
-def compute_coverage_with_bedtools(bam_path, outpath=None, bedtools_path='bedtools'):
-    """
-    Use bedtools genomecov to compute per-base coverage.
-    Returns the output as a string.
-    """
-
-    # remove the etensions only using os path
-    cmd = [bedtools_path, 'genomecov', '-ibam', bam_path, '-d', ]
-    coverage_output = run_subprocess(cmd, "bedtools genomecov",
-                        stdout_file = outpath,
-                        read_stdout=True if not outpath else False
-                    )
-    return coverage_output
-
-def coverage_to_bed(coverage_output, min_coverage=1):
-    """
-    Convert bedtools genomecov output to BED format for positions with coverage >= min_coverage.
-    Returns a list of BED intervals as tuples: (chrom, start, end)
-    """
-    bed_intervals = []
-    for line in coverage_output.strip().split('\n'):
-        parts = line.strip().split()
-        if len(parts) < 3:
-            continue
-        chrom, pos, depth = parts[0], int(parts[1])-1, int(parts[2])  # bedtools genomecov is 1-based
-        if depth >= min_coverage:
-            bed_intervals.append((chrom, pos, pos+1))  # Each covered base as a separate interval
-    return bed_intervals
-
-def write_bed_file(bed_intervals, bed_file_path):
-    """
-    Write BED intervals to a BED file.
-    """
-    with open(bed_file_path, 'w') as f:
-        for interval in bed_intervals:
-            chrom, start, end = interval
-            f.write(f"{chrom}\t{start}\t{end}\n")
-
-def merge_bed_with_gap(bed_file_path, merged_bed_path, coverage_spacing, bedtools_path='bedtools'):
-    """
-    Merge BED intervals allowing gaps up to coverage_spacing.
-    """
-    cmd = [bedtools_path, 'merge', '-i', bed_file_path, '-d', str(coverage_spacing)]
-    merged_output = run_subprocess(cmd, "bedtools merge", read_stdout=False, stdout_file=merged_bed_path)
-    return
-def split_regions_into_windows(merged_bed_path, windows_bed_path, coverage_length, bedtools_path='bedtools'):
-    """
-    Split merged BED regions into fixed-length windows.
-    """
-    cmd = [bedtools_path, 'makewindows', '-b', merged_bed_path, '-w', str(coverage_length)]
-    run_subprocess(cmd, "bedtools makewindows", read_stdout=False, stdout_file=windows_bed_path)
-
-def filter_windows_with_coverage(windows_bed_path, bed_file_path, filtered_bed_path, bedtools_path='bedtools'):
-    """
-    Use bedtools intersect to keep only windows that overlap with coverage regions.
-    """
-    cmd = [bedtools_path, 'intersect', '-a', windows_bed_path, '-b', bed_file_path, '-wa']
-    run_subprocess(cmd, "bedtools intersect", stdout_file=filtered_bed_path, read_stdout=False)
 
 def parse_bed_file(bed_file_path):
     """
@@ -234,15 +42,19 @@ def load_reads_from_bam(bam_path):
       ]
     }
     """
+    reflengths = {}
     bam = pysam.AlignmentFile(bam_path, "rb")
     all_reads = {}
+    # get reflengths all references
+    for ref in bam.references:
+        reflengths[ref] = bam.get_reference_length(ref)
     for read in bam:
         if read.is_unmapped:
             continue
         if read.is_secondary or read.is_supplementary:
             continue
-
         refname = bam.get_reference_name(read.reference_id)
+
         seq = read.query_sequence
         if seq:
             if refname not in all_reads:
@@ -254,7 +66,7 @@ def load_reads_from_bam(bam_path):
                 'end': read.reference_end
             })
     bam.close()
-    return all_reads
+    return all_reads, reflengths
 
 def fetch_reads_in_region(all_reads, refname, start, end):
     """
@@ -273,7 +85,8 @@ def fetch_reads_in_region(all_reads, refname, start, end):
             results.append((read['id'], refname, read['seq']))
     return results
 
-def create_signatures_for_regions(regions, all_reads, bam_path, kmer_size, scaled):
+
+def create_signatures_for_regions(regions, all_reads, bam_path, kmer_size, scaled, num_workers = 1):
     """
     For each region, fetch reads and create a signature.
     Returns a dictionary of the form:
@@ -285,7 +98,8 @@ def create_signatures_for_regions(regions, all_reads, bam_path, kmer_size, scale
     signatures = {}
     seenrefs = set()
     sets = dict()
-    for (refname, start, end, depth, val) in regions:
+    i=0
+    for (refname, start, end, val) in tqdm(regions):
         combined = f"{refname}:{start}-{end}"
         if combined not in seenrefs:
             # print(f"Processing {combined}...")
@@ -305,9 +119,169 @@ def create_signatures_for_regions(regions, all_reads, bam_path, kmer_size, scale
         sig = SourmashSignature(mh, name=region_name)
         name=f"{refname}:{start+1}-{end}"
         signatures[name] = sig
+        # i+=1
+        # if i % 10_000 == 0:
+        #     print(f"Processed {i} regions...")
     return signatures
 
-def compare_signatures(signatures, output_csv, min_threshold=0.1, clusters=None):
+#######################################################
+# Helper functions
+#######################################################
+def parse_split(region_name):
+    """
+    Example: region_name = 'NC_003310.1:1000-2000'
+    Returns (ref, start, end).
+    Adjust to match your actual naming scheme.
+    """
+    ref_region = region_name.split(':')
+    refname = ref_region[0]
+    coords = ref_region[1].split('-')
+    start = int(coords[0])
+    end = int(coords[1])
+    return (refname, start, end)
+
+def build_sbt_index(siglist, ksize=31, sbt_name="my_sbt", clusters={}):
+    """
+    Build an SBT index in memory (or on disk).
+    - siglist: list of (region_name, sourmash_signature)
+    - ksize, scaled: specify how your MinHashes were created.
+
+    Returns an SBT object.
+    """
+    # Create an empty SBT
+    sbt_index = dict()
+    factory = GraphFactory(ksize=ksize,  n_tables=1, starting_size=len(siglist))
+    ref2cluster = {}
+    if clusters is not None:
+        for cluster_idx, cluster_set in enumerate(clusters):
+            for ref in cluster_set:
+                ref2cluster[ref] = cluster_idx
+    # Add each signature as a leaf
+
+    for i, (region_name, sig) in enumerate(siglist):
+        r1, s1, e1 = parse_split(region_name)
+        # sig.name = region_name
+        leaf = SigLeaf(str(region_name), sig)
+        cluster = ref2cluster.get(r1, "Unknown")
+        if cluster in sbt_index:
+            sbt = sbt_index[cluster]
+        else:
+            sbt = SBT(factory)
+            sbt_index[cluster] = sbt
+        sbt.add_node(leaf)
+
+
+    # If you want to save it to disk, do:
+    # sbt.save(sbt_name)
+    return sbt_index
+
+def fast_mode_sbt(
+    siglist,
+    sbt_index,
+    output_csv,
+    min_threshold=0.05,
+    cluster_map=None
+):
+    """
+    Use SBT index to find similar signatures above min_threshold (Jaccard).
+    cluster_map: dictionary { refname -> cluster_id } (optional).
+    """
+    sum_comparisons = {}
+    for (region_name, _) in siglist:
+        ref, s1, e1 = parse_split(region_name)
+        sum_comparisons.setdefault(ref, [])
+    print(f"Building a cluster map to each reference input, total indices types: {len(sbt_index)}")
+    ref2cluster = {}
+    if cluster_map is not None:
+        for cluster_idx, cluster_set in enumerate(cluster_map):
+            for ref in cluster_set:
+                ref2cluster[ref] = cluster_idx
+    start_time = time.time()
+    seen_comparisons = defaultdict()
+    with open(output_csv, "w", newline="") as outfh:
+        writer = csv.writer(outfh)
+        writer.writerow([
+            "reference1", "start1", "end1",
+            "reference2", "start2", "end2",
+            "jaccard", "containment_1_in_2", "containment_2_in_1"
+        ])
+
+        # Query each signature in the SBT
+        for i, (region1, sig1) in enumerate(siglist):
+            r1, s1, e1 = parse_split(region1)
+            if i % 1000 == 0 and i > 0:  # Optional: progress update
+                print(f"Processed {i} signatures in {time.time()-start_time} seconds...")
+            if region1 in seen_comparisons:
+                # print(f"{region1}. repeat comparison, skipping...")
+                continue
+
+            # SBT search returns a generator of SearchResult objects
+            # at or above min_threshold (Jaccard).
+            sbt = sbt_index.get(ref2cluster.get(r1, "Unknown"))
+            if sbt is None:
+                continue
+            results = sbt.search(
+                sig1, threshold=min_threshold, best_only=True
+            )
+
+            # We'll iterate over these matches
+            # if results:
+            #     print(region1)
+            for sr in results:
+                # sr is a SearchResult with .similarity, .location, etc.
+                jaccard = sr.score  #  jaccard similarity score is here
+                desc = sr.signature.name    # we stored region_name in the leaf constructor
+                mh2 = sr.signature.minhash
+                r2, s2, e2 = parse_split(desc)
+                if r2 == r1:
+                    continue  # skip self match to the same accession
+
+                # print(f"\tFound {desc} with jaccard {jaccard:.4f}")
+                if cluster_map is not None:
+                    # If either reference isn't in the map, or they differ in cluster, skip
+                    if (r1 not in ref2cluster or
+                        r2 not in ref2cluster or
+                        ref2cluster[r1] != ref2cluster[r2]):
+                        continue
+                ani = mh2.containment_ani(sig1.minhash)
+                # print(f"{ani.dist:.2f}", desc, region1, f"{jaccard:.2f}")
+                # # If you need actual containments, compute them:
+                # mh1 = sig1.minhash
+                # # We'll load the matching leaf's signature from the SBT
+                # # or you can keep a dictionary of region_name -> signature.
+                # # But let's suppose we can find it from siglist in memory:
+                # # (In an actual pipeline, store a dict for quick lookup.)
+                # sig2 = None
+                # # for (rname2, s2sig) in siglist:
+                # #     if rname2 == region2:
+                # #         sig2 = s2sig
+                # #         break
+
+                # if not sig2:
+                #     continue  # couldn't find the matching sig in memory
+                # mh2 = sig2.minhash
+
+                # c1_in_2 = mh1.avg_containment(mh2)
+                # c2_in_1 = mh2.avg_containment(mh1)
+                c1_in_2 = c2_in_1 = jaccard
+
+                seen_comparisons[desc] = True
+                seen_comparisons[region1] = True
+
+                # Write to CSV
+                writer.writerow([r1, s1, e1, r2, s2, e2, jaccard, c1_in_2, c2_in_1])
+
+                # Optional: store in sum_comparisons
+                sum_comparisons[r1].append(dict(
+                    jaccard=jaccard, to=r2, s2=s2, e2=e2, s1=s1, e1=e1
+                ))
+                sum_comparisons[r2].append(dict(
+                    jaccard=jaccard, to=r1, s2=s1, e2=e1, s1=s2, e1=e2
+                ))
+    print(f"Processed all {i} signatures in {time.time()- start_time} seconds...")
+    return sum_comparisons
+
+def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
     """
     signatures: dict of region_string -> SourmashSignature
                 where region_string looks like "NC_003310.1:1234-5678"
@@ -323,22 +297,21 @@ def compare_signatures(signatures, output_csv, min_threshold=0.1, clusters=None)
     # ------------------------------------------------
     # 1) Build a reference->cluster map if clusters given
     # ------------------------------------------------
-    # Example: ref2cluster['NC_008291.1'] = 0  (meaning cluster 0)
-    #          ref2cluster['NC_003310.1'] = 1
-    #          ref2cluster['NC_055230.1'] = 2
+    print("Building a cluster map to each reference input")
     ref2cluster = {}
-    if clusters is not None:
-        for cluster_idx, cluster_set in enumerate(clusters):
+    if cluster_map is not None:
+        for cluster_idx, cluster_set in enumerate(cluster_map):
             for ref in cluster_set:
                 ref2cluster[ref] = cluster_idx
+    seen_comparisons = defaultdict()
 
     # ------------------------------------------------
     # 2) Prepare data structures
     # ------------------------------------------------
-    siglist = list(signatures.items())  # [ (region_string, signature), ... ]
+    print("\tPrepping the data structures")
 
     # Initialize passed_regions with all region keys.
-    all_regions = set(signatures.keys())
+    all_regions = set([region for (region, _) in siglist])
     passed_regions = set(all_regions)
 
     sum_comparisons = defaultdict(list)
@@ -354,6 +327,8 @@ def compare_signatures(signatures, output_csv, min_threshold=0.1, clusters=None)
     # ------------------------------------------------
     # 3) Compare signatures pairwise
     # ------------------------------------------------
+    print("\tWriting comparison to outfile")
+    start_time = time.time()
     with open(output_csv, "w", newline="") as outfh:
         writer = csv.writer(outfh)
         writer.writerow([
@@ -364,9 +339,14 @@ def compare_signatures(signatures, output_csv, min_threshold=0.1, clusters=None)
 
         for i in range(len(siglist)):
             region1, sig1 = siglist[i]
+            if i > 0 and i % 1_000 == 0:
+                print(f"Processed {i} signatures in {time.time()- start_time} seconds...")
+            # if region1 in seen_comparisons:
+                # print(f"{region1}. repeat comparison, skipping...")
+                # continue
+
             r1, s1, e1 = parse_split(region1)
             mh1 = sig1.minhash
-
             for j in range(i+1, len(siglist)):
                 region2, sig2 = siglist[j]
                 r2, s2, e2 = parse_split(region2)
@@ -376,21 +356,21 @@ def compare_signatures(signatures, output_csv, min_threshold=0.1, clusters=None)
                     continue
 
                 # 3B) Skip if not in the same cluster
-                if clusters is not None:
+                if cluster_map is not None:
                     # If either reference isn't in the map, or they differ in cluster, skip
                     if (r1 not in ref2cluster or
                         r2 not in ref2cluster or
                         ref2cluster[r1] != ref2cluster[r2]):
                         continue
-
                 # 3C) Compute similarities
                 mh2 = sig2.minhash
                 jaccard = mh1.jaccard(mh2)
                 if jaccard >= min_threshold:
                     c1_in_2 = mh1.avg_containment(mh2)
                     c2_in_1 = mh2.avg_containment(mh1)
-
-                    # Write to CSV
+                    seen_comparisons[region1] = True
+                    seen_comparisons[region2] = True
+                    # # Write to CSV
                     writer.writerow([r1, s1, e1, r2, s2, e2, jaccard, c1_in_2, c2_in_1])
 
                     # Record comparison
@@ -408,39 +388,46 @@ def compare_signatures(signatures, output_csv, min_threshold=0.1, clusters=None)
                     #     passed_regions.remove(region1)
                     # if (region2 in passed_regions):
                     #     passed_regions.remove(region2)
-
+    print(f"Processed all {i} signatures in {time.time()- start_time} seconds...")
     # ------------------------------------------------
     # 4) Print aggregated comparisons
     # ------------------------------------------------
     # for ref, jaccards in sum_comparisons.items():
-    #     print(f"{ref}:")
-    #     for entry in jaccards:
-    #         print(
-    #             f"\t{entry['s1']}-{entry['e1']}\t"
-    #             f"Jaccard: {entry['jaccard']:.4f}\n"
-    #             f"\t\tto {entry['to']}:{entry['s2']}-{entry['e2']}"
-    #         )
+    #     if ref == "NC_003310.1":
+    #         print(f"{ref}:")
 
-    return passed_regions, sum_comparisons
-def create_filtered_bam(original_bam_path, output_bam_path, read_ids_to_keep):
+    #         for entry in jaccards:
+    #             if entry.get('to') == "NC_006998.1":
+    #                 print(
+    #                     f"\t{entry['s1']}-{entry['e1']}\t"
+    #                     f"Jaccard: {entry['jaccard']:.4f}\n"
+    #                     f"\t\tto {entry['to']}:{entry['s2']}-{entry['e2']}"
+    #                 )
+
+    return sum_comparisons
+
+def create_filtered_bam(original_bam_path, output_bam_path, alignments_to_keep):
     """
     Create a new BAM file containing only reads with IDs in read_ids_to_keep.
     """
     bam_in = pysam.AlignmentFile(original_bam_path, "rb")
     bam_out = pysam.AlignmentFile(output_bam_path, "wb", template=bam_in)
-
+    set_reads_refs = set()
     count_total = 0
     count_written = 0
     for read in bam_in:
         count_total += 1
-        if read.query_name not in read_ids_to_keep:
+        if (read.reference_name, read.query_name) in alignments_to_keep:
             bam_out.write(read)
             count_written += 1
-
+        set_reads_refs.add(read.query_name)
     bam_in.close()
     bam_out.close()
+    # subprocess.run(["samtools", "index", output_bam_path])
+    pysam.index(output_bam_path)
     print(f"Total reads processed: {count_total}")
     print(f"Reads written to filtered BAM: {count_written}")
+    print(f"Unique Query Read IDS: {len(set_reads_refs)}")
 
 def get_references_from_bam(bam_path):
     """
@@ -496,55 +483,6 @@ def compute_performance(ground_truth, filtered_bam_path):
     f1 = 2*(precision*recall)/(precision+recall) if (precision+recall)>0 else 0
 
     return TP, FP, FN, precision, recall, f1
-
-def compute_breadth_and_depth(bam_path, outpath=None, bedtools_path='bedtools'):
-    """
-    Compute breadth of coverage and mean depth for each reference in the BAM file.
-
-    Returns a dictionary:
-    {
-        refname: {
-            'breadth': float,  # proportion of genome covered
-            'mean_depth': float
-        },
-        ...
-    }
-    """
-    coverage_output = compute_coverage_with_bedtools(bam_path, outpath=outpath, bedtools_path=bedtools_path)
-
-    coverage_stats = {}
-    # Get reference lengths from BAM header
-    bam = pysam.AlignmentFile(bam_path, "rb")
-    ref_lengths = {ref: length for ref, length in zip(bam.references, bam.lengths)}
-    bam.close()
-
-    # Initialize stats
-    for ref in ref_lengths:
-        coverage_stats[ref] = {'covered_positions': 0, 'total_coverage': 0}
-
-    for line in coverage_output.strip().split('\n'):
-        parts = line.strip().split()
-        if len(parts) < 3:
-            continue
-        chrom, pos, depth = parts[0], int(parts[1])-1, int(parts[2])
-        if chrom not in coverage_stats:
-            continue
-        coverage_stats[chrom]['total_coverage'] += depth
-        if depth >=1:
-            coverage_stats[chrom]['covered_positions'] +=1
-
-    # Now, compute breadth and mean depth
-    final_stats = {}
-    for ref, stats in coverage_stats.items():
-        length = ref_lengths[ref]
-        if length ==0:
-            final_stats[ref] = {'breadth':0, 'mean_depth':0}
-            continue
-        breadth = stats['covered_positions'] / length
-        mean_depth = stats['total_coverage'] / length
-        final_stats[ref] = {'breadth': breadth, 'mean_depth': mean_depth}
-
-    return final_stats
 
 def parse_ground_truth(abu_file):
     """
@@ -881,12 +819,7 @@ def finalize_proportional_removal(conflict_groups, all_reads, fetch_reads_in_reg
 
     return removed_read_ids
 
-def import_bedfile(coverage_file):
-    """
-    Import coverage file in bedtools genomecov format.
-    """
-    with open(coverage_file, 'r') as f:
-        return f.read()
+
 def merge_bedgraph_regions(
     regions,
     statistic_func,
@@ -922,7 +855,7 @@ def merge_bedgraph_regions(
 
         avg_coverage = sum(coverage_values) / len(coverage_values)
         stat_value = statistic_func(coverage_values)
-        merged.append((current_chrom, current_start, current_end, avg_coverage, stat_value))
+        merged.append((current_chrom, current_start, current_end, stat_value))
 
     for i, (chrom, start, end, cov) in enumerate(regions):
         if current_chrom is None:
@@ -971,6 +904,86 @@ def merge_bedgraph_regions(
     close_and_save_region()
 
     return merged
+
+def merge_bedgraph_regions(
+    intervals,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size=20000,
+    max_length=None,
+    value_diff_tolerance=None
+):
+    """
+    intervals: list of tuples (chrom, start, end, value)
+               e.g. [('NC_003310.1', 6085, 11112, 86.58), ...]
+    Returns a list of merged intervals, each of which is (chrom, start, end, stat_value, <optional>).
+    """
+
+    if not intervals:
+        return []
+
+    # Sort intervals by (chrom, start) to ensure a sensible merge order
+    # (If you already have them sorted by contig, then by start, skip.)
+    intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+
+    merged = []
+    current_chrom = None
+    current_buffer = []  # Temporary storage for the intervals to be merged
+
+    for interval in intervals:
+        chrom, start, end, depth_val = interval
+
+        # If we are on a new chromosome, flush the old buffer
+        if chrom != current_chrom:
+            # If there's anything in the current_buffer, finalize it
+            if current_buffer:
+                merged.extend(_finalize_buffer(current_buffer, statistic_func))
+            current_chrom = chrom
+            current_buffer = [interval]
+            continue
+
+        # Otherwise, we are on the same chromosome.
+        # Check if we can merge this interval into the current_buffer
+        if should_merge(
+            current_buffer,
+            interval,
+            statistic_func,
+            max_stat_threshold,
+            max_group_size,
+            max_length,
+            value_diff_tolerance
+        ):
+            # Merge by appending
+            current_buffer.append(interval)
+        else:
+            # Finalize the current_buffer (turn it into one merged region) and start anew
+            merged.extend(_finalize_buffer(current_buffer, statistic_func))
+            current_buffer = [interval]
+
+    # End of loop – finalize whatever is left
+    if current_buffer:
+        merged.extend(_finalize_buffer(current_buffer, statistic_func))
+
+    return merged
+
+
+def _finalize_buffer(buffer_intervals, statistic_func):
+    """
+    Takes all intervals currently in buffer_intervals and merges them into one region.
+    Returns a list with a single “merged” entry, or you could break it into multiple if you prefer.
+    """
+    if not buffer_intervals:
+        return []
+
+    chrom = buffer_intervals[0][0]
+    start = min(iv[1] for iv in buffer_intervals)
+    end   = max(iv[2] for iv in buffer_intervals)
+    values = [iv[3] for iv in buffer_intervals]
+    stat_val = statistic_func(values)
+
+    # Return a single merged interval (you can store additional info if desired)
+    return [(chrom, start, end, stat_val)]
+
 import statistics
 
 def compute_variance(values):
@@ -1014,7 +1027,6 @@ def compute_f1_scores(all_reads):
     per_ref_predictions = defaultdict(set)
     per_ref_gt = defaultdict(set)
     per_ref_counts = defaultdict(lambda: defaultdict(int))
-
     # Populate per_ref_predictions and per_ref_gt
     for ref, reads in all_reads.items():
         for read in reads:
@@ -1077,7 +1089,7 @@ def compute_f1_scores(all_reads):
 
     return per_ref_results, overall_scores
 
-def compare_metrics(original, new):
+def compare_metrics(original, new, breadth_old, breadth_new):
     """
     Compares original and new metrics and returns a pandas DataFrame.
 
@@ -1090,7 +1102,6 @@ def compare_metrics(original, new):
     """
     # Get all unique references
     all_refs = set(original.keys()).union(new.keys())
-
     # Prepare data for DataFrame
     data = []
     for ref in sorted(all_refs):
@@ -1101,21 +1112,28 @@ def compare_metrics(original, new):
         delta_fn = nw['FN'] - orig['FN']
         perc_tp_change = (delta_tp / orig['TP']) * 100 if orig['TP'] > 0 else 0.0
         perc_fp_change = (delta_fp / orig['FP']) * 100 if orig['FP'] > 0 else 0.0
-        total_perc_removed = (delta_fp + delta_fn + delta_tp) / (orig['TP'] + orig['FP'] + orig['FN']) * 100
+        total_p =  (orig['TP'] + orig['FP'] + orig['FN'])
+        total_perc_removed =  ( (delta_fp + delta_fn + delta_tp) / total_p * 100 ) if total_p > 0 else 0.0
         data.append({
             'Reference': ref,
             'TP Original': orig['TP'],
             'FP Original': orig['FP'],
             'FN Original': orig['FN'],
+            'Breadth Original': breadth_old.get(ref, 0),
+            'Breadth New': breadth_new.get(ref, 0),
             'TP New': nw['TP'],
             'FP New': nw['FP'],
             'FN New': nw['FN'],
-            'Δ TP': delta_tp,
+            # 'Δ TP': delta_tp,
             'Δ TP%': f"{perc_tp_change:.2f}",
-            'Δ FP': delta_fp,
+            # 'Δ FP': delta_fp,
             'Δ FP%': f"{perc_fp_change:.2f}",
             'Δ All%': f"{total_perc_removed:.2f}",
-            'Δ FN': delta_fn
+            'Δ Breadth': (breadth_new.get(ref, 0) - breadth_old.get(ref, 0)),
+            'Δ Breadth%': (breadth_new.get(ref, 0)  / breadth_old.get(ref, 0)) if breadth_old.get(ref, 0) > 0 else 0,
+            # 'Δ Regions %': f"{100*regions_stat.get('regions_remain', 0):.2f}",
+            # 'Sum Rs %': f"{ ( ( 100+total_perc_removed ) + ( 100*regions_stat.get('regions_remain', 0) ) ) /2  :.2f}",
+            # 'Δ FN': delta_fn
         })
 
     # Create DataFrame
@@ -1160,6 +1178,174 @@ def save_signatures_sourmash(signatures, output_sigfile):
         save_signatures(siglist, fp)
     fp.close()
     print(f"Signatures saved to {output_sigfile}")
+
+def calculate_breadth_of_coverage_dict(all_reads_dict, reference_lengths=None, skip_ids={}):
+    """
+    Calculate the breadth of coverage for each reference in a dictionary of reads.
+
+    Parameters:
+    - all_reads_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
+                            Each read dictionary must have 'start' and 'end' keys.
+    - reference_lengths (dict, optional): Keys are reference IDs (str), and values are the total length (int) of the reference.
+                                        If not provided, the reference length is inferred from the reads.
+
+    Returns:
+    - dict: Keys are reference IDs, and values are breadth of coverage percentages (float).
+    """
+    def calculate_breadth_of_coverage(reads, ref_length=None):
+        """
+        Helper function to calculate coverage for a single reference.
+
+        Parameters:
+        - reads (list of dict): Each dict has 'start' and 'end' keys.
+        - ref_length (int, optional): Total length of the reference. If not provided, inferred from reads.
+
+        Returns:
+        - float: Breadth of coverage as a percentage.
+        """
+        if not reads:
+            return 0.0  # No reads provided
+
+        # Extract intervals
+        intervals = [(read['start'], read['end']) for read in reads]
+
+        # Sort intervals by start position
+        sorted_intervals = sorted(intervals, key=lambda x: x[0])
+
+        # Merge overlapping or adjacent intervals
+        merged_intervals = []
+        current_start, current_end = sorted_intervals[0]
+
+        for start, end in sorted_intervals[1:]:
+            if start <= current_end + 1:  # Overlapping or adjacent
+                current_end = max(current_end, end)
+            else:
+                merged_intervals.append((current_start, current_end))
+                current_start, current_end = start, end
+        merged_intervals.append((current_start, current_end))  # Add the last interval
+
+        # Calculate total covered bases
+        total_covered = sum(end  - start   for start, end in merged_intervals)
+
+        # Define reference length
+        if ref_length is not None:
+            reference_length = ref_length
+            # Optionally, you might want to adjust merged_intervals to fit within reference_length
+            # Here, we assume reads are already within the reference
+        else:
+            min_start = min(start for start, end in intervals)
+            max_end = max(end for start, end in intervals)
+            reference_length = max_end - min_start + 1
+
+        # Calculate breadth of coverage
+        breadth = (total_covered / reference_length) * 100  # Percentage
+
+        return breadth
+
+    coverage_dict = {}
+    for ref_id, reads in all_reads_dict.items():
+        ref_length = reference_lengths.get(ref_id) if reference_lengths else None
+        # filter reads where != skip_ids
+        reads_to_skip = []
+        for r in reads:
+            if r.get('id') in skip_ids and ref_id in skip_ids.get(r.get('id'), []):
+                reads_to_skip.append(r.get('id'))
+        reads = [r for r in reads if r.get('id') not in reads_to_skip]
+        coverage = calculate_breadth_of_coverage(reads, ref_length)
+        coverage_dict[ref_id] = coverage
+
+    return coverage_dict
+
+def calculate_breadth_of_coverage_dict_regions(all_reads_dict, reference_lengths=None, removed_read_ids=None, regions_dict=None):
+    """
+    Calculate the breadth of coverage for each reference over specified regions,
+    excluding specified reads per reference.
+
+    Parameters:
+    - all_reads_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
+    - reference_lengths (dict, optional): Keys are reference IDs (str), and values are the total length (int) of the reference.
+    - removed_read_ids (defaultdict(list), optional): Keys are read IDs (str), and values are lists of reference IDs (str) to exclude.
+    - regions_dict (dict, optional): Keys are reference IDs (str), and values are lists of [start, end] regions.
+
+    Returns:
+    - dict: Keys are reference IDs, and values are breadth of coverage percentages (float).
+    """
+    from collections import defaultdict
+
+    def merge_intervals(intervals):
+        """
+        Merge overlapping or adjacent intervals.
+        """
+        if not intervals:
+            return []
+        sorted_intervals = sorted(intervals, key=lambda x: x[0])
+        merged = [sorted_intervals[0]]
+        for current in sorted_intervals[1:]:
+            last = merged[-1]
+            if current[0] <= last[1] + 1:
+                merged[-1] = (last[0], max(last[1], current[1]))
+            else:
+                merged.append(current)
+        return merged
+
+    def calculate_coverage(reads, regions):
+        """
+        Calculate the total covered bases within specified regions.
+        """
+        total_covered = 0
+        total_length = 0
+        for region_start, region_end in regions:
+            total_length += (region_end - region_start + 1)
+            # Find reads that overlap with this region
+            overlapping_reads = [
+                (max(read['start'], region_start), min(read['end'], region_end))
+                for read in reads
+                if not (read['end'] < region_start or read['start'] > region_end)
+            ]
+            # Merge overlapping reads within this region
+            merged_reads = merge_intervals(overlapping_reads)
+            # Sum covered bases
+            region_covered = sum(end - start  for start, end in merged_reads)
+            total_covered += region_covered
+        if total_length == 0:
+            return 0.0
+        return (total_covered / total_length) * 100
+
+    coverage_dict = {}
+    for ref_id, reads in all_reads_dict.items():
+        # Filter reads based on removed_read_ids
+        if removed_read_ids:
+            filtered_reads = [
+                read for read in reads
+                if not (
+                    read['id'] in removed_read_ids and
+                    ref_id in removed_read_ids[read['id']]
+                )
+            ]
+        else:
+            filtered_reads = reads  # No reads to remove
+
+        # Retrieve regions for the current reference
+        if regions_dict and ref_id in regions_dict:
+            regions = regions_dict[ref_id]
+        else:
+            # If no regions provided, consider the entire reference
+            if reference_lengths and ref_id in reference_lengths:
+                regions = [[1, reference_lengths[ref_id]]]  # 1-based coordinates
+            else:
+                # Infer from reads
+                if not filtered_reads:
+                    coverage_dict[ref_id] = 0.0
+                    continue
+                min_start = min(read['start'] for read in filtered_reads)
+                max_end = max(read['end'] for read in filtered_reads)
+                regions = [[min_start, max_end]]
+
+        # Calculate coverage over the specified regions
+        coverage = calculate_coverage(filtered_reads, regions)
+        coverage_dict[ref_id] = coverage
+
+    return coverage_dict
 
 def load_signatures_sourmash(input_sigfile):
     """
@@ -1263,7 +1449,15 @@ def create_signatures_for_cluster(merged_regions, cluster, all_reads, bam_path, 
     if not cluster_regions:
         return {}
     # then call your existing function that does minhashing
-    signatures = create_signatures_for_regions(cluster_regions, all_reads, bam_path, kmer_size, scaled)
+    num_workers = os.cpu_count()
+    signatures = create_signatures_for_regions(
+        cluster_regions,
+        all_reads,
+        bam_path,
+        kmer_size,
+        scaled,
+        num_workers=num_workers
+    )
     return signatures
 
 
@@ -1292,6 +1486,162 @@ def import_matrix_ani(matrix_file):
     return ani_matrix
 
 
+def should_merge(
+    current_intervals,
+    new_interval,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size,
+    max_length=None,
+    value_diff_tolerance=None
+):
+    """
+    Decide whether a new_interval can be merged into the current_intervals buffer
+    under these constraints:
+        - The combined statistic must be < max_stat_threshold
+        - The number of intervals in the merged chunk must be <= max_group_size
+        - (Optional) The total basepair span <= max_length
+        - (Optional) The difference in average (4th-col) values must be <= value_diff_tolerance
+    """
+    if len(current_intervals) >= max_group_size:
+        # Already at capacity for how many intervals we want to merge at once
+        return False
+
+    # Combine current_intervals with new_interval
+    candidate = current_intervals + [new_interval]
+
+    # 1) Check total length if max_length is defined
+    if max_length is not None:
+        min_start = min(interval[1] for interval in candidate)
+        max_end   = max(interval[2] for interval in candidate)
+        if (max_end - min_start) > max_length:
+            return False
+
+    # 2) Check combined statistic
+    values = [interval[3] for interval in candidate]
+    combined_stat = statistic_func(values)
+    if combined_stat > max_stat_threshold:
+        return False
+
+    # 3) (Optional) Check difference in average value between "neighbors"
+    #    In simpler terms, you might just check the difference between
+    #    new_interval's value vs. the average of current_intervals' values
+    #    if value_diff_tolerance is set.
+    if value_diff_tolerance is not None:
+        current_avg = sum(iv[3] for iv in current_intervals) / len(current_intervals)
+        new_val = new_interval[3]
+        if abs(new_val - current_avg) > value_diff_tolerance:
+            return False
+
+    # If all checks pass, we can merge
+    return True
+
+def merge_bedgraph_regions_by_ref(
+    regions,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size=1000
+):
+    """
+    Merges consecutive bedgraph-like intervals per reference (chrom).
+
+    :param regions: List of (chrom, start, end, coverage)
+    :param statistic_func: Function to compute a statistic from coverage values (e.g., Gini or variance)
+    :param max_stat_threshold: Maximum allowed statistic to keep merging
+    :param max_group_size: Max intervals to merge at once before forcing a cutoff
+    :return: List of (chrom, merged_start, merged_end, avg_coverage, statistic)
+    """
+    # Sort first by chrom, then by start
+    regions = sorted(regions, key=lambda x: (x[0], x[1]))
+
+    merged_all_refs = []
+
+    # Group the intervals by their reference (chrom)
+    for chrom, group_iter in groupby(regions, key=lambda x: x[0]):
+        group_list = list(group_iter)  # All intervals for this chrom
+        # Merge intervals for this chrom
+        merged_for_this_chrom = merge_intervals_for_single_ref(
+            group_list,
+            statistic_func,
+            max_stat_threshold,
+            max_group_size
+        )
+        merged_all_refs.extend(merged_for_this_chrom)
+
+    return merged_all_refs
+
+
+def merge_intervals_for_single_ref(regions, statistic_func, max_stat_threshold, max_group_size=1000):
+    """
+    Merges consecutive regions for a single reference, using statistic_func for coverage
+    (e.g., Gini or variance).
+    Returns a list of (chrom, start, end, avg_coverage, statistic).
+    """
+    # Sort by start, though we assume they are all same chrom
+    regions = sorted(regions, key=lambda x: x[1])
+
+    merged = []
+
+    # Accumulators for the current merge group
+    current_chrom = None
+    current_start = None
+    current_end = None
+    coverage_values = []
+    region_count = 0
+
+    def finalize_group():
+        """Finalize the current merge group and append to merged list."""
+        if not coverage_values:
+            return
+        avg_coverage = sum(coverage_values) / len(coverage_values)
+        stat_value = statistic_func(coverage_values)
+        merged.append((current_chrom, current_start, current_end, avg_coverage))
+
+    for (chrom, start, end, cov) in regions:
+        if current_chrom is None:
+            # Initialize the first group
+            current_chrom = chrom
+            current_start = start
+            current_end = end
+            coverage_values = [cov]
+            region_count = 1
+            continue
+
+        # Check if the next interval is contiguous with the current
+        # (you could relax this condition if you want to merge even if not contiguous)
+        if start == current_end:
+            # Tentatively add coverage
+            extended_values = coverage_values + [cov]
+            test_stat = statistic_func(extended_values)
+
+            # Check if adding this interval keeps us under threshold and max_group_size
+            if test_stat <= max_stat_threshold and region_count < max_group_size:
+                coverage_values.append(cov)
+                current_end = end
+                region_count += 1
+            else:
+                # Statistic or group size exceeded
+                finalize_group()
+
+                # Start a new group
+                current_chrom = chrom
+                current_start = start
+                current_end = end
+                coverage_values = [cov]
+                region_count = 1
+        else:
+            # Different segment or gap => finalize the current group and start fresh
+            finalize_group()
+            current_chrom = chrom
+            current_start = start
+            current_end = end
+            coverage_values = [cov]
+            region_count = 1
+
+    # Final group
+    finalize_group()
+
+    return merged
 
 def determine_conflicts(
         output_dir = None,
@@ -1302,12 +1652,12 @@ def determine_conflicts(
         min_similarity_comparable = 0.0,
         use_variance = False,
         apply_ground_truth = False,
-        use_reads_gt = False,
         sigfile = None,
         bedfile = None,
         reference_signatures = None,
         scaled = 100,
         kmer_size=31,
+        FAST_MODE=True
 ):
     # parser = argparse.ArgumentParser(description="Use bedtools to define coverage-based regions and compare read signatures using sourmash MinHash.")
     # parser.add_argument("--input_bam", required=True, help="Input BAM file.")
@@ -1335,28 +1685,22 @@ def determine_conflicts(
     #     help="Minimum ANI threshold to consider references comparable (default=0.7)"
     # )
     # args = parser.parse_args()
-
     os.makedirs(output_dir, exist_ok=True)
     import time
     start = time.time()
-    basename = os.path.basename(input_bam).replace(".bam", "")
 
-    # Step 1: Compute coverage using bedtools genomecov, if not present then do it with depthfile
-    if not bedfile:
-        bed_path = os.path.join(output_dir, f"{basename}.bed")
-        bed_path = None
-        if not bed_path:
-            coverage_output = compute_coverage_with_bedtools(
-                input_bam,
-                None,
-            )
-    else:
-        coverage_output = import_bedfile(bedfile)
     end = time.time()
     print(f"Time to complete import of bed information: {end-start} seconds")
     # Step 8: Load all reads from BAM once
     print("Loading reads from BAM...")
-    all_reads = load_reads_from_bam(input_bam)
+    all_reads, reflengths = load_reads_from_bam(input_bam)
+
+    # filter all _reads to be only NC_006998.1 or NC_003310.1
+    # all_reads = {k: v for k, v in all_reads.items() if k in ['NC_006998.1', 'NC_003310.1']}
+    # get the total number of reads in all_reads (len of values in all_reads)
+    # total_reads = sum([len(v) for k, v in all_reads.items()])
+
+    breadth_old = calculate_breadth_of_coverage_dict(all_reads, reflengths, [])
     print(f"Total references with reads: {len(all_reads)}")
     gt_performances = dict()
     # 3. If user provided a reference comparison CSV
@@ -1379,11 +1723,20 @@ def determine_conflicts(
         # or you can treat everything as a single big cluster
         # (depending on your logic).
         all_references = set(all_reads.keys())
-        clusters = [all_references]
-
+        clusters = [set(all_reads.keys())]
     # Step 7: Parse filtered BED to get regions
     regions = parse_bed_file(bedfile)
+    # filter regions only present in all_reads
+    regions = [r for r in regions if r[0] in all_reads.keys()]
     print(f"Total regions defined: {len(regions)}")
+    # get unique count of read_ids in all_reads
+    unique_read_ids = defaultdict(int)
+    for ref, reads in all_reads.items():
+        for read in reads:
+            unique_read_ids[read.get('id')]+=1
+    total_gt1 = sum([1 for k, v in unique_read_ids.items() if v > 1])
+    total_sum = sum([v for k, v in unique_read_ids.items()])
+    print(f"Total unique reads: {len(unique_read_ids)}, sum {total_sum}, sumgt1: {total_gt1}")
     # 2. Choose statistic function
     if use_variance:
         from statistics import pvariance
@@ -1393,23 +1746,45 @@ def determine_conflicts(
         statistic_func = compute_gini
         stat_name = "gini"
     # 3. Merge
-    threshold=0.9
+
+    threshold=0.8
+
     merged_regions = merge_bedgraph_regions(
         regions,
         statistic_func=statistic_func,
         max_stat_threshold=threshold,
-        max_group_size=400  # Example: limit merges to 200 intervals
+        max_group_size=600  #Limit merges to x intervals
     )
+
+    # merged_regions = merge_bedgraph_regions_by_ref(
+    #     regions,
+    #     statistic_func=statistic_func,
+    #     max_stat_threshold=threshold,
+    #     max_group_size=40  #Limit merges to x intervals
+    # )
+
+
 
     # 4. Print or save results
     print(f"Merged regions (using {stat_name} <= {threshold}):")
     print(f"Length of original regions : {len(regions)})")
     print(f"Length of merged regions: {len(merged_regions)}")
 
-    if not sigfile:
+
+
+
+    if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
         print("Creating signatures for regions...")
-        signatures = create_signatures_for_regions(merged_regions, all_reads, input_bam, kmer_size, scaled)
+        num_workers = os.cpu_count()
+        signatures = create_signatures_for_regions(
+            merged_regions,
+            all_reads,
+            input_bam,
+            kmer_size,
+            scaled,
+            num_workers=num_workers
+        )
         print(f"Total signatures created: {len(signatures)}")
         # Step 10: Save signatures to files
         sig_dir = os.path.join(output_dir, "signatures")
@@ -1417,6 +1792,7 @@ def determine_conflicts(
         save_signatures_sourmash(signatures, single_sigfile)
     else:
         # read in the signatures
+        print(f"loading signatures from sigfile: {sigfile}")
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
 
@@ -1426,17 +1802,73 @@ def determine_conflicts(
     print(f"Clusters to compare", )
     for i, c in enumerate(clusters):
         print(f"C{i}:", c)
-    passed_regions, sum_comparisons = compare_signatures(
-        signatures,
-        output_csv,
-        min_threshold,
-        clusters
-    )
-    # 1) Build conflict groups from sum_comparisons
-    conflict_groups = build_conflict_groups(sum_comparisons, min_jaccard=0.0)
-    # for g in conflict_groups:
-    #     print(f"Conflict group: {g}")
 
+    # # get count signautres by reference
+    # sig_count = defaultdict(int)
+    # for region1, sigs in signatures.items():
+    #     ref, start_end = region1.split(":")
+    #     sig_count[ref] +=1
+    # print(f"Total signatures by reference")
+    # for k, v in sig_count.items():
+    #     print(f"\t{k}: {v}")
+    signatures = list(signatures.items())
+    # get index of all_reads where read.id is NC_003310.1:178327-181685
+    # sigs_to_compare = []
+    # for sig in signatures:
+    #     if sig[0] == 'NC_003310.1:178327-181685' or sig[0] == 'NC_006998.1:9528-183447':
+    #         print(sig)
+    #         sigs_to_compare.append(sig)
+    # # compare signatures in sigs_to_compare
+    # print(f"Comparing {len(sigs_to_compare)} signatures")
+    # for i, sig in enumerate(sigs_to_compare):
+    #     print(f"Comparing {i+1} of {len(sigs_to_compare)}")
+    #     mh1 = sig[1].minhash
+    #     for j, sig2 in enumerate(sigs_to_compare):
+    #         if i == j:
+    #             continue
+    #         mh2 = sig2[1].minhash
+    #         jaccard = mh1.jaccard(mh2)
+    #         print(jaccard)
+    #         if jaccard >= min_threshold:
+    #             c1_in_2 = mh1.avg_containment(mh2)
+    #             c2_in_1 = mh2.avg_containment(mh1)
+
+
+
+    # exit()
+    if FAST_MODE:
+        print("Building SBT index for fast mode...")
+        sbt_index = build_sbt_index(
+            signatures,
+            ksize=51,
+            clusters=clusters,
+        )
+        print("Searching SBT...")
+        sum_comparisons = fast_mode_sbt(
+            signatures,
+            sbt_index,
+            output_csv,
+            min_threshold,
+            clusters
+        )
+    else:
+        print("Using linear pairwise comparison (slow mode)...")
+        sum_comparisons = slow_mode_linear(
+            signatures,
+            output_csv,
+            min_threshold,
+            cluster_map=clusters
+        )
+
+    print("Building Conflict Groups")
+    # 1) Build conflict groups from sum_comparisons
+    start_time = time.time()
+    conflict_groups = build_conflict_groups(
+        sum_comparisons,
+        min_jaccard=0.0
+    )
+    print(f"Conflict groups {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
+    start_time = time.time()
     # 2) For each group, remove 1 read from each region
     removed_read_ids = finalize_proportional_removal(
         conflict_groups,
@@ -1446,45 +1878,73 @@ def determine_conflicts(
     )
 
 
+    print(f"Done with proportional removal in built in {time.time() - start_time:.2f} seconds. Calculating Bread of coverage for the new set of reads")
+    breadth = calculate_breadth_of_coverage_dict(all_reads, reflengths, removed_read_ids)
 
-
-    # 3) Write final BAM
     filtered_bam = os.path.join(output_dir, "filtered.hash.bam")
-    create_filtered_bam(
-        input_bam,
-        filtered_bam,
-        removed_read_ids.keys()
-    )
+    comparison_df = None
+    includable_read_ids = dict()
+    for ref, reads in all_reads.items():
+        for read in reads:
+            if read.get('id') not in removed_read_ids:
+                if ref not in includable_read_ids:
+                    includable_read_ids[ref] = []
+                includable_read_ids[(ref, read.get('id'))] = True
+    try:
+        start_time = time.time()
+        print(f"Completed Bread of coverage setting in {time.time() - start_time}. Filtering to a new bamfile")
+        create_filtered_bam(
+            input_bam,
+            filtered_bam,
+            includable_read_ids.keys()
+        )
+    except Exception as e:
+        print(f"Error while filtering BAM: {e}")
 
 
    # Create filtered BAM
-    if use_reads_gt:
-        for ref, reads in all_reads.items():
-            for i, read in enumerate(reads):
-                gt_read = read['id'].split("_")
-                gt_name = "_".join(gt_read[:-2])
-                all_reads[ref][i]['gt'] = gt_name
-        print("Calculating f1 scores of alignment first....")
-        per_ref, overall = compute_f1_scores(all_reads)
-        # Print per-reference scores
-         # Display per-reference results
-        # Display micro-averaged results
-        gt_performances['original'] = dict(overall=overall, per_ref = per_ref)
-        all_reads = load_reads_from_bam(filtered_bam)
-        for ref, reads in all_reads.items():
-            for i, read in enumerate(reads):
-                gt_read = read['id'].split("_")
-                gt_name = "_".join(gt_read[:-2])
-                all_reads[ref][i]['gt'] = gt_name
-        print("Calculating f1 scores of alignment first....")
-        per_ref, overall = compute_f1_scores(all_reads)
-        gt_performances['new'] = dict(overall=overall, per_ref = per_ref)
-        # Compare the metrics
-        comparison_df = compare_metrics(gt_performances['original']['per_ref'], per_ref)
+    # if use_reads_gt:
+    for ref, reads in all_reads.items():
+        for i, read in enumerate(reads):
+            gt_read = read['id'].split("_")
+            gt_name = "_".join(gt_read[:-2])
+            all_reads[ref][i]['gt'] = gt_name
 
-        # Display the comparison
+    per_ref, overall = compute_f1_scores(all_reads)
+    # Print per-reference scores
+        # Display per-reference results
+    # Display micro-averaged results
+    gt_performances['original'] = dict(overall=overall, per_ref = per_ref)
+    all_reads, _ = load_reads_from_bam(filtered_bam)
+    for ref, reads in all_reads.items():
+        for i, read in enumerate(reads):
+            gt_read = read['id'].split("_")
+            gt_name = "_".join(gt_read[:-2])
+            all_reads[ref][i]['gt'] = gt_name
+    print("Calculating f1 scores of alignment first....")
+    per_ref, overall = compute_f1_scores(
+        all_reads
+    )
+    gt_performances['new'] = dict(overall=overall, per_ref = per_ref)
+    # Compare the metrics
+    comparison_df = compare_metrics(
+        gt_performances['original']['per_ref'],
+        per_ref,
+        breadth_old,
+        breadth
+    )
+    try:
+        # print df to output_dir/removal_stats.xlsx
+        comparison_df.to_excel(os.path.join(output_dir, "removal_stats.xlsx"), index=False)
+            # Display the comparison
         print("\n=== Metrics Comparison ===\n")
-        print(comparison_df.to_string(index=False))
+        # convert 'Δ All%' to float
+        comparison_df['Δ All%'] = comparison_df['Δ All%'].astype(float)
+
+        print(comparison_df[comparison_df['Δ All%'] != 0 ][['Reference', 'Δ All%', 'Δ Breadth%', 'Breadth New', 'Breadth Original', 'TP New', 'TP Original', 'FP Original', 'FP New']].to_string(index=False))
+    except Exception as ex:
+        print(f"Error while saving comparison to Excel and printing it to console: {ex}")
+    if apply_ground_truth:
         print("Original Metrics Overall: ")
         print(f"\tPrecision: {gt_performances['original']['overall']['micro_precision']:.4f}")
         print(f"\tRecall: {gt_performances['original']['overall']['micro_recall']:.4f}")
@@ -1493,27 +1953,27 @@ def determine_conflicts(
         print(f"\tPrecision: {gt_performances['new']['overall']['micro_precision']:.4f}")
         print(f"\tRecall: {gt_performances['new']['overall']['micro_recall']:.4f}")
         print(f"\tF1: {gt_performances['new']['overall']['micro_f1']:.4f}")
-        # print df to output_dir/removal_stats.xlsx
-        comparison_df.to_excel(os.path.join(output_dir, "removal_stats.xlsx"), index=False)
-    if abu_file:
-        # Parse ground truth coverage
-        ground_truth = parse_ground_truth(abu_file)
-        # Step 14: Compute coverage stats before and after filtering
-        print("Computing coverage statistics before filtering...")
-        original_coverage_stats = compute_breadth_and_depth(input_bam)
-        print("Computing coverage statistics after filtering...")
-        filtered_coverage_stats = compute_breadth_and_depth(filtered_bam)
+    # if abu_file:
+    #     # Parse ground truth coverage
+    #     ground_truth = parse_ground_truth(abu_file)
+    #     # Step 14: Compute coverage stats before and after filtering
+    #     print("Computing coverage statistics before filtering...")
+    #     original_coverage_stats = compute_breadth_and_depth(input_bam)
+    #     print("Computing coverage statistics after filtering...")
+    #     filtered_coverage_stats = compute_breadth_and_depth(filtered_bam)
 
-        # Step 15: Report coverage stats compared to ground truth
-        print("Reporting coverage statistics...")
-        report_coverage_stats(ground_truth, original_coverage_stats, filtered_coverage_stats, output_dir)
+    #     # Step 15: Report coverage stats compared to ground truth
+    #     print("Reporting coverage statistics...")
+    #     report_coverage_stats(ground_truth, original_coverage_stats, filtered_coverage_stats, output_dir)
 
-        # Step 16: Compute performance metrics
-        print("Computing performance metrics based on ground truth and filtered BAM...")
-        TP, FP, FN, precision, recall, f1 = compute_performance(ground_truth, filtered_bam)
-        print("Performance Metrics:")
-        print(f"TP: {TP}, FP: {FP}, FN: {FN}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1-Score: {f1:.4f}")
-    return comparison_df
+    #     # Step 16: Compute performance metrics
+    #     print("Computing performance metrics based on ground truth and filtered BAM...")
+    #     TP, FP, FN, precision, recall, f1 = compute_performance(ground_truth, filtered_bam)
+    #     print("Performance Metrics:")
+    #     print(f"TP: {TP}, FP: {FP}, FN: {FN}")
+    #     print(f"Precision: {precision:.4f}")
+    #     print(f"Recall: {recall:.4f}")
+    #     print(f"F1-Score: {f1:.4f}")
+        return filtered_bam, comparison_df
+    else:
+        return filtered_bam, comparison_df

@@ -169,7 +169,6 @@ include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
-include { SOURMASH } from '../subworkflows/local/sourmash'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
