@@ -217,7 +217,7 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
         ch_assembly_txt
     )
-    if (!params.skip_refpull && (!params.skip_realignment && !params.skip_features)) {
+    if (( params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
         try {
             // Attempt to use the FEATURES_DOWNLOAD process
             FEATURES_DOWNLOAD(
