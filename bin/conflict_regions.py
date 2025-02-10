@@ -7,7 +7,9 @@ from sourmash.sbt import SBT, GraphFactory
 from sourmash.sbtmh import SigLeaf
 from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_signatures
 from itertools import groupby
+import statistics
 
+import subprocess
 
 from tqdm import tqdm  # For progress bar
 from collections import defaultdict
@@ -984,7 +986,6 @@ def _finalize_buffer(buffer_intervals, statistic_func):
     # Return a single merged interval (you can store additional info if desired)
     return [(chrom, start, end, stat_val)]
 
-import statistics
 
 def compute_variance(values):
     return statistics.pvariance(values)  # or statistics.variance(values)
@@ -1178,6 +1179,80 @@ def save_signatures_sourmash(signatures, output_sigfile):
         save_signatures(siglist, fp)
     fp.close()
     print(f"Signatures saved to {output_sigfile}")
+
+
+
+def create_coverage(bamfile=None, covfile_output=None):
+    """
+    Generate coverage statistics using samtools coverage.
+
+    Parameters:
+    - bamfile (str): Path to the input BAM file.
+    - covfile_output (str): Path to the output coverage file.
+
+    Returns:
+    - None if coverage stats are printed to stdout.
+    - dict: Dictionary of coverage stats {reference: coverage} if the output file is empty or the command fails.
+    """
+    try:
+        # Run samtools coverage, capturing stdout and stderr
+        result = subprocess.run(
+            ['samtools', 'coverage', bamfile],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        # Check if the command executed successfully
+        if result.returncode == 0:
+            coverage_output = result.stdout.strip()
+            if covfile_output:
+                # Write coverage output to the specified file
+                with open(covfile_output, 'w') as outfile:
+                    outfile.write(coverage_output)
+                # Check if the output file is non-empty
+                if os.path.getsize(covfile_output) == 0:
+                    raise ValueError("Coverage output file is empty.")
+            # Output file is empty; parse stdout into a dictionary
+            coverage_dict = parse_coverage_output(coverage_output)
+            return coverage_dict
+        else:
+            # Command failed; optionally, handle stderr
+            print(f"samtools coverage failed with error:\n{result.stderr}")
+            return
+    except FileNotFoundError:
+        print("samtools is not installed or not found in the system PATH.")
+        return
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return
+
+def parse_coverage_output(coverage_output):
+    """
+    Parse samtools coverage output into a dictionary.
+
+    Parameters:
+    - coverage_output (str): Raw coverage output from samtools.
+
+    Returns:
+    - dict: Dictionary of coverage stats {reference: coverage}.
+    """
+    coverage_dict = {}
+    lines = coverage_output.split('\n')
+
+    for line in lines:
+        if line and not line.startswith('#'):
+            fields = line.split('\t')
+            if len(fields) >= 5:
+                reference = fields[0]
+                coverage = fields[5]
+                try:
+                    coverage = float(coverage)
+                    coverage_dict[reference] = coverage
+                except ValueError:
+                    print(f"Warning: Unable to convert coverage '{coverage}' to float for reference '{reference}'. Skipping.")
+
+    return coverage_dict
 
 def calculate_breadth_of_coverage_dict(all_reads_dict, reference_lengths=None, skip_ids={}):
     """
@@ -1689,21 +1764,30 @@ def determine_conflicts(
     import time
     start = time.time()
 
-    end = time.time()
-    print(f"Time to complete import of bed information: {end-start} seconds")
     # Step 8: Load all reads from BAM once
     print("Loading reads from BAM...")
     all_reads, reflengths = load_reads_from_bam(input_bam)
+    end = time.time()
+    print(f"Time to complete import of bed information: {end-start} seconds")
 
     # filter all _reads to be only NC_006998.1 or NC_003310.1
     # all_reads = {k: v for k, v in all_reads.items() if k in ['NC_006998.1', 'NC_003310.1']}
     # get the total number of reads in all_reads (len of values in all_reads)
     # total_reads = sum([len(v) for k, v in all_reads.items()])
+    start_stime = time.time()
+    try:
+        breadth_old = create_coverage(input_bam, None)
+    except Exception as e:
+        print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
+        try:
+            breadth_old = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths)
+        except Exception as e:
+            print(f"Error calculating coverage with internal method: {e}")
+            breadth_old = {}
 
-    breadth_old = calculate_breadth_of_coverage_dict(all_reads, reflengths, [])
-    print(f"Total references with reads: {len(all_reads)}")
+    print(f"Total references with reads: {len(all_reads)}. Done in {time.time()-start_stime} seconds")
     gt_performances = dict()
-    # 3. If user provided a reference comparison CSV
+
 
 
     if matrix:
@@ -1878,9 +1962,7 @@ def determine_conflicts(
     )
 
 
-    print(f"Done with proportional removal in built in {time.time() - start_time:.2f} seconds. Calculating Bread of coverage for the new set of reads")
-    breadth = calculate_breadth_of_coverage_dict(all_reads, reflengths, removed_read_ids)
-
+    start_time = time.time()
     filtered_bam = os.path.join(output_dir, "filtered.hash.bam")
     comparison_df = None
     includable_read_ids = dict()
@@ -1891,7 +1973,7 @@ def determine_conflicts(
                     includable_read_ids[ref] = []
                 includable_read_ids[(ref, read.get('id'))] = True
     try:
-        start_time = time.time()
+
         print(f"Completed Bread of coverage setting in {time.time() - start_time}. Filtering to a new bamfile")
         create_filtered_bam(
             input_bam,
@@ -1901,7 +1983,24 @@ def determine_conflicts(
     except Exception as e:
         print(f"Error while filtering BAM: {e}")
 
+    finally:
 
+        print(f"Done with proportional removal in built in {time.time() - start_time:.2f} seconds. Calculating Bread of coverage for the new set of reads")
+        try:
+            breadth = create_coverage(filtered_bam, None)
+        except Exception as e:
+            print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
+            try:
+                breadth = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths, skip_ids=removed_read_ids)
+            except Exception as e:
+                print(f"Error calculating coverage with internal method: {e}")
+                breadth = {}
+        # # 3. If user provided a reference comparison CSV
+        # for k, v in breadth_old.items():
+        #     print(k, v)
+        # print("-----------")
+        # for k, v in breadth.items():
+        #     print(k, v)
    # Create filtered BAM
     # if use_reads_gt:
     for ref, reads in all_reads.items():
