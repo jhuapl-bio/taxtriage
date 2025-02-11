@@ -1180,79 +1180,84 @@ def save_signatures_sourmash(signatures, output_sigfile):
     fp.close()
     print(f"Signatures saved to {output_sigfile}")
 
-
-
-def create_coverage(bamfile=None, covfile_output=None):
+def create_breadth_coverage_pysam(bamfile=None, covfile_output=None, coverage_threshold=1):
     """
-    Generate coverage statistics using samtools coverage.
+    Generate breadth of coverage statistics using pysam.
 
     Parameters:
     - bamfile (str): Path to the input BAM file.
-    - covfile_output (str): Path to the output coverage file.
+    - covfile_output (str, optional): Path to the output coverage file.
+    - coverage_threshold (int, optional): Minimum coverage depth to consider a base as covered. Default is 1.
 
     Returns:
-    - None if coverage stats are printed to stdout.
-    - dict: Dictionary of coverage stats {reference: coverage} if the output file is empty or the command fails.
+    - None: If coverage stats are printed to stdout.
+    - dict: Dictionary of coverage stats {reference: breadth_of_coverage_percentage} if the output file is empty or the command fails.
     """
     try:
-        # Run samtools coverage, capturing stdout and stderr
-        result = subprocess.run(
-            ['samtools', 'coverage', bamfile],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+        if not bamfile:
+            raise ValueError("Parameter 'bamfile' is required.")
 
-        # Check if the command executed successfully
-        if result.returncode == 0:
-            coverage_output = result.stdout.strip()
-            if covfile_output:
-                # Write coverage output to the specified file
-                with open(covfile_output, 'w') as outfile:
-                    outfile.write(coverage_output)
-                # Check if the output file is non-empty
-                if os.path.getsize(covfile_output) == 0:
-                    raise ValueError("Coverage output file is empty.")
-            # Output file is empty; parse stdout into a dictionary
-            coverage_dict = parse_coverage_output(coverage_output)
-            return coverage_dict
+        if not os.path.exists(bamfile):
+            raise FileNotFoundError(f"BAM file '{bamfile}' does not exist.")
+
+        # Open the BAM file
+        with pysam.AlignmentFile(bamfile, "rb") as bam:
+            references = bam.references
+            lengths = bam.lengths
+
+            breadth_coverage = {}
+
+            for ref, length in zip(references, lengths):
+                # Initialize covered bases count
+                covered_bases = 0
+
+                # Using count_coverage to get coverage per base
+                # Returns a tuple of four lists (A, C, G, T) coverage
+                coverage = bam.count_coverage(ref, quality_threshold=0)
+
+                # Sum coverage across all four bases to get total coverage per base
+                total_coverage = [sum(base) for base in zip(*coverage)]
+
+                # Calculate the number of bases with coverage >= threshold
+                for cov in total_coverage:
+                    if cov >= coverage_threshold:
+                        covered_bases += 1
+
+                # Calculate breadth of coverage percentage
+                breadth = (covered_bases / length) * 100 if length > 0 else 0
+                breadth_coverage[ref] = breadth
+
+        if covfile_output:
+            # Write coverage statistics to the specified file
+            with open(covfile_output, 'w') as outfile:
+                outfile.write("Reference\tBreadth_of_Coverage(%)\n")
+                for ref, breadth in breadth_coverage.items():
+                    outfile.write(f"{ref}\t{breadth:.2f}\n")
+
+            # Check if the output file is non-empty
+            if os.path.getsize(covfile_output) > 0:
+                # Print the coverage statistics to stdout
+                with open(covfile_output, 'r') as infile:
+                    coverage_data = infile.read()
+                    print(coverage_data)
+                return
+            else:
+                # Output file is empty; return the coverage dictionary
+                print("Coverage output file is empty. Returning coverage data as a dictionary.")
+                return breadth_coverage
         else:
-            # Command failed; optionally, handle stderr
-            print(f"samtools coverage failed with error:\n{result.stderr}")
-            return
-    except FileNotFoundError:
-        print("samtools is not installed or not found in the system PATH.")
-        return
+            # No output file specified; return the coverage dictionary
+            return breadth_coverage
+
+    except FileNotFoundError as fnf_error:
+        print(f"Error: {fnf_error}")
+        raise
+    except ValueError as ve:
+        print(f"Error: {ve}")
+        raise
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-        return
-
-def parse_coverage_output(coverage_output):
-    """
-    Parse samtools coverage output into a dictionary.
-
-    Parameters:
-    - coverage_output (str): Raw coverage output from samtools.
-
-    Returns:
-    - dict: Dictionary of coverage stats {reference: coverage}.
-    """
-    coverage_dict = {}
-    lines = coverage_output.split('\n')
-
-    for line in lines:
-        if line and not line.startswith('#'):
-            fields = line.split('\t')
-            if len(fields) >= 5:
-                reference = fields[0]
-                coverage = fields[5]
-                try:
-                    coverage = float(coverage)
-                    coverage_dict[reference] = coverage
-                except ValueError:
-                    print(f"Warning: Unable to convert coverage '{coverage}' to float for reference '{reference}'. Skipping.")
-
-    return coverage_dict
+        raise
 
 def calculate_breadth_of_coverage_dict(all_reads_dict, reference_lengths=None, skip_ids={}):
     """
@@ -1776,15 +1781,15 @@ def determine_conflicts(
     # total_reads = sum([len(v) for k, v in all_reads.items()])
     start_stime = time.time()
     try:
-        breadth_old = create_coverage(input_bam, None)
+
+        breadth_old = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths)
     except Exception as e:
         print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
         try:
-            breadth_old = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths)
+            breadth_old = create_breadth_coverage_pysam(input_bam, None)
         except Exception as e:
             print(f"Error calculating coverage with internal method: {e}")
             breadth_old = {}
-
     print(f"Total references with reads: {len(all_reads)}. Done in {time.time()-start_stime} seconds")
     gt_performances = dict()
 
@@ -1987,11 +1992,11 @@ def determine_conflicts(
 
         print(f"Done with proportional removal in built in {time.time() - start_time:.2f} seconds. Calculating Bread of coverage for the new set of reads")
         try:
-            breadth = create_coverage(filtered_bam, None)
+            breadth = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths, skip_ids=removed_read_ids)
         except Exception as e:
             print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
             try:
-                breadth = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths, skip_ids=removed_read_ids)
+                breadth = create_breadth_coverage_pysam(filtered_bam, None)
             except Exception as e:
                 print(f"Error calculating coverage with internal method: {e}")
                 breadth = {}
