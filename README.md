@@ -351,10 +351,17 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRA
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 OR OTHER DEALINGS IN THE SOFTWARE.
 
-## Acknowledgements
 
+<!---
+
+## Acknowledgements
 This software tool was supported by the Cooperative Agreement Number NU60OE000104, funded by the Centers
-for Disease Control and Prevention through the Association of Public Health Laboratories. Its contents
-are solely the responsibility of the authors and do not necessarily represent the official views of the Centers
+for Disease Control and Prevention through the Association of Public Health Laboratories.
+
+Its contents are solely the responsibility of the authors and do not necessarily represent the official views of the Centers
 for Disease Control and Prevention, the Department of Health and Human Services, or the Association of Public Health
 Laboratories.
+
+-->
+
+
