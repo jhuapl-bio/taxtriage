@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import sys
 from io import BytesIO
-import random
 
 def body_site_map(x):
     body_sites = {

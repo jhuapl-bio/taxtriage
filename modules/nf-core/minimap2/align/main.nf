@@ -47,8 +47,10 @@ process MINIMAP2_ALIGN {
     // if input is illumina then use -ax sr else use -ax map-ont
     def mmap2_window   = params.mmap2_window  ? "-w ${params.mmap2_window}" : ''
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
+    // if it contains the substring "dnwld" in reference 
+    // then download the reference and use it
     """
-    
+
     minimap2 \\
         $args $mapx \\
         -t $cpu_limit -I $I_value \\

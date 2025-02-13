@@ -179,16 +179,22 @@
                     "description": "Dont use minimap2 for short reads, use bowtie2 instead",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "use_diamond": {
+                    "type": "boolean",
+                    "description": "Use DIAMOND BLASTX on the following BAM from the alignment step(s)",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "use_denovo": {
+                    "type": "boolean",
+                    "description": "Use De Novo Assembly. Default is Flye for Longreads and Megahit for short",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_report": {
                     "type": "boolean",
                     "description": "Skip the pathogen report",
                     "fa_icon": "fas fa-file-signature"
-                },
-                "skip_denovo": {
-                    "type": "boolean",
-                    "description": "Skip De Novo Assembly",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
                 },
                 "skip_realignment": {
                     "type": "boolean",
@@ -384,6 +390,13 @@
                     "description": "Skip Kraken2. Will not work with \"unknown taxa\" mode. You must provide a reference FASTA if this is toggled on.",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
+                },
+                "skip_refpull": {
+                    "type": "boolean",
+                    "description": "Skip downloading references from NCBI",
+                    "default": false,
+                    "hint": "Must provide a local reference fasta file. This is only useful if you want K2 outputs in tandem with a local ref file output",
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "skip_krona": {
                     "type": "boolean",
