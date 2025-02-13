@@ -461,7 +461,7 @@ def create_report(
         "Specimen ID (Type): The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
         "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
-        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample.",
+        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
         "Confidence Metric (0-1): A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species.",
         "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
@@ -636,7 +636,7 @@ def main():
     # Sort on # Reads aligned
     df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
-    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)", axis=1)
+    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%", axis=1)
     # add body sit to Sample col with ()
     def make_sample(x):
         if not x['body_site']:
@@ -697,6 +697,8 @@ def main():
     # df_full['name'] = df_full['name'] + " (" + df_full['Taxonomic ID #'].astype(str) + ")"
     df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
+    # lambda x add the % Reads column to name column
+    # df_full['name'] = df_full.apply(lambda x: f"{x['name']} ({x['% Reads']:.2f}%)", axis=1)
     df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
         "name": "Detected Organism",

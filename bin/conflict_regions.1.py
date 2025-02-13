@@ -8,37 +8,25 @@ from sourmash.sbtmh import SigLeaf
 from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_signatures
 from itertools import groupby
 import statistics
-from typing import List, Tuple, Optional, Dict
-import numpy as np
-import concurrent.futures
 
+import subprocess
 
 from tqdm import tqdm  # For progress bar
-from collections import defaultdict, namedtuple
-import pandas as pd
-
+from collections import defaultdict
 
 def parse_bed_file(bed_file_path):
     """
-    Parse a BED file using pandas and return a DataFrame with optimized dtypes.
+    Parse a BED file and return a list of regions as tuples: (chrom, start, end)
     """
-    # Define column names
-    column_names = ['chrom', 'start', 'end', 'depth']
-
-    # Read the BED file with specified dtypes
-    df = pd.read_csv(
-        bed_file_path,
-        sep='\t',
-        header=None,
-        names=column_names,
-        dtype={
-            'chrom': 'category',       # Use 'category' dtype for repeated strings
-            'start': 'int32',          # Use smallest sufficient integer type
-            'end': 'int32',
-            'depth': 'float32'         # Assuming 'depth' can be a float; adjust as needed
-        }
-    )
-    return df
+    regions = []
+    with open(bed_file_path, 'r') as f:
+        for line in f:
+            parts = line.strip().split('\t')
+            if len(parts) < 3:
+                continue
+            chrom, start, end, depth = parts[0], int(parts[1]), int(parts[2]), int(parts[3])
+            regions.append((chrom, start, end, depth))
+    return regions
 
 def load_reads_from_bam(bam_path):
     """
@@ -58,7 +46,7 @@ def load_reads_from_bam(bam_path):
     """
     reflengths = {}
     bam = pysam.AlignmentFile(bam_path, "rb")
-    reads_map = {}
+    all_reads = {}
     # get reflengths all references
     for ref in bam.references:
         reflengths[ref] = bam.get_reference_length(ref)
@@ -71,19 +59,18 @@ def load_reads_from_bam(bam_path):
 
         seq = read.query_sequence
         if seq:
-            if refname not in reads_map:
-                reads_map[refname] = []
-            reads_map[refname].append({
+            if refname not in all_reads:
+                all_reads[refname] = []
+            all_reads[refname].append({
                 'id': read.query_name,
-                # 'seq': seq,
+                'seq': seq,
                 'start': read.reference_start,
-                'end': read.reference_end,
-                'ref': refname
+                'end': read.reference_end
             })
     bam.close()
-    return reads_map, reflengths
+    return all_reads, reflengths
 
-def fetch_reads_in_region(reads_map, refname, start, end):
+def fetch_reads_in_region(all_reads, refname, start, end):
     """
     Given the pre-loaded reads dictionary, return all reads overlapping [start, end)
     of the given refname. Overlap means the read's alignment region intersects [start, end).
@@ -91,146 +78,53 @@ def fetch_reads_in_region(reads_map, refname, start, end):
     start and end are 0-based coordinates.
     """
     results = []
-    if refname not in reads_map:
+    if refname not in all_reads:
         return results
-    for read in reads_map[refname]:
+    for read in all_reads[refname]:
         # Check overlap
         # A read overlaps the region if read.end > start and read.start < end
         if read['end'] > start and read['start'] < end:
-            results.append((read['id'], refname))
+            results.append((read['id'], refname, read['seq']))
     return results
 
 
-def create_signature_for_single_region(args) -> Tuple[str, 'SourmashSignature']:
+def create_signatures_for_regions(regions, all_reads, bam_path, kmer_size, scaled, num_workers = 1):
     """
-    Worker function to create a signature for a single region.
-    This function is designed to be used with parallel processing.
-
-    :param args: Tuple containing (refname, start, end, kmer_size, scaled, reads_map)
-    :return: Tuple of (region_name, SourmashSignature)
+    For each region, fetch reads and create a signature.
+    Returns a dictionary of the form:
+    {
+        (refname, start, end): SourmashSignature,
+        ...
+    }
     """
-    refname, start, end, kmer_size, scaled, reads_map = args
-    # Fetch reads in the specified region
-    if not reads_map:
-        return None  # No reads in this region
-
-    # Create a single MinHash for this region
-    mh = MinHash(n=0, ksize=kmer_size, scaled=scaled)
-    for read in reads_map:
-        mh.add_sequence(read.get('seq'), force=True)
-
-    # Create signature
-    region_name = f"{refname}:{start + 1}-{end}"  # 1-based coords for display
-    sig = SourmashSignature(mh, name=region_name)
-    return (region_name, sig)
-
-def process_region(region, bam_path, kmer_size, scaled):
-    """
-    Process a single region: open the BAM file, fetch reads,
-    build a list of read dictionaries, and create a signature.
-
-    :param region: Tuple (chrom, start, end, mean_depth)
-    :param bam_path: Path to the BAM file.
-    :param kmer_size: K-mer size for signature.
-    :param scaled: Scaling factor for signature.
-    :return: (region_name, signature, chrom, region_reads) or None if no signature.
-    """
-    chrom, start, end, mean_depth = region
-    reads_in_region = []
-
-    # Each process opens its own instance of the BAM file.
-    with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
-        for read in bam_fs.fetch(chrom, start, end):
-            reads_in_region.append({
-                "id": read.query_name,
-                "seq": read.seq,
-                "start": read.reference_start,
-                "end": read.reference_end
-            })
-
-    args = [chrom, start, end, kmer_size, scaled, reads_in_region]
-    result = create_signature_for_single_region(args)
-    # result = [1,1]
-    if result is None:
-        return None
-    region_name, sig = result
-    return (region_name, sig, chrom, reads_in_region)
-
-
-def create_signatures_for_regions(
-    regions_df: pd.DataFrame,
-    bam_path: str,
-    kmer_size: int,
-    scaled: float,
-    num_workers: int = 8
-) -> (dict, dict, dict): # type: ignore
-    """
-    For each region in the DataFrame, fetch reads and create a Sourmash signature.
-    Parallelized over multiple processes.
-
-    :param regions_df: DataFrame with columns ['chrom', 'start', 'end', 'mean_depth']
-    :param bam_path: Path to the BAM file.
-    :param kmer_size: Size of k-mers for MinHash.
-    :param scaled: Scaling factor for MinHash.
-    :param num_workers: Number of parallel processes to use.
-    :return: Tuple (signatures, reads_map, reflengths)
-             signatures: dict mapping region names to signatures.
-             reads_map: dict mapping chrom to list of read dicts.
-             reflengths: dict mapping reference names to lengths.
-    """
-    # Validate columns.
-    required_columns = {'chrom', 'start', 'end'}
-    if not required_columns.issubset(regions_df.columns):
-        raise ValueError(f"Input DataFrame must contain columns: {required_columns}")
-
-    # Ensure proper types.
-    regions_df = regions_df.copy()
-    regions_df['chrom'] = regions_df['chrom'].astype(str)
-    regions_df['start'] = regions_df['start'].astype(int)
-    regions_df['end'] = regions_df['end'].astype(int)
-
-    # Convert DataFrame rows into a list of tuples.
-    regions = regions_df.itertuples(index=False, name=None)  # (chrom, start, end, mean_depth)
-
     signatures = {}
-    reads_map = defaultdict(list)
-    # for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
-    #     result = process_region(region, bam_path, kmer_size, scaled)
-        # if result is not None:
-        #     region_name, sig, chrom, region_reads = result
-        #     signatures[region_name] = sig
-        #     # Update reads_map with each read from this region.
-        #     for read in region_reads:
-        #         reads_map[chrom].append({
-        #             "id": read["id"],
-        #             "start": read["start"],
-        #             "end": read["end"],
-        #         })
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-        # Submit all tasks.
-        futures = {
-            executor.submit(process_region, region, bam_path, kmer_size, scaled): region
-            for region in regions
-        }
-        # As each future completes, collect the results.
-        for future in tqdm(concurrent.futures.as_completed(futures), total=regions_df.shape[0], desc="Processing regions"):
-            result = future.result()
-            if result is not None:
-                region_name, sig, chrom, region_reads = result
-                signatures[region_name] = sig
-                # Update reads_map with each read from this region.
-                for read in region_reads:
-                    reads_map[chrom].append({
-                        "id": read["id"],
-                        "start": read["start"],
-                        "end": read["end"],
-                    })
-    # Get reference lengths (this is done in the main process).
-    with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
-        reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
-
-    return signatures, reads_map, reflengths
-
+    seenrefs = set()
+    sets = dict()
+    i=0
+    for (refname, start, end, val) in tqdm(regions):
+        combined = f"{refname}:{start}-{end}"
+        if combined not in seenrefs:
+            # print(f"Processing {combined}...")
+            seenrefs.add(combined)
+        else:
+            continue
+        reads = fetch_reads_in_region(all_reads, refname, start, end)
+        if len(reads) == 0:
+            # No reads in this region
+            continue
+        # Create a single MinHash for this region
+        mh = MinHash(n=0, ksize=kmer_size, scaled=scaled)
+        for read_id, refname, read_seq in reads:
+            mh.add_sequence(read_seq, force=True)
+        # Create signature
+        region_name = f"{refname}:{start+1}-{end}"  # 1-based coords for display
+        sig = SourmashSignature(mh, name=region_name)
+        name=f"{refname}:{start+1}-{end}"
+        signatures[name] = sig
+        # i+=1
+        # if i % 10_000 == 0:
+        #     print(f"Processed {i} regions...")
+    return signatures
 
 #######################################################
 # Helper functions
@@ -266,7 +160,7 @@ def build_sbt_index(siglist, ksize=31, sbt_name="my_sbt", clusters={}):
                 ref2cluster[ref] = cluster_idx
     # Add each signature as a leaf
 
-    for region_name, sig in tqdm(siglist, desc="Adding signatures to SBT"):
+    for i, (region_name, sig) in enumerate(siglist):
         r1, s1, e1 = parse_split(region_name)
         # sig.name = region_name
         leaf = SigLeaf(str(region_name), sig)
@@ -412,6 +306,7 @@ def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
             for ref in cluster_set:
                 ref2cluster[ref] = cluster_idx
     seen_comparisons = defaultdict()
+
     # ------------------------------------------------
     # 2) Prepare data structures
     # ------------------------------------------------
@@ -430,6 +325,7 @@ def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
         ref_part, coords = region_str.rsplit(":", 1)
         s, e = coords.split("-")
         return ref_part, int(s), int(e)
+
     # ------------------------------------------------
     # 3) Compare signatures pairwise
     # ------------------------------------------------
@@ -471,8 +367,6 @@ def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
                 # 3C) Compute similarities
                 mh2 = sig2.minhash
                 jaccard = mh1.jaccard(mh2)
-
-
                 if jaccard >= min_threshold:
                     c1_in_2 = mh1.avg_containment(mh2)
                     c2_in_1 = mh2.avg_containment(mh1)
@@ -511,6 +405,7 @@ def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
     #                     f"Jaccard: {entry['jaccard']:.4f}\n"
     #                     f"\t\tto {entry['to']}:{entry['s2']}-{entry['e2']}"
     #                 )
+
     return sum_comparisons
 
 def create_filtered_bam(original_bam_path, output_bam_path, alignments_to_keep):
@@ -611,7 +506,7 @@ def parse_ground_truth(abu_file):
 import random
 
 
-def finalize_removed_reads(remove_counts, reads_map, fetch_reads_in_region,
+def finalize_removed_reads(remove_counts, all_reads, fetch_reads_in_region,
                           remove_mode='first',
                           random_seed=None):
     """
@@ -621,7 +516,7 @@ def finalize_removed_reads(remove_counts, reads_map, fetch_reads_in_region,
     Args:
         remove_counts: dict keyed by (ref, start, end) -> int
                        indicating how many reads to remove from that region.
-        reads_map: dict from refname -> list of read dicts, as loaded from the BAM.
+        all_reads: dict from refname -> list of read dicts, as loaded from the BAM.
         fetch_reads_in_region: function that returns a list of (read_id, ref, seq)
                                for the given region.
         remove_mode: 'first' or 'random' determines how we pick which reads to remove.
@@ -644,7 +539,7 @@ def finalize_removed_reads(remove_counts, reads_map, fetch_reads_in_region,
         if not remove_n:
             continue
 
-        reads = fetch_reads_in_region(reads_map, ref, start, end)
+        reads = fetch_reads_in_region(all_reads, ref, start, end)
         total_reads = len(reads)
 
         if remove_n >= total_reads:
@@ -696,7 +591,7 @@ def report_coverage_stats(ground_truth, original_stats, filtered_stats, output_d
     print(f"Coverage statistics written to {report_file}")
 
 
-def pairwise_remove_reads(sum_comparisons, reads_map):
+def pairwise_remove_reads(sum_comparisons, all_reads):
     """
     Go through each conflict pair and figure out how many reads we need to remove
     from each region in order to match (scale down to) the smaller coverage.
@@ -720,8 +615,8 @@ def pairwise_remove_reads(sum_comparisons, reads_map):
                 region2 = (conflict['to'], conflict['s2'], conflict['e2'])
 
                 # Fetch reads (lists of (read_id, refname, seq), presumably)
-                reads_r1 = fetch_reads_in_region(reads_map, region1[0], region1[1], region1[2])
-                reads_r2 = fetch_reads_in_region(reads_map, region2[0], region2[1], region2[2])
+                reads_r1 = fetch_reads_in_region(all_reads, region1[0], region1[1], region1[2])
+                reads_r2 = fetch_reads_in_region(all_reads, region2[0], region2[1], region2[2])
 
                 cov_r1 = len(reads_r1)
                 cov_r2 = len(reads_r2)
@@ -819,7 +714,7 @@ def build_conflict_groups(sum_comparisons, min_jaccard=0.0):
 
 
 
-def remove_symmetric(conflict_group, reads_map, fetch_reads_in_region, remove_n=1):
+def remove_symmetric(conflict_group, all_reads, fetch_reads_in_region, remove_n=1):
     """
     conflict_group: a set of regions, e.g. { (r1, s1, e1), (r2, s2, e2), ... }
     remove_n: the number of reads to remove from each region in this group.
@@ -831,7 +726,7 @@ def remove_symmetric(conflict_group, reads_map, fetch_reads_in_region, remove_n=
     removed = {}
     for region in conflict_group:
         (ref, start, end) = region
-        reads = fetch_reads_in_region(reads_map, ref, start, end)
+        reads = fetch_reads_in_region(all_reads, ref, start, end)
         total = len(reads)
         if total == 0:
             removed[region] = set()  # nothing to remove
@@ -844,7 +739,7 @@ def remove_symmetric(conflict_group, reads_map, fetch_reads_in_region, remove_n=
         removed[region] = to_remove
     return removed
 
-def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_region, remove_mode='random', random_seed=None):
+def finalize_proportional_removal(conflict_groups, all_reads, fetch_reads_in_region, remove_mode='random', random_seed=None):
     """
     For each conflict group, we:
       1) Gather all sub-regions belonging to each reference in that group.
@@ -886,18 +781,19 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
             # unify all reads for these sub-regions
             unified_reads = []
             for (start, end) in subregs:
-                region_reads = fetch_reads_in_region(reads_map, ref, start, end)
+                region_reads = fetch_reads_in_region(all_reads, ref, start, end)
                 unified_reads.extend(region_reads)
             # remove duplicates if the same read appears in multiple sub-regions
             # using a dict or set keyed by read_id
             unique_ids = {}
-            for (r_id, r_ref) in unified_reads:
+            for (r_id, r_ref, r_seq) in unified_reads:
                 if r_id not in unique_ids:
-                    unique_ids[r_id] = (r_id, r_ref)
+                    unique_ids[r_id] = (r_id, r_ref, r_seq)
             final_reads = list(unique_ids.values())
 
             coverage_by_ref[ref] = len(final_reads)
             reads_by_ref[ref] = final_reads
+
         if not coverage_by_ref:
             # no coverage in this group => skip
             continue
@@ -911,7 +807,7 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
             rlist = reads_by_ref[ref]
             if cov_count <= min_cov:
                 # remove them all
-                for (read_id, r_ref) in rlist:
+                for (read_id, r_ref, r_seq) in rlist:
                     removed_read_ids[read_id].append(r_ref)
             else:
                 # remove exactly min_cov reads
@@ -920,10 +816,176 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
                 else:
                     # remove the first min_cov
                     sampled = rlist[:min_cov]
-                for (read_id, r_ref) in sampled:
+                for (read_id, r_ref, r_seq) in sampled:
                     removed_read_ids[read_id].append(r_ref)
 
     return removed_read_ids
+
+
+def merge_bedgraph_regions(
+    regions,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size=1000
+):
+    """
+    Merges consecutive regions if the statistic (variance/Gini) is below the given threshold.
+
+    :param regions: List of (chrom, start, end, coverage)
+    :param statistic_func: A function that takes a list of coverage values and returns a float (e.g., variance or Gini)
+    :param max_stat_threshold: The maximum allowed statistic to keep merging
+    :param max_group_size: (Optional) max number of intervals to merge at once
+                           before forcing a cutoff to avoid merging everything into one region.
+    :return: A list of merged regions with format (chrom, merged_start, merged_end, average_coverage, <statistic>)
+    """
+    # Sort the input by (chrom, start)
+    regions = sorted(regions, key=lambda x: (x[0], x[1]))
+
+    merged = []
+
+    # Accumulators for the current merge group
+    current_chrom = None
+    current_start = None
+    current_end = None
+    coverage_values = []
+    region_count = 0
+
+    def close_and_save_region():
+        # Called when we need to finalize the current group.
+        if not coverage_values:
+            return
+
+        avg_coverage = sum(coverage_values) / len(coverage_values)
+        stat_value = statistic_func(coverage_values)
+        merged.append((current_chrom, current_start, current_end, stat_value))
+
+    for i, (chrom, start, end, cov) in enumerate(regions):
+        if current_chrom is None:
+            # Initialize first region
+            current_chrom = chrom
+            current_start = start
+            current_end = end
+            coverage_values = [cov]
+            region_count = 1
+            continue
+
+        # Check if new interval is contiguous and on same chrom
+        # For "merging", we typically want (chrom matches) AND (start == current_end)
+        # but you could be flexible if you want to merge even non-contiguous intervals.
+        if (chrom == current_chrom) and (start == current_end):
+            # Tentatively add to the current group
+            extended_coverage_values = coverage_values + [cov]
+            stat_value = statistic_func(extended_coverage_values)
+
+            # Check if adding this interval exceeds the threshold
+            if stat_value <= max_stat_threshold and region_count < max_group_size:
+                # OK to merge
+                coverage_values.append(cov)
+                current_end = end
+                region_count += 1
+            else:
+                # The statistic went over the threshold, so close the current group
+                close_and_save_region()
+
+                # Start a new group
+                current_chrom = chrom
+                current_start = start
+                current_end = end
+                coverage_values = [cov]
+                region_count = 1
+        else:
+            # Different chromosome or non-contiguous => close previous region, start fresh
+            close_and_save_region()
+            current_chrom = chrom
+            current_start = start
+            current_end = end
+            coverage_values = [cov]
+            region_count = 1
+
+    # Close the final region if needed
+    close_and_save_region()
+
+    return merged
+
+def merge_bedgraph_regions(
+    intervals,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size=20000,
+    max_length=None,
+    value_diff_tolerance=None
+):
+    """
+    intervals: list of tuples (chrom, start, end, value)
+               e.g. [('NC_003310.1', 6085, 11112, 86.58), ...]
+    Returns a list of merged intervals, each of which is (chrom, start, end, stat_value, <optional>).
+    """
+
+    if not intervals:
+        return []
+
+    # Sort intervals by (chrom, start) to ensure a sensible merge order
+    # (If you already have them sorted by contig, then by start, skip.)
+    intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+
+    merged = []
+    current_chrom = None
+    current_buffer = []  # Temporary storage for the intervals to be merged
+
+    for interval in intervals:
+        chrom, start, end, depth_val = interval
+
+        # If we are on a new chromosome, flush the old buffer
+        if chrom != current_chrom:
+            # If there's anything in the current_buffer, finalize it
+            if current_buffer:
+                merged.extend(_finalize_buffer(current_buffer, statistic_func))
+            current_chrom = chrom
+            current_buffer = [interval]
+            continue
+
+        # Otherwise, we are on the same chromosome.
+        # Check if we can merge this interval into the current_buffer
+        if should_merge(
+            current_buffer,
+            interval,
+            statistic_func,
+            max_stat_threshold,
+            max_group_size,
+            max_length,
+            value_diff_tolerance
+        ):
+            # Merge by appending
+            current_buffer.append(interval)
+        else:
+            # Finalize the current_buffer (turn it into one merged region) and start anew
+            merged.extend(_finalize_buffer(current_buffer, statistic_func))
+            current_buffer = [interval]
+
+    # End of loop – finalize whatever is left
+    if current_buffer:
+        merged.extend(_finalize_buffer(current_buffer, statistic_func))
+
+    return merged
+
+
+def _finalize_buffer(buffer_intervals, statistic_func):
+    """
+    Takes all intervals currently in buffer_intervals and merges them into one region.
+    Returns a list with a single “merged” entry, or you could break it into multiple if you prefer.
+    """
+    if not buffer_intervals:
+        return []
+
+    chrom = buffer_intervals[0][0]
+    start = min(iv[1] for iv in buffer_intervals)
+    end   = max(iv[2] for iv in buffer_intervals)
+    values = [iv[3] for iv in buffer_intervals]
+    stat_val = statistic_func(values)
+
+    # Return a single merged interval (you can store additional info if desired)
+    return [(chrom, start, end, stat_val)]
+
 
 def compute_variance(values):
     return statistics.pvariance(values)  # or statistics.variance(values)
@@ -950,12 +1012,12 @@ def compute_gini(values):
     return gini
 
 
-def compute_f1_scores(reads_map):
+def compute_f1_scores(all_reads):
     """
     Computes precision, recall, and F1 scores by comparing ground truth (gt) to predicted references.
 
     Parameters:
-        reads_map (dict): A dictionary where each key is a reference and each value is a list of read dictionaries.
+        all_reads (dict): A dictionary where each key is a reference and each value is a list of read dictionaries.
                           Each read dictionary must contain at least 'id' and 'gt' keys.
 
     Returns:
@@ -967,7 +1029,7 @@ def compute_f1_scores(reads_map):
     per_ref_gt = defaultdict(set)
     per_ref_counts = defaultdict(lambda: defaultdict(int))
     # Populate per_ref_predictions and per_ref_gt
-    for ref, reads in reads_map.items():
+    for ref, reads in all_reads.items():
         for read in reads:
             read_id = read['id']
             gt_ref = read['gt']
@@ -1177,6 +1239,7 @@ def create_breadth_coverage_pysam(bamfile=None, covfile_output=None, coverage_th
                 # Print the coverage statistics to stdout
                 with open(covfile_output, 'r') as infile:
                     coverage_data = infile.read()
+                    print(coverage_data)
                 return
             else:
                 # Output file is empty; return the coverage dictionary
@@ -1196,12 +1259,12 @@ def create_breadth_coverage_pysam(bamfile=None, covfile_output=None, coverage_th
         print(f"An unexpected error occurred: {e}")
         raise
 
-def calculate_breadth_of_coverage_dict(reads_map_dict, reference_lengths=None, skip_ids={}):
+def calculate_breadth_of_coverage_dict(all_reads_dict, reference_lengths=None, skip_ids={}):
     """
     Calculate the breadth of coverage for each reference in a dictionary of reads.
 
     Parameters:
-    - reads_map_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
+    - all_reads_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
                             Each read dictionary must have 'start' and 'end' keys.
     - reference_lengths (dict, optional): Keys are reference IDs (str), and values are the total length (int) of the reference.
                                         If not provided, the reference length is inferred from the reads.
@@ -1260,26 +1323,26 @@ def calculate_breadth_of_coverage_dict(reads_map_dict, reference_lengths=None, s
         return breadth
 
     coverage_dict = {}
-    for ref_id, reads in reads_map_dict.items():
+    for ref_id, reads in all_reads_dict.items():
         ref_length = reference_lengths.get(ref_id) if reference_lengths else None
         # filter reads where != skip_ids
-        reads_to_skip = set()
+        reads_to_skip = []
         for r in reads:
             if r.get('id') in skip_ids and ref_id in skip_ids.get(r.get('id'), []):
-                reads_to_skip.add(r.get('id'))
+                reads_to_skip.append(r.get('id'))
         reads = [r for r in reads if r.get('id') not in reads_to_skip]
         coverage = calculate_breadth_of_coverage(reads, ref_length)
         coverage_dict[ref_id] = coverage
 
     return coverage_dict
 
-def calculate_breadth_of_coverage_dict_regions(reads_map_dict, reference_lengths=None, removed_read_ids=None, regions_dict=None):
+def calculate_breadth_of_coverage_dict_regions(all_reads_dict, reference_lengths=None, removed_read_ids=None, regions_dict=None):
     """
     Calculate the breadth of coverage for each reference over specified regions,
     excluding specified reads per reference.
 
     Parameters:
-    - reads_map_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
+    - all_reads_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
     - reference_lengths (dict, optional): Keys are reference IDs (str), and values are the total length (int) of the reference.
     - removed_read_ids (defaultdict(list), optional): Keys are read IDs (str), and values are lists of reference IDs (str) to exclude.
     - regions_dict (dict, optional): Keys are reference IDs (str), and values are lists of [start, end] regions.
@@ -1329,7 +1392,7 @@ def calculate_breadth_of_coverage_dict_regions(reads_map_dict, reference_lengths
         return (total_covered / total_length) * 100
 
     coverage_dict = {}
-    for ref_id, reads in reads_map_dict.items():
+    for ref_id, reads in all_reads_dict.items():
         # Filter reads based on removed_read_ids
         if removed_read_ids:
             filtered_reads = [
@@ -1456,6 +1519,28 @@ def filter_regions_for_cluster(merged_regions, cluster):
     """
     return [(ref, s, e) for (ref, s, e) in merged_regions if ref in cluster]
 
+def create_signatures_for_cluster(merged_regions, cluster, all_reads, bam_path, kmer_size, scaled):
+    """
+    1) Filter regions to the cluster's references.
+    2) Create signatures for those filtered regions.
+    Returns a dict of (ref, start, end) -> SourmashSignature.
+    """
+    cluster_regions = filter_regions_for_cluster(merged_regions, cluster)
+    if not cluster_regions:
+        return {}
+    # then call your existing function that does minhashing
+    num_workers = os.cpu_count()
+    signatures = create_signatures_for_regions(
+        cluster_regions,
+        all_reads,
+        bam_path,
+        kmer_size,
+        scaled,
+        num_workers=num_workers
+    )
+    return signatures
+
+
 def import_matrix_ani(matrix_file):
     import pandas as pd
     # Load the ANI table
@@ -1480,164 +1565,163 @@ def import_matrix_ani(matrix_file):
     ani_matrix = ani_matrix.to_dict()
     return ani_matrix
 
-def compute_gini(values: List[float]) -> float:
-    """Compute the Gini coefficient of a list of values."""
-    sorted_values = sorted(values)
-    n = len(values)
-    cumulative = 0
-    cumulative_values = 0
-    for i, value in enumerate(sorted_values, 1):
-        cumulative += value
-        cumulative_values += cumulative
-    if cumulative == 0:
-        return 0.0
-    return (2 * cumulative_values) / (n * cumulative) - (n + 1) / n
 
-def merge_bedgraph_regions(
-    intervals: pd.DataFrame,
-    merging_method: str = 'jump',
-    max_stat_threshold: Optional[float] = None,
-    max_group_size: int = 20000,
-    max_length: Optional[int] = None,
-    value_diff_tolerance: Optional[float] = None,
-    jump_threshold: Optional[float] = None
-) -> pd.DataFrame:
+def should_merge(
+    current_intervals,
+    new_interval,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size,
+    max_length=None,
+    value_diff_tolerance=None
+):
     """
-    Merges consecutive regions in a BEDGRAPH-like DataFrame based on the specified merging method.
-
-    :param intervals: pandas DataFrame with columns ['chrom', 'start', 'end', 'depth']
-    :param merging_method: 'variance', 'gini', or 'jump'
-    :param max_stat_threshold: Threshold for the statistic or median jump
-    :param max_group_size: Maximum number of intervals to merge at once
-    :param max_length: (Optional) Maximum length of merged interval
-    :param value_diff_tolerance: (Optional) Maximum allowed difference in average values
-    :param jump_threshold: (Optional) Threshold for 'jump' method; if None, median jump is used
-    :return: pandas DataFrame with merged intervals and mean depth
+    Decide whether a new_interval can be merged into the current_intervals buffer
+    under these constraints:
+        - The combined statistic must be < max_stat_threshold
+        - The number of intervals in the merged chunk must be <= max_group_size
+        - (Optional) The total basepair span <= max_length
+        - (Optional) The difference in average (4th-col) values must be <= value_diff_tolerance
     """
-    if intervals.empty:
-        return pd.DataFrame(columns=['chrom', 'start', 'end', 'mean_depth'])
+    if len(current_intervals) >= max_group_size:
+        # Already at capacity for how many intervals we want to merge at once
+        return False
 
-    # Ensure DataFrame is sorted by chrom and start
-    intervals = intervals.sort_values(['chrom', 'start']).reset_index(drop=True)
-    import math
-    # Precompute jump_threshold if using 'jump' method and not provided
-    if merging_method == 'jump':
-        jump_threshold = max_stat_threshold
-        if max_stat_threshold is None:
-            # Compute median absolute difference between consecutive depths within each chromosome
-            # drop na depths
-            # convert na depth to 0
-            intervals['depth'] = intervals['depth'].fillna(0)
+    # Combine current_intervals with new_interval
+    candidate = current_intervals + [new_interval]
 
-            jump_threshold = intervals.groupby('chrom')['depth'].apply(
-                lambda x: x[x != 0].diff().abs().dropna().median()
-            ).median()
-            jump_threshold = math.ceil(jump_threshold)
+    # 1) Check total length if max_length is defined
+    if max_length is not None:
+        min_start = min(interval[1] for interval in candidate)
+        max_end   = max(interval[2] for interval in candidate)
+        if (max_end - min_start) > max_length:
+            return False
+
+    # 2) Check combined statistic
+    values = [interval[3] for interval in candidate]
+    combined_stat = statistic_func(values)
+    if combined_stat > max_stat_threshold:
+        return False
+
+    # 3) (Optional) Check difference in average value between "neighbors"
+    #    In simpler terms, you might just check the difference between
+    #    new_interval's value vs. the average of current_intervals' values
+    #    if value_diff_tolerance is set.
+    if value_diff_tolerance is not None:
+        current_avg = sum(iv[3] for iv in current_intervals) / len(current_intervals)
+        new_val = new_interval[3]
+        if abs(new_val - current_avg) > value_diff_tolerance:
+            return False
+
+    # If all checks pass, we can merge
+    return True
+
+def merge_bedgraph_regions_by_ref(
+    regions,
+    statistic_func,
+    max_stat_threshold,
+    max_group_size=1000
+):
+    """
+    Merges consecutive bedgraph-like intervals per reference (chrom).
+
+    :param regions: List of (chrom, start, end, coverage)
+    :param statistic_func: Function to compute a statistic from coverage values (e.g., Gini or variance)
+    :param max_stat_threshold: Maximum allowed statistic to keep merging
+    :param max_group_size: Max intervals to merge at once before forcing a cutoff
+    :return: List of (chrom, merged_start, merged_end, avg_coverage, statistic)
+    """
+    # Sort first by chrom, then by start
+    regions = sorted(regions, key=lambda x: (x[0], x[1]))
+
+    merged_all_refs = []
+
+    # Group the intervals by their reference (chrom)
+    for chrom, group_iter in groupby(regions, key=lambda x: x[0]):
+        group_list = list(group_iter)  # All intervals for this chrom
+        # Merge intervals for this chrom
+        merged_for_this_chrom = merge_intervals_for_single_ref(
+            group_list,
+            statistic_func,
+            max_stat_threshold,
+            max_group_size
+        )
+        merged_all_refs.extend(merged_for_this_chrom)
+
+    return merged_all_refs
 
 
-        # If max_stat_threshold is provided, use it as jump_threshold
-        elif max_stat_threshold is not None:
-            jump_threshold = max_stat_threshold
-        else:
-            # Default jump_threshold if not provided
-            jump_threshold = 20  # Example default value
-    else:
-        jump_threshold = None
+def merge_intervals_for_single_ref(regions, statistic_func, max_stat_threshold, max_group_size=1000):
+    """
+    Merges consecutive regions for a single reference, using statistic_func for coverage
+    (e.g., Gini or variance).
+    Returns a list of (chrom, start, end, avg_coverage, statistic).
+    """
+    # Sort by start, though we assume they are all same chrom
+    regions = sorted(regions, key=lambda x: x[1])
 
-    merged_regions = []
+    merged = []
 
-    # Group by chromosome
-    grouped = intervals.groupby('chrom')
+    # Accumulators for the current merge group
+    current_chrom = None
+    current_start = None
+    current_end = None
+    coverage_values = []
+    region_count = 0
 
-    for chrom, group in grouped:
-        group = group.reset_index(drop=True)
-        n = len(group)
-        if n == 0:
+    def finalize_group():
+        """Finalize the current merge group and append to merged list."""
+        if not coverage_values:
+            return
+        avg_coverage = sum(coverage_values) / len(coverage_values)
+        stat_value = statistic_func(coverage_values)
+        merged.append((current_chrom, current_start, current_end, avg_coverage))
+
+    for (chrom, start, end, cov) in regions:
+        if current_chrom is None:
+            # Initialize the first group
+            current_chrom = chrom
+            current_start = start
+            current_end = end
+            coverage_values = [cov]
+            region_count = 1
             continue
 
-        buffer = {
-            'chrom': chrom,
-            'start': group.at[0, 'start'],
-            'end': group.at[0, 'end'],
-            'depths': [group.at[0, 'depth']],
-        }
+        # Check if the next interval is contiguous with the current
+        # (you could relax this condition if you want to merge even if not contiguous)
+        if start == current_end:
+            # Tentatively add coverage
+            extended_values = coverage_values + [cov]
+            test_stat = statistic_func(extended_values)
 
-        for row in group.itertuples(index=False):
-            if row.index == 0:
-                continue  # Skip the first row as it's already in the buffer
-
-            can_merge = True
-
-            # Check max_group_size
-            if len(buffer['depths']) >= max_group_size:
-                can_merge = False
-
-            # Check max_length
-            if can_merge and max_length is not None:
-                new_end = row.end
-                total_length = new_end - buffer['start']
-                if total_length > max_length:
-                    can_merge = False
-
-            # Check merging_method
-            if can_merge:
-                if merging_method in ['variance', 'gini']:
-                    current_depths = buffer['depths'] + [row.depth]
-                    if merging_method == 'variance':
-                        stat_val = statistics.pvariance([float(x) for x in current_depths])
-                    elif merging_method == 'gini':
-                        stat_val = compute_gini(current_depths)
-                    if stat_val > max_stat_threshold:
-                        can_merge = False
-                elif merging_method == 'jump':
-                    jump_threshold=20
-                    last_depth = buffer['depths'][-1]
-                    jump = abs(row.depth - last_depth)
-                    if jump > jump_threshold:
-                        can_merge = False
-                else:
-                    raise ValueError(f"Unknown merging method: {merging_method}")
-
-            # Check value_diff_tolerance
-            if can_merge and value_diff_tolerance is not None and merging_method in ['variance', 'gini']:
-                current_avg = sum(buffer['depths']) / len(buffer['depths'])
-                if abs(row.depth - current_avg) > value_diff_tolerance:
-                    can_merge = False
-
-            if can_merge:
-                # Merge the current row into the buffer
-                buffer['end'] = row.end
-                buffer['depths'].append(row.depth)
+            # Check if adding this interval keeps us under threshold and max_group_size
+            if test_stat <= max_stat_threshold and region_count < max_group_size:
+                coverage_values.append(cov)
+                current_end = end
+                region_count += 1
             else:
-                # Finalize the current buffer
-                mean_depth = np.mean(buffer['depths'])
-                merged_regions.append({
-                    'chrom': buffer['chrom'],
-                    'start': buffer['start'],
-                    'end': buffer['end'],
-                    'mean_depth': mean_depth
-                })
-                # Start a new buffer with the current row
-                buffer = {
-                    'chrom': chrom,
-                    'start': row.start,
-                    'end': row.end,
-                    'depths': [row.depth],
-                }
+                # Statistic or group size exceeded
+                finalize_group()
 
-        # Finalize the last buffer
-        if buffer['depths']:
-            mean_depth = np.mean(buffer['depths'])
-            merged_regions.append({
-                'chrom': buffer['chrom'],
-                'start': buffer['start'],
-                'end': buffer['end'],
-                'mean_depth': mean_depth
-            })
+                # Start a new group
+                current_chrom = chrom
+                current_start = start
+                current_end = end
+                coverage_values = [cov]
+                region_count = 1
+        else:
+            # Different segment or gap => finalize the current group and start fresh
+            finalize_group()
+            current_chrom = chrom
+            current_start = start
+            current_end = end
+            coverage_values = [cov]
+            region_count = 1
 
-    merged_df = pd.DataFrame(merged_regions)
-    return merged_df
+    # Final group
+    finalize_group()
 
+    return merged
 
 def determine_conflicts(
         output_dir = None,
@@ -1653,7 +1737,6 @@ def determine_conflicts(
         reference_signatures = None,
         scaled = 100,
         kmer_size=31,
-        filtered_bam_create=False,
         FAST_MODE=True
 ):
     # parser = argparse.ArgumentParser(description="Use bedtools to define coverage-based regions and compare read signatures using sourmash MinHash.")
@@ -1684,84 +1767,34 @@ def determine_conflicts(
     # args = parser.parse_args()
     os.makedirs(output_dir, exist_ok=True)
     import time
-    print(f"Starting conflict region detection at {time.ctime()}")
-    # Step 7: Parse filtered BED to get regions
-    regions = parse_bed_file(bedfile)
-    # filter regions only present in reads_map
-    # regions = [r for r in regions if r[0] in reads_map.keys()]
-    # convert regions to a list, each row is an element of the list
-    # pause for 20 seconds
-    print(f"Total regions defined: {len(regions)}")
-
-    # 2. Choose statistic function
-    use_jump = True
-    use_variance=False
-    if use_variance:
-        from statistics import pvariance
-        statistic_func = lambda vals: pvariance(vals)  # population variance
-        stat_name = "variance"
-        threshold=0.8
-    elif use_jump:
-        statistic_func = lambda vals: max(vals) - min(vals)
-        stat_name="jump"
-        threshold=20
-        # threshold=None
-    else:
-        statistic_func = compute_gini
-        stat_name = "gini"
-        threshold=0.8
-    # 3. Merge
-    print(f"Merging regions (using {stat_name} <= {threshold})...")
-    start_time = time.time()
-    merged_regions = merge_bedgraph_regions(
-        regions,
-        max_stat_threshold=threshold,
-        max_group_size=600, # Limit merges to x intervals
-        merging_method=stat_name
-    )
-    print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
-
-
-    # 4. Print or save results
-    print(f"Merged regions (using {stat_name} <= {threshold}):")
-    print(f"Length of original regions : {len(regions)})")
-    print(f"Length of merged regions: {len(merged_regions)}")
     start = time.time()
 
+    # Step 8: Load all reads from BAM once
+    print("Loading reads from BAM...")
+    all_reads, reflengths = load_reads_from_bam(input_bam)
+    end = time.time()
+    print(f"Time to complete import of bed information: {end-start} seconds")
+
+    # filter all _reads to be only NC_006998.1 or NC_003310.1
+    # all_reads = {k: v for k, v in all_reads.items() if k in ['NC_006998.1', 'NC_003310.1']}
+    # get the total number of reads in all_reads (len of values in all_reads)
+    # total_reads = sum([len(v) for k, v in all_reads.items()])
+    start_stime = time.time()
+    try:
+
+        breadth_old = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths)
+    except Exception as e:
+        print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
+        try:
+            breadth_old = create_breadth_coverage_pysam(input_bam, None)
+        except Exception as e:
+            print(f"Error calculating coverage with internal method: {e}")
+            breadth_old = {}
+    print(f"Total references with reads: {len(all_reads)}. Done in {time.time()-start_stime} seconds")
     gt_performances = dict()
 
-    reads_map = defaultdict(list)
-    if not sigfile or not os.path.exists(sigfile):
-        # Step 9: Create signatures for each region
-        print("Creating signatures for regions...")
-        num_workers = os.cpu_count()
-        start_time = time.time()
-        signatures, reads_map, reflengths = create_signatures_for_regions(
-            merged_regions,
-            input_bam,
-            kmer_size,
-            scaled,
-            num_workers=num_workers
-        )
-        print(f"Signatures created in {time.time() - start_time:.2f} seconds.")
-        print(f"Total signatures created: {len(signatures)}")
-        # Step 10: Save signatures to files
-        sig_dir = os.path.join(output_dir, "signatures")
-        single_sigfile = os.path.join(sig_dir, "merged_regions.sig")
-        save_signatures_sourmash(signatures, single_sigfile)
-    else:
-        # read in the signatures
-        print(f"loading signatures from sigfile: {sigfile}")
-        loaded_sigs = load_signatures_sourmash(sigfile)
-        signatures = rebuild_sig_dict(loaded_sigs)
-        # load all all read ids to reads_map where key is reference and value is set of read ids
-        bam_fs = pysam.AlignmentFile(input_bam, "rb")
-        for read in bam_fs.fetch():
-            ref = read.reference_name
-            reads_map[ref].append(dict(id=read.query_name, start=read.reference_start, end=read.reference_end))
-        # get reflengths of references
-        reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
-        bam_fs.close()
+
+
     if matrix:
         dist_dict = import_matrix_ani(matrix)
         clusters = find_reference_clusters(dist_dict, min_sim=min_similarity_comparable)
@@ -1778,42 +1811,127 @@ def determine_conflicts(
         # If no CSV is provided, each reference stands alone,
         # or you can treat everything as a single big cluster
         # (depending on your logic).
-        # set to the names of all signatures
-        # clusters = [set(signatures.keys())]
-        clusters = [set(reads_map.keys())]
+        all_references = set(all_reads.keys())
+        clusters = [set(all_reads.keys())]
+    # Step 7: Parse filtered BED to get regions
+    regions = parse_bed_file(bedfile)
+    # filter regions only present in all_reads
+    regions = [r for r in regions if r[0] in all_reads.keys()]
+    print(f"Total regions defined: {len(regions)}")
+    # get unique count of read_ids in all_reads
+    unique_read_ids = defaultdict(int)
+    for ref, reads in all_reads.items():
+        for read in reads:
+            unique_read_ids[read.get('id')]+=1
+    total_gt1 = sum([1 for k, v in unique_read_ids.items() if v > 1])
+    total_sum = sum([v for k, v in unique_read_ids.items()])
+    print(f"Total unique reads: {len(unique_read_ids)}, sum {total_sum}, sumgt1: {total_gt1}")
+    # 2. Choose statistic function
+    use_variance=False
+    if use_variance:
+        from statistics import pvariance
+        statistic_func = lambda vals: pvariance(vals)  # population variance
+        stat_name = "variance"
+    else:
+        statistic_func = compute_gini
+        stat_name = "gini"
+    # 3. Merge
+
+    threshold=0.8
+
+    merged_regions = merge_bedgraph_regions(
+        regions,
+        statistic_func=statistic_func,
+        max_stat_threshold=threshold,
+        max_group_size=600  #Limit merges to x intervals
+    )
+
+    # merged_regions = merge_bedgraph_regions_by_ref(
+    #     regions,
+    #     statistic_func=statistic_func,
+    #     max_stat_threshold=threshold,
+    #     max_group_size=40  #Limit merges to x intervals
+    # )
+
+
+
+    # 4. Print or save results
+    print(f"Merged regions (using {stat_name} <= {threshold}):")
+    print(f"Length of original regions : {len(regions)})")
+    print(f"Length of merged regions: {len(merged_regions)}")
+
+
+
+    if not sigfile or not os.path.exists(sigfile):
+        # Step 9: Create signatures for each region
+        print("Creating signatures for regions...")
+        num_workers = os.cpu_count()
+        signatures = create_signatures_for_regions(
+            merged_regions,
+            all_reads,
+            input_bam,
+            kmer_size,
+            scaled,
+            num_workers=num_workers
+        )
+        print(f"Total signatures created: {len(signatures)}")
+        # Step 10: Save signatures to files
+        sig_dir = os.path.join(output_dir, "signatures")
+        single_sigfile = os.path.join(sig_dir, "merged_regions.sig")
+        save_signatures_sourmash(signatures, single_sigfile)
+    else:
+        # read in the signatures
+        print(f"loading signatures from sigfile: {sigfile}")
+        loaded_sigs = load_signatures_sourmash(sigfile)
+        signatures = rebuild_sig_dict(loaded_sigs)
 
     output_csv = os.path.join(output_dir, "region_comparisons.csv")
     print(f"Comparison results written to: {output_csv}")
     print("Comparing signatures pairwise...")
-    print(f"Clusters to compare", len(clusters))
-    # for i, c in enumerate(clusters):
-    #     print(f"C{i}:", c)
+    print(f"Clusters to compare", )
+    for i, c in enumerate(clusters):
+        print(f"C{i}:", c)
 
+    # # get count signautres by reference
+    # sig_count = defaultdict(int)
+    # for region1, sigs in signatures.items():
+    #     ref, start_end = region1.split(":")
+    #     sig_count[ref] +=1
+    # print(f"Total signatures by reference")
+    # for k, v in sig_count.items():
+    #     print(f"\t{k}: {v}")
     signatures = list(signatures.items())
+    # get index of all_reads where read.id is NC_003310.1:178327-181685
+    # sigs_to_compare = []
+    # for sig in signatures:
+    #     if sig[0] == 'NC_003310.1:178327-181685' or sig[0] == 'NC_006998.1:9528-183447':
+    #         print(sig)
+    #         sigs_to_compare.append(sig)
+    # # compare signatures in sigs_to_compare
+    # print(f"Comparing {len(sigs_to_compare)} signatures")
+    # for i, sig in enumerate(sigs_to_compare):
+    #     print(f"Comparing {i+1} of {len(sigs_to_compare)}")
+    #     mh1 = sig[1].minhash
+    #     for j, sig2 in enumerate(sigs_to_compare):
+    #         if i == j:
+    #             continue
+    #         mh2 = sig2[1].minhash
+    #         jaccard = mh1.jaccard(mh2)
+    #         print(jaccard)
+    #         if jaccard >= min_threshold:
+    #             c1_in_2 = mh1.avg_containment(mh2)
+    #             c2_in_1 = mh2.avg_containment(mh1)
 
-    start_stime = time.time()
-    try:
-        breadth_old = calculate_breadth_of_coverage_dict(reads_map, reference_lengths=reflengths)
-    except Exception as e:
-        print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
-        try:
-            breadth_old = create_breadth_coverage_pysam(input_bam, None)
-        except Exception as e:
-            print(f"Error calculating coverage with internal method: {e}")
-            breadth_old = {}
-    print(f"Total references with reads: {len(reads_map)}. Done in {time.time()-start_stime} seconds")
 
 
+    # exit()
     if FAST_MODE:
         print("Building SBT index for fast mode...")
-        start_time = time.time()
         sbt_index = build_sbt_index(
             signatures,
             ksize=51,
             clusters=clusters,
         )
-        print(f"SBT index built in {time.time() - start_time:.2f} seconds.")
-        start_time = time.time()
         print("Searching SBT...")
         sum_comparisons = fast_mode_sbt(
             signatures,
@@ -1822,17 +1940,15 @@ def determine_conflicts(
             min_threshold,
             clusters
         )
-        print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
     else:
         print("Using linear pairwise comparison (slow mode)...")
-        start_time = time.time()
         sum_comparisons = slow_mode_linear(
             signatures,
             output_csv,
             min_threshold,
             cluster_map=clusters
         )
-        print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
+
     print("Building Conflict Groups")
     # 1) Build conflict groups from sum_comparisons
     start_time = time.time()
@@ -1841,47 +1957,36 @@ def determine_conflicts(
         min_jaccard=0.0
     )
     print(f"Conflict groups {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
-
     start_time = time.time()
     # 2) For each group, remove 1 read from each region
     removed_read_ids = finalize_proportional_removal(
         conflict_groups,
-        reads_map,
+        all_reads,
         fetch_reads_in_region,
         remove_mode='random'
     )
+    print(removed_read_ids)
+    exit()
+
+
     start_time = time.time()
+    filtered_bam = os.path.join(output_dir, "filtered.hash.bam")
     comparison_df = None
     includable_read_ids = dict()
-    sum_of_ref_aligned = defaultdict(int)
-    output_file = os.path.join(output_dir, "failed_reads.txt")
-    with open (output_file, 'w') as f:
-        for read, refs in removed_read_ids.items():
-            for ref in refs:
-                f.write(f"{ref}\t{read}\n")
-        f.close()
-    for ref, reads in reads_map.items():
+    for ref, reads in all_reads.items():
         for read in reads:
             if read.get('id') not in removed_read_ids:
                 if ref not in includable_read_ids:
                     includable_read_ids[ref] = []
                 includable_read_ids[(ref, read.get('id'))] = True
-                sum_of_ref_aligned[ref]+=1
     try:
-        # Create new variabels of only the filtered reads that passed based on the dict
-        # new_filtered_reads = []
-        size_old_reads_map = sum([len(v) for k, v in reads_map.items()])
-        print(f"Size of old all reads: {size_old_reads_map}")
-        # for k, v in sum_of_ref_aligned.items():
-        #     print(f"Reference {k} has {v} reads aligned")
-        # print(f"Size of new filtered reads: {len(new_filtered_reads)}")
-        print(f"Completed Bread of coverage setting in {time.time() - start_time}")
-        if filtered_bam_create:
-            create_filtered_bam(
-                input_bam,
-                filtered_bam_create,
-                includable_read_ids.keys()
-            )
+
+        print(f"Completed Bread of coverage setting in {time.time() - start_time}. Filtering to a new bamfile")
+        create_filtered_bam(
+            input_bam,
+            filtered_bam,
+            includable_read_ids.keys()
+        )
     except Exception as e:
         print(f"Error while filtering BAM: {e}")
 
@@ -1889,34 +1994,45 @@ def determine_conflicts(
 
         print(f"Done with proportional removal in built in {time.time() - start_time:.2f} seconds. Calculating Bread of coverage for the new set of reads")
         try:
-            breadth = calculate_breadth_of_coverage_dict(reads_map, reference_lengths=reflengths, skip_ids=removed_read_ids)
+            breadth = calculate_breadth_of_coverage_dict(all_reads, reference_lengths=reflengths, skip_ids=removed_read_ids)
         except Exception as e:
             print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
             try:
-                breadth = create_breadth_coverage_pysam(filtered_bam_create, None)
+                breadth = create_breadth_coverage_pysam(filtered_bam, None)
             except Exception as e:
                 print(f"Error calculating coverage with internal method: {e}")
                 breadth = {}
-        print(f"Done with the breadth creation in {time.time()-start_time} seconds")
-#    # Create filtered BAM
-#     # if use_reads_gt:
-    for ref, reads in reads_map.items():
+        # # 3. If user provided a reference comparison CSV
+        # for k, v in breadth_old.items():
+        #     print(k, v)
+        # print("-----------")
+        # for k, v in breadth.items():
+        #     print(k, v)
+   # Create filtered BAM
+    # if use_reads_gt:
+    for ref, reads in all_reads.items():
         for i, read in enumerate(reads):
             gt_read = read['id'].split("_")
             gt_name = "_".join(gt_read[:-2])
-            reads_map[ref][i]['gt'] = gt_name
-    per_ref, overall = compute_f1_scores(reads_map)
+            all_reads[ref][i]['gt'] = gt_name
 
+    per_ref, overall = compute_f1_scores(all_reads)
+    # Print per-reference scores
+        # Display per-reference results
+    # Display micro-averaged results
     gt_performances['original'] = dict(overall=overall, per_ref = per_ref)
+    all_reads, _ = load_reads_from_bam(filtered_bam)
+    for ref, reads in all_reads.items():
+        for i, read in enumerate(reads):
+            gt_read = read['id'].split("_")
+            gt_name = "_".join(gt_read[:-2])
+            all_reads[ref][i]['gt'] = gt_name
     print("Calculating f1 scores of alignment first....")
-    # filter all reads from not in includable_read_ids
-    reads_map = {k: [r for r in v if (k, r.get('id')) in includable_read_ids] for k, v in reads_map.items()}
     per_ref, overall = compute_f1_scores(
-        reads_map,
+        all_reads
     )
     gt_performances['new'] = dict(overall=overall, per_ref = per_ref)
-    print()
-#     # Compare the metrics
+    # Compare the metrics
     comparison_df = compare_metrics(
         gt_performances['original']['per_ref'],
         per_ref,
@@ -1964,7 +2080,6 @@ def determine_conflicts(
     #     print(f"Precision: {precision:.4f}")
     #     print(f"Recall: {recall:.4f}")
     #     print(f"F1-Score: {f1:.4f}")
-
-        return removed_read_ids, comparison_df
+        return filtered_bam, comparison_df
     else:
-        return removed_read_ids, comparison_df
+        return filtered_bam, comparison_df

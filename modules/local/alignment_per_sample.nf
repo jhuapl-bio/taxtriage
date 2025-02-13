@@ -47,7 +47,6 @@ process ALIGNMENT_PER_SAMPLE {
 
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
     def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
-    def covfile = covfile.name != "NO_FILE" ?  "-x $covfile" : " "
     def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
@@ -57,7 +56,7 @@ process ALIGNMENT_PER_SAMPLE {
 
     match_paths.py \\
         -i $bamfiles \\
-        -o $output $covfile $bedgraph \\
+        -o $output $bedgraph \\
         -s $id $assemblyi \\
         $type \\
         --output_dir $output_dir \\
@@ -66,9 +65,9 @@ process ALIGNMENT_PER_SAMPLE {
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping \\
         --min_similarity_comparable 0.8 \\
-        --gini_weight 0.5  \\
+        --gini_weight 0.75  \\
         --disparity_score_weight 0.0  \\
-        --breadth_weight 0.2 --minhash_weight 0.05 --mapq_weight 0.0 --hmp_weight 0.0 \\
+        --breadth_weight 0.15 --minhash_weight 0.1 --mapq_weight 0.0 --hmp_weight 0.0 \\
         --fast \\
         $min_reads_align $ignore_alignment
 

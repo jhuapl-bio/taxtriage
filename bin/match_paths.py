@@ -20,6 +20,9 @@
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
 from collections import defaultdict
 import sys
+from scipy.stats import norm
+import time
+from intervaltree import Interval, IntervalTree
 import statistics
 import math as Math
 from distributions import import_distributions, body_site_map
@@ -30,6 +33,7 @@ import math
 import os
 from conflict_regions import determine_conflicts
 import pysam
+from scipy.optimize import minimize
 
 from math import log2
 import random
@@ -141,13 +145,6 @@ def parse_args(argv=None):
         type=int,
         metavar="NAMECOL",
         help="Index of the column in mapfile (if specified) to match to the name. 0 index start",
-    )
-    parser.add_argument(
-        "-x",
-        "--coverage",
-        metavar="COVERAGEFILE",
-        default=None,
-        help="Samtools coverage file",
     )
     parser.add_argument(
         "-j",
@@ -302,9 +299,11 @@ def parse_args(argv=None):
         default=0.0,
         help="Minimum ANI threshold to consider references comparable (default=0.7)"
     )
+    parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
     parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")
+    parser.add_argument("--failed_reads", required=False, help="Load a 2 col tsv of reference   read_id that is to be the passed reads. Remove all others and update bedgraph and cov file(s)")
     parser.add_argument("--scaled", type=int, default=2000, help="scaled factor for MinHash.")
     parser.add_argument("--coverage_length", type=int, default=500, help="Length of each coverage chunk.")
     parser.add_argument("--coverage_spacing", type=int, default=4, help="Allowed gap of zero coverage in a chunk.")
@@ -315,6 +314,9 @@ def parse_args(argv=None):
     parser.add_argument("--sigfile", required=False, type=str, help="Skip signatures comparison if provided ad load it instead")
     parser.add_argument("--config", required=False, type=str, help="Configuration file for generating a minimal output file for LIMS integration or other data import system. ")
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
+    parser.add_argument(
+        "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
+    )
 
     return parser.parse_args(argv)
 
@@ -377,7 +379,7 @@ def build_transformed_coverage_hist(regions, genome_length):
     coverage_hist = defaultdict(int)
     total_covered_bases = 0
     for (start, end, depth) in regions:
-        length = end - start + 1
+        length = end - start
         transformed_depth = transform_func(depth)
         coverage_hist[transformed_depth] += length
         total_covered_bases += length
@@ -399,7 +401,7 @@ def build_coverage_hist(regions, genome_length):
     total_covered_bases = 0
 
     for (start, end, depth) in regions:
-        length = end - start + 1   # how many bases in this interval
+        length = end - start    # how many bases in this interval
         coverage_hist[depth] += length
         total_covered_bases += length
 
@@ -471,57 +473,49 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.8):
-    """Calculate the adjusted score for fair distribution of depths."""
-    # 1) Build a histogram of coverage
-    # start = time.time()
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9, reward_factor=0.2):
+    """
+    Calculate an adjusted 'Gini-based' score for fair distribution of depths,
+    with a genome-length-based reward so that large genomes get boosted more
+    (but never penalized).
+    """
+
+    # 1) Build Coverage Hist
     coverage_hist = build_coverage_hist(regions, genome_length)
     coverage_hist_transformed = build_transformed_coverage_hist(regions, genome_length)
-    # 2) Compute the Gini coefficient from that histogram
-    # gini_hist = gini_coefficient_from_hist(coverage_hist)
-    gini_hist_transformed = gini_coefficient_from_hist(coverage_hist_transformed)
-    # print("\tTime to build gini", time.time() - start)
-    gini = gini_hist_transformed
-    # depths = []
-    # deths = defaultdict(int)
-    # start = time.time()
-    # for region in regions:
-    #     for i in range(region[0], region[1] + 1):
-    #         depths.append(region[2])
-    #         deths[i] = region[2]
-    # gini = gini_coefficient(depths)
-    # print("Time to build nonzero gini", time.time() - start)
-    # depths_wzero = []
-    # start = time.time()
-    # for ix in range(0, (genome_length)):
-    #     if ix in deths:
-    #         depths_wzero.append(deths[ix])
-    #     else:
-    #         depths_wzero.append(0)
-    # gini_with_zeros = gini_coefficient(depths_wzero)
-    # print("Time to build zero gini", time.time() - start)
-    # print(f"Histogram gini: {gini_hist:.4f}, regular gini: {gini:.4f}, with 0s: {gini_with_zeros:.4f}")
 
-    #
-    # Option A: log-transform Gini directly, so that 0 => 1, 1 => 0:
-    #
-    gini_log = 0.0
-    if gini <= 1.0:
-        # gini_log = math.log2(2 - gini)  # range ~ [0..1]
-        gini_log = alpha* math.sqrt(1 - gini)
-        # gini_log = 1-gini
-        # clamp
+    # 2) Compute Raw Gini from transformed histogram
+    gini = gini_coefficient_from_hist(coverage_hist_transformed)
+
+    # 3) Compute some alpha-based transformation (if that’s part of your design)
+    if 0.0 <= gini <= 1.0:
+        gini_log = alpha * math.sqrt(1 - gini)
+        # Ensure in [0,1]
         gini_log = max(0.0, min(1.0, gini_log))
-        # multiply by alpha
-    #
-    # Option B: also log-transform the breadth
-    # breadth = fraction in [0..1]
-    #
+    else:
+        gini_log = 0.0
 
-    #
-    # Now combine them.  Suppose we do an equal-weighted average:
-    #
-    return gini_log
+    # 4) Reward for genome length using a log-based scale
+    #    - Cap genome_length so we don’t exceed max_length
+    gl_capped = min(genome_length, max_length)
+
+    #    - Compute a ratio vs. a baseline (e.g. 10k)
+    ratio = gl_capped / baseline
+
+    #    - Never let ratio < 1.0 => no penalty for shorter genome; factor >= 1
+    ratio = max(ratio, 1.0)
+
+    #    - scaling_factor grows with log10(ratio)
+    #      reward_factor is how fast you want it to grow
+    scaling_factor = 1.0 + reward_factor * math.log10(ratio)
+
+    # 5) Multiply the raw gini_log by the scaling factor, then clamp at 1.0
+    #    (so the final score remains in [0,1])
+    final_score = gini_log * scaling_factor
+    final_score = min(1.0, final_score)
+
+    return final_score
+
 
 def getBreadthOfCoverage(breadth, genome_length):
     breadth = max(0.0, min(1.0, breadth))
@@ -763,7 +757,7 @@ def detect_regions_from_runlength(ref_runs, avg_read_length):
         # Now optionally subdivide big regions by avg_read_length
         adjusted_regions = []
         for (rstart, rend) in covered_regions:
-            region_len = rend - rstart + 1
+            region_len = rend - rstart
             if region_len > avg_read_length:
                 # subdivide
                 n = max(1, region_len // avg_read_length)
@@ -1016,7 +1010,77 @@ def compute_tass_score(count, weights):
 
     return tass_score
 
-def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
+
+def adjust_bedgraph_coverage(bedgraph_path, excluded_interval_trees, output_bedgraph=None):
+    """
+    Adjust bedgraph coverage by removing 1 depth value from excluded regions.
+
+    Parameters:
+    - bedgraph_path (str): Path to the input bedgraph file.
+    - excluded_interval_trees (dict): Dictionary of IntervalTrees per reference.
+    - output_bedgraph (str, optional): Path to save the adjusted bedgraph. If None, data is not saved.
+
+    Returns:
+    - list of tuples: Adjusted bedgraph entries as (chrom, start, end, adjusted_depth).
+    """
+    adjusted_bedgraph = []
+
+    with open(bedgraph_path, 'r') as bed_file:
+        reader = csv.reader(bed_file, delimiter='\t')
+        for row in reader:
+            if len(row) < 4:
+                continue  # Skip malformed lines
+            chrom, start, end, depth = row[0], int(row[1]), int(row[2]), int(row[3])
+            # Check if chrom has excluded regions
+            if chrom in excluded_interval_trees:
+                tree = excluded_interval_trees[chrom]
+                overlaps = sorted(tree.overlap(start, end))
+
+                if overlaps:
+                    # Initialize current position
+                    current_start = start
+                    for interval in sorted(overlaps, key=lambda x: x.begin):
+                        exclude_start, exclude_end = interval.begin, interval.end
+
+                        # No overlap if exclude_end <= current_start or exclude_start >= end
+                        if exclude_end <= current_start or exclude_start >= end:
+                            continue
+
+                        # Determine overlapping region
+                        overlap_start = max(current_start, exclude_start)
+                        overlap_end = min(end, exclude_end)
+
+                        # Add non-overlapping region before the excluded region
+                        if current_start < overlap_start:
+                            adjusted_bedgraph.append((chrom, current_start, overlap_start, depth))
+
+                        # Add overlapping region with depth decremented by 1
+                        adjusted_depth = max(depth - 1, 0)  # Ensure depth doesn't go below 0
+                        adjusted_bedgraph.append((chrom, overlap_start, overlap_end, adjusted_depth))
+
+                        # Update current_start
+                        current_start = overlap_end
+
+                    # Add any remaining non-overlapping region after the last excluded region
+                    if current_start < end:
+                        adjusted_bedgraph.append((chrom, current_start, end, depth))
+                else:
+                    # No overlaps; retain the original bedgraph entry
+                    adjusted_bedgraph.append((chrom, start, end, depth))
+            else:
+                # No excluded regions for this chrom; retain the original bedgraph entry
+                adjusted_bedgraph.append((chrom, start, end, depth))
+
+    # Optionally, write the adjusted bedgraph to a new file
+    if output_bedgraph:
+        with open(output_bedgraph, 'w', newline='') as outfile:
+            writer = csv.writer(outfile, delimiter='\t')
+            for entry in adjusted_bedgraph:
+                writer.writerow(entry)
+
+    return adjusted_bedgraph
+
+def count_reference_hits(bam_file_path,alignments_to_remove=None):
     """
     Count the number of reads aligned to each reference in a BAM file.
 
@@ -1041,11 +1105,11 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
 
-
+        reference_stats = defaultdict(dict)
         for ref in bam_file.header.references:
             # get average read length
             reference_lengths[ref] = bam_file.get_reference_length(ref)
-            reference_coverage[ref] = dict(
+            reference_stats[ref] = dict(
                 length = reference_lengths.get(ref, 0),
                 depths =  defaultdict(int),
                 gini_coefficient = 0,
@@ -1057,7 +1121,15 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
                 coverage = 0,
                 meandepth = 0,
                 name = ref,
-                accession = ref,
+                sum_mapq = 0,
+                sum_baseq = 0,
+                count_baseq = 0,
+                count_mapq = 0,
+                total_reads = 0,
+                read_positions = [],
+                total_length = 0,
+                unique_read_ids = set(),
+            accession = ref,
                 isSpecies = False,
                 covered_regions = [],  # Store regions covered by reads
             )
@@ -1066,137 +1138,129 @@ def count_reference_hits(bam_file_path, depthfile, covfile, bedgraph = None):
         total_length = 0
         total_reads = 0
         readlengths = []
+        removed_reads = defaultdict(dict )
+        read_stats = defaultdict(list)
+        excluded_regions = defaultdict(list)
+
+        start_time = time.time()
         for read in bam_file.fetch():
-            read_id = read.query_name
-            # print if reverse or not
+            ref = read.reference_name
+            total_reads += 1
+            # Skip reads that are in alignments_to_remove if provided
+            if alignments_to_remove and ref in alignments_to_remove and read.query_name in alignments_to_remove[ref]:
+                continue
 
+            # Create a unique key for the read based on its query name and strand
+            read_id_key = f"{read.query_name}:{read.is_reverse}"
 
-            # Check if the read is already processed (to handle multiple alignments)
-            if f"{read_id}:{read.is_reverse}" not in unique_read_ids:
-                unique_read_ids.add(f"{read_id}:{read.is_reverse}")
-                total_reads += 1
-                readlengths.append(read.query_length)
-                total_length += read.query_length  # Add the length of the read
-            if not read.is_unmapped:  # Check if the read is aligned
+            # Handle unique reads
+            if read_id_key not in reference_stats[ref]["unique_read_ids"]:
+                reference_stats[ref]["unique_read_ids"].add(read_id_key)
+                reference_stats[ref]["total_reads"] += 1
+                reference_stats[ref]["total_length"] += read.query_length
+            # Process only mapped reads
+
+            if not read.is_unmapped:
                 aligned_reads += 1
-        # Calculate average read length
-        average_read_length = Math.ceil(total_length / total_reads if total_reads > 0 else 0)
-        print(f"Total unique reads: {total_reads}")
-        print(f"Average read length: {average_read_length}")
-        if bedgraph:
-            # read in the bedgraph
-            with open(bedgraph, 'r') as bed_file:
-                reader = csv.reader(bed_file, delimiter='\t')
+                # Accumulate base quality scores
+                if read.query_qualities:
+                    reference_stats[ref]["sum_baseq"] += sum(read.query_qualities)
+                    reference_stats[ref]["count_baseq"] += len(read.query_qualities)
 
-                for row in reader:
-                    chrom, start, end, depth = row[0], int(row[1]), int(row[2]), int(row[3])
-                    # add the regions to the reference_coverage at the chrom
+                # Accumulate mapping quality scores
+                reference_stats[ref]["sum_mapq"] += read.mapping_quality
+                reference_stats[ref]["count_mapq"] += 1
 
-                    if "covered_regions" not in reference_coverage[chrom]:
-                        reference_coverage[chrom]['covered_regions'] = []
-                    if chrom in reference_coverage:
-                        #add one for start since bedgraph is 0 based
-                        reference_coverage[chrom]['covered_regions'].append((start+1, end, depth))
-        elif depthfile:
-            # Detect regions based on the depth file and average read length
-            print("Determining regions from a depthfile")
-            ref_regions = detect_regions_from_depth(
-                reference_coverage,
-                depthfile,
-                average_read_length
-            )
-            for k, v in ref_regions.items():
-                if k in reference_coverage:
-                    reference_coverage[k]['covered_regions'] = v
-        else:
-            print(f"Please provide a bedgraph from bedtools genomecov -ibam OR a depth file from samtools")
+                # Record read positions for coverage calculation
+                reference_stats[ref]["read_positions"].append( (read.reference_start, read.reference_end))
 
-        for reference_name, refd in reference_coverage.items():
-            # get the % of positions > 0 vs. the length
-            total_positions = refd['length']
-            sum_of_positions_covered = 0
-            for region in refd['covered_regions']:
-                start, end, depth = region
-                sum_of_positions_covered += end - start
-            coverage = (100*sum_of_positions_covered) / total_positions if total_positions > 0 else 0
-            refd['coverage'] = f"{coverage:.2f}"
+        # Calculate statistics for each reference
+        for ref, length in reference_lengths.items():
+            stats = reference_stats.get(ref, None)
+            if stats is None:
+                reference_stats[ref]["avg_read_length"] = 0
+                reference_stats[ref]["meanbaseq"] =0
+                reference_stats[ref]["length"] = reference_lengths.get(ref, 0)
+                reference_stats[ref]["meanmapq"] = 0
+                reference_stats[ref]['meandepth'] = 0
+                reference_stats[ref]["coverage"] = 0
+                reference_stats[ref]["covered_regions"] = []
+                reference_stats[ref]['numreads'] = 0
+                reference_stats[ref]['accession'] = ref
+            else:
 
-        if not covfile:
-            for read in bam_file.fetch():
-                if not read.is_unmapped:  # Check if the read is aligned
-                    reference_name = bam_file.get_reference_name(read.reference_id)
-                    aligned_reads +=1
-                    # Accumulate coverage data
-                    if not covfile:
-                        # get the baseq of the read
-                        # Get the base qualities
-                        base_qualities = read.query_qualities
-                        # Convert base qualities to ASCII
-                        base_qualities_ascii = [chr(qual + 33) for qual in base_qualities]
-                        # Convert ASCII to integers
-                        base_qualities_int = [ord(qual) - 33 for qual in base_qualities_ascii]
-                        baseq = sum(base_qualities) / len(base_qualities)
-                        # get the mapq of the read
-                        mapq = float(read.mapping_quality)
-                        reference_coverage[reference_name]['mapqs'].append(mapq)
-                        reference_coverage[reference_name]['baseqs'].append(baseq)
-                        reference_coverage[reference_name]['numreads']+=1
-                else:
-                    unaligned += 1
-        else:
-            print("Reading coverage information from coverage file")
-            with open(covfile, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    splitline = line.split('\t')
-                    # if not header line
-                    if "#rname"  in splitline:
-                        continue
-                    reference_name = splitline[0]
-                    numreads = int(splitline[3])
-                    covbases = float(splitline[4])
-                    coverage = float(splitline[5])
-                    meandepth = float(splitline[6])
-                    meanbaseq = float(splitline[7])
-                    meanmapq = float(splitline[8])
-                    if reference_name in reference_coverage:
-                        reference_coverage[reference_name]['numreads'] = numreads
-                        reference_coverage[reference_name]['coverage'] = coverage
-                        reference_coverage[reference_name]['meandepth'] = meandepth
-                        reference_coverage[reference_name]['meanbaseq'] = meanbaseq
-                        reference_coverage[reference_name]['meanmapq'] = meanmapq
-            f.close()
-        if not covfile:
-            # make meanbaseq and meanmapq
-            for ref, data in reference_coverage.items():
-                if data['numreads'] > 0:
-                    data['meanbaseq'] = sum(data['baseqs']) / len(data['baseqs'])
-                    data['meanmapq'] = sum(data['mapqs']) / len(data['mapqs'])
+                # Calculate average read length
+                avg_read_length = math.ceil(stats["total_length"] / stats["total_reads"]) if stats["total_reads"] > 0 else 0
+                # Calculate average base quality
+                avg_baseq = stats["sum_baseq"] / stats["count_baseq"] if stats["count_baseq"] > 0 else 0
+                # Calculate average mapping quality
+                avg_mapq = stats.get("sum_mapq", 0) / stats.get("count_mapq", 0) if stats.get("count_mapq", 0) > 0 else 0
 
+
+
+                # Compute coverage regions
+                events = []
+                for start, end in stats.get("read_positions", 0):
+                    events.append( (start, 1) )   # Read start
+                    events.append( (end, -1) )    # Read end
+
+                # Sort events by position
+                events.sort()
+                coverage_regions = []
+                current_depth = 0
+                last_pos = 0
+
+                for pos, delta in events:
+                    if pos > last_pos and current_depth > 0:
+                        coverage_regions.append( (last_pos, pos, current_depth) )
+                    current_depth += delta
+                    last_pos = pos
+
+                # Calculate average depth
+                sum_depth_bases = sum(depth * (end - start) for start, end, depth in coverage_regions)
+                avg_depth = sum_depth_bases / reference_lengths.get(ref,0) if reference_lengths.get(ref,0)   > 0 else 0
+
+                # Calculate coverage breadth
+                covered_length = sum(end - start for start, end, depth in coverage_regions)
+                coverage_breadth = covered_length / reference_lengths.get(ref, 0) if reference_lengths.get(ref, 0) > 0 else 0
+
+                # Assign computed statistics
+                reference_stats[ref]["avg_read_length"] = avg_read_length
+                reference_stats[ref]["meanbaseq"] = avg_baseq
+                reference_stats[ref]["meanmapq"] = avg_mapq
+                reference_stats[ref]['meandepth'] = avg_depth
+                reference_stats[ref]["coverage"] = coverage_breadth
+                reference_stats[ref]["covered_regions"] = coverage_regions
+                reference_stats[ref]['numreads'] = stats["total_reads"]
+                reference_stats[ref]['accession'] = ref
+
+                # Clean up intermediate fields
+                del reference_stats[ref]["sum_baseq"]
+                del reference_stats[ref]["count_baseq"]
+                del reference_stats[ref]["sum_mapq"]
+                del reference_stats[ref]["count_mapq"]
+                del reference_stats[ref]["read_positions"]
+                del reference_stats[ref]["unique_read_ids"]
+                del reference_stats[ref]["total_reads"]
+                del reference_stats[ref]["total_length"]
+
+    print(f"Processed {total_reads} reads from {len(reference_lengths)} references in {time.time()-start_time} seconds.")
+    # for ref, stats in reference_stats.items():
+    #     print(ref)
+    #     print("\t", stats.get('meanmapq'))
+    #     print("\t", stats.get('meanbaseq'))
+    #     print("\t", stats.get('meandepth'))
+    #     print("\t", stats.get('coverage'))
+    #     print("\t", stats.get('numreads'))
     bam_file.close()
     i=0
-    return reference_coverage, aligned_reads, total_reads
+    return reference_stats, aligned_reads, total_reads
 def main():
     args = parse_args()
     inputfile = args.input
     pathogenfile = args.pathogens
-    covfile = args.coverage
     cfig = None
-    if args.config:
-        import yaml
-        with open(args.config, "r") as file:
-            cfig = yaml.safe_load(file)
-        file.close()
-    if args.hmp and args.hmp_weight > 0:
-        if args.body_site == "Unknown" or not args.body_site:
-            body_sites = []
-        else:
-            body_sites = [body_site_map(args.body_site.lower())]
-        dists, site_counts = import_distributions(
-            args.hmp,
-            "tax_id",
-            body_sites
-        )
+
     # Write to file in a newline format
     weights = {
         'mapq_score': args.mapq_weight,
@@ -1258,10 +1322,15 @@ def main():
     capval  = args.capval
     mincov = args.mincoverage
     if args.k2:
+        print("Importing k2 file")
         k2_mapping = import_k2_file(args.k2)
     import pandas as pd
     comparison_df =  pd.DataFrame()
+    alignments_to_remove = defaultdict(set)
     if args.minhash_weight > 0:
+
+
+
         if args.comparisons and os.path.exists(args.comparisons):
 
             # if ends with csv
@@ -1275,7 +1344,7 @@ def main():
             print("Generating conflict regions info")
             if not args.output_dir:
                 args.output_dir = os.path.dirname(args.output)
-            filtered_bam, comparison_df = determine_conflicts(
+            alignments_to_remove, comparison_df = determine_conflicts(
                 output_dir = args.output_dir,
                 input_bam = args.input,
                 matrix = args.matrix,
@@ -1289,16 +1358,32 @@ def main():
                 reference_signatures = args.reference_signatures,
                 scaled = args.scaled,
                 kmer_size = args.kmer_size,
-                FAST_MODE=args.fast
+                FAST_MODE=args.fast,
+                filtered_bam_create=args.filtered_bam,
 
             )
-            if filtered_bam:
-                inputfile = filtered_bam
+        if args.failed_reads:
+            alignments_to_remove = defaultdict(set)
+            with open(args.failed_reads, 'r') as f:
+                for line in f:
+                    lines = line.strip().split("\t")
+                    ref, read_id = lines
+                    alignments_to_remove[ref].add((read_id))
+                f.close()
+    if args.only_filter:
+        print(f"Only filtering, exiting...")
+        return
+
+    if args.config:
+        import yaml
+        with open(args.config, "r") as file:
+            cfig = yaml.safe_load(file)
+        file.close()
+
     if comparison_df is not None and not comparison_df.empty:
         # set index to Reference column
         comparison_df.set_index('Reference', inplace=True)
     dmnd = defaultdict()
-    # exit()
     if args.diamond:
         # read in diamond file as dataframe
         with open(args.diamond, 'r') as f:
@@ -1321,9 +1406,7 @@ def main():
                 i+=1
     reference_hits, aligned_total, total_reads = count_reference_hits(
         inputfile,
-        args.depth,
-        covfile,
-        args.bedgraph
+        alignments_to_remove=alignments_to_remove,
     )
 
     assembly_to_accession = defaultdict(set)
@@ -1406,9 +1489,6 @@ def main():
     final_format = defaultdict(dict)
     seen = dict()
 
-    for k, v in reference_hits.items():
-        if "thailandensis" in v['name']:
-            seen[k] = v
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
@@ -1522,7 +1602,7 @@ def main():
                     "prevalence_disparity": 0,
                     "coeffs": [],
                     'baseqs': [],
-                    "isSpecies": True if  args.compress_species  else data['isSpecies'],
+                    "isSpecies": True if  args.compress_species  else data.get('isSpecies', False),
                     'strainslist': [],
                     'covered_regions': 0,
                     'name': data['name'],  # Assuming the species name is the same for all strains
@@ -1621,7 +1701,7 @@ def main():
         aggregated_data['disparity'] = calculate_disparity(sum(numreads), total_reads, variance_reads)
         # calcualte the total coverage by summing all lengths and getting covered bases
         total_length = sum(aggregated_data['lengths'])
-        covered_bases = sum([float(x) * float(y) for x, y in zip(aggregated_data['lengths'], aggregated_data['coverages'])])/100
+        covered_bases = sum([float(x) * float(y) for x, y in zip(aggregated_data['lengths'], aggregated_data['coverages'])])
         aggregated_data['breadth_total'] = covered_bases / total_length if total_length > 0 else 0
         aggregated_data['total_length'] = total_length
         k2_reads = 0
@@ -1802,7 +1882,16 @@ def main():
     if args.readcount:
         total_reads = float(args.readcount)
     print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
-    if args.hmp and args.hmp_weight > 0:
+    if args.hmp:
+        if args.body_site == "Unknown" or not args.body_site:
+            body_sites = []
+        else:
+            body_sites = [body_site_map(args.body_site.lower())]
+        dists, site_counts = import_distributions(
+            args.hmp,
+            "tax_id",
+            body_sites
+        )
         # for each entry in species_aggregated, get the taxid
         for key, value in species_aggregated.items():
             abus = []
@@ -1827,23 +1916,22 @@ def main():
             sum_norm_abu = sum([x.get('norm_abundance',0) for x in abus])
             percent_total_reads_expected =  sum_abus_expected * total_reads
             stdsum = sum([x.get('std',0) for x in abus])
-            zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 4
+            zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
             # set zscore max 3 if greater
             # if zscore > 3:
             #     zscore = 3.1
 
             value['zscore'] = zscore
-            from scipy.stats import norm
             percentile = norm.cdf(zscore)
             # if percentile is below 0.5 set it to 0
-            if zscore < 2.5:
-                percentile = 0
+            # if zscore < 2.5:
+            #     percentile = 0
             value['hmp_percentile'] = percentile
 
     else:
-        print("No HMP data")
         for key, value in species_aggregated.items():
             value['zscore'] = 3
+            value['hmp_percentile'] = 100
     final_scores = calculate_scores(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
@@ -1876,6 +1964,7 @@ def main():
         "# Reads Aligned",
         "% Aligned Reads",
         "Coverage",
+        'HHS Percentile',
         "IsAnnotated",
         "Pathogenic Sites",
         "Microbial Category",
@@ -1914,7 +2003,7 @@ def main():
 
 
     if (args.gt and args.optimize):
-        from scipy.optimize import minimize
+
         # Usage
         best_weights = optimize_weights(
             aggregated_stats=species_aggregated,
@@ -2170,7 +2259,6 @@ def calculate_scores(
     # Write the header row
     sumfgini = 0
     totalcounts = 0
-
     for ref, count in aggregated_stats.items():
         strainlist = count.get('strainslist', [])
         isSpecies = count.get('isSpecies', False)
@@ -2368,6 +2456,7 @@ def write_to_tsv(output_path, final_scores, header):
             pathogenic_reads = entry.get('pathogenic_reads', 0)
             percent_total = entry.get('percent_total', 0)
             k2_disparity_score = entry.get('k2_disparity', 0)
+            hmp_percentile = entry.get('hmp_percentile', 0)
             # if "Toxoplasma" in formatname:
             if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.30  :
                 print(f"Reference: {ref} - {formatname}")
@@ -2399,7 +2488,7 @@ def write_to_tsv(output_path, final_scores, header):
                 total+=1
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
-                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t"
+                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
                 f"{is_annotated}\t{entry.get('pathogenic_sites')}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
