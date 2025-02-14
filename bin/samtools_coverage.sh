@@ -125,7 +125,6 @@ else
     # Run samtools coverage and process the output
     # get the headers from fasta file and
 
-    echo "header coverage"
 
     samtools coverage $args "${bam_file}" | awk -F '\t' -v mapFile="${mapping_file}" '
         BEGIN {
@@ -156,4 +155,4 @@ else
         }
         { print }'  > "${output_file}"
 fi
-echo "Modified samtools coverage output saved to ${output_file}"
+# echo "Modified samtools coverage output saved to ${output_file}"
