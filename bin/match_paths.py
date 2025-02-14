@@ -473,7 +473,7 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9, reward_factor=0.2):
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9, reward_factor=0.92):
     """
     Calculate an adjusted 'Gini-based' score for fair distribution of depths,
     with a genome-length-based reward so that large genomes get boosted more
@@ -1141,11 +1141,19 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
         removed_reads = defaultdict(dict )
         read_stats = defaultdict(list)
         excluded_regions = defaultdict(list)
-
+        # check if the alignment was paired end or single end
         start_time = time.time()
         for read in bam_file.fetch():
+            # Only process paired reads
+            # if not read.is_paired:
+            #     continue
+            # For paired-end reads, only count the first mate to avoid double-counting
+            if not read.is_read1 and read.is_paired:
+                continue
+
             ref = read.reference_name
             total_reads += 1
+
             # Skip reads that are in alignments_to_remove if provided
             if alignments_to_remove and ref in alignments_to_remove and read.query_name in alignments_to_remove[ref]:
                 continue
@@ -1158,8 +1166,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
                 reference_stats[ref]["unique_read_ids"].add(read_id_key)
                 reference_stats[ref]["total_reads"] += 1
                 reference_stats[ref]["total_length"] += read.query_length
-            # Process only mapped reads
 
+            # Process only mapped reads
             if not read.is_unmapped:
                 aligned_reads += 1
                 # Accumulate base quality scores
@@ -1172,8 +1180,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
                 reference_stats[ref]["count_mapq"] += 1
 
                 # Record read positions for coverage calculation
-                reference_stats[ref]["read_positions"].append( (read.reference_start, read.reference_end))
-
+                reference_stats[ref]["read_positions"].append((read.reference_start, read.reference_end))
         # Calculate statistics for each reference
         for ref, length in reference_lengths.items():
             stats = reference_stats.get(ref, None)
@@ -1881,6 +1888,7 @@ def main():
             species_aggregated[key]["gtcov"]=gtcov
     if args.readcount:
         total_reads = float(args.readcount)
+
     print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
     if args.hmp:
         if args.body_site == "Unknown" or not args.body_site:
