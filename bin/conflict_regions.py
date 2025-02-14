@@ -196,16 +196,16 @@ def create_signatures_for_regions(
     reads_map = defaultdict(list)
     # for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
     #     result = process_region(region, bam_path, kmer_size, scaled)
-        # if result is not None:
-        #     region_name, sig, chrom, region_reads = result
-        #     signatures[region_name] = sig
-        #     # Update reads_map with each read from this region.
-        #     for read in region_reads:
-        #         reads_map[chrom].append({
-        #             "id": read["id"],
-        #             "start": read["start"],
-        #             "end": read["end"],
-        #         })
+    #     if result is not None:
+    #         region_name, sig, chrom, region_reads = result
+    #         signatures[region_name] = sig
+    #         # Update reads_map with each read from this region.
+    #         for read in region_reads:
+    #             reads_map[chrom].append({
+    #                 "id": read["id"],
+    #                 "start": read["start"],
+    #                 "end": read["end"],
+    #             })
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
         # Submit all tasks.
         futures = {
@@ -228,7 +228,7 @@ def create_signatures_for_regions(
     # Get reference lengths (this is done in the main process).
     with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
         reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
-
+    bam_fs.close()
     return signatures, reads_map, reflengths
 
 
@@ -1164,7 +1164,7 @@ def create_breadth_coverage_pysam(bamfile=None, covfile_output=None, coverage_th
                 # Calculate breadth of coverage percentage
                 breadth = (covered_bases / length) * 100 if length > 0 else 0
                 breadth_coverage[ref] = breadth
-
+        bam.close()
         if covfile_output:
             # Write coverage statistics to the specified file
             with open(covfile_output, 'w') as outfile:
@@ -1529,7 +1529,7 @@ def merge_bedgraph_regions(
             # convert na depth to 0
             intervals['depth'] = intervals['depth'].fillna(0)
 
-            jump_threshold = intervals.groupby('chrom')['depth'].apply(
+            jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
                 lambda x: x[x != 0].diff().abs().dropna().median()
             ).median()
             jump_threshold = math.ceil(jump_threshold)
@@ -1547,7 +1547,7 @@ def merge_bedgraph_regions(
     merged_regions = []
 
     # Group by chromosome
-    grouped = intervals.groupby('chrom')
+    grouped = intervals.groupby('chrom', observed=True)
 
     for chrom, group in grouped:
         group = group.reset_index(drop=True)
@@ -1733,8 +1733,9 @@ def determine_conflicts(
     reads_map = defaultdict(list)
     if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
-        print("Creating signatures for regions...")
-        num_workers = os.cpu_count()
+        num_workers = os.cpu_count() -1 if os.cpu_count() > 1 else 1
+
+        print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
         start_time = time.time()
         signatures, reads_map, reflengths = create_signatures_for_regions(
             merged_regions,
