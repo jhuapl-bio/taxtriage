@@ -1779,6 +1779,8 @@ def determine_conflicts(
     if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
         num_workers = os.cpu_count() -2 if os.cpu_count() > 2 else 1
+        if num_workers > 10:
+            num_workers = 10
 
         print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
         start_time = time.time()
