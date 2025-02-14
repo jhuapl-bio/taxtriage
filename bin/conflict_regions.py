@@ -1761,7 +1761,7 @@ def determine_conflicts(
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=4000, # Limit merges to x intervals
+        max_group_size=19_500, # Limit merges to x intervals
         merging_method=stat_name
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
