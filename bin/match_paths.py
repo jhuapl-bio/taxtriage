@@ -209,13 +209,6 @@ def parse_args(argv=None):
         help="HMP distribution of abundances of organisms on a per-sample basis. Optional but useful for some sample types that are highly diverse in content",
     )
     parser.add_argument(
-        "--body_site",
-        default="Unknown",
-        metavar="BODYSITE",
-        type=str,
-        help="What body site to loook at distributions for. If empty and listed distributions enabled, this is assumed as Unknown. Supported are nasal, stool, ",
-    )
-    parser.add_argument(
         "--readcount",
         default=None,
         metavar="READCOUNT",
@@ -1148,6 +1141,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
             # if not read.is_paired:
             #     continue
             # For paired-end reads, only count the first mate to avoid double-counting
+
             if not read.is_read1 and read.is_paired:
                 continue
 
@@ -1891,10 +1885,10 @@ def main():
 
     print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
     if args.hmp:
-        if args.body_site == "Unknown" or not args.body_site:
+        if args.sampletype == "Unknown" or not args.sampletype:
             body_sites = []
         else:
-            body_sites = [body_site_map(args.body_site.lower())]
+            body_sites = [body_site_map(args.sampletype.lower())]
         dists, site_counts = import_distributions(
             args.hmp,
             "tax_id",
@@ -1928,7 +1922,8 @@ def main():
             # set zscore max 3 if greater
             # if zscore > 3:
             #     zscore = 3.1
-
+            if value['name'] == "Clostridioides difficile":
+                print(value['numreads'], total_reads, sum_abus_expected, ">>>>", percent_total_reads_observed)
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
             # if percentile is below 0.5 set it to 0
@@ -2466,7 +2461,7 @@ def write_to_tsv(output_path, final_scores, header):
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             # if "Toxoplasma" in formatname:
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.20  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.40  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")

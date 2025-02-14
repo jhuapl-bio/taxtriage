@@ -3,7 +3,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from io import BytesIO
-
+import math
 def body_site_map(x):
     body_sites = {
         "stool": "gut",
@@ -96,12 +96,11 @@ def import_distributions(
         # print(f"New std dev: {stats_dict_new[key]['std']} ")
     return stats_dict_new, site_counts
 
-def make_vplot(taxid, stats, column, result_df):
+def make_vplot(taxid, stats, column, result_df, percentile_column =None):
     # Calculate the standard deviation and mean
     std_dev = stats['std']
     mean = stats['mean']
     abundances = stats['abundances']
-
     # Create figure in memory, not on disk
     fig, ax = plt.subplots(figsize=(4, 2))
 
@@ -111,12 +110,13 @@ def make_vplot(taxid, stats, column, result_df):
     if taxid in result_df[column].values:
         specific_row = result_df[result_df[column] == taxid].iloc[0]
         specific_abundance = specific_row['abundance']
-
-        if len(filtered_data) == 0:
-            specific_percentile = 100
+        if not percentile_column:
+            if len(filtered_data) == 0:
+                specific_percentile = 100
+            else:
+                specific_percentile = int(np.sum(np.array(filtered_data) <= specific_abundance) / len(filtered_data) * 100)
         else:
-            specific_percentile = int(np.sum(np.array(filtered_data) <= specific_abundance) / len(filtered_data) * 100)
-
+            specific_percentile = math.floor(specific_row[percentile_column]*100)
         # Boxplot
         sns.boxplot(x=filtered_data, showfliers=False, ax=ax,)
 
