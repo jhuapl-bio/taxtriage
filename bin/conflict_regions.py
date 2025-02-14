@@ -156,6 +156,46 @@ def process_region(region, bam_path, kmer_size, scaled):
     region_name, sig = result
     return (region_name, sig, chrom, reads_in_region)
 
+global_bam = None
+
+
+def init_worker(bam_path):
+    """Initializer for each worker process; open the BAM file once."""
+    global global_bam
+    global_bam = pysam.AlignmentFile(bam_path, "rb")
+
+def process_region(region, kmer_size, scaled):
+    """
+    Process a single region using the globally opened BAM file.
+    :param region: Tuple (chrom, start, end, mean_depth)
+    :param kmer_size: K-mer size for signature.
+    :param scaled: Scaling factor for signature.
+    :return: (region_name, signature, chrom, region_reads) or None if no signature.
+    """
+    global global_bam
+    chrom, start, end, mean_depth = region
+    reads_in_region = []
+
+    # Use the globally opened BAM file.
+    try:
+        for read in global_bam.fetch(chrom, start, end):
+            reads_in_region.append({
+                "id": read.query_name,
+                "seq": read.seq,
+                "start": read.reference_start,
+                "end": read.reference_end
+            })
+    except Exception as e:
+        print(f"Error processing region {region}: {e}")
+        return None
+
+    args = [chrom, start, end, kmer_size, scaled, reads_in_region]
+    result = create_signature_for_single_region(args)
+    if result is None:
+        return None
+    region_name, sig = result
+    return (region_name, sig, chrom, reads_in_region)
+
 
 def create_signatures_for_regions(
     regions_df: pd.DataFrame,
@@ -206,21 +246,26 @@ def create_signatures_for_regions(
     #                 "start": read["start"],
     #                 "end": read["end"],
     #             })
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-        # Submit all tasks.
-        futures = {
-            executor.submit(process_region, region, bam_path, kmer_size, scaled): region
-            for region in regions
-        }
-        # As each future completes, collect the results.
-        for future in tqdm(concurrent.futures.as_completed(futures), total=regions_df.shape[0], desc="Processing regions"):
-            result = future.result()
+    print(f"\tStart processing pool now...")
+    with concurrent.futures.ProcessPoolExecutor(
+            max_workers=num_workers,
+            initializer=init_worker,
+            initargs=(bam_path,)) as executor:
+        # Submit all tasks using the global BAM opened in each worker.
+        print(f"\tSubmitting regional pool to parallelizations")
+        futures = [executor.submit(process_region, region, kmer_size, scaled) for region in regions]
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing regions"):
+            try:
+                result = future.result()
+            except Exception as exc:
+                print(f"Region generated an exception: {exc}")
+                continue
             if result is not None:
                 region_name, sig, chrom, region_reads = result
                 signatures[region_name] = sig
                 # Update reads_map with each read from this region.
                 for read in region_reads:
-                    reads_map[chrom].append({
+                    reads_map.setdefault(chrom, []).append({
                         "id": read["id"],
                         "start": read["start"],
                         "end": read["end"],
@@ -1540,7 +1585,7 @@ def merge_bedgraph_regions(
             jump_threshold = max_stat_threshold
         else:
             # Default jump_threshold if not provided
-            jump_threshold = 20  # Example default value
+            jump_threshold = 200  # Example default value
     else:
         jump_threshold = None
 
@@ -1716,7 +1761,7 @@ def determine_conflicts(
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=600, # Limit merges to x intervals
+        max_group_size=4000, # Limit merges to x intervals
         merging_method=stat_name
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
@@ -1733,7 +1778,7 @@ def determine_conflicts(
     reads_map = defaultdict(list)
     if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
-        num_workers = os.cpu_count() -1 if os.cpu_count() > 1 else 1
+        num_workers = os.cpu_count() -2 if os.cpu_count() > 2 else 1
 
         print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
         start_time = time.time()

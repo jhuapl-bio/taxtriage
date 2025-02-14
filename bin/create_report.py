@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, landscape
-from distributions import import_distributions, make_vplot, body_site_map
+from distributions import import_distributions, body_site_map, make_vplot
 from reportlab.graphics.shapes import Line
 
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, ListFlowable, ListItem
@@ -64,6 +64,8 @@ def parse_args(argv=None):
                         help="Value that must be met for a table to report an organism due to confidence column.")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
                         help="Name of id column, default is id")
+    parser.add_argument("-p", "--percentile", metavar="PERCENTILE", required=False, type=float, default=.20,
+                        help="Only show organisms that are in the top percentile of healthy subjects expected abu")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
     parser.add_argument("--show_commensals", action="store_true", required=False,
@@ -237,10 +239,14 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
     df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
     if not columns:
         columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
+    if len(plot_dict.keys()) > 0:
+        if "HHS Percentile" in columns:
+            columns.remove("HHS Percentile")
     if include_headers:
         headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
         if len(plot_dict.keys()) > 0:
             headers.append(Paragraph('<b>Percentile of Healthy Subject (HHS)</b>', styles['Normal']))  # Plot column header
+            # remove HHS Percentile if present from headers
         data.append(headers)
     for index, row in df.iterrows():
         row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
@@ -252,6 +258,7 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
                 plot_image.drawHeight = 0.5 * inch  # Height of the image
                 plot_image.drawWidth = 1* inch  # Width of the image, adjusted from your figsize
                 row_data.append(plot_image)
+
         data.append(row_data)
     return data
 
@@ -382,8 +389,8 @@ def create_report(
             "Confidence Metric (0-1)",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
-            "K2 Reads"
-            ]
+            "HHS Percentile", "K2 Reads"
+        ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
@@ -541,7 +548,7 @@ def create_report(
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "Microbial Category", "# Reads Aligned",
                        "Confidence Metric (0-1)", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage", "K2 Reads"
+                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
@@ -566,7 +573,7 @@ def create_report(
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism", "Microbial Category",
                        "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #", "Coverage",
-                       "K2 Reads"]
+                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         # if df_identified_paths['K2 Reads'].sum() == 0:
         #     columns_yes = columns_yes[:-1]
@@ -596,7 +603,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage", "K2 Reads" ]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage",  "HHS Percentile", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -638,6 +645,9 @@ def main():
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)", axis=1)
     # add body sit to Sample col with ()
+    if args.percentile:
+        # filter where value is above percentile only
+        df_full = df_full[df_full['HHS Percentile'] >= args.percentile]
     def make_sample(x):
         if not x['body_site']:
             return ""
@@ -687,7 +697,8 @@ def main():
                 row[args.type],
                 stats,
                 args.type,
-                df_full
+                df_full,
+                percentile_column="HHS Percentile"
             )
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
