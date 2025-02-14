@@ -636,7 +636,7 @@ def main():
     # Sort on # Reads aligned
     df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
-    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%", axis=1)
+    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)", axis=1)
     # add body sit to Sample col with ()
     def make_sample(x):
         if not x['body_site']:
