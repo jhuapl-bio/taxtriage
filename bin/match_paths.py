@@ -466,7 +466,7 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9, reward_factor=0.92):
+def getGiniCoeff(regions, genome_length, breadth, alpha=1.8, baseline=5e3, max_length=1e15, reward_factor=3):
     """
     Calculate an adjusted 'Gini-based' score for fair distribution of depths,
     with a genome-length-based reward so that large genomes get boosted more
@@ -474,8 +474,10 @@ def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9
     """
 
     # 1) Build Coverage Hist
+
     coverage_hist = build_coverage_hist(regions, genome_length)
     coverage_hist_transformed = build_transformed_coverage_hist(regions, genome_length)
+    cov_bases = (breadth*genome_length)
 
     # 2) Compute Raw Gini from transformed histogram
     gini = gini_coefficient_from_hist(coverage_hist_transformed)
@@ -490,7 +492,7 @@ def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9
 
     # 4) Reward for genome length using a log-based scale
     #    - Cap genome_length so we don’t exceed max_length
-    gl_capped = min(genome_length, max_length)
+    gl_capped = min(cov_bases, max_length)
 
     #    - Compute a ratio vs. a baseline (e.g. 10k)
     ratio = gl_capped / baseline
@@ -1614,9 +1616,10 @@ def main():
             try:
                 # if accession isn't NC_042114.1 skip
                 if len(data.get('covered_regions', [])) > 0 :
-                    gini_strain = getGiniCoeff(data['covered_regions'], data['length'], alpha=args.alpha)
+                    gini_strain = getGiniCoeff(data['covered_regions'], data['length'], data['coverage'],  alpha=args.alpha)
                 else:
                     gini_strain = 0
+                # exit()
                 # get Δ All% column value if it exists, else set to 0
                 # col_stat = 'Sum Rs %'
                 col_stat2 = 'Δ All%'
@@ -2461,7 +2464,7 @@ def write_to_tsv(output_path, final_scores, header):
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             # if "Toxoplasma" in formatname:
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.40  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.040  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
