@@ -64,7 +64,7 @@ def parse_args(argv=None):
                         help="Value that must be met for a table to report an organism due to confidence column.")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
                         help="Name of id column, default is id")
-    parser.add_argument("-p", "--percentile", metavar="PERCENTILE", required=False, type=float, default=.20,
+    parser.add_argument("-p", "--percentile", metavar="PERCENTILE", required=False, type=float, default=0.20,
                         help="Only show organisms that are in the top percentile of healthy subjects expected abu")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
@@ -643,7 +643,12 @@ def main():
     # Sort on # Reads aligned
     df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
-    df_full['Quant'] = df_full.apply(lambda x: f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)", axis=1)
+    def quantval(x):
+        if x['abundance'] == x['% Reads']:
+            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)"
+        else:
+            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
+    df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
     # add body sit to Sample col with ()
     if args.percentile:
         # filter where value is above percentile only

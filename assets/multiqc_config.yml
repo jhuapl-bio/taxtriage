@@ -61,12 +61,12 @@ custom_data:
     file: "*all.organisms.report.txt*"
     description: "Confidence values for all organisms"
     file_format: "tsv"
-  metrics:
-    section_name: "Alignment Metrics"
-    plot_type: "table"
-    description: "Standard alignment statistics"
-    file: "*merged_mqc.tsv"
-    file_format: "tsv"
+  # metrics:
+  #   section_name: "Alignment Metrics"
+  #   plot_type: "table"
+  #   description: "Standard alignment statistics"
+  #   file: "*merged_mqc.tsv"
+  #   file_format: "tsv"
   krakenreport:
     section_name: "All Metagenomic Hits"
     plot_type: "table"
@@ -81,9 +81,9 @@ sp:
     fn: "*top_report.tsv"
   confidences:
     fn: "*.report.txt"
-  metrics:
-    fn: "*merged_mqc.tsv"
-    description: "Basic alignment metrics"
+  # metrics:
+  #   fn: "*merged_mqc.tsv"
+  #   description: "Basic alignment metrics"
 module_order:
   - confidences
   - krakenreport

@@ -474,7 +474,7 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9, reward_factor=0.92):
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e6, max_length=1e9, reward_factor=8):
     """
     Calculate an adjusted 'Gini-based' score for fair distribution of depths,
     with a genome-length-based reward so that large genomes get boosted more
@@ -495,6 +495,7 @@ def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9
         gini_log = max(0.0, min(1.0, gini_log))
     else:
         gini_log = 0.0
+    # get coveraged based
 
     # 4) Reward for genome length using a log-based scale
     #    - Cap genome_length so we don’t exceed max_length
@@ -982,7 +983,24 @@ def apply_weight(value, weight):
     except (TypeError, ValueError):
         # If value cannot be converted to a float, return 0 or handle as needed
         return 0
+def logarithmic_weight(breadth, min_breadth=4e-3):
+    """
+    Returns a weight between 0 and 1 for a given breadth value.
+    - When breadth == min_breadth, the weight is 1.
+    - When breadth == 1, the weight is 0.
+    - Values in between are mapped logarithmically.
 
+    Parameters:
+    breadth (float): The raw breadth value (expected to be between 0 and 1).
+    min_breadth (float): The minimum expected breadth (should be > 0 to avoid log(0)).
+    """
+    # Clamp breadth to the [min_breadth, 1] range
+    breadth = max(min_breadth, min(breadth, 1.0))
+
+    # Normalize the log value
+    normalized = (math.log(breadth) - math.log(min_breadth)) / (0 - math.log(min_breadth))
+    weight = 1 - normalized
+    return weight
 def compute_tass_score(count, weights):
     """
     count is a dictionary that might look like:
@@ -998,13 +1016,16 @@ def compute_tass_score(count, weights):
     # convert z score to percentile
 
     # Summation of each sub-score * weight
+
+
+
     tass_score = sum([
         apply_weight(count.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
         apply_weight(count.get('alignment_score', 0),       weights.get('mapq_score', 0)),
         apply_weight(count.get('meanminhash_reduction', 0),       weights.get('minhash_weight', 0)),
         apply_weight(count.get('meangini', 0),             weights.get('gini_coefficient', 0)),
         apply_weight(count.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
-        apply_weight(count.get('breadth_total', 0),             weights.get('breadth_weight', 0)),
+        apply_weight(count.get('log_weight_breadth', 0),             weights.get('breadth_weight', 0)),
         apply_weight(count.get('k2_disparity', 0),         weights.get('k2_disparity_weight', 0)),
         apply_weight(count.get('diamond', {}).get('identity', 0),
                      weights.get('diamond_identity', 0))  ])
@@ -1157,7 +1178,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
             total_reads += 1
 
             # Skip reads that are in alignments_to_remove if provided
-            if alignments_to_remove and ref in alignments_to_remove and read.query_name in alignments_to_remove[ref]:
+            if alignments_to_remove and read.query_name in alignments_to_remove and ref in alignments_to_remove[read.query_name]:
                 continue
 
             # Create a unique key for the read based on its query name and strand
@@ -1643,7 +1664,6 @@ def main():
                         data['comparison'] =  ( comparison_value  )
                     else:
                         data['comparison'] = 1
-
                 species_aggregated[top_level_key]['minhash_reductions'].append(data.get('comparison', 1))
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
                 species_aggregated[top_level_key]['taxids'].append(data.get('taxid', "None"))
@@ -1903,7 +1923,10 @@ def main():
         for key, value in species_aggregated.items():
             abus = []
             for body_site in body_sites:
-                for taxid in value.get('taxids', []):
+                taxids = value.get('taxids', [])
+                if args.compress_species:
+                    taxids.append(key)
+                for taxid in taxids:
                     if not taxid:
                         continue
                     try:
@@ -1927,13 +1950,13 @@ def main():
             # set zscore max 3 if greater
             # if zscore > 3:
             #     zscore = 3.1
-            if value['name'] == "Clostridioides difficile":
-                print(value['numreads'], total_reads, sum_abus_expected, ">>>>", percent_total_reads_observed)
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
             # if percentile is below 0.5 set it to 0
             # if zscore < 2.5:
             #     percentile = 0
+            # if "Escherichia coli" in value['name']:
+            #     print(value['name'], key, value['zscore'], percentile)
             value['hmp_percentile'] = percentile
 
     else:
@@ -1994,6 +2017,7 @@ def main():
         "Diamond Identity",
         "K2 Disparity Score",
         "Siblings score",
+        "Breadth Weight Score",
         "TASS Score"
     ]
     write_to_tsv(output, final_scores, "\t".join(header))
@@ -2380,6 +2404,11 @@ def calculate_scores(
         #     print(count)
         #     exit()
         # Apply weights to the relevant scores
+        # Example usage:
+        breadth = count.get('breadth_total')  # your raw value between 0 and 1
+        log_weight_breadth = 1-logarithmic_weight(breadth)
+        # get log weight of the breadth_total
+        count['log_weight_breadth'] = log_weight_breadth
         tass_score = compute_tass_score(
             count,
             weights,
@@ -2395,6 +2424,7 @@ def calculate_scores(
                 percent_total=percent_total,
                 percent_aligned=percent_aligned,
                 callfamclass=callfamclass,
+                log_breadth_weight = count.get('log_weight_breadth', 0),
                 total_reads=sum(count['numreads']),
                 reads_aligned=countreads,
                 hmp_percentile = count.get('hmp_percentile', 0),
@@ -2465,8 +2495,9 @@ def write_to_tsv(output_path, final_scores, header):
             percent_total = entry.get('percent_total', 0)
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
+            log_breadth_weight = entry.get('log_breadth_weight', 0)
             # if "Toxoplasma" in formatname:
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.40  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.60  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
@@ -2492,6 +2523,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tK2 Reads: {entry.get('k2_reads', 0)}")
                 print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
                 print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
+                print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
                 print()
                 total+=1
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
@@ -2500,7 +2532,7 @@ def write_to_tsv(output_path, final_scores, header):
                 f"{is_annotated}\t{entry.get('pathogenic_sites')}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
-                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{tass_score:.2f}\n"
+                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
             )
             fulltotal+=1
     print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")

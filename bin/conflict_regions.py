@@ -231,7 +231,7 @@ def create_signatures_for_regions(
 
     signatures = {}
     reads_map = defaultdict(list)
-    print("\tStart processing pool now...")
+    print(f"\tStart processing pool now... with: {num_workers}")
 
     # init_worker(bam_path, fasta_paths)
     # for region in tqdm(regions, total=len(regions), desc="Processing regions"):
@@ -239,7 +239,6 @@ def create_signatures_for_regions(
     #     if result is not None:
     #         region_name, sig, chrom, region_reads = result
     #         signatures[region_name] = sig
-
     with concurrent.futures.ProcessPoolExecutor(
             max_workers=num_workers,
             initializer=init_worker,
@@ -248,7 +247,7 @@ def create_signatures_for_regions(
         process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
         # Now, map over regions without using a lambda.
         results = executor.map(process_region_partial, regions, chunksize=1)
-        for result in tqdm(results, total=len(regions), desc="Processing regions"):
+        for result in tqdm(results, total=regions_df.shape[0], desc="Processing regions"):
             if result is not None:
                 region_name, sig, chrom, region_reads = result
                 signatures[region_name] = sig
@@ -384,6 +383,7 @@ def fast_mode_sbt(
                 ref2cluster[ref] = cluster_idx
     start_time = time.time()
     seen_comparisons = defaultdict()
+    print(f"Processing all signatures in SBT index")
     with open(output_csv, "w", newline="") as outfh:
         writer = csv.writer(outfh)
         writer.writerow([
@@ -407,7 +407,7 @@ def fast_mode_sbt(
             if sbt is None:
                 continue
             results = sbt.search(
-                sig1, threshold=min_threshold, best_only=True
+                sig1, threshold=min_threshold, best_only=False
             )
 
             # We'll iterate over these matches
@@ -591,22 +591,22 @@ def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
     #                 )
     return sum_comparisons
 
-def create_filtered_bam(original_bam_path, output_bam_path, alignments_to_keep):
+def create_filtered_bam(bam_in, output_bam_path, alignments_to_skip):
     """
     Create a new BAM file containing only reads with IDs in read_ids_to_keep.
     """
-    bam_in = pysam.AlignmentFile(original_bam_path, "rb")
     bam_out = pysam.AlignmentFile(output_bam_path, "wb", template=bam_in)
+    # referesh bam iteration
+    bam_in.reset()
     set_reads_refs = set()
     count_total = 0
     count_written = 0
     for read in bam_in:
         count_total += 1
-        if (read.reference_name, read.query_name) in alignments_to_keep:
+        if (read.query_name not in alignments_to_skip) and (read.reference_name not in alignments_to_skip.get(read.query_name, [])):
             bam_out.write(read)
             count_written += 1
         set_reads_refs.add(read.query_name)
-    bam_in.close()
     bam_out.close()
     # subprocess.run(["samtools", "index", output_bam_path])
     pysam.index(output_bam_path)
@@ -1136,7 +1136,7 @@ def compare_metrics(reads_map):
         total_reads = stats.get('total_reads', 0)
         pass_filtered_reads = stats.get('pass_filtered_reads', 0)
         prop_aligned = stats.get('proportion_aligned', 0)
-        delta_reads = total_reads - pass_filtered_reads
+        delta_reads = pass_filtered_reads - total_reads
         precision = stats.get('precision', 0)
         recall = stats.get('recall', 0)
         f1 = stats.get('f1', 0)
@@ -1307,7 +1307,7 @@ def calculate_breadth_coverage_from_bam(bam_fs, reflengths, removed_ids):
             of coverage (percentage) computed over the full reference.
     """
     coverage_dict = {}
-
+    bam_fs.reset()
     # Iterate over each reference in reflengths.
     for ref, ref_length in reflengths.items():
         total_covered = 0
@@ -1703,7 +1703,7 @@ def determine_conflicts(
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=4000, # Limit merges to x intervals
+        max_group_size=20_000, # Limit merges to x intervals
         merging_method=stat_name
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
@@ -1720,10 +1720,10 @@ def determine_conflicts(
     reads_map = defaultdict(list)
     if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
-        num_workers = os.cpu_count() -2 if os.cpu_count() > 2 else 1
-        if num_workers > 10:
-            num_workers = 10
-
+        # get cpu count / 2, only if it is > 1, round down
+        num_workers = max(1, int(os.cpu_count() / 2))
+        # if num_workers > 10:
+        #     num_workers = 10
         print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
         start_time = time.time()
         signatures = create_signatures_for_regions(
@@ -1746,14 +1746,7 @@ def determine_conflicts(
         print(f"loading signatures from sigfile: {sigfile}")
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
-        # load all all read ids to reads_map where key is reference and value is set of read ids
 
-        # for read in bam_fs.fetch():
-            # ref = read.reference_name
-            # reads_map[ref].append(dict(id=read.query_name, start=read.reference_start, end=read.reference_end))
-        # get reflengths of references
-
-        # bam_fs.close()
     bam_fs = pysam.AlignmentFile(input_bam, "rb")
     reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
 
@@ -1782,8 +1775,8 @@ def determine_conflicts(
     print(f"Comparison results written to: {output_csv}")
     print("Comparing signatures pairwise...")
     print(f"Clusters to compare", len(clusters))
-    for i, c in enumerate(clusters):
-        print(f"C{i}:", c)
+    # for i, c in enumerate(clusters):
+    #     print(f"C{i}:", c)
     signatures = list(signatures.items())
     start_stime = time.time()
 
@@ -1858,9 +1851,9 @@ def determine_conflicts(
         # print(f"Completed Bread of coverage setting in {time.time() - start_time}")
         if filtered_bam_create:
             create_filtered_bam(
-                input_bam,
+                bam_fs,
                 filtered_bam_create,
-                removed_read_ids.keys()
+                removed_read_ids
             )
     except Exception as e:
         print(f"Error while filtering BAM: {e}")
@@ -1887,14 +1880,11 @@ def determine_conflicts(
                 print(f"Error calculating coverage with internal method: {e}")
                 breadth = {}
         print(f"Done with the breadth creation in {time.time()-start_time} seconds")
-    print(breadth_old)
-    print(breadth)
 
     reads_map = defaultdict(lambda: defaultdict(int))
-
+    print(f"Calculating reads map information from original and new filters")
     for ref, ref_length in reflengths.items():
         reads = bam_fs.fetch(ref, 0, ref_length)
-        print(ref)
         total_reads = 0
         pass_filtered_reads = 0
 

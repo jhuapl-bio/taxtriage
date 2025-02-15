@@ -64,9 +64,9 @@ process ALIGNMENT_PER_SAMPLE {
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping \\
         --min_similarity_comparable 0.8 \\
-        --gini_weight 0.75  \\
+        --gini_weight 0.70  \\
         --disparity_score_weight 0.0  \\
-        --breadth_weight 0.15 --minhash_weight 0.1 --mapq_weight 0.0 --hmp_weight 0.0 \\
+        --breadth_weight 0.2 --minhash_weight 0.05 --mapq_weight 0.0 --hmp_weight 0.0 \\
         --fast \\
         $min_reads_align $ignore_alignment
 

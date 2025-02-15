@@ -51,6 +51,7 @@ workflow CLASSIFIER {
     main:
         ch_kraken2_report = Channel.empty()
         ch_metaphlan_report = Channel.empty()
+        ch_tops = Channel.empty()
         ch_empty_file = file("$projectDir/assets/NO_FILE")
         if (!params.skip_kraken2){
             // // // // // //
@@ -109,6 +110,7 @@ workflow CLASSIFIER {
             TOP_HITS(
                 ch_kraken2_report.combine(distributions).combine(ch_pathogens)
             )
+            ch_tops = TOP_HITS.out.tops
             MERGEDSUBSPECIES(
                 ch_kraken2_report.map{
                     meta, report -> report
@@ -180,4 +182,5 @@ workflow CLASSIFIER {
         ch_metaphlan_report
         ch_reads
         ch_organisms_to_download
+        ch_tops
 }
