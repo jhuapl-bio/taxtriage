@@ -692,13 +692,13 @@ def main():
                 }
             else:
                 stats = stats_dict[(row[args.type], row['body_site'])]
+            rank = stats['rank']
             buffer = make_vplot(
                 row[args.type],
                 stats,
                 args.type,
                 df_full,
-                percentile_column="HHS Percentile",
-                abu_col="% Reads"
+                percentile_column="HHS Percentile"
             )
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"

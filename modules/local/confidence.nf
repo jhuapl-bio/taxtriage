@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process ALIGNMENT_METRIC {
+process CONFIDENCE_METRIC {
     tag "$meta.id"
     label 'process_high'
 
@@ -27,7 +27,7 @@ process ALIGNMENT_METRIC {
     tuple val(meta), path(bam), path(csi), path(depth), path(mapping)
 
     output:
-    tuple val(meta), path("*.metrics.tsv"), optional: false, emit: tsv
+    tuple val(meta), path("*.confidences.tsv"), optional: false, emit: tsv
     path "versions.yml"           , emit: versions
 
     when:
@@ -40,7 +40,7 @@ process ALIGNMENT_METRIC {
 
 
 
-    def output = "${meta.id}.metrics.tsv"
+    def output = "${meta.id}.confidences.tsv"
     def finaloutput = "${meta.id}.aggregate.tsv"
     def map = mapping.name != "NO_FILE" ? " -m $mapping " : ""
 

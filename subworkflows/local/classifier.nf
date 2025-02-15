@@ -50,7 +50,6 @@ workflow CLASSIFIER {
 
     main:
         ch_kraken2_report = Channel.empty()
-        ch_tops = Channel.empty()
         ch_metaphlan_report = Channel.empty()
         ch_empty_file = file("$projectDir/assets/NO_FILE")
         if (!params.skip_kraken2){
@@ -136,7 +135,6 @@ workflow CLASSIFIER {
             } else {
                 ch_organisms = TOP_HITS.out.taxids
             }
-            ch_tops = TOP_HITS.out.tops
             // mix ch_organisms_to_download with ch_organisms 2nd index list
             ch_organisms_to_download = ch_organisms_to_download.join(
                 ch_organisms
@@ -182,5 +180,4 @@ workflow CLASSIFIER {
         ch_metaphlan_report
         ch_reads
         ch_organisms_to_download
-        ch_tops
 }

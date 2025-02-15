@@ -18,10 +18,10 @@ process ALIGNMENT_PER_SAMPLE {
     tag "$meta.id"
     label 'process_high'
 
-    conda (params.enable_conda ? "bioconda::pysam bioconda::sourmash bioconda::scipy bioconda::intervaltree pandas numpy tqdm seaborn openpyxl" : null)
+    conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'library://bmerritt1762/jhuaplbio/taxtriage_confidence:2.1' :
-        'jhuaplbio/taxtriage_confidence:2.1' }"
+        'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
+        'jhuaplbio/taxtriage_confidence:2.0' }"
 
     input:
     tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
@@ -29,14 +29,14 @@ process ALIGNMENT_PER_SAMPLE {
 
     output:
         path "versions.yml"           , emit: versions
-        tuple val(meta), path("*.tsv")    , optional:false, emit: txt
+        tuple val(meta), path("*.txt")    , optional:false, emit: txt
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output = "${meta.id}.paths.tsv"
+    def output = "${meta.id}.paths.txt"
     def id = meta.id
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
