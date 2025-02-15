@@ -8,120 +8,70 @@ export_plots: true
 # - custom_content
 # - kraken
 max_table_rows: 1000000
+table_columns_visible:
+  merge: # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
+    "Reads Aligned": false
+    "Abu Total Aligned": false
+    "Abu Total Bases": false
+    "Total Bases Adjusted": false
+    "Breadth Genome Coverage": false
+    "Depth Coverage Mean": false
+    "Depth Coverage Stdev": false
+    "Depth Coef. Variation": false
+custom_css_files:
+  - ./mqc.css
 custom_content:
-  table_columns_placement:
-    confidences:
-      "TASS Score": 1999
   table_columns_name:
     krakenreport:
       rank: "Percent of bases that are GC"
   order:
     - confidences
-    - metrics
     - krakenreport
-kraken:
-  top_n: 15
-table_columns_placement:
-  confidences:
-    "Specimen ID": 1
-    "TASS Score": 2
-    "% Reads": 3
-    "Sample Type": 4
-    "Microbial Category": 5
-    "Coverage": 6
-    "Mean Depth": 7
-    "Mean BaseQ" : 8
-    "Mean MapQ": 9
-    "Taxonomic ID #": 10
-    "IsAnnotated": 11
-    "HHS Percentile": 12
 custom_data:
-  confidences:
-    section_name: "Confidences"
+  individuals:
+    section_name: "Individuals"
     plot_type: "table"
-    file: "*all.organisms.report.tsv*"
-    description: "Confidence values for all organisms"
     file_format: "tsv"
-    # pconfig:
-
-      # table_columns_order:
-      #     - "Detected Organism"    # 1st column
-      #     - "TASS Score"           # 2nd column, as desired
-      #     - "Sample Type"
-      #     - "% Reads"
-      #     - "Specimen ID"
-      #     - "Mean BaseQ"
-      #     - "Mean MapQ"
-      #     - "Mean Coverage"
-      #     - "Mean Depth"
-      #     - "Gini Coefficient"
-      #     - "# Reads Aligned"
-      #     - "% Aligned Reads"
-      #     - "Coverage"
-      #     - "HHS Percentile"
-      #     - "IsAnnotated"
-      #     - "Pathogenic Sites"
-      #     - "Microbial Category"
-      #     - "Taxonomic ID #"
-      #     - "Status"
-      #     - "AnnClass"
-      #     - "isSpecies"
-      #     - "Pathogenic Subsp/Strains"
-      #     - "K2 Reads"
-      #     - "Parent K2 Reads"
-      #     - "MapQ Score"
-      #     - "Disparity Score"
-      #     - "Minhash Score"
-      #     - "Diamond Identity"
-      #     - "K2 Disparity Score"
-      #     - "Siblings score"
-  # metrics:
-  #   section_name: "Alignment Metrics"
-  #   plot_type: "table"
-  #   file_format: "tsv"
-  #   pconfig:
-  #     beeswarm: false
-  # krakenreport:
-  #   section_name: "All Metagenomic Hits"
-  #   plot_type: "table"
-  #   file_format: "tsv"
-  #   pconfig:
-  #     id: "summary_metagenomics_metrics_plot"
-  #     beeswarm: false
-  #     headers:
-  #       rank: "Rank"
+    pconfig:
+      table_title: "Individuals Data"
+      namespace: "Individuals"
+  confidences:
+    section_name: "Confidence Metrics"
+    plot_type: "table"
+    file: "*confidences.merged_mqc.tsv*"
+    file_format: "tsv"
+    pconfig:
+      beeswarm: false
+  krakenreport:
+    section_name: "All Metagenomic Hits"
+    plot_type: "table"
+    file_format: "tsv"
+    file: "krakenreport.merged_mqc.tsv"
+    pconfig:
+      id: "summary_metagenomics_metrics_plot"
+      beeswarm: false
+      headers:
+        rank: "Rank"
   nf-core-taxtriage-summary:
     section_name: "Metadata"
     file: "table_explanation_mqc.yml"
 skip_generalstats: true
-sp:
-  krakenreport:
-    fn: "*top_report.tsv"
-  confidences:
-    fn: "*.report.tsv"
-  metrics:
-    fn: "*metrics.tsv"
-    description: "Basic alignment metrics"
 module_order:
   - confidences
-  - metrics
   - krakenreport
   - kraken
   - fastp
   - bcftools
-
 report_section_order:
   confidences:
     order: 9999
-  metrics:
-    order: 9998
   krakenreport:
-    order: 9997
+    order: 9998
   kraken:
-    order: 9996
+    order: 9997
   bcftools:
-    order: 9995
+    order: 9996
   fastp:
-    order: 9994
+    order: 9995
   nf-core-taxtriage-summary:
-    order: 9993
+    order: 9994

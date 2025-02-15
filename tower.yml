@@ -3,7 +3,7 @@ reports:
     display: "MultiQC HTML report"
   "**/report/*report.pdf":
     display: "Organism Discovery Report(s)"
-  "**/report/*report.tsv":
+  "**/report/*report.txt":
     display: "Organism Discovery Analysis"
   "**/convert/*merged.tsv":
     display: "Confidence Table"
