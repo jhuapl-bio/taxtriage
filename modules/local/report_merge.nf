@@ -19,10 +19,10 @@ process ORGANISM_MERGE_REPORT {
     label 'process_medium'
     publishDir "${params.outdir}/report", mode: 'copy'
 
-    conda (params.enable_conda ? "pandas reportlab numpy seaborn matplotlib tables scikit-learn" : null)
+    conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.8' :
-        'jhuaplbio/reportlab-pdf:4.0.8' }"
+        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.7' :
+        'jhuaplbio/reportlab-pdf:4.0.7' }"
 
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)

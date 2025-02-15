@@ -96,102 +96,59 @@ def import_distributions(
         # print(f"New std dev: {stats_dict_new[key]['std']} ")
     return stats_dict_new, site_counts
 
-
-def make_vplot(taxid, stats, column, result_df, percentile_column=None, abu_col='abundances'):
-    import statistics
-    import numpy as np
-    import math
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    from io import BytesIO
-    from scipy.stats import norm
-
-
-    # Pre-calculations
+def make_vplot(taxid, stats, column, result_df, percentile_column =None):
+    # Calculate the standard deviation and mean
     std_dev = stats['std']
-    mean = stats.get('norm_abundance', 0)
+    mean = stats['mean']
     abundances = stats['abundances']
-    mean_recalc = statistics.mean(abundances) if len(abundances) > 1 else 0
-    std_dev_recalc = statistics.stdev(abundances) if len(abundances) > 1 else 0
-    std_dev_recalc = std_dev
-    # Create figure in memory
+    # Create figure in memory, not on disk
     fig, ax = plt.subplots(figsize=(4, 2))
 
-    # if stats.get('name') == "Alistipes shahii":
-    #     print(stats['name'], stats['mean'], stats['std'], stats['norm_abundance'])
-    #     print(mean_recalc, max(abundances))
-    #     print(f"75th percentile: {np.percentile(abundances, 75)}")
-    #     print(f"25th percentile: {np.percentile(abundances, 25)}")
-    #     print(f"50th percentile: {np.percentile(abundances, 50)}")
-    #     print(f"93rd percentile: {np.percentile(abundances, 93)}")
-    #     print(f"10th percentile: {np.percentile(abundances, 10)}")
-    #     print(f"40th percentile: {np.percentile(abundances, 40)}")
-    #     print(f"4th percentile: {np.percentile(abundances, 4)}")
-    #     print(f"23rd percentile: {np.percentile(abundances, 23)}")
-    #     print(f"3rd percentile: {np.percentile(abundances, 3)}")
-    #     print(f"22nd percentile: {np.percentile(abundances, 22)}")
+    # Continue with your data filtering and plotting logic
+    filtered_data = [x for x in abundances if mean - 3 * std_dev < x < mean + 3 * std_dev]
 
-    filtered_data = abundances
     if taxid in result_df[column].values:
         specific_row = result_df[result_df[column] == taxid].iloc[0]
-        specific_abundance = specific_row[abu_col]
-
-        # Calculate the z-score based on raw abundances
-        if std_dev_recalc:
-            zscore = (specific_abundance - mean_recalc) / std_dev_recalc
-            specific_percentile_new = 100 * (0.5 * (1 + math.erf(zscore / math.sqrt(2))))
-        else:
-            zscore = 0
-            specific_percentile_new = 0
-        # Compute empirical percentile as before
+        specific_abundance = specific_row['abundance']
         if not percentile_column:
             if len(filtered_data) == 0:
                 specific_percentile = 100
             else:
                 specific_percentile = int(np.sum(np.array(filtered_data) <= specific_abundance) / len(filtered_data) * 100)
         else:
-            specific_percentile = math.floor(specific_row[percentile_column] * 100)
-            # if specific_row['name'] == "Alistipes shahii":
-            #     print("\tspecific percentile (empirical):", specific_percentile,
-            #         "\n\tspecific_abundance:", specific_abundance,
-            #         '\n\tzscore:', zscore,
-            #         '\n\tstd-dev:', std_dev_recalc,
-            #         '\n\tstd-dev original:', std_dev,
-            #         '\n\tmean-recalc:', mean_recalc,
-            #         "\n\tspecific percentile (parametric):", specific_percentile_new)
+            specific_percentile = math.floor(specific_row[percentile_column]*100)
+        # Boxplot
+        sns.boxplot(x=filtered_data, showfliers=False, ax=ax,)
 
-        # Boxplot with extended whiskers (3 * IQR)
-        sns.boxplot(x=filtered_data, showfliers=False, whis=3, ax=ax)
-
-        # Dot color logic remains unchanged
+        # Dot color logic remains the same
         color = 'r'
-        if std_dev_recalc:
+        if std_dev != 0:
             try:
-                z = abs((specific_abundance - mean_recalc) / std_dev_recalc)
-                if z <= 1:
+                if abs((specific_abundance - mean) / std_dev) <= 1:
                     color = 'g'
-                elif z <= 2:
+                elif abs((specific_abundance - mean) / std_dev) <= 2:
                     color = 'y'
-                elif z <= 3:
+                elif abs((specific_abundance - mean) / std_dev) <= 3:
                     color = 'orange'
-            except Exception as ex:
+            except Exception as ex :
                 print(ex)
-        plt.plot(specific_abundance, 0, color, marker="o", markersize=15,
-                markeredgecolor="black", linewidth=3)
 
-        # Position text above the dot
-        text_y_position = 0.27 * ax.get_ylim()[1]
+        plt.plot(specific_abundance, 0, color, marker="o", markersize=15, markeredgecolor="black", linewidth=3)
+
+        # Set text position y coordinate slightly above or below the dot based on your plot's range or data
+        text_y_position = 0.27 * ax.get_ylim()[1]  # Example: 10% of the way up the y-axis range
         if len(abundances) == 0:
-            plt.text(specific_abundance, -2.4 * text_y_position, 'Not Prev. in HHS',
-                    ha='center', va='bottom', color='black',
-                    bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.2'),
-                    fontsize=22)
+            plt.text(specific_abundance, -2.4*text_y_position, f'Not Prev. in HHS', ha='center', va='bottom', color='black',
+                bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.2'), fontsize=22)
         plt.text(specific_abundance, text_y_position, f'{specific_percentile}%', ha='center', va='bottom', color='black',
                 bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.2'), fontsize=22)
+    # plt.title("Percentile of " + str(name) + " to microbiome of " + body_site)
+    # plt.xlabel("Abundance")
 
-    # Save the figure to a BytesIO object and return it
+    # Instead of saving, return the figure as a BytesIO object
     fig_buffer = BytesIO()
     plt.savefig(fig_buffer, format='png')
-    plt.close(fig)
-    fig_buffer.seek(0)
+    plt.close(fig)  # Make sure to close the plot
+    fig_buffer.seek(0)  # Move to the beginning of the BytesIO buffer for reading
+
     return fig_buffer

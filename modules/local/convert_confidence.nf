@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONVERT_METRICS {
+process CONVERT_CONFIDENCE {
     tag "$meta.id"
     label 'process_medium'
 
@@ -27,7 +27,7 @@ process CONVERT_METRICS {
     tuple val(meta),  path(tsv)
 
     output:
-    path("*metrics.merged.tsv"), optional: false, emit: tsv
+    path("*confidences.merged.tsv"), optional: false, emit: tsv
     path "versions.yml"           , emit: versions
 
     when:
@@ -38,7 +38,7 @@ process CONVERT_METRICS {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output_parsed = "${meta.id}.metrics.merged.tsv"
+    def output_parsed = "${meta.id}.confidences.merged.tsv"
 
     """
     echo "Printing confidence"

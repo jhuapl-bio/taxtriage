@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process METRIC_MERGE {
+process CONFIDENCE_MERGE {
     tag "$meta.id"
     label 'process_low'
 
@@ -27,7 +27,7 @@ process METRIC_MERGE {
     tuple val(meta), path(single_confidence)
 
     output:
-    tuple val(meta), path("*.fullmetrics.tsv"), optional: false, emit: confidence
+    tuple val(meta), path("*.fullconfidences.tsv"), optional: false, emit: confidence
     path "versions.yml"           , emit: versions
 
     when:
@@ -40,7 +40,7 @@ process METRIC_MERGE {
 
 
 
-    def output = "${meta.id}.fullmetrics.tsv"
+    def output = "${meta.id}.fullconfidences.tsv"
 
 
     """
