@@ -67,7 +67,7 @@ if (params.minq) {
 
 // if params.save_fastq_classified then set ch_save_fastq_classified to true
 // else set ch_save_fastq_classified to false
-ch_save_fastq_classified = params.skip_classified_fastq ? false : true
+ch_save_fastq_classified = params.save_classified_fastq ? true : false
 ch_assembly_txt = null
 ch_kraken_reference = false
 
@@ -182,6 +182,7 @@ include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
+include { COUNT_READS  } from '../modules/local/count_reads'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -474,6 +475,15 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+    COUNT_READS(ch_reads)
+    readCountChannel = COUNT_READS.out.count
+    // Update the meta with the read count by reading the file content
+    readCountChannel.map { meta, countFile, reads ->
+        def count = countFile.text.trim().toInteger()
+        // Update meta map by adding a new key 'read_count'
+        meta.read_count = count
+        return [meta, reads]
+    }.set{ ch_reads }
 
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
@@ -524,8 +534,9 @@ workflow TAXTRIAGE {
     )
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
-    ////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,
@@ -551,7 +562,14 @@ workflow TAXTRIAGE {
 
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Run the COUNT_READS process and capture its output in readCountChannel.
 
+    // For demonstration, print out the updated metadata.
+    // finalMetaChannel.subscribe { updatedMeta ->
+    //     println "Updated meta for sample ${updatedMeta.id}: ${updatedMeta}"
+    // }
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
                 return [meta, fastas, map]

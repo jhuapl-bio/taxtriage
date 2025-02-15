@@ -59,6 +59,14 @@ def parse_args(argv=None):
         help="Depth BEDGRAPH rather than 1 based per positions",
     )
     parser.add_argument(
+        "-f",
+        "--fasta",
+        metavar="FASTAFILE",
+        nargs='+',
+        default=[],
+        help="The fasta file(s) used for alignment originally. Optional but used for the signature creation step if you dont want to make signatures of all reads. Dramatically improves memory and speed",
+    )
+    parser.add_argument(
         "-d",
         "--depth",
         metavar="DEPTH",
@@ -1144,8 +1152,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
             #     continue
             # For paired-end reads, only count the first mate to avoid double-counting
 
-            if not read.is_read1 and read.is_paired:
-                continue
+            # if not read.is_read1 and read.is_paired:
+            #     continue
 
             ref = read.reference_name
             total_reads += 1
@@ -1353,6 +1361,7 @@ def main():
                 matrix = args.matrix,
                 min_threshold = args.min_threshold,
                 abu_file = args.abu_file,
+                fasta_files = args.fasta,
                 min_similarity_comparable = args.min_similarity_comparable,
                 use_variance = args.use_variance,
                 apply_ground_truth = args.apply_ground_truth,
@@ -1619,11 +1628,10 @@ def main():
                     gini_strain = getGiniCoeff(data['covered_regions'], data['length'], data['coverage'],  alpha=args.alpha)
                 else:
                     gini_strain = 0
-                # exit()
                 # get Δ All% column value if it exists, else set to 0
                 # col_stat = 'Sum Rs %'
                 col_stat2 = 'Δ All%'
-                col_stat = 'Δ Breadth%'
+                col_stat = 'Δ^-1 Breadth'
                 if not comparison_df.empty:
                     # Ensure 'accession' is a string and matches the index type
                     accession = str(data['accession']).strip()
@@ -1634,14 +1642,10 @@ def main():
                             1,
                             (c1+c2) / 2
                         )
-                        # print(accession, c1, c2, comparison_value,"<<<<")
-                        data['comparison'] =  (comparison_value  )
+                        data['comparison'] =  ( comparison_value  )
                     else:
                         data['comparison'] = 1
-                # if "thailandensis" in data['name']:
-                #     print(comparison_df, accession)
-                #     print(data.get('comparison', 0), "<")
-                # print(top_level_key, data.get('coverage'),"<")
+
                 species_aggregated[top_level_key]['minhash_reductions'].append(data.get('comparison', 1))
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
                 species_aggregated[top_level_key]['taxids'].append(data.get('taxid', "None"))

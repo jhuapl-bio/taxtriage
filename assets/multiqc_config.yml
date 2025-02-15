@@ -3,7 +3,6 @@ report_comment: >
   analysis pipeline. For information about how to interpret these results, please see the
   <a href="https://nf-co.re/taxtriage" target="_blank">documentation</a>.
 
-export_plots: true
 # run_modules:
 # - custom_content
 # - kraken
@@ -22,6 +21,10 @@ custom_content:
 kraken:
   top_n: 15
 table_columns_placement:
+  # metrics:
+  #   "Name": 1
+  #   "Sample_Name": 2
+  #   "% Aligned": 3
   confidences:
     "Specimen ID": 1
     "TASS Score": 2
@@ -35,6 +38,7 @@ table_columns_placement:
     "Taxonomic ID #": 10
     "IsAnnotated": 11
     "HHS Percentile": 12
+export_plots: false
 custom_data:
   confidences:
     section_name: "Confidences"
@@ -42,54 +46,17 @@ custom_data:
     file: "*all.organisms.report.txt*"
     description: "Confidence values for all organisms"
     file_format: "tsv"
-    # pconfig:
-
-      # table_columns_order:
-      #     - "Detected Organism"    # 1st column
-      #     - "TASS Score"           # 2nd column, as desired
-      #     - "Sample Type"
-      #     - "% Reads"
-      #     - "Specimen ID"
-      #     - "Mean BaseQ"
-      #     - "Mean MapQ"
-      #     - "Mean Coverage"
-      #     - "Mean Depth"
-      #     - "Gini Coefficient"
-      #     - "# Reads Aligned"
-      #     - "% Aligned Reads"
-      #     - "Coverage"
-      #     - "HHS Percentile"
-      #     - "IsAnnotated"
-      #     - "Pathogenic Sites"
-      #     - "Microbial Category"
-      #     - "Taxonomic ID #"
-      #     - "Status"
-      #     - "AnnClass"
-      #     - "isSpecies"
-      #     - "Pathogenic Subsp/Strains"
-      #     - "K2 Reads"
-      #     - "Parent K2 Reads"
-      #     - "MapQ Score"
-      #     - "Disparity Score"
-      #     - "Minhash Score"
-      #     - "Diamond Identity"
-      #     - "K2 Disparity Score"
-      #     - "Siblings score"
-  # metrics:
-  #   section_name: "Alignment Metrics"
-  #   plot_type: "table"
-  #   file_format: "tsv"
-  #   pconfig:
-  #     beeswarm: false
-  # krakenreport:
-  #   section_name: "All Metagenomic Hits"
-  #   plot_type: "table"
-  #   file_format: "tsv"
-  #   pconfig:
-  #     id: "summary_metagenomics_metrics_plot"
-  #     beeswarm: false
-  #     headers:
-  #       rank: "Rank"
+  metrics:
+    section_name: "Alignment Metrics"
+    plot_type: "table"
+    description: "Standard alignment statistics"
+    file: "*merged_mqc.tsv"
+    file_format: "tsv"
+  krakenreport:
+    section_name: "All Metagenomic Hits"
+    plot_type: "table"
+    description: "All metagenomic top hits"
+    file_format: "tsv"
   nf-core-taxtriage-summary:
     section_name: "Metadata"
     file: "table_explanation_mqc.yml"
@@ -100,7 +67,7 @@ sp:
   confidences:
     fn: "*.report.txt"
   metrics:
-    fn: "*metrics.tsv"
+    fn: "*merged_mqc.tsv"
     description: "Basic alignment metrics"
 module_order:
   - confidences
@@ -109,7 +76,6 @@ module_order:
   - kraken
   - fastp
   - bcftools
-
 report_section_order:
   confidences:
     order: 9999

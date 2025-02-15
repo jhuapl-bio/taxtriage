@@ -41,10 +41,9 @@ process ALIGNMENT_PER_SAMPLE {
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     def assemblyi = assembly ? " -j ${assembly} " : " "
-
+    def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
     // if k2_report exists and is not null add --k2 flag
     // if k2_report != NO_FILE, add --k2 flag
-
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
     def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
     def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
@@ -58,7 +57,7 @@ process ALIGNMENT_PER_SAMPLE {
         -i $bamfiles \\
         -o $output $bedgraph \\
         -s $id $assemblyi \\
-        $type \\
+        $type $read_count \\
         --output_dir $output_dir \\
         --scaled 50 \\
         --alpha 2.5 \\

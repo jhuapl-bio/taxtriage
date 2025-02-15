@@ -124,37 +124,6 @@ def create_signature_for_single_region(args) -> Tuple[str, 'SourmashSignature']:
     sig = SourmashSignature(mh, name=region_name)
     return (region_name, sig)
 
-def process_region(region, bam_path, kmer_size, scaled):
-    """
-    Process a single region: open the BAM file, fetch reads,
-    build a list of read dictionaries, and create a signature.
-
-    :param region: Tuple (chrom, start, end, mean_depth)
-    :param bam_path: Path to the BAM file.
-    :param kmer_size: K-mer size for signature.
-    :param scaled: Scaling factor for signature.
-    :return: (region_name, signature, chrom, region_reads) or None if no signature.
-    """
-    chrom, start, end, mean_depth = region
-    reads_in_region = []
-
-    # Each process opens its own instance of the BAM file.
-    with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
-        for read in bam_fs.fetch(chrom, start, end):
-            reads_in_region.append({
-                "id": read.query_name,
-                "seq": read.seq,
-                "start": read.reference_start,
-                "end": read.reference_end
-            })
-
-    args = [chrom, start, end, kmer_size, scaled, reads_in_region]
-    result = create_signature_for_single_region(args)
-    # result = [1,1]
-    if result is None:
-        return None
-    region_name, sig = result
-    return (region_name, sig, chrom, reads_in_region)
 import concurrent.futures
 from collections import defaultdict
 from functools import partial
@@ -172,11 +141,17 @@ from tqdm import tqdm
 import time
 
 global_bam = None
+global_fastas  = []
 
-def init_worker(bam_path):
+def init_worker(bam_path, fasta_paths):
     """Initializer for each worker process; open the BAM file once."""
     global global_bam
+    global global_fastas
     global_bam = pysam.AlignmentFile(bam_path, "rb")
+    # append all fasta to global_fasta
+    for fasta_path in fasta_paths:
+        fasta = pysam.FastaFile(fasta_path)
+        global_fastas.append(fasta)
 
 def process_region(region, kmer_size, scaled):
     """
@@ -187,9 +162,9 @@ def process_region(region, kmer_size, scaled):
     :return: (region_name, signature, chrom, region_reads) or None if no signature.
     """
     global global_bam
+    global global_fastas
     chrom, start, end, mean_depth = region
     reads_in_region = []
-
     # Use the globally opened BAM file.
     try:
         for read in global_bam.fetch(chrom, start, end):
@@ -202,9 +177,28 @@ def process_region(region, kmer_size, scaled):
     except Exception as e:
         print(f"Error processing region {region}: {e}")
         return None
+    result=None
+    if len(global_fastas) > 0 :
+        # fetch the sequence from fasta
+        for fasta in global_fastas:
+            # check if chrom is in fasta first
+            if chrom not in fasta.references:
+                continue
+            seq = fasta.fetch(chrom, start, end)
+            if seq:
+                reads_in_region.append({
+                    "id": f"{chrom}:{start}-{end}",
+                    "seq": seq,
+                    "start": start,
+                    "end": end
+                })
+                args = [chrom, start, end, kmer_size, scaled, reads_in_region]
+                result = create_signature_for_single_region(args)
 
-    args = [chrom, start, end, kmer_size, scaled, reads_in_region]
-    result = create_signature_for_single_region(args)
+    else:
+        # print(reads_in_region)
+        args = [chrom, start, end, kmer_size, scaled, reads_in_region]
+        result = create_signature_for_single_region(args)
     if result is None:
         return None
     region_name, sig = result
@@ -213,6 +207,7 @@ def process_region(region, kmer_size, scaled):
 def create_signatures_for_regions(
     regions_df: pd.DataFrame,
     bam_path: str,
+    fasta_paths: list,
     kmer_size: int,
     scaled: float,
     num_workers: int = 8
@@ -246,12 +241,19 @@ def create_signatures_for_regions(
 
     signatures = {}
     reads_map = defaultdict(list)
-
     print("\tStart processing pool now...")
+
+    # init_worker(bam_path, fasta_paths)
+    # for region in tqdm(regions, total=len(regions), desc="Processing regions"):
+    #     result = process_region(region, kmer_size, scaled)
+    #     if result is not None:
+    #         region_name, sig, chrom, region_reads = result
+    #         signatures[region_name] = sig
+
     with concurrent.futures.ProcessPoolExecutor(
             max_workers=num_workers,
             initializer=init_worker,
-            initargs=(bam_path,)) as executor:
+            initargs=(bam_path,fasta_paths, )) as executor:
         # Use functools.partial to bind kmer_size and scaled to process_region.
         process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
         # Now, map over regions without using a lambda.
@@ -260,19 +262,64 @@ def create_signatures_for_regions(
             if result is not None:
                 region_name, sig, chrom, region_reads = result
                 signatures[region_name] = sig
-                # Update reads_map with each read from this region.
-                for read in region_reads:
-                    reads_map.setdefault(chrom, []).append({
-                        "id": read["id"],
-                        "start": read["start"],
-                        "end": read["end"],
-                    })
+                # # Update reads_map with each read from this region.
+                # for read in region_reads:
+                #     reads_map.setdefault(chrom, []).append({
+                #         "id": read["id"],
+                #         "start": read["start"],
+                #         "end": read["end"],
+                #     })
 
-    # Get reference lengths (this is done in the main process).
+    # Close the global BAM file.
+    global global_bam
+    if global_bam is not None:
+        global_bam.close()
+    return signatures
+
+from collections import Counter
+
+def consensus_reference_from_bam(bam_path, region):
+    """
+    Construct a consensus "reference" sequence for a given region from a BAM file.
+
+    Parameters:
+      bam_path (str): Path to the BAM file.
+      region (tuple): (chrom, start, end, mean_depth) defining the region.
+
+    Returns:
+      str: The consensus sequence across the region.
+    """
+    chrom, start, end, mean_depth = region
+    # Dictionary to collect bases observed at each reference position
+    bases_at_pos = defaultdict(list)
+
+    # Open the BAM file and iterate over all reads overlapping the region
     with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
-        reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
-    # Optional sleep (remove when not needed).
-    return signatures, reads_map, reflengths
+        for read in bam_fs.fetch(chrom, start, end):
+            # print the reference_sequence
+            # get_aligned_pairs(with_seq=True) returns tuples: (query_pos, ref_pos, base)
+            for qpos, rpos, base in read.get_aligned_pairs(with_seq=True):
+                # Skip positions not aligned to the reference
+                if rpos is None:
+                    continue
+                # Only consider positions within the region of interest
+                if rpos < start or rpos >= end:
+                    continue
+                if base is not None:
+                    bases_at_pos[rpos].append(base)
+
+    # Build the consensus sequence for each position in the region
+    consensus_bases = []
+    for pos in range(start, end):
+        if pos in bases_at_pos:
+            # Majority vote at this position
+            most_common_base, count = Counter(bases_at_pos[pos]).most_common(1)[0]
+            consensus_bases.append(most_common_base)
+        else:
+            # If no read covers this position, insert an 'N'
+            consensus_bases.append('N')
+
+    return ''.join(consensus_bases)
 #######################################################
 # Helper functions
 #######################################################
@@ -885,7 +932,7 @@ def remove_symmetric(conflict_group, reads_map, fetch_reads_in_region, remove_n=
         removed[region] = to_remove
     return removed
 
-def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_region, remove_mode='random', random_seed=None):
+def finalize_proportional_removal(conflict_groups, bam_fs, fetch_reads_in_region, remove_mode='random', random_seed=None):
     """
     For each conflict group, we:
       1) Gather all sub-regions belonging to each reference in that group.
@@ -909,9 +956,8 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
     """
     if random_seed is not None:
         random.seed(random_seed)
-
+    global global_bam
     removed_read_ids = defaultdict(list)
-
     for group in conflict_groups:
         # 1) Group sub-regions by reference
         #    Example: ref_subregions[ref] = [(ref, s, e), (ref, s2, e2), ...]
@@ -927,7 +973,9 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
             # unify all reads for these sub-regions
             unified_reads = []
             for (start, end) in subregs:
-                region_reads = fetch_reads_in_region(reads_map, ref, start, end)
+                # region_reads = fetch_reads_in_region(reads_map, ref, start, end)
+                reads = bam_fs.fetch(ref, start, end)
+                region_reads = [(read.query_name, ref) for read in reads]
                 unified_reads.extend(region_reads)
             # remove duplicates if the same read appears in multiple sub-regions
             # using a dict or set keyed by read_id
@@ -936,7 +984,6 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
                 if r_id not in unique_ids:
                     unique_ids[r_id] = (r_id, r_ref)
             final_reads = list(unique_ids.values())
-
             coverage_by_ref[ref] = len(final_reads)
             reads_by_ref[ref] = final_reads
         if not coverage_by_ref:
@@ -963,7 +1010,6 @@ def finalize_proportional_removal(conflict_groups, reads_map, fetch_reads_in_reg
                     sampled = rlist[:min_cov]
                 for (read_id, r_ref) in sampled:
                     removed_read_ids[read_id].append(r_ref)
-
     return removed_read_ids
 
 def compute_variance(values):
@@ -1069,64 +1115,79 @@ def compute_f1_scores(reads_map):
 
     return per_ref_results, overall_scores
 
-def compare_metrics(original, new, breadth_old, breadth_new):
+def compare_metrics(reads_map):
     """
-    Compares original and new metrics and returns a pandas DataFrame.
+    Create a DataFrame comparing metrics for each reference from the reads_map dictionary.
 
-    Parameters:
-    - original (dict): Original metrics.
-    - new (dict): New metrics.
+    The expected keys in each reference's dictionary are:
+      - TP: True Positives
+      - FP: False Positives
+      - FN: False Negatives
+      - total_reads
+      - proportion_aligned
+      - precision
+      - recall
+      - f1
+      - breadth_old: Original breadth (from an external computation)
+      - breadth: New breadth (from an external computation)
+
+    This function also calculates the delta in breadth and the relative percentage change.
 
     Returns:
-    - comparison_df (DataFrame): DataFrame containing original, new, and delta metrics.
+      pd.DataFrame: A DataFrame with one row per reference.
     """
-    # Get all unique references
-    all_refs = set(original.keys()).union(new.keys())
-    # Prepare data for DataFrame
     data = []
-    for ref in sorted(all_refs):
-        orig = original.get(ref, {'TP': 0, 'FP': 0, 'FN': 0})
-        nw = new.get(ref, {'TP': 0, 'FP': 0, 'FN': 0})
-        delta_tp = nw['TP'] - orig['TP']
-        delta_fp = nw['FP'] - orig['FP']
-        delta_fn = nw['FN'] - orig['FN']
-        perc_tp_change = (delta_tp / orig['TP']) * 100 if orig['TP'] > 0 else 0.0
-        perc_fp_change = (delta_fp / orig['FP']) * 100 if orig['FP'] > 0 else 0.0
-        total_p =  (orig['TP'] + orig['FP'] + orig['FN'])
-        total_perc_removed =  ( (delta_fp + delta_fn + delta_tp) / total_p * 100 ) if total_p > 0 else 0.0
+    for ref, stats in sorted(reads_map.items()):
+        TP = stats.get('TP Original', 0)
+        FP = stats.get('FP Original', 0)
+        FN = stats.get('FN Original', 0)
+        FN_NEW = stats.get('FN New', 0)
+        TP_NEW = stats.get('TP New', 0)
+        total_reads = stats.get('total_reads', 0)
+        pass_filtered_reads = stats.get('pass_filtered_reads', 0)
+        prop_aligned = stats.get('proportion_aligned', 0)
+        delta_reads = total_reads - pass_filtered_reads
+        precision = stats.get('precision', 0)
+        recall = stats.get('recall', 0)
+        f1 = stats.get('f1', 0)
+        breadth_old_val = stats.get('breadth_old', 0)
+        breadth_new_val = stats.get('breadth', 0)
+        delta_breadth = breadth_new_val - breadth_old_val
+        delta_breadth_perc = (breadth_new_val / breadth_old_val) if breadth_old_val > 0 else 0
+        delta_all_readspercent = 100*(delta_reads / total_reads) if total_reads > 0 else 0
+        # if not whole number set to 2 decimal places else set to 0 decimal places
+        # delta_all_readspercent = round(delta_all_readspercent, 2) if delta_all_readspercent % 1 == 0 else int(delta_all_readspercent)
+
         data.append({
             'Reference': ref,
-            'TP Original': orig['TP'],
-            'FP Original': orig['FP'],
-            'FN Original': orig['FN'],
-            'Breadth Original': breadth_old.get(ref, 0),
-            'Breadth New': breadth_new.get(ref, 0),
-            'TP New': nw['TP'],
-            'FP New': nw['FP'],
-            'FN New': nw['FN'],
-            # 'Δ TP': delta_tp,
-            'Δ TP%': f"{perc_tp_change:.2f}",
-            # 'Δ FP': delta_fp,
-            'Δ FP%': f"{perc_fp_change:.2f}",
-            'Δ All%': f"{total_perc_removed:.2f}",
-            'Δ Breadth': (breadth_new.get(ref, 0) - breadth_old.get(ref, 0)),
-            'Δ Breadth%': (breadth_new.get(ref, 0)  / breadth_old.get(ref, 0)) if breadth_old.get(ref, 0) > 0 else 0,
-            # 'Δ Regions %': f"{100*regions_stat.get('regions_remain', 0):.2f}",
-            # 'Sum Rs %': f"{ ( ( 100+total_perc_removed ) + ( 100*regions_stat.get('regions_remain', 0) ) ) /2  :.2f}",
-            # 'Δ FN': delta_fn
+            'TP Original': TP,
+            'FP Original': FP,
+            'FN Original': FN,
+            'TP New': TP_NEW,
+            'FP New': FN_NEW,
+            'Total Reads': total_reads,
+            'Pass Filtered Reads': pass_filtered_reads,
+            'Proportion Aligned': prop_aligned,
+            'Precision': precision,
+            'Recall': recall,
+            'F1': f1,
+            'Δ All': delta_reads,
+            'Δ All%': delta_all_readspercent,
+            'Breadth Original': breadth_old_val,
+            'Breadth New': breadth_new_val,
+            'Δ Breadth': delta_breadth,
+            'Δ^-1 Breadth': delta_breadth_perc
         })
 
-    # Create DataFrame
-    import pandas as pd
-    comparison_df = pd.DataFrame(data)
-    # get the total number of FP original and new
-    total_fp_original = comparison_df['FP Original'].sum()
-    total_fp_new = comparison_df['FP New'].sum()
-    print(f"Total FP Original: {total_fp_original}")
-    print(f"Total FP New: {total_fp_new}")
-    if total_fp_original > 0:
-        print(f"Drop in FPs: {total_fp_original - total_fp_new} ({((total_fp_original - total_fp_new) / total_fp_original) * 100:.2f}%)")
-    return comparison_df
+    df = pd.DataFrame(data)
+
+    # # Optionally, print summary stats
+    # total_fp = df['FP'].sum()
+    # print(f"Total FP: {total_fp}")
+
+    return df
+
+
 def rebuild_sig_dict(loaded_sigs):
     """
     loaded_sigs: list of (SourmashSignature, name_string)
@@ -1237,173 +1298,67 @@ def create_breadth_coverage_pysam(bamfile=None, covfile_output=None, coverage_th
         print(f"An unexpected error occurred: {e}")
         raise
 
-def calculate_breadth_of_coverage_dict(reads_map_dict, reference_lengths=None, skip_ids={}):
+def calculate_breadth_coverage_from_bam(bam_fs, reflengths, removed_ids):
     """
-    Calculate the breadth of coverage for each reference in a dictionary of reads.
+    Calculate the breadth of coverage for each reference in the BAM file,
+    iterating over each reference in reflengths. For each reference,
+    it fetches reads across the entire reference, skipping any read whose ID
+    appears in removed_ids for that reference.
 
     Parameters:
-    - reads_map_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
-                            Each read dictionary must have 'start' and 'end' keys.
-    - reference_lengths (dict, optional): Keys are reference IDs (str), and values are the total length (int) of the reference.
-                                        If not provided, the reference length is inferred from the reads.
+      bam_fs (pysam.AlignmentFile): An open pysam AlignmentFile (BAM) object.
+      reflengths (dict): Dictionary with keys as reference names (str) and values
+                         as the total length (int) of that reference.
+      removed_ids (dict): Dictionary where keys are read IDs (str) and values are lists
+                          of reference names (str) for which the read should be skipped.
 
     Returns:
-    - dict: Keys are reference IDs, and values are breadth of coverage percentages (float).
+      dict: A dictionary with keys as reference names and values as the breadth
+            of coverage (percentage) computed over the full reference.
     """
-    def calculate_breadth_of_coverage(reads, ref_length=None):
-        """
-        Helper function to calculate coverage for a single reference.
-
-        Parameters:
-        - reads (list of dict): Each dict has 'start' and 'end' keys.
-        - ref_length (int, optional): Total length of the reference. If not provided, inferred from reads.
-
-        Returns:
-        - float: Breadth of coverage as a percentage.
-        """
-        if not reads:
-            return 0.0  # No reads provided
-
-        # Extract intervals
-        intervals = [(read['start'], read['end']) for read in reads]
-
-        # Sort intervals by start position
-        sorted_intervals = sorted(intervals, key=lambda x: x[0])
-
-        # Merge overlapping or adjacent intervals
-        merged_intervals = []
-        current_start, current_end = sorted_intervals[0]
-
-        for start, end in sorted_intervals[1:]:
-            if start <= current_end + 1:  # Overlapping or adjacent
-                current_end = max(current_end, end)
-            else:
-                merged_intervals.append((current_start, current_end))
-                current_start, current_end = start, end
-        merged_intervals.append((current_start, current_end))  # Add the last interval
-
-        # Calculate total covered bases
-        total_covered = sum(end  - start   for start, end in merged_intervals)
-
-        # Define reference length
-        if ref_length is not None:
-            reference_length = ref_length
-            # Optionally, you might want to adjust merged_intervals to fit within reference_length
-            # Here, we assume reads are already within the reference
-        else:
-            min_start = min(start for start, end in intervals)
-            max_end = max(end for start, end in intervals)
-            reference_length = max_end - min_start + 1
-
-        # Calculate breadth of coverage
-        breadth = (total_covered / reference_length) * 100  # Percentage
-
-        return breadth
-
     coverage_dict = {}
-    for ref_id, reads in reads_map_dict.items():
-        ref_length = reference_lengths.get(ref_id) if reference_lengths else None
-        # filter reads where != skip_ids
-        reads_to_skip = set()
-        for r in reads:
-            if r.get('id') in skip_ids and ref_id in skip_ids.get(r.get('id'), []):
-                reads_to_skip.add(r.get('id'))
-        reads = [r for r in reads if r.get('id') not in reads_to_skip]
-        coverage = calculate_breadth_of_coverage(reads, ref_length)
-        coverage_dict[ref_id] = coverage
 
-    return coverage_dict
-
-def calculate_breadth_of_coverage_dict_regions(reads_map_dict, reference_lengths=None, removed_read_ids=None, regions_dict=None):
-    """
-    Calculate the breadth of coverage for each reference over specified regions,
-    excluding specified reads per reference.
-
-    Parameters:
-    - reads_map_dict (dict): Keys are reference IDs (str), and values are lists of read dictionaries.
-    - reference_lengths (dict, optional): Keys are reference IDs (str), and values are the total length (int) of the reference.
-    - removed_read_ids (defaultdict(list), optional): Keys are read IDs (str), and values are lists of reference IDs (str) to exclude.
-    - regions_dict (dict, optional): Keys are reference IDs (str), and values are lists of [start, end] regions.
-
-    Returns:
-    - dict: Keys are reference IDs, and values are breadth of coverage percentages (float).
-    """
-    from collections import defaultdict
-
-    def merge_intervals(intervals):
-        """
-        Merge overlapping or adjacent intervals.
-        """
-        if not intervals:
-            return []
-        sorted_intervals = sorted(intervals, key=lambda x: x[0])
-        merged = [sorted_intervals[0]]
-        for current in sorted_intervals[1:]:
-            last = merged[-1]
-            if current[0] <= last[1] + 1:
-                merged[-1] = (last[0], max(last[1], current[1]))
-            else:
-                merged.append(current)
-        return merged
-
-    def calculate_coverage(reads, regions):
-        """
-        Calculate the total covered bases within specified regions.
-        """
+    # Iterate over each reference in reflengths.
+    for ref, ref_length in reflengths.items():
         total_covered = 0
-        total_length = 0
-        for region_start, region_end in regions:
-            total_length += (region_end - region_start + 1)
-            # Find reads that overlap with this region
-            overlapping_reads = [
-                (max(read['start'], region_start), min(read['end'], region_end))
-                for read in reads
-                if not (read['end'] < region_start or read['start'] > region_end)
-            ]
-            # Merge overlapping reads within this region
-            merged_reads = merge_intervals(overlapping_reads)
-            # Sum covered bases
-            region_covered = sum(end - start  for start, end in merged_reads)
-            total_covered += region_covered
-        if total_length == 0:
-            return 0.0
-        return (total_covered / total_length) * 100
+        current_start = None
+        current_end = None
 
-    coverage_dict = {}
-    for ref_id, reads in reads_map_dict.items():
-        # Filter reads based on removed_read_ids
-        if removed_read_ids:
-            filtered_reads = [
-                read for read in reads
-                if not (
-                    read['id'] in removed_read_ids and
-                    ref_id in removed_read_ids[read['id']]
-                )
-            ]
-        else:
-            filtered_reads = reads  # No reads to remove
+        # Fetch all reads spanning the entire reference.
+        for read in bam_fs.fetch(ref, 0, ref_length):
+            read_id = read.query_name
+            # Skip this read if it is in the removed_ids for this reference.
+            if read_id in removed_ids and ref in removed_ids[read_id]:
+                continue
 
-        # Retrieve regions for the current reference
-        if regions_dict and ref_id in regions_dict:
-            regions = regions_dict[ref_id]
-        else:
-            # If no regions provided, consider the entire reference
-            if reference_lengths and ref_id in reference_lengths:
-                regions = [[1, reference_lengths[ref_id]]]  # 1-based coordinates
+            # Clamp the read's aligned region to the reference boundaries.
+            read_start = max(read.reference_start, 0)
+            read_end = min(read.reference_end, ref_length)
+            if read_start >= read_end:
+                continue  # Ignore reads that don't contribute coverage
+
+            # Merge intervals on the fly.
+            if current_start is None:
+                current_start, current_end = read_start, read_end
             else:
-                # Infer from reads
-                if not filtered_reads:
-                    coverage_dict[ref_id] = 0.0
-                    continue
-                min_start = min(read['start'] for read in filtered_reads)
-                max_end = max(read['end'] for read in filtered_reads)
-                regions = [[min_start, max_end]]
+                if read_start <= current_end + 1:
+                    # Overlapping or adjacent; extend current interval.
+                    current_end = max(current_end, read_end)
+                else:
+                    # No overlap; add the current interval length and start a new one.
+                    total_covered += current_end - current_start
+                    current_start, current_end = read_start, read_end
 
-        # Calculate coverage over the specified regions
-        coverage = calculate_coverage(filtered_reads, regions)
-        coverage_dict[ref_id] = coverage
+        # Add the final interval if any.
+        if current_start is not None:
+            total_covered += current_end - current_start
+
+        # Calculate breadth as a percentage of the reference length.
+        breadth = (total_covered / ref_length) * 100 if ref_length > 0 else 0.0
+        coverage_dict[ref] = breadth
 
     return coverage_dict
+
 
 def load_signatures_sourmash(input_sigfile):
     """
@@ -1685,6 +1640,7 @@ def determine_conflicts(
         input_bam = None,
         matrix = None,
         min_threshold = 0.2,
+        fasta_files = [],
         abu_file = None,
         min_similarity_comparable = 0.0,
         use_variance = False,
@@ -1757,7 +1713,7 @@ def determine_conflicts(
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=19_500, # Limit merges to x intervals
+        max_group_size=1_500, # Limit merges to x intervals
         merging_method=stat_name
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
@@ -1780,13 +1736,15 @@ def determine_conflicts(
 
         print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
         start_time = time.time()
-        signatures, reads_map, reflengths = create_signatures_for_regions(
-            merged_regions,
-            input_bam,
-            kmer_size,
-            scaled,
+        signatures = create_signatures_for_regions(
+            regions_df=merged_regions,
+            bam_path = input_bam,
+            fasta_paths = fasta_files,
+            kmer_size=kmer_size,
+            scaled=scaled,
             num_workers=num_workers
         )
+
         print(f"Signatures created in {time.time() - start_time:.2f} seconds.")
         print(f"Total signatures created: {len(signatures)}")
         # Step 10: Save signatures to files
@@ -1799,13 +1757,17 @@ def determine_conflicts(
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
         # load all all read ids to reads_map where key is reference and value is set of read ids
-        bam_fs = pysam.AlignmentFile(input_bam, "rb")
-        for read in bam_fs.fetch():
-            ref = read.reference_name
-            reads_map[ref].append(dict(id=read.query_name, start=read.reference_start, end=read.reference_end))
+
+        # for read in bam_fs.fetch():
+            # ref = read.reference_name
+            # reads_map[ref].append(dict(id=read.query_name, start=read.reference_start, end=read.reference_end))
         # get reflengths of references
-        reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
-        bam_fs.close()
+
+        # bam_fs.close()
+    bam_fs = pysam.AlignmentFile(input_bam, "rb")
+    reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
+
+
     if matrix:
         dist_dict = import_matrix_ani(matrix)
         clusters = find_reference_clusters(dist_dict, min_sim=min_similarity_comparable)
@@ -1823,28 +1785,18 @@ def determine_conflicts(
         # or you can treat everything as a single big cluster
         # (depending on your logic).
         # set to the names of all signatures
-        # clusters = [set(signatures.keys())]
-        clusters = [set(reads_map.keys())]
+        clusters = [set([x.split(":")[0] for x in (signatures)])]
+        # clusters = None
 
     output_csv = os.path.join(output_dir, "region_comparisons.csv")
     print(f"Comparison results written to: {output_csv}")
     print("Comparing signatures pairwise...")
     print(f"Clusters to compare", len(clusters))
-    # for i, c in enumerate(clusters):
-    #     print(f"C{i}:", c)
-
+    for i, c in enumerate(clusters):
+        print(f"C{i}:", c)
     signatures = list(signatures.items())
-
     start_stime = time.time()
-    try:
-        breadth_old = calculate_breadth_of_coverage_dict(reads_map, reference_lengths=reflengths)
-    except Exception as e:
-        print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
-        try:
-            breadth_old = create_breadth_coverage_pysam(input_bam, None)
-        except Exception as e:
-            print(f"Error calculating coverage with internal method: {e}")
-            breadth_old = {}
+
     print(f"Total references with reads: {len(reads_map)}. Done in {time.time()-start_stime} seconds")
 
 
@@ -1878,19 +1830,19 @@ def determine_conflicts(
         )
         print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
     print("Building Conflict Groups")
+
     # 1) Build conflict groups from sum_comparisons
     start_time = time.time()
     conflict_groups = build_conflict_groups(
         sum_comparisons,
         min_jaccard=0.0
     )
-    print(f"Conflict groups {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
-
+    print(f"Conflict groups length: {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
     start_time = time.time()
     # 2) For each group, remove 1 read from each region
     removed_read_ids = finalize_proportional_removal(
         conflict_groups,
-        reads_map,
+        bam_fs,
         fetch_reads_in_region,
         remove_mode='random'
     )
@@ -1904,36 +1856,39 @@ def determine_conflicts(
             for ref in refs:
                 f.write(f"{ref}\t{read}\n")
         f.close()
-    for ref, reads in reads_map.items():
-        for read in reads:
-            if read.get('id') not in removed_read_ids:
-                if ref not in includable_read_ids:
-                    includable_read_ids[ref] = []
-                includable_read_ids[(ref, read.get('id'))] = True
-                sum_of_ref_aligned[ref]+=1
+
     try:
         # Create new variabels of only the filtered reads that passed based on the dict
         # new_filtered_reads = []
-        size_old_reads_map = sum([len(v) for k, v in reads_map.items()])
-        print(f"Size of old all reads: {size_old_reads_map}")
+        # size_old_reads_map = sum([len(v) for k, v in reads_map.items()])
+        # print(f"Size of old all reads: {size_old_reads_map}")
         # for k, v in sum_of_ref_aligned.items():
         #     print(f"Reference {k} has {v} reads aligned")
         # print(f"Size of new filtered reads: {len(new_filtered_reads)}")
-        print(f"Completed Bread of coverage setting in {time.time() - start_time}")
+        # print(f"Completed Bread of coverage setting in {time.time() - start_time}")
         if filtered_bam_create:
             create_filtered_bam(
                 input_bam,
                 filtered_bam_create,
-                includable_read_ids.keys()
+                removed_read_ids.keys()
             )
     except Exception as e:
         print(f"Error while filtering BAM: {e}")
 
     finally:
-
+        try:
+            # breadth_old = calculate_breadth_of_coverage_dict(reads_map, reference_lengths=reflengths)
+            breadth_old = calculate_breadth_coverage_from_bam(bam_fs=bam_fs,  reflengths=reflengths, removed_ids=dict())
+        except Exception as e:
+            print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
+            try:
+                breadth_old = create_breadth_coverage_pysam(input_bam, None)
+            except Exception as e:
+                print(f"Error calculating coverage with internal method: {e}")
+                breadth_old = {}
         print(f"Done with proportional removal in built in {time.time() - start_time:.2f} seconds. Calculating Bread of coverage for the new set of reads")
         try:
-            breadth = calculate_breadth_of_coverage_dict(reads_map, reference_lengths=reflengths, skip_ids=removed_read_ids)
+            breadth = calculate_breadth_coverage_from_bam(bam_fs=bam_fs,  reflengths=reflengths, removed_ids=removed_read_ids)
         except Exception as e:
             print(f"Error calculating coverage with samtools, attempting another way internally...: {e}")
             try:
@@ -1942,30 +1897,68 @@ def determine_conflicts(
                 print(f"Error calculating coverage with internal method: {e}")
                 breadth = {}
         print(f"Done with the breadth creation in {time.time()-start_time} seconds")
-#    # Create filtered BAM
-#     # if use_reads_gt:
-    for ref, reads in reads_map.items():
-        for i, read in enumerate(reads):
-            gt_read = read['id'].split("_")
-            gt_name = "_".join(gt_read[:-2])
-            reads_map[ref][i]['gt'] = gt_name
-    per_ref, overall = compute_f1_scores(reads_map)
+    print(breadth_old)
+    print(breadth)
 
-    gt_performances['original'] = dict(overall=overall, per_ref = per_ref)
-    print("Calculating f1 scores of alignment first....")
-    # filter all reads from not in includable_read_ids
-    reads_map = {k: [r for r in v if (k, r.get('id')) in includable_read_ids] for k, v in reads_map.items()}
-    per_ref, overall = compute_f1_scores(
-        reads_map,
-    )
-    gt_performances['new'] = dict(overall=overall, per_ref = per_ref)
-    print()
-#     # Compare the metrics
+    reads_map = defaultdict(lambda: defaultdict(int))
+
+    for ref, ref_length in reflengths.items():
+        reads = bam_fs.fetch(ref, 0, ref_length)
+        print(ref)
+        total_reads = 0
+        pass_filtered_reads = 0
+
+        for read in reads:
+            total_reads += 1
+
+            # Parse the read query name and get the 'gt_name'
+            gt_read = read.query_name.split("_")
+            gt_name = "_".join(gt_read[:-2])
+
+            # Original mapping stats (each alignment is counted)
+            if gt_name == read.reference_name:
+                reads_map[ref]['TP Original'] += 1
+            else:
+                reads_map[ref]['FP Original'] += 1
+
+            # Determine if this alignment should be counted for the "new" stats.
+            # We consider an alignment as "passing" if either:
+            #   1. The read is not in removed_read_ids, OR
+            #   2. The read is in removed_read_ids, but the current reference is not one of those removed.
+            if (read.query_name not in removed_read_ids or
+                read.reference_name not in removed_read_ids.get(read.query_name, [])):
+                pass_filtered_reads += 1
+                if gt_name == read.reference_name:
+                    reads_map[ref]['TP New'] += 1
+                else:
+                    reads_map[ref]['FP New'] += 1
+            else:
+                # The read was removed for this reference
+                if gt_name == read.reference_name:
+                    reads_map[ref]['FN New'] += 1
+                else:
+                    reads_map[ref]['TN New'] += 1
+
+        # Save overall counts for this reference
+        reads_map[ref]['total_reads'] = total_reads
+        reads_map[ref]['pass_filtered_reads'] = pass_filtered_reads
+
+        # Calculate additional stats
+        reads_map[ref]['proportion_aligned'] = (
+            reads_map[ref]['TP Original'] / total_reads if total_reads > 0 else 0
+        )
+        fft = reads_map[ref]['TP Original'] + reads_map[ref]['FP Original']
+        reads_map[ref]['precision'] = (reads_map[ref]['TP Original'] / fft if fft > 0 else 0)
+        reads_map[ref]['recall'] = (reads_map[ref]['TP Original'] / total_reads if total_reads > 0 else 0)
+        prrecallplus = reads_map[ref]['precision'] + reads_map[ref]['recall']
+        reads_map[ref]['f1'] = (
+            2 * (reads_map[ref]['precision'] * reads_map[ref]['recall']) / prrecallplus
+            if prrecallplus > 0 else 0
+        )
+        reads_map[ref]['breadth_old'] = breadth_old.get(ref, 0)
+        reads_map[ref]['breadth'] = breadth.get(ref, 0)
     comparison_df = compare_metrics(
-        gt_performances['original']['per_ref'],
-        per_ref,
-        breadth_old,
-        breadth
+        reads_map
     )
     try:
         # print df to output_dir/removal_stats.xlsx
@@ -1973,9 +1966,9 @@ def determine_conflicts(
             # Display the comparison
         print("\n=== Metrics Comparison ===\n")
         # convert 'Δ All%' to float
-        comparison_df['Δ All%'] = comparison_df['Δ All%'].astype(float)
+        # comparison_df['Δ All%'] = comparison_df['Δ All%'].astype(float)
 
-        print(comparison_df[comparison_df['Δ All%'] != 0 ][['Reference', 'Δ All%', 'Δ Breadth%', 'Breadth New', 'Breadth Original', 'TP New', 'TP Original', 'FP Original', 'FP New']].to_string(index=False))
+        print(comparison_df[comparison_df['Δ All'] != 0 ][['Reference', 'Δ All%', 'Δ^-1 Breadth', 'Breadth New', 'Breadth Original', 'TP New', 'TP Original', 'FP Original', 'FP New']].to_string(index=False))
     except Exception as ex:
         print(f"Error while saving comparison to Excel and printing it to console: {ex}")
     if apply_ground_truth:

@@ -22,6 +22,7 @@ process BEDTOOLS_GENOMECOVERAGE {
     def prefix = task.ext.prefix ?: "${meta.id}"
     // def reference = genome_file ? "-g ${genome_file} -sorted" : ""
     def bedgraph = "${meta.id}.bedgraph"
+    def minmapq = params.minmapq ? "-q ${params.minmapq}" : ""
 
     """
 

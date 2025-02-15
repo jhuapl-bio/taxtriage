@@ -29,8 +29,10 @@ process MULTIQC {
     def config = multiqc_config ? "--config $multiqc_config" : ''
     def extra_config = extra_multiqc_config ? "--config $extra_multiqc_config" : ''
     def logo = multiqc_logo ? "--cl-config 'custom_logo: \"${multiqc_logo}\"'" : ''
-    def replace = replace_names ? "--replace-names ${replace_names}" : ''
+    def replace = replace_names ? "--rexplace-names ${replace_names}" : ''
     def samples = sample_names ? "--sample-names ${sample_names}" : ''
+
+    
     """
     multiqc \\
         --force \\
