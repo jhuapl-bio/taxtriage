@@ -132,13 +132,17 @@ if (!params.assembly_file_type) {
 // // // //
 workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
 ch_workflow_summary = Channel.value(workflow_summary)
-ch_multiqc_config        = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
-ch_multiqc_css       = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExists: true)
+ch_multiqc_config        = file("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
+ch_multiqc_css       = file("$projectDir/assets/mqc.css", checkIfExists: true)
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
 ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
 ch_multiqc_files = Channel.empty()
-
+ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+ch_multiqc_files = ch_multiqc_files.mix(ch_multiqc_custom_config.collect().ifEmpty([]))
+ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_config))
+ch_multiqc_files = ch_multiqc_files.mix(Channel.from(ch_multiqc_css))
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
+ch_multiqc_files = ch_multiqc_files.mix(ch_merged_table_config.collect().ifEmpty([]))
 
 // // // //
 // // // // MODULE:  Pathogens
@@ -194,18 +198,18 @@ include { SEQTK_SAMPLE } from '../modules/nf-core/seqtk/sample/main'
 include { MULTIQC                     } from '../modules/nf-core/multiqc/main'
 include { NANOPLOT                     } from '../modules/nf-core/nanoplot/main'
 include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/custom/dumpsoftwareversions/main'
-include { ALIGNMENT_METRIC } from '../modules/local/confidence'
-include { CONVERT_METRICS } from '../modules/local/convert_confidence'
+include { CONFIDENCE_METRIC } from '../modules/local/confidence'
+include { CONVERT_CONFIDENCE } from '../modules/local/convert_confidence'
 include { PULL_TAXID } from '../modules/local/pull_taxid'
 include { REFERENCE } from '../modules/local/download_reference'
 include { GET_ASSEMBLIES } from '../modules/local/get_assembly_refs'
 include { PULL_FASTA } from '../modules/local/pullFASTA'
-include { MERGE_ALIGNMENT_MERGES } from '../modules/local/merge_confidence'
+include { MERGE_CONFIDENCE } from '../modules/local/merge_confidence'
 include { NCBIGENOMEDOWNLOAD }  from '../modules/nf-core/ncbigenomedownload/main'
 include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_tables'
-include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
+include { CONFIDENCE_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
-include { REFERENCE_REHEADER } from '../modules/local/reheader'
+include {  REFERENCE_REHEADER } from '../modules/local/reheader'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -455,6 +459,7 @@ workflow TAXTRIAGE {
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
+    ch_multiqc_files = ch_multiqc_files.mix(ch_fastp_html.collect { it[1] }.ifEmpty([]) )
 //
     // }
     if (!params.skip_fastp) {
@@ -467,7 +472,6 @@ workflow TAXTRIAGE {
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
-        // ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
     }
 
     HOST_REMOVAL(
@@ -523,7 +527,6 @@ workflow TAXTRIAGE {
     )
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
     ch_reads = CLASSIFIER.out.ch_reads
-    ch_krakenreport = CLASSIFIER.out.ch_tops
     ch_pass_files = ch_pass_files.join(ch_kraken2_report)
     // add ch_kraken2_report to ch_multiqc, only unique names
     ch_multiqc_files = ch_multiqc_files.mix(
@@ -657,27 +660,26 @@ workflow TAXTRIAGE {
                 ch_assembly_txt,
                 all_samples
             )
-            ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
         if (!params.skip_confidence) {
-            ALIGNMENT_METRIC(
+            CONFIDENCE_METRIC(
                 ch_combined
             )
 
-            METRIC_MERGE(
-                ALIGNMENT_METRIC.out.tsv
+            CONFIDENCE_MERGE(
+                CONFIDENCE_METRIC.out.tsv
             )
-            CONVERT_METRICS(
-                METRIC_MERGE.out.confidence
-            )
-
-            MERGE_ALIGNMENT_MERGES(
-                CONVERT_METRICS.out.tsv.map {  file ->  file }.collect()
+            CONVERT_CONFIDENCE(
+                CONFIDENCE_MERGE.out.confidence
             )
 
-            ch_mergedtsv = MERGE_ALIGNMENT_MERGES.out.confidence_report
+            MERGE_CONFIDENCE(
+                CONVERT_CONFIDENCE.out.tsv.map {  file ->  file }.collect()
+            )
+
+            ch_mergedtsv = MERGE_CONFIDENCE.out.confidence_report
             ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
         }
     }
@@ -689,15 +691,14 @@ workflow TAXTRIAGE {
     // // // MODULE: MultiQC Pt 2
     // // //
     // Unused or Incomplete
-
+    // if (params.blastdb && !params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(BLAST_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // } else if (params.blastdb && params.remoteblast){
+    //     ch_multiqc_files = ch_multiqc_files.mix(REMOTE_BLASTN.out.txt.collect{it[1]}.ifEmpty([]))
+    // }
     if (!params.skip_multiqc){
         MULTIQC(
-            ch_multiqc_files.collect(),
-            ch_multiqc_config.toList(),
-            ch_multiqc_custom_config.collect().ifEmpty([]),
-            ch_multiqc_logo.toList(),
-            [],
-            []
+            ch_multiqc_files.collect()
         )
         multiqc_report = MULTIQC.out.report.toList()
         ch_versions    = ch_versions.mix(MULTIQC.out.versions)

@@ -6,16 +6,19 @@ import time
 from sourmash.sbt import SBT, GraphFactory
 from sourmash.sbtmh import SigLeaf
 from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_signatures
-from itertools import groupby
 import statistics
 from typing import List, Tuple, Optional, Dict
 import numpy as np
+
 import concurrent.futures
-
-
-from tqdm import tqdm  # For progress bar
-from collections import defaultdict, namedtuple
+from collections import defaultdict
+from functools import partial
 import pandas as pd
+import pysam
+from tqdm import tqdm
+import time
+
+
 
 
 def parse_bed_file(bed_file_path):
@@ -124,21 +127,6 @@ def create_signature_for_single_region(args) -> Tuple[str, 'SourmashSignature']:
     sig = SourmashSignature(mh, name=region_name)
     return (region_name, sig)
 
-import concurrent.futures
-from collections import defaultdict
-from functools import partial
-import pandas as pd
-import pysam
-from tqdm import tqdm
-import time
-
-import concurrent.futures
-from collections import defaultdict
-from functools import partial
-import pandas as pd
-import pysam
-from tqdm import tqdm
-import time
 
 global_bam = None
 global_fastas  = []
@@ -204,6 +192,7 @@ def process_region(region, kmer_size, scaled):
     region_name, sig = result
     return (region_name, sig, chrom, reads_in_region)
 
+
 def create_signatures_for_regions(
     regions_df: pd.DataFrame,
     bam_path: str,
@@ -211,12 +200,10 @@ def create_signatures_for_regions(
     kmer_size: int,
     scaled: float,
     num_workers: int = 8
-) -> (dict, dict, dict):
+) -> (dict, dict, dict): # type: ignore
     """
     For each region in the DataFrame, fetch reads and create a Sourmash signature.
     Parallelized over multiple processes.
-
-    This version uses executor.map with functools.partial to ensure the callable is picklable.
 
     :param regions_df: DataFrame with columns ['chrom', 'start', 'end', 'mean_depth']
     :param bam_path: Path to the BAM file.
@@ -224,6 +211,9 @@ def create_signatures_for_regions(
     :param scaled: Scaling factor for MinHash.
     :param num_workers: Number of parallel processes to use.
     :return: Tuple (signatures, reads_map, reflengths)
+             signatures: dict mapping region names to signatures.
+             reads_map: dict mapping chrom to list of read dicts.
+             reflengths: dict mapping reference names to lengths.
     """
     # Validate columns.
     required_columns = {'chrom', 'start', 'end'}
@@ -237,10 +227,11 @@ def create_signatures_for_regions(
     regions_df['end'] = regions_df['end'].astype(int)
 
     # Convert DataFrame rows into a list of tuples.
-    regions = list(regions_df.itertuples(index=False, name=None))  # (chrom, start, end, mean_depth)
+    regions = regions_df.itertuples(index=False, name=None)  # (chrom, start, end, mean_depth)
 
     signatures = {}
     reads_map = defaultdict(list)
+<<<<<<< HEAD
     print("\tStart processing pool now...")
 
     # init_worker(bam_path, fasta_paths)
@@ -320,6 +311,51 @@ def consensus_reference_from_bam(bam_path, region):
             consensus_bases.append('N')
 
     return ''.join(consensus_bases)
+=======
+    # for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
+    #     result = process_region(region, bam_path, kmer_size, scaled)
+    #     if result is not None:
+    #         region_name, sig, chrom, region_reads = result
+    #         signatures[region_name] = sig
+    #         # Update reads_map with each read from this region.
+    #         for read in region_reads:
+    #             reads_map[chrom].append({
+    #                 "id": read["id"],
+    #                 "start": read["start"],
+    #                 "end": read["end"],
+    #             })
+    print(f"\tStart processing pool now...")
+    with concurrent.futures.ProcessPoolExecutor(
+            max_workers=num_workers,
+            initializer=init_worker,
+            initargs=(bam_path,)) as executor:
+        # Submit all tasks using the global BAM opened in each worker.
+        print(f"\tSubmitting regional pool to parallelizations")
+        futures = [executor.submit(process_region, region, kmer_size, scaled) for region in regions]
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing regions"):
+            try:
+                result = future.result()
+            except Exception as exc:
+                print(f"Region generated an exception: {exc}")
+                continue
+            if result is not None:
+                region_name, sig, chrom, region_reads = result
+                signatures[region_name] = sig
+                # Update reads_map with each read from this region.
+                for read in region_reads:
+                    reads_map.setdefault(chrom, []).append({
+                        "id": read["id"],
+                        "start": read["start"],
+                        "end": read["end"],
+                    })
+    # Get reference lengths (this is done in the main process).
+    with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
+        reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
+    bam_fs.close()
+    return signatures, reads_map, reflengths
+
+
+>>>>>>> 8042afe919554b01c882aae3fbb04a10b46764ce
 #######################################################
 # Helper functions
 #######################################################
@@ -474,7 +510,7 @@ def fast_mode_sbt(
                 sum_comparisons[r2].append(dict(
                     jaccard=jaccard, to=r1, s2=s1, e2=e1, s1=s2, e1=e2
                 ))
-    print(f"Processed all signatures in {time.time()- start_time} seconds...")
+    print(f"Processed all {i} signatures in {time.time()- start_time} seconds...")
     return sum_comparisons
 
 def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
@@ -1713,7 +1749,7 @@ def determine_conflicts(
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=1_500, # Limit merges to x intervals
+        max_group_size=4000, # Limit merges to x intervals
         merging_method=stat_name
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
