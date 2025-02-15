@@ -39,7 +39,7 @@ custom_data:
   confidences:
     section_name: "Confidences"
     plot_type: "table"
-    file: "*all.organisms.report.tsv*"
+    file: "*all.organisms.report.txt*"
     description: "Confidence values for all organisms"
     file_format: "tsv"
     # pconfig:
@@ -98,7 +98,7 @@ sp:
   krakenreport:
     fn: "*top_report.tsv"
   confidences:
-    fn: "*.report.tsv"
+    fn: "*.report.txt"
   metrics:
     fn: "*metrics.tsv"
     description: "Basic alignment metrics"

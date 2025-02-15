@@ -30,7 +30,7 @@ process ORGANISM_MERGE_REPORT {
 
     output:
         path "versions.yml"           , emit: versions
-        path("*organisms.report.tsv")    , optional: false, emit: report
+        path("*organisms.report.txt")    , optional: false, emit: report
         path("*organisms.report.pdf")    , optional: false, emit: pdf
 
     when:
@@ -38,7 +38,7 @@ process ORGANISM_MERGE_REPORT {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output_txt = "${meta.id}.organisms.report.tsv"
+    def output_txt = "${meta.id}.organisms.report.txt"
     def output_pdf = "${meta.id}.organisms.report.pdf"
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""

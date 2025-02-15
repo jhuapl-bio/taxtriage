@@ -29,14 +29,14 @@ process ALIGNMENT_PER_SAMPLE {
 
     output:
         path "versions.yml"           , emit: versions
-        tuple val(meta), path("*.tsv")    , optional:false, emit: txt
+        tuple val(meta), path("*.txt")    , optional:false, emit: txt
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output = "${meta.id}.paths.tsv"
+    def output = "${meta.id}.paths.txt"
     def id = meta.id
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
