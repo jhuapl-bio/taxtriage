@@ -231,7 +231,6 @@ def create_signatures_for_regions(
 
     signatures = {}
     reads_map = defaultdict(list)
-<<<<<<< HEAD
     print("\tStart processing pool now...")
 
     # init_worker(bam_path, fasta_paths)
@@ -311,51 +310,6 @@ def consensus_reference_from_bam(bam_path, region):
             consensus_bases.append('N')
 
     return ''.join(consensus_bases)
-=======
-    # for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
-    #     result = process_region(region, bam_path, kmer_size, scaled)
-    #     if result is not None:
-    #         region_name, sig, chrom, region_reads = result
-    #         signatures[region_name] = sig
-    #         # Update reads_map with each read from this region.
-    #         for read in region_reads:
-    #             reads_map[chrom].append({
-    #                 "id": read["id"],
-    #                 "start": read["start"],
-    #                 "end": read["end"],
-    #             })
-    print(f"\tStart processing pool now...")
-    with concurrent.futures.ProcessPoolExecutor(
-            max_workers=num_workers,
-            initializer=init_worker,
-            initargs=(bam_path,)) as executor:
-        # Submit all tasks using the global BAM opened in each worker.
-        print(f"\tSubmitting regional pool to parallelizations")
-        futures = [executor.submit(process_region, region, kmer_size, scaled) for region in regions]
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing regions"):
-            try:
-                result = future.result()
-            except Exception as exc:
-                print(f"Region generated an exception: {exc}")
-                continue
-            if result is not None:
-                region_name, sig, chrom, region_reads = result
-                signatures[region_name] = sig
-                # Update reads_map with each read from this region.
-                for read in region_reads:
-                    reads_map.setdefault(chrom, []).append({
-                        "id": read["id"],
-                        "start": read["start"],
-                        "end": read["end"],
-                    })
-    # Get reference lengths (this is done in the main process).
-    with pysam.AlignmentFile(bam_path, "rb") as bam_fs:
-        reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
-    bam_fs.close()
-    return signatures, reads_map, reflengths
-
-
->>>>>>> 8042afe919554b01c882aae3fbb04a10b46764ce
 #######################################################
 # Helper functions
 #######################################################
