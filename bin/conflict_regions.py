@@ -1691,7 +1691,7 @@ def determine_conflicts(
     elif use_jump:
         statistic_func = lambda vals: max(vals) - min(vals)
         stat_name="jump"
-        threshold=20
+        threshold=200
         # threshold=None
     else:
         statistic_func = compute_gini
@@ -1703,7 +1703,7 @@ def determine_conflicts(
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=20_000, # Limit merges to x intervals
+        max_group_size=200_000, # Limit merges to x intervals
         merging_method=stat_name
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")

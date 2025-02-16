@@ -50,6 +50,12 @@ process ALIGNMENT_PER_SAMPLE {
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
     def output_dir = "search_results"
+    def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " --minhash_weight 0.05 "
+    def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " --mapq_weight 0.0 "
+    def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " --hmp_weight 0.0 "
+    def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " --gini_weight 0.70 "
+    def disparity_score_weight = params.disparity_score_weight ? " --disparity_score_weight ${params.disparity_score_weight} " : " "
+    def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
 
     """
 
@@ -59,14 +65,12 @@ process ALIGNMENT_PER_SAMPLE {
         -s $id $assemblyi \\
         $type $read_count \\
         --output_dir $output_dir \\
-        --scaled 50 \\
-        --alpha 2.5 \\
+        --scaled 8000 \\
+        --alpha 1.5 \\
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping \\
         --min_similarity_comparable 0.8 \\
-        --gini_weight 0.70  \\
-        --disparity_score_weight 0.0  \\
-        --breadth_weight 0.2 --minhash_weight 0.05 --mapq_weight 0.0 --hmp_weight 0.0 \\
+        $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
         $min_reads_align $ignore_alignment
 

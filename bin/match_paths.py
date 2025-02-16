@@ -349,7 +349,7 @@ def breadth_of_coverage(depths, genome_length):
 
 
 def transform_func(d):
-        return math.log2(1 + d)
+        return math.log10(1 + d)
 
 
 
@@ -474,49 +474,158 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e6, max_length=1e9, reward_factor=8):
+def get_dynamic_reward_factor(genome_length, baseline=1e2, max_length=1e7, max_reward=12):
     """
-    Calculate an adjusted 'Gini-based' score for fair distribution of depths,
-    with a genome-length-based reward so that large genomes get boosted more
-    (but never penalized).
+    Computes a dynamic reward factor:
+      - Returns 1 when genome_length is at or below baseline.
+      - Returns max_reward when genome_length is at or above max_length.
+      - Otherwise, linearly interpolates between 1 and max_reward.
     """
+    if genome_length <= baseline:
+        return 1.0
+    elif genome_length >= max_length:
+        return max_reward
+    else:
+        # Linear interpolation between 1 and max_reward
+        return 1.0 + (max_reward - 1.0) * ((genome_length - baseline) / (max_length - baseline))
 
-    # 1) Build Coverage Hist
+
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e6, reward_factor=2, beta=0.65):
+    """
+    Calculate an adjusted 'Gini-based' score for the fair distribution of coverage,
+    and then penalize (or boost) it according to the disparity in positions of the regions.
+
+    Parameters:
+      - regions: list of tuples (start, end, depth)
+      - genome_length: total genome length
+      - alpha: parameter for transforming the raw Gini
+      - baseline, max_length, reward_factor: parameters for length-based scaling
+      - beta: weight for the positional dispersion factor
+
+    The final score is a product of the (transformed) Gini measure, a scaling factor
+    based on genome length, and a term (1 + beta * dispersion) where dispersion is higher
+    when the regions are more spread out.
+    """
+    # 1) Build Histograms
     coverage_hist = build_coverage_hist(regions, genome_length)
     coverage_hist_transformed = build_transformed_coverage_hist(regions, genome_length)
 
-    # 2) Compute Raw Gini from transformed histogram
+    # 2) Compute raw Gini from the transformed histogram
     gini = gini_coefficient_from_hist(coverage_hist_transformed)
 
-    # 3) Compute some alpha-based transformation (if that’s part of your design)
+    # 3) Transform the raw Gini (ensuring the result is in [0,1])
     if 0.0 <= gini <= 1.0:
         gini_log = alpha * math.sqrt(1 - gini)
-        # Ensure in [0,1]
         gini_log = max(0.0, min(1.0, gini_log))
     else:
         gini_log = 0.0
-    # get coveraged based
 
-    # 4) Reward for genome length using a log-based scale
-    #    - Cap genome_length so we don’t exceed max_length
+    # 4) Compute length-based scaling (using a log scale)
     gl_capped = min(genome_length, max_length)
-
-    #    - Compute a ratio vs. a baseline (e.g. 10k)
     ratio = gl_capped / baseline
-
-    #    - Never let ratio < 1.0 => no penalty for shorter genome; factor >= 1
     ratio = max(ratio, 1.0)
-
-    #    - scaling_factor grows with log10(ratio)
-    #      reward_factor is how fast you want it to grow
     scaling_factor = 1.0 + reward_factor * math.log10(ratio)
 
-    # 5) Multiply the raw gini_log by the scaling factor, then clamp at 1.0
-    #    (so the final score remains in [0,1])
-    final_score = gini_log * scaling_factor
-    final_score = min(1.0, final_score)
+    # 5) Compute the positional dispersion factor
+    dispersion = position_dispersion_factor(regions, genome_length)
 
+    # 6) Combine the measures.
+    # The idea is to boost the score if the covered regions are spread out.
+    final_score = gini_log * scaling_factor * (1 + beta * dispersion)
+    final_score = min(1.0, final_score)
     return final_score
+
+def position_dispersion_factor(regions, genome_length):
+    """
+    Compute a dispersion factor based on the positions of the regions.
+    We use the midpoints of each region and compute their variance.
+    For a uniformly distributed set of midpoints on [0, genome_length],
+    the maximum variance is (genome_length^2)/12.
+    We then take the square root of the normalized variance to obtain a
+    factor between 0 and 1.
+    """
+    if not regions:
+        return 0.0
+
+    # Compute midpoints for each region
+    midpoints = [(start + end) / 2.0 for (start, end, depth) in regions]
+    mean_mid = sum(midpoints) / len(midpoints)
+    variance = sum((m - mean_mid)**2 for m in midpoints) / len(midpoints)
+
+    # Maximum variance for a uniform distribution in [0, genome_length]
+    max_variance = (genome_length**2) / 12.0
+    normalized_variance = variance / max_variance  # in [0,1]
+
+    # Taking square root to keep the metric in a similar scale as a coefficient of variation
+    dispersion = math.sqrt(normalized_variance)
+    return dispersion
+
+def gini_coefficient(values):
+    """
+    Compute the Gini coefficient using a sorted approach.
+    """
+    n = len(values)
+    if n == 0:
+        return 0.0
+
+    # Sort the values in ascending order
+    sorted_values = sorted(values)
+    total = sum(sorted_values)
+
+    if total == 0:
+        return 0.0
+
+    # Compute the weighted sum: sum(i * x_i) for i=1..n (using 1-indexing)
+    weighted_sum = sum((i + 1) * x for i, x in enumerate(sorted_values))
+
+    # Apply the formula:
+    gini = (2 * weighted_sum) / (n * total) - (n + 1) / n
+    return gini
+
+
+def gini_coverage_spread(regions, genome_length):
+    """
+    Compute a spatial Gini coefficient that reflects how spread out the
+    covered regions are across the genome.
+
+    The idea:
+      1. Assume each region in 'regions' is given as a tuple (start, end, depth).
+         (For now, we ignore 'depth' and assume any region has a binary coverage = 1.)
+      2. Calculate the gaps (uncovered segments) across the genome:
+           - From position 0 to the start of the first region.
+           - Between the end of one region and the start of the next.
+           - From the end of the last region to the genome end.
+      3. Compute the Gini coefficient on these gap lengths.
+
+    A low Gini value means the gaps are fairly equal in length (i.e. the covered regions
+    are clumped together), while a high Gini value means there is great inequality among gap
+    sizes (i.e. the covered regions are very spread out).
+    """
+    # Ensure the regions are sorted by start coordinate
+    # regions = sorted(regions, key=lambda r: r[0])
+
+    gaps = []
+
+    if regions:
+        # Gap from genome start to first region start
+        first_gap = regions[0][0]  # since genome starts at 0
+        gaps.append(first_gap)
+
+        # Gaps between successive regions
+        for i in range(len(regions) - 1):
+            current_end = regions[i][1]
+            next_start = regions[i+1][0]
+            gap = next_start - current_end
+            gaps.append(gap)
+
+        # Gap from the end of the last region to the end of the genome
+        last_gap = genome_length - regions[-1][1]
+        gaps.append(last_gap)
+    else:
+        # No covered regions: one gap equals the entire genome
+        gaps.append(genome_length)
+    return gini_coefficient(gaps)
+
 
 
 def getBreadthOfCoverage(breadth, genome_length):
@@ -983,7 +1092,7 @@ def apply_weight(value, weight):
     except (TypeError, ValueError):
         # If value cannot be converted to a float, return 0 or handle as needed
         return 0
-def logarithmic_weight(breadth, min_breadth=4e-3):
+def logarithmic_weight(breadth, min_breadth=1e-3):
     """
     Returns a weight between 0 and 1 for a given breadth value.
     - When breadth == min_breadth, the weight is 1.
@@ -1642,9 +1751,14 @@ def main():
 
 
             try:
+
                 # if accession isn't NC_042114.1 skip
                 if len(data.get('covered_regions', [])) > 0 :
+                    # gini_strain2 = gini_coverage_spread(data.get('covered_regions', []),  data['length'])
                     gini_strain = getGiniCoeff(data['covered_regions'], data['length'], alpha=args.alpha)
+                    # if "Vaccinia" in data['name'] or "Monkey" in data['name']:
+                    #     print("\t",data.get('name'), gini_strain, gini_strain2)
+
                 else:
                     gini_strain = 0
                 # get Δ All% column value if it exists, else set to 0
@@ -1925,7 +2039,7 @@ def main():
             for body_site in body_sites:
                 taxids = value.get('taxids', [])
                 if args.compress_species:
-                    taxids.append(key)
+                    taxids = [key]
                 for taxid in taxids:
                     if not taxid:
                         continue
@@ -1941,7 +2055,7 @@ def main():
                             )
                     except Exception as e:
                         print(f"Error in taxid lookup for hmp: {e}")
-            percent_total_reads_observed = sum(value.get('numreads', [])) / total_reads
+            percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
             sum_abus_expected = sum([x.get('mean',0)/100 for x in abus])
             sum_norm_abu = sum([x.get('norm_abundance',0) for x in abus])
             percent_total_reads_expected =  sum_abus_expected * total_reads
@@ -1955,8 +2069,10 @@ def main():
             # if percentile is below 0.5 set it to 0
             # if zscore < 2.5:
             #     percentile = 0
-            # if "Escherichia coli" in value['name']:
-            #     print(value['name'], key, value['zscore'], percentile)
+            # if "Clostridioides difficile" in value['name']:
+            #     print("\t",value['name'], key, value['zscore'], percentile, dists[(int(taxid), body_site)].get('norm_abundance', 0),dists[(int(taxid), body_site)].get('mean', 0),)
+            #     print(percent_total_reads_observed, sum_abus_expected, sum_norm_abu, stdsum)
+            #     exit()
             value['hmp_percentile'] = percentile
 
     else:
@@ -2400,9 +2516,7 @@ def calculate_scores(
             percent_total = format_non_zero_decimals(100*countreads / total_reads)
         if len(pathogenic_sites) == 0:
             pathogenic_sites = ""
-        # if "Toxo" in count.get('name'):
-        #     print(count)
-        #     exit()
+
         # Apply weights to the relevant scores
         # Example usage:
         breadth = count.get('breadth_total')  # your raw value between 0 and 1
@@ -2497,7 +2611,7 @@ def write_to_tsv(output_path, final_scores, header):
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
             # if "Toxoplasma" in formatname:
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.60  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.490  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
