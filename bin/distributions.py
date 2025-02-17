@@ -6,7 +6,7 @@ from io import BytesIO
 import math
 def body_site_map(x):
     body_sites = {
-        "stool": "gut",
+        'gut': "stool",
         "nose": "nasal",
         "vagina": "vaginal",
         "teeth": "oral",

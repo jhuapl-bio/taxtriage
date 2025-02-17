@@ -677,11 +677,16 @@ def import_pathogens(pathogens_file):
             taxid = row[1] if len(row) > 1 else None
             call_class = row[2] if len(row) > 2 else None
 
-            pathogenic_sites = row[3] if len(row) > 3 else None
-            commensal_sites = row[4] if len(row) > 4 else None
-            status = row[5] if len(row) > 5 else None
-            pathology = row[6] if len(row) > 6 else None
-
+            pathogenic_sites = row[4] if len(row) > 4 else None
+            commensal_sites = row[5] if len(row) > 5 else None
+            # split and strip commensal sites spaces
+            commensal_sites = [x.strip() for x in commensal_sites.split(',')] if commensal_sites else []
+            pathogenic_sites = [x.strip() for x in pathogenic_sites.split(',')] if pathogenic_sites else []
+            # body_site map to the commensal sites and pathogenic_stites
+            commensal_sites = [body_site_map(x.lower()) for x in commensal_sites]
+            pathogenic_sites = [body_site_map(x.lower()) for x in pathogenic_sites ]
+            status = row[6] if len(row) > 6 else None
+            pathology = row[7] if len(row) > 7 else None
             # Store the data in the dictionary, keyed by pathogen name
             pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
@@ -1579,17 +1584,16 @@ def main():
                     name = splitline[nameindex]
                 else:
                     name = None
-                if accession in reference_hits:
+                if accession in reference_hits and not reference_hits[accession].get('taxid', None):
                     reference_hits[accession]['taxid'] = taxid
-                    reference_hits[accession]['name'] = name
-                    reference_hits[accession]['assembly'] = assembly
+                reference_hits[accession]['name'] = name
+                reference_hits[accession]['assembly'] = assembly
                 if accession not in assembly_to_accession[assembly]:
                     assembly_to_accession[assembly].add(accession)
                 i+=1
 
         f.close()
     seen = dict()
-
     if args.assembly:
         i=0
         with open(args.assembly, 'r') as f:
@@ -1625,10 +1629,17 @@ def main():
                                 reference_hits[acc]['strain'] = current_strain
                                 reference_hits[acc]['assemblyname'] = name
                                 reference_hits[acc]['name'] = name
+
         f.close()
     final_format = defaultdict(dict)
     seen = dict()
-
+    for k, v in reference_hits.items():
+        if not v.get('toplevelkey'):
+            # check if taxid is present, and if so then set it to that, and if that isnt then set it to the accession
+            if v.get('taxid', None):
+                v['toplevelkey'] = v['taxid']
+            else:
+                v['toplevelkey'] = k
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
@@ -2023,11 +2034,15 @@ def main():
         total_reads = float(args.readcount)
 
     print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
+    if args.sampletype:
+        sampletype = body_site_map(args.sampletype.lower())
+    else:
+        sampletype = "Unknown"
     if args.hmp:
-        if args.sampletype == "Unknown" or not args.sampletype:
+        if sampletype == "Unknown":
             body_sites = []
         else:
-            body_sites = [body_site_map(args.sampletype.lower())]
+            body_sites = [sampletype]
         dists, site_counts = import_distributions(
             args.hmp,
             "tax_id",
@@ -2083,7 +2098,7 @@ def main():
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
         sample_name=args.samplename,
-        sample_type = args.sampletype,
+        sample_type = sampletype,
         total_reads = total_reads,
         aligned_total = aligned_total,
         weights = weights
@@ -2113,7 +2128,7 @@ def main():
         "Coverage",
         'HHS Percentile',
         "IsAnnotated",
-        "Pathogenic Sites",
+        "AnnClass",
         "Microbial Category",
         "Taxonomic ID #",
         "Status",
@@ -2122,7 +2137,6 @@ def main():
         "Mean MapQ",
         "Mean Coverage",
         "Mean Depth",
-        "AnnClass",
         "isSpecies",
         "Pathogenic Subsp/Strains",
         "K2 Reads",
@@ -2415,14 +2429,16 @@ def calculate_scores(
         derived_pathogen = False
         isPath = False
         annClass = "None"
-        pathogenic_sites = []
         refpath = pathogens.get(ref)
         pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
+        # check if the sample type is in the pathogenic sites
+        direct_match = False
         def pathogen_label(ref):
             is_pathogen = "Unknown"
             isPathi = False
+            direct_match = False
             callclass = ref.get('callclass', "N/A")
-            pathogenic_sites = ref.get('pathogenic_sites', [])
+            # pathogenic_sites = ref.get('pathogenic_sites', [])
             commensal_sites = ref.get('commensal_sites', [])
             if sample_type in pathogenic_sites:
                 if callclass != "commensal":
@@ -2430,20 +2446,19 @@ def calculate_scores(
                     isPathi = True
                 else:
                     is_pathogen = "Potential"
+                direct_match = True
             elif sample_type in commensal_sites:
                 is_pathogen = "Commensal"
+                direct_match = True
             elif callclass and callclass != "":
                 is_pathogen = callclass.capitalize() if callclass else "Unknown"
                 isPathi = True
-            return is_pathogen, isPathi
+            return is_pathogen, isPathi, direct_match
 
         formatname = count.get('name', "N/A")
-
         if refpath:
-            is_pathogen, isPathi = pathogen_label(refpath)
+            is_pathogen, isPathi, direct_match = pathogen_label(refpath)
             isPath = isPathi
-            if isPathi:
-                annClass = "Direct"
             taxid = refpath.get(ref, count.get(ref, ""))
             is_annotated = "Yes"
             commsites = refpath.get('commensal_sites', [])
@@ -2455,10 +2470,14 @@ def calculate_scores(
             is_annotated = "No"
             taxid = count.get(ref, "")
             status = ""
+        if direct_match:
+            annClass = "Direct"
+        else:
+            annClass = "Derived"
 
         listpathogensstrains = []
         fullstrains = []
-
+        count['annClass'] = annClass
         if strainlist:
             pathogenic_reads = 0
             merged_strains = defaultdict(dict)
@@ -2502,7 +2521,6 @@ def calculate_scores(
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
             if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
                 is_pathogen = "Primary"
-                annClass = "Derived"
 
         breadth_total = count.get('breadth_total', 0)
         countreads = sum(count['numreads'])
@@ -2547,10 +2565,10 @@ def calculate_scores(
                 breadth_total = breadth_total,
                 total_length = count.get('total_length', 0),
                 is_annotated=is_annotated,
-                pathogenic_sites=pathogenic_sites,
                 is_pathogen=is_pathogen,
                 ref=ref,
                 status=status,
+                annClass=annClass,
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2599,7 +2617,6 @@ def write_to_tsv(output_path, final_scores, header):
             disparity_score = entry.get('disparity_score', 0)
             siblings_score = entry.get('siblings_score', 0)
             tass_score = entry.get('tass_score', 0)
-            pathogenic_sites = entry.get('pathogenic_sites', "")
             minhash_score = entry.get('minhash_score', 0)
             listpathogensstrains = entry.get('listpathogensstrains', [])
             countreads = entry.get('reads_aligned', 0)
@@ -2611,6 +2628,9 @@ def write_to_tsv(output_path, final_scores, header):
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
             # if "Toxoplasma" in formatname:
+            # if plasmid uper or lower case doesnt matter matches then skip
+            if "plasmid" in formatname.lower():
+                continue
             if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.490  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
@@ -2643,8 +2663,8 @@ def write_to_tsv(output_path, final_scores, header):
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
-                f"{is_annotated}\t{entry.get('pathogenic_sites')}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
-                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
+                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
+                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
                 f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
             )

@@ -43,6 +43,7 @@ process ORGANISM_MERGE_REPORT {
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     distribution_arg = ""
     def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""
+
     def missing_arg = ''
     if (missing_samples) {
         missing_arg = "-m \"${missing_samples.join(' ')}\""

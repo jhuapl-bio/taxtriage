@@ -60,11 +60,11 @@ def parse_args(argv=None):
     )
     parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Aligned Reads',
                         help="Name of abundance column, default is abundance")
-    parser.add_argument("-c", "--min_conf", metavar="MINCONF", required=False, default=0.2, type=float,
+    parser.add_argument("-c", "--min_conf", metavar="MINCONF", required=False, default=0.3, type=float,
                         help="Value that must be met for a table to report an organism due to confidence column.")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
                         help="Name of id column, default is id")
-    parser.add_argument("-p", "--percentile", metavar="PERCENTILE", required=False, type=float, default=0.20,
+    parser.add_argument("-p", "--percentile", metavar="PERCENTILE", required=False, type=float, default=0.75,
                         help="Only show organisms that are in the top percentile of healthy subjects expected abu")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
@@ -81,6 +81,11 @@ def parse_args(argv=None):
     parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='name',
                         help="What type of data is being processed. Options: 'tax_id' or 'name'.",
                         choices=['tax_id', 'name'])
+    parser.add_argument("--taxdump", metavar="TAXDUMP", required=False, default=None,
+                        help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp")
+    parser.add_argument("--rank", metavar="TAXDUMP", required=False, default="genus",
+                        help='IF merging with taxdump, what rank to merge on')
+
     parser.add_argument(
         "-o",
         "--output",
@@ -274,25 +279,27 @@ def return_table_style(df, color_pathogen=False):
     if color_pathogen:
         # Placeholder for cells to color (row_index, col_index) format
         cells_to_color = []
-        colorindexcol = 2
+        colorindexcol = 1
 
         sampleindx = df.columns.get_loc('Microbial Category')
         # Example post-processing to mark cells
         for row_idx, row in df.iterrows():
             val = row['Microbial Category']
-            sites =  row['Locations']
             # if nan then set to empty string
-            if pd.isna(sites):
-                sites = ""
+            # if pd.isna(sites):
+            #     sites = ""
+            derived = row['AnnClass']
             # Get Sample Type value from row
-            sampletype = row['Specimen Type']
-            if val != "Commensal" and sampletype in sites:
+            # sampletype = row['Specimen Type']
+            if val == "Primary" and derived == "Direct":
+                color = 'lightcoral'
+            elif val == "Primary" :
+                color = 'goldenrod'
+            elif val == "Commensal":
                 color = 'lightgreen'
-            elif val != "Commensal" and row.AnnClass == 'Derived':
-                color = 'lightblue'
-            elif val != "Commensal":
+            elif val == "Opportunistic":
                 color = "papayawhip"
-            elif val == "Commensal" and row.AnnClass == "Derived":
+            elif val == "Potential":
                 color = 'lightblue'
             else:
                 color = "white"
@@ -384,16 +391,20 @@ def create_report(
         columns_yes = [
             "Specimen ID (Type)",
             "Detected Organism",
-            "Microbial Category",
             "# Reads Aligned",
             "Confidence Metric (0-1)",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
-            "HHS Percentile", "K2 Reads"
+            "HHS Percentile", "Group", "K2 Reads"
         ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
+        # if all of Group is Unknown, then remove it from list
+        if (df_identified_paths['Group'].nunique() == 1 ):
+            idx_grp = columns_yes.index("Group")
+            if idx_grp:
+                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -435,6 +446,34 @@ def create_report(
     subtext_style.leading = 12
     subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types. Classifications of pathogens are described as:", subtext_style)
     elements.append(subtext_para)
+    elements.append(Spacer(1, 12))  # Space between tables
+    bullet_list_items = [
+        "Green/White: This is an unannotated organism or commensal organism for the given site.",
+        "Red: Primary Pathogen annotated in sample type(s) listed.",
+        "Goldenrod: Primary Pathogen annotated in sample type(s) other than your listed one.",
+        "Beige: Opportunistic Pathogen",
+        "Blue: Potential Pathogen",
+    ]
+
+    # Create a list of bullet items with specified colors
+    bullet_colors = [colors.lightgreen,   colors.coral, colors.lightgoldenrodyellow , colors.papayawhip, colors.lightblue  ]
+    style = styles['Normal']
+
+    # Create custom ListItems with colored bullets
+    custom_list_items = [
+        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], )
+        for idx, item in enumerate(bullet_list_items)
+    ]
+
+    # Create the ListFlowable
+    bullet_list = ListFlowable(
+        custom_list_items,
+        start="square",
+
+        bulletType='bullet'  # '1' for numbered list
+    )
+    # add horizontal line in reportlab
+    elements.append(bullet_list)
     elements.append(Spacer(1, 12))  # Space between tables
     # Generate the explanation paragraph and append it to the elements
     # After adding your table to the elements
@@ -511,32 +550,6 @@ def create_report(
     elements.append(subtext_para)
     elements.append(Spacer(1, 12))
 
-    bullet_list_items = [
-        "Green/White: Direct match for the taxid/organism name with your sample type from the database.",
-        "Blue: Derived Pathogenicity from any listed pathogenic strains of a given organism.",
-        "Beige: Pathogens annotated in sample type(s) other than your listed one.",
-    ]
-
-    # Create a list of bullet items with specified colors
-    bullet_colors = [colors.lightgreen, colors.lightblue, colors.papayawhip,  ]
-    style = styles['Normal']
-
-    # Create custom ListItems with colored bullets
-    custom_list_items = [
-        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], )
-        for idx, item in enumerate(bullet_list_items)
-    ]
-
-    # Create the ListFlowable
-    bullet_list = ListFlowable(
-        custom_list_items,
-        start="square",
-
-        bulletType='bullet'  # '1' for numbered list
-    )
-    # add horizontal line in reportlab
-    elements.append(bullet_list)
-
     subtext_para = Paragraph("Read amounts are represented as the <b>total number of aligned reads</b> of sufficient mapping quality <b>(% aligned for all reads in sample)</b>", subtext_style)
     elements.append(subtext_para)
 
@@ -546,12 +559,19 @@ def create_report(
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
-                       "Microbial Category", "# Reads Aligned",
+                       "# Reads Aligned",
                        "Confidence Metric (0-1)", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
+                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "Group", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
+        if (df_potentials['Group'].nunique() == 1 ):
+            # get index of Group
+            index_group = columns_opp.index("Group")
+            if index_group:
+                # remove group from list
+                columns_opp.pop(index_group)
+
         data_opp = prepare_data_with_headers(df_potentials, plotbuffer, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
         table = make_table(
@@ -571,12 +591,17 @@ def create_report(
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = ["Specimen ID (Type)",
-                       "Detected Organism", "Microbial Category",
+                       "Detected Organism",
                        "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #", "Coverage",
-                        "HHS Percentile", "K2 Reads"]
+                        "HHS Percentile", "Group", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
-        # if df_identified_paths['K2 Reads'].sum() == 0:
-        #     columns_yes = columns_yes[:-1]
+        if df_identified_paths['K2 Reads'].sum() == 0:
+            columns_yes = columns_yes[:-1]
+        # if all of Group is Unknown, then remove it from list
+        if (df_identified_others['Group'].nunique() == 1 ):
+            idx_grp = columns_yes.index("Group")
+            if idx_grp:
+                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=False)
@@ -603,7 +628,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage",  "HHS Percentile", "K2 Reads"]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage",  "HHS Percentile", "Group", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -625,12 +650,55 @@ def create_report(
 
     print(f"PDF generated: {pdf_file}")
 
+def load_taxdump(taxdump):
+    taxdump_dict = {}
+    with open(taxdump) as f:
+        for line in f:
+            # Assuming the file is tab-delimited and the columns are ordered as:
+            # taxid, parent_taxid, rank, name
+            try:
+                parts = line.strip().split("\t")
+                taxid = parts[0]
+                parent_taxid = parts[2]
+                rank = parts[4]
+                taxdump_dict[taxid] = {
+                    'parent_taxid': parent_taxid,
+                    'rank': rank
+                }
+            except Exception as ex:
+                print(f"Error parsing line: {line}, {ex}")
+    f.close()
+    return taxdump_dict
+
+# Then, define a helper function that traverses the hierarchy.
+def get_group_for_taxid(taxid, target_rank, taxdump_dict):
+    """
+    Traverse upward in the taxonomy tree starting at taxid until a node with
+    rank==target_rank is found. If found, return its name; otherwise, return 'Unknown'.
+    """
+    # Make sure taxid is a string (since our keys are strings)
+    current = str(taxid)
+
+    # Walk up the tree until you either find the target rank or hit the root.
+    while current in taxdump_dict:
+        node = taxdump_dict[current]
+        if node['rank'] == target_rank:
+            return node['parent_taxid']
+        # If we have reached the root (or there's a circular reference), break.
+        if current == node['parent_taxid']:
+            break
+        current = node['parent_taxid']
+    return "Unknown"
 
 
 def main():
     args = parse_args()
+    taxdump_dict = {}
+    if args.taxdump:
+        # load the taxdump file
+        taxdump_dict = load_taxdump(args.taxdump)
     df_full = import_data(args.input)
-
+    df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
 
     # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
     df_full = df_full.rename(columns={args.id_col: args.type})
@@ -707,7 +775,7 @@ def main():
             )
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
-    df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
+    # df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
     if args.min_conf and args.min_conf > 0:
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
     # df_full['name'] = df_full['name'] + " (" + df_full['Taxonomic ID #'].astype(str) + ")"
@@ -722,7 +790,7 @@ def main():
         "# Reads Aligned": "# Reads Aligned to Sample",
         "body_site": "Specimen Type",
         "abundance": "% of Aligned",
-        "Pathogenic Sites": "Locations",
+        # "Pathogenic Sites": "Locations",
         "% Reads": "% Reads of Organism",
         "Microbial Category": "Microbial Category",
         'Quant': "# Reads Aligned",
