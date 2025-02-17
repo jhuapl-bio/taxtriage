@@ -65,7 +65,7 @@ workflow CLASSIFIER {
                 ch_reads,
                 ch_db,
                 ch_save_fastq_classified,
-                true
+                false
             )
 
             ch_kraken2_report = KRAKEN2_KRAKEN2.out.report

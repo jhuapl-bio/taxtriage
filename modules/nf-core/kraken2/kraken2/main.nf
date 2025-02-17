@@ -38,6 +38,7 @@ process KRAKEN2_KRAKEN2 {
     def readclassification_command = save_reads_assignment ? "--output ${prefix}.kraken2.classifiedreads.txt" : ""
     def compress_reads_command = save_output_fastqs ? "pigz -p $task.cpus *.fastq" : ""
     def minimum_hit_groups = params.k2_minimum_hit_groups ? "--minimum-hit-groups ${params.k2_minimum_hit_groups}" : ""
+    
     """
     kraken2 \\
         --db $db \\
@@ -50,8 +51,8 @@ process KRAKEN2_KRAKEN2 {
         $readclassification_command \\
         $paired $confidence \\
         $args  \\
-        $reads
-
+        $reads > /dev/null 
+        
     $compress_reads_command
 
     cat <<-END_VERSIONS > versions.yml
