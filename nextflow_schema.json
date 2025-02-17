@@ -326,6 +326,11 @@
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "minq": {
+                    "type": "number",
+                    "description": "Minimum BaseQ Score for filtering",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "mmap2_window": {
                     "type": "string",
                     "description": "Window size for minimap2 alignment",
