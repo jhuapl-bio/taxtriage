@@ -28,11 +28,8 @@ custom_content:
     - krakenreport
 kraken:
   top_n: 15
+
 table_columns_placement:
-  # metrics:
-  #   "Name": 1
-  #   "Sample_Name": 2
-  #   "% Aligned": 3
   confidences:
     "Specimen ID": 1
     "TASS Score": 2
@@ -61,12 +58,25 @@ custom_data:
     file: "*all.organisms.report.txt*"
     description: "Confidence values for all organisms"
     file_format: "tsv"
-  # metrics:
-  #   section_name: "Alignment Metrics"
-  #   plot_type: "table"
-  #   description: "Standard alignment statistics"
-  #   file: "*merged_mqc.tsv"
-  #   file_format: "tsv"
+    table_sample_merge:
+      "Detected Organism": ""
+    table:
+      # Use a unique column (here "Specimen ID") as the index so each row is retained
+      idx: "Specimen ID"
+      columns:
+        - "Specimen ID"
+        - "Detected Organism"
+        - "TASS Score"
+        - "% Reads"
+        - "Sample Type"
+        - "Microbial Category"
+        - "Coverage"
+        - "Mean Depth"
+        - "Mean BaseQ"
+        - "Mean MapQ"
+        - "Taxonomic ID #"
+        - "IsAnnotated"
+        - "HHS Percentile"
   krakenreport:
     section_name: "All Metagenomic Hits"
     plot_type: "table"

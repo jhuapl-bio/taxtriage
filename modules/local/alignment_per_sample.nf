@@ -56,7 +56,8 @@ process ALIGNMENT_PER_SAMPLE {
     def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " --gini_weight 0.70 "
     def disparity_score_weight = params.disparity_score_weight ? " --disparity_score_weight ${params.disparity_score_weight} " : " "
     def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
-
+    def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
+    def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
     """
 
     match_paths.py \\
