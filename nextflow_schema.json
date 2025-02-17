@@ -130,6 +130,12 @@
                     "description": "Save all read classifications as a txt file",
                     "default": true
                 },
+                "save_classified_fastqs": {
+                    "type": "boolean",
+                    "description": "Save classified fastqs from k2 and use them downstream - all classified are passed, unclassified are discarded",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "top_hits_count": {
                     "type": "number",
                     "default": 20,
@@ -226,6 +232,42 @@
                     "default": 0.75,
                     "description": "Minimum Confidence for reporting.",
                     "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "gini_weight": {
+                    "type": "number",
+                    "default": 0.75,
+                    "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "breadth_weight": {
+                    "type": "number",
+                    "default": 0.25,
+                    "description": "Minimum Log-based breadth weight for TASS Score calculation",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "minhash_weight": {
+                    "type": "number",
+                    "default": 0.2,
+                    "description": "Weight for minhash filtering. It is the combination of % of reads removed + % of breadth new  / 2 ",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "mapq_weight": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "disparity_weight": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "hmp_weight": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "TASS Score weight for HMP percentile, recommend disabling if sample is unknown",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "pathogens": {
@@ -401,12 +443,6 @@
                 "skip_krona": {
                     "type": "boolean",
                     "description": "Skip Krona Plots",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
-                },
-                "skip_classified_fastqs": {
-                    "type": "boolean",
-                    "description": "Skip saving classified fastqs",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },

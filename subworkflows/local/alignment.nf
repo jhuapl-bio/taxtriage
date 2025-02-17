@@ -80,8 +80,7 @@ workflow ALIGNMENT {
         BOWTIE2_ALIGN(
             ch_fasta_files_for_alignment,
             true,
-            true,
-            params.minmapq
+            true
         )
         collected_bams = BOWTIE2_ALIGN.out.aligned
     } else if (params.use_hisat2) {
@@ -90,7 +89,6 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
-            params.minmapq
         )
 
         collected_bams = HISAT2_ALIGN.out.bam
@@ -100,7 +98,6 @@ workflow ALIGNMENT {
             true,
             true,
             true,
-            params.minmapq
         )
 
         collected_bams = MINIMAP2_ALIGN.out.bam

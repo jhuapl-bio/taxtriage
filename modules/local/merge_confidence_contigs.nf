@@ -14,7 +14,7 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process CONFIDENCE_MERGE {
+process METRIC_MERGE {
     tag "$meta.id"
     label 'process_low'
 
@@ -24,10 +24,10 @@ process CONFIDENCE_MERGE {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), path(single_confidence)
+    tuple val(meta), path(single_metric)
 
     output:
-    tuple val(meta), path("*.fullconfidences.tsv"), optional: false, emit: confidence
+    tuple val(meta), path("*.fullmetrics.tsv"), optional: false, emit: metrics
     path "versions.yml"           , emit: versions
 
     when:
@@ -40,14 +40,14 @@ process CONFIDENCE_MERGE {
 
 
 
-    def output = "${meta.id}.fullconfidences.tsv"
+    def output = "${meta.id}.fullmetrics.tsv"
 
 
     """
 
 
     merge_assemblies_conf.py \\
-        -i $single_confidence \\
+        -i $single_metric \\
         -o $output
 
 

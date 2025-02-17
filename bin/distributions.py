@@ -6,7 +6,7 @@ from io import BytesIO
 import math
 def body_site_map(x):
     body_sites = {
-        "stool": "gut",
+        'gut': "stool",
         "nose": "nasal",
         "vagina": "vaginal",
         "teeth": "oral",
@@ -92,7 +92,7 @@ def import_distributions(
         stats_dict_new[key]['abundances'] = [float(x) for x in stats_dict_new[key]['abundances'].split(",")]
         stats_dict_new[key]['norm_abundance'] = sum(stats_dict_new[key]['abundances'])/stats_dict_new[key]['site_count']
         # print(f"Original std dev: {stats_dict_new[key]['std']}, Original Mean: {stats_dict_new[key]['mean']}")
-        stats_dict_new[key]['std'] = custom_stddev(stats_dict_new[key])
+        # stats_dict_new[key]['std'] = custom_stddev(stats_dict_new[key])
         # print(f"New std dev: {stats_dict_new[key]['std']} ")
     return stats_dict_new, site_counts
 

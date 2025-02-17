@@ -59,6 +59,14 @@ def parse_args(argv=None):
         help="Depth BEDGRAPH rather than 1 based per positions",
     )
     parser.add_argument(
+        "-f",
+        "--fasta",
+        metavar="FASTAFILE",
+        nargs='+',
+        default=[],
+        help="The fasta file(s) used for alignment originally. Optional but used for the signature creation step if you dont want to make signatures of all reads. Dramatically improves memory and speed",
+    )
+    parser.add_argument(
         "-d",
         "--depth",
         metavar="DEPTH",
@@ -341,7 +349,7 @@ def breadth_of_coverage(depths, genome_length):
 
 
 def transform_func(d):
-        return math.log2(1 + d)
+        return math.log10(1 + d)
 
 
 
@@ -466,48 +474,158 @@ def gini_coefficient_from_hist(coverage_hist):
     gini = 1 - 2 * area_under_lorenz
     return gini
 
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e9, reward_factor=0.92):
+def get_dynamic_reward_factor(genome_length, baseline=1e2, max_length=1e7, max_reward=12):
     """
-    Calculate an adjusted 'Gini-based' score for fair distribution of depths,
-    with a genome-length-based reward so that large genomes get boosted more
-    (but never penalized).
+    Computes a dynamic reward factor:
+      - Returns 1 when genome_length is at or below baseline.
+      - Returns max_reward when genome_length is at or above max_length.
+      - Otherwise, linearly interpolates between 1 and max_reward.
     """
+    if genome_length <= baseline:
+        return 1.0
+    elif genome_length >= max_length:
+        return max_reward
+    else:
+        # Linear interpolation between 1 and max_reward
+        return 1.0 + (max_reward - 1.0) * ((genome_length - baseline) / (max_length - baseline))
 
-    # 1) Build Coverage Hist
+
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=1e4, max_length=1e6, reward_factor=2, beta=0.65):
+    """
+    Calculate an adjusted 'Gini-based' score for the fair distribution of coverage,
+    and then penalize (or boost) it according to the disparity in positions of the regions.
+
+    Parameters:
+      - regions: list of tuples (start, end, depth)
+      - genome_length: total genome length
+      - alpha: parameter for transforming the raw Gini
+      - baseline, max_length, reward_factor: parameters for length-based scaling
+      - beta: weight for the positional dispersion factor
+
+    The final score is a product of the (transformed) Gini measure, a scaling factor
+    based on genome length, and a term (1 + beta * dispersion) where dispersion is higher
+    when the regions are more spread out.
+    """
+    # 1) Build Histograms
     coverage_hist = build_coverage_hist(regions, genome_length)
     coverage_hist_transformed = build_transformed_coverage_hist(regions, genome_length)
 
-    # 2) Compute Raw Gini from transformed histogram
+    # 2) Compute raw Gini from the transformed histogram
     gini = gini_coefficient_from_hist(coverage_hist_transformed)
 
-    # 3) Compute some alpha-based transformation (if that’s part of your design)
+    # 3) Transform the raw Gini (ensuring the result is in [0,1])
     if 0.0 <= gini <= 1.0:
         gini_log = alpha * math.sqrt(1 - gini)
-        # Ensure in [0,1]
         gini_log = max(0.0, min(1.0, gini_log))
     else:
         gini_log = 0.0
 
-    # 4) Reward for genome length using a log-based scale
-    #    - Cap genome_length so we don’t exceed max_length
+    # 4) Compute length-based scaling (using a log scale)
     gl_capped = min(genome_length, max_length)
-
-    #    - Compute a ratio vs. a baseline (e.g. 10k)
     ratio = gl_capped / baseline
-
-    #    - Never let ratio < 1.0 => no penalty for shorter genome; factor >= 1
     ratio = max(ratio, 1.0)
-
-    #    - scaling_factor grows with log10(ratio)
-    #      reward_factor is how fast you want it to grow
     scaling_factor = 1.0 + reward_factor * math.log10(ratio)
 
-    # 5) Multiply the raw gini_log by the scaling factor, then clamp at 1.0
-    #    (so the final score remains in [0,1])
-    final_score = gini_log * scaling_factor
-    final_score = min(1.0, final_score)
+    # 5) Compute the positional dispersion factor
+    dispersion = position_dispersion_factor(regions, genome_length)
 
+    # 6) Combine the measures.
+    # The idea is to boost the score if the covered regions are spread out.
+    final_score = gini_log * scaling_factor * (1 + beta * dispersion)
+    final_score = min(1.0, final_score)
     return final_score
+
+def position_dispersion_factor(regions, genome_length):
+    """
+    Compute a dispersion factor based on the positions of the regions.
+    We use the midpoints of each region and compute their variance.
+    For a uniformly distributed set of midpoints on [0, genome_length],
+    the maximum variance is (genome_length^2)/12.
+    We then take the square root of the normalized variance to obtain a
+    factor between 0 and 1.
+    """
+    if not regions:
+        return 0.0
+
+    # Compute midpoints for each region
+    midpoints = [(start + end) / 2.0 for (start, end, depth) in regions]
+    mean_mid = sum(midpoints) / len(midpoints)
+    variance = sum((m - mean_mid)**2 for m in midpoints) / len(midpoints)
+
+    # Maximum variance for a uniform distribution in [0, genome_length]
+    max_variance = (genome_length**2) / 12.0
+    normalized_variance = variance / max_variance  # in [0,1]
+
+    # Taking square root to keep the metric in a similar scale as a coefficient of variation
+    dispersion = math.sqrt(normalized_variance)
+    return dispersion
+
+def gini_coefficient(values):
+    """
+    Compute the Gini coefficient using a sorted approach.
+    """
+    n = len(values)
+    if n == 0:
+        return 0.0
+
+    # Sort the values in ascending order
+    sorted_values = sorted(values)
+    total = sum(sorted_values)
+
+    if total == 0:
+        return 0.0
+
+    # Compute the weighted sum: sum(i * x_i) for i=1..n (using 1-indexing)
+    weighted_sum = sum((i + 1) * x for i, x in enumerate(sorted_values))
+
+    # Apply the formula:
+    gini = (2 * weighted_sum) / (n * total) - (n + 1) / n
+    return gini
+
+
+def gini_coverage_spread(regions, genome_length):
+    """
+    Compute a spatial Gini coefficient that reflects how spread out the
+    covered regions are across the genome.
+
+    The idea:
+      1. Assume each region in 'regions' is given as a tuple (start, end, depth).
+         (For now, we ignore 'depth' and assume any region has a binary coverage = 1.)
+      2. Calculate the gaps (uncovered segments) across the genome:
+           - From position 0 to the start of the first region.
+           - Between the end of one region and the start of the next.
+           - From the end of the last region to the genome end.
+      3. Compute the Gini coefficient on these gap lengths.
+
+    A low Gini value means the gaps are fairly equal in length (i.e. the covered regions
+    are clumped together), while a high Gini value means there is great inequality among gap
+    sizes (i.e. the covered regions are very spread out).
+    """
+    # Ensure the regions are sorted by start coordinate
+    # regions = sorted(regions, key=lambda r: r[0])
+
+    gaps = []
+
+    if regions:
+        # Gap from genome start to first region start
+        first_gap = regions[0][0]  # since genome starts at 0
+        gaps.append(first_gap)
+
+        # Gaps between successive regions
+        for i in range(len(regions) - 1):
+            current_end = regions[i][1]
+            next_start = regions[i+1][0]
+            gap = next_start - current_end
+            gaps.append(gap)
+
+        # Gap from the end of the last region to the end of the genome
+        last_gap = genome_length - regions[-1][1]
+        gaps.append(last_gap)
+    else:
+        # No covered regions: one gap equals the entire genome
+        gaps.append(genome_length)
+    return gini_coefficient(gaps)
+
 
 
 def getBreadthOfCoverage(breadth, genome_length):
@@ -559,11 +677,16 @@ def import_pathogens(pathogens_file):
             taxid = row[1] if len(row) > 1 else None
             call_class = row[2] if len(row) > 2 else None
 
-            pathogenic_sites = row[3] if len(row) > 3 else None
-            commensal_sites = row[4] if len(row) > 4 else None
-            status = row[5] if len(row) > 5 else None
-            pathology = row[6] if len(row) > 6 else None
-
+            pathogenic_sites = row[4] if len(row) > 4 else None
+            commensal_sites = row[5] if len(row) > 5 else None
+            # split and strip commensal sites spaces
+            commensal_sites = [x.strip() for x in commensal_sites.split(',')] if commensal_sites else []
+            pathogenic_sites = [x.strip() for x in pathogenic_sites.split(',')] if pathogenic_sites else []
+            # body_site map to the commensal sites and pathogenic_stites
+            commensal_sites = [body_site_map(x.lower()) for x in commensal_sites]
+            pathogenic_sites = [body_site_map(x.lower()) for x in pathogenic_sites ]
+            status = row[6] if len(row) > 6 else None
+            pathology = row[7] if len(row) > 7 else None
             # Store the data in the dictionary, keyed by pathogen name
             pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
@@ -974,7 +1097,24 @@ def apply_weight(value, weight):
     except (TypeError, ValueError):
         # If value cannot be converted to a float, return 0 or handle as needed
         return 0
+def logarithmic_weight(breadth, min_breadth=1e-3):
+    """
+    Returns a weight between 0 and 1 for a given breadth value.
+    - When breadth == min_breadth, the weight is 1.
+    - When breadth == 1, the weight is 0.
+    - Values in between are mapped logarithmically.
 
+    Parameters:
+    breadth (float): The raw breadth value (expected to be between 0 and 1).
+    min_breadth (float): The minimum expected breadth (should be > 0 to avoid log(0)).
+    """
+    # Clamp breadth to the [min_breadth, 1] range
+    breadth = max(min_breadth, min(breadth, 1.0))
+
+    # Normalize the log value
+    normalized = (math.log(breadth) - math.log(min_breadth)) / (0 - math.log(min_breadth))
+    weight = 1 - normalized
+    return weight
 def compute_tass_score(count, weights):
     """
     count is a dictionary that might look like:
@@ -990,13 +1130,16 @@ def compute_tass_score(count, weights):
     # convert z score to percentile
 
     # Summation of each sub-score * weight
+
+
+
     tass_score = sum([
         apply_weight(count.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
         apply_weight(count.get('alignment_score', 0),       weights.get('mapq_score', 0)),
         apply_weight(count.get('meanminhash_reduction', 0),       weights.get('minhash_weight', 0)),
         apply_weight(count.get('meangini', 0),             weights.get('gini_coefficient', 0)),
         apply_weight(count.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
-        apply_weight(count.get('breadth_total', 0),             weights.get('breadth_weight', 0)),
+        apply_weight(count.get('log_weight_breadth', 0),             weights.get('breadth_weight', 0)),
         apply_weight(count.get('k2_disparity', 0),         weights.get('k2_disparity_weight', 0)),
         apply_weight(count.get('diamond', {}).get('identity', 0),
                      weights.get('diamond_identity', 0))  ])
@@ -1142,14 +1285,14 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
             #     continue
             # For paired-end reads, only count the first mate to avoid double-counting
 
-            if not read.is_read1 and read.is_paired:
-                continue
+            # if not read.is_read1 and read.is_paired:
+            #     continue
 
             ref = read.reference_name
             total_reads += 1
 
             # Skip reads that are in alignments_to_remove if provided
-            if alignments_to_remove and ref in alignments_to_remove and read.query_name in alignments_to_remove[ref]:
+            if alignments_to_remove and read.query_name in alignments_to_remove and ref in alignments_to_remove[read.query_name]:
                 continue
 
             # Create a unique key for the read based on its query name and strand
@@ -1351,6 +1494,7 @@ def main():
                 matrix = args.matrix,
                 min_threshold = args.min_threshold,
                 abu_file = args.abu_file,
+                fasta_files = args.fasta,
                 min_similarity_comparable = args.min_similarity_comparable,
                 use_variance = args.use_variance,
                 apply_ground_truth = args.apply_ground_truth,
@@ -1440,17 +1584,16 @@ def main():
                     name = splitline[nameindex]
                 else:
                     name = None
-                if accession in reference_hits:
+                if accession in reference_hits and not reference_hits[accession].get('taxid', None):
                     reference_hits[accession]['taxid'] = taxid
-                    reference_hits[accession]['name'] = name
-                    reference_hits[accession]['assembly'] = assembly
+                reference_hits[accession]['name'] = name
+                reference_hits[accession]['assembly'] = assembly
                 if accession not in assembly_to_accession[assembly]:
                     assembly_to_accession[assembly].add(accession)
                 i+=1
 
         f.close()
     seen = dict()
-
     if args.assembly:
         i=0
         with open(args.assembly, 'r') as f:
@@ -1486,10 +1629,17 @@ def main():
                                 reference_hits[acc]['strain'] = current_strain
                                 reference_hits[acc]['assemblyname'] = name
                                 reference_hits[acc]['name'] = name
+
         f.close()
     final_format = defaultdict(dict)
     seen = dict()
-
+    for k, v in reference_hits.items():
+        if not v.get('toplevelkey'):
+            # check if taxid is present, and if so then set it to that, and if that isnt then set it to the accession
+            if v.get('taxid', None):
+                v['toplevelkey'] = v['taxid']
+            else:
+                v['toplevelkey'] = k
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
@@ -1612,15 +1762,20 @@ def main():
 
 
             try:
+
                 # if accession isn't NC_042114.1 skip
                 if len(data.get('covered_regions', [])) > 0 :
+                    # gini_strain2 = gini_coverage_spread(data.get('covered_regions', []),  data['length'])
                     gini_strain = getGiniCoeff(data['covered_regions'], data['length'], alpha=args.alpha)
+                    # if "Vaccinia" in data['name'] or "Monkey" in data['name']:
+                    #     print("\t",data.get('name'), gini_strain, gini_strain2)
+
                 else:
                     gini_strain = 0
                 # get Δ All% column value if it exists, else set to 0
                 # col_stat = 'Sum Rs %'
                 col_stat2 = 'Δ All%'
-                col_stat = 'Δ Breadth%'
+                col_stat = 'Δ^-1 Breadth'
                 if not comparison_df.empty:
                     # Ensure 'accession' is a string and matches the index type
                     accession = str(data['accession']).strip()
@@ -1631,14 +1786,9 @@ def main():
                             1,
                             (c1+c2) / 2
                         )
-                        # print(accession, c1, c2, comparison_value,"<<<<")
-                        data['comparison'] =  (comparison_value  )
+                        data['comparison'] =  ( comparison_value  )
                     else:
                         data['comparison'] = 1
-                # if "thailandensis" in data['name']:
-                #     print(comparison_df, accession)
-                #     print(data.get('comparison', 0), "<")
-                # print(top_level_key, data.get('coverage'),"<")
                 species_aggregated[top_level_key]['minhash_reductions'].append(data.get('comparison', 1))
                 species_aggregated[top_level_key]['coeffs'].append(gini_strain)
                 species_aggregated[top_level_key]['taxids'].append(data.get('taxid', "None"))
@@ -1884,11 +2034,15 @@ def main():
         total_reads = float(args.readcount)
 
     print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
+    if args.sampletype:
+        sampletype = body_site_map(args.sampletype.lower())
+    else:
+        sampletype = "Unknown"
     if args.hmp:
-        if args.sampletype == "Unknown" or not args.sampletype:
+        if sampletype == "Unknown":
             body_sites = []
         else:
-            body_sites = [body_site_map(args.sampletype.lower())]
+            body_sites = [sampletype]
         dists, site_counts = import_distributions(
             args.hmp,
             "tax_id",
@@ -1898,7 +2052,10 @@ def main():
         for key, value in species_aggregated.items():
             abus = []
             for body_site in body_sites:
-                for taxid in value.get('taxids', []):
+                taxids = value.get('taxids', [])
+                if args.compress_species:
+                    taxids = [key]
+                for taxid in taxids:
                     if not taxid:
                         continue
                     try:
@@ -1913,7 +2070,7 @@ def main():
                             )
                     except Exception as e:
                         print(f"Error in taxid lookup for hmp: {e}")
-            percent_total_reads_observed = sum(value.get('numreads', [])) / total_reads
+            percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
             sum_abus_expected = sum([x.get('mean',0)/100 for x in abus])
             sum_norm_abu = sum([x.get('norm_abundance',0) for x in abus])
             percent_total_reads_expected =  sum_abus_expected * total_reads
@@ -1922,13 +2079,15 @@ def main():
             # set zscore max 3 if greater
             # if zscore > 3:
             #     zscore = 3.1
-            if value['name'] == "Clostridioides difficile":
-                print(value['numreads'], total_reads, sum_abus_expected, ">>>>", percent_total_reads_observed)
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
             # if percentile is below 0.5 set it to 0
             # if zscore < 2.5:
             #     percentile = 0
+            # if "Clostridioides difficile" in value['name']:
+            #     print("\t",value['name'], key, value['zscore'], percentile, dists[(int(taxid), body_site)].get('norm_abundance', 0),dists[(int(taxid), body_site)].get('mean', 0),)
+            #     print(percent_total_reads_observed, sum_abus_expected, sum_norm_abu, stdsum)
+            #     exit()
             value['hmp_percentile'] = percentile
 
     else:
@@ -1939,7 +2098,7 @@ def main():
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
         sample_name=args.samplename,
-        sample_type = args.sampletype,
+        sample_type = sampletype,
         total_reads = total_reads,
         aligned_total = aligned_total,
         weights = weights
@@ -1969,7 +2128,7 @@ def main():
         "Coverage",
         'HHS Percentile',
         "IsAnnotated",
-        "Pathogenic Sites",
+        "AnnClass",
         "Microbial Category",
         "Taxonomic ID #",
         "Status",
@@ -1978,7 +2137,6 @@ def main():
         "Mean MapQ",
         "Mean Coverage",
         "Mean Depth",
-        "AnnClass",
         "isSpecies",
         "Pathogenic Subsp/Strains",
         "K2 Reads",
@@ -1989,6 +2147,7 @@ def main():
         "Diamond Identity",
         "K2 Disparity Score",
         "Siblings score",
+        "Breadth Weight Score",
         "TASS Score"
     ]
     write_to_tsv(output, final_scores, "\t".join(header))
@@ -2270,14 +2429,16 @@ def calculate_scores(
         derived_pathogen = False
         isPath = False
         annClass = "None"
-        pathogenic_sites = []
         refpath = pathogens.get(ref)
         pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
+        # check if the sample type is in the pathogenic sites
+        direct_match = False
         def pathogen_label(ref):
             is_pathogen = "Unknown"
             isPathi = False
+            direct_match = False
             callclass = ref.get('callclass', "N/A")
-            pathogenic_sites = ref.get('pathogenic_sites', [])
+            # pathogenic_sites = ref.get('pathogenic_sites', [])
             commensal_sites = ref.get('commensal_sites', [])
             if sample_type in pathogenic_sites:
                 if callclass != "commensal":
@@ -2285,20 +2446,19 @@ def calculate_scores(
                     isPathi = True
                 else:
                     is_pathogen = "Potential"
+                direct_match = True
             elif sample_type in commensal_sites:
                 is_pathogen = "Commensal"
+                direct_match = True
             elif callclass and callclass != "":
                 is_pathogen = callclass.capitalize() if callclass else "Unknown"
                 isPathi = True
-            return is_pathogen, isPathi
+            return is_pathogen, isPathi, direct_match
 
         formatname = count.get('name', "N/A")
-
         if refpath:
-            is_pathogen, isPathi = pathogen_label(refpath)
+            is_pathogen, isPathi, direct_match = pathogen_label(refpath)
             isPath = isPathi
-            if isPathi:
-                annClass = "Direct"
             taxid = refpath.get(ref, count.get(ref, ""))
             is_annotated = "Yes"
             commsites = refpath.get('commensal_sites', [])
@@ -2310,10 +2470,14 @@ def calculate_scores(
             is_annotated = "No"
             taxid = count.get(ref, "")
             status = ""
+        if direct_match:
+            annClass = "Direct"
+        else:
+            annClass = "Derived"
 
         listpathogensstrains = []
         fullstrains = []
-
+        count['annClass'] = annClass
         if strainlist:
             pathogenic_reads = 0
             merged_strains = defaultdict(dict)
@@ -2357,7 +2521,6 @@ def calculate_scores(
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
             if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
                 is_pathogen = "Primary"
-                annClass = "Derived"
 
         breadth_total = count.get('breadth_total', 0)
         countreads = sum(count['numreads'])
@@ -2371,10 +2534,13 @@ def calculate_scores(
             percent_total = format_non_zero_decimals(100*countreads / total_reads)
         if len(pathogenic_sites) == 0:
             pathogenic_sites = ""
-        # if "Toxo" in count.get('name'):
-        #     print(count)
-        #     exit()
+
         # Apply weights to the relevant scores
+        # Example usage:
+        breadth = count.get('breadth_total')  # your raw value between 0 and 1
+        log_weight_breadth = 1-logarithmic_weight(breadth)
+        # get log weight of the breadth_total
+        count['log_weight_breadth'] = log_weight_breadth
         tass_score = compute_tass_score(
             count,
             weights,
@@ -2390,6 +2556,7 @@ def calculate_scores(
                 percent_total=percent_total,
                 percent_aligned=percent_aligned,
                 callfamclass=callfamclass,
+                log_breadth_weight = count.get('log_weight_breadth', 0),
                 total_reads=sum(count['numreads']),
                 reads_aligned=countreads,
                 hmp_percentile = count.get('hmp_percentile', 0),
@@ -2398,10 +2565,10 @@ def calculate_scores(
                 breadth_total = breadth_total,
                 total_length = count.get('total_length', 0),
                 is_annotated=is_annotated,
-                pathogenic_sites=pathogenic_sites,
                 is_pathogen=is_pathogen,
                 ref=ref,
                 status=status,
+                annClass=annClass,
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2450,7 +2617,6 @@ def write_to_tsv(output_path, final_scores, header):
             disparity_score = entry.get('disparity_score', 0)
             siblings_score = entry.get('siblings_score', 0)
             tass_score = entry.get('tass_score', 0)
-            pathogenic_sites = entry.get('pathogenic_sites', "")
             minhash_score = entry.get('minhash_score', 0)
             listpathogensstrains = entry.get('listpathogensstrains', [])
             countreads = entry.get('reads_aligned', 0)
@@ -2460,8 +2626,12 @@ def write_to_tsv(output_path, final_scores, header):
             percent_total = entry.get('percent_total', 0)
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
+            log_breadth_weight = entry.get('log_breadth_weight', 0)
             # if "Toxoplasma" in formatname:
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.40  :
+            # if plasmid uper or lower case doesnt matter matches then skip
+            if "plasmid" in formatname.lower():
+                continue
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.490  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
@@ -2487,15 +2657,16 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tK2 Reads: {entry.get('k2_reads', 0)}")
                 print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
                 print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
+                print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
                 print()
                 total+=1
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
-                f"{is_annotated}\t{entry.get('pathogenic_sites')}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
-                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{annClass}\t{isSpecies}\t{callfamclass}\t"
+                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
+                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
-                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{tass_score:.2f}\n"
+                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
             )
             fulltotal+=1
     print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")

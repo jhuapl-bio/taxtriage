@@ -7,7 +7,7 @@ reports:
     display: "Organism Discovery Analysis"
   "**/convert/*merged.tsv":
     display: "Confidence Table"
-  "**/krona/*.html":
+  "**/report/*.html":
     display: "Krona Plots"
   "**/fastqc/*_fastqc.html":
     display: "FASTQC output (Illumina Only)"
@@ -15,8 +15,8 @@ reports:
     display: "Nanoplot output (Nanopore Only)"
   "**/fastp/*.fastp.html":
     display: "fastp output (QC Trimming)"
-  "**/samtools/*.txt":
-    display: "Coverage, Base Quality, and Map Stats"
+  "**/alignment/*.txt":
+    display: "Coverage, Confidence, Base Quality, and Map Stats"
   "**/bcftools/*consensus.fa":
     display: "Consensus Generation File"
   "**/bcftools/*consensus.fa":
@@ -27,7 +27,7 @@ reports:
     display: "MAPQ Filtered and Sorted Hisat2 BAM File(s)"
   "**/bowtie2/*.bam":
     display: "MAPQ Filtered and Sorted Bowtie2 BAM File(s)"
-  "**/samtools/*.bam":
+  "**/alignment/*.bam":
     display: "MAPQ Filtered and Sorted and Merged (if multiple reference files) BAM File(s)"
   "**/top/*top_report.tsv":
     display: "Top Taxa Per Rank post-Kraken2"

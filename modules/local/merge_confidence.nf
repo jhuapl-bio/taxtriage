@@ -1,4 +1,4 @@
-process MERGE_CONFIDENCE {
+process MERGE_ALIGNMENT_MERGES {
     label 'process_medium'
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
@@ -8,16 +8,16 @@ process MERGE_CONFIDENCE {
 
 
     input:
-    file confidences
+    file metrics
 
     output:
-    path("*confidences*.merged_mqc.tsv"), optional:false, emit: confidence_report
+    path("*metrics*.merged_mqc.tsv"), optional:false, emit: metrics_report
 
     script:
     """
     merge_tsvs.py \\
-        -o ./confidences.merged_mqc.tsv \\
-        -i $confidences
+        -o ./metrics.merged_mqc.tsv \\
+        -i $metrics
 
 
 

@@ -26,6 +26,27 @@ custom_content:
   order:
     - confidences
     - krakenreport
+kraken:
+  top_n: 15
+table_columns_placement:
+  # metrics:
+  #   "Name": 1
+  #   "Sample_Name": 2
+  #   "% Aligned": 3
+  confidences:
+    "Specimen ID": 1
+    "TASS Score": 2
+    "% Reads": 3
+    "Sample Type": 4
+    "Microbial Category": 5
+    "Coverage": 6
+    "Mean Depth": 7
+    "Mean BaseQ" : 8
+    "Mean MapQ": 9
+    "Taxonomic ID #": 10
+    "IsAnnotated": 11
+    "HHS Percentile": 12
+export_plots: false
 custom_data:
   individuals:
     section_name: "Individuals"
@@ -40,29 +61,29 @@ custom_data:
     file: "*all.organisms.report.txt*"
     description: "Confidence values for all organisms"
     file_format: "tsv"
+  # metrics:
+  #   section_name: "Alignment Metrics"
+  #   plot_type: "table"
+  #   description: "Standard alignment statistics"
+  #   file: "*merged_mqc.tsv"
+  #   file_format: "tsv"
   krakenreport:
     section_name: "All Metagenomic Hits"
     plot_type: "table"
+    description: "All metagenomic top hits"
     file_format: "tsv"
-    file: "krakenreport.merged_mqc.tsv"
-    pconfig:
-      id: "summary_metagenomics_metrics_plot"
-      beeswarm: false
-      headers:
-        rank: "Rank"
   nf-core-taxtriage-summary:
     section_name: "Metadata"
     file: "table_explanation_mqc.yml"
 skip_generalstats: true
-
 sp:
   krakenreport:
     fn: "*top_report.tsv"
   confidences:
     fn: "*.report.txt"
-  metrics:
-    fn: "*metrics.tsv"
-    description: "Basic alignment metrics"
+  # metrics:
+  #   fn: "*merged_mqc.tsv"
+  #   description: "Basic alignment metrics"
 module_order:
   - confidences
   - krakenreport
