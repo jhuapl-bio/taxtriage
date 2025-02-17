@@ -16,8 +16,6 @@ table_columns_visible:
     "Depth Coverage Mean": false
     "Depth Coverage Stdev": false
     "Depth Coef. Variation": false
-custom_css_files:
-  - ./mqc.css
 export_plots: false
 custom_content:
   table_columns_name:
@@ -28,60 +26,112 @@ custom_content:
     - krakenreport
 kraken:
   top_n: 15
-
-table_columns_placement:
+custom_css_files:
+  - ./mqc.css
+table_columns_visible:
   confidences:
-    "Specimen ID": 1
-    "TASS Score": 2
-    "% Reads": 3
-    "Sample Type": 4
-    "Microbial Category": 5
-    "Coverage": 6
-    "Mean Depth": 7
-    "Mean BaseQ" : 8
-    "Mean MapQ": 9
-    "Taxonomic ID #": 10
-    "IsAnnotated": 11
-    "HHS Percentile": 12
+    'K2 Disparity Score': False
+    'Disparity Score': False
+    'Minhash Score': False
+    'Diamond Identity': False
+    'Siblings score': False
+    'Breadth Weight Score': False
+    'Parent K2 Reads': False
+    'Status': False
+    'isSpecies': False
+    'AnnClass': False
+    '% Aligned Reads': False
+    'Gini Coefficient': False
+    'MapQ Score': False
+    'Mean Coverage': False
+# table_columns_placement:
+#   confidences:
+#     "Specimen ID": 0
+#     'Detected Organism': 1
+#     "TASS Score": 2
+#     "% Reads": 3
+#     "Sample Type": 4
+#     "Microbial Category": 5
+#     "Coverage": 6
+#     "Mean Depth": 7
+#     "Mean BaseQ" : 8
+#     "Mean MapQ": 9
+#     "Taxonomic ID #": 10
+#     "IsAnnotated": 11
+#     "HHS Percentile": 12
 export_plots: false
+# table_cond_formatting_rules:
+#   confidences:
+#     pass:
+#       - s_eq: "pass"
+#       - s_eq: "true"
+#     warn:
+#       - s_eq: "warn"
+#       - s_eq: "unknown"
+#     fail:
+#       - s_eq: "fail"
+#       - s_eq: "false"
+custom_plot_config:
+  confidences:
+    defaultsort:
+      - column: "TASS Score"
+  table_cond_formatting_rules:
+    all_columns:
+      pass:
+        - s_eq: "pass"
+        - s_eq: "true"
+      warn:
+        - s_eq: "warn"
+        - s_eq: "unknown"
+      fail:
+        - s_eq: "fail"
+        - s_eq: "false"
+custom_table_header_config:
+  confidences :
+    "Specimen ID":
+      description: "The sample name you provided in your sample sheet"
+    "Detected Organism":
+      description: "The organism detected by the pipeline in the given sample"
+    "Microbial Category":
+      description: "The microbial category of the detected organism. Options are Primary, Opportunistic, Potential, or Commensal. Unknowns are also there if the organism isn't annotated in the TaxTriage Pathogen sheet"
+    "% Reads":
+      description: "The percentage of reads that were assigned to the detected organism relative to the full sample."
+    "Coverage":
+      format: "{:,.2f}"
+      description: "The breadth of coverage (min depth of 1) of the detected organism in the sample"
+    "Mean Depth":
+      format: "{:,.2f}"
+      description: "The mean depth of coverage of the detected organism in the sample"
+    "Mean BaseQ":
+      format: "{:,.2f}"
+      description: "The mean base quality of the reads assigned to the detected organism for all reads that aligned"
+    "Mean MapQ":
+      format: "{:,.2f}"
+      description: "The mean mapping quality of the reads assigned to the detected organism for all reads that aligned"
+    "HHS Percentile":
+      format: "{:,.2f}"
+      description: "The percentile of the detected organism in the Human Health Score (HHS) database. Higher values indicate a higher likelihood of being a human pathogen. If the sample type is unknown, the value will always be 100"
+    'IsAnnotated':
+      description: "Whether the detected organism is annotated in the TaxTriage Pathogen sheet. If the organism is not annotated, the value will be 'No'"
+    "TASS Score":
+      description: "The TASS score is a measure of the confidence in the taxonomic assignment. Range of 0 (lowest conf.) to 1 (highest conf.)"
+    "Taxonomic ID #":
+      format: "{:}"
+      color: 'blue'
+      description: "The value of the taxid in the taxonomy tree"
 custom_data:
-  individuals:
-    section_name: "Individuals"
-    plot_type: "table"
-    file_format: "tsv"
-    pconfig:
-      table_title: "Individuals Data"
-      namespace: "Individuals"
   confidences:
     section_name: "Confidence Metrics"
     plot_type: "table"
-    file: "*all.organisms.report.txt*"
-    description: "Confidence values for all organisms"
+    description: "Confidence values for all organisms. "
+    helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary"
     file_format: "tsv"
-    table_sample_merge:
-      "Detected Organism": ""
-    table:
-      # Use a unique column (here "Specimen ID") as the index so each row is retained
-      idx: "Specimen ID"
-      columns:
-        - "Specimen ID"
-        - "Detected Organism"
-        - "TASS Score"
-        - "% Reads"
-        - "Sample Type"
-        - "Microbial Category"
-        - "Coverage"
-        - "Mean Depth"
-        - "Mean BaseQ"
-        - "Mean MapQ"
-        - "Taxonomic ID #"
-        - "IsAnnotated"
-        - "HHS Percentile"
   krakenreport:
     section_name: "All Metagenomic Hits"
-    plot_type: "table"
+    plot_type: 'table'
     description: "All metagenomic top hits"
     file_format: "tsv"
+    # file: "*top_report.tsv"
   nf-core-taxtriage-summary:
     section_name: "Metadata"
     file: "table_explanation_mqc.yml"
@@ -91,15 +141,14 @@ sp:
     fn: "*top_report.tsv"
   confidences:
     fn: "*.report.txt"
-  # metrics:
-  #   fn: "*merged_mqc.tsv"
-  #   description: "Basic alignment metrics"
 module_order:
   - confidences
   - krakenreport
   - kraken
   - fastp
   - bcftools
+  - samtools
+  - fastqc
 report_section_order:
   confidences:
     order: 9999
@@ -111,5 +160,9 @@ report_section_order:
     order: 9996
   fastp:
     order: 9995
-  nf-core-taxtriage-summary:
+  fastqc:
     order: 9994
+  samtools:
+    order: 9993
+  nf-core-taxtriage-summary:
+    order: 9992

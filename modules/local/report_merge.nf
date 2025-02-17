@@ -30,7 +30,7 @@ process ORGANISM_MERGE_REPORT {
 
     output:
         path "versions.yml"           , emit: versions
-        path("*organisms.report.txt")    , optional: false, emit: report
+        path("*organisms.report.txt")    , optional: true, emit: report
         path("*organisms.report.pdf")    , optional: false, emit: pdf
 
     when:
@@ -51,11 +51,10 @@ process ORGANISM_MERGE_REPORT {
     def show_potentials = params.show_potentials ? " --show_potentials " : ""
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
+
     """
 
-    awk 'NR==1{print; next} FNR>1' $files_of_pathogens > $output_txt
-
-    create_report.py -i $output_txt  \\
+    create_report.py -i $files_of_pathogens -u $output_txt  \\
         -o $output_pdf \\
         $show_potentials \\
         $show_commensals \\

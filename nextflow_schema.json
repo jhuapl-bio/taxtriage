@@ -59,7 +59,13 @@
                 "remove_taxids": {
                     "description": "Taxid numbers in double quotes ( e.g. \"9606\" for human). For multiple, example: \"9606 2\" removes human AND all Bacteria",
                     "fa_icon": "fas fa-file-signature",
-                    "type": "string"
+                    "type": "string",
+                    "default": "9606"
+                },
+                "subsample": {
+                    "type": "number",
+                    "description": "Pull a random number of reads from the reads to be analyzed. Useful for testing only. ",
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "demux": {
                     "type": "boolean",
@@ -83,26 +89,21 @@
                 "low_memory": {
                     "type": "boolean",
                     "fa_icon": "fas fa-book",
-                    "description": "Dont load db to memory, run from I/O",
-                    "default": false
+                    "description": "Dont load db to memory, run from I/O"
                 },
                 "download_db": {
                     "type": "boolean",
                     "fa_icon": "fas fa-download",
-                    "description": "Download the preset database indicated in --db to --outdir.",
-                    "default": true
+                    "description": "Download the preset database indicated in --db to --outdir."
                 },
                 "taxtab": {
                     "type": "string",
                     "hint": "Options: [default, krona, or a file path to a taxonomy.tab file]",
-                    "default": "default",
-                    "format": "file-path",
                     "description": "Taxonomy tab file for krona plots",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "add_irregular_top_hits": {
                     "type": "boolean",
-                    "default": false,
                     "description": "Add irregular distribution genomes to the top hits",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -113,39 +114,42 @@
                     "description": "",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "save_reads_assignment": {
-                    "type": "boolean",
-                    "description": "Report output",
-                    "default": true
+                "classifer": {
+                    "type": "string",
+                    "description": "Choose from [kraken2, metaphlan, centrifuge]",
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "save_output_fastqs": {
                     "type": "boolean",
                     "fa_icon": "fas fa-book",
-                    "description": "Save all read classifications as a txt file",
-                    "default": true
+                    "description": "Save all read classifications as a txt file"
+                },
+                "save_unaligned": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-book",
+                    "description": "Save all unaligned reads as a txt file for reflex analysis"
                 },
                 "remove_commensal": {
                     "type": "boolean",
                     "fa_icon": "fas fa-book",
-                    "description": "Save all read classifications as a txt file",
-                    "default": true
+                    "description": "Save all read classifications as a txt file"
                 },
-                "save_classified_fastqs": {
+                "save_classified_fastq": {
                     "type": "boolean",
                     "description": "Save classified fastqs from k2 and use them downstream - all classified are passed, unclassified are discarded",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "top_hits_count": {
                     "type": "number",
-                    "default": 20,
+                    "default": 5,
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_confidence": {
                     "type": "number",
                     "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
-                    "fa_icon": "fas fa-file-signature"
+                    "fa_icon": "fas fa-file-signature",
+                    "default": null
                 },
                 "k2_minimum_hit_groups": {
                     "type": "number",
@@ -180,22 +184,30 @@
                     "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "spades_hmm": {
+                    "type": "string",
+                    "description": "Use custom hmm from SPAdes for your reads",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "use_bt2": {
                     "type": "boolean",
                     "description": "Dont use minimap2 for short reads, use bowtie2 instead",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "use_hisat2": {
+                    "type": "boolean",
+                    "description": "Dont use minimap2 for short reads, use hisat2 instead. This process takes much much longer than bt2 or minimap2",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "use_diamond": {
                     "type": "boolean",
                     "description": "Use DIAMOND BLASTX on the following BAM from the alignment step(s)",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "use_denovo": {
                     "type": "boolean",
                     "description": "Use De Novo Assembly. Default is Flye for Longreads and Megahit for short",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "skip_report": {
                     "type": "boolean",
@@ -229,51 +241,53 @@
                 },
                 "min_conf": {
                     "type": "number",
-                    "default": 0.75,
                     "description": "Minimum Confidence for reporting.",
                     "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "gini_weight": {
                     "type": "number",
-                    "default": 0.75,
                     "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "breadth_weight": {
                     "type": "number",
-                    "default": 0.25,
                     "description": "Minimum Log-based breadth weight for TASS Score calculation",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "minhash_weight": {
                     "type": "number",
-                    "default": 0.2,
                     "description": "Weight for minhash filtering. It is the combination of % of reads removed + % of breadth new  / 2 ",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mapq_weight": {
                     "type": "number",
-                    "default": 0.0,
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "disparity_weight": {
                     "type": "number",
-                    "default": 0.0,
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "hmp_weight": {
                     "type": "number",
-                    "default": 0.0,
                     "description": "TASS Score weight for HMP percentile, recommend disabling if sample is unknown",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "dispersion_factor": {
+                    "type": "number",
+                    "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "reward_factor": {
+                    "type": "number",
+                    "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "pathogens": {
                     "type": "string",
                     "format": "file-path",
-                    "schema": "assets/schema_input.json",
                     "description": "Path to pathogens txt file. See documentation for format and info.",
                     "fa_icon": "fas fa-file-csv"
                 },
@@ -293,8 +307,7 @@
                 "fuzzy": {
                     "type": "boolean",
                     "description": "Fuzzy matching for organism names",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "min_reads_align": {
                     "type": "number",
@@ -304,26 +317,22 @@
                 },
                 "zscore_accepted": {
                     "type": "number",
-                    "default": 1.5,
                     "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
                     "description": "Minimum zscore for outline assumptions from HHS",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "minmapq": {
                     "type": "number",
-                    "default": 5,
                     "description": "Minimum MapQ Score for alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_window": {
                     "type": "string",
-                    "default": null ,
                     "description": "Window size for minimap2 alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_fraction_filter": {
-                    "type": "string",
-                    "default": null,
+                    "type": "number",
                     "description": "filter out top FLOAT fraction of repetitive minimizers",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -341,8 +350,7 @@
                 "refresh_download": {
                     "type": "boolean",
                     "description": "Redownload all references from NCBI",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "genome": {
                     "type": "string",
@@ -384,15 +392,13 @@
                 "recursive_reference": {
                     "type": "boolean",
                     "description": "Search for the FASTA files in a directory from the --reference_fasta param",
-                    "fa_icon": "fas fa-ban",
-                    "default": false
+                    "fa_icon": "fas fa-ban"
                 },
                 "decompress_pre_megahit": {
                     "type": "boolean",
                     "description": "Decompress your fastq file(s) pre assembly with megahit only",
                     "help_text": "For a minor bug on cluster environments where megahit can't work on compressed files",
-                    "fa_icon": "fas fa-ban",
-                    "default": false
+                    "fa_icon": "fas fa-ban"
                 },
                 "distributions": {
                     "type": "string",
@@ -400,7 +406,7 @@
                     "schema": "assets/schema_input.json",
                     "description": "List of all metagenome distributions that contain abundances found in public HMP data for each taxa and body site combination",
                     "help_text": "",
-                    "default":  "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/assets/taxid_abundance_stats.hmp.tsv.gz",
+                    "default":  null,
                     "fa_icon": "fas fa-file-csv"
                 }
             }
@@ -424,39 +430,39 @@
                 "skip_fastp": {
                     "type": "boolean",
                     "description": "Skip QC trimming",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "skip_kraken2": {
                     "type": "boolean",
                     "description": "Skip Kraken2. Will not work with \"unknown taxa\" mode. You must provide a reference FASTA if this is toggled on.",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "skip_refpull": {
                     "type": "boolean",
                     "description": "Skip downloading references from NCBI",
-                    "default": false,
                     "hint": "Must provide a local reference fasta file. This is only useful if you want K2 outputs in tandem with a local ref file output",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_krona": {
                     "type": "boolean",
                     "description": "Skip Krona Plots",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "skip_features": {
                     "type": "boolean",
                     "description": "Skip the feature download step(s). Used during the protein alignment step",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_pathogens": {
+                    "type": "boolean",
+                    "description": "Skip the pathogen detection step(s)",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
                 "unknown_sample": {
                     "type": "boolean",
                     "description": "Dont consider HMP distributions",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "ignore_missing": {
                     "type": "boolean",
@@ -466,8 +472,7 @@
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
-                    "fa_icon": "fas fa-file-signature",
-                    "default": false
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "get_features": {
                     "type": "boolean",
@@ -514,6 +519,98 @@
                     "help_text": "Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to specify this on the command line for every run.",
                     "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
                 },
+                "email_on_fail": {
+                    "type": "boolean",
+                    "description": "only email if set to true",
+                    "fa_icon": "fas fa-envelope"
+                },
+                "plaintext_email": {
+                    "type": "boolean",
+                    "description": "Send email in plaintext",
+                    "fa_icon": "fas fa-envelope"
+                },
+                "monochrome_logs": {
+                    "type": "boolean",
+                    "description": "Monochrome logs",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "help": {
+                    "type": "boolean",
+                    "description": "Print help message",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "validate_params": {
+                    "type": "boolean",
+                    "description": "Validate parameters",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_hidden_params": {
+                    "type": "boolean",
+                    "description": "Show hidden parameters",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "config_profile_contact": {
+                    "type": "string",
+                    "description": "Configuration profile contact",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "publish_dir_mode": {
+                    "type": "string",
+                    "default": "copy",
+                    "description": "Publish directory mode",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "multiqc_logo": {
+                    "type": "string",
+                    "description": "Path to a logo image file to use in the MultiQC report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "max_multiqc_email_size": {
+                    "type": "string",
+                    "description": "Maximum MultiQC email size. Default is 25.MB",
+                    "default": "25.MB",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "custom_config_version": {
+                    "type": "string",
+                    "default": "master",
+                    "description": "Custom config version",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "custom_config_base": {
+                    "type": "string",
+                    "default": "https://raw.githubusercontent.com/nf-core/configs/master",
+                    "description": "Custom config base",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "enable_conda": {
+                    "type": "boolean",
+                    "description": "Enable Conda. This is disabled atm. ",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "max_cpus": {
+                    "type": "number",
+                    "description": "Maximum number of CPUs to use for the pipeline",
+                    "fa_icon": "fas fa-microchip",
+                    "default": null
+                },
+                "max_memory": {
+                    "type": "string",
+                    "description": "Maximum amount of memory to use for the pipeline",
+                    "fa_icon": "fas fa-memory",
+                    "default": null
+                },
+                "max_time": {
+                    "type": "string",
+                    "description": "Maximum amount of time to use for the pipeline",
+                    "fa_icon": "fas fa-clock",
+                    "default": null
+                },
+                "default_download": {
+                    "type": "string",
+                    "description": "Default download database",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "multiqc_title": {
                     "type": "string",
                     "description": "MultiQC report title. Printed as page header, used for filename if not otherwise specified.",
@@ -522,6 +619,26 @@
                 "blastdb": {
                     "type": "string",
                     "description": "Blast Database (local or remote, local must be absolute path)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "config_profile_name": {
+                    "type": "string",
+                    "description": "Configuration profile name",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "config_profile_description": {
+                    "type": "string",
+                    "description": "Configuration profile description",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "config_profile_url": {
+                    "type": "string",
+                    "description": "Configuration profile URL",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "seq_center": {
+                    "type": "string",
+                    "description": "Sequencing center",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "remoteblast": {

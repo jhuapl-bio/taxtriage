@@ -137,6 +137,7 @@ ch_multiqc_css       = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExi
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
 ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
 ch_multiqc_files = Channel.empty()
+ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
 
 ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
 
@@ -478,7 +479,7 @@ workflow TAXTRIAGE {
         ch_reads = FASTP.out.reads
         ch_fastp_reads = FASTP.out.json
         ch_fastp_html = FASTP.out.html
-        // ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
     }
 
 

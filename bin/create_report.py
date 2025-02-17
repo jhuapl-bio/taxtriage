@@ -49,7 +49,9 @@ def parse_args(argv=None):
         "--input",
         metavar="INPUT",
         required=True,
-        help="Base pathogen discovery table file, TSV format",
+        nargs="+",
+        default=[],
+        help="Base pathogen discovery table file(s), TSV format only. Can specify more than one",
     )
     parser.add_argument(
         "-d",
@@ -92,7 +94,15 @@ def parse_args(argv=None):
         metavar="OUTPUT",
         required=True,
         type=str,
-        help="Path of output file",
+        help="Path of output file (pdf)",
+    )
+    parser.add_argument(
+        "-u",
+        "--output_txt",
+        metavar="OUTPUT_TXT",
+        required=False,
+        type=str,
+        help="Path of output file (txt)",
     )
 
     return parser.parse_args(argv)
@@ -120,7 +130,7 @@ def format_cell_content(cell):
 
 
 
-def import_data(inputfile ):
+def import_data(inputfiles ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
     # Name\Specimen ID\tSpecimen Type\t% Reads\t% Aligned Reads\t# Reads Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
@@ -146,8 +156,13 @@ def import_data(inputfile ):
     # df['MeanMapQ'] = np.random.uniform(30, 60, df.shape[0])
     # df['Breadth of Coverage'] = np.random.uniform(50, 100, df.shape[0])
     # df['Depth of Coverage'] = np.random.uniform(10, 100, df.shape[0])
-
-    df = pd.read_csv(inputfile, sep='\t')
+    if len(inputfiles) ==0:
+        raise ValueError("No input files given")
+    dfs = []
+    for inputfile in inputfiles:
+        df = pd.read_csv(inputfile, sep='\t')
+        dfs.append(df)
+    df = pd.concat(dfs)
 
     # set % Reads aligned as float
     df['% Reads'] = df['% Reads'].apply(lambda x: float(x) if not pd.isna(x) else 0)
@@ -700,6 +715,12 @@ def main():
     df_full = import_data(args.input)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
 
+    if args.output_txt:
+        # write out the data to a txt file
+        # sort df_full on "TASS Score"
+        df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
+        df_full = df_full.reset_index(drop=True)
+        df_full.to_csv(args.output_txt, sep="\t", index=True, index_label="Index")
     # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
     df_full = df_full.rename(columns={args.id_col: args.type})
     df_full = df_full.rename(columns={args.sitecol: 'body_site'})
