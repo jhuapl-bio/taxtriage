@@ -148,7 +148,7 @@
                 "k2_confidence": {
                     "type": "number",
                     "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
-                    "fa_icon": "fas fa-file-signature",
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "k2_minimum_hit_groups": {
                     "type": "number",
