@@ -2528,18 +2528,23 @@ def calculate_scores(
                     pathstrain = pathogens.get(x.get('taxid'))
                 elif x.get('fullname') in pathogens:
                     pathstrain = pathogens.get(x.get('fullname'))
-
+                # if "Fenollaria massiliensis" in formatname:
+                #     print(pathstrain)
                 if pathstrain:
                     taxx = x.get('taxid', "")
-                    if sample_type in pathstrain.get('pathogenic_sites', []) or pathstrain.get('callclass') != "commensal":
+                    if sample_type in pathstrain.get('pathogenic_sites', []):
                         pathogenic_reads += x.get('numreads', 0)
                         percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
                         listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
 
             if callfamclass == "" or len(listpathogensstrains) > 0:
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
+            # if "Fenollaria massiliensis" in formatname:
+            #     print(is_pathogen,"<")
             if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
                 is_pathogen = "Primary"
+            # if "Fenollaria massiliensis" in formatname:
+            #     print(is_pathogen,"<<<", listpathogensstrains)
 
         breadth_total = count.get('breadth_total', 0)
         countreads = sum(count['numreads'])
@@ -2646,11 +2651,13 @@ def write_to_tsv(output_path, final_scores, header):
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
-            # if "Toxoplasma" in formatname:
+            if "Fenollaria massiliensis" in formatname:
+                print(entry)
+                exit()
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.490  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
                 print(f"Reference: {ref} - {formatname}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
