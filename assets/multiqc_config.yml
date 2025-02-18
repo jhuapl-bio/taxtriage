@@ -16,8 +16,6 @@ table_columns_visible:
     "Depth Coverage Mean": false
     "Depth Coverage Stdev": false
     "Depth Coef. Variation": false
-custom_css_files:
-  - ./mqc.css
 export_plots: false
 custom_content:
   table_columns_name:
@@ -28,17 +26,32 @@ custom_content:
     - krakenreport
 kraken:
   top_n: 15
-table_columns_placement:
-  # metrics:
-  #   "Name": 1
-  #   "Sample_Name": 2
-  #   "% Aligned": 3
+custom_css_files:
+  - ./mqc.css
+table_columns_visible:
   confidences:
-    "Specimen ID": 1
+    'K2 Disparity Score': False
+    'Disparity Score': False
+    'Minhash Score': False
+    'Diamond Identity': False
+    'Siblings score': False
+    'Breadth Weight Score': False
+    'Parent K2 Reads': False
+    'Status': False
+    'isSpecies': False
+    'AnnClass': False
+    '% Aligned Reads': False
+    'Gini Coefficient': False
+    'MapQ Score': False
+    'Mean Coverage': False
+table_columns_placement:
+  confidences:
+    "Specimen ID": 0
+    'Detected Organism': 1
     "TASS Score": 2
-    "% Reads": 3
+    "Microbial Category": 3
     "Sample Type": 4
-    "Microbial Category": 5
+    "% Reads": 5
     "Coverage": 6
     "Mean Depth": 7
     "Mean BaseQ" : 8
@@ -46,50 +59,125 @@ table_columns_placement:
     "Taxonomic ID #": 10
     "IsAnnotated": 11
     "HHS Percentile": 12
-export_plots: false
+custom_table_header_config:
+  confidences :
+    "Specimen ID":
+      description: "The sample name you provided in your sample sheet"
+    "Detected Organism":
+      description: "The organism detected by the pipeline in the given sample"
+    "Microbial Category":
+      description: "The microbial category of the detected organism. Options are Primary, Opportunistic, Potential, or Commensal. Unknowns are also there if the organism isn't annotated in the TaxTriage Pathogen sheet"
+    "% Reads":
+      description: "The percentage of reads that were assigned to the detected organism relative to the full sample."
+    "Index":
+      description: "The basic index of the row"
+    "Coverage":
+      format: "{:,.2f}"
+      description: "The breadth of coverage (min depth of 1) of the detected organism in the sample"
+    "Mean Depth":
+      format: "{:,.2f}"
+      description: "The mean depth of coverage of the detected organism in the sample"
+    "Mean BaseQ":
+      format: "{:,.2f}"
+      description: "The mean base quality of the reads assigned to the detected organism for all reads that aligned"
+    "Mean MapQ":
+      format: "{:,.2f}"
+      description: "The mean mapping quality of the reads assigned to the detected organism for all reads that aligned"
+    "HHS Percentile":
+      format: "{:,.2f}"
+      description: "The percentile of the detected organism in the Human Health Score (HHS) database. Higher values indicate a higher likelihood of being a human pathogen. If the sample type is unknown, the value will always be 100"
+    'IsAnnotated':
+      description: "Whether the detected organism is annotated in the TaxTriage Pathogen sheet. If the organism is not annotated, the value will be 'No'"
+    "TASS Score":
+      description: "The TASS score is a measure of the confidence in the taxonomic assignment. Range of 0 (lowest conf.) to 1 (highest conf.)"
+    "Taxonomic ID #":
+      format: "{:}"
+      color: 'blue'
+      description: "The value of the taxid in the taxonomy tree"
+custom_plot_config:
+    defaultsort:
+      - column: "% Reads"
+table_cond_formatting_rules:
+  Microbial_Category:
+    lred:
+      - s_eq: "Primary"
+    warn:
+      - s_eq: "Opportunistic"
+    lbue:
+      - s_eq: "Potential"
+    beige:
+      - s_eq: "Commensal"
+    neutral:
+      - s_eq: "Unknown"
+  TASS_Score:
+    pass:
+      - ge: 0.7
+    warn:
+      - le: 0.4
+    fail:
+      - lt: 0.1
+table_cond_formatting_colours:
+  - blue: "#337ab7"
+  - lbue: "#5bc0de"
+  - lred: "#d9534f"
+  - pass: "#5cb85c"
+  - warn: "#f0ad4e"
+  - beige: "#bfbf95"
+  - fail: "#d9534f"
+  - neutral: "#d4d9d5"
 custom_data:
-  individuals:
-    section_name: "Individuals"
-    plot_type: "table"
-    file_format: "tsv"
-    pconfig:
-      table_title: "Individuals Data"
-      namespace: "Individuals"
   confidences:
     section_name: "Confidence Metrics"
     plot_type: "table"
-    file: "*all.organisms.report.txt*"
-    description: "Confidence values for all organisms"
+    description: "Confidence values for all organisms. "
+    helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary"
     file_format: "tsv"
-  # metrics:
-  #   section_name: "Alignment Metrics"
-  #   plot_type: "table"
-  #   description: "Standard alignment statistics"
-  #   file: "*merged_mqc.tsv"
+  # krakenreport:
+  #   section_name: "All Metagenomic Hits"
+  #   plot_type: 'table'
+  #   description: "All metagenomic top hits"
   #   file_format: "tsv"
-  krakenreport:
-    section_name: "All Metagenomic Hits"
-    plot_type: "table"
-    description: "All metagenomic top hits"
-    file_format: "tsv"
+    # file: "*top_report.tsv"
+  krona:
+    section_name: "Krona Plots"
+    plot_type: "krona"
+    description: |
+      Krona plots of the taxonomic assignments. <br><br>
+      Click the table on the left-hand side to filter on sample. If your frame is empty you need to make sure you open the file in the same directory/location as the krona html report.
+
+    file_format: "html"
+    plot_type: "html"
+    helptext: ""
+    raw_html: true
+    optional: true
+
+    # Instead of telling MultiQC to load a file, you can embed HTML right here under 'data'
+    # data: |
+    #   <div style="width:100%; height:650px; border:1px solid #ccc;">
+    #     <iframe
+    #       src="combined_krona_kreports.html"
+    #       style="width:100%; height:100%; border:none;"
+    #     ></iframe>
+    #   </div>
+
+
   nf-core-taxtriage-summary:
     section_name: "Metadata"
     file: "table_explanation_mqc.yml"
 skip_generalstats: true
 sp:
-  krakenreport:
-    fn: "*top_report.tsv"
+  krona:
+    fn: "*combined_krona_kreports.html"
   confidences:
     fn: "*.report.txt"
-  # metrics:
-  #   fn: "*merged_mqc.tsv"
-  #   description: "Basic alignment metrics"
 module_order:
   - confidences
   - krakenreport
   - kraken
   - fastp
   - bcftools
+  - samtools
+  - fastqc
 report_section_order:
   confidences:
     order: 9999
@@ -101,5 +189,9 @@ report_section_order:
     order: 9996
   fastp:
     order: 9995
-  nf-core-taxtriage-summary:
+  fastqc:
     order: 9994
+  samtools:
+    order: 9993
+  nf-core-taxtriage-summary:
+    order: 9992

@@ -56,7 +56,8 @@ process ALIGNMENT_PER_SAMPLE {
     def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " --gini_weight 0.70 "
     def disparity_score_weight = params.disparity_score_weight ? " --disparity_score_weight ${params.disparity_score_weight} " : " "
     def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
-
+    def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
+    def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
     """
 
     match_paths.py \\
@@ -68,7 +69,7 @@ process ALIGNMENT_PER_SAMPLE {
         --scaled 8000 \\
         --alpha 1.5 \\
         --min_threshold 0.002 \\
-        -p $pathogens_list  $mapping \\
+        -p $pathogens_list  $mapping $k2 \\
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
