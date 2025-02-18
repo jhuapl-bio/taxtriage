@@ -348,7 +348,7 @@ workflow TAXTRIAGE {
     }
 
     ch_taxdump_dir = Channel.empty()
-    if (params.classifier){
+    if (params.classifiers){
         // split params.classifier on command and optional space assign to list channel
         ch_classifier = params.classifiers.split(",\\s*")
     } else {
@@ -527,6 +527,8 @@ workflow TAXTRIAGE {
     )
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
     ch_reads = CLASSIFIER.out.ch_reads
+    ch_krona = CLASSIFIER.out.ch_krona_plot
+    // ch_multiqc_files = ch_multiqc_files.mix(ch_krona.collect { it[1] }.ifEmpty([]))
     ch_krakenreport = CLASSIFIER.out.ch_tops
     ch_pass_files = ch_pass_files.join(ch_kraken2_report)
     // add ch_kraken2_report to ch_multiqc, only unique names

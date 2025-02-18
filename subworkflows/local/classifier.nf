@@ -52,6 +52,7 @@ workflow CLASSIFIER {
         ch_kraken2_report = Channel.empty()
         ch_metaphlan_report = Channel.empty()
         ch_tops = Channel.empty()
+        ch_krona_plot = Channel.empty()
         ch_empty_file = file("$projectDir/assets/NO_FILE")
         if (!params.skip_kraken2){
             // // // // // //
@@ -94,6 +95,7 @@ workflow CLASSIFIER {
             KRONA_KTIMPORTTEXT(
                 ch_combined
             )
+            ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
 
             if (params.remove_taxids) {
                 remove_input = ch_kraken2_report.map {
@@ -183,4 +185,5 @@ workflow CLASSIFIER {
         ch_reads
         ch_organisms_to_download
         ch_tops
+        ch_krona_plot
 }

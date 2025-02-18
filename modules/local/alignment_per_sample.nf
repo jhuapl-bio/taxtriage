@@ -69,7 +69,7 @@ process ALIGNMENT_PER_SAMPLE {
         --scaled 8000 \\
         --alpha 1.5 \\
         --min_threshold 0.002 \\
-        -p $pathogens_list  $mapping \\
+        -p $pathogens_list  $mapping $k2 \\
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\

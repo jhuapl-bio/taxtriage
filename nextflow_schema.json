@@ -107,16 +107,17 @@
                     "description": "Add irregular distribution genomes to the top hits",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "classifiers": {
+                    "type": "string",
+                    "description": "List of classifiers, separated by a space. Choose from [kraken2, metaphlan, centrifuge]",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": "kraken2"
+                },
                 "taxdump": {
                     "type": "string",
                     "format": "file-path",
                     "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
                     "description": "",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "classifer": {
-                    "type": "string",
-                    "description": "Choose from [kraken2, metaphlan, centrifuge]",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "save_output_fastqs": {
@@ -213,6 +214,17 @@
                     "description": "Skip the pathogen report",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "skip_consensus": {
+                    "type": "boolean",
+                    "description": "Skip the consensus report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_variants": {
+                    "type": "boolean",
+                    "description": "Skip the variant report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",
@@ -264,7 +276,7 @@
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "disparity_weight": {
+                "disparity_score_weight": {
                     "type": "number",
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
                     "fa_icon": "fas fa-file-signature"
@@ -287,7 +299,7 @@
                 "pathogens": {
                     "type": "string",
                     "format": "file-path",
-                    "description": "Path to pathogens txt file. See documentation for format and info.",
+                    "description": "Path to pathogens csv file. See documentation for format and info.",
                     "fa_icon": "fas fa-file-csv"
                 },
                 "organisms": {
