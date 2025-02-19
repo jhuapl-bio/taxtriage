@@ -176,8 +176,8 @@
                     "type": "string",
                     "format": "file-path",
                     "description": "Local FASTA file to remove host reads from your files. Used prior to kraken2.",
-                    "fa_icon": "fas fa-file-signature"
-
+                    "fa_icon": "fas fa-file-signature",
+                    "default": null
                 },
                 "use_megahit_longreads": {
                     "type": "boolean",
