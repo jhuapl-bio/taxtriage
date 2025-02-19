@@ -2651,9 +2651,6 @@ def write_to_tsv(output_path, final_scores, header):
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
-            if "Fenollaria massiliensis" in formatname:
-                print(entry)
-                exit()
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
