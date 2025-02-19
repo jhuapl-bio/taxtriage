@@ -2541,8 +2541,8 @@ def calculate_scores(
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
             # if "Fenollaria massiliensis" in formatname:
             #     print(is_pathogen,"<")
-            if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
-                is_pathogen = "Primary"
+            # if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
+            #     is_pathogen = "Primary"
             # if "Fenollaria massiliensis" in formatname:
             #     print(is_pathogen,"<<<", listpathogensstrains)
 
