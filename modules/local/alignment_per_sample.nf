@@ -16,12 +16,12 @@
 // #
 process ALIGNMENT_PER_SAMPLE {
     tag "$meta.id"
-    label 'process_high'
+    label 'process_suphigh'
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/pysam:0.21.0--py39hcada746_1' :
-        'jhuaplbio/taxtriage_confidence:2.0' }"
+        'library://bmerritt1762/jhuaplbio/taxtriage_confidence:2.1' :
+        'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
     tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
