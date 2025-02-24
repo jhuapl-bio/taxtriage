@@ -21,7 +21,7 @@ process ORGANISM_MERGE_REPORT {
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'library://bmerritt1762/jhuaplbio/reportlab-pdf:4.0.7' :
+        'docker://quay.io/jhuaplbio/reportlab-pdf:4.0.8' :
         'jhuaplbio/reportlab-pdf:4.0.7' }"
 
     input:

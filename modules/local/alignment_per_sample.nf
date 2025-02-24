@@ -20,7 +20,7 @@ process ALIGNMENT_PER_SAMPLE {
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'library://jhuaplbio/taxtriage_confidence:2.1' :
+        'docker://quay.io/jhuaplbio/taxtriage_confidence:2.1' :
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
