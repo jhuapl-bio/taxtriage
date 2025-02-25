@@ -6,16 +6,6 @@ report_comment: >
 # - custom_content
 # - kraken
 max_table_rows: 1000000
-table_columns_visible:
-  merge: # "mytable" should be the name of the section in your TSV. If you don't have a specific section name, you can use the filename without the extension.
-    "Reads Aligned": false
-    "Abu Total Aligned": false
-    "Abu Total Bases": false
-    "Total Bases Adjusted": false
-    "Breadth Genome Coverage": false
-    "Depth Coverage Mean": false
-    "Depth Coverage Stdev": false
-    "Depth Coef. Variation": false
 export_plots: false
 custom_content:
   table_columns_name:
@@ -30,37 +20,37 @@ custom_css_files:
   - ./mqc.css
 table_columns_visible:
   confidences:
-    'K2 Disparity Score': False
-    'Disparity Score': False
-    'Minhash Score': False
-    'Diamond Identity': False
-    'Siblings score': False
-    'Breadth Weight Score': False
-    'Parent K2 Reads': False
-    'Status': False
-    'isSpecies': False
-    'AnnClass': False
-    '% Aligned Reads': False
-    'Gini Coefficient': False
-    'MapQ Score': False
-    'Mean Coverage': False
+    "K2 Disparity Score": False
+    "Disparity Score": False
+    "Minhash Score": False
+    "Diamond Identity": False
+    "Siblings score": False
+    "Breadth Weight Score": False
+    "Parent K2 Reads": False
+    "Status": False
+    "isSpecies": False
+    "AnnClass": False
+    "% Aligned Reads": False
+    "Gini Coefficient": False
+    "MapQ Score": False
+    "Mean Coverage": False
 table_columns_placement:
   confidences:
     "Specimen ID": 0
-    'Detected Organism': 1
+    "Detected Organism": 1
     "TASS Score": 2
     "Microbial Category": 3
     "Sample Type": 4
     "% Reads": 5
     "Coverage": 6
     "Mean Depth": 7
-    "Mean BaseQ" : 8
+    "Mean BaseQ": 8
     "Mean MapQ": 9
     "Taxonomic ID #": 10
     "IsAnnotated": 11
     "HHS Percentile": 12
 custom_table_header_config:
-  confidences :
+  confidences:
     "Specimen ID":
       description: "The sample name you provided in your sample sheet"
     "Detected Organism":
@@ -86,17 +76,17 @@ custom_table_header_config:
     "HHS Percentile":
       format: "{:,.2f}"
       description: "The percentile of the detected organism in the Human Health Score (HHS) database. Higher values indicate a higher likelihood of being a human pathogen. If the sample type is unknown, the value will always be 100"
-    'IsAnnotated':
+    "IsAnnotated":
       description: "Whether the detected organism is annotated in the TaxTriage Pathogen sheet. If the organism is not annotated, the value will be 'No'"
     "TASS Score":
       description: "The TASS score is a measure of the confidence in the taxonomic assignment. Range of 0 (lowest conf.) to 1 (highest conf.)"
     "Taxonomic ID #":
       format: "{:}"
-      color: 'blue'
+      color: "blue"
       description: "The value of the taxid in the taxonomy tree"
 custom_plot_config:
-    defaultsort:
-      - column: "% Reads"
+  defaultsort:
+    - column: "% Reads"
 table_cond_formatting_rules:
   Microbial_Category:
     lred:
@@ -137,10 +127,9 @@ custom_data:
   #   plot_type: 'table'
   #   description: "All metagenomic top hits"
   #   file_format: "tsv"
-    # file: "*top_report.tsv"
+  # file: "*top_report.tsv"
   krona:
     section_name: "Krona Plots"
-    plot_type: "krona"
     description: |
       Krona plots of the taxonomic assignments. <br><br>
       Click the table on the left-hand side to filter on sample. If your frame is empty you need to make sure you open the file in the same directory/location as the krona html report.
@@ -159,7 +148,6 @@ custom_data:
     #       style="width:100%; height:100%; border:none;"
     #     ></iframe>
     #   </div>
-
 
   nf-core-taxtriage-summary:
     section_name: "Metadata"

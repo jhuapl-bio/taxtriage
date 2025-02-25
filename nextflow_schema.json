@@ -156,7 +156,7 @@
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "filter_kraken2":{
+                "filter_kraken2": {
                     "type": "string",
                     "format": "directory-path",
                     "schema": "assets/schema_input.json",
@@ -422,7 +422,7 @@
                     "schema": "assets/schema_input.json",
                     "description": "List of all metagenome distributions that contain abundances found in public HMP data for each taxa and body site combination",
                     "help_text": "",
-                    "default":  null,
+                    "default": null,
                     "fa_icon": "fas fa-file-csv"
                 }
             }

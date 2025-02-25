@@ -19,8 +19,6 @@ reports:
     display: "Coverage, Confidence, Base Quality, and Map Stats"
   "**/bcftools/*consensus.fa":
     display: "Consensus Generation File"
-  "**/bcftools/*consensus.fa":
-    display: "Consensus Generation File"
   "**/minimap2/*.bam":
     display: "MAPQ Filtered and Sorted Minimap2 BAM File(s)"
   "**/hisat2/*.bam":
@@ -35,7 +33,3 @@ reports:
     display: "All Samples Top Hits Post-Kraken2"
   "**/kraken2/*report.txt":
     display: "Raw Kraken2 Reports"
-
-
-
-

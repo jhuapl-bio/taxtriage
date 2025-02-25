@@ -9,16 +9,13 @@
 [![Follow on Twitter](http://img.shields.io/badge/twitter-%40nf__core-1DA1F2?labelColor=000000&logo=twitter)](https://twitter.com/nf_core)
 [![Watch on YouTube](http://img.shields.io/badge/youtube-nf--core-FF0000?labelColor=000000&logo=youtube)](https://www.youtube.com/c/nf-core)
 
-
 ## About
 
-TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage incorporates intermediate data into a unified confidence metric for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability. 
+TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage incorporates intermediate data into a unified confidence metric for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability.
 
 ![](assets/taxtriage_schematics.png)
 
-
 ### Description
-
 
 The TaxTriage pipeline aims to democratize metagenomic sequence analysis for early warning and outbreak investigations, both in public health and potentially clinical settings. To enable this capability, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from tissues (human or animal). The intent is to provide non-bioinformaticians a tool capable of generating species-level identifications of pathogens from raw metagenomic or targeted sequencing data. Specific modules are developed to consider sequencing chemistry and sample types (e.g. blood vs. saliva, etc.). Strain, variant, or clade-level distinction may be possible with specialized datasets, but it is anticipated that the level of granularity would require subsequent, specialized analyses.
 
@@ -32,9 +29,9 @@ The TaxTriage pipeline aims to democratize metagenomic sequence analysis for ear
 - Detailed MultiQC reports
 - Concise final report (intended to have all data fields required for use in clinical settings)
 
-For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. This component is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output formats include PDF and `HTML` which are highly interactive and distributable. 
+For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. This component is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output formats include PDF and `HTML` which are highly interactive and distributable.
 
-See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#important-output-locations) for information on where to get the most important output files from the pipeline. 
+See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#important-output-locations) for information on where to get the most important output files from the pipeline.
 
 See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#top-hits-calculation) for information on how "top hits" is located
 
@@ -48,9 +45,9 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 
 On release, automated continuous integration tests run the pipeline on a full-sized dataset on the AWS cloud infrastructure. This ensures that the pipeline runs on AWS, has sensible resource allocation defaults set to run on real-world datasets, and permits the persistent storage of results to benchmark between pipeline releases and other analysis sources. The results obtained from the full-sized test can be viewed on the [nf-core website](https://nf-co.re/taxtriage/results).
 
-Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable. 
+Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable.
 
-Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (*CE ONLY* v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
+Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (_CE ONLY_ v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
 
 [See Here for full usage details](docs/usage.md)
 
@@ -63,15 +60,14 @@ TaxTriage requires 2 primary installs for it to work
 1. Nextflow
 2. Singularity or Docker (recommended)
 
-### 1. Nextflow 
+### 1. Nextflow
 
 Follow instructions [here](https://nf-co.re/docs/usage/installation) or run these commands in your WSL2, Native Linux, or Mac environment
-
 
 ```
 # Make sure that Java v11+ is installed:
 java -version
- 
+
 # Install Nextflow
 curl -fsSL get.nextflow.io | bash
 
@@ -85,7 +81,7 @@ Place it in your `$PATH`
 mv nextflow ~/bin/
 ```
 
-If installing globally, requiring sudo, type: 
+If installing globally, requiring sudo, type:
 
 ```
 sudo mv nextflow /usr/local/bin
@@ -95,16 +91,15 @@ When complete, verify installation with `nextflow -v` to see the version
 
 ### 2. Containerization Approach Install
 
-Choose *A* (Recommended - Docker) or *B*. If on a HPC, talk with your IT to get B. Singularity setup. You do NOT need to install both software tools.
+Choose _A_ (Recommended - Docker) or _B_. If on a HPC, talk with your IT to get B. Singularity setup. You do NOT need to install both software tools.
 
-#### A. Docker 
+#### A. Docker
 
 Follow these steps for your OS [here](https://docs.docker.com/engine/install/) - IF on WSL2 (Windows), choose Docker Desktop for Windows and it should be available automatically in your WSL environment
 
 #### B. Singularity
 
 [Install Instructions](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)
-
 
 ## Quick Start
 
@@ -124,12 +119,12 @@ nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile te
 
 Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
 
-
 ### Offline Local Mode
 
 In some cases, you may not want to always pull the latest update(s) each time your run the pipeline. To solve this issue, you have 2 primary options:
 
 #### A. Reference remote url, don't specify latest
+
 ```
 nextflow run https://github.com/jhuapl-bio/taxtriage -r main -profile test,docker -resume
 ```
@@ -141,11 +136,12 @@ Here, we remove the `-latest` which will not attempt to pull updates. This will 
 Here, we instead clone the repo. Then, we reference the launchfile called `main.nf` that is locally on our system. We need to ensure that we're always in the repo's directory each time we do this too
 
 First we clone
+
 ```
 git clone https://github.com/jhuapl-bio/taxtriage.git
 ```
 
-Then we `cd` into our directory 
+Then we `cd` into our directory
 
 ```
 cd taxtriage
@@ -168,8 +164,6 @@ nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 ```
 
 Then run the pipeline normally as described in previous steps
-
-
 
 ### Running it with the local config (for laptops/workstations) with limited RAM and a different (auto-downloadable) db
 
@@ -211,7 +205,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
    -resume
 ```
 
-Note that the `--db` parameter is changed to a local path which contains the k2d files for kraken2 to operate. 
+Note that the `--db` parameter is changed to a local path which contains the k2d files for kraken2 to operate.
 
 ### Running it without internet availability
 
@@ -237,7 +231,6 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 ```
 
 Be aware that this skips the metagenomics portion of the pipeline and **only** does alignment using the local reference fasta.
-
 
 #### Running on local nf files (test config)
 
@@ -306,13 +299,11 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
 8. Report Generation ( MultiQC – Illumina, Oxford Nanopore)
 
-
 ## Credits
 
 TaxTriage was originally written by Brian Merritt, MS Bioinformatics.
 
 We thank the following people for their extensive assistance in the development of this pipeline:
-
 
 ## Contributions and Support
 
@@ -351,7 +342,6 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRA
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 OR OTHER DEALINGS IN THE SOFTWARE.
 
-
 <!---
 
 ## Acknowledgements
@@ -363,5 +353,3 @@ for Disease Control and Prevention, the Department of Health and Human Services,
 Laboratories.
 
 -->
-
-

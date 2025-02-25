@@ -22,7 +22,7 @@ process ORGANISM_MERGE_REPORT {
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'docker://quay.io/jhuaplbio/reportlab-pdf:4.0.8' :
-        'jhuaplbio/reportlab-pdf:4.0.7' }"
+        'jhuaplbio/reportlab-pdf:4.0.8' }"
 
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)
