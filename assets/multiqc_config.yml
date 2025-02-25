@@ -179,6 +179,6 @@ report_section_order:
   nf-core-taxtriage-summary:
     order: 9992
   software_versions:
-    order: 9991
+    order: -1
   report_comment:
     order: 9990
