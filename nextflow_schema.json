@@ -605,29 +605,6 @@
             "description": "Custom config base",
             "fa_icon": "fas fa-file-signature"
           },
-          "enable_conda": {
-            "type": "boolean",
-            "description": "Enable Conda. This is disabled atm. ",
-            "fa_icon": "fas fa-file-signature"
-          },
-          "max_cpus": {
-            "type": "number",
-            "description": "Maximum number of CPUs to use for the pipeline",
-            "fa_icon": "fas fa-microchip",
-            "default": 16
-          },
-          "max_memory": {
-            "type": "string",
-            "description": "Maximum amount of memory to use for the pipeline",
-            "fa_icon": "fas fa-memory",
-            "default":  null
-          },
-          "max_time": {
-            "type": "string",
-            "description": "Maximum amount of time to use for the pipeline",
-            "fa_icon": "fas fa-clock",
-            "default": null
-          },
           "multiqc_title": {
             "type": "string",
             "description": "MultiQC report title. Printed as page header, used for filename if not otherwise specified.",
