@@ -25,7 +25,7 @@
           "db": {
             "type": "string",
             "fa_icon": "fas fa-book",
-            "default": "test",
+            "default": null,
             "format": "directory-path",
             "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
           },
@@ -34,12 +34,6 @@
             "fa_icon": "fas fa-book",
             "format": "directory-path",
             "description": "Path to database for Metaphlan"
-          },
-          "centrifuge_db": {
-            "type": "string",
-            "fa_icon": "fas fa-book",
-            "format": "directory-path",
-            "description": "Path to database for Centrifuge"
           },
           "outdir": {
             "type": "string",
@@ -119,11 +113,6 @@
             "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
             "description": "",
             "fa_icon": "fas fa-file-signature"
-          },
-          "save_output_fastqs": {
-            "type": "boolean",
-            "fa_icon": "fas fa-book",
-            "description": "Save all read classifications as a txt file"
           },
           "save_unaligned": {
             "type": "boolean",
@@ -258,7 +247,7 @@
           },
           "gini_weight": {
             "type": "number",
-            "default": 0.5,
+            "default": 0.75,
             "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
             "fa_icon": "fas fa-file-signature"
           },
@@ -294,13 +283,13 @@
           },
           "dispersion_factor": {
             "type": "number",
-            "default": 0.0,
+            "default": 0.55,
             "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
             "fa_icon": "fas fa-file-signature"
           },
           "reward_factor": {
             "type": "number",
-            "default": 0.0,
+            "default": 4,
             "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
             "fa_icon": "fas fa-file-signature"
           },
@@ -349,7 +338,7 @@
           },
           "minq": {
             "type": "number",
-            "default": 5,
+            "default": 7,
             "description": "Minimum BaseQ Score for filtering",
             "fa_icon": "fas fa-file-signature"
           },
@@ -620,7 +609,7 @@
             "type": "number",
             "description": "Maximum number of CPUs to use for the pipeline",
             "fa_icon": "fas fa-microchip",
-            "default": 3
+            "default": 16
           },
           "max_memory": {
             "type": "string",
@@ -633,11 +622,6 @@
             "description": "Maximum amount of time to use for the pipeline",
             "fa_icon": "fas fa-clock",
             "default": null
-          },
-          "default_download": {
-            "type": "string",
-            "description": "Default download database",
-            "fa_icon": "fas fa-file-signature"
           },
           "multiqc_title": {
             "type": "string",
