@@ -588,6 +588,11 @@
             "default": "25.MB",
             "fa_icon": "fas fa-file-signature"
           },
+          "schema_ignore_params":{
+            "default": "genomes",
+            "type": "string",
+            "description": "Ignore parameters in the schema"
+          },
           "custom_config_version": {
             "type": "string",
             "default": "master",
