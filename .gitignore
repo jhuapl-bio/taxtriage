@@ -1,10 +1,5 @@
-file
-test/*
-examples/test.csv
-file.gz
 scratch
-examples/Samplesheet_tongue_metaphlan.csv
-bin/taxdump
+files
 null
 test/*
 nf-core/*

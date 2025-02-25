@@ -4,9 +4,8 @@
   |\\ | |__  __ /  ` /  \\ |__) |__         }  {
   | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
                                         `._,._,'
-  nf-core/taxtriage v${version}
+  nf-core/taxtriage ${version}
 ----------------------------------------------------
-
 Run Name: $runName
 
 <% if (success){
