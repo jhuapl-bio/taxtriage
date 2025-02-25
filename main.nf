@@ -56,9 +56,8 @@ include { TAXTRIAGE } from './workflows/taxtriage'
 // WORKFLOW: Run main nf-core/taxtriage analysis pipeline
 //
 
-
 workflow NFCORE_TAXTRIAGE {
-    TAXTRIAGE ()
+    TAXTRIAGE()
 }
 
 /*
@@ -75,8 +74,6 @@ workflow NFCORE_TAXTRIAGE {
 workflow {
     NFCORE_TAXTRIAGE ()
 }
-
-
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

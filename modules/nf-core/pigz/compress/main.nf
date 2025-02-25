@@ -11,7 +11,7 @@ process PIGZ_COMPRESS {
     tuple val(meta), path(raw_file)
 
     output:
-    tuple val(meta), path("*.gz"), emit: archive
+    tuple val(meta), path("$archive"), emit: archive
     path "versions.yml"              , emit: versions
 
     when:
@@ -23,10 +23,20 @@ process PIGZ_COMPRESS {
     """
     # Note: needs --stdout for pigz to avoid the following issue:
     #   pigz: skipping: ${raw_file} is a symbolic link
-    echo $raw_file
-    for f in $raw_file; do
-        pigz --processes $task.cpus --stdout --force ${args} \$f > \$f.gz
-    done
+    pigz --processes $task.cpus --stdout --force ${args} ${raw_file} > ${archive}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        pigz:\$(echo \$(pigz --version 2>&1) | sed 's/^.*pigz\\w*//' )
+    END_VERSIONS
+    """
+
+    stub:
+    def args = task.ext.args ?: ''
+    archive = raw_file.toString() + ".gz"
+    """
+    touch ${archive}
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pigz:\$(echo \$(pigz --version 2>&1) | sed 's/^.*pigz\\w*//' )

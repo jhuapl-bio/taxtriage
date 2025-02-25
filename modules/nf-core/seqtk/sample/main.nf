@@ -1,15 +1,14 @@
 process SEQTK_SAMPLE {
     tag "$meta.id"
-    label 'process_low'
+    label 'process_single'
 
-    conda (params.enable_conda ? "bioconda::seqtk=1.3" : null)
+    conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/seqtk:1.3--h5bf99c6_3' :
-        'biocontainers/seqtk:1.3--h5bf99c6_3' }"
+        'https://depot.galaxyproject.org/singularity/seqtk:1.4--he4a0461_1' :
+        'biocontainers/seqtk:1.4--he4a0461_1' }"
 
     input:
-    tuple val(meta), path(reads)
-    val sample_size
+    tuple val(meta), path(reads), val(sample_size)
 
     output:
     tuple val(meta), path("*.fastq.gz"), emit: reads
@@ -19,45 +18,41 @@ process SEQTK_SAMPLE {
     task.ext.when == null || task.ext.when
 
     script:
-    def args = task.ext.args ?: ''
+    def args   = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    if (meta.single_end) {
-        """
-        seqtk \\
-            sample \\
-            $args \\
-            $reads \\
-            $sample_size \\
-            | gzip --no-name > ${prefix}_subsample.fastq.gz \\
-
-        cat <<-END_VERSIONS > versions.yml
-        "${task.process}":
-            seqtk: \$(echo \$(seqtk 2>&1) | sed 's/^.*Version: //; s/ .*\$//')
-        END_VERSIONS
-        """
-    } else {
-        if (!(args ==~ /.*-s[0-9]+.*/)) {
-            args += " -s100"
-        }
-        """
-        seqtk \\
-            sample \\
-            $args \\
-            ${reads[0]} \\
-            $sample_size \\
-            | gzip --no-name > ${prefix}_1_subsample.fastq.gz \\
-
-        seqtk \\
-            sample \\
-            $args \\
-            ${reads[1]} \\
-            $sample_size \\
-            | gzip --no-name > ${prefix}_2_subsample.fastq.gz \\
-
-        cat <<-END_VERSIONS > versions.yml
-        "${task.process}":
-            seqtk: \$(echo \$(seqtk 2>&1) | sed 's/^.*Version: //; s/ .*\$//')
-        END_VERSIONS
-        """
+    if (!(args ==~ /.*-s[0-9]+.*/)) {
+        args += " -s100"
     }
+    if ( !sample_size ) {
+        error "SEQTK/SAMPLE must have a sample_size value included"
+    }
+    """
+    printf "%s\\n" $reads | while read f;
+    do
+        seqtk \\
+            sample \\
+            $args \\
+            \$f \\
+            $sample_size \\
+            | gzip --no-name > ${prefix}_\$(basename \$f)
+    done
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        seqtk: \$(echo \$(seqtk 2>&1) | sed 's/^.*Version: //; s/ .*\$//')
+    END_VERSIONS
+    """
+
+    stub:
+    def prefix = task.ext.prefix ?: "${meta.id}"
+
+    """
+    echo "" | gzip > ${prefix}.fastq.gz
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        seqtk: \$(echo \$(seqtk 2>&1) | sed 's/^.*Version: //; s/ .*\$//')
+    END_VERSIONS
+    """
+
 }

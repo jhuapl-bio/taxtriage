@@ -8,7 +8,10 @@ process NCBIGENOMEDOWNLOAD {
         'biocontainers/ncbi-genome-download:0.3.3--pyh7cba7a3_0' }"
 
     input:
-    tuple val(meta), path(taxids_file)
+    val meta
+    path accessions
+    path taxids
+    val groups
 
     output:
     tuple val(meta), path("*_genomic.gbff.gz")        , emit: gbk     , optional: true
@@ -30,15 +33,19 @@ process NCBIGENOMEDOWNLOAD {
     task.ext.when == null || task.ext.when
 
     script:
-    def args = task.ext.args ?: ''
-    def prefix = task.ext.prefix ?: "${meta.id}"
-
+    def args           = task.ext.args ?: ''
+    def prefix         = task.ext.prefix ?: "${meta.id}"
+    def accessions_opt = accessions ? "-A ${accessions}" : ""
+    def taxids_opt     = taxids ? "-t ${taxids}" : ""
     """
     ncbi-genome-download \\
-        --species-taxids ${taxids_file} \\
+        $args \\
+        $accessions_opt \\
+        $taxids_opt \\
         --output-folder ./ \\
         --flat-output \\
-        $args 
+        --parallel $task.cpus \\
+        $groups
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
