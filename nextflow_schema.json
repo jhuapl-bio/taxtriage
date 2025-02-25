@@ -240,7 +240,7 @@
           },
           "min_conf": {
             "type": "number",
-            "default": 0.0,
+            "default": 0.6,
             "description": "Minimum Confidence for reporting.",
             "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
             "fa_icon": "fas fa-file-signature"
@@ -332,7 +332,7 @@
           },
           "minmapq": {
             "type": "number",
-            "default": 0,
+            "default": 7,
             "description": "Minimum MapQ Score for alignment",
             "fa_icon": "fas fa-file-signature"
           },
