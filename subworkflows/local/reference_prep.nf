@@ -8,8 +8,6 @@ include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
 include { COMBINE_MAPFILES } from '../../modules/local/combine_mapfiles'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_LOCAL } from '../../modules/nf-core/bowtie2/build/main'
 include { BOWTIE2_BUILD as BOWTIE2_BUILD_DWNLD } from '../../modules/nf-core/bowtie2/build/main'
-include { HISAT2_BUILD as HISAT2_BUILD_LOCAL } from '../../modules/nf-core/hisat2/build/main'
-include { HISAT2_BUILD as HISAT2_BUILD_DWNLD } from '../../modules/nf-core/hisat2/build/main'
 
 workflow  REFERENCE_PREP {
     take:
@@ -67,7 +65,7 @@ workflow  REFERENCE_PREP {
             ch_organisms_taxids
         )
         ch_organisms = MAKE_FILE.out.file
-
+        ch_versions = ch_versions.mix(MAKE_FILE.out.versions)
         ch_reports_to_download = ch_reports_to_download.combine(
             ch_organisms
         ).map{
@@ -92,6 +90,7 @@ workflow  REFERENCE_PREP {
                 ch_pathogens_file
 
             )
+            ch_versions = ch_versions.mix(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.versions)
             if (params.use_bt2) {
                 if (params.bt2_indices) {
                     println "bt2 indices being used"
@@ -118,7 +117,7 @@ workflow  REFERENCE_PREP {
                         }
 
                     BOWTIE2_BUILD_LOCAL(fastaForBowtieBuild)
-
+                    ch_versions = ch_versions.mix(BOWTIE2_BUILD_LOCAL.out.versions)
                     fastaWithIndexChannel = fastaForBowtieBuild
                         .join(BOWTIE2_BUILD_LOCAL.out.index, by: 0) // Join by the first element ('id')
 
@@ -146,10 +145,12 @@ workflow  REFERENCE_PREP {
             MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
             .collect { meta, gcfmaps -> return gcfmaps }
             .set { merged_map }
+            ch_versions = ch_versions.mix(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.versions)
 
             MAP_LOCAL_ASSEMBLY_TO_FASTA.out.accessions
             .collect { meta, accessions -> return accessions }
             .set { merged_map_ids }
+            ch_versions = ch_versions.mix(MAP_LOCAL_ASSEMBLY_TO_FASTA.out.versions)
 
             // Combine the maps into the third list (listmaps) of the ch_mapped_assemblies structure
             ch_mapped_assemblies.combine(merged_map.toList())
@@ -177,15 +178,19 @@ workflow  REFERENCE_PREP {
             },
             ch_assembly_txt
         )
-
+        ch_versions = ch_versions.mix(DOWNLOAD_ASSEMBLY.out.versions)
         if (params.use_bt2) {
             BOWTIE2_BUILD_DWNLD(
                 DOWNLOAD_ASSEMBLY.out.fasta
             )
+            ch_versions = ch_versions.mix(BOWTIE2_BUILD_DWNLD.out.versions)
             DOWNLOAD_ASSEMBLY.out.fasta.join(BOWTIE2_BUILD_DWNLD.out.index)
             .map{ meta, fasta, index -> [meta, [fasta, index]] }.set { merged_index }
+            ch_versions = ch_versions.mix(DOWNLOAD_ASSEMBLY.out.versions)
+
         } else {
             DOWNLOAD_ASSEMBLY.out.fasta.map{meta, fasta -> [meta, [fasta]] }.set { merged_index }
+            ch_versions = ch_versions.mix(DOWNLOAD_ASSEMBLY.out.versions)
         }
 
 
@@ -205,6 +210,7 @@ workflow  REFERENCE_PREP {
     COMBINE_MAPFILES(
         ch_mapped_assemblies.map { meta, fastas, listmaps, listids ->  return [ meta, listmaps, listids ] }
     )
+    ch_versions = ch_versions.mix(COMBINE_MAPFILES.out.versions)
 
     ch_mapped_assemblies = ch_mapped_assemblies.join(COMBINE_MAPFILES.out.mergefiles)
         .map {
@@ -217,7 +223,9 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
         ch_assembly_txt
     )
-    if (( params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
+    ch_versions = ch_versions.mix(MAP_TAXID_ASSEMBLY.out.versions)
+
+    if ((params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
         try {
             // Attempt to use the FEATURES_DOWNLOAD process
             FEATURES_DOWNLOAD(
@@ -229,6 +237,7 @@ workflow  REFERENCE_PREP {
             )
             ch_cds = FEATURES_DOWNLOAD.out.proteins
             ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
+            ch_versions = ch_versions.mix(FEATURES_DOWNLOAD.out.versions)
         /* groovylint-disable-next-line CatchException */
         } catch (Exception e) {
             // On failure, fallback to an alternative channel
@@ -243,6 +252,7 @@ workflow  REFERENCE_PREP {
             FEATURES_TO_BED(
                 FEATURES_DOWNLOAD.out.features
             )
+            ch_versions = ch_versions.mix(FEATURES_TO_BED.out.versions)
             ch_bedfiles = FEATURES_TO_BED.out.bed
         } catch (Exception e) {
             ch_bedfiles = ch_samples.map { meta, report ->
@@ -263,4 +273,5 @@ workflow  REFERENCE_PREP {
         ch_preppedfiles = ch_mapped_assemblies
         ch_reference_cds = ch_cds
         ch_cds_to_taxids
+        versions = ch_versions
 }

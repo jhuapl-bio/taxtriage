@@ -101,9 +101,9 @@
             "description": "Add irregular distribution genomes to the top hits",
             "fa_icon": "fas fa-file-signature"
           },
-          "classifiers": {
+          "classifier": {
             "type": "string",
-            "description": "List of classifiers, separated by a space. Choose from [kraken2, metaphlan, centrifuge]",
+            "description": "List of classifier to use. Choose from [kraken2, metaphlan, centrifuge]",
             "fa_icon": "fas fa-file-signature",
             "default": "kraken2"
           },

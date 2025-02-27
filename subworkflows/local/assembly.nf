@@ -34,6 +34,7 @@ workflow ASSEMBLY {
     main:
         ch_empty_file = file("$projectDir/assets/NO_FILE2")
         ch_assembly_report = Channel.empty()
+        ch_versions = Channel.empty()
         ch_diamond_output = Channel.empty()
         ch_diamond_analysis = Channel.empty()
         ch_assembly_alignment = Channel.empty()
@@ -50,27 +51,32 @@ workflow ASSEMBLY {
                 MEGAHIT_LONG(
                     branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
                 )
+                ch_versions = ch_versions.mix(MEGAHIT_LONG.out.versions)
                 ch_longreads_assembled = MEGAHIT_LONG.out.contigs
             } else {
                 FLYE(
                     branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] },
                     '--nano-raw'
                 )
+                ch_versions = ch_versions.mix(FLYE.out.versions)
                 ch_longreads_assembled = FLYE.out.fasta
             }
             MEGAHIT(
                 branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
             )
+            ch_versions = ch_versions.mix(MEGAHIT.out.versions)
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
             BEDTOOLS_COVERAGE(
                 postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
             )
+            ch_versions = ch_versions.mix(BEDTOOLS_COVERAGE.out.versions)
             ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
                 postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
             )
             FEATURES_MAP(
                 ch_bedout
             )
+            ch_versions = ch_versions.mix(FEATURES_MAP.out.versions)
 
             try {
 
@@ -80,15 +86,18 @@ workflow ASSEMBLY {
                 DIAMOND_MAKEDB(
                     valid_aligners.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds] }
                 )
+                ch_versions = ch_versions.mix(DIAMOND_MAKEDB.out.versions)
                 DIAMOND_BLASTX(
                     ch_assembled_files.join(DIAMOND_MAKEDB.out.db),
                     'txt',
                     false
                 )
+                ch_versions = ch_versions.mix(DIAMOND_BLASTX.out.versions)
                 MAP_PROT_ASSEMBLY(
                     DIAMOND_BLASTX.out.txt.join(valid_aligners.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapcd]}),
                     assemblyfile
                 )
+                ch_versions = ch_versions.mix(MAP_PROT_ASSEMBLY.out.versions)
                 ch_diamond_analysis = ch_diamond_analysis.join(MAP_PROT_ASSEMBLY.out.promap, remainder: true)
                 ch_diamond_analysis = ch_diamond_analysis.map{
                     meta, nullfile, promap-> {
@@ -115,4 +124,5 @@ workflow ASSEMBLY {
     emit:
         ch_diamond_output
         ch_diamond_analysis
+        versions = ch_versions
 }

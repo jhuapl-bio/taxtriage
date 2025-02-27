@@ -1,1 +1,4 @@
 repository_type: pipeline
+# lint:
+#   multiqc_config:
+#     report_comment: False

@@ -15,6 +15,7 @@ process COUNT_READS {
     output:
         // Output the original metadata together with the count file
         tuple val(meta), path("count.txt"), path(reads), emit: count
+        path "versions.yml"                               , emit: versions
 
     script:
         // Loop over each file in the 'reads' variable (works for one or multiple files)
@@ -29,5 +30,11 @@ process COUNT_READS {
             total=\$(( total + cnt ))
         done
         echo \$total > count.txt
+
+        cat <<-END_VERSIONS > versions.yml
+            "${task.process}":
+                python: \$( python --version )
+        END_VERSIONS
+
         """
 }

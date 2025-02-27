@@ -1,27 +1,16 @@
 //
 // Check input samplesheet and get read channels
 //
-
-include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
-include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
-include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
-include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
 include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
 include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP } from '../../modules/nf-core/bcftools/mpileup/main'
-include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
-include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
-include { MERGE_FASTA } from '../../modules//local/merge_fasta'
-include { SPLIT_VCF } from '../../modules/local/split_vcf'
 include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
-include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
-include { BEDTOOLS_DEPTHCOVERAGE } from '../../modules/local/bedtools_coverage'
 include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
 
 workflow ALIGNMENT {
@@ -42,7 +31,7 @@ workflow ALIGNMENT {
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
     ch_bedgraphs = Channel.empty()
-    ch_versions = 1
+    ch_versions = Channel.empy()
 
     fastq_reads.set { ch_aligners }
     def idx = 0
@@ -82,6 +71,7 @@ workflow ALIGNMENT {
             true,
             true
         )
+        // ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
         collected_bams = BOWTIE2_ALIGN.out.aligned
     } else if (params.use_hisat2) {
         // Set null for hisat2 splicesites
@@ -90,20 +80,23 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
         )
-
+        // ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
         MINIMAP2_ALIGN(
-            ch_fasta_files_for_alignment,
+            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
+            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
             true,
-            true,
-            true,
+            'csi',
+            false,
+            false
         )
-
+        ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions)
         collected_bams = MINIMAP2_ALIGN.out.bam
     }
 
     sorted_bams = collected_bams
+    // print the bams
 
     sorted_bams
         .map { meta, file -> [meta.oid, file] } // Extract oid and file
@@ -120,6 +113,7 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, bam, fasta -> fasta },
             false
         )
+        // ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
         BCFTOOLS_MPILEUP(
@@ -128,12 +122,14 @@ workflow ALIGNMENT {
             false
         )
         .set{ transposed_fastas }
+        // ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
 
         if (params.reference_assembly){
             BCFTOOLS_CONSENSUS(
                 ch_merged_mpileup
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
+            // ch_versions = ch_versions.mix(BCFTOOLS_CONSENSUS.out.versions)
         }
     }
     // Split the channel based on the condition
@@ -149,7 +145,7 @@ workflow ALIGNMENT {
     )
     //  // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_MERGE.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
-
+    // ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
         .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
@@ -164,22 +160,27 @@ workflow ALIGNMENT {
     SAMTOOLS_DEPTH(
         collected_bams
     )
+    // ch_versions = ch_versions.mix(SAMTOOLS_DEPTH.out.versions)
     SAMTOOLS_INDEX(
         collected_bams
     )
+    // ch_versions = ch_versions.mix(SAMTOOLS_INDEX.out.versions)
     collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
 
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
+    // ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
     // Run the bedtools genomecoverage for downstream stats
     BEDTOOLS_GENOMECOVERAGE(
         sorted_bams_with_index.map{
             m, bam, csi -> return [m, bam]
         }
     )
+    // ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
     // merge bedgraph on the same channel
     BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
+    // ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
 
     ch_stats = SAMTOOLS_COVERAGE.out.coverage
 
@@ -188,13 +189,9 @@ workflow ALIGNMENT {
     SAMTOOLS_HIST_COVERAGE(
         gcf_with_bam
     )
+    // ch_versions = ch_versions.mix(SAMTOOLS_HIST_COVERAGE.out.versions)
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
-
-    // // RSEQC_BAMSTAT(
-    // //     collected_bams
-    // // )
-    // // ch_bamstats = RSEQC_BAMSTAT.out.txt
     ch_bams =  sorted_bams_with_index
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
@@ -206,5 +203,5 @@ workflow ALIGNMENT {
         stats = ch_stats
         bedgraphs = ch_bedgraphs
         // bamstats = ch_bamstats
-        versions = ch_versions
+        versions =  ch_versions
 }

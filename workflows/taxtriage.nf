@@ -27,12 +27,10 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.FileVisitOption
 
-def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
-// Validate input parameters
-WorkflowTaxtriage.initialise(params, log)
-// println "Initialising taxtriage workflow with parameters: ${workflow}"
-// def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
+include { paramsSummaryMap } from 'plugin/nf-schema'
 
+// Validate input parameters
+summary_params      = paramsSummaryMap(workflow, parameters_schema: "nextflow_schema.json")
 // print wfsummary to json file to working directory
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
@@ -130,8 +128,12 @@ if (!params.assembly_file_type) {
 // // // //
 // // // // MODULE: MultiQC
 // // // //
-workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-ch_workflow_summary = Channel.value(workflow_summary)
+include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
+include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
+
+ch_workflow_summary = Channel.value(paramsSummaryMultiqc(summary_params))
+// workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+// ch_workflow_summary = Channel.value(workflow_summary)
 ch_multiqc_config        = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 ch_multiqc_css       = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExists: true)
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
@@ -161,7 +163,6 @@ ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIf
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { REPORT } from '../subworkflows/local/report'
-include { READSFILTER } from '../subworkflows/local/filter_reads'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
@@ -183,7 +184,6 @@ include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
-include { COUNT_READS  } from '../modules/local/count_reads'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -375,6 +375,7 @@ workflow TAXTRIAGE {
     INPUT_CHECK(
         ch_input
     )
+    ch_versions = ch_versions.mix(INPUT_CHECK.out.versions)
 
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
@@ -392,6 +393,7 @@ workflow TAXTRIAGE {
     println "Date: ${date}"
 
     ch_reads = INPUT_CHECK.out.reads
+    ch_versions = ch_versions.mix(INPUT_CHECK.out.versions)
     ch_pass_files = ch_reads.map{ meta, reads -> {
             return [ meta ]
         }
@@ -441,17 +443,6 @@ workflow TAXTRIAGE {
     params.pathogens ? ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true) : ''
 
 
-    COUNT_READS(ch_reads)
-    readCountChannel = COUNT_READS.out.count
-    // Update the meta with the read count by reading the file content
-    readCountChannel.map { meta, countFile, reads ->
-        def count = countFile.text.trim().toInteger()
-        // Update meta map by adding a new key 'read_count'
-        meta.read_count = count
-        return [meta, reads]
-    }.set{ ch_reads }
-
-
     // if (params.trim) {
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
     TRIMGALORE(
@@ -488,6 +479,7 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+    ch_versions = ch_versions.mix(HOST_REMOVAL.out.versions)
 
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
@@ -500,6 +492,7 @@ workflow TAXTRIAGE {
         NANOPLOT(
             ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
         )
+        ch_versions.mix(NANOPLOT.out.versions.first())
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]) )
         ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]) )
     }
@@ -525,6 +518,7 @@ workflow TAXTRIAGE {
         ch_pathogens,
         ch_organisms_to_download
     )
+    ch_versions = ch_versions.mix(CLASSIFIER.out.versions)
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
     ch_reads = CLASSIFIER.out.ch_reads
     ch_krona = CLASSIFIER.out.ch_krona_plot
@@ -568,7 +562,6 @@ workflow TAXTRIAGE {
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    // Run the COUNT_READS process and capture its output in readCountChannel.
 
     // For demonstration, print out the updated metadata.
     // finalMetaChannel.subscribe { updatedMeta ->
@@ -662,34 +655,17 @@ workflow TAXTRIAGE {
                 ch_assembly_txt,
                 all_samples
             )
+            ch_versions = ch_versions.mix(REPORT.out.versions)
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // if (!params.skip_confidence) {
-        //     METRIC_ALIGNMENT(
-        //         ch_combined
-        //     )
 
-        //     METRIC_MERGE(
-        //         METRIC_ALIGNMENT.out.tsv
-        //     )
-        //     CONVERT_METRICS(
-        //         METRIC_MERGE.out.metrics
-        //     )
-
-        //     MERGE_ALIGNMENT_MERGES(
-        //         CONVERT_METRICS.out.tsv.map {  file ->  file }.collect()
-        //     )
-
-        //     ch_mergedtsv = MERGE_ALIGNMENT_MERGES.out.metrics_report
-        //     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
-        // }
     }
 
-    CUSTOM_DUMPSOFTWAREVERSIONS(
-        ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    )
+    // CUSTOM_DUMPSOFTWAREVERSIONS(
+    //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
+    // )
     // // //
     // // // MODULE: MultiQC Pt 2
     // // //
@@ -715,12 +691,12 @@ workflow TAXTRIAGE {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-workflow.onComplete {
-    if (params.email || params.email_on_fail) {
-        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
-    }
-    NfcoreTemplate.summary(workflow, params, log)
-}
+// workflow.onComplete {
+//     if (params.email || params.email_on_fail) {
+//         NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+//     }
+//     NfcoreTemplate.summary(workflow, params, log)
+// }
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

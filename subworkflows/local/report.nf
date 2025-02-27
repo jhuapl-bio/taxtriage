@@ -32,6 +32,7 @@ workflow REPORT {
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
+        ch_versions = Channel.empty()
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
         accepted_list = alignments.map { it[0].id }.collect()
@@ -53,18 +54,22 @@ workflow REPORT {
             ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
+            ch_versions = ch_versions.mix(ALIGNMENT_PER_SAMPLE.out.versions)
 
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
                 false
             )
+            ch_versions = ch_versions.mix(SINGLE_REPORT.out.versions)
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(distributions),
                 missing_samples
             )
+            ch_versions = ch_versions.mix(ORGANISM_MERGE_REPORT.out.versions)
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
         }
     emit:
         merged_report_txt = ch_pathogens_report
+        versions = ch_versions
 }

@@ -19,21 +19,40 @@
 // #
 
 include { SAMPLESHEET_CHECK } from '../../modules/local/samplesheet_check'
+include { COUNT_READS  } from '../..//modules/local/count_reads'
 
 workflow INPUT_CHECK {
     take:
     samplesheet // file: /path/to/samplesheet.csv
 
     main:
+    versions = Channel.empty()
     SAMPLESHEET_CHECK ( samplesheet )
         .csv
-        .splitCsv ( header:true, sep:',' )
+        .splitCsv( header:true, sep:',' )
         .map { create_fastq_channel(it) }
         .set { reads }
 
+
+    COUNT_READS(
+        reads
+    )
+    readCountChannel = COUNT_READS.out.count
+    versions = versions.mix(SAMPLESHEET_CHECK.out.versions) // channel: [ versions.yml ]
+    versions = versions.mix(COUNT_READS.out.versions)
+
+    // Update the meta with the read count by reading the file content
+    readCountChannel.map { meta, countFile, reads ->
+        def count = countFile.text.trim().toInteger()
+        // Update meta map by adding a new key 'read_count'
+        meta.read_count = count
+        return [meta, reads]
+    }.set{ reads }
+
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
-    versions = SAMPLESHEET_CHECK.out.versions // channel: [ versions.yml ]
+        versions = 1
+
 }
 
 // Function to get list of [ meta, [ fastq_1, fastq_2 ] ]
@@ -41,7 +60,6 @@ def create_fastq_channel(LinkedHashMap row) {
     // create meta map
     def meta = [:]
     // if fastq_2 is not a column then set it as null for all rows
-
 
     meta.id         = row.sample
     meta.platform = row.platform ? row.platform : 'ILLUMINA'

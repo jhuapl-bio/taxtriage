@@ -15,6 +15,7 @@ process MERGEDSUBSPECIES {
     output:
     path("*complete.krakenreport.merged.hierarchy.csv"), optional:false, emit: mergedhierarchy
     path("*.single.csv"), optional:true, emit: individualhierarchy
+    path "versions.yml"           , emit: versions
 
 
     script:
@@ -27,8 +28,6 @@ process MERGEDSUBSPECIES {
         -o complete.krakenreport.merged.hierarchy.csv \\
         -i $reports \\
         -e S $pathogens_Var
-
-
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

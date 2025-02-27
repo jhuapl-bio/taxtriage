@@ -25,15 +25,10 @@ include { TOP_HITS } from '../../modules/local/top_hits'
 include { REMOVETAXIDSCLASSIFICATION } from '../../modules/local/remove_taxids.nf'
 include { KRAKENREPORT } from '../../modules/local/krakenreport'
 include { TAXPASTA_STANDARDISE } from '../../modules/nf-core/taxpasta/standardise/main'
-include { TAXPASTA_MERGE } from '../../modules/nf-core/taxpasta/merge/main'
 include { MERGEDKRAKENREPORT } from '../../modules/local/merged_krakenreport'
 include { FILTERKRAKEN } from '../../modules/local/filter_krakenreport'
 include { KREPORT_TO_KRONATXT } from '../../modules/local/generate_krona_txtfile'
-include { KREPORT_TO_TAXONOMY } from '../../modules/local/kreport_to_taxonomy'
-include { KRONA   } from '../../modules/local/krona.nf'
-include { EXTRACT_TOP_SEQS   } from '../../modules/local/extract_top_seqs.nf'
 include { KRONA_KTIMPORTTEXT  } from '../../modules/nf-core/krona/ktimporttext/main'
-include { KRAKENTOOLS_COMBINEKREPORTS   } from '../../modules/nf-core/krakentools/combinekreports/main'
 include { MERGEDSUBSPECIES } from '../../modules/local/merged_subspecies'
 
 //include { CENTRIFUGE_CENTRIFUGE } from '../../modules/nf-core/centrifuge/centrifuge/main'
@@ -49,6 +44,7 @@ workflow CLASSIFIER {
         ch_organisms_to_download
 
     main:
+        ch_versions = Channel.empty()
         ch_kraken2_report = Channel.empty()
         ch_metaphlan_report = Channel.empty()
         ch_tops = Channel.empty()
@@ -70,19 +66,14 @@ workflow CLASSIFIER {
             )
 
             ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
-
-            // KREPORT_TO_TAXONOMY(
-            //     ch_kraken2_report
-            // )
-            // ch_taxnames = KREPORT_TO_TAXONOMY.out.names
-            // ch_taxnodes = KREPORT_TO_TAXONOMY.out.nodes
-
+            ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
             KREPORT_TO_KRONATXT(
                 ch_kraken2_report
             )
 
             ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
-
+            ch_versions = KREPORT_TO_KRONATXT.out.versions
+            ch_versions.view()
             ch_combined = ch_krona_txt
                         .map{ it[1] }        // Get the file path
                         .collect()            // Collect all file parts into a list
@@ -96,6 +87,7 @@ workflow CLASSIFIER {
                 ch_combined
             )
             ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
+            ch_versions = ch_versions.mix(KRONA_KTIMPORTTEXT.out.versions)
 
             if (params.remove_taxids) {
                 remove_input = ch_kraken2_report.map {
@@ -106,6 +98,7 @@ workflow CLASSIFIER {
                 REMOVETAXIDSCLASSIFICATION(
                     remove_input
                 )
+                ch_versions = ch_versions.mix(REMOVETAXIDSCLASSIFICATION.out.versions)
                 ch_kraken2_report = REMOVETAXIDSCLASSIFICATION.out.report
             }
 
@@ -113,25 +106,26 @@ workflow CLASSIFIER {
                 ch_kraken2_report.combine(distributions).combine(ch_pathogens)
             )
             ch_tops = TOP_HITS.out.tops
+            ch_versions = ch_versions.mix(TOP_HITS.out.versions)
             MERGEDSUBSPECIES(
                 ch_kraken2_report.map{
                     meta, report -> report
                 }.collect(),
                 ch_pathogens
             )
+            ch_versions = ch_versions.mix(MERGEDSUBSPECIES.out.versions)
 
             MERGEDKRAKENREPORT(
                 TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
             )
+            ch_versions = ch_versions.mix(MERGEDKRAKENREPORT.out.versions)
             FILTERKRAKEN(
                 MERGEDKRAKENREPORT.out.krakenreport
             )
+            ch_versions = ch_versions.mix(FILTERKRAKEN.out.versions)
 
             if (ch_save_fastq_classified){
                 ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
-                // EXTRACT_TOP_SEQS(
-                //     TOP_HITS.out.taxids
-                // )
             }
 
             if (params.fuzzy){
@@ -160,6 +154,7 @@ workflow CLASSIFIER {
                 ch_reads,
                 params.metaphlan
             )
+            ch_versions = ch_versions.mix(METAPHLAN_METAPHLAN.out.versions)
             ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
                     return [ meta, file, 'metaphlan' ]
                 }
@@ -168,6 +163,7 @@ workflow CLASSIFIER {
             if (!params.taxdump){
                 DOWNLOAD_TAXDUMP()
                 ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
+                ch_versions = ch_versions.mix(DOWNLOAD_TAXDUMP.out.versions)
             } else if (params.taxdump) {
                 ch_taxdump_dir = Channel.fromPath(params.taxdump)
                 println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
@@ -177,6 +173,7 @@ workflow CLASSIFIER {
                 ch_metaphlan_report,
                 ch_taxdump_dir
             )
+            ch_versions = ch_versions.mix(TAXPASTA_STANDARDISE.out.versions)
             ch_standardized = TAXPASTA_STANDARDISE.out.standardised_profile
         }
     emit:
@@ -186,4 +183,5 @@ workflow CLASSIFIER {
         ch_organisms_to_download
         ch_tops
         ch_krona_plot
+        versions = ch_versions
 }
