@@ -2000,7 +2000,7 @@ def main():
             # Get the index of the value
             try:
                 idx = [x[1] for x in sibling_k2_reads_total].index(value['taxids'][0])
-            except ValueError:
+            except (ValueError, IndexError):
                 # If value['taxids'][0] is not found, handle it appropriately
                 idx = -1
 
