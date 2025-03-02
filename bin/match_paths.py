@@ -2206,6 +2206,8 @@ def main():
 
 
 def format_non_zero_decimals(number):
+    # Convert number from the scientific notation to the tenth digit
+    number = "{:.10f}".format(number).rstrip('0').rstrip('.')
     # Convert the number to a string
     num_str = str(number)
     if '.' not in num_str:
