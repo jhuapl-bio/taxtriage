@@ -34,6 +34,7 @@ table_columns_visible:
     "Gini Coefficient": False
     "MapQ Score": False
     "Mean Coverage": False
+    "Group": False
 table_columns_placement:
   confidences:
     "Specimen ID": 0
