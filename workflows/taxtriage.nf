@@ -325,7 +325,8 @@ workflow TAXTRIAGE {
 
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
-    if (params.download_db) {
+    ch_db = Channel.empty()
+    if (params.download_db && !params.skip_kraken2) {
         if (supported_dbs.containsKey(params.db)) {
             println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]['size']} of space."
             DOWNLOAD_DB(
@@ -341,7 +342,7 @@ workflow TAXTRIAGE {
             println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>. You may also retrieve them, locally, from https://benlangmead.github.io/aws-indexes/k2. Make sure to download and decompress/untar the .tar.gz file which contains a folder you can specify with --db <localpath>. "
         }
     } else {
-        if (params.db) {
+        if (params.db  && !params.skip_kraken2) {
             file(params.db, checkIfExists: true)
             ch_db = params.db
         }
@@ -415,14 +416,7 @@ workflow TAXTRIAGE {
     )
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
-    if (params.subsample && params.subsample > 0) {
-        ch_subsample  = params.subsample
-        SEQTK_SAMPLE(
-            ch_reads,
-            ch_subsample
-        )
-        ch_reads = SEQTK_SAMPLE.out.reads
-    }
+
 
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
@@ -488,7 +482,14 @@ workflow TAXTRIAGE {
         params.genome
     )
     ch_reads = HOST_REMOVAL.out.unclassified_reads
-
+    if (params.subsample && params.subsample > 0) {
+        ch_subsample  = params.subsample
+        SEQTK_SAMPLE(
+            ch_reads,
+            ch_subsample
+        )
+        ch_reads = SEQTK_SAMPLE.out.reads
+    }
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 

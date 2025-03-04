@@ -205,6 +205,5 @@ workflow ALIGNMENT {
         fasta  = ch_merged_fasta
         stats = ch_stats
         bedgraphs = ch_bedgraphs
-        // bamstats = ch_bamstats
         versions = ch_versions
 }
