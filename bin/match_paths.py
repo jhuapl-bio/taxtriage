@@ -2000,7 +2000,7 @@ def main():
             # Get the index of the value
             try:
                 idx = [x[1] for x in sibling_k2_reads_total].index(value['taxids'][0])
-            except ValueError:
+            except (ValueError, IndexError):
                 # If value['taxids'][0] is not found, handle it appropriately
                 idx = -1
 
@@ -2206,6 +2206,8 @@ def main():
 
 
 def format_non_zero_decimals(number):
+    # Convert number from the scientific notation to the tenth digit
+    number = "{:.10f}".format(number).rstrip('0').rstrip('.')
     # Convert the number to a string
     num_str = str(number)
     if '.' not in num_str:
