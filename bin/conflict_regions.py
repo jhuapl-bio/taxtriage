@@ -154,17 +154,7 @@ def process_region(region, kmer_size, scaled):
     chrom, start, end, mean_depth = region
     reads_in_region = []
     # Use the globally opened BAM file.
-    try:
-        for read in global_bam.fetch(chrom, start, end):
-            reads_in_region.append({
-                "id": read.query_name,
-                "seq": read.seq,
-                "start": read.reference_start,
-                "end": read.reference_end
-            })
-    except Exception as e:
-        print(f"Error processing region {region}: {e}")
-        return None
+
     result=None
     if len(global_fastas) > 0 :
         # fetch the sequence from fasta
@@ -182,11 +172,19 @@ def process_region(region, kmer_size, scaled):
                 })
                 args = [chrom, start, end, kmer_size, scaled, reads_in_region]
                 result = create_signature_for_single_region(args)
-
     else:
-        # print(reads_in_region)
-        args = [chrom, start, end, kmer_size, scaled, reads_in_region]
-        result = create_signature_for_single_region(args)
+        try:
+            for read in global_bam.fetch(chrom, start, end):
+                reads_in_region.append({
+                    "id": read.query_name,
+                    "seq": read.seq,
+                    "start": read.reference_start,
+                    "end": read.reference_end
+                })
+            args = [chrom, start, end, kmer_size, scaled, reads_in_region]
+            result = create_signature_for_single_region(args)
+        except Exception as e:
+            print(f"Error processing region {region}: {e}")
     if result is None:
         return None
     region_name, sig = result
@@ -234,11 +232,12 @@ def create_signatures_for_regions(
     print(f"\tStart processing pool now... with: {num_workers}")
 
     # init_worker(bam_path, fasta_paths)
-    # for region in tqdm(regions, total=len(regions), desc="Processing regions"):
+    # for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
     #     result = process_region(region, kmer_size, scaled)
     #     if result is not None:
     #         region_name, sig, chrom, region_reads = result
     #         signatures[region_name] = sig
+
     with concurrent.futures.ProcessPoolExecutor(
             max_workers=num_workers,
             initializer=init_worker,
@@ -251,14 +250,6 @@ def create_signatures_for_regions(
             if result is not None:
                 region_name, sig, chrom, region_reads = result
                 signatures[region_name] = sig
-                # # Update reads_map with each read from this region.
-                # for read in region_reads:
-                #     reads_map.setdefault(chrom, []).append({
-                #         "id": read["id"],
-                #         "start": read["start"],
-                #         "end": read["end"],
-                #     })
-
     # Close the global BAM file.
     global global_bam
     if global_bam is not None:
