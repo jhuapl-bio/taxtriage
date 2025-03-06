@@ -238,6 +238,9 @@ In order to properly identify, with confidence, the organisms present post-align
 
 Weighted Confidence Score: The final scoring methodology is defined [here](similarity_metrics_v2.pdf)
 
+![Figure 1](../assets/confidence_metric.png)
+
+
 ### Top Hits Calculation
 
 In order to retain an "agnostic" approach for organism while allowing adequate alignments to take place in a reasonable amount of time, we employ the "top hits" approach to the pipeline (see Figure 2). This is designed to allow users to still pull commensals or non-pathogens that have not been annotated in our curated [pathogen sheet](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv) to still be available in the confidence metrics and reports. Users should adjust the `--top_per_taxa` and `--top_hits` as freely as needed based on the source of their sample(s).
