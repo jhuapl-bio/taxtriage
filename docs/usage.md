@@ -150,24 +150,24 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
 
 ### Important output locations
 
-- `report`: Metagenomics Discovery Report PDF
-- `alignments`: Raw organisms detection file regardless of filtering or confidence passing
-- `krona`: `<samplename>.html` -combined_krona_kreports.html ”sunburst” plot for kraken2 – pre re-alignment step - optional
-- `samtools`: Raw Alignment stats output
-  - Coverage (v1.2.2 or later) - `<samplename>.txt`
+- `report`: Organism Discovery Report PDF, MultiQC, Krona Plot (from Kraken2), Microbial Detection Txt File
+  - `Combined ODR` - `all.organisms.report.pdf`
+  - `Sample ODR` - `<samplename>.organisms.report.pdf`
+  - `MultiQC` - `multiqc_report.html`
+  - `Microbial Sheet` - `<samplename|all>.report.txt`
+  - `Krona` - `combined_krona_kreports.html`
+- `alignments`: Post minimap2 alignment to top hits or local reference fasta file(s). Also contains histograms of coverages
   - `Histogram` (v1.3.0 or later) - `<samplename>.histo.txt`
-  - `Depth` (v1.2 or later) - `<samplename>.tsv`
+  - `BAM` - `<samplename>.bam`
+- `samtools`: Raw Alignment Coverage and Depth Files
+  - `Coverage` - `<samplename>.txt`
+  - `Depth` - `<samplename>.tsv`
     - Each contig/chromosome is present in this file, 3rd column is depth at position (col 2).
 - `bcftools`: Variant And Consensus – Optional Module (--reference_assembly called)
   - Variants - `<samplename>.<taxid>.vcf.gz`
   - Consensus - `<samplename>.consensus.fa`
-- `merge`: Aggregate Stats on Alignment + Kraken2
-- `confidence`: Confidence Table `confidences.merged_mqc.tsv` (**DEPRECATED**)
-  - Contains post alignment and kraken2 confidence values for each sample + contig/chromosome per taxa
-- `multiqc` – Confidence Metrics and Supplemental Plots Location (**DEPRECATED**)
 - `nanoplot`/`fastqc` – QC plots and stats
-- `minimap2` / `bowtie2` – Location of raw re-alignment bam files
-- `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – Agnostic kraken2 only
+- `mergedkrakenreport` – `krakenreport.merged_mqc.tsv` - Top Hits for each sample – kraken2 only
 
 ### General Procedure
 
@@ -239,7 +239,6 @@ In order to properly identify, with confidence, the organisms present post-align
 Weighted Confidence Score: The final scoring methodology is defined [here](similarity_metrics_v2.pdf)
 
 ![Figure 1](../assets/confidence_metric.png)
-
 
 ### Top Hits Calculation
 
