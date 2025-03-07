@@ -1663,6 +1663,10 @@ def determine_conflicts(
     os.makedirs(output_dir, exist_ok=True)
     import time
     print(f"Starting conflict region detection at {time.ctime()}")
+    if len(fasta_files) == 0:
+        print("No fasta files provided, using sensitive mode")
+    else:
+        print(f"Using {len(fasta_files)} fasta files for regional comparisons")
     # Step 7: Parse filtered BED to get regions
     regions = parse_bed_file(bedfile)
     # filter regions only present in reads_map

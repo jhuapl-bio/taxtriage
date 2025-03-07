@@ -56,34 +56,31 @@ workflow ALIGNMENT {
 
             // Flatten 'fastas' by one level if it's nested
             def flattenedFastas = fastas.collectMany { it }
-
             flattenedFastas.each { fastaItem -> {
                     // if fastaItem is a list
                     if (fastaItem instanceof List) {
                         // If the item is a list of files, return each file separately
                         def fasta = fastaItem[0]
                         def id = "${meta.id}.${fasta.getBaseName()}"
-                        def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                        outputs << [mm, fastq, fastaItem, fasta]
+                        // def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
+                        def mm = meta.collectEntries{ k, v -> [k, v] }
+                        mm.id = id
+                        mm.oid = meta.id
+                        outputs << [mm, fastq, fastaItem]
                     } else {
                         // If the item is a single file, return it as is
                         def id = "${meta.id}.${fastaItem.getBaseName()}"
-                        def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                        outputs.add([mm, fastq, fastaItem, fastaItem])
+                        def mm = meta.collectEntries{ k, v -> [k, v] }
+                        mm.id = id
+                        mm.oid = meta.id
+                        outputs.add([mm, fastq, fastaItem])
                     }
                 }
             }
             // Return the collected outputs
             return  outputs
-        }.set { fastas_with_ch }
-        ch_fasta_files_for_alignment = fastas_with_ch.map{ mm, fastq, fastafull, fastas -> [ mm, fastq, fastafull ] }
-        ch_fastas = fastas_with_ch.map{ mm, fastq, fastafull, fastas -> [mm, fastas] }
-        // join ch_fastas on oid
-        ch_fastas
-            .map { meta, fastas -> [meta.oid, fastas] } // Extract oid and file
-            .groupTuple() // Group by oid
-            .map { oid, fastas -> [[id:oid], fastas] } // Replace oid with id in the metadata
-            .set{ ch_fastas }
+        }.set { ch_fasta_files_for_alignment }
+
     if (params.use_bt2){
         BOWTIE2_ALIGN(
             ch_fasta_files_for_alignment,
@@ -205,7 +202,6 @@ workflow ALIGNMENT {
         depth = ch_depths
         mpileup = ch_merged_mpileup
         bams = ch_bams
-        fasta  = ch_fastas
         stats = ch_stats
         bedgraphs = ch_bedgraphs
         versions = ch_versions
