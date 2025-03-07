@@ -35,6 +35,7 @@ workflow ALIGNMENT {
     ch_stats = Channel.empty()
     ch_depths = Channel.empty()
     ch_pafs = Channel.empty()
+    ch_fastas = Channel.empty()
     ch_sams = Channel.empty()
     ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()
@@ -63,19 +64,26 @@ workflow ALIGNMENT {
                         def fasta = fastaItem[0]
                         def id = "${meta.id}.${fasta.getBaseName()}"
                         def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                        outputs << [mm, fastq, fastaItem]
+                        outputs << [mm, fastq, fastaItem, fasta]
                     } else {
                         // If the item is a single file, return it as is
                         def id = "${meta.id}.${fastaItem.getBaseName()}"
                         def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                        outputs.add([mm, fastq, fastaItem])
+                        outputs.add([mm, fastq, fastaItem, fastaItem])
                     }
                 }
             }
             // Return the collected outputs
-            return outputs
-        }.set { ch_fasta_files_for_alignment }
-
+            return  outputs
+        }.set { fastas_with_ch }
+        ch_fasta_files_for_alignment = fastas_with_ch.map{ mm, fastq, fastafull, fastas -> [ mm, fastq, fastafull ] }
+        ch_fastas = fastas_with_ch.map{ mm, fastq, fastafull, fastas -> [mm, fastas] }
+        // join ch_fastas on oid
+        ch_fastas
+            .map { meta, fastas -> [meta.oid, fastas] } // Extract oid and file
+            .groupTuple() // Group by oid
+            .map { oid, fastas -> [[id:oid], fastas] } // Replace oid with id in the metadata
+            .set{ ch_fastas }
     if (params.use_bt2){
         BOWTIE2_ALIGN(
             ch_fasta_files_for_alignment,
@@ -110,8 +118,6 @@ workflow ALIGNMENT {
         .groupTuple() // Group by oid
         .map { oid, files -> [[id:oid], files] } // Replace oid with id in the metadata
         .set{ merged_bams_channel }
-
-
 
     if (params.get_variants || params.reference_assembly){
         //     // // // branch out the samtools output to nanopore and illumina and pacbio
@@ -191,10 +197,7 @@ workflow ALIGNMENT {
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
 
-    // // RSEQC_BAMSTAT(
-    // //     collected_bams
-    // // )
-    // // ch_bamstats = RSEQC_BAMSTAT.out.txt
+
     ch_bams =  sorted_bams_with_index
     ch_depths = SAMTOOLS_DEPTH.out.tsv
 
@@ -202,7 +205,7 @@ workflow ALIGNMENT {
         depth = ch_depths
         mpileup = ch_merged_mpileup
         bams = ch_bams
-        fasta  = ch_merged_fasta
+        fasta  = ch_fastas
         stats = ch_stats
         bedgraphs = ch_bedgraphs
         versions = ch_versions

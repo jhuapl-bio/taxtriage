@@ -24,7 +24,7 @@ process ALIGNMENT_PER_SAMPLE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(pathogens_list)
     file assembly
 
     output:
@@ -50,6 +50,9 @@ process ALIGNMENT_PER_SAMPLE {
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
     def output_dir = "search_results"
+    // if fastas and fasta > 0
+    /* groovylint-disable-next-line UnnecessaryCollectCall */
+    def fastas = fastas && fastas.size() > 0 ? " -f ${fastas}" : " "
     def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " --minhash_weight 0.05 "
     def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " --mapq_weight 0.0 "
     def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " --hmp_weight 0.0 "
@@ -65,7 +68,7 @@ process ALIGNMENT_PER_SAMPLE {
         -o $output $bedgraph \\
         -s $id $assemblyi \\
         $type $read_count \\
-        --output_dir $output_dir \\
+        --output_dir $output_dir $fastas \\
         --scaled 8000 \\
         --alpha 1.5 \\
         --min_threshold 0.002 \\

@@ -653,7 +653,10 @@ workflow TAXTRIAGE {
                 .join(ch_covfiles)
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
+                .join(ALIGNMENT.out.fasta)
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
 
             REPORT(
