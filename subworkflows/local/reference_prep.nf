@@ -25,12 +25,16 @@ workflow  REFERENCE_PREP {
 
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
             return [ meta,  []]
+        }
     }
-}
+    ch_fastas = ch_samples.map{ meta, report -> {
+            return [ meta,  []]
+        }
+    }
 
     ch_cds = ch_samples.map{ meta, report -> {
             return [ meta,  []]
-    }
+        }
     }
 
     ch_bedfiles = ch_samples.map { meta, report ->
@@ -39,7 +43,7 @@ workflow  REFERENCE_PREP {
 
     ch_mapped_assemblies = ch_samples.map{ meta, report -> {
             return [meta, [], [], []  ]
-    }
+        }
     }
 
     ch_reports_to_download = ch_samples.map{ meta, report -> {
@@ -90,8 +94,14 @@ workflow  REFERENCE_PREP {
                 },
                 ch_assembly_txt,
                 ch_pathogens_file
-
             )
+            // add ch_reference_fasta to all ch_fastas
+            ch_fastas = ch_fastas.combine(ch_reference_fasta.collect()).map{
+                meta, fastas, fasta -> {
+                    fastas.add(fasta)
+                    return [meta, fastas]
+                }
+            }
             if (params.use_bt2) {
                 if (params.bt2_indices) {
                     println "bt2 indices being used"
@@ -106,7 +116,6 @@ workflow  REFERENCE_PREP {
                             fastas.addAll([fastaWithIndex])
                             return [meta, fastas, listmaps, listids]
                     }.set { ch_mapped_assemblies }
-
                 } else {
                     // If bt2_indices parameter is not provided, build the indices locally
                     // ////////////////////////////////////////////////////////////////////////////////
@@ -187,7 +196,13 @@ workflow  REFERENCE_PREP {
         } else {
             DOWNLOAD_ASSEMBLY.out.fasta.map{meta, fasta -> [meta, [fasta]] }.set { merged_index }
         }
-
+        // merge all the fasta outputs from the DOWNLOAD_ASSEMBLY process into ch_fastas on id meta
+        ch_fastas = ch_fastas.join(DOWNLOAD_ASSEMBLY.out.fasta)
+            .map { meta, fastas, fasta -> {
+                fastas.add(fasta)
+                return [meta, fastas]
+            }
+        }
 
         ch_mapped_assemblies.join(merged_index)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
@@ -263,4 +278,5 @@ workflow  REFERENCE_PREP {
         ch_preppedfiles = ch_mapped_assemblies
         ch_reference_cds = ch_cds
         ch_cds_to_taxids
+        fastas = ch_fastas
 }

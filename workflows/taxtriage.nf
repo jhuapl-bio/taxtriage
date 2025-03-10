@@ -565,6 +565,7 @@ workflow TAXTRIAGE {
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
     ch_assembly_analysis = Channel.empty()
+    ch_fastas = Channel.empty()
 
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
@@ -610,6 +611,7 @@ workflow TAXTRIAGE {
             }.set{ ch_combined }
 
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
+        ch_fastas = REFERENCE_PREP.out.fastas
 
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
@@ -646,14 +648,16 @@ workflow TAXTRIAGE {
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
             // Define a channel that emits a placeholder value if ch_kraken2_report is empty
-
             input_alignment_files = ALIGNMENT.out.bams
                 .join(ch_mapped_assemblies)
                 .join(ch_bedgraphs)
                 .join(ch_covfiles)
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
+                .join(ch_fastas)
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
 
             REPORT(
