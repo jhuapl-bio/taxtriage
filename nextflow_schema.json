@@ -250,6 +250,12 @@
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "sensitive": {
+                    "type": "boolean",
+                    "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
+                    "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "min_conf": {
                     "type": "number",
                     "description": "Minimum Confidence for reporting.",

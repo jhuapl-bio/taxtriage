@@ -165,6 +165,9 @@ def parse_args(argv=None):
         "-k",  "--compress_species", default=False,  help="Compress species to species level",  action='store_true'
     )
     parser.add_argument(
+        "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
+    )
+    parser.add_argument(
         "--ignore_missing_inputs", default=False,  help="If K2 or Dimaond output is not provided, dont reduce confidence",  action='store_true'
     )
     parser.add_argument(
@@ -1520,6 +1523,7 @@ def main():
                 kmer_size = args.kmer_size,
                 FAST_MODE=args.fast,
                 filtered_bam_create=args.filtered_bam,
+                sensitive=args.sensitive,
 
             )
         if args.failed_reads:

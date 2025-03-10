@@ -1637,7 +1637,8 @@ def determine_conflicts(
         scaled = 100,
         kmer_size=31,
         filtered_bam_create=False,
-        FAST_MODE=True
+        FAST_MODE=True,
+        sensitive=False,
 ):
     # parser = argparse.ArgumentParser(description="Use bedtools to define coverage-based regions and compare read signatures using sourmash MinHash.")
     # parser.add_argument("--input_bam", required=True, help="Input BAM file.")
@@ -1670,6 +1671,9 @@ def determine_conflicts(
     print(f"Starting conflict region detection at {time.ctime()}")
     if len(fasta_files) == 0:
         print("No fasta files provided, using sensitive mode")
+    elif sensitive:
+        print("Fasta files provided but sensitive mode enabled, using BAM alignments for signature generations")
+        fasta_files = []
     else:
         print(f"Using {len(fasta_files)} fasta files for regional comparisons")
     # Step 7: Parse filtered BED to get regions
@@ -1678,7 +1682,7 @@ def determine_conflicts(
     # regions = [r for r in regions if r[0] in reads_map.keys()]
     # convert regions to a list, each row is an element of the list
     # pause for 20 seconds
-    print(f"Total regions defined: {len(regions)}")
+    print(f"Total regions defined: {len(regions)} in default mode for signature generation")
 
     # 2. Choose statistic function
     use_jump = True
