@@ -158,10 +158,14 @@ def process_region(region, kmer_size, scaled):
     result=None
     if len(global_fastas) > 0 :
         # fetch the sequence from fasta
+        seen_references = False
         for fasta in global_fastas:
             # check if chrom is in fasta first
             if chrom not in fasta.references:
                 continue
+            if seen_references:
+                break
+            # get the reference header
             seq = fasta.fetch(chrom, start, end)
             if seq:
                 reads_in_region.append({
@@ -172,6 +176,7 @@ def process_region(region, kmer_size, scaled):
                 })
                 args = [chrom, start, end, kmer_size, scaled, reads_in_region]
                 result = create_signature_for_single_region(args)
+                seen_references = True
     else:
         try:
             for read in global_bam.fetch(chrom, start, end):
