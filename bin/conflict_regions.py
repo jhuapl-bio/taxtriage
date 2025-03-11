@@ -234,27 +234,29 @@ def create_signatures_for_regions(
 
     signatures = {}
     reads_map = defaultdict(list)
+
+
+    num_workers = 1
+    init_worker(bam_path, fasta_paths)
+    for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
+        result = process_region(region, kmer_size, scaled)
+        if result is not None:
+            region_name, sig, _, _ = result
+            signatures[region_name] = sig
     print(f"\tStart processing pool now... with: {num_workers}")
 
-    # init_worker(bam_path, fasta_paths)
-    # for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
-    #     result = process_region(region, kmer_size, scaled)
-    #     if result is not None:
-    #         region_name, sig, chrom, region_reads = result
-    #         signatures[region_name] = sig
-
-    with concurrent.futures.ProcessPoolExecutor(
-            max_workers=num_workers,
-            initializer=init_worker,
-            initargs=(bam_path,fasta_paths, )) as executor:
-        #  bind kmer_size and scaled to process_region.
-        process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
-        # map over regions without using a lambda.
-        results = executor.map(process_region_partial, regions, chunksize=1)
-        for result in tqdm(results, total=regions_df.shape[0], desc="Processing regions"):
-            if result is not None:
-                region_name, sig, _, _ = result
-                signatures[region_name] = sig
+    # with concurrent.futures.ProcessPoolExecutor(
+    #         max_workers=num_workers,
+    #         initializer=init_worker,
+    #         initargs=(bam_path,fasta_paths, )) as executor:
+    #     #  bind kmer_size and scaled to process_region.
+    #     process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
+    #     # map over regions without using a lambda.
+    #     results = executor.map(process_region_partial, regions, chunksize=1)
+    #     for result in tqdm(results, total=regions_df.shape[0], desc="Processing regions"):
+    #         if result is not None:
+    #             region_name, sig, _, _ = result
+    #             signatures[region_name] = sig
     # close the global BAM file.
     global global_bam
     if global_bam is not None:
@@ -1728,7 +1730,8 @@ def determine_conflicts(
         num_workers = max(1, int(os.cpu_count() / 2))
         # if num_workers > 10:
         #     num_workers = 10
-        print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
+        # print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
+
         start_time = time.time()
         signatures = create_signatures_for_regions(
             regions_df=merged_regions,

@@ -1417,500 +1417,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
     bam_file.close()
     i=0
     return reference_stats, aligned_reads, total_reads
-
-def format_non_zero_decimals(number):
-    # Convert number from the scientific notation to the tenth digit
-    number = "{:.10f}".format(number).rstrip('0').rstrip('.')
-    # Convert the number to a string
-    num_str = str(number)
-    if '.' not in num_str:
-        # If there's no decimal point, return the number as is
-        return number
-    else:
-        # Split into integer and decimal parts
-        integer_part, decimal_part = num_str.split('.')
-        non_zero_decimals = ''.join([d for d in decimal_part if d != '0'][:2])
-        # Count leading zeros in the decimal part
-        leading_zeros = len(decimal_part) - len(decimal_part.lstrip('0'))
-        # Construct the new number with two significant decimal digits
-        formatted_number = f"{integer_part}.{('0' * leading_zeros) + non_zero_decimals}"
-        # Convert back to float, then to string to remove trailing zeros
-        return str(float(formatted_number))
-
-
-def compute_cost(
-    aggregated_stats,
-    pathogens,
-    sample_name,
-    sample_type,
-    total_reads,
-    aligned_total,
-    weights
-):
-    """
-    Runs calculate_scores(...), then sums up penalties based on meancoverage & tass_score.
-    """
-    total_weight = sum(weights.values())
-    if total_weight != 1:
-        for key in weights:
-            if total_weight != 0:
-                weights[key] = weights[key] / total_weight
-            else:
-                weights[key] = 0
-    # First, get final_scores from your existing pipeline:
-    final_scores = calculate_scores(
-        aggregated_stats=aggregated_stats,
-        pathogens=pathogens,
-        sample_name=sample_name,
-        sample_type=sample_type,
-        total_reads=total_reads,
-        aligned_total=aligned_total,
-        weights=weights,
-    )
-
-    cost = 0.0
-    # print("__________")
-    perrefcost = {}
-    for rec in final_scores:
-        ref = rec.get('ref')
-        tass_score = rec['tass_score']
-        actual_coverage = rec.get('meancoverage', 0.0)
-
-        # The "ground-truth" coverage for this ref (already placed in aggregated_stats)
-        # e.g. aggregated_stats[ref]['gtcov'] may be 0 or >0
-        coverage = aggregated_stats.get(ref, {}).get('gtcov', 0.0)
-        # CASE 1: coverage == 0 => we want TASS ~ 0,
-        #         also penalize if actual_coverage is large (contradiction).
-        if coverage <= 0:
-            # The bigger the TASS (wrongly claiming positivity),
-            # or the bigger the actual coverage (contradiction),
-            # the larger this penalty.
-            cost += (1.0 + actual_coverage) * (tass_score ** 2)
-            perrefcost[ref] = (1.0 + actual_coverage) * (tass_score ** 2)
-        else:
-            # CASE 2: coverage > 0 => we want TASS near 1 for big coverage.
-            #  (A) penalize if TASS is low => cost ~ coverage * (1 - TASS)^2
-            #  (B) penalize if TASS is high but actual coverage is too small
-            #      => e.g. coverage_short = (coverage - actual_coverage)
-            #             cost2 = (tass_score^2) * coverage_short
-            #      meaning if ground-truth coverage is large but the pipeline
-            #      found less, it’s contradictory to have TASS=high.
-            cost1 = coverage * ((1.0 - tass_score) ** 2)
-
-            coverage_short = max(0.0, coverage - actual_coverage)
-            cost2 = (tass_score ** 2) * coverage_short
-
-            cost += (cost1 + cost2)
-            perrefcost[ref] =  (cost1 + cost2)
-        # print("\t",ref, actual_coverage, coverage, tass_score, rec['gini_coefficient'])
-    return cost, perrefcost
-
-def random_tweak(weights, scale=0.2):
-    """
-    Returns a new dict, each weight randomly offset by up to ±scale.
-    Clamps at 0 (no negative).
-    """
-    new_w = {}
-    for k, v in weights.items():
-        delta = random.uniform(-scale, scale)
-        candidate = v + delta
-        if candidate < 0 :
-            candidate = 0.0
-
-        new_w[k] = candidate
-    return new_w
-
-def optimize_weights(
-    aggregated_stats,
-    pathogens,
-    sample_name="No_Name",
-    sample_type="Unknown",
-    aligned_total=0,
-    total_reads=0,
-    initial_weights=None,
-    max_iterations=1000
-):
-    if initial_weights is None:
-        # Initialize with equal weights
-        initial_weights =[1, 1, 1, 1, 1, 1, 0],
-
-
-
-    # Normalize initial weights
-    total_sum = 0
-    for weight in initial_weights:
-        if isinstance(weight, (list)):
-            total_sum += sum(weight)
-        else:
-            total_sum += weight
-    normalized_weights = []
-    for weight in initial_weights:
-        if isinstance(weight, list):
-            # Normalize each element in the list
-            normalized_sub_weights = [w / total_sum for w in weight]
-            normalized_weights.append(normalized_sub_weights)
-        else:
-            # Normalize the single weight
-            normalized_weight = weight / total_sum
-            normalized_weights.append(normalized_weight)
-    # Define bounds for each weight
-    bounds = [(0, 1) for _ in initial_weights]
-
-    # Define the constraint that weights sum to 1
-    constraints = {'type': 'eq', 'fun': lambda w: sum(w) - 1}
-
-    # Objective function to minimize
-    def objective(w):
-        weight_dict = {
-            'mapq_score': w[0],
-            'disparity_score': w[1],
-            'gini_coefficient': w[2],
-            'breadth_score': w[3],
-            'minhash_score': w[4],
-            'siblings_score': w[5],
-            'k2_disparity_weight': w[6],
-            'diamond_identity': w[7],
-        }
-        cost, perrefcost = compute_cost(
-            aggregated_stats,
-            pathogens,
-            sample_name,
-            sample_type,
-            total_reads,
-            aligned_total,
-            weight_dict
-        )
-        return -cost  # Negate if you want to maximize the cost
-
-    # Perform optimization
-    result = minimize(
-        objective,
-        initial_weights,
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints,
-        options={'maxiter': max_iterations, 'disp': True}
-    )
-
-    if result.success:
-        optimized_weights = {
-            'mapq_score': result.x[0],
-            'disparity_score': result.x[1],
-            'gini_coefficient': result.x[2],
-            'breadth_score': result.x[3],
-            'minhash_score': result.x[4],
-            'siblings_score': result.x[5],
-            'k2_disparity_weight': result.x[6],
-            'diamond_identity': result.x[7],
-        }
-        # Extract the optimized weights
-        optimized_weights = {
-            'mapq_score': result.x[0],
-            'disparity_score': result.x[1],
-            'gini_coefficient': result.x[2],
-            'breadth_score': result.x[3],
-            'minhash_score': result.x[4],
-            'siblings_score': result.x[5],
-            'k2_disparity_weight': result.x[6],
-            'diamond_identity': result.x[7],
-        }
-
-        # Compute final cost and per-reference scores with optimized weights
-        final_cost, final_per_reference_scores = compute_cost(
-            aggregated_stats,
-            pathogens,
-            sample_name,
-            sample_type,
-            total_reads,
-            aligned_total,
-            optimized_weights
-        )
-
-        # for k, v in final_per_reference_scores.items():
-        #     print(f"\t{k}: {v:.4f}")
-        return optimized_weights
-    else:
-        raise RuntimeError(f"Optimization failed: {result.message}")
-
-
-def calculate_scores(
-        aggregated_stats,
-        pathogens,
-        sample_name="No_Name",
-        sample_type="Unknown",
-        total_reads=0,
-        aligned_total = 0,
-        weights={}
-    ):
-    """
-    Write reference hits and pathogen information to a TSV file.
-
-    Args:
-    reference_hits (dict): Dictionary with reference names as keys and counts as values.
-    pathogens (dict): Dictionary with reference names as keys and dictionaries of additional attributes as values.
-    output_file_path (str): Path to the output TSV file.
-    """
-    final_scores = []
-
-    # Write the header row
-    sumfgini = 0
-    totalcounts = 0
-    for ref, count in aggregated_stats.items():
-        strainlist = count.get('strainslist', [])
-        isSpecies = count.get('isSpecies', False)
-        is_pathogen = "Unknown"
-        callfamclass = ""
-        derived_pathogen = False
-        isPath = False
-        annClass = "None"
-        refpath = pathogens.get(ref)
-        pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
-        # check if the sample type is in the pathogenic sites
-        direct_match = False
-        def pathogen_label(ref):
-            is_pathogen = "Unknown"
-            isPathi = False
-            direct_match = False
-            callclass = ref.get('callclass', "N/A")
-            # pathogenic_sites = ref.get('pathogenic_sites', [])
-            commensal_sites = ref.get('commensal_sites', [])
-            if sample_type in pathogenic_sites:
-                if callclass != "commensal":
-                    is_pathogen = callclass.capitalize()
-                    isPathi = True
-                else:
-                    is_pathogen = "Potential"
-                direct_match = True
-            elif sample_type in commensal_sites:
-                is_pathogen = "Commensal"
-                direct_match = True
-            elif callclass and callclass != "":
-                is_pathogen = callclass.capitalize() if callclass else "Unknown"
-                isPathi = True
-            return is_pathogen, isPathi, direct_match
-
-        formatname = count.get('name', "N/A")
-        if refpath:
-            is_pathogen, isPathi, direct_match = pathogen_label(refpath)
-            isPath = isPathi
-            taxid = refpath.get(ref, count.get(ref, ""))
-            is_annotated = "Yes"
-            commsites = refpath.get('commensal_sites', [])
-            status = refpath.get('status', "N/A")
-            formatname = refpath.get('name', formatname)
-            if is_pathogen == "Commensal":
-                callfamclass = "Commensal Listing"
-        else:
-            is_annotated = "No"
-            taxid = count.get(ref, "")
-            status = ""
-        if direct_match:
-            annClass = "Direct"
-        else:
-            annClass = "Derived"
-
-        listpathogensstrains = []
-        fullstrains = []
-        count['annClass'] = annClass
-        if strainlist:
-            pathogenic_reads = 0
-            merged_strains = defaultdict(dict)
-
-            for x in strainlist:
-                keyx = x.get('strainname', x.get('taxid', ""))
-                # strainanme = x.get('strainname', None)
-
-                # if formatname != strainanme and strainanme:
-                #     formatname = formatname.replace(strainanme, "")
-                # elif not strainanme or not formatname:
-                #     formatname = x.get('fullname', "Unnamed Organism")
-                if keyx in merged_strains:
-                    merged_strains[keyx]['numreads'] += x.get('numreads', 0)
-                    merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
-                else:
-                    merged_strains[keyx] = x
-                    merged_strains[keyx]['numreads'] = x.get('numreads', 0)
-                    merged_strains[keyx]['subkeys'] = [x.get('subkey', "")]
-
-            for xref, x in merged_strains.items():
-                pathstrain = None
-                if x.get('taxid'):
-                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('taxid', '')}: {x.get('numreads', 0)} reads)")
-                else:
-                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('numreads', 0)} reads)")
-
-                if x.get('taxid') in pathogens:
-                    pathstrain = pathogens.get(x.get('taxid'))
-                elif x.get('fullname') in pathogens:
-                    pathstrain = pathogens.get(x.get('fullname'))
-                # if "Fenollaria massiliensis" in formatname:
-                #     print(pathstrain)
-                if pathstrain:
-                    taxx = x.get('taxid', "")
-                    if sample_type in pathstrain.get('pathogenic_sites', []):
-                        pathogenic_reads += x.get('numreads', 0)
-                        percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
-                        listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
-
-            if callfamclass == "" or len(listpathogensstrains) > 0:
-                callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-            # if "Fenollaria massiliensis" in formatname:
-            #     print(is_pathogen,"<")
-            # if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
-            #     is_pathogen = "Primary"
-            # if "Fenollaria massiliensis" in formatname:
-            #     print(is_pathogen,"<<<", listpathogensstrains)
-
-        breadth_total = count.get('breadth_total', 0)
-        countreads = sum(count['numreads'])
-        if aligned_total == 0:
-            percent_aligned = 0
-        else:
-            percent_aligned = format_non_zero_decimals(100*countreads / aligned_total)
-        if total_reads == 0:
-            percent_total = 0
-        else:
-            percent_total = format_non_zero_decimals(100*countreads / total_reads)
-        if len(pathogenic_sites) == 0:
-            pathogenic_sites = ""
-
-        # Apply weights to the relevant scores
-        # Example usage:
-        breadth = count.get('breadth_total')  # your raw value between 0 and 1
-        log_weight_breadth = 1-logarithmic_weight(breadth)
-        # get log weight of the breadth_total
-        count['log_weight_breadth'] = log_weight_breadth
-        tass_score = compute_tass_score(
-            count,
-            weights,
-        )
-        final_scores.append(
-            dict(
-                tass_score=tass_score,
-                formatname=formatname,
-                sample_name=sample_name,
-                sample_type=sample_type,
-                fullstrains=fullstrains,
-                listpathogensstrains=listpathogensstrains,
-                percent_total=percent_total,
-                percent_aligned=percent_aligned,
-                callfamclass=callfamclass,
-                log_breadth_weight = count.get('log_weight_breadth', 0),
-                total_reads=sum(count['numreads']),
-                reads_aligned=countreads,
-                hmp_percentile = count.get('hmp_percentile', 0),
-                zscore= count.get('zscore', 0),
-                meancoverage=count.get('meancoverage', 0),
-                breadth_total = breadth_total,
-                total_length = count.get('total_length', 0),
-                is_annotated=is_annotated,
-                is_pathogen=is_pathogen,
-                ref=ref,
-                status=status,
-                annClass=annClass,
-                pathogenic_reads = pathogenic_reads,
-                gini_coefficient=count.get('meangini', 0),
-                meanbaseq=count.get('meanbaseq', 0),
-                meanmapq=count.get('meanmapq', 0),
-                alignment_score=count.get('alignment_score', 0),
-                disparity_score=count.get('normalized_disparity', 0),
-                covered_regions=count.get('covered_regions', 0),
-                siblings_score=count.get('raw_disparity', 0),
-                k2_reads=count.get('k2_numreads', 0),
-                k2_disparity=count.get('k2_disparity', 0),
-                gtcov=count.get('gtcov', 0),
-                minhash_score=count.get('meanminhash_reduction', 0),
-
-            )
-        )
-
-    return final_scores
-
-def write_to_tsv(output_path, final_scores, header):
-    total=0
-    fulltotal=0
-    with open (output_path, 'w') as file:
-        file.write(f"{header}\n")
-        for entry in final_scores:
-            is_pathogen = entry.get('is_pathogen', "Unknown")
-            formatname = entry.get('formatname', "N/A")
-            sample_name = entry.get('sample_name', "N/A")
-            ref = entry.get('ref', "N/A")
-            percent_aligned = entry.get('percent_aligned', 0)
-            is_pathogen = entry.get('is_pathogen', "Unknown")
-            status = entry.get('status', "N/A")
-            is_annotated= entry.get('is_annotated', "N/A")
-            sample_type = entry.get('sample_type', "N/A")
-            callfamclass = entry.get('callfamclass', "N/A")
-            gini_coefficient = entry.get('gini_coefficient', 0)
-            meanbaseq = entry.get('meanbaseq', 0)
-            meanmapq = entry.get('meanmapq', 0)
-            meancoverage = entry.get('meancoverage', 0)
-            meandepth = entry.get('meandepth', 0)
-            annClass = entry.get('annClass', "N/A")
-            isSpecies = entry.get('isSpecies', False)
-            diamond_identity = entry.get('diamond_identity', 0)
-            k2_reads = entry.get('k2_reads', 0)
-            k2_parent_reads = entry.get('k2_parent_reads', 0)
-            mapq_score = entry.get('alignment_score', 0)
-            disparity_score = entry.get('disparity_score', 0)
-            siblings_score = entry.get('siblings_score', 0)
-            tass_score = entry.get('tass_score', 0)
-            minhash_score = entry.get('minhash_score', 0)
-            listpathogensstrains = entry.get('listpathogensstrains', [])
-            countreads = entry.get('reads_aligned', 0)
-            breadth_of_coverage = entry.get('breadth_total', 0)
-            aligned_total = entry.get('total_reads', 0)
-            pathogenic_reads = entry.get('pathogenic_reads', 0)
-            percent_total = entry.get('percent_total', 0)
-            k2_disparity_score = entry.get('k2_disparity', 0)
-            hmp_percentile = entry.get('hmp_percentile', 0)
-            log_breadth_weight = entry.get('log_breadth_weight', 0)
-            # if plasmid uper or lower case doesnt matter matches then skip
-            if "plasmid" in formatname.lower():
-                continue
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
-                print(f"Reference: {ref} - {formatname}")
-                print(f"\tIsPathogen: {is_pathogen}")
-                print(f"\tPathogenic Strains: {listpathogensstrains}")
-                percentreads = f"{100*pathogenic_reads/aligned_total:.1f}" if aligned_total > 0 and pathogenic_reads>0 else 0
-                print(f"\tPathogenic SubStrain Reads: {pathogenic_reads} - {percentreads}%")
-                print(f"\tAligned Strains:")
-                for f in entry.get('fullstrains', []):
-                    print(f"\t\t{f}")
-                print(f"\tTotal reads: {entry.get('total_reads', 0)}")
-                print(f"\tGini Conf: {entry.get('gini_coefficient', 0):.4f}")
-                print(f"\tDiamond Identity: {entry.get('diamond_identity', 0):.2f}")
-                print(f"\tAlignment Score: {entry.get('alignment_score', 0):.2f}")
-                print(f"\t# Reads Aligned: {entry.get('reads_aligned', 0)}")
-                print(f"\tDisparity Score: {entry.get('disparity_score', 0):.2f}")
-                print(f"\tK2 Disparity Score: {entry.get('k2_disparity', 0):.2f}")
-                print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
-                print(f"\tBreadth: {entry.get('breadth_total', 0):.2f}")
-                print(f"\tMinhash score: {entry.get('minhash_score', 0):.2f}")
-                print(f"\tDepth (Mean): {entry.get('meandepth', 0):.2f}")
-                print(f"\tGT Coverage: {entry.get('gtcov', 0):.2f}")
-                print(f"\tFinal Score: {entry.get('tass_score', 0):.2f}")
-                print(f"\tCovered Regions: {entry.get('covered_regions', 0)}")
-                print(f"\tK2 Reads: {entry.get('k2_reads', 0)}")
-                print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
-                print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
-                print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
-                print()
-                total+=1
-        # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
-            file.write(
-                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
-                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
-                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
-                f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
-                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
-            )
-            fulltotal+=1
-    print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")
-
-if __name__ == "__main__":
-    # sys.exit(main())
+def main():
     args = parse_args()
     inputfile = args.input
     pathogenfile = args.pathogens
@@ -2029,7 +1536,7 @@ if __name__ == "__main__":
                 f.close()
     if args.only_filter:
         print(f"Only filtering, exiting...")
-        exit()
+        return
 
     if args.config:
         import yaml
@@ -2699,3 +2206,498 @@ if __name__ == "__main__":
         # convert all np floats
 
 
+
+
+
+def format_non_zero_decimals(number):
+    # Convert number from the scientific notation to the tenth digit
+    number = "{:.10f}".format(number).rstrip('0').rstrip('.')
+    # Convert the number to a string
+    num_str = str(number)
+    if '.' not in num_str:
+        # If there's no decimal point, return the number as is
+        return number
+    else:
+        # Split into integer and decimal parts
+        integer_part, decimal_part = num_str.split('.')
+        non_zero_decimals = ''.join([d for d in decimal_part if d != '0'][:2])
+        # Count leading zeros in the decimal part
+        leading_zeros = len(decimal_part) - len(decimal_part.lstrip('0'))
+        # Construct the new number with two significant decimal digits
+        formatted_number = f"{integer_part}.{('0' * leading_zeros) + non_zero_decimals}"
+        # Convert back to float, then to string to remove trailing zeros
+        return str(float(formatted_number))
+
+
+def compute_cost(
+    aggregated_stats,
+    pathogens,
+    sample_name,
+    sample_type,
+    total_reads,
+    aligned_total,
+    weights
+):
+    """
+    Runs calculate_scores(...), then sums up penalties based on meancoverage & tass_score.
+    """
+    total_weight = sum(weights.values())
+    if total_weight != 1:
+        for key in weights:
+            if total_weight != 0:
+                weights[key] = weights[key] / total_weight
+            else:
+                weights[key] = 0
+    # First, get final_scores from your existing pipeline:
+    final_scores = calculate_scores(
+        aggregated_stats=aggregated_stats,
+        pathogens=pathogens,
+        sample_name=sample_name,
+        sample_type=sample_type,
+        total_reads=total_reads,
+        aligned_total=aligned_total,
+        weights=weights,
+    )
+
+    cost = 0.0
+    # print("__________")
+    perrefcost = {}
+    for rec in final_scores:
+        ref = rec.get('ref')
+        tass_score = rec['tass_score']
+        actual_coverage = rec.get('meancoverage', 0.0)
+
+        # The "ground-truth" coverage for this ref (already placed in aggregated_stats)
+        # e.g. aggregated_stats[ref]['gtcov'] may be 0 or >0
+        coverage = aggregated_stats.get(ref, {}).get('gtcov', 0.0)
+        # CASE 1: coverage == 0 => we want TASS ~ 0,
+        #         also penalize if actual_coverage is large (contradiction).
+        if coverage <= 0:
+            # The bigger the TASS (wrongly claiming positivity),
+            # or the bigger the actual coverage (contradiction),
+            # the larger this penalty.
+            cost += (1.0 + actual_coverage) * (tass_score ** 2)
+            perrefcost[ref] = (1.0 + actual_coverage) * (tass_score ** 2)
+        else:
+            # CASE 2: coverage > 0 => we want TASS near 1 for big coverage.
+            #  (A) penalize if TASS is low => cost ~ coverage * (1 - TASS)^2
+            #  (B) penalize if TASS is high but actual coverage is too small
+            #      => e.g. coverage_short = (coverage - actual_coverage)
+            #             cost2 = (tass_score^2) * coverage_short
+            #      meaning if ground-truth coverage is large but the pipeline
+            #      found less, it’s contradictory to have TASS=high.
+            cost1 = coverage * ((1.0 - tass_score) ** 2)
+
+            coverage_short = max(0.0, coverage - actual_coverage)
+            cost2 = (tass_score ** 2) * coverage_short
+
+            cost += (cost1 + cost2)
+            perrefcost[ref] =  (cost1 + cost2)
+        # print("\t",ref, actual_coverage, coverage, tass_score, rec['gini_coefficient'])
+    return cost, perrefcost
+
+def random_tweak(weights, scale=0.2):
+    """
+    Returns a new dict, each weight randomly offset by up to ±scale.
+    Clamps at 0 (no negative).
+    """
+    new_w = {}
+    for k, v in weights.items():
+        delta = random.uniform(-scale, scale)
+        candidate = v + delta
+        if candidate < 0 :
+            candidate = 0.0
+
+        new_w[k] = candidate
+    return new_w
+
+def optimize_weights(
+    aggregated_stats,
+    pathogens,
+    sample_name="No_Name",
+    sample_type="Unknown",
+    aligned_total=0,
+    total_reads=0,
+    initial_weights=None,
+    max_iterations=1000
+):
+    if initial_weights is None:
+        # Initialize with equal weights
+        initial_weights =[1, 1, 1, 1, 1, 1, 0],
+
+
+
+    # Normalize initial weights
+    total_sum = 0
+    for weight in initial_weights:
+        if isinstance(weight, (list)):
+            total_sum += sum(weight)
+        else:
+            total_sum += weight
+    normalized_weights = []
+    for weight in initial_weights:
+        if isinstance(weight, list):
+            # Normalize each element in the list
+            normalized_sub_weights = [w / total_sum for w in weight]
+            normalized_weights.append(normalized_sub_weights)
+        else:
+            # Normalize the single weight
+            normalized_weight = weight / total_sum
+            normalized_weights.append(normalized_weight)
+    # Define bounds for each weight
+    bounds = [(0, 1) for _ in initial_weights]
+
+    # Define the constraint that weights sum to 1
+    constraints = {'type': 'eq', 'fun': lambda w: sum(w) - 1}
+
+    # Objective function to minimize
+    def objective(w):
+        weight_dict = {
+            'mapq_score': w[0],
+            'disparity_score': w[1],
+            'gini_coefficient': w[2],
+            'breadth_score': w[3],
+            'minhash_score': w[4],
+            'siblings_score': w[5],
+            'k2_disparity_weight': w[6],
+            'diamond_identity': w[7],
+        }
+        cost, perrefcost = compute_cost(
+            aggregated_stats,
+            pathogens,
+            sample_name,
+            sample_type,
+            total_reads,
+            aligned_total,
+            weight_dict
+        )
+        return -cost  # Negate if you want to maximize the cost
+
+    # Perform optimization
+    result = minimize(
+        objective,
+        initial_weights,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints,
+        options={'maxiter': max_iterations, 'disp': True}
+    )
+
+    if result.success:
+        optimized_weights = {
+            'mapq_score': result.x[0],
+            'disparity_score': result.x[1],
+            'gini_coefficient': result.x[2],
+            'breadth_score': result.x[3],
+            'minhash_score': result.x[4],
+            'siblings_score': result.x[5],
+            'k2_disparity_weight': result.x[6],
+            'diamond_identity': result.x[7],
+        }
+        # Extract the optimized weights
+        optimized_weights = {
+            'mapq_score': result.x[0],
+            'disparity_score': result.x[1],
+            'gini_coefficient': result.x[2],
+            'breadth_score': result.x[3],
+            'minhash_score': result.x[4],
+            'siblings_score': result.x[5],
+            'k2_disparity_weight': result.x[6],
+            'diamond_identity': result.x[7],
+        }
+
+        # Compute final cost and per-reference scores with optimized weights
+        final_cost, final_per_reference_scores = compute_cost(
+            aggregated_stats,
+            pathogens,
+            sample_name,
+            sample_type,
+            total_reads,
+            aligned_total,
+            optimized_weights
+        )
+
+        # for k, v in final_per_reference_scores.items():
+        #     print(f"\t{k}: {v:.4f}")
+        return optimized_weights
+    else:
+        raise RuntimeError(f"Optimization failed: {result.message}")
+
+
+def calculate_scores(
+        aggregated_stats,
+        pathogens,
+        sample_name="No_Name",
+        sample_type="Unknown",
+        total_reads=0,
+        aligned_total = 0,
+        weights={}
+    ):
+    """
+    Write reference hits and pathogen information to a TSV file.
+
+    Args:
+    reference_hits (dict): Dictionary with reference names as keys and counts as values.
+    pathogens (dict): Dictionary with reference names as keys and dictionaries of additional attributes as values.
+    output_file_path (str): Path to the output TSV file.
+    """
+    final_scores = []
+
+    # Write the header row
+    sumfgini = 0
+    totalcounts = 0
+    for ref, count in aggregated_stats.items():
+        strainlist = count.get('strainslist', [])
+        isSpecies = count.get('isSpecies', False)
+        is_pathogen = "Unknown"
+        callfamclass = ""
+        derived_pathogen = False
+        isPath = False
+        annClass = "None"
+        refpath = pathogens.get(ref)
+        pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
+        # check if the sample type is in the pathogenic sites
+        direct_match = False
+        def pathogen_label(ref):
+            is_pathogen = "Unknown"
+            isPathi = False
+            direct_match = False
+            callclass = ref.get('callclass', "N/A")
+            # pathogenic_sites = ref.get('pathogenic_sites', [])
+            commensal_sites = ref.get('commensal_sites', [])
+            if sample_type in pathogenic_sites:
+                if callclass != "commensal":
+                    is_pathogen = callclass.capitalize()
+                    isPathi = True
+                else:
+                    is_pathogen = "Potential"
+                direct_match = True
+            elif sample_type in commensal_sites:
+                is_pathogen = "Commensal"
+                direct_match = True
+            elif callclass and callclass != "":
+                is_pathogen = callclass.capitalize() if callclass else "Unknown"
+                isPathi = True
+            return is_pathogen, isPathi, direct_match
+
+        formatname = count.get('name', "N/A")
+        if refpath:
+            is_pathogen, isPathi, direct_match = pathogen_label(refpath)
+            isPath = isPathi
+            taxid = refpath.get(ref, count.get(ref, ""))
+            is_annotated = "Yes"
+            commsites = refpath.get('commensal_sites', [])
+            status = refpath.get('status', "N/A")
+            formatname = refpath.get('name', formatname)
+            if is_pathogen == "Commensal":
+                callfamclass = "Commensal Listing"
+        else:
+            is_annotated = "No"
+            taxid = count.get(ref, "")
+            status = ""
+        if direct_match:
+            annClass = "Direct"
+        else:
+            annClass = "Derived"
+
+        listpathogensstrains = []
+        fullstrains = []
+        count['annClass'] = annClass
+        if strainlist:
+            pathogenic_reads = 0
+            merged_strains = defaultdict(dict)
+
+            for x in strainlist:
+                keyx = x.get('strainname', x.get('taxid', ""))
+                # strainanme = x.get('strainname', None)
+
+                # if formatname != strainanme and strainanme:
+                #     formatname = formatname.replace(strainanme, "")
+                # elif not strainanme or not formatname:
+                #     formatname = x.get('fullname', "Unnamed Organism")
+                if keyx in merged_strains:
+                    merged_strains[keyx]['numreads'] += x.get('numreads', 0)
+                    merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
+                else:
+                    merged_strains[keyx] = x
+                    merged_strains[keyx]['numreads'] = x.get('numreads', 0)
+                    merged_strains[keyx]['subkeys'] = [x.get('subkey', "")]
+
+            for xref, x in merged_strains.items():
+                pathstrain = None
+                if x.get('taxid'):
+                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('taxid', '')}: {x.get('numreads', 0)} reads)")
+                else:
+                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('numreads', 0)} reads)")
+
+                if x.get('taxid') in pathogens:
+                    pathstrain = pathogens.get(x.get('taxid'))
+                elif x.get('fullname') in pathogens:
+                    pathstrain = pathogens.get(x.get('fullname'))
+                # if "Fenollaria massiliensis" in formatname:
+                #     print(pathstrain)
+                if pathstrain:
+                    taxx = x.get('taxid', "")
+                    if sample_type in pathstrain.get('pathogenic_sites', []):
+                        pathogenic_reads += x.get('numreads', 0)
+                        percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
+                        listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
+
+            if callfamclass == "" or len(listpathogensstrains) > 0:
+                callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
+            # if "Fenollaria massiliensis" in formatname:
+            #     print(is_pathogen,"<")
+            # if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
+            #     is_pathogen = "Primary"
+            # if "Fenollaria massiliensis" in formatname:
+            #     print(is_pathogen,"<<<", listpathogensstrains)
+
+        breadth_total = count.get('breadth_total', 0)
+        countreads = sum(count['numreads'])
+        if aligned_total == 0:
+            percent_aligned = 0
+        else:
+            percent_aligned = format_non_zero_decimals(100*countreads / aligned_total)
+        if total_reads == 0:
+            percent_total = 0
+        else:
+            percent_total = format_non_zero_decimals(100*countreads / total_reads)
+        if len(pathogenic_sites) == 0:
+            pathogenic_sites = ""
+
+        # Apply weights to the relevant scores
+        # Example usage:
+        breadth = count.get('breadth_total')  # your raw value between 0 and 1
+        log_weight_breadth = 1-logarithmic_weight(breadth)
+        # get log weight of the breadth_total
+        count['log_weight_breadth'] = log_weight_breadth
+        tass_score = compute_tass_score(
+            count,
+            weights,
+        )
+        final_scores.append(
+            dict(
+                tass_score=tass_score,
+                formatname=formatname,
+                sample_name=sample_name,
+                sample_type=sample_type,
+                fullstrains=fullstrains,
+                listpathogensstrains=listpathogensstrains,
+                percent_total=percent_total,
+                percent_aligned=percent_aligned,
+                callfamclass=callfamclass,
+                log_breadth_weight = count.get('log_weight_breadth', 0),
+                total_reads=sum(count['numreads']),
+                reads_aligned=countreads,
+                hmp_percentile = count.get('hmp_percentile', 0),
+                zscore= count.get('zscore', 0),
+                meancoverage=count.get('meancoverage', 0),
+                breadth_total = breadth_total,
+                total_length = count.get('total_length', 0),
+                is_annotated=is_annotated,
+                is_pathogen=is_pathogen,
+                ref=ref,
+                status=status,
+                annClass=annClass,
+                pathogenic_reads = pathogenic_reads,
+                gini_coefficient=count.get('meangini', 0),
+                meanbaseq=count.get('meanbaseq', 0),
+                meanmapq=count.get('meanmapq', 0),
+                alignment_score=count.get('alignment_score', 0),
+                disparity_score=count.get('normalized_disparity', 0),
+                covered_regions=count.get('covered_regions', 0),
+                siblings_score=count.get('raw_disparity', 0),
+                k2_reads=count.get('k2_numreads', 0),
+                k2_disparity=count.get('k2_disparity', 0),
+                gtcov=count.get('gtcov', 0),
+                minhash_score=count.get('meanminhash_reduction', 0),
+
+            )
+        )
+
+    return final_scores
+
+def write_to_tsv(output_path, final_scores, header):
+    total=0
+    fulltotal=0
+    with open (output_path, 'w') as file:
+        file.write(f"{header}\n")
+        for entry in final_scores:
+            is_pathogen = entry.get('is_pathogen', "Unknown")
+            formatname = entry.get('formatname', "N/A")
+            sample_name = entry.get('sample_name', "N/A")
+            ref = entry.get('ref', "N/A")
+            percent_aligned = entry.get('percent_aligned', 0)
+            is_pathogen = entry.get('is_pathogen', "Unknown")
+            status = entry.get('status', "N/A")
+            is_annotated= entry.get('is_annotated', "N/A")
+            sample_type = entry.get('sample_type', "N/A")
+            callfamclass = entry.get('callfamclass', "N/A")
+            gini_coefficient = entry.get('gini_coefficient', 0)
+            meanbaseq = entry.get('meanbaseq', 0)
+            meanmapq = entry.get('meanmapq', 0)
+            meancoverage = entry.get('meancoverage', 0)
+            meandepth = entry.get('meandepth', 0)
+            annClass = entry.get('annClass', "N/A")
+            isSpecies = entry.get('isSpecies', False)
+            diamond_identity = entry.get('diamond_identity', 0)
+            k2_reads = entry.get('k2_reads', 0)
+            k2_parent_reads = entry.get('k2_parent_reads', 0)
+            mapq_score = entry.get('alignment_score', 0)
+            disparity_score = entry.get('disparity_score', 0)
+            siblings_score = entry.get('siblings_score', 0)
+            tass_score = entry.get('tass_score', 0)
+            minhash_score = entry.get('minhash_score', 0)
+            listpathogensstrains = entry.get('listpathogensstrains', [])
+            countreads = entry.get('reads_aligned', 0)
+            breadth_of_coverage = entry.get('breadth_total', 0)
+            aligned_total = entry.get('total_reads', 0)
+            pathogenic_reads = entry.get('pathogenic_reads', 0)
+            percent_total = entry.get('percent_total', 0)
+            k2_disparity_score = entry.get('k2_disparity', 0)
+            hmp_percentile = entry.get('hmp_percentile', 0)
+            log_breadth_weight = entry.get('log_breadth_weight', 0)
+            # if plasmid uper or lower case doesnt matter matches then skip
+            if "plasmid" in formatname.lower():
+                continue
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
+                print(f"Reference: {ref} - {formatname}")
+                print(f"\tIsPathogen: {is_pathogen}")
+                print(f"\tPathogenic Strains: {listpathogensstrains}")
+                percentreads = f"{100*pathogenic_reads/aligned_total:.1f}" if aligned_total > 0 and pathogenic_reads>0 else 0
+                print(f"\tPathogenic SubStrain Reads: {pathogenic_reads} - {percentreads}%")
+                print(f"\tAligned Strains:")
+                for f in entry.get('fullstrains', []):
+                    print(f"\t\t{f}")
+                print(f"\tTotal reads: {entry.get('total_reads', 0)}")
+                print(f"\tGini Conf: {entry.get('gini_coefficient', 0):.4f}")
+                print(f"\tDiamond Identity: {entry.get('diamond_identity', 0):.2f}")
+                print(f"\tAlignment Score: {entry.get('alignment_score', 0):.2f}")
+                print(f"\t# Reads Aligned: {entry.get('reads_aligned', 0)}")
+                print(f"\tDisparity Score: {entry.get('disparity_score', 0):.2f}")
+                print(f"\tK2 Disparity Score: {entry.get('k2_disparity', 0):.2f}")
+                print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
+                print(f"\tBreadth: {entry.get('breadth_total', 0):.2f}")
+                print(f"\tMinhash score: {entry.get('minhash_score', 0):.2f}")
+                print(f"\tDepth (Mean): {entry.get('meandepth', 0):.2f}")
+                print(f"\tGT Coverage: {entry.get('gtcov', 0):.2f}")
+                print(f"\tFinal Score: {entry.get('tass_score', 0):.2f}")
+                print(f"\tCovered Regions: {entry.get('covered_regions', 0)}")
+                print(f"\tK2 Reads: {entry.get('k2_reads', 0)}")
+                print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
+                print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
+                print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
+                print()
+                total+=1
+        # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
+            file.write(
+                f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
+                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
+                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
+                f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
+                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
+            )
+            fulltotal+=1
+    print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")
+if __name__ == "__main__":
+    sys.exit(main())
