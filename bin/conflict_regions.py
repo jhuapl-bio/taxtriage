@@ -247,15 +247,15 @@ def create_signatures_for_regions(
             max_workers=num_workers,
             initializer=init_worker,
             initargs=(bam_path,fasta_paths, )) as executor:
-        # Use functools.partial to bind kmer_size and scaled to process_region.
+        #  bind kmer_size and scaled to process_region.
         process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
-        # Now, map over regions without using a lambda.
+        # map over regions without using a lambda.
         results = executor.map(process_region_partial, regions, chunksize=1)
         for result in tqdm(results, total=regions_df.shape[0], desc="Processing regions"):
             if result is not None:
-                region_name, sig, chrom, region_reads = result
+                region_name, sig, _, _ = result
                 signatures[region_name] = sig
-    # Close the global BAM file.
+    # close the global BAM file.
     global global_bam
     if global_bam is not None:
         global_bam.close()

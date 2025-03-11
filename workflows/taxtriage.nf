@@ -416,8 +416,6 @@ workflow TAXTRIAGE {
     )
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
-
-
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
             meta, reads -> meta.sequencing_summary
