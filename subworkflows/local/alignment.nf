@@ -164,9 +164,9 @@ workflow ALIGNMENT {
         }.set{ collected_bams }
 
     // // // Example to view the output
-    SAMTOOLS_DEPTH(
-        collected_bams
-    )
+    // SAMTOOLS_DEPTH(
+    //     collected_bams
+    // )
     SAMTOOLS_INDEX(
         collected_bams
     )
@@ -196,10 +196,9 @@ workflow ALIGNMENT {
 
 
     ch_bams =  sorted_bams_with_index
-    ch_depths = SAMTOOLS_DEPTH.out.tsv
+    // ch_depths = SAMTOOLS_DEPTH.out.tsv
 
     emit:
-        depth = ch_depths
         mpileup = ch_merged_mpileup
         bams = ch_bams
         stats = ch_stats

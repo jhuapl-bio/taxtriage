@@ -238,7 +238,7 @@ def create_signatures_for_regions(
 
     num_workers = 1
     init_worker(bam_path, fasta_paths)
-    for region in tqdm(regions, total=regions_df.shape[0], desc="Processing regions"):
+    for region in tqdm(regions, total=regions_df.shape[0], miniters=1_000, desc="Processing regions"):
         result = process_region(region, kmer_size, scaled)
         if result is not None:
             region_name, sig, _, _ = result
@@ -341,7 +341,7 @@ def build_sbt_index(siglist, ksize=31, sbt_name="my_sbt", clusters={}):
                 ref2cluster[ref] = cluster_idx
     # Add each signature as a leaf
 
-    for region_name, sig in tqdm(siglist, desc="Adding signatures to SBT"):
+    for region_name, sig in tqdm(siglist, miniters=1_000, desc="Adding signatures to SBT"):
         r1, s1, e1 = parse_split(region_name)
         # sig.name = region_name
         leaf = SigLeaf(str(region_name), sig)
