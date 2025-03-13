@@ -63,6 +63,7 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 | `trim`               | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                                                      |
 | `sequencing_summary` | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample                                                                                                                                          |
 | `type`               | OPTIONAL But Recommended. Type of sample such as blood, stool etc.                                                                                                                                                                   |
+| `needscompressing`               | OPTIONAL but required if providing a non-compressed fastq file                                                                                                                                                               |
 
 An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
