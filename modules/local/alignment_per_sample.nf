@@ -42,6 +42,7 @@ process ALIGNMENT_PER_SAMPLE {
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     def assemblyi = assembly ? " -j ${assembly} " : " "
     def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
+    def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
     // if k2_report exists and is not null add --k2 flag
     // if k2_report != NO_FILE, add --k2 flag
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
@@ -70,7 +71,7 @@ process ALIGNMENT_PER_SAMPLE {
         -o $output $bedgraph \\
         -s $id $assemblyi \\
         $type $read_count \\
-        --output_dir $output_dir $fastas \\
+        --output_dir $output_dir $fastas $cpu_count \\
         --scaled 8000 \\
         --alpha 1.5 \\
         --min_threshold 0.002 \\
