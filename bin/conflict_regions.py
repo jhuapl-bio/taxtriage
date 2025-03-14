@@ -1526,14 +1526,16 @@ def merge_bedgraph_regions(
         else:
             # Fill NA depths with 0 and compute the median absolute difference per chromosome
             intervals['depth'] = intervals['depth'].fillna(0)
-            jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
-                lambda x: x[x != 0].diff().abs().dropna().mean()
-            ).mean()
+            # jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
+            #     lambda x: x[x != 0].diff().abs().dropna().mean()
+            # ).mean()
+            # jump_threshold = math.ceil(jump_threshold) + 1
             # get mean of depths for chrom
-            jump_threshold_mean = intervals.groupby('chrom', observed=True)['depth'].mean().mean()
-            # get 75th percentil of depths for chrom
+            # jump_threshold_mean = intervals.groupby('chrom', observed=True)['depth'].mean().mean()
+            # # get 75th percentil of depths for chrom
             jump_threshold_sevfive = intervals.groupby('chrom', observed=True)['depth'].quantile(0.68).mean()
             jump_threshold = math.ceil(jump_threshold_sevfive) + 1
+            # jump_threshold = 200
         # Fallback default if still None
         if jump_threshold is None:
             jump_threshold = 200
