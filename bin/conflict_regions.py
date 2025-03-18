@@ -9,7 +9,7 @@ from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_s
 import statistics
 from typing import List, Tuple, Optional, Dict
 import numpy as np
-
+import math
 import concurrent.futures
 from collections import defaultdict
 from functools import partial
@@ -1484,116 +1484,136 @@ def merge_bedgraph_regions(
     max_group_size: int = 20000,
     max_length: Optional[int] = None,
     value_diff_tolerance: Optional[float] = None,
-    jump_threshold: Optional[float] = None
+    jump_threshold: Optional[int] = None,
+    breadth_allowance: Optional[int] = 1000,
+    prop_gap_accepted: Optional[int] = 0.1,
+    reflengths: Optional[Dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
     Merges consecutive regions in a BEDGRAPH-like DataFrame based on the specified merging method.
 
     :param intervals: pandas DataFrame with columns ['chrom', 'start', 'end', 'depth']
     :param merging_method: 'variance', 'gini', or 'jump'
-    :param max_stat_threshold: Threshold for the statistic or median jump
+    :param max_stat_threshold: Threshold for the statistic (or for the jump method, it can be used as a jump threshold)
     :param max_group_size: Maximum number of intervals to merge at once
     :param max_length: (Optional) Maximum length of merged interval
     :param value_diff_tolerance: (Optional) Maximum allowed difference in average values
-    :param jump_threshold: (Optional) Threshold for 'jump' method; if None, median jump is used
+    :param jump_threshold: (Optional) For 'jump' method; if None and max_stat_threshold not provided, the median jump is computed.
+    :param breadth_allowance: Allowable gap (in bp) between intervals to consider merging.
+                              This applies only to the gap between the current buffer's end and the new interval's start.
     :return: pandas DataFrame with merged intervals and mean depth
     """
     if intervals.empty:
         return pd.DataFrame(columns=['chrom', 'start', 'end', 'mean_depth'])
 
-    # Ensure DataFrame is sorted by chrom and start
+    # Ensure the DataFrame is sorted by chromosome and start position.
     intervals = intervals.sort_values(['chrom', 'start']).reset_index(drop=True)
-    import math
-    # Precompute jump_threshold if using 'jump' method and not provided
+    # add the reference length from reflengths dict as new column
+    if reflengths:
+        intervals['ref_length'] = intervals['chrom'].map(reflengths)
+    else:
+        intervals['ref_length'] = -1
+    percent_dict = {}
+    # get unique ref_lenths and chroms, get 1% reflength and assing to dict as chrom = 1% of ref_length
+    for chrom in intervals['chrom'].unique():
+        ref_length = intervals[intervals['chrom'] == chrom]['ref_length'].iloc[0]
+        percent_dict[chrom] = ref_length * prop_gap_accepted
+
+    # Precompute jump_threshold for the 'jump' method if not provided.
     if merging_method == 'jump':
-        jump_threshold = max_stat_threshold
-        if max_stat_threshold is None:
-            # Compute median absolute difference between consecutive depths within each chromosome
-            # drop na depths
-            # convert na depth to 0
-            intervals['depth'] = intervals['depth'].fillna(0)
-
-            jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
-                lambda x: x[x != 0].diff().abs().dropna().median()
-            ).median()
-            jump_threshold = math.ceil(jump_threshold)
-
-
-        # If max_stat_threshold is provided, use it as jump_threshold
-        elif max_stat_threshold is not None:
+        if max_stat_threshold is not None:
             jump_threshold = max_stat_threshold
         else:
-            # Default jump_threshold if not provided
-            jump_threshold = 200  # Example default value
+            # Fill NA depths with 0 and compute the median absolute difference per chromosome
+            intervals['depth'] = intervals['depth'].fillna(0)
+            # jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
+            #     lambda x: x[x != 0].diff().abs().dropna().mean()
+            # ).mean()
+            # jump_threshold = math.ceil(jump_threshold) + 1
+            # get mean of depths for chrom
+            # jump_threshold_mean = intervals.groupby('chrom', observed=True)['depth'].mean().mean()
+            # # get 75th percentil of depths for chrom
+            try:
+                jump_threshold_sevfive = intervals.groupby('chrom', observed=True)['depth'].quantile(0.975).mean()
+                jump_threshold = math.ceil(jump_threshold_sevfive) + 1
+            except Exception as ex:
+                print(ex)
+                jump_threshold = 200
+        # Fallback default if still None
+        if jump_threshold is None:
+            jump_threshold = 200
     else:
         jump_threshold = None
-
+    # jump_threshold = 200
     merged_regions = []
-
-    # Group by chromosome
+    # Group intervals by chromosome.
     grouped = intervals.groupby('chrom', observed=True)
-
     for chrom, group in grouped:
         group = group.reset_index(drop=True)
-        n = len(group)
-        if n == 0:
+        if group.empty:
             continue
 
+        # Initialize a buffer with the first interval.
         buffer = {
             'chrom': chrom,
             'start': group.at[0, 'start'],
             'end': group.at[0, 'end'],
             'depths': [group.at[0, 'depth']],
         }
+        per_ref = percent_dict.get(chrom, breadth_allowance)
 
-        for row in group.itertuples(index=False):
-            if row.index == 0:
-                continue  # Skip the first row as it's already in the buffer
+        for i, row in enumerate(group.itertuples(index=False)):
+            if i == 0:
+                continue  # first row is already in the buffer
 
+            new_start, new_end, new_depth = row.start, row.end, row.depth
+            prev_end = buffer['end']
+            gap = new_start - prev_end  # gap between intervals
+
+            # Start with merging allowed.
             can_merge = True
 
-            # Check max_group_size
+            # Check maximum group size.
             if len(buffer['depths']) >= max_group_size:
                 can_merge = False
 
-            # Check max_length
-            if can_merge and max_length is not None:
-                new_end = row.end
+            # Check maximum merged region length.
+            if max_length is not None:
                 total_length = new_end - buffer['start']
                 if total_length > max_length:
                     can_merge = False
 
-            # Check merging_method
+            # Apply method-specific merging criteria.
             if can_merge:
-                if merging_method in ['variance', 'gini']:
-                    current_depths = buffer['depths'] + [row.depth]
+                if merging_method == 'jump':
+                    # Calculate the jump based on the last depth in the current buffer.
+                    last_depth = buffer['depths'][-1]
+                    jump = abs(new_depth - last_depth)
+                    # Merge only if the gap is within the per_ref AND the jump is within the jump_threshold.
+                    if gap > per_ref or jump > jump_threshold:
+                        can_merge = False
+                elif merging_method in ['variance', 'gini']:
+                    current_depths = buffer['depths'] + [new_depth]
                     if merging_method == 'variance':
                         stat_val = statistics.pvariance([float(x) for x in current_depths])
                     elif merging_method == 'gini':
                         stat_val = compute_gini(current_depths)
-                    if stat_val > max_stat_threshold:
+                    if max_stat_threshold is not None and stat_val > max_stat_threshold:
                         can_merge = False
-                elif merging_method == 'jump':
-                    jump_threshold=20
-                    last_depth = buffer['depths'][-1]
-                    jump = abs(row.depth - last_depth)
-                    if jump > jump_threshold:
-                        can_merge = False
+                    # Optional: Check average value difference tolerance.
+                    if value_diff_tolerance is not None:
+                        current_avg = np.mean(buffer['depths'])
+                        if abs(new_depth - current_avg) > value_diff_tolerance:
+                            can_merge = False
                 else:
                     raise ValueError(f"Unknown merging method: {merging_method}")
 
-            # Check value_diff_tolerance
-            if can_merge and value_diff_tolerance is not None and merging_method in ['variance', 'gini']:
-                current_avg = sum(buffer['depths']) / len(buffer['depths'])
-                if abs(row.depth - current_avg) > value_diff_tolerance:
-                    can_merge = False
-
             if can_merge:
-                # Merge the current row into the buffer
-                buffer['end'] = row.end
-                buffer['depths'].append(row.depth)
+                # Merge the current interval into the buffer.
+                buffer['end'] = new_end
+                buffer['depths'].append(new_depth)
             else:
-                # Finalize the current buffer
+                # Finalize the current buffer.
                 mean_depth = np.mean(buffer['depths'])
                 merged_regions.append({
                     'chrom': buffer['chrom'],
@@ -1601,15 +1621,15 @@ def merge_bedgraph_regions(
                     'end': buffer['end'],
                     'mean_depth': mean_depth
                 })
-                # Start a new buffer with the current row
+                # Start a new buffer with the current interval.
                 buffer = {
                     'chrom': chrom,
-                    'start': row.start,
-                    'end': row.end,
-                    'depths': [row.depth],
+                    'start': new_start,
+                    'end': new_end,
+                    'depths': [new_depth],
                 }
 
-        # Finalize the last buffer
+        # Finalize the last buffer for this chromosome.
         if buffer['depths']:
             mean_depth = np.mean(buffer['depths'])
             merged_regions.append({
@@ -1621,6 +1641,7 @@ def merge_bedgraph_regions(
 
     merged_df = pd.DataFrame(merged_regions)
     return merged_df
+
 
 
 def determine_conflicts(
@@ -1641,6 +1662,7 @@ def determine_conflicts(
         filtered_bam_create=False,
         FAST_MODE=True,
         sensitive=False,
+        cpu_count=None
 ):
     # parser = argparse.ArgumentParser(description="Use bedtools to define coverage-based regions and compare read signatures using sourmash MinHash.")
     # parser.add_argument("--input_bam", required=True, help="Input BAM file.")
@@ -1697,20 +1719,24 @@ def determine_conflicts(
     elif use_jump:
         statistic_func = lambda vals: max(vals) - min(vals)
         stat_name="jump"
-        threshold=200
-        # threshold=None
+        threshold=None
     else:
         statistic_func = compute_gini
         stat_name = "gini"
         threshold=0.8
     # 3. Merge
+    bam_fs = pysam.AlignmentFile(input_bam, "rb")
+    reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
+
     print(f"Merging regions (using {stat_name} <= {threshold})...")
     start_time = time.time()
+
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=200_000, # Limit merges to x intervals
-        merging_method=stat_name
+        max_group_size=2_000, # Limit merges to x intervals
+        merging_method=stat_name,
+        reflengths=reflengths,
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
 
@@ -1727,9 +1753,10 @@ def determine_conflicts(
     if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
         # get cpu count / 2, only if it is > 1, round down
-        num_workers = max(1, int(os.cpu_count() / 2))
-        # if num_workers > 10:
-        #     num_workers = 10
+        if cpu_count:
+            num_workers = cpu_count
+        else:
+            num_workers = max(1, int(os.cpu_count() / 2))
         # print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
 
         start_time = time.time()
@@ -1754,8 +1781,6 @@ def determine_conflicts(
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
 
-    bam_fs = pysam.AlignmentFile(input_bam, "rb")
-    reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
 
 
     if matrix:

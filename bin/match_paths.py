@@ -213,6 +213,14 @@ def parse_args(argv=None):
         help="alpha value for lorenz curve with gini calculation",
     )
     parser.add_argument(
+        "-X",
+        '--cpu_count',
+        metavar="CPUCOUNT",
+        type=int,
+        default=None,
+        help="Overwrite the number of CPUs to use.",
+    )
+    parser.add_argument(
         "--hmp",
         metavar="HMP",
         type=str,
@@ -1524,6 +1532,7 @@ def main():
                 FAST_MODE=args.fast,
                 filtered_bam_create=args.filtered_bam,
                 sensitive=args.sensitive,
+                cpu_count=args.cpu_count,
 
             )
         if args.failed_reads:

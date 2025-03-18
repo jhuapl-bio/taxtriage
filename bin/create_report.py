@@ -178,12 +178,14 @@ def import_data(inputfiles ):
         12814: "human respiratory syncytial virus A",
     }
     # df['Organism'] = df["Detected Organism"]
-    for row_idx, row in df.iterrows():
-        if row['Status'] == 'putative':
-            #  update index of row to change organism name to bold
-            df.at[row_idx, "Detected Organism"] = f'{row["Detected Organism"]}*'
+    # set if putative to it with *  in Detected organism using lambda x
+    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
+    # for row_idx, row in df.iterrows():
+    #     if row['Status'] == 'putative':
+    #         #  update index of row to change organism name to bold
+    #         df.at[row_idx, "Detected Organism"] = f'{row["Detected Organism"]}*'
         # change the Name column if the mapnames for taxid is in the dict
-        df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
+    df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
     df = df.fillna("")
     return df
@@ -714,12 +716,14 @@ def main():
         taxdump_dict = load_taxdump(args.taxdump)
     df_full = import_data(args.input)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
-
+    # print rows where "Monkeypox" in "organism" column
+    # df_full = df_full[df_full['Detected Organism'].str.contains("Monkeypox")]
+    # print(df_full)
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
         df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
-        df_full = df_full.reset_index(drop=True)
+        df_full = df_full.reset_index(drop=False)
         df_full.to_csv(args.output_txt, sep="\t", index=True, index_label="Index")
     # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
     df_full = df_full.rename(columns={args.id_col: args.type})
