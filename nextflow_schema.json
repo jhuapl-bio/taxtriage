@@ -305,7 +305,6 @@
                 "jump_threshold": {
                     "type": "number",
                     "description": "Jump Threshold",
-                    "default": null,
                     "hint": "Set a manual jump threshold for a region definition. If the change in depth is greater or less than the current for the upcoming region, then define the new region.",
                     "fa_icon": "fas fa-file-signature"
                 },
