@@ -1486,7 +1486,7 @@ def merge_bedgraph_regions(
     value_diff_tolerance: Optional[float] = None,
     jump_threshold: Optional[int] = None,
     breadth_allowance: Optional[int] = 1000,
-    prop_gap_accepted: Optional[int] = 0.05,
+    prop_gap_accepted: Optional[int] = 0.1,
     reflengths: Optional[Dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
@@ -1533,9 +1533,12 @@ def merge_bedgraph_regions(
             # get mean of depths for chrom
             # jump_threshold_mean = intervals.groupby('chrom', observed=True)['depth'].mean().mean()
             # # get 75th percentil of depths for chrom
-            jump_threshold_sevfive = intervals.groupby('chrom', observed=True)['depth'].quantile(0.68).mean()
-            jump_threshold = math.ceil(jump_threshold_sevfive) + 1
-            # jump_threshold = 200
+            try:
+                jump_threshold_sevfive = intervals.groupby('chrom', observed=True)['depth'].quantile(0.975).mean()
+                jump_threshold = math.ceil(jump_threshold_sevfive) + 1
+            except Exception as ex:
+                print(ex)
+                jump_threshold = 200
         # Fallback default if still None
         if jump_threshold is None:
             jump_threshold = 200
