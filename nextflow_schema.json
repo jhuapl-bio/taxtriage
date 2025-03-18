@@ -302,6 +302,22 @@
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "jump_threshold": {
+                    "type": "number",
+                    "description": "Jump Threshold",
+                    "default": null,
+                    "hint": "Set a manual jump threshold for a region definition. If the change in depth is greater or less than the current for the upcoming region, then define the new region.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "gap_allowance": {
+                    "type": "number",
+                    "description": "Gap Allowance For Confidence",
+                    "max": 1,
+                    "min": 0,
+                    "default": 0.1,
+                    "hint": "For the merging of regions, this is the allowed 0-depth gap between regions in the bedgraph before a new region is allowed. It is the proportion 0-1 of the full reference length. Default is 0.1 or 10%",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "pathogens": {
                     "type": "string",
                     "format": "file-path",

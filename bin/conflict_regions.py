@@ -1484,9 +1484,8 @@ def merge_bedgraph_regions(
     max_group_size: int = 20000,
     max_length: Optional[int] = None,
     value_diff_tolerance: Optional[float] = None,
-    jump_threshold: Optional[int] = None,
     breadth_allowance: Optional[int] = 1000,
-    prop_gap_accepted: Optional[int] = 0.1,
+    gap_allowance: Optional[int] = 0.1,
     reflengths: Optional[Dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
@@ -1517,8 +1516,7 @@ def merge_bedgraph_regions(
     # get unique ref_lenths and chroms, get 1% reflength and assing to dict as chrom = 1% of ref_length
     for chrom in intervals['chrom'].unique():
         ref_length = intervals[intervals['chrom'] == chrom]['ref_length'].iloc[0]
-        percent_dict[chrom] = ref_length * prop_gap_accepted
-
+        percent_dict[chrom] = ref_length * gap_allowance
     # Precompute jump_threshold for the 'jump' method if not provided.
     if merging_method == 'jump':
         if max_stat_threshold is not None:
@@ -1539,9 +1537,6 @@ def merge_bedgraph_regions(
             except Exception as ex:
                 print(ex)
                 jump_threshold = 200
-        # Fallback default if still None
-        if jump_threshold is None:
-            jump_threshold = 200
     else:
         jump_threshold = None
     # jump_threshold = 200
@@ -1662,7 +1657,9 @@ def determine_conflicts(
         filtered_bam_create=False,
         FAST_MODE=True,
         sensitive=False,
-        cpu_count=None
+        cpu_count=None,
+        jump_threshold=None,
+        gap_allowance = 0.1,
 ):
     # parser = argparse.ArgumentParser(description="Use bedtools to define coverage-based regions and compare read signatures using sourmash MinHash.")
     # parser.add_argument("--input_bam", required=True, help="Input BAM file.")
@@ -1719,7 +1716,7 @@ def determine_conflicts(
     elif use_jump:
         statistic_func = lambda vals: max(vals) - min(vals)
         stat_name="jump"
-        threshold=None
+        threshold = jump_threshold
     else:
         statistic_func = compute_gini
         stat_name = "gini"
@@ -1737,6 +1734,7 @@ def determine_conflicts(
         max_group_size=2_000, # Limit merges to x intervals
         merging_method=stat_name,
         reflengths=reflengths,
+        gap_allowance = gap_allowance
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
 
