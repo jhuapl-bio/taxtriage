@@ -694,7 +694,7 @@ def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
     pathogens_dict = {}
     # Open the file using the `with` statement
-    with open(pathogens_file, 'r', newline='', encoding='ISO-8859-1') as file:
+    with open(pathogens_file, 'r', newline='', encoding='utf-8') as file:
         # Create a CSV reader object that handles commas inside quotes automatically
         reader = csv.reader(file, delimiter=',', quotechar='"')
 
@@ -714,7 +714,15 @@ def import_pathogens(pathogens_file):
             commensal_sites = [body_site_map(x.lower()) for x in commensal_sites]
             pathogenic_sites = [body_site_map(x.lower()) for x in pathogenic_sites ]
             status = row[6] if len(row) > 6 else None
-            pathology = row[7] if len(row) > 7 else None
+            pathology = row[8] if len(row) > 8 else None
+
+            high_cons = row[7] if len(row) > 7 else False
+            # denote that if FALSE set to None, else set to True
+            if high_cons and high_cons != "'":
+                if high_cons.lower() == "false":
+                    high_cons = False
+                else:
+                    high_cons = True
             # Store the data in the dictionary, keyed by pathogen name
             pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
@@ -723,7 +731,8 @@ def import_pathogens(pathogens_file):
                 'name': pathogen_name,
                 'commensal_sites': commensal_sites,
                 'status': status,
-                'pathology': pathology
+                'pathology': pathology,
+                'high_cons': high_cons
             }
             pathogens_dict[taxid] = pathogens_dict[pathogen_name]
 
@@ -2036,6 +2045,8 @@ def main():
         ## Test: Min threshold of CDs found  - are there coding regions at the min amount?
 
     pathogens = import_pathogens(pathogenfile)
+
+    # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
     if args.min_reads_align:
@@ -2115,13 +2126,7 @@ def main():
             #     zscore = 3.1
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
-            # if percentile is below 0.5 set it to 0
-            # if zscore < 2.5:
-            #     percentile = 0
-            # if "Clostridioides difficile" in value['name']:
-            #     print("\t",value['name'], key, value['zscore'], percentile, dists[(int(taxid), body_site)].get('norm_abundance', 0),dists[(int(taxid), body_site)].get('mean', 0),)
-            #     print(percent_total_reads_observed, sum_abus_expected, sum_norm_abu, stdsum)
-            #     exit()
+
             value['hmp_percentile'] = percentile
 
     else:
@@ -2164,6 +2169,7 @@ def main():
         "IsAnnotated",
         "AnnClass",
         "Microbial Category",
+        'High Consequence',
         "Taxonomic ID #",
         "Status",
         "Gini Coefficient",
@@ -2455,25 +2461,22 @@ def calculate_scores(
     final_scores = []
 
     # Write the header row
-    sumfgini = 0
-    totalcounts = 0
     for ref, count in aggregated_stats.items():
         strainlist = count.get('strainslist', [])
-        isSpecies = count.get('isSpecies', False)
         is_pathogen = "Unknown"
         callfamclass = ""
-        derived_pathogen = False
-        isPath = False
         annClass = "None"
         refpath = pathogens.get(ref)
         pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
         # check if the sample type is in the pathogenic sites
         direct_match = False
+        high_cons = False
         def pathogen_label(ref):
             is_pathogen = "Unknown"
             isPathi = False
             direct_match = False
             callclass = ref.get('callclass', "N/A")
+            high_cons = ref.get('high_cons', False)
             # pathogenic_sites = ref.get('pathogenic_sites', [])
             commensal_sites = ref.get('commensal_sites', [])
             if sample_type in pathogenic_sites:
@@ -2489,12 +2492,14 @@ def calculate_scores(
             elif callclass and callclass != "":
                 is_pathogen = callclass.capitalize() if callclass else "Unknown"
                 isPathi = True
-            return is_pathogen, isPathi, direct_match
+            return is_pathogen, isPathi, direct_match, high_cons
 
         formatname = count.get('name', "N/A")
+
         if refpath:
-            is_pathogen, isPathi, direct_match = pathogen_label(refpath)
+            is_pathogen, isPathi, direct_match, high_cons = pathogen_label(refpath)
             isPath = isPathi
+            print(ref, "<<<<", high_cons)
             taxid = refpath.get(ref, count.get(ref, ""))
             is_annotated = "Yes"
             commsites = refpath.get('commensal_sites', [])
@@ -2610,6 +2615,7 @@ def calculate_scores(
                 ref=ref,
                 status=status,
                 annClass=annClass,
+                high_cons = high_cons,
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2668,11 +2674,12 @@ def write_to_tsv(output_path, final_scores, header):
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
+            high_conse = entry.get('high_cons', False)
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
             if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
-                print(f"Reference: {ref} - {formatname}")
+                print(f"Reference: {ref} - {formatname}, High Cons?: {high_conse}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
                 percentreads = f"{100*pathogenic_reads/aligned_total:.1f}" if aligned_total > 0 and pathogenic_reads>0 else 0
@@ -2703,7 +2710,7 @@ def write_to_tsv(output_path, final_scores, header):
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
-                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
+                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
                 f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"

@@ -80,9 +80,9 @@ def parse_args(argv=None):
                         help="Missing samples if any", nargs="+")
     parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',
                         help="Name of site column, default is body_site")
-    parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='name',
-                        help="What type of data is being processed. Options: 'tax_id' or 'name'.",
-                        choices=['tax_id', 'name'])
+    parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='Detected Organism',
+                        help="What type of data is being processed. Options: 'Taxonomic ID #' or 'Detected Organism'.",
+                        choices=['Taxonomic ID #', 'Detected Organism'])
     parser.add_argument("--taxdump", metavar="TAXDUMP", required=False, default=None,
                         help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp")
     parser.add_argument("--rank", metavar="TAXDUMP", required=False, default="genus",
@@ -180,11 +180,7 @@ def import_data(inputfiles ):
     # df['Organism'] = df["Detected Organism"]
     # set if putative to it with *  in Detected organism using lambda x
     df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
-    # for row_idx, row in df.iterrows():
-    #     if row['Status'] == 'putative':
-    #         #  update index of row to change organism name to bold
-    #         df.at[row_idx, "Detected Organism"] = f'{row["Detected Organism"]}*'
-        # change the Name column if the mapnames for taxid is in the dict
+    df['Detected Organism'] = df.apply(lambda x: f'★ {x["Detected Organism"]}' if x['High Consequence'] else x["Detected Organism"], axis=1)
     df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
     df = df.fillna("")
@@ -311,11 +307,11 @@ def return_table_style(df, color_pathogen=False):
             if val == "Primary" and derived == "Direct":
                 color = 'lightcoral'
             elif val == "Primary" :
-                color = 'goldenrod'
+                color = '#fab462'
             elif val == "Commensal":
                 color = 'lightgreen'
             elif val == "Opportunistic":
-                color = "papayawhip"
+                color = "#ffe6a8"
             elif val == "Potential":
                 color = 'lightblue'
             else:
@@ -359,6 +355,7 @@ def create_report(
     df_potentials,
     df_unidentified,
     df_commensals,
+    df_high_cons_low_conf,
     plotbuffer,
     version=None,
     missing_samples=None,
@@ -390,7 +387,7 @@ def create_report(
         version = "Local Build"
     # get datetime of year-mont-day hour:min
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
-    # sort df_identified by Confidence Metric (0-1)
+    # sort df_identified by TASS Score
     # filter out so only Class is PAthogen
     # df_identified = df_identified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, True])
     # df_potentials = df_potentials.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
@@ -399,7 +396,7 @@ def create_report(
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
     # df_unidentified = df_unidentified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
     elements = []
-    ##########################################################################################
+
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
     if not df_identified_paths.empty:
@@ -409,10 +406,12 @@ def create_report(
             "Specimen ID (Type)",
             "Detected Organism",
             "# Reads Aligned",
-            "Confidence Metric (0-1)",
+            "TASS Score",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
-            "HHS Percentile", "Group", "K2 Reads"
+            "HHS Percentile",
+            "Group",
+            "K2 Reads"
         ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -446,6 +445,9 @@ def create_report(
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
+        extra_text = Paragraph(f"★ denotes high consequence pathogens")
+        elements.append(extra_text)
+        elements.append(Spacer(1, 12))
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
     ##########################################################################################
@@ -465,15 +467,15 @@ def create_report(
     elements.append(subtext_para)
     elements.append(Spacer(1, 12))  # Space between tables
     bullet_list_items = [
-        "Green/White: This is an unannotated organism or commensal organism for the given site.",
-        "Red: Primary Pathogen annotated in sample type(s) listed.",
-        "Goldenrod: Primary Pathogen annotated in sample type(s) other than your listed one.",
-        "Beige: Opportunistic Pathogen",
-        "Blue: Potential Pathogen",
+        "This is an unannotated organism or commensal organism for the given site.",
+        "Primary Pathogen annotated in sample type(s) listed.",
+        "Primary Pathogen annotated in sample type(s) other than your listed one.",
+        "Opportunistic Pathogen",
+        "Potential Pathogen",
     ]
 
     # Create a list of bullet items with specified colors
-    bullet_colors = [colors.lightgreen,   colors.coral, colors.lightgoldenrodyellow , colors.papayawhip, colors.lightblue  ]
+    bullet_colors = [colors.lightgreen,   colors.coral, '#fab462' , '#ffe6a8', colors.lightblue  ]
     style = styles['Normal']
 
     # Create custom ListItems with colored bullets
@@ -525,7 +527,7 @@ def create_report(
         "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
         "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
-        "Confidence Metric (0-1): A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
+        "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species.",
         "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
@@ -573,11 +575,44 @@ def create_report(
     elements.append(horizontal_line)
 
     ##########################################################################################
+    ##########################################################################################
+    if not df_high_cons_low_conf.empty:
+        # print only rows in df_identified with Gini Coeff above 0.2
+        columns_yes = ["Specimen ID (Type)",
+                       "Detected Organism",
+                       'TASS Score',
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "HHS Percentile", "Group", "K2 Reads"]
+        # check if all K2 reads column are 0 or nan
+        if df_identified_paths['K2 Reads'].sum() == 0:
+            columns_yes = columns_yes[:-1]
+        # if all of Group is Unknown, then remove it from list
+        if (df_high_cons_low_conf['Group'].nunique() == 1 ):
+            idx_grp = columns_yes.index("Group")
+            if idx_grp:
+                columns_yes.pop(idx_grp)
+        # Now, call prepare_data_with_headers for both tables without manually preparing headers
+        data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+        table = make_table(
+            data_yes,
+            table_style=table_style
+        )
+        # # Add the title and subtitle
+        title = Paragraph("High Consequence Low Confidence", title_style)
+        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence", subtitle_style)
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))
+        elements.append(table)
+        # elements.append(Spacer(1, 12))
+
+
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "# Reads Aligned",
-                       "Confidence Metric (0-1)", "Taxonomic ID #",
+                       "TASS Score", "Taxonomic ID #",
                        "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "Group", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
@@ -589,7 +624,7 @@ def create_report(
                 # remove group from list
                 columns_opp.pop(index_group)
 
-        data_opp = prepare_data_with_headers(df_potentials, plotbuffer, include_headers=True, columns=columns_opp)
+        data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
         table = make_table(
             data_opp,
@@ -609,7 +644,7 @@ def create_report(
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
-                       "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
                         "HHS Percentile", "Group", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -645,7 +680,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage",  "HHS Percentile", "Group", "K2 Reads"]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "Group", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -726,7 +761,7 @@ def main():
         df_full = df_full.reset_index(drop=False)
         df_full.to_csv(args.output_txt, sep="\t", index=True, index_label="Index")
     # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
-    df_full = df_full.rename(columns={args.id_col: args.type})
+    # df_full = df_full.rename(columns={args.id_col: args.type})
     df_full = df_full.rename(columns={args.sitecol: 'body_site'})
     df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
     df_full = df_full.dropna(subset=[args.type])
@@ -801,13 +836,14 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     # df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
+    df_high_cons_low_conf = pd.DataFrame()
     if args.min_conf and args.min_conf > 0:
+        df_high_cons_low_conf = df_full[df_full['High Consequence'] == True & (df_full['TASS Score'].astype(float) < args.min_conf)]
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-    # df_full['name'] = df_full['name'] + " (" + df_full['Taxonomic ID #'].astype(str) + ")"
-    df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
+    print(f"Size of of low confidence high consequence pathogens: {df_high_cons_low_conf.shape[0]}")
     # lambda x add the % Reads column to name column
-    # df_full['name'] = df_full.apply(lambda x: f"{x['name']} ({x['% Reads']:.2f}%)", axis=1)
     df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
         "name": "Detected Organism",
@@ -845,6 +881,7 @@ def main():
         df_potentials,
         df_unidentified,
         df_commensal,
+        df_high_cons_low_conf,
         plotbuffer,
         version,
         missing_samples,
@@ -858,4 +895,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
