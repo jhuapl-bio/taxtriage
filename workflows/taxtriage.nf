@@ -416,8 +416,6 @@ workflow TAXTRIAGE {
     )
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
-
-
     PYCOQC(
         ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
             meta, reads -> meta.sequencing_summary
@@ -565,6 +563,7 @@ workflow TAXTRIAGE {
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
     ch_assembly_analysis = Channel.empty()
+    ch_fastas = Channel.empty()
 
     // If you use a local genome Refseq FASTA file
     // if ch_refernece_fasta is empty
@@ -590,34 +589,33 @@ workflow TAXTRIAGE {
                 return [meta, null, null, null, null, null, null,  []]
             }
         }
-        ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bedgraphs = ALIGNMENT.out.bedgraphs
-        ch_depth = ALIGNMENT.out.depth
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+        ch_alignment_outmerg = ALIGNMENT.out.bams
 
         ch_alignment_outmerg
             .join(ch_mapped_assemblies, by: 0, remainder: true)
             .filter{
                 it[1]
             }
-            .map { meta, bam, bai, depth, mapping ->
+            .map { meta, bam, bai, mapping ->
                 // If mapping is not present, replace it with null or an empty placeholder
-                return [meta, bam, bai, depth, mapping ?: ch_empty_file]
+                return [meta, bam, bai, mapping ?: ch_empty_file]
             }.set{ ch_combined }
 
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
+        ch_fastas = REFERENCE_PREP.out.fastas
 
         ch_postalignmentfiles = ch_combined.map {
-            meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+            meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
             it[1]
         }
         ch_postalignmentfiles = ch_combined.map {
-            meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+            meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
             it[1]
         }
@@ -646,14 +644,16 @@ workflow TAXTRIAGE {
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
             // Define a channel that emits a placeholder value if ch_kraken2_report is empty
-
             input_alignment_files = ALIGNMENT.out.bams
                 .join(ch_mapped_assemblies)
                 .join(ch_bedgraphs)
                 .join(ch_covfiles)
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
+                .join(ch_fastas)
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
 
             REPORT(

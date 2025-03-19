@@ -24,7 +24,7 @@ process ALIGNMENT_PER_SAMPLE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(pathogens_list)
     file assembly
 
     output:
@@ -42,6 +42,7 @@ process ALIGNMENT_PER_SAMPLE {
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     def assemblyi = assembly ? " -j ${assembly} " : " "
     def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
+    def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
     // if k2_report exists and is not null add --k2 flag
     // if k2_report != NO_FILE, add --k2 flag
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
@@ -50,6 +51,9 @@ process ALIGNMENT_PER_SAMPLE {
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
     def output_dir = "search_results"
+
+    /* groovylint-disable-next-line UnnecessaryCollectCall */
+    def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
     def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " --minhash_weight 0.05 "
     def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " --mapq_weight 0.0 "
     def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " --hmp_weight 0.0 "
@@ -58,6 +62,10 @@ process ALIGNMENT_PER_SAMPLE {
     def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
     def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
     def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
+    def sensitive = params.sensitive ? " --sensitive " : " "
+    def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
+    def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
+
     """
 
     match_paths.py \\
@@ -65,11 +73,11 @@ process ALIGNMENT_PER_SAMPLE {
         -o $output $bedgraph \\
         -s $id $assemblyi \\
         $type $read_count \\
-        --output_dir $output_dir \\
+        --output_dir $output_dir $fastas $cpu_count \\
         --scaled 8000 \\
         --alpha 1.5 \\
         --min_threshold 0.002 \\
-        -p $pathogens_list  $mapping $k2 \\
+        -p $pathogens_list  $mapping $k2 $sensitive $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
