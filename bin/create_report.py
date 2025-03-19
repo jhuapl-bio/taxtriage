@@ -573,8 +573,6 @@ def create_report(
     elements.append(subtext_para)
 
     elements.append(horizontal_line)
-
-    ##########################################################################################
     ##########################################################################################
     if not df_high_cons_low_conf.empty:
         # print only rows in df_identified with Gini Coeff above 0.2
@@ -593,21 +591,21 @@ def create_report(
                 columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=False)
         table = make_table(
             data_yes,
             table_style=table_style
         )
         # # Add the title and subtitle
-        title = Paragraph("High Consequence Low Confidence", title_style)
-        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence", subtitle_style)
+        title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
+        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
         elements.append(table)
-        # elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 12))
 
-
+    ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
