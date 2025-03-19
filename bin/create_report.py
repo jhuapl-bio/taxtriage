@@ -415,10 +415,10 @@ def create_report(
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        # if (df_identified_paths['Group'].nunique() == 1 ):
-        #     idx_grp = columns_yes.index("Group")
-        #     if idx_grp:
-        #         columns_yes.pop(idx_grp)
+        if (df_identified_paths['Group'].nunique() == 1 ):
+            idx_grp = columns_yes.index("Group")
+            if idx_grp:
+                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -582,10 +582,10 @@ def create_report(
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        # if (df_high_cons_low_conf['Group'].nunique() == 1 ):
-        #     idx_grp = columns_yes.index("Group")
-        #     if idx_grp:
-        #         columns_yes.pop(idx_grp)
+        if (df_high_cons_low_conf['Group'].nunique() == 1 ):
+            idx_grp = columns_yes.index("Group")
+            if idx_grp:
+                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
@@ -618,13 +618,12 @@ def create_report(
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
-
-        # if (df_potentials['Group'].nunique() == 1 ):
-        #     # get index of Group
-        #     index_group = columns_opp.index("Group")
-        #     if index_group:
-        #         # remove group from list
-        #         columns_opp.pop(index_group)
+        if (df_potentials['Group'].nunique() == 1 ):
+            # get index of Group
+            index_group = columns_opp.index("Group")
+            if index_group:
+                # remove group from list
+                columns_opp.pop(index_group)
 
         data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
@@ -652,10 +651,10 @@ def create_report(
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        # if (df_identified_others['Group'].nunique() == 1 ):
-        #     idx_grp = columns_yes.index("Group")
-        #     if idx_grp:
-        #         columns_yes.pop(idx_grp)
+        if (df_identified_others['Group'].nunique() == 1 ):
+            idx_grp = columns_yes.index("Group")
+            if idx_grp:
+                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=False)
@@ -755,9 +754,7 @@ def main():
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
     # print rows where "Monkeypox" in "organism" column
     # df_full = df_full[df_full['Detected Organism'].str.contains("Monkeypox")]
-    # df_grouped = df_full.groupby("Group").apply(lambda x: x.to_dict(orient="records")).reset_index(name="Group Members")
-    # print(df_grouped)
-    # exit()
+    # print(df_full)
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
