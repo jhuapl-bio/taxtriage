@@ -207,7 +207,7 @@ include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_table
 include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include { REFERENCE_REHEADER } from '../modules/local/reheader'
-
+include { KHMER_NORMALIZEBYMEDIAN } from '../modules/local/khmer'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -416,12 +416,6 @@ workflow TAXTRIAGE {
     )
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
-    PYCOQC(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
-            meta, reads -> meta.sequencing_summary
-        }
-    )
-
     // // // //
     // // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
@@ -432,19 +426,6 @@ workflow TAXTRIAGE {
     ch_diamond_output = Channel.empty()
     params.pathogens ? ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true) : ''
 
-
-    COUNT_READS(ch_reads)
-    readCountChannel = COUNT_READS.out.count
-    // Update the meta with the read count by reading the file content
-    readCountChannel.map { meta, countFile, reads ->
-        def count = countFile.text.trim().toInteger()
-        // Update meta map by adding a new key 'read_count'
-        meta.read_count = count
-        return [meta, reads]
-    }.set{ ch_reads }
-
-
-    // if (params.trim) {
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
     TRIMGALORE(
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
@@ -458,9 +439,35 @@ workflow TAXTRIAGE {
     ch_porechop_out  = PORECHOP.out.reads
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
+    ch_reads.view()
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
+    // Create an empty file if se_reads is null
+    // When calling the module, pass the empty file instead of null:
+    if (params.downsample) {
+        KHMER_NORMALIZEBYMEDIAN(
+            ch_reads
+        )
+        ch_reads = KHMER_NORMALIZEBYMEDIAN.out.reads
+        ch_versions = ch_versions.mix(KHMER_NORMALIZEBYMEDIAN.out.versions)
+    }
+    COUNT_READS(ch_reads)
+    readCountChannel = COUNT_READS.out.count
+    // Update the meta with the read count by reading the file content
+    readCountChannel.map { meta, countFile, reads ->
+        def count = countFile.text.trim().toInteger()
+        // Update meta map by adding a new key 'read_count'
+        meta.read_count = count
+        return [meta, reads]
+    }.set{ ch_reads }
 
+    //////////////////// RUN PYCOQC on any seq summary file ////////////////////
 
+    PYCOQC(
+        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
+            meta, reads -> meta.sequencing_summary
+        }
+    )
+    //////////////////// RUN FASTP to get qc plots and output reads ////////////////////
     if (!params.skip_fastp) {
         FASTP(
             ch_reads,
@@ -474,11 +481,13 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
     }
 
-
+    //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
     HOST_REMOVAL(
         ch_reads,
         params.genome
     )
+    //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
+
     ch_reads = HOST_REMOVAL.out.unclassified_reads
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
@@ -491,6 +500,7 @@ workflow TAXTRIAGE {
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
+    //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
     if (!params.skip_plots) {
         FASTQC(
             ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
@@ -515,7 +525,7 @@ workflow TAXTRIAGE {
     } else{
         distributions = Channel.fromPath(params.distributions)
     }
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////RUN CLASSIFIER(S) for top hits calculations//////////////////////////////////////////////////////////////////
     CLASSIFIER(
         ch_filtered_reads,
         ch_db,
@@ -540,7 +550,7 @@ workflow TAXTRIAGE {
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////RUN REFERENCE pull or processing/////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,
@@ -565,15 +575,6 @@ workflow TAXTRIAGE {
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
 
-    // If you use a local genome Refseq FASTA file
-    // if ch_refernece_fasta is empty
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // Run the COUNT_READS process and capture its output in readCountChannel.
-
-    // For demonstration, print out the updated metadata.
-    // finalMetaChannel.subscribe { updatedMeta ->
-    //     println "Updated meta for sample ${updatedMeta.id}: ${updatedMeta}"
-    // }
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {

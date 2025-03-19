@@ -67,9 +67,9 @@
                     "description": "Pull a random number of reads from the reads to be analyzed. Useful for testing only. ",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "demux": {
+                "downsample": {
                     "type": "boolean",
-                    "description": "Run Demux on a folder of fastq files",
+                    "description": "Downsample your fastq file(s) using khmer",
                     "fa_icon": "fas fa-file-signature"
                 }
             }
