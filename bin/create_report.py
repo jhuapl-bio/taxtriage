@@ -280,7 +280,7 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
         data.append(row_data)
     return data
 
-def return_table_style(df, color_pathogen=False):
+def return_table_style(df=pd.DataFrame(), color_pathogen=False):
     # Start with the basic style
     table_style = TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.gray), # header
@@ -293,14 +293,11 @@ def return_table_style(df, color_pathogen=False):
         # Placeholder for cells to color (row_index, col_index) format
         cells_to_color = []
         colorindexcol = 1
-
-        sampleindx = df.columns.get_loc('Microbial Category')
         # Example post-processing to mark cells
+        i=0
         for row_idx, row in df.iterrows():
             val = row['Microbial Category']
             # if nan then set to empty string
-            # if pd.isna(sites):
-            #     sites = ""
             derived = row['AnnClass']
             # Get Sample Type value from row
             # sampletype = row['Specimen Type']
@@ -317,8 +314,9 @@ def return_table_style(df, color_pathogen=False):
             else:
                 color = "white"
             # Ensure indices are within the table's dimensions
-            style_command = ('BACKGROUND', (colorindexcol, row_idx+1), (colorindexcol, row_idx+1), color)  # Or lightorange based on condition
+            style_command = ('BACKGROUND', (colorindexcol, i+1), (colorindexcol, i+1), color)  # Or lightorange based on condition
             table_style.add(*style_command)
+            i+=1
     else:
         table_style.add(*('BACKGROUND', (0,1), (-1,-1), colors.white))
     return table_style
@@ -417,10 +415,10 @@ def create_report(
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        if (df_identified_paths['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
+        # if (df_identified_paths['Group'].nunique() == 1 ):
+        #     idx_grp = columns_yes.index("Group")
+        #     if idx_grp:
+        #         columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -444,7 +442,6 @@ def create_report(
         )
         elements.append(title)
         elements.append(subtitle)
-        elements.append(Spacer(1, 12))
         extra_text = Paragraph(f"★ denotes high consequence pathogens")
         elements.append(extra_text)
         elements.append(Spacer(1, 12))
@@ -453,7 +450,7 @@ def create_report(
     ##########################################################################################
 
     if min_conf:
-        subtitle = Paragraph(f"Samples with confidence score below {str(min_conf)} were filtered out. See the `paths.txt` file for a full list of organisms", subtitle_style)
+        subtitle = Paragraph(f"See the <b>`report/all.organisms.report.txt`</b> file for a full list of everything identified", subtitle_style)
         elements.append(subtitle)
 
     # Adding regular text
@@ -585,24 +582,30 @@ def create_report(
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        if (df_high_cons_low_conf['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
+        # if (df_high_cons_low_conf['Group'].nunique() == 1 ):
+        #     idx_grp = columns_yes.index("Group")
+        #     if idx_grp:
+        #         columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=False)
-        table = make_table(
-            data_yes,
-            table_style=table_style
-        )
+        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+
         # # Add the title and subtitle
         title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
         subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
-        elements.append(table)
+        # if data shape is >=1 then append, otherwise make text saying it is empty
+        if df_high_cons_low_conf.shape[0] >= 1:
+            table = make_table(
+                data_yes,
+                table_style=table_style
+            )
+            elements.append(table)
+        else:
+            elements.append(Paragraph("No High Consequence Low Confidence Organisms", subtext_style))
+
         elements.append(Spacer(1, 12))
 
     ##########################################################################################
@@ -615,12 +618,13 @@ def create_report(
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
-        if (df_potentials['Group'].nunique() == 1 ):
-            # get index of Group
-            index_group = columns_opp.index("Group")
-            if index_group:
-                # remove group from list
-                columns_opp.pop(index_group)
+
+        # if (df_potentials['Group'].nunique() == 1 ):
+        #     # get index of Group
+        #     index_group = columns_opp.index("Group")
+        #     if index_group:
+        #         # remove group from list
+        #         columns_opp.pop(index_group)
 
         data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
@@ -648,10 +652,10 @@ def create_report(
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        if (df_identified_others['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
+        # if (df_identified_others['Group'].nunique() == 1 ):
+        #     idx_grp = columns_yes.index("Group")
+        #     if idx_grp:
+        #         columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=False)
@@ -751,7 +755,9 @@ def main():
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
     # print rows where "Monkeypox" in "organism" column
     # df_full = df_full[df_full['Detected Organism'].str.contains("Monkeypox")]
-    # print(df_full)
+    # df_grouped = df_full.groupby("Group").apply(lambda x: x.to_dict(orient="records")).reset_index(name="Group Members")
+    # print(df_grouped)
+    # exit()
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
@@ -836,7 +842,7 @@ def main():
     # df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
     df_high_cons_low_conf = pd.DataFrame()
     if args.min_conf and args.min_conf > 0:
-        df_high_cons_low_conf = df_full[df_full['High Consequence'] == True & (df_full['TASS Score'].astype(float) < args.min_conf)]
+        df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
     df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")

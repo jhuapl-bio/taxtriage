@@ -439,7 +439,6 @@ workflow TAXTRIAGE {
     ch_porechop_out  = PORECHOP.out.reads
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
-    ch_reads.view()
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
     // Create an empty file if se_reads is null
     // When calling the module, pass the empty file instead of null:

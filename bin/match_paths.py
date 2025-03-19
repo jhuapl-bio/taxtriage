@@ -2499,7 +2499,6 @@ def calculate_scores(
         if refpath:
             is_pathogen, isPathi, direct_match, high_cons = pathogen_label(refpath)
             isPath = isPathi
-            print(ref, "<<<<", high_cons)
             taxid = refpath.get(ref, count.get(ref, ""))
             is_annotated = "Yes"
             commsites = refpath.get('commensal_sites', [])
@@ -2561,12 +2560,6 @@ def calculate_scores(
 
             if callfamclass == "" or len(listpathogensstrains) > 0:
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-            # if "Fenollaria massiliensis" in formatname:
-            #     print(is_pathogen,"<")
-            # if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
-            #     is_pathogen = "Primary"
-            # if "Fenollaria massiliensis" in formatname:
-            #     print(is_pathogen,"<<<", listpathogensstrains)
 
         breadth_total = count.get('breadth_total', 0)
         countreads = sum(count['numreads'])
