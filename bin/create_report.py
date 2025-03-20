@@ -408,17 +408,12 @@ def create_report(
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
             "HHS Percentile",
-            "Group",
             "K2 Reads"
         ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
-        # if all of Group is Unknown, then remove it from list
-        if (df_identified_paths['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
+
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -525,9 +520,10 @@ def create_report(
         "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
         "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
         "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
-        "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species.",
+        "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
         "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
+        "HHS Percentile: What percentile the abundance falls under relative to the given sample type based on HHS NCBI taxonomy classification information"
     ]
 
     # Create bullet points for each column explanation
@@ -577,15 +573,12 @@ def create_report(
                        "Detected Organism",
                        'TASS Score',
                        "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
-                       "HHS Percentile", "Group", "K2 Reads"]
+                       "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        if (df_high_cons_low_conf['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
+
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
@@ -614,16 +607,10 @@ def create_report(
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "Group", "K2 Reads"
+                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
-        if (df_potentials['Group'].nunique() == 1 ):
-            # get index of Group
-            index_group = columns_opp.index("Group")
-            if index_group:
-                # remove group from list
-                columns_opp.pop(index_group)
 
         data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
@@ -646,15 +633,11 @@ def create_report(
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
-                        "HHS Percentile", "Group", "K2 Reads"]
+                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        if (df_identified_others['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=False)
@@ -681,7 +664,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "Group", "K2 Reads"]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -752,13 +735,12 @@ def main():
         taxdump_dict = load_taxdump(args.taxdump)
     df_full = import_data(args.input)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
-    # print rows where "Monkeypox" in "organism" column
-    # df_full = df_full[df_full['Detected Organism'].str.contains("Monkeypox")]
-    # print(df_full)
+    # for Detected Organism, add (Group) if it is not null or not Unknown
+    df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']} ({x['Group']})" if x['Group'] != "Unknown" else x["Taxonomic ID #"], axis=1)
+    df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
-        df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
         df_full = df_full.reset_index(drop=False)
         df_full.to_csv(args.output_txt, sep="\t", index=True, index_label="Index")
     # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
@@ -770,7 +752,7 @@ def main():
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
     # Sort on # Reads aligned
-    df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
+    df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
         if x['abundance'] == x['% Reads']:

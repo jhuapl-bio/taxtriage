@@ -322,6 +322,22 @@ workflow TAXTRIAGE {
         DOWNLOAD_PATHOGENS()
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
+    ch_taxdump_dir = Channel.empty()
+    ch_taxdump_nodes = Channel.empty()
+    ch_taxdump_names = Channel.empty()
+
+    if (params.download_taxdump){
+        DOWNLOAD_TAXDUMP()
+        ch_taxdump_nodes = DOWNLOAD_TAXDUMP.out.nodes
+    }
+    else if (params.taxdump){
+        // set ch_taxdump_nodes BUT add nodes.dmp to end as a file
+        ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
+    } else {
+        // set to empty_file
+        ch_taxdump_nodes = ch_empty_file
+    }
+
 
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
@@ -348,7 +364,6 @@ workflow TAXTRIAGE {
         }
     }
 
-    ch_taxdump_dir = Channel.empty()
     if (params.classifiers){
         // split params.classifier on command and optional space assign to list channel
         ch_classifier = params.classifiers.split(",\\s*")
@@ -661,6 +676,7 @@ workflow TAXTRIAGE {
                 ch_pathogens,
                 distributions,
                 ch_assembly_txt,
+                ch_taxdump_nodes,
                 all_samples
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))

@@ -5,7 +5,7 @@ report_comment: >
 # run_modules:
 # - custom_content
 # - kraken
-max_table_rows: 1000000
+max_table_rows: 1000
 export_plots: false
 custom_content:
   table_columns_name:
@@ -127,6 +127,12 @@ custom_data:
     description: "Confidence values for all organisms.<br> ★ Indicates a high consequence pathogen."
     helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary. "
     file_format: "tsv"
+  # paths:
+  #   section_name: "Confidence Metrics"
+  #   plot_type: "general_stats"
+  #   description: "Confidence values for all organisms.<br> ★ Indicates a high consequence pathogen."
+  #   helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary. "
+  #   file_format: "tsv"
   # krakenreport:
   #   section_name: "All Metagenomic Hits"
   #   plot_type: 'table'
@@ -162,7 +168,9 @@ sp:
   krona:
     fn: "*combined_krona_kreports.html"
   confidences:
-    fn: "*.report.txt"
+    fn: "*organisms.report.txt"
+  # paths:
+  #   fn: "*.organisms.report.txt"
 module_order:
   - confidences
   - krakenreport

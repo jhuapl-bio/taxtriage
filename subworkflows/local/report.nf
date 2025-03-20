@@ -28,6 +28,7 @@ workflow REPORT {
         pathogens_list
         distributions
         assemblyfile
+        ch_taxdump_nodes
         all_samples
     main:
         ch_pathogens_report = Channel.empty()
@@ -56,12 +57,14 @@ workflow REPORT {
 
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
-                false
+                false,
+                ch_taxdump_nodes
             )
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(distributions),
-                missing_samples
+                missing_samples,
+                ch_taxdump_nodes
             )
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
         }

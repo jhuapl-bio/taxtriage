@@ -91,6 +91,11 @@
                     "fa_icon": "fas fa-book",
                     "description": "Dont load db to memory, run from I/O"
                 },
+                "download_taxdump": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-download",
+                    "description": "Download the ncbi taxonomy database and decompress it. "
+                },
                 "download_db": {
                     "type": "boolean",
                     "fa_icon": "fas fa-download",
@@ -116,7 +121,7 @@
                 "taxdump": {
                     "type": "string",
                     "format": "file-path",
-                    "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
+                    "hint": "Path to a directory that contains ncbi taxonomy dmp files (must contain names.dmp, nodes.dmp)",
                     "description": "",
                     "fa_icon": "fas fa-file-signature"
                 },
