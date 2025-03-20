@@ -480,7 +480,7 @@ def create_report(
 
     # Create custom ListItems with colored bullets
     custom_list_items = [
-        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], )
+        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], bulletFontSize=9 )
         for idx, item in enumerate(bullet_list_items)
     ]
 
@@ -513,7 +513,9 @@ def create_report(
     bullet_list = ListFlowable(
         [ListItem(Paragraph(item, subtext_style)) for item in bullet_list_items],
         bulletType='bullet',
-        start='circle'
+        start='circle',
+        # size of bullet
+        bulletFontSize=9
     )
     elements.append(bullet_list)
 
@@ -543,7 +545,8 @@ def create_report(
     bullet_list = ListFlowable(
         [ListItem(item) for item in bullet_list_items],
         bulletType='bullet',
-        start='circle'
+        start='circle',
+        bulletFontSize=9
     )
 
     # Append the bullet list to the elements
