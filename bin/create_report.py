@@ -397,6 +397,25 @@ def create_report(
 
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
+    title = Paragraph("Organism Discovery Report", title_style)
+    # Add the title and subtitle
+    if missing_samples:
+        samples_missing = f"Missing Samples due to filtering, failed step(s), or non-presence of organisms: <b>{', '.join(missing_samples)}</b><br></br> "
+    else:
+        samples_missing = ""
+    subtitle = Paragraph(f"This report was generated using TaxTriage \
+        <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of \
+        human-host pathogens.<br></br><br></br> \
+        {samples_missing}\
+        Samples with confidence score below <b>{str(min_conf)}</b> were filtered out. \
+        ",
+        subtitle_style
+    )
+    elements.append(title)
+    elements.append(subtitle)
+    extra_text = Paragraph(f"★ denotes high consequence pathogens")
+    elements.append(extra_text)
+    elements.append(Spacer(1, 12))
     if not df_identified_paths.empty:
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
@@ -421,27 +440,16 @@ def create_report(
             data_yes,
             table_style=table_style
         )
-        # Add the title and subtitle
-        if missing_samples:
-            samples_missing = f"Missing Samples due to filtering, failed step(s), or non-presence of organisms: <b>{', '.join(missing_samples)}</b><br></br> "
-        else:
-            samples_missing = ""
-        title = Paragraph("Organism Discovery Report", title_style)
-        subtitle = Paragraph(f"This report was generated using TaxTriage \
-            <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of \
-            human-host pathogens.<br></br><br></br> \
-            {samples_missing}\
-            Samples with confidence score below <b>{str(min_conf)}</b> were filtered out. \
-            ",
-            subtitle_style
-        )
-        elements.append(title)
-        elements.append(subtitle)
-        extra_text = Paragraph(f"★ denotes high consequence pathogens")
-        elements.append(extra_text)
-        elements.append(Spacer(1, 12))
+
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
+    else:
+        # Make a large message saying that no pathogen was found above min confidence
+        title = Paragraph("No Primary Pathogens Found Above TASS Score Threshold", title_style)
+        subtitle = Paragraph(f"No pathogens were found above the minimum confidence score of <b>{str(min_conf)}</b> in the given samples. <br></br>Consider lowering the confidence score OR looking at the <b>all.organisms.report.txt</b> file or <b>MultiQC</b> report HTML file for more information.", subtitle_style)
+        elements.append(title)
+        elements.append(subtitle)
+
     ##########################################################################################
 
     if min_conf:
