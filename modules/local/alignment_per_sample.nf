@@ -16,7 +16,7 @@
 // #
 process ALIGNMENT_PER_SAMPLE {
     tag "$meta.id"
-    label 'process_suphigh'
+    label 'process_standard'
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
