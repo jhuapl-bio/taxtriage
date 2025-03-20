@@ -38,7 +38,7 @@ workflow ASSEMBLY {
         ch_diamond_analysis = Channel.empty()
         ch_assembly_alignment = Channel.empty()
         ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
-        if (params.use_denovo){
+        if (params.use_denovo || params.use_diamond){
             // branch long and short reads
             postalignmentfiles.branch {
                 shortreads: it[0].platform =~ 'ILLUMINA'

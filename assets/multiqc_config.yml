@@ -28,6 +28,7 @@ table_columns_visible:
     "Breadth Weight Score": False
     "Parent K2 Reads": False
     "Status": False
+    "High Consequence": False
     "isSpecies": False
     "AnnClass": False
     "% Aligned Reads": False
@@ -55,7 +56,7 @@ custom_table_header_config:
     "Specimen ID":
       description: "The sample name you provided in your sample sheet"
     "Detected Organism":
-      description: "The organism detected by the pipeline in the given sample"
+      description: "The organism detected by the pipeline in the given sample. ★ indicates high consequence"
     "Microbial Category":
       description: "The microbial category of the detected organism. Options are Primary, Opportunistic, Potential, or Commensal. Unknowns are also there if the organism isn't annotated in the TaxTriage Pathogen sheet"
     "% Reads":
@@ -100,6 +101,9 @@ table_cond_formatting_rules:
       - s_eq: "Commensal"
     neutral:
       - s_eq: "Unknown"
+  Detected_Organism:
+    lred:
+      - s_contains: "★"
   TASS_Score:
     pass:
       - ge: 0.7
@@ -120,8 +124,8 @@ custom_data:
   confidences:
     section_name: "Confidence Metrics"
     plot_type: "table"
-    description: "Confidence values for all organisms. "
-    helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary"
+    description: "Confidence values for all organisms.<br> ★ Indicates a high consequence pathogen."
+    helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary. "
     file_format: "tsv"
   # krakenreport:
   #   section_name: "All Metagenomic Hits"
