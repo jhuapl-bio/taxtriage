@@ -1545,6 +1545,7 @@ def main():
                 sensitive=args.sensitive,
                 cpu_count=args.cpu_count,
                 jump_threshold = args.jump_threshold,
+                gap_allowance=args.gap_allowance
             )
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
@@ -1593,7 +1594,9 @@ def main():
         alignments_to_remove=alignments_to_remove,
     )
 
+
     assembly_to_accession = defaultdict(set)
+    taxid_to_accession = defaultdict(int)
     if args.match and os.path.exists(matcher):
         # open the match file and import the match file
         header = True
@@ -1627,12 +1630,13 @@ def main():
                     reference_hits[accession]['taxid'] = taxid
                 reference_hits[accession]['name'] = name
                 reference_hits[accession]['assembly'] = assembly
+                taxid_to_accession[accession] = taxid
                 if accession not in assembly_to_accession[assembly]:
                     assembly_to_accession[assembly].add(accession)
                 i+=1
 
         f.close()
-    seen = dict()
+    taxid_to_parent = defaultdict(int)
     if args.assembly:
         i=0
         with open(args.assembly, 'r') as f:
@@ -1649,8 +1653,8 @@ def main():
                     name = splitline[7]
                     strain = splitline[8].replace("strain=", "")
                     isolate = splitline[9]
-
                     isSpecies = False if species_taxid != taxid else True
+                    taxid_to_parent[taxid] = species_taxid
                     # fine value where assembly == accession from reference_hits
                     if accession in assembly_to_accession:
                         for acc in assembly_to_accession[accession]:
@@ -1660,6 +1664,7 @@ def main():
                                     reference_hits[acc]['toplevelkey'] = species_taxid
                                 else:
                                     reference_hits[acc]['toplevelkey'] = taxid
+                                reference_hits[acc]['species_taxid'] = species_taxid
                                 current_strain = strain  # Start with the original strain value
                                 if current_strain == "na":
                                     current_strain = "≡"
@@ -1673,30 +1678,26 @@ def main():
     final_format = defaultdict(dict)
     seen = dict()
     for k, v in reference_hits.items():
+        v['species_taxid'] = taxid_to_parent.get(v.get('taxid'), v.get('taxid'))
         if not v.get('toplevelkey'):
             # check if taxid is present, and if so then set it to that, and if that isnt then set it to the accession
             if v.get('taxid', None):
                 v['toplevelkey'] = v['taxid']
             else:
                 v['toplevelkey'] = k
+
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
-            value['accession'] = key
-            if 'toplevelkey' in value and value['toplevelkey']:
-                valtoplevel = value['toplevelkey']
-            else:
-                valtoplevel = key
-            valkey = value['accession']
-            if value['numreads'] > 0 and value['meandepth'] > 0:
+            key = value.get('accession')
+            valtoplevel = value.get('toplevelkey', key)
+            valkey = key
+            if value.get('numreads', 0)> 0 and  value.get('meandepth', 0) > 0:
                 final_format[valtoplevel][valkey]= value
     else:
         # We don't aggregate, so do final format on the organism name only
         for key, value in reference_hits.items():
-            if 'toplevelkey' in value and value['toplevelkey']:
-                valtoplevel = value['toplevelkey']
-            else:
-                valtoplevel = key
+            valtoplevel = value.get('toplevelkey', key)
             valkey = key
             # if value['numreads'] > 0 and value['meandepth'] > 0:
             final_format[valtoplevel][valkey] = value
@@ -1780,6 +1781,7 @@ def main():
                 species_aggregated[top_level_key] = {
                     'key': top_level_key,
                     'numreads': [],
+                    'species_taxid': data.get('species_taxid', None),
                     'mapqs': [],
                     'lengths': [],
                     'depths': [],
@@ -1795,7 +1797,7 @@ def main():
                     "isSpecies": True if  args.compress_species  else data.get('isSpecies', False),
                     'strainslist': [],
                     'covered_regions': 0,
-                    'name': data['name'],  # Assuming the species name is the same for all strains
+                    'name': data.get('name', ""),  # Assuming the species name is the same for all strains
             }
 
 
@@ -1829,6 +1831,11 @@ def main():
                             1,
                             (c1+c2) / 2
                         )
+                        # weight it so that any value less than 0.9 is even lower by getting the log value
+                        if comparison_value < 0.75:
+                            # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
+                            comparison_value = comparison_value ** 3.3
+
                         data['comparison'] =  ( comparison_value  )
                     else:
                         data['comparison'] = 1
@@ -2498,10 +2505,7 @@ def calculate_scores(
 
         if refpath:
             is_pathogen, isPathi, direct_match, high_cons = pathogen_label(refpath)
-            isPath = isPathi
-            taxid = refpath.get(ref, count.get(ref, ""))
             is_annotated = "Yes"
-            commsites = refpath.get('commensal_sites', [])
             status = refpath.get('status', "N/A")
             formatname = refpath.get('name', formatname)
             if is_pathogen == "Commensal":
@@ -2514,7 +2518,14 @@ def calculate_scores(
             annClass = "Direct"
         else:
             annClass = "Derived"
-
+            # take the species_taxid and see if it is a pathogen
+            if ref != count.get('species_taxid'):
+                ref_spec = pathogens.get(count.get('species_taxid'), None)
+                if ref_spec:
+                    is_pathogen_spec, isPathi_spec, direct_match_spec, high_cons_spec = pathogen_label(ref_spec)
+                    print("____________", is_pathogen_spec, isPathi_spec, direct_match_spec, high_cons_spec, ref_spec)
+                    is_pathogen = is_pathogen_spec
+                    high_cons = high_cons_spec
         listpathogensstrains = []
         fullstrains = []
         count['annClass'] = annClass
@@ -2624,7 +2635,6 @@ def calculate_scores(
 
             )
         )
-
     return final_scores
 
 def write_to_tsv(output_path, final_scores, header):
