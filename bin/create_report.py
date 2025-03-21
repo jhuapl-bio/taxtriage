@@ -180,6 +180,7 @@ def import_data(inputfiles ):
     # df['Organism'] = df["Detected Organism"]
     # set if putative to it with *  in Detected organism using lambda x
     df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
+    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}°' if x['AnnClass'] == 'Derived' else x["Detected Organism"], axis=1)
     df['Detected Organism'] = df.apply(lambda x: f'★ {x["Detected Organism"]}' if x['High Consequence'] else x["Detected Organism"], axis=1)
     df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
@@ -507,7 +508,7 @@ def create_report(
         "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections.",
         "Commensal: Organisms typically found in the human microbiota.",
         "Potential: Organisms that have been associated with disease states but are not extensively studied.",
-        "≡: Indicates a pathogenic subspecies/serotype/strain/etc with the same name as the species listed, just different taxids."
+        "°: Indicates a pathogenic subspecies/serotype/strain/etc with the same name as the species listed, just different taxids."
     ]
 
     bullet_list = ListFlowable(

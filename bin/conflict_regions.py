@@ -1476,7 +1476,6 @@ def compute_gini(values: List[float]) -> float:
     if cumulative == 0:
         return 0.0
     return (2 * cumulative_values) / (n * cumulative) - (n + 1) / n
-
 def merge_bedgraph_regions(
     intervals: pd.DataFrame,
     merging_method: str = 'jump',
@@ -1485,7 +1484,7 @@ def merge_bedgraph_regions(
     max_length: Optional[int] = None,
     value_diff_tolerance: Optional[float] = None,
     breadth_allowance: Optional[int] = 1000,
-    gap_allowance: Optional[int] = 0.1,
+    gap_allowance: Optional[float] = 0.1,
     reflengths: Optional[Dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
@@ -1497,49 +1496,50 @@ def merge_bedgraph_regions(
     :param max_group_size: Maximum number of intervals to merge at once
     :param max_length: (Optional) Maximum length of merged interval
     :param value_diff_tolerance: (Optional) Maximum allowed difference in average values
-    :param jump_threshold: (Optional) For 'jump' method; if None and max_stat_threshold not provided, the median jump is computed.
     :param breadth_allowance: Allowable gap (in bp) between intervals to consider merging.
-                              This applies only to the gap between the current buffer's end and the new interval's start.
-    :return: pandas DataFrame with merged intervals and mean depth
+                              (Used only when reflengths are provided.)
+    :param gap_allowance: If reflengths is provided, the allowed gap is computed as ref_length * gap_allowance.
+                          Otherwise, if reflengths is None, gap condition will always pass.
+    :param reflengths: (Optional) Dictionary mapping chromosome names to their reference lengths.
+                      If not provided, the gap check will not restrict merging.
+    :return: pandas DataFrame with merged intervals and mean depth.
     """
     if intervals.empty:
         return pd.DataFrame(columns=['chrom', 'start', 'end', 'mean_depth'])
 
     # Ensure the DataFrame is sorted by chromosome and start position.
     intervals = intervals.sort_values(['chrom', 'start']).reset_index(drop=True)
-    # add the reference length from reflengths dict as new column
-    if reflengths:
+
+    # If reference lengths are provided, use them. Otherwise, set to infinity so gap check does not interfere.
+    if reflengths is not None:
         intervals['ref_length'] = intervals['chrom'].map(reflengths)
     else:
-        intervals['ref_length'] = -1
+        intervals['ref_length'] = float('inf')
+
+    # Compute allowed gap per chromosome.
+    # (If reflengths is provided, allowed gap = ref_length * gap_allowance.
+    #  Otherwise, since ref_length is infinity, gap condition is never triggered.)
     percent_dict = {}
-    # get unique ref_lenths and chroms, get 1% reflength and assing to dict as chrom = 1% of ref_length
     for chrom in intervals['chrom'].unique():
         ref_length = intervals[intervals['chrom'] == chrom]['ref_length'].iloc[0]
         percent_dict[chrom] = ref_length * gap_allowance
-    # Precompute jump_threshold for the 'jump' method if not provided.
+
+    # Precompute jump threshold for the 'jump' method.
     if merging_method == 'jump':
         if max_stat_threshold is not None:
-            jump_threshold = max_stat_threshold
+            effective_jump_threshold = max_stat_threshold
         else:
-            # Fill NA depths with 0 and compute the median absolute difference per chromosome
+            # Fill NA depths with 0 and compute the 97.5th quantile of depth differences per chromosome.
             intervals['depth'] = intervals['depth'].fillna(0)
-            # jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
-            #     lambda x: x[x != 0].diff().abs().dropna().mean()
-            # ).mean()
-            # jump_threshold = math.ceil(jump_threshold) + 1
-            # get mean of depths for chrom
-            # jump_threshold_mean = intervals.groupby('chrom', observed=True)['depth'].mean().mean()
-            # # get 75th percentil of depths for chrom
             try:
-                jump_threshold_sevfive = intervals.groupby('chrom', observed=True)['depth'].quantile(0.975).mean()
-                jump_threshold = math.ceil(jump_threshold_sevfive) + 1
+                q = intervals.groupby('chrom', observed=True)['depth'].quantile(0.975).mean()
+                effective_jump_threshold = math.ceil(q) + 1
             except Exception as ex:
                 print(ex)
-                jump_threshold = 200
+                effective_jump_threshold = 200
     else:
-        jump_threshold = None
-    # jump_threshold = 200
+        effective_jump_threshold = None
+
     merged_regions = []
     # Group intervals by chromosome.
     grouped = intervals.groupby('chrom', observed=True)
@@ -1584,8 +1584,8 @@ def merge_bedgraph_regions(
                     # Calculate the jump based on the last depth in the current buffer.
                     last_depth = buffer['depths'][-1]
                     jump = abs(new_depth - last_depth)
-                    # Merge only if the gap is within the per_ref AND the jump is within the jump_threshold.
-                    if gap > per_ref or jump > jump_threshold:
+                    # Merge only if the gap is within the allowed per_ref and the jump is within effective_jump_threshold.
+                    if gap > per_ref or jump > effective_jump_threshold:
                         can_merge = False
                 elif merging_method in ['variance', 'gini']:
                     current_depths = buffer['depths'] + [new_depth]
@@ -1725,13 +1725,13 @@ def determine_conflicts(
     bam_fs = pysam.AlignmentFile(input_bam, "rb")
     reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
 
-    print(f"Merging regions (using {stat_name} <= {threshold})...")
+    print(f"Merging regions (using {stat_name} <= {threshold}, Gap: {gap_allowance})...")
     start_time = time.time()
 
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=2_000, # Limit merges to x intervals
+        max_group_size=4_000_000, # Limit merges to x intervals
         merging_method=stat_name,
         reflengths=reflengths,
         gap_allowance = gap_allowance
@@ -1744,7 +1744,6 @@ def determine_conflicts(
     print(f"Length of original regions : {len(regions)})")
     print(f"Length of merged regions: {len(merged_regions)}")
     start = time.time()
-
     gt_performances = dict()
 
     reads_map = defaultdict(list)
