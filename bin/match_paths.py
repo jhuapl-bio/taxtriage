@@ -1832,9 +1832,9 @@ def main():
                             (c1+c2) / 2
                         )
                         # weight it so that any value less than 0.9 is even lower by getting the log value
-                        if comparison_value < 0.75:
-                            # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
-                            comparison_value = comparison_value ** 3.3
+                        # if comparison_value < 0.75:
+                        #     # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
+                        #     comparison_value = comparison_value ** 3.3
 
                         data['comparison'] =  ( comparison_value  )
                     else:
@@ -2522,8 +2522,7 @@ def calculate_scores(
             if ref != count.get('species_taxid'):
                 ref_spec = pathogens.get(count.get('species_taxid'), None)
                 if ref_spec:
-                    is_pathogen_spec, isPathi_spec, direct_match_spec, high_cons_spec = pathogen_label(ref_spec)
-                    print("____________", is_pathogen_spec, isPathi_spec, direct_match_spec, high_cons_spec, ref_spec)
+                    is_pathogen_spec, _,_, high_cons_spec = pathogen_label(ref_spec)
                     is_pathogen = is_pathogen_spec
                     high_cons = high_cons_spec
         listpathogensstrains = []
