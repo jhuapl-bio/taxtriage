@@ -12,6 +12,7 @@ process MINIMAP2_ALIGN {
     val bam_format
     val cigar_paf_format
     val cigar_bam
+    val minmapq
 
     output:
     tuple val(meta), path("*.paf"), optional: true, emit: paf
@@ -37,7 +38,7 @@ process MINIMAP2_ALIGN {
     
     def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
 
-    def minmapq = params.minmapq ? " -q ${params.minmapq} " :  ""
+    def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def I_value = "${(task.memory.toMega() * Math.min(0.8 / task.cpus, 0.8)).longValue()}M"
     def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
     def bam_output = bam_format ? "-a | samtools sort -@ ${cpu_limit} -m $S_value | samtools view $minmapq -@ ${cpu_limit} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
