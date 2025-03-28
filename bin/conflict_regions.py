@@ -138,7 +138,12 @@ def init_worker(bam_path, fasta_paths):
     global_bam = pysam.AlignmentFile(bam_path, "rb")
     # append all fasta to global_fasta
     for fasta_path in fasta_paths:
-        fasta = pysam.FastaFile(fasta_path)
+        # if ends with .gz treat as compressed
+        if fasta_path.endswith('.gz'):
+            # index fasta file
+            fasta = pysam.FastxFile(fasta_path )
+        else:
+            fasta = pysam.FastxFile(fasta_path)
         global_fastas.append(fasta)
 
 def process_region(region, kmer_size, scaled):
@@ -161,22 +166,26 @@ def process_region(region, kmer_size, scaled):
         seen_references = False
         for fasta in global_fastas:
             # check if chrom is in fasta first
-            if chrom not in fasta.references:
-                continue
-            if seen_references:
-                break
-            # get the reference header
-            seq = fasta.fetch(chrom, start, end)
-            if seq:
-                reads_in_region.append({
-                    "id": f"{chrom}:{start}-{end}",
-                    "seq": seq,
-                    "start": start,
-                    "end": end
-                })
+            # get references from pysam.fastxfile
+            for record in fasta:
+                # Check if the record corresponds to the desired chromosome
+                if record.name != chrom:
+                    continue
+
+                # Slice the sequence from 'start' to 'end'
+                seq = record.sequence[start:end]
+                if seq:
+                    reads_in_region.append({
+                        "id": f"{chrom}:{start}-{end}",
+                        "seq": seq,
+                        "start": start,
+                        "end": end
+                    })
                 args = [chrom, start, end, kmer_size, scaled, reads_in_region]
                 result = create_signature_for_single_region(args)
                 seen_references = True
+                # Once the desired record is found and processed, you can break out of the loop.
+                break
     else:
         try:
             for read in global_bam.fetch(chrom, start, end):
