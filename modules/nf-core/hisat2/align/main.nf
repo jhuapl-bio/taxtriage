@@ -12,6 +12,7 @@ process HISAT2_ALIGN {
     tuple val(meta), path(reads)
     tuple val(meta2), path(index)
     tuple val(meta3), file(splicesites)
+    val minmapq
     
     output:
     tuple val(meta), path("*.bam")                   , emit: bam
@@ -33,7 +34,7 @@ process HISAT2_ALIGN {
     } else if (meta.strandedness == 'reverse') {
         strandedness = meta.single_end ? '--rna-strandness R' : '--rna-strandness RF'
     }
-    def mmq = params.minmapq ? " -q ${params.minmapq}" : ''
+    def mmq = minmapq ? " -q ${minmapq}" : ''
     def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
     ss = "$splicesites" ? "--known-splicesite-infile $splicesites" : ''
     def seq_center = params.seq_center ? "--rg-id ${prefix} --rg SM:$prefix --rg CN:${params.seq_center.replaceAll('\\s','_')}" : "--rg-id ${prefix} --rg SM:$prefix"
