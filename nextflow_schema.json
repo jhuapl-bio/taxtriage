@@ -84,7 +84,7 @@
                     "type": "string",
                     "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
                     "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
-                    "default": "10239:10:S 2:10:S"
+                    "default": "10239:10:S 2:10:S 4751:5:S"
                 },
                 "low_memory": {
                     "type": "boolean",
