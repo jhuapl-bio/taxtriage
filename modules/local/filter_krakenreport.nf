@@ -17,6 +17,7 @@ process FILTERKRAKEN {
 
     output:
     path("*_filtered_mqc.tsv"), optional:true, emit: reports
+    path "versions.yml" , emit: versions
     /* path("species_filtered.tsv"), optional:true, emit: speciesreport
     path("genus_filtered.tsv"), optional:true, emit: genusreport
     path("family_filtered.tsv"), optional:true, emit: familyreport

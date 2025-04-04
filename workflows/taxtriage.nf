@@ -57,20 +57,17 @@ if (params.fastq_1) {
     def sampleName = params.sample ? params.sample : file(params.fastq_1).getBaseName().replaceFirst(/(\.fastq.*)/, '')
     // Use provided platform or default to ILLUMINA
     def platform = params.platform ? params.platform : 'ILLUMINA'
-
-
     // Build CSV content following the samplesheet format:
     // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
     // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
     def csvContent = """\
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
-${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary},${params.trim},${params.type}
+${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary ?: ''},${params.trim ?: 'false'},${params.type ?: 'unknown'}
 """
     // Write the CSV content to a temporary file in the workflow work directory
     def filenamecsv = "${workflow.workDir}/temp_samplesheet.csv"
     println "Creating temporary samplesheet: ${filenamecsv}"
     def tmpSheet = file(filenamecsv)
-    println "${tmpSheet}"
     tmpSheet.text = csvContent
     ch_input = tmpSheet
 } else if (params.input) {
@@ -211,6 +208,7 @@ include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
 include { FASTQC                      } from '../modules/nf-core/fastqc/main'
 include { PYCOQC                      } from '../modules/nf-core/pycoqc/main'
+include { COUNT_READS  } from '../modules/local/count_reads'
 include { PIGZ_COMPRESS } from '../modules/nf-core/pigz/compress/main'
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { TRIMGALORE } from '../modules/nf-core/trimgalore/main'
@@ -434,10 +432,6 @@ workflow TAXTRIAGE {
         ch_input
     )
     ch_reads = INPUT_CHECK.out.reads
-    ch_reads.view()
-
-
-
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
     // if commitId is null then set it to "local"
@@ -532,6 +526,7 @@ workflow TAXTRIAGE {
             ch_reads,
             [],
             false,
+            false,
             false
         )
         ch_reads = FASTP.out.reads
@@ -540,26 +535,25 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
     }
 
-    //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
+    // //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
     HOST_REMOVAL(
         ch_reads,
         params.genome
     )
-    //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
+    // //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
 
     ch_reads = HOST_REMOVAL.out.unclassified_reads
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
         SEQTK_SAMPLE(
-            ch_reads,
-            ch_subsample
+            ch_reads.map{ meta, reads -> [meta, reads, ch_subsample] },
         )
         ch_reads = SEQTK_SAMPLE.out.reads
     }
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
-    //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
+    // //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
     if (!params.skip_plots) {
         FASTQC(
             ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
@@ -569,8 +563,8 @@ workflow TAXTRIAGE {
             ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
         )
         ch_versions.mix(NANOPLOT.out.versions.first())
-        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]) )
-        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]) )
+        ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]))
+        ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]))
     }
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
@@ -585,7 +579,8 @@ workflow TAXTRIAGE {
     } else{
         distributions = Channel.fromPath(params.distributions)
     }
-    //////////////////////////////RUN CLASSIFIER(S) for top hits calculations//////////////////////////////////////////////////////////////////
+
+    // //////////////////////////////RUN CLASSIFIER(S) for top hits calculations//////////////////////////////////////////////////////////////////
     CLASSIFIER(
         ch_filtered_reads,
         ch_db,
@@ -620,7 +615,7 @@ workflow TAXTRIAGE {
         ch_pathogens
 
     )
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // ////////////////////////////////////////////////////////////////////////////////////////////////
 
     // todo - add alignment for contigs
     ch_mapped_assemblies = Channel.empty()
@@ -637,7 +632,7 @@ workflow TAXTRIAGE {
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
                 return [meta, fastas, map]
@@ -702,8 +697,8 @@ workflow TAXTRIAGE {
         ch_assembly_analysis_opt = ch_assembly_analysis.ifEmpty {
             Channel.value(null)
         }
-        ////////////////////////////////////////////////////////////////////////////////////////////////
-        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // ////////////////////////////////////////////////////////////////////////////////////////////////
+        // ////////////////////////////////////////////////////////////////////////////////////////////////
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
             // Define a channel that emits a placeholder value if ch_kraken2_report is empty
@@ -731,8 +726,6 @@ workflow TAXTRIAGE {
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
-
-
     }
 
     // CUSTOM_DUMPSOFTWAREVERSIONS(

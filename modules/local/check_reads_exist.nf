@@ -13,6 +13,7 @@ process CHECK_GZIPPED_READS {
     output:
     tuple val(meta), path("{emptyfile,minimum_reads_check}.txt"), optional: true, emit: check_result
 
+    when:
 
     script:
     // Create a Bash command string that checks each file
@@ -30,5 +31,6 @@ process CHECK_GZIPPED_READS {
         rm minimum_reads_check.tmp
         touch emptyfile.txt
     fi
+
     """
 }

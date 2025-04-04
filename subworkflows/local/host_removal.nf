@@ -65,11 +65,12 @@ workflow HOST_REMOVAL {
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
 
             FILTER_MINIMAP2(
-                ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
+                ch_reads.map{ meta, reads -> return [meta, reads] },
+                ch_reads.map{ meta, reads -> return [meta, ch_reference_fasta_removal] },
                 true,
                 true,
                 true,
-                false
+                false,
             )
 
             ch_bam_hosts = FILTER_MINIMAP2.out.bam
@@ -83,7 +84,7 @@ workflow HOST_REMOVAL {
             // Check the filtered output and fallback to original reads if filtered reads are empty
             CHECK_GZIPPED_READS(ch_filtered_reads, 4)
             ch_valid_reads = CHECK_GZIPPED_READS.out.check_result
-            ch_versions = ch_versions.mix(CHECK_GZIPPED_READS.out.versions)
+            // ch_versions = ch_versions.mix(CHECK_GZIPPED_READS.out.versions)
 
             ch_orig_reads = ch_valid_reads.filter({
                 it[1].name == 'emptyfile.txt'

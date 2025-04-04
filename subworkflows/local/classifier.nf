@@ -50,6 +50,7 @@ workflow CLASSIFIER {
         ch_tops = Channel.empty()
         ch_krona_plot = Channel.empty()
         ch_empty_file = file("$projectDir/assets/NO_FILE")
+
         if (!params.skip_kraken2){
             // // // // // //
             // // // // // // MODULE: Run Kraken2
@@ -66,6 +67,7 @@ workflow CLASSIFIER {
             )
 
             ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
+
             ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
             KREPORT_TO_KRONATXT(
                 ch_kraken2_report
@@ -75,14 +77,14 @@ workflow CLASSIFIER {
             ch_versions = KREPORT_TO_KRONATXT.out.versions
             ch_versions.view()
             ch_combined = ch_krona_txt
-                        .map{ it[1] }        // Get the file path
-                        .collect()            // Collect all file parts into a list
-                        .map { files ->
-                            // Join the files with single quotes and space
-                            // String joinedFiles = files.collect { "'$it'" }.join(' ')
-                            // if single file then make it [files] otherwise just files
-                            [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
-                        }
+                .map{ it[1] }        // Get the file path
+                .collect()            // Collect all file parts into a list
+                .map { files ->
+                    // Join the files with single quotes and space
+                    // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                    // if single file then make it [files] otherwise just files
+                    [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
+                }
             KRONA_KTIMPORTTEXT(
                 ch_combined
             )

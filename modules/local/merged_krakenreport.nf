@@ -13,6 +13,8 @@ process MERGEDKRAKENREPORT {
 
     output:
     path("*krakenreport*.merged_mqc.tsv"), optional:false, emit: krakenreport
+    path "versions.yml" , emit: versions
+
 
     script:
 

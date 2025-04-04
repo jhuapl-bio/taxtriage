@@ -6,18 +6,20 @@ include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
-include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
+include { SAMTOOLS_COVERAGE } from '../../modules/local/samtools_coverage'
 include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
 include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
+include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 
 workflow ALIGNMENT {
     take:
     fastq_reads
 
     main:
+
     ch_bams = Channel.empty()
     ch_fasta = Channel.empty()
     ch_pileups = Channel.empty()
@@ -32,7 +34,7 @@ workflow ALIGNMENT {
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
     ch_bedgraphs = Channel.empty()
-    ch_versions = Channel.empy()
+    ch_versions = Channel.empty()
 
     fastq_reads.set { ch_aligners }
     def idx = 0
@@ -40,7 +42,6 @@ workflow ALIGNMENT {
     ch_aligners
         .flatMap { meta, fastq, fastas, _ ->
             // Print 'fastas' for debugging purposes
-
             def outputs = []
 
             // Flatten 'fastas' by one level if it's nested
@@ -138,20 +139,20 @@ workflow ALIGNMENT {
         }
     }
     // Split the channel based on the condition
-    merged_bams_channel
-        .branch {
-            mergeNeeded: it[1].size() > 1
+    merged_bams_channel.branch {
+              mergeNeeded: it[1].size() > 1
             noMergeNeeded: it[1].size() == 1
-        }
-        .set { branchedChannels }
+    }.set { branchedChannels }
 
     SAMTOOLS_MERGE(
-        branchedChannels.mergeNeeded
+        branchedChannels.mergeNeeded,
+        branchedChannels.mergeNeeded.map{ m, bam -> [m, ''] },
+        branchedChannels.mergeNeeded.map{ m, bam -> [m, ''] },
     )
     //  // // Unified channel from both merged and non-merged BAMs
-    SAMTOOLS_MERGE.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
-    // ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
-    // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
+    SAMTOOLS_MERGE.out.bam.mix(branchedChannels.noMergeNeeded).set { collected_bams }
+    // // ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
+    // // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
         .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
         .map { joinedItems ->
@@ -161,27 +162,18 @@ workflow ALIGNMENT {
             return [item1[0], item2[1]] // Adjust based on how you need the merged items
         }.set{ collected_bams }
 
-    // // // Example to view the output
-<<<<<<< HEAD
-    SAMTOOLS_DEPTH(
-        collected_bams
-    )
-    // ch_versions = ch_versions.mix(SAMTOOLS_DEPTH.out.versions)
-=======
-    // SAMTOOLS_DEPTH(
-    //     collected_bams
-    // )
->>>>>>> single_input
+    // // ch_versions = ch_versions.mix(SAMTOOLS_DEPTH.out.versions)
     SAMTOOLS_INDEX(
         collected_bams
     )
-    // ch_versions = ch_versions.mix(SAMTOOLS_INDEX.out.versions)
+    ch_versions = ch_versions.mix(SAMTOOLS_INDEX.out.versions)
     collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
-
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
-    // ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
+    ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
+    ch_stats = SAMTOOLS_COVERAGE.out.coverage
+
     // Run the bedtools genomecoverage for downstream stats
     BEDTOOLS_GENOMECOVERAGE(
         sorted_bams_with_index.map{
@@ -189,37 +181,24 @@ workflow ALIGNMENT {
         }
     )
     // ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
-    // merge bedgraph on the same channel
+    // // merge bedgraph on the same channel
     BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
-    // ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
-
-    ch_stats = SAMTOOLS_COVERAGE.out.coverage
+    ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
 
     gcf_with_bam = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, map] })
 
     SAMTOOLS_HIST_COVERAGE(
         gcf_with_bam
     )
-    // ch_versions = ch_versions.mix(SAMTOOLS_HIST_COVERAGE.out.versions)
+    ch_versions = ch_versions.mix(SAMTOOLS_HIST_COVERAGE.out.versions)
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
-<<<<<<< HEAD
-=======
-
-
->>>>>>> single_input
     ch_bams =  sorted_bams_with_index
-    // ch_depths = SAMTOOLS_DEPTH.out.tsv
 
     emit:
         mpileup = ch_merged_mpileup
         bams = ch_bams
         stats = ch_stats
         bedgraphs = ch_bedgraphs
-<<<<<<< HEAD
-        // bamstats = ch_bamstats
         versions =  ch_versions
-=======
-        versions = ch_versions
->>>>>>> single_input
 }
