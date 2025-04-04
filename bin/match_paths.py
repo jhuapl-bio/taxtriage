@@ -165,6 +165,9 @@ def parse_args(argv=None):
         "-k",  "--compress_species", default=False,  help="Compress species to species level",  action='store_true'
     )
     parser.add_argument(
+        "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
+    )
+    parser.add_argument(
         "--ignore_missing_inputs", default=False,  help="If K2 or Dimaond output is not provided, dont reduce confidence",  action='store_true'
     )
     parser.add_argument(
@@ -208,6 +211,14 @@ def parse_args(argv=None):
         type=float,
         default=1.2,
         help="alpha value for lorenz curve with gini calculation",
+    )
+    parser.add_argument(
+        "-X",
+        '--cpu_count',
+        metavar="CPUCOUNT",
+        type=int,
+        default=None,
+        help="Overwrite the number of CPUs to use.",
     )
     parser.add_argument(
         "--hmp",
@@ -330,6 +341,8 @@ def parse_args(argv=None):
     parser.add_argument("--sigfile", required=False, type=str, help="Skip signatures comparison if provided ad load it instead")
     parser.add_argument("--config", required=False, type=str, help="Configuration file for generating a minimal output file for LIMS integration or other data import system. ")
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
+    parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
+    parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -681,7 +694,7 @@ def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
     pathogens_dict = {}
     # Open the file using the `with` statement
-    with open(pathogens_file, 'r', newline='', encoding='ISO-8859-1') as file:
+    with open(pathogens_file, 'r', newline='', encoding='utf-8') as file:
         # Create a CSV reader object that handles commas inside quotes automatically
         reader = csv.reader(file, delimiter=',', quotechar='"')
 
@@ -701,7 +714,15 @@ def import_pathogens(pathogens_file):
             commensal_sites = [body_site_map(x.lower()) for x in commensal_sites]
             pathogenic_sites = [body_site_map(x.lower()) for x in pathogenic_sites ]
             status = row[6] if len(row) > 6 else None
-            pathology = row[7] if len(row) > 7 else None
+            pathology = row[8] if len(row) > 8 else None
+
+            high_cons = row[7] if len(row) > 7 else False
+            # denote that if FALSE set to None, else set to True
+            if high_cons and high_cons != "'":
+                if high_cons.lower() == "false":
+                    high_cons = False
+                else:
+                    high_cons = True
             # Store the data in the dictionary, keyed by pathogen name
             pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
@@ -710,7 +731,8 @@ def import_pathogens(pathogens_file):
                 'name': pathogen_name,
                 'commensal_sites': commensal_sites,
                 'status': status,
-                'pathology': pathology
+                'pathology': pathology,
+                'high_cons': high_cons
             }
             pathogens_dict[taxid] = pathogens_dict[pathogen_name]
 
@@ -1520,7 +1542,10 @@ def main():
                 kmer_size = args.kmer_size,
                 FAST_MODE=args.fast,
                 filtered_bam_create=args.filtered_bam,
-
+                sensitive=args.sensitive,
+                cpu_count=args.cpu_count,
+                jump_threshold = args.jump_threshold,
+                gap_allowance=args.gap_allowance
             )
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
@@ -1569,7 +1594,9 @@ def main():
         alignments_to_remove=alignments_to_remove,
     )
 
+
     assembly_to_accession = defaultdict(set)
+    taxid_to_accession = defaultdict(int)
     if args.match and os.path.exists(matcher):
         # open the match file and import the match file
         header = True
@@ -1603,12 +1630,13 @@ def main():
                     reference_hits[accession]['taxid'] = taxid
                 reference_hits[accession]['name'] = name
                 reference_hits[accession]['assembly'] = assembly
+                taxid_to_accession[accession] = taxid
                 if accession not in assembly_to_accession[assembly]:
                     assembly_to_accession[assembly].add(accession)
                 i+=1
 
         f.close()
-    seen = dict()
+    taxid_to_parent = defaultdict(int)
     if args.assembly:
         i=0
         with open(args.assembly, 'r') as f:
@@ -1625,8 +1653,8 @@ def main():
                     name = splitline[7]
                     strain = splitline[8].replace("strain=", "")
                     isolate = splitline[9]
-
                     isSpecies = False if species_taxid != taxid else True
+                    taxid_to_parent[taxid] = species_taxid
                     # fine value where assembly == accession from reference_hits
                     if accession in assembly_to_accession:
                         for acc in assembly_to_accession[accession]:
@@ -1636,6 +1664,7 @@ def main():
                                     reference_hits[acc]['toplevelkey'] = species_taxid
                                 else:
                                     reference_hits[acc]['toplevelkey'] = taxid
+                                reference_hits[acc]['species_taxid'] = species_taxid
                                 current_strain = strain  # Start with the original strain value
                                 if current_strain == "na":
                                     current_strain = "≡"
@@ -1649,30 +1678,26 @@ def main():
     final_format = defaultdict(dict)
     seen = dict()
     for k, v in reference_hits.items():
+        v['species_taxid'] = taxid_to_parent.get(v.get('taxid'), v.get('taxid'))
         if not v.get('toplevelkey'):
             # check if taxid is present, and if so then set it to that, and if that isnt then set it to the accession
             if v.get('taxid', None):
                 v['toplevelkey'] = v['taxid']
             else:
                 v['toplevelkey'] = k
+
     if args.compress_species:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
-            value['accession'] = key
-            if 'toplevelkey' in value and value['toplevelkey']:
-                valtoplevel = value['toplevelkey']
-            else:
-                valtoplevel = key
-            valkey = value['accession']
-            if value['numreads'] > 0 and value['meandepth'] > 0:
+            key = value.get('accession')
+            valtoplevel = value.get('toplevelkey', key)
+            valkey = key
+            if value.get('numreads', 0)> 0 and  value.get('meandepth', 0) > 0:
                 final_format[valtoplevel][valkey]= value
     else:
         # We don't aggregate, so do final format on the organism name only
         for key, value in reference_hits.items():
-            if 'toplevelkey' in value and value['toplevelkey']:
-                valtoplevel = value['toplevelkey']
-            else:
-                valtoplevel = key
+            valtoplevel = value.get('toplevelkey', key)
             valkey = key
             # if value['numreads'] > 0 and value['meandepth'] > 0:
             final_format[valtoplevel][valkey] = value
@@ -1756,6 +1781,7 @@ def main():
                 species_aggregated[top_level_key] = {
                     'key': top_level_key,
                     'numreads': [],
+                    'species_taxid': data.get('species_taxid', None),
                     'mapqs': [],
                     'lengths': [],
                     'depths': [],
@@ -1771,7 +1797,7 @@ def main():
                     "isSpecies": True if  args.compress_species  else data.get('isSpecies', False),
                     'strainslist': [],
                     'covered_regions': 0,
-                    'name': data['name'],  # Assuming the species name is the same for all strains
+                    'name': data.get('name', ""),  # Assuming the species name is the same for all strains
             }
 
 
@@ -1805,6 +1831,11 @@ def main():
                             1,
                             (c1+c2) / 2
                         )
+                        # weight it so that any value less than 0.9 is even lower by getting the log value
+                        # if comparison_value < 0.75:
+                        #     # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
+                        #     comparison_value = comparison_value ** 3.3
+
                         data['comparison'] =  ( comparison_value  )
                     else:
                         data['comparison'] = 1
@@ -2000,7 +2031,7 @@ def main():
             # Get the index of the value
             try:
                 idx = [x[1] for x in sibling_k2_reads_total].index(value['taxids'][0])
-            except ValueError:
+            except (ValueError, IndexError):
                 # If value['taxids'][0] is not found, handle it appropriately
                 idx = -1
 
@@ -2021,6 +2052,8 @@ def main():
         ## Test: Min threshold of CDs found  - are there coding regions at the min amount?
 
     pathogens = import_pathogens(pathogenfile)
+
+    # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
     if args.min_reads_align:
@@ -2100,13 +2133,7 @@ def main():
             #     zscore = 3.1
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
-            # if percentile is below 0.5 set it to 0
-            # if zscore < 2.5:
-            #     percentile = 0
-            # if "Clostridioides difficile" in value['name']:
-            #     print("\t",value['name'], key, value['zscore'], percentile, dists[(int(taxid), body_site)].get('norm_abundance', 0),dists[(int(taxid), body_site)].get('mean', 0),)
-            #     print(percent_total_reads_observed, sum_abus_expected, sum_norm_abu, stdsum)
-            #     exit()
+
             value['hmp_percentile'] = percentile
 
     else:
@@ -2149,6 +2176,7 @@ def main():
         "IsAnnotated",
         "AnnClass",
         "Microbial Category",
+        'High Consequence',
         "Taxonomic ID #",
         "Status",
         "Gini Coefficient",
@@ -2206,6 +2234,8 @@ def main():
 
 
 def format_non_zero_decimals(number):
+    # Convert number from the scientific notation to the tenth digit
+    number = "{:.10f}".format(number).rstrip('0').rstrip('.')
     # Convert the number to a string
     num_str = str(number)
     if '.' not in num_str:
@@ -2438,25 +2468,22 @@ def calculate_scores(
     final_scores = []
 
     # Write the header row
-    sumfgini = 0
-    totalcounts = 0
     for ref, count in aggregated_stats.items():
         strainlist = count.get('strainslist', [])
-        isSpecies = count.get('isSpecies', False)
         is_pathogen = "Unknown"
         callfamclass = ""
-        derived_pathogen = False
-        isPath = False
         annClass = "None"
         refpath = pathogens.get(ref)
         pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
         # check if the sample type is in the pathogenic sites
         direct_match = False
+        high_cons = False
         def pathogen_label(ref):
             is_pathogen = "Unknown"
             isPathi = False
             direct_match = False
             callclass = ref.get('callclass', "N/A")
+            high_cons = ref.get('high_cons', False)
             # pathogenic_sites = ref.get('pathogenic_sites', [])
             commensal_sites = ref.get('commensal_sites', [])
             if sample_type in pathogenic_sites:
@@ -2472,15 +2499,13 @@ def calculate_scores(
             elif callclass and callclass != "":
                 is_pathogen = callclass.capitalize() if callclass else "Unknown"
                 isPathi = True
-            return is_pathogen, isPathi, direct_match
+            return is_pathogen, isPathi, direct_match, high_cons
 
         formatname = count.get('name', "N/A")
+
         if refpath:
-            is_pathogen, isPathi, direct_match = pathogen_label(refpath)
-            isPath = isPathi
-            taxid = refpath.get(ref, count.get(ref, ""))
+            is_pathogen, isPathi, direct_match, high_cons = pathogen_label(refpath)
             is_annotated = "Yes"
-            commsites = refpath.get('commensal_sites', [])
             status = refpath.get('status', "N/A")
             formatname = refpath.get('name', formatname)
             if is_pathogen == "Commensal":
@@ -2493,7 +2518,13 @@ def calculate_scores(
             annClass = "Direct"
         else:
             annClass = "Derived"
-
+            # take the species_taxid and see if it is a pathogen
+            if ref != count.get('species_taxid'):
+                ref_spec = pathogens.get(count.get('species_taxid'), None)
+                if ref_spec:
+                    is_pathogen_spec, _,_, high_cons_spec = pathogen_label(ref_spec)
+                    is_pathogen = is_pathogen_spec
+                    high_cons = high_cons_spec
         listpathogensstrains = []
         fullstrains = []
         count['annClass'] = annClass
@@ -2539,12 +2570,6 @@ def calculate_scores(
 
             if callfamclass == "" or len(listpathogensstrains) > 0:
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-            # if "Fenollaria massiliensis" in formatname:
-            #     print(is_pathogen,"<")
-            # if (is_pathogen == "N/A" or is_pathogen == "Unknown" or is_pathogen == "Commensal" or is_pathogen=="Potential") and listpathogensstrains:
-            #     is_pathogen = "Primary"
-            # if "Fenollaria massiliensis" in formatname:
-            #     print(is_pathogen,"<<<", listpathogensstrains)
 
         breadth_total = count.get('breadth_total', 0)
         countreads = sum(count['numreads'])
@@ -2593,6 +2618,7 @@ def calculate_scores(
                 ref=ref,
                 status=status,
                 annClass=annClass,
+                high_cons = high_cons,
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2608,7 +2634,6 @@ def calculate_scores(
 
             )
         )
-
     return final_scores
 
 def write_to_tsv(output_path, final_scores, header):
@@ -2651,11 +2676,12 @@ def write_to_tsv(output_path, final_scores, header):
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
+            high_conse = entry.get('high_cons', False)
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
             if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
-                print(f"Reference: {ref} - {formatname}")
+                print(f"Reference: {ref} - {formatname}, High Cons?: {high_conse}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
                 percentreads = f"{100*pathogenic_reads/aligned_total:.1f}" if aligned_total > 0 and pathogenic_reads>0 else 0
@@ -2686,7 +2712,7 @@ def write_to_tsv(output_path, final_scores, header):
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
-                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
+                f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
                 f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"

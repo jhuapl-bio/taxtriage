@@ -69,6 +69,7 @@ workflow HOST_REMOVAL {
                 true,
                 true,
                 true,
+                false
             )
 
             ch_bam_hosts = FILTER_MINIMAP2.out.bam

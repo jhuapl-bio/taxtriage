@@ -20,29 +20,83 @@
             "description": "Path to comma-separated file containing information about the samples in the experiment.",
             "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 6 columns in a header row and at least one row for info. See [usage docs](https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet_git.csv).",
             "fa_icon": "fas fa-file-csv",
+            "errorMessage": "File name must end in '.csv' and have the appropriate columns defined at: https://github.com/jhuapl-bio/taxtriage/blob/single_input/docs/usage.md#samplesheet-information.",
             "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet.csv"
           },
           "db": {
             "type": "string",
             "fa_icon": "fas fa-book",
-            "default": null,
+            "default": "test",
             "format": "directory-path",
             "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
-          },
-          "metaphlan": {
-            "type": "string",
-            "fa_icon": "fas fa-book",
-            "format": "directory-path",
-            "description": "Path to database for Metaphlan"
           },
           "outdir": {
             "type": "string",
             "format": "directory-path",
             "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
             "fa_icon": "fas fa-file-signature"
+          },
+          "fastq_1": {
+            "type": "string",
+            "format": "file-path",
+            "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
+            "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq). Will overwrite --input parameter if specified.",
+            "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "fastq_2": {
+            "type": "string",
+            "format": "file-path",
+            "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
+            "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "sample": {
+            "type": "string",
+            "description": "Sample name.  If left blank it retrieves the basename of the fastq_1 file",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "trim": {
+            "type": "boolean",
+            "description": "Whether or not to trim your fastq file(s)",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "seq_summary": {
+            "type": "string",
+            "description": "OXFORD only sequencing summary file",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "type": {
+            "type": "string",
+            "description": "1",
+            "fa_icon": "fas fa-file-signature",
+            "enum": [
+              "blood",
+              "skin",
+              "stool",
+              "nasal",
+              "unknown",
+              "sterile"
+            ]
+          },
+          "platform": {
+            "type": "string",
+            "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
+            "fa_icon": "fas fa-file-signature",
+            "enum": [
+              "ILLUMINA",
+              "OXFORD"
+            ]
           }
         },
-        "required": ["input", "db", "outdir"]
+        "required": ["db", "outdir"],
+        "anyOf": [
+          { "required": ["input"] },
+          { "required": ["fastq_1"] }
+        ],
+        "errorMessage": {
+          "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
+        }
       },
       "prelim_and_qc": {
         "title": "Preliminary and QC",
@@ -61,9 +115,9 @@
             "description": "Pull a random number of reads from the reads to be analyzed. Useful for testing only. ",
             "fa_icon": "fas fa-file-signature"
           },
-          "demux": {
+          "downsample": {
             "type": "boolean",
-            "description": "Run Demux on a folder of fastq files",
+            "description": "Downsample your fastq file(s) using khmer",
             "fa_icon": "fas fa-file-signature"
           }
         }
@@ -78,12 +132,17 @@
             "type": "string",
             "description": "Custom downselect of taxid:limit:rank. For example, it would be 10239:4:S to at minimum present the top 4 species of viruses. Add more with a space",
             "help_text": "Example: 10239:4:S 2:10:S is the top 10 bacteria species, top 4 viral species at minimum are included",
-            "default": "10239:10:S 2:10:S"
+            "default": "10239:10:S 2:10:S 4751:5:S"
           },
           "low_memory": {
             "type": "boolean",
             "fa_icon": "fas fa-book",
             "description": "Dont load db to memory, run from I/O"
+          },
+          "download_taxdump": {
+            "type": "boolean",
+            "fa_icon": "fas fa-download",
+            "description": "Download the ncbi taxonomy database and decompress it. "
           },
           "download_db": {
             "type": "boolean",
@@ -101,18 +160,23 @@
             "description": "Add irregular distribution genomes to the top hits",
             "fa_icon": "fas fa-file-signature"
           },
-          "classifier": {
+          "classifiers": {
             "type": "string",
-            "description": "List of classifier to use. Choose from [kraken2, metaphlan, centrifuge]",
+            "description": "List of classifiers, separated by a space. Choose from [kraken2, metaphlan, centrifuge]",
             "fa_icon": "fas fa-file-signature",
             "default": "kraken2"
           },
           "taxdump": {
             "type": "string",
             "format": "file-path",
-            "hint": "Path to a directory that contains ncbi taxonomy dmp files (names.dmp, nodes.dmp)",
+            "hint": "Path to a directory that contains ncbi taxonomy dmp files (must contain names.dmp, nodes.dmp)",
             "description": "",
             "fa_icon": "fas fa-file-signature"
+          },
+          "save_output_fastqs": {
+            "type": "boolean",
+            "fa_icon": "fas fa-book",
+            "description": "Save all read classifications as a txt file"
           },
           "save_unaligned": {
             "type": "boolean",
@@ -144,6 +208,18 @@
             "type": "number",
             "description": "Kraken2 minimum hit groups for LCA to be called",
             "fa_icon": "fas fa-file-signature"
+          },
+          "metaphlan": {
+            "type": "string",
+            "fa_icon": "fas fa-book",
+            "format": "directory-path",
+            "description": "Path to database for Metaphlan"
+          },
+          "centrifuge_db": {
+            "type": "string",
+            "fa_icon": "fas fa-book",
+            "format": "directory-path",
+            "description": "Path to database for Centrifuge"
           },
           "filter_kraken2": {
             "type": "string",
@@ -238,59 +314,71 @@
             "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
             "fa_icon": "fas fa-file-csv"
           },
+          "sensitive": {
+            "type": "boolean",
+            "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
+            "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
+            "fa_icon": "fas fa-file-signature"
+          },
           "min_conf": {
             "type": "number",
-            "default": 0.6,
             "description": "Minimum Confidence for reporting.",
             "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
             "fa_icon": "fas fa-file-signature"
           },
           "gini_weight": {
             "type": "number",
-            "default": 0.75,
             "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
             "fa_icon": "fas fa-file-signature"
           },
           "breadth_weight": {
             "type": "number",
-            "default": 0.25,
             "description": "Minimum Log-based breadth weight for TASS Score calculation",
             "fa_icon": "fas fa-file-signature"
           },
           "minhash_weight": {
             "type": "number",
-            "default": 0.05,
             "description": "Weight for minhash filtering. It is the combination of % of reads removed + % of breadth new  / 2 ",
             "fa_icon": "fas fa-file-signature"
           },
           "mapq_weight": {
             "type": "number",
-            "default": 0.0,
             "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
             "fa_icon": "fas fa-file-signature"
           },
           "disparity_score_weight": {
             "type": "number",
-            "default": 0.0,
             "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
             "fa_icon": "fas fa-file-signature"
           },
           "hmp_weight": {
             "type": "number",
-            "default": 0.0,
             "description": "TASS Score weight for HMP percentile, recommend disabling if sample is unknown",
             "fa_icon": "fas fa-file-signature"
           },
           "dispersion_factor": {
             "type": "number",
-            "default": 0.55,
             "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
             "fa_icon": "fas fa-file-signature"
           },
           "reward_factor": {
             "type": "number",
-            "default": 4,
-            "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
+            "description": "TASS Score Reward factor. This is the measure of how spread out or evenly distributed the regions, the higher the score.",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "jump_threshold": {
+            "type": "number",
+            "description": "Jump Threshold",
+            "hint": "Set a manual jump threshold for a region definition. If the change in depth is greater or less than the current for the upcoming region, then define the new region.",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "gap_allowance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.1,
+            "description": "Gap Allowance For Confidence",
+            "hint": "For the merging of regions, this is the allowed 0-depth gap between regions in the bedgraph before a new region is allowed. It is the proportion 0-1 of the full reference length. Default is 0.1 or 10%",
             "fa_icon": "fas fa-file-signature"
           },
           "pathogens": {
@@ -325,20 +413,17 @@
           },
           "zscore_accepted": {
             "type": "number",
-            "default": 1.5,
             "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
             "description": "Minimum zscore for outline assumptions from HHS",
             "fa_icon": "fas fa-file-signature"
           },
           "minmapq": {
             "type": "number",
-            "default": 7,
             "description": "Minimum MapQ Score for alignment",
             "fa_icon": "fas fa-file-signature"
           },
           "minq": {
             "type": "number",
-            "default": 7,
             "description": "Minimum BaseQ Score for filtering",
             "fa_icon": "fas fa-file-signature"
           },
@@ -349,7 +434,6 @@
           },
           "mmap2_fraction_filter": {
             "type": "number",
-            "default": 0.0009,
             "description": "filter out top FLOAT fraction of repetitive minimizers",
             "fa_icon": "fas fa-file-signature"
           },
@@ -395,7 +479,10 @@
             "type": "string",
             "description": "Assembly text file format. Can be a kraken2 fasta (kraken2) or the one pulled from ncbi (ncbi)",
             "fa_icon": "fas fa-folder-open",
-            "enum": ["kraken2", "ncbi"],
+            "enum": [
+              "kraken2",
+              "ncbi"
+            ],
             "default": "ncbi"
           },
           "reference_fasta": {
@@ -588,11 +675,6 @@
             "default": "25.MB",
             "fa_icon": "fas fa-file-signature"
           },
-          "schema_ignore_params":{
-            "default": "genomes",
-            "type": "string",
-            "description": "Ignore parameters in the schema"
-          },
           "custom_config_version": {
             "type": "string",
             "default": "master",
@@ -603,6 +685,34 @@
             "type": "string",
             "default": "https://raw.githubusercontent.com/nf-core/configs/master",
             "description": "Custom config base",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "enable_conda": {
+            "type": "boolean",
+            "description": "Enable Conda. This is disabled atm. ",
+            "fa_icon": "fas fa-file-signature"
+          },
+          "max_cpus": {
+            "type": "number",
+            "description": "Maximum number of CPUs to use for the pipeline",
+            "fa_icon": "fas fa-microchip",
+            "default": null
+          },
+          "max_memory": {
+            "type": "string",
+            "description": "Maximum amount of memory to use for the pipeline",
+            "fa_icon": "fas fa-memory",
+            "default": null
+          },
+          "max_time": {
+            "type": "string",
+            "description": "Maximum amount of time to use for the pipeline",
+            "fa_icon": "fas fa-clock",
+            "default": null
+          },
+          "default_download": {
+            "type": "string",
+            "description": "Default download database",
             "fa_icon": "fas fa-file-signature"
           },
           "multiqc_title": {
@@ -650,11 +760,8 @@
       }
     },
     "allOf": [
-        { "$ref": "#/$defs/input_output_options" },
-        { "$ref": "#/$defs/prelim_and_qc" },
-        { "$ref": "#/$defs/metagenomics_parameters" },
-        { "$ref": "#/$defs/alignment_parameters" },
-        { "$ref": "#/$defs/skips" },
-        { "$ref": "#/$defs/general" }
+      {
+        "$ref": "#/$defs/input_output_options"
+      }
     ]
   }

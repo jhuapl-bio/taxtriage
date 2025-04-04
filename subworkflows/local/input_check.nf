@@ -71,6 +71,11 @@ def create_fastq_channel(LinkedHashMap row) {
         meta.fastq_2 = null
     }
     meta.needscompressing = row.needscompressing ? row.needscompressing : null
+
+    // if meta.needscompressing is null or false AND the filename ends with .fastq or .fq then set to true
+    // if (!meta.needscompressing && (meta.fastq_1.endsWith('.fastq') || meta.fastq_1.endsWith('.fq'))) {
+    //     meta.needscompressing = true
+    // }
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
     meta.single_end = row.fastq_2  ? false : true
     meta.aligner  = row.aligner ? row.aligner : 'minimap2'

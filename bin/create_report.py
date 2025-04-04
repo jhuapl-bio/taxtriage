@@ -80,9 +80,9 @@ def parse_args(argv=None):
                         help="Missing samples if any", nargs="+")
     parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',
                         help="Name of site column, default is body_site")
-    parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='name',
-                        help="What type of data is being processed. Options: 'tax_id' or 'name'.",
-                        choices=['tax_id', 'name'])
+    parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='Detected Organism',
+                        help="What type of data is being processed. Options: 'Taxonomic ID #' or 'Detected Organism'.",
+                        choices=['Taxonomic ID #', 'Detected Organism'])
     parser.add_argument("--taxdump", metavar="TAXDUMP", required=False, default=None,
                         help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp")
     parser.add_argument("--rank", metavar="TAXDUMP", required=False, default="genus",
@@ -178,12 +178,11 @@ def import_data(inputfiles ):
         12814: "human respiratory syncytial virus A",
     }
     # df['Organism'] = df["Detected Organism"]
-    for row_idx, row in df.iterrows():
-        if row['Status'] == 'putative':
-            #  update index of row to change organism name to bold
-            df.at[row_idx, "Detected Organism"] = f'{row["Detected Organism"]}*'
-        # change the Name column if the mapnames for taxid is in the dict
-        df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
+    # set if putative to it with *  in Detected organism using lambda x
+    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
+    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}°' if x['AnnClass'] == 'Derived' else x["Detected Organism"], axis=1)
+    df['Detected Organism'] = df.apply(lambda x: f'★ {x["Detected Organism"]}' if x['High Consequence'] else x["Detected Organism"], axis=1)
+    df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
     df = df.fillna("")
     return df
@@ -282,7 +281,7 @@ def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None)
         data.append(row_data)
     return data
 
-def return_table_style(df, color_pathogen=False):
+def return_table_style(df=pd.DataFrame(), color_pathogen=False):
     # Start with the basic style
     table_style = TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.gray), # header
@@ -295,32 +294,30 @@ def return_table_style(df, color_pathogen=False):
         # Placeholder for cells to color (row_index, col_index) format
         cells_to_color = []
         colorindexcol = 1
-
-        sampleindx = df.columns.get_loc('Microbial Category')
         # Example post-processing to mark cells
+        i=0
         for row_idx, row in df.iterrows():
             val = row['Microbial Category']
             # if nan then set to empty string
-            # if pd.isna(sites):
-            #     sites = ""
             derived = row['AnnClass']
             # Get Sample Type value from row
             # sampletype = row['Specimen Type']
             if val == "Primary" and derived == "Direct":
                 color = 'lightcoral'
             elif val == "Primary" :
-                color = 'goldenrod'
+                color = '#fab462'
             elif val == "Commensal":
                 color = 'lightgreen'
             elif val == "Opportunistic":
-                color = "papayawhip"
+                color = "#ffe6a8"
             elif val == "Potential":
                 color = 'lightblue'
             else:
                 color = "white"
             # Ensure indices are within the table's dimensions
-            style_command = ('BACKGROUND', (colorindexcol, row_idx+1), (colorindexcol, row_idx+1), color)  # Or lightorange based on condition
+            style_command = ('BACKGROUND', (colorindexcol, i+1), (colorindexcol, i+1), color)  # Or lightorange based on condition
             table_style.add(*style_command)
+            i+=1
     else:
         table_style.add(*('BACKGROUND', (0,1), (-1,-1), colors.white))
     return table_style
@@ -357,6 +354,7 @@ def create_report(
     df_potentials,
     df_unidentified,
     df_commensals,
+    df_high_cons_low_conf,
     plotbuffer,
     version=None,
     missing_samples=None,
@@ -388,7 +386,7 @@ def create_report(
         version = "Local Build"
     # get datetime of year-mont-day hour:min
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
-    # sort df_identified by Confidence Metric (0-1)
+    # sort df_identified by TASS Score
     # filter out so only Class is PAthogen
     # df_identified = df_identified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, True])
     # df_potentials = df_potentials.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
@@ -397,9 +395,28 @@ def create_report(
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
     # df_unidentified = df_unidentified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
     elements = []
-    ##########################################################################################
+
     ##########################################################################################
     ##### Section to make the Top Table - all annotated commensal or otherwise
+    title = Paragraph("Organism Discovery Report", title_style)
+    # Add the title and subtitle
+    if missing_samples:
+        samples_missing = f"Missing Samples due to filtering, failed step(s), or non-presence of organisms: <b>{', '.join(missing_samples)}</b><br></br> "
+    else:
+        samples_missing = ""
+    subtitle = Paragraph(f"This report was generated using TaxTriage \
+        <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of \
+        human-host pathogens.<br></br><br></br> \
+        {samples_missing}\
+        Samples with confidence score below <b>{str(min_conf)}</b> were filtered out. \
+        ",
+        subtitle_style
+    )
+    elements.append(title)
+    elements.append(subtitle)
+    extra_text = Paragraph(f"★ denotes high consequence pathogens")
+    elements.append(extra_text)
+    elements.append(Spacer(1, 12))
     if not df_identified_paths.empty:
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
@@ -407,19 +424,16 @@ def create_report(
             "Specimen ID (Type)",
             "Detected Organism",
             "# Reads Aligned",
-            "Confidence Metric (0-1)",
+            "TASS Score",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
-            "HHS Percentile", "Group", "K2 Reads"
+            "HHS Percentile",
+            "K2 Reads"
         ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
-        # if all of Group is Unknown, then remove it from list
-        if (df_identified_paths['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
+
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -427,29 +441,20 @@ def create_report(
             data_yes,
             table_style=table_style
         )
-        # Add the title and subtitle
-        if missing_samples:
-            samples_missing = f"Missing Samples due to filtering, failed step(s), or non-presence of organisms: <b>{', '.join(missing_samples)}</b><br></br> "
-        else:
-            samples_missing = ""
-        title = Paragraph("Organism Discovery Report", title_style)
-        subtitle = Paragraph(f"This report was generated using TaxTriage \
-            <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of \
-            human-host pathogens.<br></br><br></br> \
-            {samples_missing}\
-            Samples with confidence score below <b>{str(min_conf)}</b> were filtered out. \
-            ",
-            subtitle_style
-        )
-        elements.append(title)
-        elements.append(subtitle)
-        elements.append(Spacer(1, 12))
+
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
+    else:
+        # Make a large message saying that no pathogen was found above min confidence
+        title = Paragraph("No Primary Pathogens Found Above TASS Score Threshold", title_style)
+        subtitle = Paragraph(f"No pathogens were found above the minimum confidence score of <b>{str(min_conf)}</b> in the given samples. <br></br>Consider lowering the confidence score OR looking at the <b>all.organisms.report.txt</b> file or <b>MultiQC</b> report HTML file for more information.", subtitle_style)
+        elements.append(title)
+        elements.append(subtitle)
+
     ##########################################################################################
 
     if min_conf:
-        subtitle = Paragraph(f"Samples with confidence score below {str(min_conf)} were filtered out. See the `paths.txt` file for a full list of organisms", subtitle_style)
+        subtitle = Paragraph(f"See the <b>`report/all.organisms.report.txt`</b> file for a full list of everything identified", subtitle_style)
         elements.append(subtitle)
 
     # Adding regular text
@@ -463,20 +468,20 @@ def create_report(
     elements.append(subtext_para)
     elements.append(Spacer(1, 12))  # Space between tables
     bullet_list_items = [
-        "Green/White: This is an unannotated organism or commensal organism for the given site.",
-        "Red: Primary Pathogen annotated in sample type(s) listed.",
-        "Goldenrod: Primary Pathogen annotated in sample type(s) other than your listed one.",
-        "Beige: Opportunistic Pathogen",
-        "Blue: Potential Pathogen",
+        "This is an unannotated organism or commensal organism for the given site.",
+        "Primary Pathogen annotated in sample type(s) listed.",
+        "Primary Pathogen annotated in sample type(s) other than your listed one.",
+        "Opportunistic Pathogen",
+        "Potential Pathogen",
     ]
 
     # Create a list of bullet items with specified colors
-    bullet_colors = [colors.lightgreen,   colors.coral, colors.lightgoldenrodyellow , colors.papayawhip, colors.lightblue  ]
+    bullet_colors = [colors.lightgreen,   colors.coral, '#fab462' , '#ffe6a8', colors.lightblue  ]
     style = styles['Normal']
 
     # Create custom ListItems with colored bullets
     custom_list_items = [
-        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], )
+        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], bulletFontSize=9 )
         for idx, item in enumerate(bullet_list_items)
     ]
 
@@ -503,13 +508,15 @@ def create_report(
         "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections.",
         "Commensal: Organisms typically found in the human microbiota.",
         "Potential: Organisms that have been associated with disease states but are not extensively studied.",
-        "≡: Indicates a pathogenic subspecies/serotype/strain/etc with the same name as the species listed, just different taxids."
+        "°: Indicates a pathogenic subspecies/serotype/strain/etc with the same name as the species listed, just different taxids."
     ]
 
     bullet_list = ListFlowable(
         [ListItem(Paragraph(item, subtext_style)) for item in bullet_list_items],
         bulletType='bullet',
-        start='circle'
+        start='circle',
+        # size of bullet
+        bulletFontSize=9
     )
     elements.append(bullet_list)
 
@@ -523,10 +530,11 @@ def create_report(
         "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
         "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
-        "Confidence Metric (0-1): A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
-        "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species.",
+        "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
+        "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
         "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
+        "HHS Percentile: What percentile the abundance falls under relative to the given sample type based on HHS NCBI taxonomy classification information"
     ]
 
     # Create bullet points for each column explanation
@@ -538,7 +546,8 @@ def create_report(
     bullet_list = ListFlowable(
         [ListItem(item) for item in bullet_list_items],
         bulletType='bullet',
-        start='circle'
+        start='circle',
+        bulletFontSize=9
     )
 
     # Append the bullet list to the elements
@@ -569,25 +578,53 @@ def create_report(
     elements.append(subtext_para)
 
     elements.append(horizontal_line)
+    ##########################################################################################
+    if not df_high_cons_low_conf.empty:
+        # print only rows in df_identified with Gini Coeff above 0.2
+        columns_yes = ["Specimen ID (Type)",
+                       "Detected Organism",
+                       'TASS Score',
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "HHS Percentile", "K2 Reads"]
+        # check if all K2 reads column are 0 or nan
+        if df_identified_paths['K2 Reads'].sum() == 0:
+            columns_yes = columns_yes[:-1]
+        # if all of Group is Unknown, then remove it from list
+
+        # Now, call prepare_data_with_headers for both tables without manually preparing headers
+        data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
+        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+
+        # # Add the title and subtitle
+        title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
+        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))
+        # if data shape is >=1 then append, otherwise make text saying it is empty
+        if df_high_cons_low_conf.shape[0] >= 1:
+            table = make_table(
+                data_yes,
+                table_style=table_style
+            )
+            elements.append(table)
+        else:
+            elements.append(Paragraph("No High Consequence Low Confidence Organisms", subtext_style))
+
+        elements.append(Spacer(1, 12))
 
     ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "# Reads Aligned",
-                       "Confidence Metric (0-1)", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "Group", "K2 Reads"
+                       "TASS Score", "Taxonomic ID #",
+                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
-        if (df_potentials['Group'].nunique() == 1 ):
-            # get index of Group
-            index_group = columns_opp.index("Group")
-            if index_group:
-                # remove group from list
-                columns_opp.pop(index_group)
 
-        data_opp = prepare_data_with_headers(df_potentials, plotbuffer, include_headers=True, columns=columns_opp)
+        data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
         table = make_table(
             data_opp,
@@ -607,16 +644,12 @@ def create_report(
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
-                       "# Reads Aligned", "Confidence Metric (0-1)", "Taxonomic ID #", "Coverage",
-                        "HHS Percentile", "Group", "K2 Reads"]
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
         # if all of Group is Unknown, then remove it from list
-        if (df_identified_others['Group'].nunique() == 1 ):
-            idx_grp = columns_yes.index("Group")
-            if idx_grp:
-                columns_yes.pop(idx_grp)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=False)
@@ -643,7 +676,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "Confidence Metric (0-1)", "Coverage",  "HHS Percentile", "Group", "K2 Reads"]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -714,15 +747,16 @@ def main():
         taxdump_dict = load_taxdump(args.taxdump)
     df_full = import_data(args.input)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
-
+    # for Detected Organism, add (Group) if it is not null or not Unknown
+    df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']} ({x['Group']})" if x['Group'] != "Unknown" else x["Taxonomic ID #"], axis=1)
+    df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
-        df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
-        df_full = df_full.reset_index(drop=True)
+        df_full = df_full.reset_index(drop=False)
         df_full.to_csv(args.output_txt, sep="\t", index=True, index_label="Index")
     # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
-    df_full = df_full.rename(columns={args.id_col: args.type})
+    # df_full = df_full.rename(columns={args.id_col: args.type})
     df_full = df_full.rename(columns={args.sitecol: 'body_site'})
     df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
     df_full = df_full.dropna(subset=[args.type])
@@ -730,7 +764,7 @@ def main():
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
     # Sort on # Reads aligned
-    df_full = df_full.sort_values(by=["TASS Score"], ascending=False)
+    df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
         if x['abundance'] == x['% Reads']:
@@ -797,13 +831,14 @@ def main():
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     # convert all locations nan to "Unknown"
     # df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
+    df_high_cons_low_conf = pd.DataFrame()
     if args.min_conf and args.min_conf > 0:
+        df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-    # df_full['name'] = df_full['name'] + " (" + df_full['Taxonomic ID #'].astype(str) + ")"
-    df_full['Confidence Metric (0-1)'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
+    print(f"Size of of low confidence high consequence pathogens: {df_high_cons_low_conf.shape[0]}")
     # lambda x add the % Reads column to name column
-    # df_full['name'] = df_full.apply(lambda x: f"{x['name']} ({x['% Reads']:.2f}%)", axis=1)
     df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
     remap_headers = {
         "name": "Detected Organism",
@@ -841,6 +876,7 @@ def main():
         df_potentials,
         df_unidentified,
         df_commensal,
+        df_high_cons_low_conf,
         plotbuffer,
         version,
         missing_samples,
@@ -854,4 +890,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

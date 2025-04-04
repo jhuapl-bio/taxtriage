@@ -30,7 +30,6 @@ process DOWNLOAD_TAXDUMP {
     when:
     task.ext.when == null || task.ext.when
 
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def url = 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz'
     """

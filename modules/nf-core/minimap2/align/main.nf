@@ -51,6 +51,7 @@ process MINIMAP2_ALIGN {
         $set_cigar_bam \\
         $bam_output
 
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         minimap2: \$(minimap2 --version 2>&1)

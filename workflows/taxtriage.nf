@@ -34,25 +34,52 @@ summary_params      = paramsSummaryMap(workflow, parameters_schema: "nextflow_sc
 // print wfsummary to json file to working directory
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
-def checkPathParamList = [
-    params.input,
-]
+// def checkPathParamList = [
+//     params.input,
+// ]
 
 if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== 'docker'){
     exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
 }
 
-for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
+// for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
 if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
     exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
 }
 
+println "Working Directory: ${workflow.workDir}"
+
+// Either use an existing samplesheet file or build one from fastq parameters
+if (params.fastq_1) {
+    // Determine sample name: use --sample if provided, otherwise strip the fastq extension from fastq_1 basename
+    def sampleName = params.sample ? params.sample : file(params.fastq_1).getBaseName().replaceFirst(/(\.fastq.*)/, '')
+    // Use provided platform or default to ILLUMINA
+    def platform = params.platform ? params.platform : 'ILLUMINA'
 
 
-// Check mandatory parameters
-if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+    // Build CSV content following the samplesheet format:
+    // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+    // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
+    def csvContent = """\
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary},${params.trim},${params.type}
+"""
+    // Write the CSV content to a temporary file in the workflow work directory
+    def filenamecsv = "${workflow.workDir}/temp_samplesheet.csv"
+    println "Creating temporary samplesheet: ${filenamecsv}"
+    def tmpSheet = file(filenamecsv)
+    println "${tmpSheet}"
+    tmpSheet.text = csvContent
+    ch_input = tmpSheet
+} else if (params.input) {
+    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+} else {
+    ex
+    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+}
+println "Input samplesheet: ${ch_input}"
 
 if (params.minq) {
     ch_minq_shortreads = params.minq
@@ -207,7 +234,7 @@ include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_table
 include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include { REFERENCE_REHEADER } from '../modules/local/reheader'
-
+include { KHMER_NORMALIZEBYMEDIAN } from '../modules/local/khmer'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -322,10 +349,29 @@ workflow TAXTRIAGE {
         DOWNLOAD_PATHOGENS()
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
+    ch_taxdump_dir = Channel.empty()
+    ch_taxdump_nodes = Channel.empty()
+    ch_taxdump_names = Channel.empty()
+
+    if (params.download_taxdump || (!params.taxdump && params.metaphlan)){
+        DOWNLOAD_TAXDUMP()
+        ch_taxdump_nodes = DOWNLOAD_TAXDUMP.out.nodes
+        ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
+    }
+    else if (params.taxdump){
+        // set ch_taxdump_nodes BUT add nodes.dmp to end as a file
+        ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
+        ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
+    } else {
+        // set to empty_file
+        ch_taxdump_nodes = ch_empty_file
+        ch_taxdump_dir = ch_empty_file.parent
+    }
 
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
-    if (params.download_db) {
+    ch_db = Channel.empty()
+    if (params.download_db && !params.skip_kraken2) {
         if (supported_dbs.containsKey(params.db)) {
             println "Kraken db ${params.db} will be downloaded if it cannot be found. This requires ${supported_dbs[params.db]['size']} of space."
             DOWNLOAD_DB(
@@ -341,13 +387,12 @@ workflow TAXTRIAGE {
             println "Database ${params.db} not found in download list. Currently supported databases are ${supported_dbs.keySet()}. If this database has already been downloaded, indicate it with --db <exact path>. You may also retrieve them, locally, from https://benlangmead.github.io/aws-indexes/k2. Make sure to download and decompress/untar the .tar.gz file which contains a folder you can specify with --db <localpath>. "
         }
     } else {
-        if (params.db) {
+        if (params.db  && !params.skip_kraken2) {
             file(params.db, checkIfExists: true)
             ch_db = params.db
         }
     }
 
-    ch_taxdump_dir = Channel.empty()
     if (params.classifiers){
         // split params.classifier on command and optional space assign to list channel
         ch_classifier = params.classifiers.split(",\\s*")
@@ -372,10 +417,26 @@ workflow TAXTRIAGE {
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
+    // if (params.fastq_1){
+    //     println "Using files outside of hte samplesheet specifications"
+    //     // CREATE_SAMPLESHEET
+    //     ch_fastq_1 = Channel.fromPath(params.fastq_1, checkIfExists: true)
+    //     // ch_fastq_2 = Channel.fromPath(params.fastq_2, checkIfExists: true)
+    //     // get basename of ch_fastq_1
+    //     sample = ch_fastq_1.map { file -> file.getName() }
+    //     // remove the .fastq* extension or .fq*extension
+    //     sample = ch_fastq_1.map { file -> file.replaceAll(/\.fastq(\.gz)?$/, '') }
+    //     sample = ch_fastq_1.map { file -> file.replaceAll(/\.fq(\.gz)?$/, '') }
+    //     sample.view()
+    //     ch_reads = Channel.empty()
+    // } else{
     INPUT_CHECK(
         ch_input
     )
-    ch_versions = ch_versions.mix(INPUT_CHECK.out.versions)
+    ch_reads = INPUT_CHECK.out.reads
+    ch_reads.view()
+
+
 
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
@@ -392,8 +453,6 @@ workflow TAXTRIAGE {
     def date = new Date()
     println "Date: ${date}"
 
-    ch_reads = INPUT_CHECK.out.reads
-    ch_versions = ch_versions.mix(INPUT_CHECK.out.versions)
     ch_pass_files = ch_reads.map{ meta, reads -> {
             return [ meta ]
         }
@@ -417,21 +476,6 @@ workflow TAXTRIAGE {
     )
     ch_reads = split_compressing.noCompress.mix(PIGZ_COMPRESS.out.archive)
 
-    if (params.subsample && params.subsample > 0) {
-        ch_subsample  = params.subsample
-        SEQTK_SAMPLE(
-            ch_reads,
-            ch_subsample
-        )
-        ch_reads = SEQTK_SAMPLE.out.reads
-    }
-
-    PYCOQC(
-        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
-            meta, reads -> meta.sequencing_summary
-        }
-    )
-
     // // // //
     // // // // MODULE: Run FastQC or Porechop, Trimgalore
     // // //
@@ -442,8 +486,6 @@ workflow TAXTRIAGE {
     ch_diamond_output = Channel.empty()
     params.pathogens ? ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true) : ''
 
-
-    // if (params.trim) {
     nontrimmed_reads = ch_reads.filter { !it[0].trim }
     TRIMGALORE(
         ch_reads.filter { it[0].platform == 'ILLUMINA' && it[0].trim }
@@ -458,8 +500,33 @@ workflow TAXTRIAGE {
     trimmed_reads = TRIMGALORE.out.reads.mix(PORECHOP.out.reads)
     ch_reads = nontrimmed_reads.mix(trimmed_reads)
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
+    // Create an empty file if se_reads is null
+    // When calling the module, pass the empty file instead of null:
+    if (params.downsample) {
+        KHMER_NORMALIZEBYMEDIAN(
+            ch_reads
+        )
+        ch_reads = KHMER_NORMALIZEBYMEDIAN.out.reads
+        ch_versions = ch_versions.mix(KHMER_NORMALIZEBYMEDIAN.out.versions)
+    }
+    COUNT_READS(ch_reads)
+    readCountChannel = COUNT_READS.out.count
+    // Update the meta with the read count by reading the file content
+    readCountChannel.map { meta, countFile, reads ->
+        def count = countFile.text.trim().toInteger()
+        // Update meta map by adding a new key 'read_count'
+        meta.read_count = count
+        return [meta, reads]
+    }.set{ ch_reads }
 
+    //////////////////// RUN PYCOQC on any seq summary file ////////////////////
 
+    PYCOQC(
+        ch_reads.filter { it[0].platform == 'OXFORD' && it[0].sequencing_summary != null }.map {
+            meta, reads -> meta.sequencing_summary
+        }
+    )
+    //////////////////// RUN FASTP to get qc plots and output reads ////////////////////
     if (!params.skip_fastp) {
         FASTP(
             ch_reads,
@@ -473,17 +540,26 @@ workflow TAXTRIAGE {
         ch_multiqc_files = ch_multiqc_files.mix(FASTP.out.json.collect { it[1] }.ifEmpty([]))
     }
 
-
+    //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
     HOST_REMOVAL(
         ch_reads,
         params.genome
     )
-    ch_reads = HOST_REMOVAL.out.unclassified_reads
-    ch_versions = ch_versions.mix(HOST_REMOVAL.out.versions)
+    //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
 
+    ch_reads = HOST_REMOVAL.out.unclassified_reads
+    if (params.subsample && params.subsample > 0) {
+        ch_subsample  = params.subsample
+        SEQTK_SAMPLE(
+            ch_reads,
+            ch_subsample
+        )
+        ch_reads = SEQTK_SAMPLE.out.reads
+    }
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
 
+    //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
     if (!params.skip_plots) {
         FASTQC(
             ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
@@ -509,14 +585,15 @@ workflow TAXTRIAGE {
     } else{
         distributions = Channel.fromPath(params.distributions)
     }
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////RUN CLASSIFIER(S) for top hits calculations//////////////////////////////////////////////////////////////////
     CLASSIFIER(
         ch_filtered_reads,
         ch_db,
         ch_save_fastq_classified,
         distributions,
         ch_pathogens,
-        ch_organisms_to_download
+        ch_organisms_to_download,
+        ch_taxdump_dir
     )
     ch_versions = ch_versions.mix(CLASSIFIER.out.versions)
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
@@ -535,7 +612,7 @@ workflow TAXTRIAGE {
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////RUN REFERENCE pull or processing/////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
         ch_organisms_to_download,
         ch_reference_fasta,
@@ -558,15 +635,8 @@ workflow TAXTRIAGE {
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
     ch_assembly_analysis = Channel.empty()
+    ch_fastas = Channel.empty()
 
-    // If you use a local genome Refseq FASTA file
-    // if ch_refernece_fasta is empty
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // For demonstration, print out the updated metadata.
-    // finalMetaChannel.subscribe { updatedMeta ->
-    //     println "Updated meta for sample ${updatedMeta.id}: ${updatedMeta}"
-    // }
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
@@ -582,34 +652,33 @@ workflow TAXTRIAGE {
                 return [meta, null, null, null, null, null, null,  []]
             }
         }
-        ch_depthfiles = ALIGNMENT.out.depth
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bedgraphs = ALIGNMENT.out.bedgraphs
-        ch_depth = ALIGNMENT.out.depth
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
-        ch_alignment_outmerg = ALIGNMENT.out.bams.join(ALIGNMENT.out.depth)
+        ch_alignment_outmerg = ALIGNMENT.out.bams
 
         ch_alignment_outmerg
             .join(ch_mapped_assemblies, by: 0, remainder: true)
             .filter{
                 it[1]
             }
-            .map { meta, bam, bai, depth, mapping ->
+            .map { meta, bam, bai, mapping ->
                 // If mapping is not present, replace it with null or an empty placeholder
-                return [meta, bam, bai, depth, mapping ?: ch_empty_file]
+                return [meta, bam, bai, mapping ?: ch_empty_file]
             }.set{ ch_combined }
 
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
+        ch_fastas = REFERENCE_PREP.out.fastas
 
         ch_postalignmentfiles = ch_combined.map {
-            meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+            meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
             it[1]
         }
         ch_postalignmentfiles = ch_combined.map {
-            meta, bam, bai,  depth, mapping ->  return [ meta, bam, bai, mapping ]
+            meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
             it[1]
         }
@@ -638,14 +707,16 @@ workflow TAXTRIAGE {
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
             // Define a channel that emits a placeholder value if ch_kraken2_report is empty
-
             input_alignment_files = ALIGNMENT.out.bams
                 .join(ch_mapped_assemblies)
                 .join(ch_bedgraphs)
                 .join(ch_covfiles)
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
+                .join(ch_fastas)
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
 
             REPORT(
@@ -653,6 +724,7 @@ workflow TAXTRIAGE {
                 ch_pathogens,
                 distributions,
                 ch_assembly_txt,
+                ch_taxdump_nodes,
                 all_samples
             )
             ch_versions = ch_versions.mix(REPORT.out.versions)

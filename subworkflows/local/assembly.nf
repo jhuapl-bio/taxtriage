@@ -39,7 +39,7 @@ workflow ASSEMBLY {
         ch_diamond_analysis = Channel.empty()
         ch_assembly_alignment = Channel.empty()
         ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
-        if (params.use_denovo){
+        if (params.use_denovo || params.use_diamond){
             // branch long and short reads
             postalignmentfiles.branch {
                 shortreads: it[0].platform =~ 'ILLUMINA'
@@ -66,17 +66,17 @@ workflow ASSEMBLY {
             )
             ch_versions = ch_versions.mix(MEGAHIT.out.versions)
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
-            BEDTOOLS_COVERAGE(
-                postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
-            )
-            ch_versions = ch_versions.mix(BEDTOOLS_COVERAGE.out.versions)
-            ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
-                postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
-            )
-            FEATURES_MAP(
-                ch_bedout
-            )
-            ch_versions = ch_versions.mix(FEATURES_MAP.out.versions)
+            if (( params.use_diamond )){
+                BEDTOOLS_COVERAGE(
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
+                )
+                ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
+                )
+                FEATURES_MAP(
+                    ch_bedout
+                )
+            }
 
             try {
 

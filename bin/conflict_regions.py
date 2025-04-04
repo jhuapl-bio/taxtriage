@@ -9,7 +9,7 @@ from sourmash import MinHash, SourmashSignature, save_signatures, load_file_as_s
 import statistics
 from typing import List, Tuple, Optional, Dict
 import numpy as np
-
+import math
 import concurrent.futures
 from collections import defaultdict
 from functools import partial
@@ -138,7 +138,12 @@ def init_worker(bam_path, fasta_paths):
     global_bam = pysam.AlignmentFile(bam_path, "rb")
     # append all fasta to global_fasta
     for fasta_path in fasta_paths:
-        fasta = pysam.FastaFile(fasta_path)
+        # if ends with .gz treat as compressed
+        if fasta_path.endswith('.gz'):
+            # index fasta file
+            fasta = pysam.FastxFile(fasta_path )
+        else:
+            fasta = pysam.FastxFile(fasta_path)
         global_fastas.append(fasta)
 
 def process_region(region, kmer_size, scaled):
@@ -154,39 +159,46 @@ def process_region(region, kmer_size, scaled):
     chrom, start, end, mean_depth = region
     reads_in_region = []
     # Use the globally opened BAM file.
-    try:
-        for read in global_bam.fetch(chrom, start, end):
-            reads_in_region.append({
-                "id": read.query_name,
-                "seq": read.seq,
-                "start": read.reference_start,
-                "end": read.reference_end
-            })
-    except Exception as e:
-        print(f"Error processing region {region}: {e}")
-        return None
+
     result=None
     if len(global_fastas) > 0 :
         # fetch the sequence from fasta
+        seen_references = False
         for fasta in global_fastas:
             # check if chrom is in fasta first
-            if chrom not in fasta.references:
-                continue
-            seq = fasta.fetch(chrom, start, end)
-            if seq:
-                reads_in_region.append({
-                    "id": f"{chrom}:{start}-{end}",
-                    "seq": seq,
-                    "start": start,
-                    "end": end
-                })
+            # get references from pysam.fastxfile
+            for record in fasta:
+                # Check if the record corresponds to the desired chromosome
+                if record.name != chrom:
+                    continue
+
+                # Slice the sequence from 'start' to 'end'
+                seq = record.sequence[start:end]
+                if seq:
+                    reads_in_region.append({
+                        "id": f"{chrom}:{start}-{end}",
+                        "seq": seq,
+                        "start": start,
+                        "end": end
+                    })
                 args = [chrom, start, end, kmer_size, scaled, reads_in_region]
                 result = create_signature_for_single_region(args)
-
+                seen_references = True
+                # Once the desired record is found and processed, break out of the loop.
+                break
     else:
-        # print(reads_in_region)
-        args = [chrom, start, end, kmer_size, scaled, reads_in_region]
-        result = create_signature_for_single_region(args)
+        try:
+            for read in global_bam.fetch(chrom, start, end):
+                reads_in_region.append({
+                    "id": read.query_name,
+                    "seq": read.seq,
+                    "start": read.reference_start,
+                    "end": read.reference_end
+                })
+            args = [chrom, start, end, kmer_size, scaled, reads_in_region]
+            result = create_signature_for_single_region(args)
+        except Exception as e:
+            print(f"Error processing region {region}: {e}")
     if result is None:
         return None
     region_name, sig = result
@@ -231,35 +243,30 @@ def create_signatures_for_regions(
 
     signatures = {}
     reads_map = defaultdict(list)
+
+
+    num_workers = 1
+    init_worker(bam_path, fasta_paths)
+    for region in tqdm(regions, total=regions_df.shape[0], miniters=1_000, desc="Processing regions"):
+        result = process_region(region, kmer_size, scaled)
+        if result is not None:
+            region_name, sig, _, _ = result
+            signatures[region_name] = sig
     print(f"\tStart processing pool now... with: {num_workers}")
 
-    # init_worker(bam_path, fasta_paths)
-    # for region in tqdm(regions, total=len(regions), desc="Processing regions"):
-    #     result = process_region(region, kmer_size, scaled)
-    #     if result is not None:
-    #         region_name, sig, chrom, region_reads = result
-    #         signatures[region_name] = sig
-    with concurrent.futures.ProcessPoolExecutor(
-            max_workers=num_workers,
-            initializer=init_worker,
-            initargs=(bam_path,fasta_paths, )) as executor:
-        # Use functools.partial to bind kmer_size and scaled to process_region.
-        process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
-        # Now, map over regions without using a lambda.
-        results = executor.map(process_region_partial, regions, chunksize=1)
-        for result in tqdm(results, total=regions_df.shape[0], desc="Processing regions"):
-            if result is not None:
-                region_name, sig, chrom, region_reads = result
-                signatures[region_name] = sig
-                # # Update reads_map with each read from this region.
-                # for read in region_reads:
-                #     reads_map.setdefault(chrom, []).append({
-                #         "id": read["id"],
-                #         "start": read["start"],
-                #         "end": read["end"],
-                #     })
-
-    # Close the global BAM file.
+    # with concurrent.futures.ProcessPoolExecutor(
+    #         max_workers=num_workers,
+    #         initializer=init_worker,
+    #         initargs=(bam_path,fasta_paths, )) as executor:
+    #     #  bind kmer_size and scaled to process_region.
+    #     process_region_partial = partial(process_region, kmer_size=kmer_size, scaled=scaled)
+    #     # map over regions without using a lambda.
+    #     results = executor.map(process_region_partial, regions, chunksize=1)
+    #     for result in tqdm(results, total=regions_df.shape[0], desc="Processing regions"):
+    #         if result is not None:
+    #             region_name, sig, _, _ = result
+    #             signatures[region_name] = sig
+    # close the global BAM file.
     global global_bam
     if global_bam is not None:
         global_bam.close()
@@ -343,7 +350,7 @@ def build_sbt_index(siglist, ksize=31, sbt_name="my_sbt", clusters={}):
                 ref2cluster[ref] = cluster_idx
     # Add each signature as a leaf
 
-    for region_name, sig in tqdm(siglist, desc="Adding signatures to SBT"):
+    for region_name, sig in tqdm(siglist, miniters=1_000, desc="Adding signatures to SBT"):
         r1, s1, e1 = parse_split(region_name)
         # sig.name = region_name
         leaf = SigLeaf(str(region_name), sig)
@@ -1478,7 +1485,6 @@ def compute_gini(values: List[float]) -> float:
     if cumulative == 0:
         return 0.0
     return (2 * cumulative_values) / (n * cumulative) - (n + 1) / n
-
 def merge_bedgraph_regions(
     intervals: pd.DataFrame,
     merging_method: str = 'jump',
@@ -1486,116 +1492,132 @@ def merge_bedgraph_regions(
     max_group_size: int = 20000,
     max_length: Optional[int] = None,
     value_diff_tolerance: Optional[float] = None,
-    jump_threshold: Optional[float] = None
+    breadth_allowance: Optional[int] = 1000,
+    gap_allowance: Optional[float] = 0.1,
+    reflengths: Optional[Dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
     Merges consecutive regions in a BEDGRAPH-like DataFrame based on the specified merging method.
 
     :param intervals: pandas DataFrame with columns ['chrom', 'start', 'end', 'depth']
     :param merging_method: 'variance', 'gini', or 'jump'
-    :param max_stat_threshold: Threshold for the statistic or median jump
+    :param max_stat_threshold: Threshold for the statistic (or for the jump method, it can be used as a jump threshold)
     :param max_group_size: Maximum number of intervals to merge at once
     :param max_length: (Optional) Maximum length of merged interval
     :param value_diff_tolerance: (Optional) Maximum allowed difference in average values
-    :param jump_threshold: (Optional) Threshold for 'jump' method; if None, median jump is used
-    :return: pandas DataFrame with merged intervals and mean depth
+    :param breadth_allowance: Allowable gap (in bp) between intervals to consider merging.
+                              (Used only when reflengths are provided.)
+    :param gap_allowance: If reflengths is provided, the allowed gap is computed as ref_length * gap_allowance.
+                          Otherwise, if reflengths is None, gap condition will always pass.
+    :param reflengths: (Optional) Dictionary mapping chromosome names to their reference lengths.
+                      If not provided, the gap check will not restrict merging.
+    :return: pandas DataFrame with merged intervals and mean depth.
     """
     if intervals.empty:
         return pd.DataFrame(columns=['chrom', 'start', 'end', 'mean_depth'])
 
-    # Ensure DataFrame is sorted by chrom and start
+    # Ensure the DataFrame is sorted by chromosome and start position.
     intervals = intervals.sort_values(['chrom', 'start']).reset_index(drop=True)
-    import math
-    # Precompute jump_threshold if using 'jump' method and not provided
-    if merging_method == 'jump':
-        jump_threshold = max_stat_threshold
-        if max_stat_threshold is None:
-            # Compute median absolute difference between consecutive depths within each chromosome
-            # drop na depths
-            # convert na depth to 0
-            intervals['depth'] = intervals['depth'].fillna(0)
 
-            jump_threshold = intervals.groupby('chrom', observed=True)['depth'].apply(
-                lambda x: x[x != 0].diff().abs().dropna().median()
-            ).median()
-            jump_threshold = math.ceil(jump_threshold)
-
-
-        # If max_stat_threshold is provided, use it as jump_threshold
-        elif max_stat_threshold is not None:
-            jump_threshold = max_stat_threshold
-        else:
-            # Default jump_threshold if not provided
-            jump_threshold = 200  # Example default value
+    # If reference lengths are provided, use them. Otherwise, set to infinity so gap check does not interfere.
+    if reflengths is not None:
+        intervals['ref_length'] = intervals['chrom'].map(reflengths)
     else:
-        jump_threshold = None
+        intervals['ref_length'] = float('inf')
+
+    # Compute allowed gap per chromosome.
+    # (If reflengths is provided, allowed gap = ref_length * gap_allowance.
+    #  Otherwise, since ref_length is infinity, gap condition is never triggered.)
+    percent_dict = {}
+    for chrom in intervals['chrom'].unique():
+        ref_length = intervals[intervals['chrom'] == chrom]['ref_length'].iloc[0]
+        percent_dict[chrom] = ref_length * gap_allowance
+
+    # Precompute jump threshold for the 'jump' method.
+    if merging_method == 'jump':
+        if max_stat_threshold is not None:
+            effective_jump_threshold = max_stat_threshold
+        else:
+            # Fill NA depths with 0 and compute the 97.5th quantile of depth differences per chromosome.
+            intervals['depth'] = intervals['depth'].fillna(0)
+            try:
+                q = intervals.groupby('chrom', observed=True)['depth'].quantile(0.975).mean()
+                effective_jump_threshold = math.ceil(q) + 1
+            except Exception as ex:
+                print(ex)
+                effective_jump_threshold = 200
+    else:
+        effective_jump_threshold = None
 
     merged_regions = []
-
-    # Group by chromosome
+    # Group intervals by chromosome.
     grouped = intervals.groupby('chrom', observed=True)
-
     for chrom, group in grouped:
         group = group.reset_index(drop=True)
-        n = len(group)
-        if n == 0:
+        if group.empty:
             continue
 
+        # Initialize a buffer with the first interval.
         buffer = {
             'chrom': chrom,
             'start': group.at[0, 'start'],
             'end': group.at[0, 'end'],
             'depths': [group.at[0, 'depth']],
         }
+        per_ref = percent_dict.get(chrom, breadth_allowance)
 
-        for row in group.itertuples(index=False):
-            if row.index == 0:
-                continue  # Skip the first row as it's already in the buffer
+        for i, row in enumerate(group.itertuples(index=False)):
+            if i == 0:
+                continue  # first row is already in the buffer
 
+            new_start, new_end, new_depth = row.start, row.end, row.depth
+            prev_end = buffer['end']
+            gap = new_start - prev_end  # gap between intervals
+
+            # Start with merging allowed.
             can_merge = True
 
-            # Check max_group_size
+            # Check maximum group size.
             if len(buffer['depths']) >= max_group_size:
                 can_merge = False
 
-            # Check max_length
-            if can_merge and max_length is not None:
-                new_end = row.end
+            # Check maximum merged region length.
+            if max_length is not None:
                 total_length = new_end - buffer['start']
                 if total_length > max_length:
                     can_merge = False
 
-            # Check merging_method
+            # Apply method-specific merging criteria.
             if can_merge:
-                if merging_method in ['variance', 'gini']:
-                    current_depths = buffer['depths'] + [row.depth]
+                if merging_method == 'jump':
+                    # Calculate the jump based on the last depth in the current buffer.
+                    last_depth = buffer['depths'][-1]
+                    jump = abs(new_depth - last_depth)
+                    # Merge only if the gap is within the allowed per_ref and the jump is within effective_jump_threshold.
+                    if gap > per_ref or jump > effective_jump_threshold:
+                        can_merge = False
+                elif merging_method in ['variance', 'gini']:
+                    current_depths = buffer['depths'] + [new_depth]
                     if merging_method == 'variance':
                         stat_val = statistics.pvariance([float(x) for x in current_depths])
                     elif merging_method == 'gini':
                         stat_val = compute_gini(current_depths)
-                    if stat_val > max_stat_threshold:
+                    if max_stat_threshold is not None and stat_val > max_stat_threshold:
                         can_merge = False
-                elif merging_method == 'jump':
-                    jump_threshold=20
-                    last_depth = buffer['depths'][-1]
-                    jump = abs(row.depth - last_depth)
-                    if jump > jump_threshold:
-                        can_merge = False
+                    # Optional: Check average value difference tolerance.
+                    if value_diff_tolerance is not None:
+                        current_avg = np.mean(buffer['depths'])
+                        if abs(new_depth - current_avg) > value_diff_tolerance:
+                            can_merge = False
                 else:
                     raise ValueError(f"Unknown merging method: {merging_method}")
 
-            # Check value_diff_tolerance
-            if can_merge and value_diff_tolerance is not None and merging_method in ['variance', 'gini']:
-                current_avg = sum(buffer['depths']) / len(buffer['depths'])
-                if abs(row.depth - current_avg) > value_diff_tolerance:
-                    can_merge = False
-
             if can_merge:
-                # Merge the current row into the buffer
-                buffer['end'] = row.end
-                buffer['depths'].append(row.depth)
+                # Merge the current interval into the buffer.
+                buffer['end'] = new_end
+                buffer['depths'].append(new_depth)
             else:
-                # Finalize the current buffer
+                # Finalize the current buffer.
                 mean_depth = np.mean(buffer['depths'])
                 merged_regions.append({
                     'chrom': buffer['chrom'],
@@ -1603,15 +1625,15 @@ def merge_bedgraph_regions(
                     'end': buffer['end'],
                     'mean_depth': mean_depth
                 })
-                # Start a new buffer with the current row
+                # Start a new buffer with the current interval.
                 buffer = {
                     'chrom': chrom,
-                    'start': row.start,
-                    'end': row.end,
-                    'depths': [row.depth],
+                    'start': new_start,
+                    'end': new_end,
+                    'depths': [new_depth],
                 }
 
-        # Finalize the last buffer
+        # Finalize the last buffer for this chromosome.
         if buffer['depths']:
             mean_depth = np.mean(buffer['depths'])
             merged_regions.append({
@@ -1623,6 +1645,7 @@ def merge_bedgraph_regions(
 
     merged_df = pd.DataFrame(merged_regions)
     return merged_df
+
 
 
 def determine_conflicts(
@@ -1641,7 +1664,11 @@ def determine_conflicts(
         scaled = 100,
         kmer_size=31,
         filtered_bam_create=False,
-        FAST_MODE=True
+        FAST_MODE=True,
+        sensitive=False,
+        cpu_count=None,
+        jump_threshold=None,
+        gap_allowance = 0.1,
 ):
     # parser = argparse.ArgumentParser(description="Use bedtools to define coverage-based regions and compare read signatures using sourmash MinHash.")
     # parser.add_argument("--input_bam", required=True, help="Input BAM file.")
@@ -1672,13 +1699,20 @@ def determine_conflicts(
     os.makedirs(output_dir, exist_ok=True)
     import time
     print(f"Starting conflict region detection at {time.ctime()}")
+    if len(fasta_files) == 0:
+        print("No fasta files provided, using sensitive mode")
+    elif sensitive:
+        print("Fasta files provided but sensitive mode enabled, using BAM alignments for signature generations")
+        fasta_files = []
+    else:
+        print(f"Using {len(fasta_files)} fasta files for regional comparisons")
     # Step 7: Parse filtered BED to get regions
     regions = parse_bed_file(bedfile)
     # filter regions only present in reads_map
     # regions = [r for r in regions if r[0] in reads_map.keys()]
     # convert regions to a list, each row is an element of the list
     # pause for 20 seconds
-    print(f"Total regions defined: {len(regions)}")
+    print(f"Total regions defined: {len(regions)} in default mode for signature generation")
 
     # 2. Choose statistic function
     use_jump = True
@@ -1691,20 +1725,25 @@ def determine_conflicts(
     elif use_jump:
         statistic_func = lambda vals: max(vals) - min(vals)
         stat_name="jump"
-        threshold=200
-        # threshold=None
+        threshold = jump_threshold
     else:
         statistic_func = compute_gini
         stat_name = "gini"
         threshold=0.8
     # 3. Merge
-    print(f"Merging regions (using {stat_name} <= {threshold})...")
+    bam_fs = pysam.AlignmentFile(input_bam, "rb")
+    reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
+
+    print(f"Merging regions (using {stat_name} <= {threshold}, Gap: {gap_allowance})...")
     start_time = time.time()
+
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
-        max_group_size=200_000, # Limit merges to x intervals
-        merging_method=stat_name
+        max_group_size=4_000_000, # Limit merges to x intervals
+        merging_method=stat_name,
+        reflengths=reflengths,
+        gap_allowance = gap_allowance
     )
     print(f"Regions merged in {time.time() - start_time:.2f} seconds.")
 
@@ -1714,17 +1753,18 @@ def determine_conflicts(
     print(f"Length of original regions : {len(regions)})")
     print(f"Length of merged regions: {len(merged_regions)}")
     start = time.time()
-
     gt_performances = dict()
 
     reads_map = defaultdict(list)
     if not sigfile or not os.path.exists(sigfile):
         # Step 9: Create signatures for each region
         # get cpu count / 2, only if it is > 1, round down
-        num_workers = max(1, int(os.cpu_count() / 2))
-        # if num_workers > 10:
-        #     num_workers = 10
-        print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
+        if cpu_count:
+            num_workers = cpu_count
+        else:
+            num_workers = max(1, int(os.cpu_count() / 2))
+        # print("Creating signatures for regions...", f"parallelized across {num_workers} workers")
+
         start_time = time.time()
         signatures = create_signatures_for_regions(
             regions_df=merged_regions,
@@ -1747,8 +1787,6 @@ def determine_conflicts(
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
 
-    bam_fs = pysam.AlignmentFile(input_bam, "rb")
-    reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
 
 
     if matrix:
