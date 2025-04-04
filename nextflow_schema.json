@@ -86,7 +86,7 @@
                 }
             },
             "required": ["db", "outdir"],
-            "anyOf": [
+            "oneOf": [
                 { "required": ["input"] },
                 { "required": ["fastq_1"] }
             ]
