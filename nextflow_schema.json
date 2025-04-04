@@ -29,26 +29,67 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
-                "metaphlan": {
-                    "type": "string",
-                    "fa_icon": "fas fa-book",
-                    "format": "directory-path",
-                    "description": "Path to database for Metaphlan"
-                },
-                "centrifuge_db": {
-                    "type": "string",
-                    "fa_icon": "fas fa-book",
-                    "format": "directory-path",
-                    "description": "Path to database for Centrifuge"
-                },
                 "outdir": {
                     "type": "string",
                     "format": "directory-path",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "fastq_1": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "fastq_2": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sample": {
+                    "type": "string",
+                    "description": "Sample name.  If left blank it retrieves the basename of the fastq_1 file",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "trim": {
+                    "type": "boolean",
+                    "description": "Whether or not to trim your fastq file(s)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "seq_summary": {
+                    "type": "string",
+                    "description": "OXFORD only sequencing summary file",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "type": {
+                    "type": "string",
+                    "description": "1",
+                    "fa_icon": "fas fa-file-signature",
+                    "enum": [
+                        "blood",
+                        "skin",
+                        "stool",
+                        "nasal",
+                        "unknown",
+                        "sterile"
+                    ]
+                },
+                "platform": {
+                    "type": "string",
+                    "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
+                    "fa_icon": "fas fa-file-signature",
+                    "enum": [
+                        "ILLUMINA",
+                        "OXFORD"
+                    ]
                 }
             },
-            "required": ["input", "db", "outdir"]
+            "required": ["db", "outdir"],
+            "anyOf": [
+                { "required": ["input"] },
+                { "required": ["fastq_1"] }
+            ]
         },
         "prelim_and_qc": {
             "title": "Preliminary and QC",
@@ -160,6 +201,18 @@
                     "type": "number",
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "metaphlan": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Metaphlan"
+                },
+                "centrifuge_db": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Centrifuge"
                 },
                 "filter_kraken2": {
                     "type": "string",

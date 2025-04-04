@@ -184,7 +184,7 @@ def process_region(region, kmer_size, scaled):
                 args = [chrom, start, end, kmer_size, scaled, reads_in_region]
                 result = create_signature_for_single_region(args)
                 seen_references = True
-                # Once the desired record is found and processed, you can break out of the loop.
+                # Once the desired record is found and processed, break out of the loop.
                 break
     else:
         try:

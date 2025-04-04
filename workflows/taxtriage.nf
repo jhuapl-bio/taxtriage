@@ -36,25 +36,60 @@ WorkflowTaxtriage.initialise(params, log)
 // print wfsummary to json file to working directory
 // TODO nf-core: Add all file path parameters for the pipeline to the list below
 // Check input path parameters to see if they exist
-def checkPathParamList = [
-    params.input,
-]
+// def checkPathParamList = [
+//     params.input,
+// ]
 
 if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== 'docker'){
     exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
 }
 
-for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
+// for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
 if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
     exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
 }
 
+println "Working Directory: ${workflow.workDir}"
+
+// Either use an existing samplesheet file or build one from fastq parameters
+if (params.fastq_1) {
+    // Determine sample name: use --sample if provided, otherwise strip the fastq extension from fastq_1 basename
+    def sampleName = params.sample ? params.sample : file(params.fastq_1).getBaseName().replaceFirst(/(\.fastq.*)/, '')
+    // Use provided platform or default to ILLUMINA
+    def platform = params.platform ? params.platform : 'ILLUMINA'
 
 
-// Check mandatory parameters
-if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+    // Build CSV content following the samplesheet format:
+    // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+    // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
+    def csvContent = """\
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary},${params.trim},${params.type ?: 'unknown'}
+"""
+
+    // Print the CSV content to the console for debugging
+    println "Generated samplesheet content:\n${csvContent}"
+
+    // Create a temporary file in the workflow work directory
+    // and write the CSV content to it
+    def ch_input = Channel.empty()
+"""
+    // Write the CSV content to a temporary file in the workflow work directory
+    def filenamecsv = "${workflow.workDir}/temp_samplesheet.csv"
+    println "Creating temporary samplesheet: ${filenamecsv}"
+    def tmpSheet = file(filenamecsv)
+    println "${tmpSheet}"
+    tmpSheet.text = csvContent
+    ch_input = tmpSheet
+} else if (params.input) {
+    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+} else {
+    ex
+    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+}
+println "Input samplesheet: ${ch_input}"
 
 if (params.minq) {
     ch_minq_shortreads = params.minq
@@ -390,9 +425,26 @@ workflow TAXTRIAGE {
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
+    // if (params.fastq_1){
+    //     println "Using files outside of hte samplesheet specifications"
+    //     // CREATE_SAMPLESHEET
+    //     ch_fastq_1 = Channel.fromPath(params.fastq_1, checkIfExists: true)
+    //     // ch_fastq_2 = Channel.fromPath(params.fastq_2, checkIfExists: true)
+    //     // get basename of ch_fastq_1
+    //     sample = ch_fastq_1.map { file -> file.getName() }
+    //     // remove the .fastq* extension or .fq*extension
+    //     sample = ch_fastq_1.map { file -> file.replaceAll(/\.fastq(\.gz)?$/, '') }
+    //     sample = ch_fastq_1.map { file -> file.replaceAll(/\.fq(\.gz)?$/, '') }
+    //     sample.view()
+    //     ch_reads = Channel.empty()
+    // } else{
     INPUT_CHECK(
         ch_input
     )
+    ch_reads = INPUT_CHECK.out.reads
+    ch_reads.view()
+
+
 
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
@@ -409,7 +461,7 @@ workflow TAXTRIAGE {
     def date = new Date()
     println "Date: ${date}"
 
-    ch_reads = INPUT_CHECK.out.reads
+
     ch_pass_files = ch_reads.map{ meta, reads -> {
             return [ meta ]
         }
