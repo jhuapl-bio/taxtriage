@@ -93,7 +93,10 @@
             "anyOf": [
                 { "required": ["input"] },
                 { "required": ["fastq_1"] }
-            ]
+            ],
+            "errorMessage": {
+                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
+            }
         },
         "prelim_and_qc": {
             "title": "Preliminary and QC",
