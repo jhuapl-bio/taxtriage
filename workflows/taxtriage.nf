@@ -66,15 +66,7 @@ if (params.fastq_1) {
     // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
     def csvContent = """\
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
-${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary},${params.trim},${params.type ?: 'unknown'}
-"""
-
-    // Print the CSV content to the console for debugging
-    println "Generated samplesheet content:\n${csvContent}"
-
-    // Create a temporary file in the workflow work directory
-    // and write the CSV content to it
-    def ch_input = Channel.empty()
+${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary},${params.trim},${params.type}
 """
     // Write the CSV content to a temporary file in the workflow work directory
     def filenamecsv = "${workflow.workDir}/temp_samplesheet.csv"
