@@ -20,6 +20,7 @@
                     "description": "Path to comma-separated file containing information about the samples in the experiment.",
                     "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 6 columns in a header row and at least one row for info. See [usage docs](https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet_git.csv).",
                     "fa_icon": "fas fa-file-csv",
+                    "errorMessage": "File name must end in '.csv' and have the appropriate columns defined at: https://github.com/jhuapl-bio/taxtriage/blob/single_input/docs/usage.md#samplesheet-information.",
                     "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet.csv"
                 },
                 "db": {
@@ -38,6 +39,7 @@
                 "fastq_1": {
                     "type": "string",
                     "format": "file-path",
+                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz or .fastq). Will overwrite --input parameter if specified.",
                     "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -86,7 +88,7 @@
                 }
             },
             "required": ["db", "outdir"],
-            "oneOf": [
+            "anyOf": [
                 { "required": ["input"] },
                 { "required": ["fastq_1"] }
             ]
