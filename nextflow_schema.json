@@ -39,6 +39,7 @@
                 "fastq_1": {
                     "type": "string",
                     "format": "file-path",
+                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
                     "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz or .fastq). Will overwrite --input parameter if specified.",
                     "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
                     "fa_icon": "fas fa-file-signature"
@@ -46,6 +47,7 @@
                 "fastq_2": {
                     "type": "string",
                     "format": "file-path",
+                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
                     "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
                     "fa_icon": "fas fa-file-signature"
                 },
