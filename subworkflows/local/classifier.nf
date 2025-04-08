@@ -75,7 +75,6 @@ workflow CLASSIFIER {
 
             ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
             ch_versions = KREPORT_TO_KRONATXT.out.versions
-            ch_versions.view()
             ch_combined = ch_krona_txt
                 .map{ it[1] }        // Get the file path
                 .collect()            // Collect all file parts into a list

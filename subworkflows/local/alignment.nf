@@ -13,6 +13,8 @@ include { BCFTOOLS_MPILEUP } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
 include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
 include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
+include { BEDTOOLS_BAMTOBED } from '../../modules/nf-core/bedtools/bamtobed/main'
+include { BEDTOOLS_MASKFASTA } from '../../modules/nf-core/bedtools/maskfasta/main'
 
 workflow ALIGNMENT {
     take:
@@ -113,29 +115,44 @@ workflow ALIGNMENT {
         .set{ merged_bams_channel }
 
     if (params.get_variants || params.reference_assembly){
-        //     // // // branch out the samtools output to nanopore and illumina and pacbio
-        BCFTOOLS_MPILEUP(
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> fasta },
-            false
+        ch_bam_with_fasta = sorted_bams.join(ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] })
+        BEDTOOLS_BAMTOBED(
+            ch_bam_with_fasta.map{ m, bam, _ -> [m, bam] },
         )
-        // ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
+        // join ch_bam_With_fasta to BEDTOOLS_BAMTOBED
+        ch_beds = ch_bam_with_fasta.join(BEDTOOLS_BAMTOBED.out.bed)
+        // merge bamtobed output bed file into ch_fasta_files_for_alignment
+
+        BCFTOOLS_MPILEUP(
+            ch_beds.map{ m, bam, fasta, bed -> [m, bam, bed] },
+            ch_beds.map{ m, bam, fasta, bed -> [m, fasta[0]] },
+            false
+        ).set{ transposed_fastas }
+
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
-        BCFTOOLS_MPILEUP(
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> fasta[0] },
-            false
-        )
-        .set{ transposed_fastas }
-        // ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
+
+
+        ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
 
         if (params.reference_assembly){
+            //
+            // Mask regions in consensus with BEDTools
+            //
+            BEDTOOLS_MASKFASTA(
+                ch_beds.map{ m, bam, fasta, bed -> [m, bed] },
+                ch_beds.map{ m, bam, fasta, bed -> [fasta.first()] },
+            )
+            ch_versions = ch_versions.mix(BEDTOOLS_MASKFASTA.out.versions.first())
+
+            //
+            // Call consensus sequence with BCFTools
+            //
             BCFTOOLS_CONSENSUS(
-                ch_merged_mpileup
+                ch_merged_mpileup.join(BEDTOOLS_MASKFASTA.out.fasta),
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
-            // ch_versions = ch_versions.mix(BCFTOOLS_CONSENSUS.out.versions)
+            ch_versions = ch_versions.mix(BCFTOOLS_CONSENSUS.out.versions)
         }
     }
     // Split the channel based on the condition
@@ -149,7 +166,7 @@ workflow ALIGNMENT {
         branchedChannels.mergeNeeded.map{ m, bam -> [m, ''] },
         branchedChannels.mergeNeeded.map{ m, bam -> [m, ''] },
     )
-    //  // // Unified channel from both merged and non-merged BAMs
+    // // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_MERGE.out.bam.mix(branchedChannels.noMergeNeeded).set { collected_bams }
     // // ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
     // // // Join the channels on 'id' and append the BAM files to the fastq_reads entries

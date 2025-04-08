@@ -502,16 +502,18 @@ workflow TAXTRIAGE {
         )
         ch_reads = KHMER_NORMALIZEBYMEDIAN.out.reads
         ch_versions = ch_versions.mix(KHMER_NORMALIZEBYMEDIAN.out.versions)
+        COUNT_READS(ch_reads)
+        readCountChannel = COUNT_READS.out.count
+        // Update the meta with the read count by reading the file content
+        readCountChannel.map { meta, countFile, reads ->
+            def count = countFile.text.trim().toInteger()
+            // Update meta map by adding a new key 'read_count'
+            meta.read_count = count
+            return [meta, reads]
+        }.set{ ch_reads }
     }
-    COUNT_READS(ch_reads)
-    readCountChannel = COUNT_READS.out.count
-    // Update the meta with the read count by reading the file content
-    readCountChannel.map { meta, countFile, reads ->
-        def count = countFile.text.trim().toInteger()
-        // Update meta map by adding a new key 'read_count'
-        meta.read_count = count
-        return [meta, reads]
-    }.set{ ch_reads }
+
+
 
     //////////////////// RUN PYCOQC on any seq summary file ////////////////////
 
@@ -549,6 +551,8 @@ workflow TAXTRIAGE {
             ch_reads.map{ meta, reads -> [meta, reads, ch_subsample] },
         )
         ch_reads = SEQTK_SAMPLE.out.reads
+        // for all of the reads in ch_reads, set the numreads value to params.subsample
+        ch_reads.map { meta, reads -> meta.read_count = params.subsample }
     }
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
@@ -731,7 +735,7 @@ workflow TAXTRIAGE {
     // CUSTOM_DUMPSOFTWAREVERSIONS(
     //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
     // )
-    // // //
+    // //
     // // // MODULE: MultiQC Pt 2
     // // //
     // Unused or Incomplete
