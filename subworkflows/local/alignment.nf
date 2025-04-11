@@ -122,16 +122,14 @@ workflow ALIGNMENT {
         // join ch_bam_With_fasta to BEDTOOLS_BAMTOBED
         ch_beds = ch_bam_with_fasta.join(BEDTOOLS_BAMTOBED.out.bed)
         // merge bamtobed output bed file into ch_fasta_files_for_alignment
-
         BCFTOOLS_MPILEUP(
             ch_beds.map{ m, bam, fasta, bed -> [m, bam, bed] },
-            ch_beds.map{ m, bam, fasta, bed -> [m, fasta[0]] },
+            ch_beds.map{ m, bam, fasta, bed -> [m, fasta] },
             false
         ).set{ transposed_fastas }
 
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
-
 
         ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
 
@@ -141,7 +139,7 @@ workflow ALIGNMENT {
             //
             BEDTOOLS_MASKFASTA(
                 ch_beds.map{ m, bam, fasta, bed -> [m, bed] },
-                ch_beds.map{ m, bam, fasta, bed -> [fasta.first()] },
+                ch_beds.map{ m, bam, fasta, bed -> fasta },
             )
             ch_versions = ch_versions.mix(BEDTOOLS_MASKFASTA.out.versions.first())
 

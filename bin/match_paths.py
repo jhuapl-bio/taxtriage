@@ -343,6 +343,7 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
+    parser.add_argument('--minmapq', type=int, default=7, help="Minimum mapq score to consider passing for an alignment")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -1253,7 +1254,7 @@ def adjust_bedgraph_coverage(bedgraph_path, excluded_interval_trees, output_bedg
 
     return adjusted_bedgraph
 
-def count_reference_hits(bam_file_path,alignments_to_remove=None):
+def count_reference_hits(bam_file_path,alignments_to_remove=None, min_mapq=0):
     """
     Count the number of reads aligned to each reference in a BAM file.
 
@@ -1310,6 +1311,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
         unique_read_ids = set()  # To track unique read IDs
         total_length = 0
         total_reads = 0
+        low_mapq = 0
         readlengths = []
         removed_reads = defaultdict(dict )
         read_stats = defaultdict(list)
@@ -1324,7 +1326,10 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
 
             # if not read.is_read1 and read.is_paired:
             #     continue
-
+            # if the mapq is less than the min_mapq, skip the read
+            if read.mapping_quality < min_mapq:
+                low_mapq += 1
+                continue
             ref = read.reference_name
             total_reads += 1
 
@@ -1355,6 +1360,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
 
                 # Record read positions for coverage calculation
                 reference_stats[ref]["read_positions"].append((read.reference_start, read.reference_end))
+        # print count of low mapq
+        print(f"Low Count MAPQ reads: {low_mapq} / {total_reads} passed reads. Total: {total_reads + low_mapq} reads")
         # Calculate statistics for each reference
         for ref, length in reference_lengths.items():
             stats = reference_stats.get(ref, None)
@@ -1592,8 +1599,8 @@ def main():
     reference_hits, aligned_total, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
+        min_mapq=args.minmapq,
     )
-
 
     assembly_to_accession = defaultdict(set)
     taxid_to_accession = defaultdict(int)

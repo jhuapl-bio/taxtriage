@@ -51,6 +51,13 @@ def parse_args(argv=None):
         help="Features map file of accession.version of protein to taxid. Can be format from prot.accession2taxid.gz",
     )
     parser.add_argument(
+        "-n",
+        "--names",
+        required=False,
+        metavar="NAMES",
+        help="Optional Name mapping of a accession (2nd colun of --features input). Also, match patterns based on toxin, virulence, AMR using regex",
+    )
+    parser.add_argument(
         "-d",
         "--doutput",
         required=True,
@@ -88,6 +95,34 @@ def parse_args(argv=None):
 def main(argv=None):
     """Run the main script."""
     args = parse_args(argv)
+
+    if args.names:
+        name_mapping = dict()
+        header = ['Type', 'with', 'Assembly', 'Assembly Type', 'subtype',
+          'empty', 'NUC Accession', 'length', 'spec', 'strand', 'Prot Accession',
+          'Prot', 'Name', 'Description', 'empty2', 'empty3', 'empty4', 'empty5', 'empty6', 'empty7']
+        # set regex patterns to only fine toxin, not anti-toxin, virulence, or Antimicrobial resistance or AMR
+        # for toxin, make sure to ignore antitoxin if it is present, only if it is toxin, like ((?!anti)toxin
+        patterns = [
+            re.compile(r'(?i)toxin'),
+            re.compile(r'(?i)virulence'),
+            re.compile(r'(?i)antimicrobial resistance'),
+            re.compile(r'(?i)amr')
+        ]
+        filterpattern = [
+            # dont match antitoxin
+            re.compile(r'(?i)antitoxin'),
+        ]
+        with open(args.names, 'r') as f:
+            reader = csv.DictReader(f, delimiter='\t', fieldnames=header)
+            for row in reader:
+                # if description in row matches any pattern, print it
+                if any(pattern.search(row['Description']) for pattern in patterns):
+                    # chekc if the filterpattern any doesnt match any
+                    if not any(filter.search(row['Description']) for filter in filterpattern):
+                        name_mapping[row['Prot Accession']] = row['Description']
+                # name_mapping[row['Prot Accession']] = row['Description']
+        f.close()
     # Load the features map
     features = {}
     with open(args.features, 'r') as f:
@@ -133,8 +168,12 @@ def main(argv=None):
 
     # for each key, value, sort based on the Identity, and filter on Identity > args.minIdentity
     for key in diamond:
+        if name_mapping.get(key):
+            print('>', name_mapping.get(key), diamond[key])
         diamond[key] = [x for x in diamond[key] if float(x['Identity']) > args.minidentity ]
         diamond[key] = sorted(diamond[key], key=lambda x: x['Identity'], reverse=True)
+        for entry in diamond[key]:
+            entry['Description'] = name_mapping.get(key, "")
     # Map the diamond output to taxid
     taxid = defaultdict(list)
     query_lis = defaultdict(int)
@@ -153,10 +192,13 @@ def main(argv=None):
     # Write the output
     with open(args.output, 'w') as f:
         writer = csv.writer(f, delimiter='\t')
-        writer.writerow(['taxid', '# contigs', '# CDS', 'medianIdentity', 'medianlength', 'medianmismatched', 'medianeval'])
+        writer.writerow(['taxid', '# contigs', '# CDS', 'medianIdentity', 'medianlength', 'medianmismatched', 'medianeval', 'desc'])
         for key, val in taxid.items():
             uniqueproteins = set([x['Accession'] for x in val])
             unique_contigs = set([x['Query ID'] for x in val])
+            desc = set([x['Description'] for x in val])
+            # remove any ''
+            desc = ", ".join(list(filter(None, desc)))
             # get the median of the Identity Score
             medianIdentity = 0
             medianlength = 0
@@ -167,7 +209,7 @@ def main(argv=None):
                 medianlength = val[len(val)//2]['Alignment Length']
                 medianmismatched = val[len(val)//2]['Mismatches']
                 medianeval = val[len(val)//2]['E-value']
-            writer.writerow([key, len(unique_contigs),  len(uniqueproteins), medianIdentity, medianlength, medianmismatched, medianeval])
+            writer.writerow([key, len(unique_contigs),  len(uniqueproteins), medianIdentity, medianlength, medianmismatched, medianeval, desc])
 
 if __name__ == "__main__":
     main()

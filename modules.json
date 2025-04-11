@@ -202,7 +202,7 @@
                     },
                     "nanoplot": {
                         "branch": "master",
-                        "git_sha": "81880787133db07d9b4c1febd152c090eb8325dc",
+                        "git_sha": "457e8b54d1d2d3ec9208c55b66cdd573c976372f",
                         "installed_by": ["modules"]
                     },
                     "ncbigenomedownload": {
