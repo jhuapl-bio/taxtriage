@@ -199,7 +199,6 @@ workflow ALIGNMENT {
     // // merge bedgraph on the same channel
     BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
     ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
-
     gcf_with_bam = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, map] })
 
     SAMTOOLS_HIST_COVERAGE(
