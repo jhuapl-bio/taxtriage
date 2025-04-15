@@ -1,10 +1,10 @@
 {
-    "$schema": "http://json-schema.org/draft/2020-12/schema",
-    "$id": "http://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/nextflow_schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "$id": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/nextflow_schema.json",
     "title": "nf-core/taxtriage pipeline parameters",
     "description": "APHL pipeline for triage classification reports.",
     "type": "object",
-    "$defs": {
+    "definitions": {
         "input_output_options": {
             "title": "Input/output options (Required)",
             "type": "object",
@@ -20,7 +20,6 @@
                     "description": "Path to comma-separated file containing information about the samples in the experiment.",
                     "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 6 columns in a header row and at least one row for info. See [usage docs](https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet_git.csv).",
                     "fa_icon": "fas fa-file-csv",
-                    "errorMessage": "File name must end in '.csv' and have the appropriate columns defined at: https://github.com/jhuapl-bio/taxtriage/blob/single_input/docs/usage.md#samplesheet-information.",
                     "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/examples/Samplesheet.csv"
                 },
                 "db": {
@@ -30,60 +29,26 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
+                "metaphlan": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Metaphlan"
+                },
+                "centrifuge_db": {
+                    "type": "string",
+                    "fa_icon": "fas fa-book",
+                    "format": "directory-path",
+                    "description": "Path to database for Centrifuge"
+                },
                 "outdir": {
                     "type": "string",
                     "format": "directory-path",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
-                },
-                "fastq_1": {
-                    "type": "string",
-                    "format": "file-path",
-                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq). Will overwrite --input parameter if specified.",
-                    "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "fastq_2": {
-                    "type": "string",
-                    "format": "file-path",
-                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "sample": {
-                    "type": "string",
-                    "description": "Sample name.  If left blank it retrieves the basename of the fastq_1 file",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "trim": {
-                    "type": "boolean",
-                    "description": "Whether or not to trim your fastq file(s)",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "seq_summary": {
-                    "type": "string",
-                    "description": "OXFORD only sequencing summary file",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "type": {
-                    "type": "string",
-                    "description": "1",
-                    "fa_icon": "fas fa-file-signature",
-                    "enum": ["blood", "skin", "stool", "nasal", "unknown", "sterile"]
-                },
-                "platform": {
-                    "type": "string",
-                    "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
-                    "fa_icon": "fas fa-file-signature",
-                    "enum": ["ILLUMINA", "OXFORD"]
                 }
             },
-            "required": ["db", "outdir"],
-            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }],
-            "errorMessage": {
-                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
-            }
+            "required": ["input", "db", "outdir"]
         },
         "prelim_and_qc": {
             "title": "Preliminary and QC",
@@ -196,18 +161,6 @@
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "metaphlan": {
-                    "type": "string",
-                    "fa_icon": "fas fa-book",
-                    "format": "directory-path",
-                    "description": "Path to database for Metaphlan"
-                },
-                "centrifuge_db": {
-                    "type": "string",
-                    "fa_icon": "fas fa-book",
-                    "format": "directory-path",
-                    "description": "Path to database for Centrifuge"
-                },
                 "filter_kraken2": {
                     "type": "string",
                     "format": "directory-path",
@@ -276,6 +229,7 @@
                     "description": "Skip the variant report",
                     "fa_icon": "fas fa-file-signature"
                 },
+
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",
@@ -350,7 +304,7 @@
                 },
                 "reward_factor": {
                     "type": "number",
-                    "description": "TASS Score Reward factor. This is the measure of how spread out or evenly distributed the regions, the higher the score.",
+                    "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "jump_threshold": {
@@ -361,10 +315,10 @@
                 },
                 "gap_allowance": {
                     "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "default": 0.1,
                     "description": "Gap Allowance For Confidence",
+                    "max": 1,
+                    "min": 0,
+                    "default": 0.1,
                     "hint": "For the merging of regions, this is the allowed 0-depth gap between regions in the bedgraph before a new region is allowed. It is the proportion 0-1 of the full reference length. Default is 0.1 or 10%",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -745,7 +699,7 @@
     },
     "allOf": [
         {
-            "$ref": "#/$defs/input_output_options"
+            "$ref": "#/definitions/input_output_options"
         }
     ]
 }
