@@ -683,6 +683,7 @@ workflow TAXTRIAGE {
         }
         .join(ch_bedfiles)
         .join(REFERENCE_PREP.out.ch_reference_cds)
+        .join(REFERENCE_PREP.out.features)
         .join(REFERENCE_PREP.out.ch_cds_to_taxids)
         .join(
             ch_filtered_reads.map{

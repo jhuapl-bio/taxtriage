@@ -26,6 +26,8 @@ include { BEDTOOLS_COVERAGE } from '../../modules/nf-core/bedtools/coverage/main
 include { FEATURES_MAP } from '../../modules/local/features_map'
 include { MAP_PROT_ASSEMBLY } from '../../modules/local/map_prot_assembly'
 include { FLYE } from '../../modules/nf-core/flye/main'
+include { MINIMAP2_ALIGN as PROTEIN_REALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { SAMTOOLS_COVERAGE as PROTEIN_COVERAGE } from '../../modules/local/samtools_coverage'
 
 workflow ASSEMBLY {
     take:
@@ -49,13 +51,13 @@ workflow ASSEMBLY {
             ch_longreads_assembled = Channel.empty()
             if (params.use_megahit_longreads){
                 MEGAHIT_LONG(
-                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads, []] }
+                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> [meta, reads, []] }
                 )
                 ch_versions = ch_versions.mix(MEGAHIT_LONG.out.versions)
                 ch_longreads_assembled = MEGAHIT_LONG.out.contigs
             } else {
                 FLYE(
-                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] },
+                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> [meta, reads] },
                     '--nano-raw'
                 )
                 ch_versions = ch_versions.mix(FLYE.out.versions)
@@ -64,7 +66,7 @@ workflow ASSEMBLY {
             // if paired end then make a reads1 and reads2
             // if single end then make a reads1 and empty file
             MEGAHIT(
-                branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> {
+                branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> {
                         if (meta.single_end) {
                             return [meta, reads, []]
                         } else {
@@ -77,22 +79,41 @@ workflow ASSEMBLY {
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
             if ((params.use_diamond)){
                 BEDTOOLS_COVERAGE(
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] },
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [] },
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, bed, bam] },
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [] },
                 )
                 ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, mapping] }
                 )
                 FEATURES_MAP(
                     ch_bedout
                 )
             }
+            // join the assemvbly with reads
+            ch_stage_minimap2 = ch_assembled_files.join(
+                postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, reads] }
+            )
+
+
+            // align the reads back to the denovo assembly
+            PROTEIN_REALIGN (
+                ch_stage_minimap2.map{ meta, assembly, reads-> [meta, reads] },
+                ch_stage_minimap2.map{ meta, assemby, reads -> [meta, assemby] },
+                true,
+                'csi',
+                false,
+                false
+            )
+            ch_protein_bam = PROTEIN_REALIGN.out.bam.join(PROTEIN_REALIGN.out.index)
+            PROTEIN_COVERAGE(
+                ch_protein_bam
+            )
             try {
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []
                 }
                 DIAMOND_MAKEDB(
-                    valid_aligners.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds] },
+                    valid_aligners.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, cds] },
                     [],
                     [],
                     [],
@@ -109,7 +130,7 @@ workflow ASSEMBLY {
                 )
                 ch_versions = ch_versions.mix(DIAMOND_BLASTX.out.versions)
                 MAP_PROT_ASSEMBLY(
-                    DIAMOND_BLASTX.out.txt.join(valid_aligners.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapcd] }),
+                    DIAMOND_BLASTX.out.txt.join(valid_aligners.map{meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, mapcd, features, mapping] }),
                     assemblyfile
                 )
                 ch_versions = ch_versions.mix(MAP_PROT_ASSEMBLY.out.versions)
@@ -131,7 +152,7 @@ workflow ASSEMBLY {
                 ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
             }
         } else {
-            postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads  -> {
+            postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads  -> {
                     return [ meta,  ch_empty_file]
             }
             }.set{ ch_diamond_output }

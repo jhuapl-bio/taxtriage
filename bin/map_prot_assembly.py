@@ -51,6 +51,13 @@ def parse_args(argv=None):
         help="Features map file of accession.version of protein to taxid. Can be format from prot.accession2taxid.gz",
     )
     parser.add_argument(
+        "-p",
+        "--mapnames",
+        required=False,
+        metavar="MAPNAMES",
+        help="Optional Name mapping of name of organism to a given taxid. Matches the Mapped_Vaue column to the taxid column in the output ",
+    )
+    parser.add_argument(
         "-n",
         "--names",
         required=False,
@@ -95,9 +102,15 @@ def parse_args(argv=None):
 def main(argv=None):
     """Run the main script."""
     args = parse_args(argv)
-
+    name_mapping = dict()
+    taxid_map = dict()
+    if args.mapnames:
+        with open(args.mapnames, 'r') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                taxid_map[row['Mapped_Value']] = row['Organism_Name']
+        f.close()
     if args.names:
-        name_mapping = dict()
         header = ['Type', 'with', 'Assembly', 'Assembly Type', 'subtype',
           'empty', 'NUC Accession', 'length', 'spec', 'strand', 'Prot Accession',
           'Prot', 'Name', 'Description', 'empty2', 'empty3', 'empty4', 'empty5', 'empty6', 'empty7']
@@ -192,10 +205,14 @@ def main(argv=None):
     # Write the output
     with open(args.output, 'w') as f:
         writer = csv.writer(f, delimiter='\t')
-        writer.writerow(['taxid', '# contigs', '# CDS', 'medianIdentity', 'medianlength', 'medianmismatched', 'medianeval', 'desc'])
+        writer.writerow(['taxid', "Name", '# contigs', '# CDS', 'medianIdentity', 'medianlength', 'medianmismatched', 'medianeval', 'desc'])
         for key, val in taxid.items():
             uniqueproteins = set([x['Accession'] for x in val])
             unique_contigs = set([x['Query ID'] for x in val])
+            if key in taxid_map:
+                name = taxid_map[key]
+            else:
+                name = "Unknown Name"
             desc = set([x['Description'] for x in val])
             # remove any ''
             desc = ", ".join(list(filter(None, desc)))
@@ -209,7 +226,7 @@ def main(argv=None):
                 medianlength = val[len(val)//2]['Alignment Length']
                 medianmismatched = val[len(val)//2]['Mismatches']
                 medianeval = val[len(val)//2]['E-value']
-            writer.writerow([key, len(unique_contigs),  len(uniqueproteins), medianIdentity, medianlength, medianmismatched, medianeval, desc])
+            writer.writerow([key, name, len(unique_contigs),  len(uniqueproteins), medianIdentity, medianlength, medianmismatched, medianeval, desc])
 
 if __name__ == "__main__":
     main()

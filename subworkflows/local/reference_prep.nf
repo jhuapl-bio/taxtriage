@@ -19,6 +19,7 @@ workflow  REFERENCE_PREP {
     main:
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
+    ch_features = Channel.empty()
     ch_prepfiles = Channel.empty()
 
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
@@ -265,6 +266,7 @@ workflow  REFERENCE_PREP {
             FEATURES_TO_BED(
                 FEATURES_DOWNLOAD.out.features
             )
+            ch_features = FEATURES_DOWNLOAD.out.features
             ch_versions = ch_versions.mix(FEATURES_TO_BED.out.versions)
             ch_bedfiles = FEATURES_TO_BED.out.bed
         } catch (Exception e) {
@@ -288,4 +290,5 @@ workflow  REFERENCE_PREP {
         ch_cds_to_taxids
         versions = ch_versions
         fastas = ch_fastas
+        features = ch_features
 }
