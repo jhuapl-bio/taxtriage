@@ -2,6 +2,7 @@
 // Check input samplesheet and get read channels
 //
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
@@ -93,6 +94,7 @@ workflow ALIGNMENT {
         // ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
+
         MINIMAP2_ALIGN(
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },

@@ -19,6 +19,7 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_INDEX as FILTER_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { REMOVE_HOSTREADS } from '../../modules/local/remove_unaligned'
 include { SAMTOOLS_INDEX as FILTERED_SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
@@ -64,9 +65,14 @@ workflow HOST_REMOVAL {
             // if ch_aligned_for_filter.shorteads is not empty
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
 
+            FILTER_INDEX(
+                ch_reads.map{ meta, reads -> return [meta, ch_reference_fasta_removal] }
+            )
+
+
             FILTER_MINIMAP2(
                 ch_reads.map{ meta, reads -> return [meta, reads] },
-                ch_reads.map{ meta, reads -> return [meta, ch_reference_fasta_removal] },
+                FILTER_INDEX.out.index,
                 true,
                 true,
                 true,

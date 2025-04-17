@@ -149,6 +149,7 @@ workflow  REFERENCE_PREP {
                         }
                         return [meta, fastas, listmaps, listids]
                 }.set { ch_mapped_assemblies }
+                ch_mapped_assemblies.view()
             }
             // Collect the maps from `MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map`
             MAP_LOCAL_ASSEMBLY_TO_FASTA.out.map
