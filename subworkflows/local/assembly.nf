@@ -95,19 +95,20 @@ workflow ASSEMBLY {
             )
 
 
-            // align the reads back to the denovo assembly
-            PROTEIN_REALIGN (
-                ch_stage_minimap2.map{ meta, assembly, reads-> [meta, reads] },
-                ch_stage_minimap2.map{ meta, assemby, reads -> [meta, assemby] },
-                true,
-                'csi',
-                false,
-                false
-            )
-            ch_protein_bam = PROTEIN_REALIGN.out.bam.join(PROTEIN_REALIGN.out.index)
-            PROTEIN_COVERAGE(
-                ch_protein_bam
-            )
+            // // align the reads back to the denovo assembly
+            // PROTEIN_REALIGN (
+            //     ch_stage_minimap2.map{ meta, assembly, reads-> [meta, reads] },
+            //     ch_stage_minimap2.map{ meta, assemby, reads -> [meta, assemby] },
+            //     true,
+            //     'csi',
+            //     false,
+            //     false
+            // )
+            // ch_protein_bam = PROTEIN_REALIGN.out.bam.join(PROTEIN_REALIGN.out.index)
+            // PROTEIN_COVERAGE(
+            //     ch_protein_bam
+            // )
+
             try {
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []

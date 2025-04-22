@@ -94,10 +94,14 @@ workflow ALIGNMENT {
         // ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
+        MINIMAP2_INDEX(
+            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] }
+        )
+
 
         MINIMAP2_ALIGN(
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
-            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
+            MINIMAP2_INDEX.out.index,
             true,
             'csi',
             false,

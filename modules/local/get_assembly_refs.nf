@@ -22,12 +22,7 @@ process GET_ASSEMBLIES {
         'https://depot.galaxyproject.org/singularity/gnu-wget%3A1.18--h7132678_6' :
         'biocontainers/gnu-wget:1.18--h36e9172_9' }"
 
-
-
-
     input:
-
-
 
     output:
     path("assembly_summary_refseq.txt"), optional: false, emit: assembly
@@ -36,18 +31,14 @@ process GET_ASSEMBLIES {
     when:
     task.ext.when == null || task.ext.when
 
-
-
-
-
-
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-
 
     """
     if [[ ! -s 'assembly_summary_refseq.txt' ]] ; then
         echo "Downloading the assembly summary file from ncbi...."
         wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt  -O assembly_summary_refseq.txt
+        wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt  -O assembly_summary_genbank.txt
+        tail -n +2 assembly_summary_genbank.txt >> assembly_summary_refseq.txt && rm assembly_summary_genbank.txt
     else
         echo "Assembly file exists"
     fi
