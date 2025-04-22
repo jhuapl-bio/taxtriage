@@ -9,8 +9,8 @@ process SAMTOOLS_MERGE {
 
     input:
     tuple val(meta), path(input_files, stageAs: "?/*")
-    tuple val(meta2), path(fasta)
-    tuple val(meta3), path(fai)
+    tuple val(meta2), file(fasta)
+    tuple val(meta3), file(fai)
 
     output:
     tuple val(meta), path("${prefix}.bam") , optional:true, emit: bam

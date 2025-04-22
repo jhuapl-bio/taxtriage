@@ -7,6 +7,7 @@ include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
+include { SAMTOOLS_SORT } from '../../modules/nf-core/samtools/sort/main'
 include { SAMTOOLS_COVERAGE } from '../../modules/local/samtools_coverage'
 include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
@@ -94,14 +95,17 @@ workflow ALIGNMENT {
         // ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
+
         MINIMAP2_INDEX(
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] }
         )
-
+        prep_align = ch_fasta_files_for_alignment.join(
+            MINIMAP2_INDEX.out.index
+        )
 
         MINIMAP2_ALIGN(
-            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
-            MINIMAP2_INDEX.out.index,
+            prep_align.map{ m, fastq, fasta, ix -> [m, fastq] },
+            prep_align.map{ m, fastq, fasta, ix -> [m, ix] },
             true,
             'csi',
             false,
@@ -161,15 +165,16 @@ workflow ALIGNMENT {
     }
     // Split the channel based on the condition
     merged_bams_channel.branch {
-              mergeNeeded: it[1].size() > 1
+            mergeNeeded: it[1].size() > 1
             noMergeNeeded: it[1].size() == 1
     }.set { branchedChannels }
 
     SAMTOOLS_MERGE(
         branchedChannels.mergeNeeded,
-        branchedChannels.mergeNeeded.map{ m, bam -> [m, ''] },
-        branchedChannels.mergeNeeded.map{ m, bam -> [m, ''] },
+        branchedChannels.mergeNeeded.map { m, bam -> [m, ''] },
+        branchedChannels.mergeNeeded.map { m, bam -> [m, ''] }
     )
+    // sort the merged BAMs
     // // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_MERGE.out.bam.mix(branchedChannels.noMergeNeeded).set { collected_bams }
     // // ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
@@ -183,15 +188,25 @@ workflow ALIGNMENT {
             return [item1[0], item2[1]] // Adjust based on how you need the merged items
         }.set{ collected_bams }
 
-    // // ch_versions = ch_versions.mix(SAMTOOLS_DEPTH.out.versions)
+
+    SAMTOOLS_SORT(
+        collected_bams,
+        collected_bams.map{ m, bam -> [m, ''] },
+    )
+    collected_bams = SAMTOOLS_SORT.out.bam
+
     SAMTOOLS_INDEX(
         collected_bams
     )
-    ch_versions = ch_versions.mix(SAMTOOLS_INDEX.out.versions)
+
     collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
+
+    ch_versions = ch_versions.mix(SAMTOOLS_SORT.out.versions)
+
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
+
     ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
     ch_stats = SAMTOOLS_COVERAGE.out.coverage
 

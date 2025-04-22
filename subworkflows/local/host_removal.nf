@@ -56,23 +56,30 @@ workflow HOST_REMOVAL {
 
         ]
         if (params.remove_reference_file){
-            ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
+            fasta_file =  file(params.remove_reference_file, checkIfExists: true)
         } else if (params.genome) {
-            ch_reference_fasta_removal = params.genomes[params.genome]['fasta']
+            fasta_file = params.genomes[params.genome]['fasta']
         }
 
         if (params.remove_reference_file || params.genome){
-            // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
-            // if ch_aligned_for_filter.shorteads is not empty
-            // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
-            ch_reference_removal = [[id:"remove_fasta"], ch_reference_fasta_removal]
-            FILTER_INDEX(
-                ch_reference_removal
-            )
+            ch_reference_fasta_removal = Channel.from([
+                [[id:"dehost"], fasta_file]
+            ])
 
+            ch_reference_fasta_removal.branch{
+                mmi: it[1].name.toLowerCase() =~ /.*\.mmi/
+                no_mmi: true
+            }.set { mmi_split }
+
+
+            // run FILTER_INDEX on no_mmi
+            FILTER_INDEX(
+                mmi_split.no_mmi
+            )
+            final_ref = mmi_split.mmi.mix(FILTER_INDEX.out.index)
             FILTER_MINIMAP2(
                 ch_reads.map{ meta, reads -> return [meta, reads] },
-                FILTER_INDEX.out.index,
+                final_ref,
                 true,
                 true,
                 true,

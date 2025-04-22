@@ -25,7 +25,7 @@ reports:
     display: "MAPQ Filtered and Sorted Hisat2 BAM File(s)"
   "**/bowtie2/*.bam":
     display: "MAPQ Filtered and Sorted Bowtie2 BAM File(s)"
-  "**/alignment/*.bam":
+  "**/alignment/*.final.bam":
     display: "MAPQ Filtered and Sorted and Merged (if multiple reference files) BAM File(s)"
   "**/top/*top_report.tsv":
     display: "Top Taxa Per Rank post-Kraken2"
