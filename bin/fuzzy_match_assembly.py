@@ -199,7 +199,6 @@ def main():
                         # print(f"No match found in the backup sheet for {seq_record.id}\t{desc}")
                         missing_elements.append(f"{seq_record.id}\t{desc}")
     if total > 0:
-        exit()
         print(f"Found {count} out of {total} FASTA accessions ({count/total*100:.2f}%) in the assembly file.")
         print("Missing:")
         for line in missing_elements:

@@ -41,6 +41,7 @@ workflow HOST_REMOVAL {
         ch_reference_fasta = Channel.empty()
         ch_filter_db = Channel.empty()
         ch_versions = Channel.empty()
+        ch_reference_fasta_removal = null
         supported_filter_dbs = [
             'human': [
                 'url': 'https://zenodo.org/records/8339700/files/k2_Human_20230629.tar.gz?download=1',
@@ -59,16 +60,12 @@ workflow HOST_REMOVAL {
         } else if (params.genome) {
             ch_reference_fasta_removal = params.genomes[params.genome]['fasta']
         }
-        // run index on the ch_reference_fasta, set ch_reference_fasta_removal to the index of the output
-        if (ch_reference_fasta_removal){
-
-        }
 
         if (params.remove_reference_file || params.genome){
             // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
             // if ch_aligned_for_filter.shorteads is not empty
             // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
-            ch_reference_removal = [[id:"removal_fasta"], ch_reference_fasta_removal]
+            ch_reference_removal = [[id:"remove_fasta"], ch_reference_fasta_removal]
             FILTER_INDEX(
                 ch_reference_removal
             )
