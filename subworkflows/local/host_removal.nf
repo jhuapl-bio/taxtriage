@@ -19,8 +19,9 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
-include { MINIMAP2_INDEX as FILTER_INDEX } from '../../modules/nf-core/minimap2/index/main'
+include { MINIMAP2_INDEX as FILTER_MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
+include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
 include { REMOVE_HOSTREADS } from '../../modules/local/remove_unaligned'
 include { SAMTOOLS_INDEX as FILTERED_SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_STATS as FILTERED_STATS } from '../../modules/nf-core/samtools/stats/main'
@@ -40,8 +41,6 @@ workflow HOST_REMOVAL {
         ch_filtered_stats = Channel.empty()
         ch_reference_fasta = Channel.empty()
         ch_filter_db = Channel.empty()
-        ch_versions = Channel.empty()
-        ch_reference_fasta_removal = null
         supported_filter_dbs = [
             'human': [
                 'url': 'https://zenodo.org/records/8339700/files/k2_Human_20230629.tar.gz?download=1',
@@ -56,49 +55,34 @@ workflow HOST_REMOVAL {
 
         ]
         if (params.remove_reference_file){
-            fasta_file =  file(params.remove_reference_file, checkIfExists: true)
+            ch_reference_fasta_removal =  file(params.remove_reference_file, checkIfExists: true)
         } else if (params.genome) {
-            fasta_file = params.genomes[params.genome]['fasta']
+            ch_reference_fasta_removal = params.genomes[params.genome]['fasta']
         }
 
         if (params.remove_reference_file || params.genome){
-            ch_reference_fasta_removal = Channel.from([
-                [[id:"dehost"], fasta_file]
-            ])
+            // Run minimap2 module on all LONGREAD platforms reads and the same on ILLUMINA reads
+            // if ch_aligned_for_filter.shorteads is not empty
+            // Run minimap2 on all for host removal - as host removal outperforms bowtie2 for host false negative rate https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9040843/
 
-            ch_reference_fasta_removal.branch{
-                mmi: it[1].name.toLowerCase() =~ /.*\.mmi/
-                no_mmi: true
-            }.set { mmi_split }
-
-
-            // run FILTER_INDEX on no_mmi
-            FILTER_INDEX(
-                mmi_split.no_mmi
-            )
-            final_ref = mmi_split.mmi.mix(FILTER_INDEX.out.index)
             FILTER_MINIMAP2(
-                ch_reads.map{ meta, reads -> return [meta, reads] },
-                final_ref,
+                ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
                 true,
                 true,
                 true,
-                false,
+                false
             )
 
             ch_bam_hosts = FILTER_MINIMAP2.out.bam
-            ch_versions = ch_versions.mix(FILTER_MINIMAP2.out.versions)
 
             REMOVE_HOSTREADS(
                 ch_bam_hosts
             )
             ch_filtered_reads = REMOVE_HOSTREADS.out.reads
-            ch_versions = ch_versions.mix(REMOVE_HOSTREADS.out.versions)
+
             // Check the filtered output and fallback to original reads if filtered reads are empty
             CHECK_GZIPPED_READS(ch_filtered_reads, 4)
             ch_valid_reads = CHECK_GZIPPED_READS.out.check_result
-            // ch_versions = ch_versions.mix(CHECK_GZIPPED_READS.out.versions)
-
             ch_orig_reads = ch_valid_reads.filter({
                 it[1].name == 'emptyfile.txt'
             }).join(ch_reads).map({
@@ -115,14 +99,12 @@ workflow HOST_REMOVAL {
             FILTERED_SAMTOOLS_INDEX(
                 ch_bam_hosts
             )
-            ch_versions = ch_versions.mix(FILTERED_SAMTOOLS_INDEX.out.versions)
 
             ch_bai_files = ch_bam_hosts.join(FILTERED_SAMTOOLS_INDEX.out.bai)
             FILTERED_STATS(
                 ch_bai_files,
                 [ [], ch_reference_fasta_removal  ]
             )
-            ch_versions = ch_versions.mix(FILTERED_STATS.out.versions)
             ch_filtered_stats = FILTERED_STATS.out.stats.collect{it[1]}.ifEmpty([])
         } else if (params.filter_kraken2){
             if (supported_filter_dbs.containsKey(params.filter_kraken2)) {
@@ -135,7 +117,6 @@ workflow HOST_REMOVAL {
                 /* groovylint-disable-next-line UnnecessaryGetter */
                 ch_db = FILTER_DB_DOWNLOAD.out.k2d.map { file -> file.getParent() }
                 ch_filter_db = ch_db
-                ch_versions = ch_versions.mix(FILTER_DB_DOWNLOAD.out.versions)
             } else {
                 println "Kraken local filter db ${params.filter_kraken2} will be used."
                 ch_filter_db = file(params.filter_kraken2)
@@ -147,12 +128,10 @@ workflow HOST_REMOVAL {
                 false,
             )
             ch_reads = FILTER_KRAKEN2.out.unclassified_reads_fastq
-            ch_versions = ch_versions.mix(FILTER_KRAKEN2.out.versions)
         }
         // filter out all ch_reads fastq files that are empty
 
     emit:
         unclassified_reads = ch_reads
         stats_filtered = ch_filtered_stats
-        versions = ch_versions
 }

@@ -1,28 +1,31 @@
-//
-// Check input samplesheet and get read channels
-//
+
+include { BWA_INDEX } from '../../modules/nf-core/bwa/index/main'
+include { BWA_MEM } from '../../modules/nf-core/bwa/mem/main'
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
+include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
+include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
-include { SAMTOOLS_SORT } from '../../modules/nf-core/samtools/sort/main'
-include { SAMTOOLS_COVERAGE } from '../../modules/local/samtools_coverage'
+include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
 include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP } from '../../modules/nf-core/bcftools/mpileup/main'
+include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
+include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
+include { MERGE_FASTA } from '../../modules//local/merge_fasta'
+include { SPLIT_VCF } from '../../modules/local/split_vcf'
 include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
+include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
+include { BEDTOOLS_DEPTHCOVERAGE } from '../../modules/local/bedtools_coverage'
 include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
-include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
-include { BEDTOOLS_BAMTOBED } from '../../modules/nf-core/bedtools/bamtobed/main'
-include { BEDTOOLS_MASKFASTA } from '../../modules/nf-core/bedtools/maskfasta/main'
 
 workflow ALIGNMENT {
     take:
     fastq_reads
 
     main:
-
     ch_bams = Channel.empty()
     ch_fasta = Channel.empty()
     ch_pileups = Channel.empty()
@@ -37,40 +40,43 @@ workflow ALIGNMENT {
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
     ch_bedgraphs = Channel.empty()
-    ch_versions = Channel.empty()
+    ch_versions = 1
 
     fastq_reads.set { ch_aligners }
     def idx = 0
-    // flatmap based on the fastas element in ch_aligners, use the 2nd element in fastas as the fastaItem, otherwise use thef irst, return meta and fastaItem list
+
     ch_aligners
         .flatMap { meta, fastq, fastas, _ ->
+            // Print 'fastas' for debugging purposes
+
             def outputs = []
 
-            // Flatten 'fastas' one level in case it's nested
-            fastas.each { fastaItem ->
-                // If fastaItem is a list, then check its size
-                if (fastaItem instanceof List) {
-                    // If there are 2 elements, choose the second; otherwise choose the first
-                    def chosenFasta = (fastaItem.size() == 2) ? fastaItem[1] : fastaItem[0]
-                    def id = "${meta.id}.${chosenFasta.getBaseName()}"
-                    def mm = meta.collectEntries { k, v -> [k, v] }
-                    mm.id  = id
-                    mm.oid = meta.id
-                    outputs << [ mm, fastq, chosenFasta ]
-                }
-                else {
-                    // If the fasta item is just a single file
-                    def id = "${meta.id}.${fastaItem.getBaseName()}"
-                    def mm = meta.collectEntries { k, v -> [k,v] }
-                    mm.id  = id
-                    mm.oid = meta.id
-                    outputs << [ mm, fastq, fastaItem ]
+            // Flatten 'fastas' by one level if it's nested
+            def flattenedFastas = fastas.collectMany { it }
+            flattenedFastas.each { fastaItem -> {
+                    // if fastaItem is a list
+                    if (fastaItem instanceof List) {
+                        // If the item is a list of files, return each file separately
+                        def fasta = fastaItem[0]
+                        def id = "${meta.id}.${fasta.getBaseName()}"
+                        // def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
+                        def mm = meta.collectEntries{ k, v -> [k, v] }
+                        mm.id = id
+                        mm.oid = meta.id
+                        outputs << [mm, fastq, fastaItem]
+                    } else {
+                        // If the item is a single file, return it as is
+                        def id = "${meta.id}.${fastaItem.getBaseName()}"
+                        def mm = meta.collectEntries{ k, v -> [k, v] }
+                        mm.id = id
+                        mm.oid = meta.id
+                        outputs.add([mm, fastq, fastaItem])
+                    }
                 }
             }
-            return outputs
-        }
-        .set { ch_fasta_files_for_alignment }
-
+            // Return the collected outputs
+            return  outputs
+        }.set { ch_fasta_files_for_alignment }
 
     if (params.use_bt2){
         BOWTIE2_ALIGN(
@@ -79,7 +85,6 @@ workflow ALIGNMENT {
             true,
             params.minmapq
         )
-        ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
         collected_bams = BOWTIE2_ALIGN.out.aligned
     } else if (params.use_hisat2) {
         // Set null for hisat2 splicesites
@@ -89,30 +94,29 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
             params.minmapq
         )
-        ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
+
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
-
         MINIMAP2_ALIGN(
-            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
-            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
+            ch_fasta_files_for_alignment,
             true,
-            'csi',
-            false,
-            false
+            true,
+            true,
+            params.minmapq
         )
-        ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions)
+
         collected_bams = MINIMAP2_ALIGN.out.bam
     }
 
     sorted_bams = collected_bams
-    // print the bams
 
     sorted_bams
         .map { meta, file -> [meta.oid, file] } // Extract oid and file
         .groupTuple() // Group by oid
         .map { oid, files -> [[id:oid], files] } // Replace oid with id in the metadata
         .set{ merged_bams_channel }
+
+
 
     if (params.get_variants || params.reference_assembly){
         ch_bam_with_fasta = sorted_bams.join(ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] })
@@ -154,21 +158,20 @@ workflow ALIGNMENT {
         }
     }
     // Split the channel based on the condition
-    merged_bams_channel.branch {
+    merged_bams_channel
+        .branch {
             mergeNeeded: it[1].size() > 1
             noMergeNeeded: it[1].size() == 1
-    }.set { branchedChannels }
+        }
+        .set { branchedChannels }
 
     SAMTOOLS_MERGE(
-        branchedChannels.mergeNeeded,
-        branchedChannels.mergeNeeded.map { m, bam -> [m, ''] },
-        branchedChannels.mergeNeeded.map { m, bam -> [m, ''] }
+        branchedChannels.mergeNeeded
     )
-    // sort the merged BAMs
-    // // // Unified channel from both merged and non-merged BAMs
-    SAMTOOLS_MERGE.out.bam.mix(branchedChannels.noMergeNeeded).set { collected_bams }
-    // // ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
-    // // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
+    //  // // Unified channel from both merged and non-merged BAMs
+    SAMTOOLS_MERGE.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
+
+    // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
         .join(collected_bams.map { item -> [item[0].id, item] }, by: 0)
         .map { joinedItems ->
@@ -178,52 +181,39 @@ workflow ALIGNMENT {
             return [item1[0], item2[1]] // Adjust based on how you need the merged items
         }.set{ collected_bams }
 
-
-    SAMTOOLS_SORT(
-        collected_bams,
-        collected_bams.map{ m, bam -> [m, ''] },
-    )
-    collected_bams = SAMTOOLS_SORT.out.bam
-
     SAMTOOLS_INDEX(
         collected_bams
     )
-
     collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
-
-    ch_versions = ch_versions.mix(SAMTOOLS_SORT.out.versions)
 
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
-
-    ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
-    ch_stats = SAMTOOLS_COVERAGE.out.coverage
-
     // Run the bedtools genomecoverage for downstream stats
     BEDTOOLS_GENOMECOVERAGE(
         sorted_bams_with_index.map{
             m, bam, csi -> return [m, bam]
         }
     )
-    // ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
-    // // merge bedgraph on the same channel
+    // merge bedgraph on the same channel
     BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
-    ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
+
+    ch_stats = SAMTOOLS_COVERAGE.out.coverage
+
     gcf_with_bam = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, map] })
 
     SAMTOOLS_HIST_COVERAGE(
         gcf_with_bam
     )
-    ch_versions = ch_versions.mix(SAMTOOLS_HIST_COVERAGE.out.versions)
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
-    ch_bams =  sorted_bams_with_index
 
+
+    ch_bams =  sorted_bams_with_index
     emit:
         mpileup = ch_merged_mpileup
         bams = ch_bams
         stats = ch_stats
         bedgraphs = ch_bedgraphs
-        versions =  ch_versions
+        versions = ch_versions
 }

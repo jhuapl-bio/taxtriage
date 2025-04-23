@@ -1,74 +1,64 @@
 process MINIMAP2_ALIGN {
     tag "$meta.id"
-    label 'process_high'
+    label 'process_medium'
 
-    // Note: the versions here need to match the versions used in the mulled container below and minimap2/index
-    conda "${moduleDir}/environment.yml"
+    conda (params.enable_conda ? 'bioconda::minimap2=2.21 bioconda::samtools=1.12' : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:3161f532a5ea6f1dec9be5667c9efc2afdac6104-0' :
-        'biocontainers/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:3161f532a5ea6f1dec9be5667c9efc2afdac6104-0' }"
+        'https://depot.galaxyproject.org/singularity/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:1679e915ddb9d6b4abda91880c4b48857d471bd8-0' :
+        'biocontainers/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:1679e915ddb9d6b4abda91880c4b48857d471bd8-0' }"
 
     input:
-    tuple val(meta), path(reads)
-    tuple val(meta2), path(reference)
+    tuple val(meta), path(reads), path(reference)
     val bam_format
-    val bam_index_extension
     val cigar_paf_format
     val cigar_bam
+    val minmapq
 
     output:
-    tuple val(meta), path("*.paf")                       , optional: true, emit: paf
-    tuple val(meta), path("*.bam")                       , optional: true, emit: bam
-    tuple val(meta), path("*.bam.${bam_index_extension}"), optional: true, emit: index
-    path "versions.yml"                                  , emit: versions
+    tuple val(meta), path("*.paf"), optional: true, emit: paf
+    tuple val(meta), path("*.bam"), optional: true, emit: bam
+    path "versions.yml"           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-    def args  = task.ext.args ?: ''
-    def args2 = task.ext.args2 ?: ''
-    def args3 = task.ext.args3 ?: ''
-    def args4 = task.ext.args4 ?: ''
+    def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def bam_index = bam_index_extension ? "${prefix}.bam##idx##${prefix}.bam.${bam_index_extension} --write-index" : "${prefix}.bam"
-    def bam_output = bam_format ? "-a | samtools sort -@ ${task.cpus-1} -o ${bam_index} ${args2}" : "-o ${prefix}.paf"
+    // define mapx if paired end reads or single end illumina or single end oxford, match with regex ignore case
+    def mapx = ''
+    if (meta.platform =~ /(?i)illumina/) {
+        mapx = '-ax sr'
+    } else if (meta.platform =~ /(?i)pacbio/) {
+        mapx = '-ax map-hifi'
+    } else {
+        mapx = '-ax map-ont'
+    }
+    def input_reads = reads.findAll { it != null }.join(' ')
+    
+    def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
+
+    def minmapq = minmapq ? " -q ${minmapq} " :  ""
+    def I_value = "${(task.memory.toMega() * Math.min(0.8 / task.cpus, 0.8)).longValue()}M"
+    def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
+    def bam_output = bam_format ? "-a | samtools sort -@ ${cpu_limit} -m $S_value | samtools view $minmapq -@ ${cpu_limit} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
-    def bam_input = "${reads.extension}".matches('sam|bam|cram')
-    def samtools_reset_fastq = bam_input ? "samtools reset --threads ${task.cpus-1} $args3 $reads | samtools fastq --threads ${task.cpus-1} $args4 |" : ''
-    def query = bam_input ? "-" : reads
-    def target = reference ?: (bam_input ? error("BAM input requires reference") : reads)
-
+    // if input is illumina then use -ax sr else use -ax map-ont
+    def mmap2_window   = params.mmap2_window  ? "-w ${params.mmap2_window}" : ''
+    def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
+    // if it contains the substring "dnwld" in reference 
+    // then download the reference and use it
     """
-    $samtools_reset_fastq \\
+
     minimap2 \\
-        $args \\
-        -t $task.cpus \\
-        $target \\
-        $query \\
-        $cigar_paf \\
+        $args $mapx \\
+        -t $cpu_limit -I $I_value \\
+        $reference \\
+        $input_reads \\
+        $cigar_paf $mmap2_window $mmap2_fraction_filter \\
         $set_cigar_bam \\
-        $bam_output
-
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        minimap2: \$(minimap2 --version 2>&1)
-        samtools: \$(echo \$(samtools --version 2>&1) | sed 's/^.*samtools //; s/Using.*\$//')
-    END_VERSIONS
-    """
-
-    stub:
-    def prefix = task.ext.prefix ?: "${meta.id}"
-    def output_file = bam_format ? "${prefix}.bam" : "${prefix}.paf"
-    def bam_index = bam_index_extension ? "touch ${prefix}.bam.${bam_index_extension}" : ""
-    def bam_input = "${reads.extension}".matches('sam|bam|cram')
-    def target = reference ?: (bam_input ? error("BAM input requires reference") : reads)
-
-    """
-    touch $output_file
-    ${bam_index}
+        $bam_output 
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
