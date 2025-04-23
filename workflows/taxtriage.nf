@@ -610,7 +610,7 @@ workflow TAXTRIAGE {
     )
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
-
+    // add all of the ch_reference_fasta to all ch_organisms_to_download
     ///////////////////////////RUN REFERENCE pull or processing/////////////////////////////////////////////////////////////////////
     REFERENCE_PREP(
         ch_organisms_to_download,
@@ -634,7 +634,7 @@ workflow TAXTRIAGE {
     ch_bedfiles_or_default = Channel.empty()
     ch_alignment_stats = Channel.empty()
     ch_assembly_analysis = Channel.empty()
-    ch_fastas = Channel.empty()
+    ch_fastas = REFERENCE_PREP.out.fastas
 
     // ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
@@ -669,7 +669,6 @@ workflow TAXTRIAGE {
             }.set{ ch_combined }
 
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
-        ch_fastas = REFERENCE_PREP.out.fastas
 
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]

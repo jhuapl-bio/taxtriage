@@ -2,7 +2,6 @@
 // Check input samplesheet and get read channels
 //
 include { MINIMAP2_ALIGN } from '../../modules/nf-core/minimap2/align/main'
-include { MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { HISAT2_ALIGN } from '../../modules/nf-core/hisat2/align/main'
 include { SAMTOOLS_DEPTH } from '../../modules/nf-core/samtools/depth/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
@@ -42,38 +41,36 @@ workflow ALIGNMENT {
 
     fastq_reads.set { ch_aligners }
     def idx = 0
-
+    // flatmap based on the fastas element in ch_aligners, use the 2nd element in fastas as the fastaItem, otherwise use thef irst, return meta and fastaItem list
     ch_aligners
         .flatMap { meta, fastq, fastas, _ ->
-            // Print 'fastas' for debugging purposes
             def outputs = []
 
-            // Flatten 'fastas' by one level if it's nested
-            def flattenedFastas = fastas.collectMany { it }
-            flattenedFastas.each { fastaItem -> {
-                    // if fastaItem is a list
-                    if (fastaItem instanceof List) {
-                        // If the item is a list of files, return each file separately
-                        def fasta = fastaItem[0]
-                        def id = "${meta.id}.${fasta.getBaseName()}"
-                        // def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
-                        def mm = meta.collectEntries{ k, v -> [k, v] }
-                        mm.id = id
-                        mm.oid = meta.id
-                        outputs << [mm, fastq, fastaItem]
-                    } else {
-                        // If the item is a single file, return it as is
-                        def id = "${meta.id}.${fastaItem.getBaseName()}"
-                        def mm = meta.collectEntries{ k, v -> [k, v] }
-                        mm.id = id
-                        mm.oid = meta.id
-                        outputs.add([mm, fastq, fastaItem])
-                    }
+            // Flatten 'fastas' one level in case it's nested
+            fastas.each { fastaItem ->
+                // If fastaItem is a list, then check its size
+                if (fastaItem instanceof List) {
+                    // If there are 2 elements, choose the second; otherwise choose the first
+                    def chosenFasta = (fastaItem.size() == 2) ? fastaItem[1] : fastaItem[0]
+                    def id = "${meta.id}.${chosenFasta.getBaseName()}"
+                    def mm = meta.collectEntries { k, v -> [k, v] }
+                    mm.id  = id
+                    mm.oid = meta.id
+                    outputs << [ mm, fastq, chosenFasta ]
+                }
+                else {
+                    // If the fasta item is just a single file
+                    def id = "${meta.id}.${fastaItem.getBaseName()}"
+                    def mm = meta.collectEntries { k, v -> [k,v] }
+                    mm.id  = id
+                    mm.oid = meta.id
+                    outputs << [ mm, fastq, fastaItem ]
                 }
             }
-            // Return the collected outputs
-            return  outputs
-        }.set { ch_fasta_files_for_alignment }
+            return outputs
+        }
+        .set { ch_fasta_files_for_alignment }
+
 
     if (params.use_bt2){
         BOWTIE2_ALIGN(
@@ -82,7 +79,7 @@ workflow ALIGNMENT {
             true,
             params.minmapq
         )
-        // ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
+        ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
         collected_bams = BOWTIE2_ALIGN.out.aligned
     } else if (params.use_hisat2) {
         // Set null for hisat2 splicesites
@@ -92,20 +89,13 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
             params.minmapq
         )
-        // ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
+        ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
 
-        MINIMAP2_INDEX(
-            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] }
-        )
-        prep_align = ch_fasta_files_for_alignment.join(
-            MINIMAP2_INDEX.out.index
-        )
-
         MINIMAP2_ALIGN(
-            prep_align.map{ m, fastq, fasta, ix -> [m, fastq] },
-            prep_align.map{ m, fastq, fasta, ix -> [m, ix] },
+            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
+            ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
             true,
             'csi',
             false,

@@ -29,8 +29,8 @@
      inkscape:document-units="mm"
      showgrid="false"
      inkscape:zoom="0.66306756"
-     inkscape:cx="1234.4142"
-     inkscape:cy="407.19832"
+     inkscape:cx="366.47849"
+     inkscape:cy="612.30563"
      inkscape:window-width="1423"
      inkscape:window-height="772"
      inkscape:window-x="40"
@@ -437,7 +437,7 @@
            id="tspan10158-4-9-6"
            style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:6.35px;font-family:'Maven Pro';-inkscape-font-specification:'Maven Pro Bold';stroke-width:0.264583"
            x="267.86652"
-           y="242.127">Nanopore</tspan></text><text
+           y="242.127">Long Reads</tspan></text><text
          xml:space="preserve"
          style="font-size:6.35px;line-height:1.25;font-family:Commissioner;-inkscape-font-specification:Commissioner;letter-spacing:0px;stroke-width:0.264583"
          x="267.46573"
@@ -497,7 +497,7 @@
            id="tspan10158-4-9-6-0"
            style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:6.35px;font-family:'Maven Pro';-inkscape-font-specification:'Maven Pro Bold';stroke-width:0.264583"
            x="268.30234"
-           y="248.45543">Illumina</tspan></text><text
+           y="248.45543">Short Reads</tspan></text><text
          xml:space="preserve"
          style="font-size:6.35px;line-height:1.25;font-family:Commissioner;-inkscape-font-specification:Commissioner;letter-spacing:0px;stroke-width:0.264583"
          x="254.92223"
@@ -1934,4 +1934,4 @@
          id="text14915"><tspan
            sodipodi:role="line"
            id="tspan14913"
-           style="stroke-width:2.646"></tspan></text></g></g></svg>
+           style="stroke-width:2.646" /></text></g></g></svg>

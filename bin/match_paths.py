@@ -1318,6 +1318,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, min_mapq=0):
         excluded_regions = defaultdict(list)
         # check if the alignment was paired end or single end
         start_time = time.time()
+        seen_read = dict()
         for read in bam_file.fetch():
             # Only process paired reads
             # if not read.is_paired:
@@ -1331,6 +1332,11 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, min_mapq=0):
                 low_mapq += 1
                 continue
             ref = read.reference_name
+            ref_read = f"{ref}:{read.query_name}"
+            if ref_read in seen_read:
+                # if the read is already seen, skip it
+                continue
+            seen_read[ref_read] = True
             total_reads += 1
 
             # Skip reads that are in alignments_to_remove if provided
@@ -2176,7 +2182,7 @@ def main():
         "Specimen ID",
         "Sample Type",
         "% Reads",
-        "# Reads Aligned",
+        "x Reads Aligned",
         "% Aligned Reads",
         "Coverage",
         'HHS Percentile',
@@ -2700,7 +2706,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tGini Conf: {entry.get('gini_coefficient', 0):.4f}")
                 print(f"\tDiamond Identity: {entry.get('diamond_identity', 0):.2f}")
                 print(f"\tAlignment Score: {entry.get('alignment_score', 0):.2f}")
-                print(f"\t# Reads Aligned: {entry.get('reads_aligned', 0)}")
+                print(f"\tx Reads Aligned: {entry.get('reads_aligned', 0)}")
                 print(f"\tDisparity Score: {entry.get('disparity_score', 0):.2f}")
                 print(f"\tK2 Disparity Score: {entry.get('k2_disparity', 0):.2f}")
                 print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
@@ -2716,7 +2722,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
                 print()
                 total+=1
-        # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
+        # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\tx Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
                 f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"

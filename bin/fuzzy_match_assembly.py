@@ -79,6 +79,7 @@ def main():
         with open(args.pathogens, 'r') as csvfile:
             # read file as dictionary
             csvreader = csv.DictReader(csvfile)
+            # next header is first line
             for row in csvreader:
                 backup_mapping[row['name']].append(
                     dict(taxid=row['taxid'], basename=row['name'])
