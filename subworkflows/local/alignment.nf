@@ -38,7 +38,6 @@ workflow ALIGNMENT {
     ch_stats = Channel.empty()
     ch_depths = Channel.empty()
     ch_pafs = Channel.empty()
-    ch_fastas = Channel.empty()
     ch_sams = Channel.empty()
     ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()

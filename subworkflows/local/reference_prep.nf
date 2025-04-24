@@ -22,7 +22,11 @@ workflow  REFERENCE_PREP {
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
     ch_prepfiles = Channel.empty()
-    ch_features = Channel.empty()
+
+    ch_features = ch_samples.map{ meta, report -> {
+            return [ meta,  []]
+        }
+    }
 
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
             return [ meta,  []]
@@ -97,15 +101,16 @@ workflow  REFERENCE_PREP {
                 ch_pathogens_file
             )
             // add ch_reference_fasta to all ch_fastas
+            // add ch_reference_fasta to all ch_fastas
             ch_fastas = ch_fastas.combine(ch_reference_fasta.collect()).map{
                 meta, fastas, fasta -> {
                     fastas.add(fasta)
                     return [meta, fastas]
                 }
             }
+
             if (params.use_bt2) {
                 if (params.bt2_indices) {
-                    println "bt2 indices being used"
                     // If bt2_indices parameter is provided, create a channel from the provided path
                     ch_bt2_indices = params.bt2_indices ? Channel.from(params.bt2_indices.split(" ").collect { it  }) : Channel.empty()
 
@@ -205,6 +210,7 @@ workflow  REFERENCE_PREP {
             }
         }
 
+
         ch_mapped_assemblies.join(merged_index)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
             .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
@@ -275,13 +281,12 @@ workflow  REFERENCE_PREP {
             return [meta, fastas, mergedmap, mergedids]
     }
     }
-
     emit:
         versions = ch_versions
-        ch_bedfiles
+        ch_bedfiles = ch_bedfiles
         ch_preppedfiles = ch_mapped_assemblies
         ch_reference_cds = ch_cds
-        ch_cds_to_taxids
+        ch_cds_to_taxids = ch_cds_to_taxids
         features = ch_features
         fastas = ch_fastas
 }

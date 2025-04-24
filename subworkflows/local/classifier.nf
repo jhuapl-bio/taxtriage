@@ -165,15 +165,7 @@ workflow CLASSIFIER {
                     return [ meta, file, 'metaphlan' ]
                 }
             }
-            // make ch_metaphlan  from params.metaphlan database path
-            // if (!params.taxdump){
-            //     DOWNLOAD_TAXDUMP()
-            //     ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
-            // } else if (params.taxdump) {
-            //     ch_taxdump_dir = Channel.fromPath(params.taxdump)
-            //     println("Taxdump dir provided, using it to pull taxonomy from... ${params.taxdump}")
-            // }
-            // append METAPHLAN_METAPHLAN.out.report to ch_profile
+
             TAXPASTA_STANDARDISE(
                 ch_metaphlan_report,
                 ch_taxdump_dir

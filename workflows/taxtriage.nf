@@ -656,18 +656,14 @@ workflow TAXTRIAGE {
         )
         ch_diamond_output = ASSEMBLY.out.ch_diamond_output
         ch_versions = ch_versions.mix(ASSEMBLY.out.versions)
+
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
         ch_assembly_analysis_opt = ch_assembly_analysis.ifEmpty {
             Channel.value(null)
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////
-        ch_mapped_assemblies.view()
-        ch_bedgraphs.view()
-        ch_covfiles.view()
-        ch_kraken2_report.view()
-        ch_assembly_analysis.view()
-        ch_fastas.view()
+
 
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
