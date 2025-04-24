@@ -37,10 +37,12 @@ workflow REPORT {
         // and assign it to the variable accepted_list
         accepted_list = alignments.map { it[0].id }.collect()
         accepted_list = accepted_list.flatten().toSortedList()
+        alignments.view()
 
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
         missing_samples = missing_samples.flatten().toSortedList()
+        missing_samples.view()
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
