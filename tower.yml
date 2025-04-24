@@ -31,3 +31,5 @@ reports:
     display: "All Samples Top Hits Post-Kraken2"
   "**/kraken2/*report.txt":
     display: "Raw Kraken2 Reports"
+  "**/map/*assembly_protein_map.txt":
+    display: "List of Proteins Mapped matching patterns for possible pathogenicity"
