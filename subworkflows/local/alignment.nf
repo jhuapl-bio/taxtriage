@@ -23,6 +23,9 @@ include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
 include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
 include { BEDTOOLS_DEPTHCOVERAGE } from '../../modules/local/bedtools_coverage'
 include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
+include { BEDTOOLS_BAMTOBED } from '../../modules/nf-core/bedtools/bamtobed/main'
+include { BEDTOOLS_MASKFASTA } from '../../modules/nf-core/bedtools/maskfasta/main'
+
 
 workflow ALIGNMENT {
     take:
@@ -43,7 +46,7 @@ workflow ALIGNMENT {
     ch_merged_fasta = Channel.empty()
     ch_merged_mpileup = Channel.empty()
     ch_bedgraphs = Channel.empty()
-    ch_versions = 1
+    ch_versions = Channel.empty()
 
     fastq_reads.set { ch_aligners }
     def idx = 0
@@ -89,6 +92,7 @@ workflow ALIGNMENT {
             params.minmapq
         )
         collected_bams = BOWTIE2_ALIGN.out.aligned
+        ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
     } else if (params.use_hisat2) {
         // Set null for hisat2 splicesites
         HISAT2_ALIGN(
@@ -97,6 +101,7 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
             params.minmapq
         )
+        ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
 
         collected_bams = HISAT2_ALIGN.out.bam
     } else {
@@ -107,6 +112,7 @@ workflow ALIGNMENT {
             true,
             params.minmapq
         )
+        ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions)
 
         collected_bams = MINIMAP2_ALIGN.out.bam
     }
@@ -120,24 +126,37 @@ workflow ALIGNMENT {
         .set{ merged_bams_channel }
 
     if (params.get_variants || params.reference_assembly){
-        //     // // // branch out the samtools output to nanopore and illumina and pacbio
-        BCFTOOLS_MPILEUP(
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> fasta },
-            false
+        ch_bam_with_fasta = sorted_bams.join(ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] })
+
+        BEDTOOLS_BAMTOBED(
+            ch_bam_with_fasta.map{ m, bam, _ -> [m, bam] },
         )
+        // join ch_bam_With_fasta to BEDTOOLS_BAMTOBED
+        ch_beds = ch_bam_with_fasta.join(BEDTOOLS_BAMTOBED.out.bed)
+        // merge bamtobed output bed file into ch_fasta_files_for_alignment
+        BCFTOOLS_MPILEUP(
+            ch_beds.map{ m, bam, fasta, bed -> [m, bam, bed] },
+            ch_beds.map{ m, bam, fasta, bed -> [m, fasta] },
+            false
+        ).set{ transposed_fastas }
+
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
-        BCFTOOLS_MPILEUP(
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, bam] },
-            ch_fasta_files_for_alignment.map{ m, bam, fasta -> fasta[0] },
-            false
-        )
-        .set{ transposed_fastas }
+
 
         if (params.reference_assembly){
+            //
+            // Mask regions in consensus with BEDTools
+            //
+            BEDTOOLS_MASKFASTA(
+                ch_beds.map{ m, bam, fasta, bed -> [m, bed] },
+                ch_beds.map{ m, bam, fasta, bed -> fasta },
+            )
+            //
+            // Call consensus sequence with BCFTools
+            //
             BCFTOOLS_CONSENSUS(
-                ch_merged_mpileup
+                ch_merged_mpileup.join(BEDTOOLS_MASKFASTA.out.fasta),
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
         }
@@ -155,6 +174,7 @@ workflow ALIGNMENT {
     )
     //  // // Unified channel from both merged and non-merged BAMs
     SAMTOOLS_MERGE.out.bam.mix( branchedChannels.noMergeNeeded ).set { collected_bams }
+    ch_versions = ch_versions.mix(SAMTOOLS_MERGE.out.versions)
 
     // // Join the channels on 'id' and append the BAM files to the fastq_reads entries
     fastq_reads.map { item -> [item[0].id, item] } // Map to [id, originalItem]
@@ -173,17 +193,20 @@ workflow ALIGNMENT {
     SAMTOOLS_INDEX(
         collected_bams
     )
+    ch_versions = ch_versions.mix(SAMTOOLS_INDEX.out.versions)
     collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
 
     SAMTOOLS_COVERAGE(
         sorted_bams_with_index
     )
+    ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
     // Run the bedtools genomecoverage for downstream stats
     BEDTOOLS_GENOMECOVERAGE(
         sorted_bams_with_index.map{
             m, bam, csi -> return [m, bam]
         }
     )
+    ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
     // merge bedgraph on the same channel
     BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
 
@@ -194,6 +217,7 @@ workflow ALIGNMENT {
     SAMTOOLS_HIST_COVERAGE(
         gcf_with_bam
     )
+    ch_versions = ch_versions.mix(SAMTOOLS_HIST_COVERAGE.out.versions)
 
     sorted_bams_with_index.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, fasta] }).set{ sorted_bams_with_index_fasta }
 

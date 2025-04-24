@@ -1,6 +1,6 @@
-process BEDTOOLS_COVERAGE {
+process BEDTOOLS_MASKFASTA {
     tag "$meta.id"
-    label 'process_medium'
+    label 'process_single'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -8,12 +8,12 @@ process BEDTOOLS_COVERAGE {
         'biocontainers/bedtools:2.31.1--hf5e1c6e_0' }"
 
     input:
-    tuple val(meta), path(input_A), path(input_B)
-    path genome_file
+    tuple val(meta), path(bed)
+    path  fasta
 
     output:
-    tuple val(meta), path("*.bed"), emit: bed
-    path "versions.yml"           , emit: versions
+    tuple val(meta), path("*.fa"), emit: fasta
+    path "versions.yml"          , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -21,19 +21,16 @@ process BEDTOOLS_COVERAGE {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def reference = genome_file ? "-g ${genome_file} -sorted" : ""
     """
     bedtools \\
-        coverage \\
+        maskfasta \\
         $args \\
-        $reference \\
-        -a $input_A \\
-        -b $input_B \\
-        > ${prefix}.bed
-
+        -fi $fasta \\
+        -bed $bed \\
+        -fo ${prefix}.fa
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        bedtools: \$(echo \$(bedtools --version 2>&1) | sed 's/^.*bedtools v//' ))
+        bedtools: \$(bedtools --version | sed -e "s/bedtools v//g")
     END_VERSIONS
     """
 }
