@@ -166,6 +166,7 @@ include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
+include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -553,6 +554,7 @@ workflow TAXTRIAGE {
     )
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
     ch_reads = CLASSIFIER.out.ch_reads
+    ch_versions = ch_versions.mix(CLASSIFIER.out.versions)
     ch_krona = CLASSIFIER.out.ch_krona_plot
     // ch_multiqc_files = ch_multiqc_files.mix(ch_krona.collect { it[1] }.ifEmpty([]))
     ch_krakenreport = CLASSIFIER.out.ch_tops
@@ -580,6 +582,7 @@ workflow TAXTRIAGE {
     // todo - add alignment for contigs
     ch_mapped_assemblies = Channel.empty()
     ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
+    ch_versions = ch_versions.mix(REFERENCE_PREP.out.versions)
     ch_mapped_assemblies = ch_preppedfiles.map{
         meta, fastas, map, gcfids -> {
             return [meta, map]
@@ -611,7 +614,7 @@ workflow TAXTRIAGE {
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bedgraphs = ALIGNMENT.out.bedgraphs
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
-
+        ch_versions = ch_versions.mix(ALIGNMENT.out.versions)
         ch_alignment_outmerg = ALIGNMENT.out.bams
 
         ch_alignment_outmerg
@@ -639,6 +642,7 @@ workflow TAXTRIAGE {
         }
         .join(ch_bedfiles)
         .join(REFERENCE_PREP.out.ch_reference_cds)
+        .join(REFERENCE_PREP.out.features)
         .join(REFERENCE_PREP.out.ch_cds_to_taxids)
         .join(
             ch_filtered_reads.map{
@@ -707,8 +711,10 @@ workflow TAXTRIAGE {
         // }
     }
 
+    ch_collated_versions = ch_versions.unique().collectFile(name: 'all_mqc_versions.yml')
+    ch_multiqc_files = ch_multiqc_files.mix(ch_collated_versions)
     CUSTOM_DUMPSOFTWAREVERSIONS(
-        ch_versions.unique().collectFile(name: 'collated_versions.yml')
+        ch_collated_versions
     )
     // // //
     // // // MODULE: MultiQC Pt 2

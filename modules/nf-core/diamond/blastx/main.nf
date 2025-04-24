@@ -1,6 +1,6 @@
 process DIAMOND_BLASTX {
     tag "$meta.id"
-    label 'process_medium'
+    label 'process_high'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -8,7 +8,8 @@ process DIAMOND_BLASTX {
         'biocontainers/diamond:2.1.8--h43eeafb_0' }"
 
     input:
-    tuple val(meta) , path(fasta), path(db)
+    tuple val(meta) , path(fasta)
+    tuple val(meta2), path(db)
     val out_ext
     val blast_columns
 
@@ -32,8 +33,6 @@ process DIAMOND_BLASTX {
     def is_compressed = fasta.getExtension() == "gz" ? true : false
     def fasta_name = is_compressed ? fasta.getBaseName() : fasta
     def columns = blast_columns ? "${blast_columns}" : ''
-
-
     switch ( out_ext ) {
         case "blast": outfmt = 0; break
         case "xml": outfmt = 5; break
@@ -62,7 +61,7 @@ process DIAMOND_BLASTX {
         --query ${fasta_name} \\
         --outfmt ${outfmt} ${columns} \\
         ${args} \\
-        --out ${prefix}.blastx.${out_ext} \\
+        --out ${prefix}.${out_ext} \\
         --log
 
     mv diamond.log ${prefix}.log

@@ -19,10 +19,7 @@
 // #
 
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
-include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
 include { BCFTOOLS_MPILEUP } from '../../modules/nf-core/bcftools/mpileup/main'
-include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
-
 
 workflow REFERENCE_ASSEMBLY {
     take:
@@ -30,6 +27,7 @@ workflow REFERENCE_ASSEMBLY {
 
     main:
         ch_assemblies = Channel.empty()
+        ch_versions = Channel.empty()
         //// // // branch out the samtools_sort output to nanopore and illumina
 
         BCFTOOLS_MPILEUP(
@@ -37,6 +35,8 @@ workflow REFERENCE_ASSEMBLY {
             ch_aligned_output.map{ m, fastq, fasta, bam -> fasta },
             false
         )
+        BCFTOOLS_MPILEUP.out.tbi.view()
+        ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_aligned_output.map{ m, fastq, fasta, bam -> [m, fasta] })
 
@@ -45,9 +45,11 @@ workflow REFERENCE_ASSEMBLY {
             BCFTOOLS_CONSENSUS(
                 ch_merged_mpileup
             )
+            ch_versions = BCFTOOLS_CONSENSUS.out.versions
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
         }
 
     emit:
         ch_assembly = ch_assemblies
+        versions = ch_versions
 }

@@ -214,6 +214,11 @@
                     "description": "Use De Novo Assembly. Default is Flye for Longreads and Megahit for short",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "force_pull": {
+                    "type": "boolean",
+                    "description": "Force pull the reference assembly from NCBI even if you want to skip realignment",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "skip_report": {
                     "type": "boolean",
                     "description": "Skip the pathogen report",

@@ -79,6 +79,7 @@ def main():
         with open(args.pathogens, 'r') as csvfile:
             # read file as dictionary
             csvreader = csv.DictReader(csvfile)
+            # next header is first line
             for row in csvreader:
                 backup_mapping[row['name']].append(
                     dict(taxid=row['taxid'], basename=row['name'])
@@ -103,19 +104,36 @@ def main():
                 strain = strain.split("=")[1] if "=" in strain else strain
                 if strain == "na":
                     strain = "None"
-                ## set 2d list for [name] in the assemblies dict
                 if name not in gcfs:
                     gcfs[name] = dict()
                 if  name in assemblies and assemblies[name] == 0:
                     continue
                 priority = determine_priority_assembly(line)
+                taxid = cols[5]
                 if name not in assemblies or (name in assemblies and priority < assemblies[name]):
                     assemblies[name] = priority
-                    taxid = cols[5]
                     # extract value of strain=value. If strain=value is not present, set to just the same value for strain
                     gcfs[name] = cols[0]
                     taxids[taxid] = cols[0]
                     parent_taxids[taxid] = cols[6]
+
+
+                if strain != "None":
+                    name = f"{name} {strain}"
+                    taxid = cols[6]
+                    ## set 2d list for [name] in the assemblies dict
+                    if name not in gcfs:
+                        gcfs[name] = dict()
+                    if name in assemblies and assemblies[name] == 0:
+                        continue
+                    priority = determine_priority_assembly(line)
+                    if name not in assemblies or (name in assemblies and priority < assemblies[name]):
+                        assemblies[name] = priority
+                        # extract value of strain=value. If strain=value is not present, set to just the same value for strain
+                        gcfs[name] = cols[0]
+                        taxids[taxid] = cols[0]
+
+
     assembly_file.close()
     accessions = dict()
     total = 0
@@ -142,6 +160,7 @@ def main():
                 # desc = extract_after_colon(desc)
                 total +=1
                 name = long_match_names(desc, assemblies.keys())
+
                 # organism, gcf = search_in_dicts(organism_name, explicit_strain, assemblies, gcfs)
                 if name:
                     count+=1
@@ -150,6 +169,7 @@ def main():
                     # print(f"No match found in teh assembly refseq file for {seq_record.id}\t{desc}")
                     # print(f"Attempting to match through backup sheet of name->taxid")
                     name = long_match_names(desc, backup_mapping.keys())
+
                     if name:
                         count+=1
                         # try to get GCFS from the backup sheet
@@ -160,16 +180,30 @@ def main():
                             basename = taxid_names.get('basename', name)
                             if gcf:
                                 break
+
                         if gcf:
                             final_list.append(f"{seq_record.id}\t{gcf}\t{basename}\t{desc}")
                         else:
-                            missing_elements.append(f"{seq_record.id}\t{desc}")
+                            # get txid from taxids
+                            taxid = parent_taxids.get(taxid, None)
+                            if taxid:
+                                gcf = taxids.get(taxid, None)
+
+                                if gcf:
+                                    final_list.append(f"{seq_record.id}\t{gcf}\t{basename}\t{desc}")
+                                else:
+                                    # print(f"No match found in the backup sheet for {seq_record.id}\t{desc}")
+                                    missing_elements.append(f"{seq_record.id}\t{desc}")
+                            else:
+                                missing_elements.append(f"{seq_record.id}\t{desc}")
                     else:
                         # print(f"No match found in the backup sheet for {seq_record.id}\t{desc}")
                         missing_elements.append(f"{seq_record.id}\t{desc}")
     if total > 0:
         print(f"Found {count} out of {total} FASTA accessions ({count/total*100:.2f}%) in the assembly file.")
-
+        print("Missing:")
+        for line in missing_elements:
+            print("\t",line)
 
     if len(final_list) == 0:
         print("No assemblies found")

@@ -7,6 +7,7 @@ report_comment: >
 # - kraken
 max_table_rows: 40000
 export_plots: false
+disable_version_detection: false
 custom_content:
   table_columns_name:
     krakenreport:
@@ -180,6 +181,8 @@ module_order:
   - samtools
   - fastqc
 report_section_order:
+  software_versions:
+    order: -1001
   confidences:
     order: 9999
   krakenreport:

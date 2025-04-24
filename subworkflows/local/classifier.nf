@@ -52,6 +52,7 @@ workflow CLASSIFIER {
     main:
         ch_kraken2_report = Channel.empty()
         ch_metaphlan_report = Channel.empty()
+        ch_versions = Channel.empty()
         ch_tops = Channel.empty()
         ch_krona_plot = Channel.empty()
         ch_empty_file = file("$projectDir/assets/NO_FILE")
@@ -69,6 +70,7 @@ workflow CLASSIFIER {
                 ch_save_fastq_classified,
                 false
             )
+            ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
 
             ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
 
@@ -96,6 +98,7 @@ workflow CLASSIFIER {
             KRONA_KTIMPORTTEXT(
                 ch_combined
             )
+            ch_versions = ch_versions.mix(KRONA_KTIMPORTTEXT.out.versions)
             ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
 
             if (params.remove_taxids) {
@@ -187,4 +190,5 @@ workflow CLASSIFIER {
         ch_organisms_to_download
         ch_tops
         ch_krona_plot
+        versions = ch_versions
 }

@@ -133,7 +133,7 @@ def format_cell_content(cell):
 def import_data(inputfiles ):
     # Load your TSV data into a DataFrame
     # tsv_data = """
-    # Name\Specimen ID\tSpecimen Type\t% Reads\t% Aligned Reads\t# Reads Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
+    # Name\Specimen ID\tSpecimen Type\t% Reads\t% Aligned Reads\tx Reads Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
     # Escherichia coli\tNasal Swab\tnasal\t100.0\t1.28\t22\tYes\tblood, urine\tCommensal\t562\testablished\t0.054\t14.0\t26.0\t2.59\t0.028\tDirect\tFalse\tCommensal Listing
     # Salmonella enterica\tNasal Swab\tnasal\t24.13\t0.49\t7\tYes\tstool\tPrimary\t28901\testablished\t0.061\t14.0\t16.3\t1.63\t0.016\tDirect\tFalse\t
     # Staphylococcus aureus\tNasal Swab\tnasal\t96.86\t52.39\t896\tYes\tblood\tCommensal\t1280\testablished\t0.63\t14.0\t59.0\t57.66\t0.85\tDirect\tFalse\tCommensal Listing
@@ -166,8 +166,8 @@ def import_data(inputfiles ):
 
     # set % Reads aligned as float
     df['% Reads'] = df['% Reads'].apply(lambda x: float(x) if not pd.isna(x) else 0)
-    # set # Reads Aligned as int
-    df['# Reads Aligned'] = df['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
+    # set x Reads Aligned as int
+    df['x Reads Aligned'] = df['x Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
 
     # sort the dataframe by the Sample THEN the # Reads
     df = df.sort_values(by=["Specimen ID",  "TASS Score", "Microbial Category"], ascending=[True, False, True])
@@ -388,12 +388,12 @@ def create_report(
     date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
     # sort df_identified by TASS Score
     # filter out so only Class is PAthogen
-    # df_identified = df_identified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, True])
-    # df_potentials = df_potentials.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
+    # df_identified = df_identified.sort_values(by=['Specimen ID', 'x Reads Aligned'], ascending=[False, True])
+    # df_potentials = df_potentials.sort_values(by=['Specimen ID', 'x Reads Aligned'], ascending=[False, False])
     df_identified_paths = df_identified
     df_identified_others = df_commensals
     # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
-    # df_unidentified = df_unidentified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
+    # df_unidentified = df_unidentified.sort_values(by=['Specimen ID', 'x Reads Aligned'], ascending=[False, False])
     elements = []
 
     ##########################################################################################
@@ -423,7 +423,7 @@ def create_report(
         columns_yes = [
             "Specimen ID (Type)",
             "Detected Organism",
-            "# Reads Aligned",
+            "x Reads Aligned",
             "TASS Score",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
@@ -529,7 +529,7 @@ def create_report(
         "Specimen ID (Type): The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
         "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
-        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
+        "x Reads Aligned: The number of times reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample). Depending on the repeat alignments of a given genome with variant accessions or multi-fasta inputs you can see duplicates here.",
         "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
         "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
@@ -584,7 +584,7 @@ def create_report(
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        'TASS Score',
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "x Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -597,7 +597,7 @@ def create_report(
 
         # # Add the title and subtitle
         title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
-        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
+        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
         elements.append(title)
         elements.append(subtitle)
         elements.append(Spacer(1, 12))
@@ -617,7 +617,7 @@ def create_report(
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
-                       "# Reads Aligned",
+                       "x Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
                        "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
                        ]
@@ -644,7 +644,7 @@ def create_report(
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "x Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
                         "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -676,7 +676,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','x Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -763,14 +763,14 @@ def main():
     # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
-    # Sort on # Reads aligned
+    # Sort on x Reads Aligned
     df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
         if x['abundance'] == x['% Reads']:
-            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)"
+            return f"{x['x Reads Aligned']} ({x['abundance']:.2f}%)"
         else:
-            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
+            return f"{x['x Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
     df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
     # add body sit to Sample col with ()
     if args.percentile:
@@ -843,13 +843,13 @@ def main():
     remap_headers = {
         "name": "Detected Organism",
         'taxid': "Taxonomic ID #",
-        "# Reads Aligned": "# Reads Aligned to Sample",
+        "x Reads Aligned": "x Reads Aligned to Sample",
         "body_site": "Specimen Type",
         "abundance": "% of Aligned",
         # "Pathogenic Sites": "Locations",
         "% Reads": "% Reads of Organism",
         "Microbial Category": "Microbial Category",
-        'Quant': "# Reads Aligned",
+        'Quant': "x Reads Aligned",
         "Gini Coefficient": "Gini Coeff",
     }
     df_identified= df_identified.rename(columns=remap_headers)

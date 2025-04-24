@@ -21,6 +21,7 @@ workflow  REFERENCE_PREP {
     main:
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
+    ch_features = Channel.empty()
     ch_prepfiles = Channel.empty()
 
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
@@ -179,7 +180,7 @@ workflow  REFERENCE_PREP {
     }
     // get the size of the ch_reports_to_download
     // if the size is greater than 0, then download the reports
-    if ((!params.skip_refpull ) && (!params.skip_realignment && !(params.skip_kraken2 && (!params.organisms && !params.organisms_file)) ) ){
+    if ((!params.skip_kraken2 && params.force_pull) ||(!params.skip_realignment && !(params.skip_kraken2 && (!params.organisms && !params.organisms_file)) ) ){
         DOWNLOAD_ASSEMBLY(
             ch_reports_to_download.map {
                 meta, report ->  return [ meta, report ]
@@ -232,7 +233,7 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
         ch_assembly_txt
     )
-    if (( params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
+    if ((params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
         try {
             // Attempt to use the FEATURES_DOWNLOAD process
             FEATURES_DOWNLOAD(
@@ -244,6 +245,7 @@ workflow  REFERENCE_PREP {
             )
             ch_cds = FEATURES_DOWNLOAD.out.proteins
             ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
+            ch_versions = ch_versions.mix(FEATURES_DOWNLOAD.out.versions)
         /* groovylint-disable-next-line CatchException */
         } catch (Exception e) {
             // On failure, fallback to an alternative channel
@@ -258,6 +260,8 @@ workflow  REFERENCE_PREP {
             FEATURES_TO_BED(
                 FEATURES_DOWNLOAD.out.features
             )
+            ch_features = FEATURES_DOWNLOAD.out.features
+            ch_versions = ch_versions.mix(FEATURES_TO_BED.out.versions)
             ch_bedfiles = FEATURES_TO_BED.out.bed
         } catch (Exception e) {
             ch_bedfiles = ch_samples.map { meta, report ->
@@ -279,4 +283,5 @@ workflow  REFERENCE_PREP {
         ch_reference_cds = ch_cds
         ch_cds_to_taxids
         fastas = ch_fastas
+        features = ch_features
 }

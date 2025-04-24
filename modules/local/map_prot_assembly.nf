@@ -8,20 +8,23 @@ process MAP_PROT_ASSEMBLY {
         'biocontainers/pysam:0.21.0--py39hcada746_1' }"
 
     input:
-    tuple val(meta), file(diamondoutput), file(features)
+    tuple val(meta), file(diamondoutput), file(features), file(mapping), file(map_names)
     file(assembly)
 
     output:
-    tuple val(meta), path("*protein_map.txt"), optional:false, emit: promap
+    tuple val(meta), path("*assembly_protein_map.txt"), optional:false, emit: promap
 
     script:
+
+    def mapnames = map_names ? "--mapnames ${map_names}" : ""
     """
 
     map_prot_assembly.py \\
         -d $diamondoutput \\
         -f $features \\
         -a $assembly \\
-        -o ${meta.id}.protein_map.txt
+        -n $mapping $mapnames \\
+        -o ${meta.id}.assembly_protein_map.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
