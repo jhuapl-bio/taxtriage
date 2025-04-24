@@ -38,7 +38,7 @@ process MINIMAP2_ALIGN {
     
     def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
 
-    // println "${task.cpus} ${task.memory.toMega()}"
+    println "${task.cpus} ${task.memory}"
 
     def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def I_value = "${(task.memory.toMega() * Math.min(0.8 / task.cpus, 0.8)).longValue()}M"
