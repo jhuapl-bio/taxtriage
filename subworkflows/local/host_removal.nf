@@ -19,7 +19,6 @@
 // #
 
 include { MINIMAP2_ALIGN as FILTER_MINIMAP2 } from '../../modules/nf-core/minimap2/align/main'
-include { MINIMAP2_INDEX as FILTER_MINIMAP2_INDEX } from '../../modules/nf-core/minimap2/index/main'
 include { KRAKEN2_KRAKEN2 as FILTER_KRAKEN2 } from '../../modules/nf-core/kraken2/kraken2/main'
 include { SAMTOOLS_VIEW } from '../../modules/nf-core/samtools/view/main'
 include { REMOVE_HOSTREADS } from '../../modules/local/remove_unaligned'
