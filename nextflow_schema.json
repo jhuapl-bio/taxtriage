@@ -482,14 +482,6 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
-                "mmi": {
-                    "type": "string",
-                    "format": "file-path",
-                    "schema": "assets/schema_input.json",
-                    "description": "minimap2 index of your given reference fasta. ",
-                    "help_text": "Can be a list, surrounded by double quotes \". This is the index file for minimap2 to use for alignment. It is a .mmi file. If not called, it auto creates it from the relevant FASTA file for each sample. Only usable with --reference_fasta",
-                    "fa_icon": "fas fa-file-csv"
-                },
                 "recursive_reference": {
                     "type": "boolean",
                     "description": "Search for the FASTA files in a directory from the --reference_fasta param",

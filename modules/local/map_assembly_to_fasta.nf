@@ -8,7 +8,9 @@ process MAP_LOCAL_ASSEMBLY_TO_FASTA {
         'biocontainers/biopython:1.75' }"
 
     input:
-    tuple val(meta), path(fasta), path(pathogens_file), path(assembly)
+    tuple val(meta), path(fasta)
+    path(assembly)
+    path(pathogens_file)
 
     output:
     tuple val(meta), path("*localmap.tsv"), emit: map, optional: false

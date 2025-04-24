@@ -17,9 +17,11 @@ include { BCFTOOLS_STATS } from '../../modules/nf-core/bcftools/stats/main'
 include { MERGE_FASTA } from '../../modules//local/merge_fasta'
 include { SPLIT_VCF } from '../../modules/local/split_vcf'
 include { BOWTIE2_ALIGN  } from '../../modules/nf-core/bowtie2/align/main'
-include { RSEQC_BAMSTAT } from '../../modules/nf-core/rseqc/bamstat/main'
 include { BEDTOOLS_DEPTHCOVERAGE } from '../../modules/local/bedtools_coverage'
 include { BEDTOOLS_GENOMECOVERAGE } from '../../modules/local/bedtools_genomcov'
+include { BEDTOOLS_BAMTOBED } from '../../modules/nf-core/bedtools/bamtobed/main'
+include { BEDTOOLS_MASKFASTA } from '../../modules/nf-core/bedtools/maskfasta/main'
+
 
 workflow ALIGNMENT {
     take:
@@ -135,17 +137,14 @@ workflow ALIGNMENT {
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_fasta_files_for_alignment.map{ m, bam, fasta -> [m, fasta] })
 
-        ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
-
         if (params.reference_assembly){
             //
             // Mask regions in consensus with BEDTools
             //
             BEDTOOLS_MASKFASTA(
                 ch_beds.map{ m, bam, fasta, bed -> [m, bed] },
-                ch_beds.map{ m, bam, fasta, bed -> fasta },
+                ch_beds.map{ m, bam, fasta, bed -> fasta }
             )
-            ch_versions = ch_versions.mix(BEDTOOLS_MASKFASTA.out.versions.first())
 
             //
             // Call consensus sequence with BCFTools
@@ -154,7 +153,6 @@ workflow ALIGNMENT {
                 ch_merged_mpileup.join(BEDTOOLS_MASKFASTA.out.fasta),
             )
             ch_fasta = BCFTOOLS_CONSENSUS.out.fasta
-            ch_versions = ch_versions.mix(BCFTOOLS_CONSENSUS.out.versions)
         }
     }
     // Split the channel based on the condition

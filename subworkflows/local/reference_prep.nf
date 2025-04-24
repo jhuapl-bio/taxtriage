@@ -21,6 +21,7 @@ workflow  REFERENCE_PREP {
     main:
     ch_versions = Channel.empty()
     ch_accessions = Channel.empty()
+    ch_features = Channel.empty()
     ch_prepfiles = Channel.empty()
 
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
@@ -283,4 +284,6 @@ workflow  REFERENCE_PREP {
         ch_reference_cds = ch_cds
         ch_cds_to_taxids
         fastas = ch_fastas
+        versions = ch_versions
+        features = ch_features
 }
