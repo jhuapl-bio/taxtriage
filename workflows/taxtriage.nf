@@ -662,6 +662,13 @@ workflow TAXTRIAGE {
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////
+        ch_mapped_assemblies.view()
+        ch_bedgraphs.view()
+        ch_covfiles.view()
+        ch_kraken2_report.view()
+        ch_assembly_analysis.view()
+        ch_fastas.view()
+
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
             // Define a channel that emits a placeholder value if ch_kraken2_report is empty
