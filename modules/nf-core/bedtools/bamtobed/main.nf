@@ -1,4 +1,4 @@
-process BEDTOOLS_COVERAGE {
+process BEDTOOLS_BAMTOBED {
     tag "$meta.id"
     label 'process_medium'
 
@@ -8,12 +8,11 @@ process BEDTOOLS_COVERAGE {
         'biocontainers/bedtools:2.31.1--hf5e1c6e_0' }"
 
     input:
-    tuple val(meta), path(input_A), path(input_B)
-    path genome_file
+    tuple val(meta), path(bam)
 
     output:
     tuple val(meta), path("*.bed"), emit: bed
-    path "versions.yml"           , emit: versions
+    path  "versions.yml"          , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -21,19 +20,27 @@ process BEDTOOLS_COVERAGE {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def reference = genome_file ? "-g ${genome_file} -sorted" : ""
     """
     bedtools \\
-        coverage \\
+        bamtobed \\
         $args \\
-        $reference \\
-        -a $input_A \\
-        -b $input_B \\
+        -i $bam \\
         > ${prefix}.bed
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        bedtools: \$(echo \$(bedtools --version 2>&1) | sed 's/^.*bedtools v//' ))
+        bedtools: \$(bedtools --version | sed -e "s/bedtools v//g")
+    END_VERSIONS
+    """
+
+    stub:
+    def prefix = task.ext.prefix ?: "${meta.id}"
+    """
+    touch ${prefix}.bed
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        bedtools: \$(bedtools --version | sed -e "s/bedtools v//g")
     END_VERSIONS
     """
 }

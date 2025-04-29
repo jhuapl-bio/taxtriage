@@ -37,6 +37,8 @@ workflow ASSEMBLY {
         ch_diamond_output = Channel.empty()
         ch_diamond_analysis = Channel.empty()
         ch_assembly_alignment = Channel.empty()
+        ch_versions = Channel.empty()
+
         ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
         if (params.use_denovo || params.use_diamond){
             // branch long and short reads
@@ -48,26 +50,38 @@ workflow ASSEMBLY {
             ch_longreads_assembled = Channel.empty()
             if (params.use_megahit_longreads){
                 MEGAHIT_LONG(
-                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
+                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> [meta, reads, []] }
                 )
+                ch_versions = ch_versions.mix(MEGAHIT_LONG.out.versions)
                 ch_longreads_assembled = MEGAHIT_LONG.out.contigs
             } else {
                 FLYE(
-                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] },
+                    branchedChannels.longreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> [meta, reads] },
                     '--nano-raw'
                 )
+                ch_versions = ch_versions.mix(FLYE.out.versions)
                 ch_longreads_assembled = FLYE.out.fasta
             }
+            // if paired end then make a reads1 and reads2, else do single reads input
             MEGAHIT(
-                branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, mapcd,  reads -> [meta, reads] }
+                branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> {
+                        if (meta.single_end) {
+                            return [meta, reads, []]
+                        } else {
+                            return [meta, reads[0], reads[1]]
+                        }
+                    }
+                }
             )
+            ch_versions = ch_versions.mix(MEGAHIT.out.versions)
             ch_assembled_files = MEGAHIT.out.contigs.mix(ch_longreads_assembled)
-            if (( params.use_diamond )){
+            if ((params.use_diamond)){
                 BEDTOOLS_COVERAGE(
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, bed, bam] }
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, bed, bam] },
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [] },
                 )
                 ch_bedout = BEDTOOLS_COVERAGE.out.bed.join(
-                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapping] }
+                    postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, mapping] }
                 )
                 FEATURES_MAP(
                     ch_bedout
@@ -75,22 +89,31 @@ workflow ASSEMBLY {
             }
 
             try {
-
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []
                 }
                 DIAMOND_MAKEDB(
-                    valid_aligners.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, cds] }
+                    valid_aligners.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, cds] },
+                    [],
+                    [],
+                    [],
                 )
+                ch_versions = ch_versions.mix(DIAMOND_MAKEDB.out.versions)
+
+                ch_prep_dmndout = ch_assembled_files.join(DIAMOND_MAKEDB.out.db)
+
                 DIAMOND_BLASTX(
-                    ch_assembled_files.join(DIAMOND_MAKEDB.out.db),
+                    ch_prep_dmndout.map{  m , fasta, dmnd -> [m, fasta] },
+                    ch_prep_dmndout.map{  m , fasta, dmnd -> [m, dmnd] },
                     'txt',
                     false
                 )
+                ch_versions = ch_versions.mix(DIAMOND_BLASTX.out.versions)
                 MAP_PROT_ASSEMBLY(
-                    DIAMOND_BLASTX.out.txt.join(valid_aligners.map{meta, bam, bai, mapping, bed, cds, mapcd, reads -> [meta, mapcd]}),
+                    DIAMOND_BLASTX.out.txt.join(valid_aligners.map{meta, bam, bai, mapping, bed, cds, features, mapcd, reads -> [meta, mapcd, features, mapping] }),
                     assemblyfile
                 )
+                ch_versions = ch_versions.mix(MAP_PROT_ASSEMBLY.out.versions)
                 ch_diamond_analysis = ch_diamond_analysis.join(MAP_PROT_ASSEMBLY.out.promap, remainder: true)
                 ch_diamond_analysis = ch_diamond_analysis.map{
                     meta, nullfile, promap-> {
@@ -109,12 +132,14 @@ workflow ASSEMBLY {
                 ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
             }
         } else {
-            postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, mapcd, reads  -> {
+            postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads  -> {
                     return [ meta,  ch_empty_file]
             }
             }.set{ ch_diamond_output }
+
         }
     emit:
         ch_diamond_output
         ch_diamond_analysis
+        versions = ch_versions
 }

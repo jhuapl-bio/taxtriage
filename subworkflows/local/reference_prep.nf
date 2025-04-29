@@ -23,6 +23,11 @@ workflow  REFERENCE_PREP {
     ch_accessions = Channel.empty()
     ch_prepfiles = Channel.empty()
 
+    ch_features = ch_samples.map{ meta, report -> {
+            return [ meta,  []]
+        }
+    }
+
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
             return [ meta,  []]
         }
@@ -96,15 +101,16 @@ workflow  REFERENCE_PREP {
                 ch_pathogens_file
             )
             // add ch_reference_fasta to all ch_fastas
+            // add ch_reference_fasta to all ch_fastas
             ch_fastas = ch_fastas.combine(ch_reference_fasta.collect()).map{
                 meta, fastas, fasta -> {
                     fastas.add(fasta)
                     return [meta, fastas]
                 }
             }
+
             if (params.use_bt2) {
                 if (params.bt2_indices) {
-                    println "bt2 indices being used"
                     // If bt2_indices parameter is provided, create a channel from the provided path
                     ch_bt2_indices = params.bt2_indices ? Channel.from(params.bt2_indices.split(" ").collect { it  }) : Channel.empty()
 
@@ -204,6 +210,7 @@ workflow  REFERENCE_PREP {
             }
         }
 
+
         ch_mapped_assemblies.join(merged_index)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids)
             .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
@@ -232,7 +239,7 @@ workflow  REFERENCE_PREP {
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
         ch_assembly_txt
     )
-    if (( params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
+    if ((params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
         try {
             // Attempt to use the FEATURES_DOWNLOAD process
             FEATURES_DOWNLOAD(
@@ -244,6 +251,7 @@ workflow  REFERENCE_PREP {
             )
             ch_cds = FEATURES_DOWNLOAD.out.proteins
             ch_cds_to_taxids = FEATURES_DOWNLOAD.out.mapfile
+            ch_versions = ch_versions.mix(FEATURES_DOWNLOAD.out.versions)
         /* groovylint-disable-next-line CatchException */
         } catch (Exception e) {
             // On failure, fallback to an alternative channel
@@ -258,6 +266,8 @@ workflow  REFERENCE_PREP {
             FEATURES_TO_BED(
                 FEATURES_DOWNLOAD.out.features
             )
+            ch_features = FEATURES_DOWNLOAD.out.features
+            ch_versions = ch_versions.mix(FEATURES_TO_BED.out.versions)
             ch_bedfiles = FEATURES_TO_BED.out.bed
         } catch (Exception e) {
             ch_bedfiles = ch_samples.map { meta, report ->
@@ -271,12 +281,12 @@ workflow  REFERENCE_PREP {
             return [meta, fastas, mergedmap, mergedids]
     }
     }
-
     emit:
         versions = ch_versions
-        ch_bedfiles
+        ch_bedfiles = ch_bedfiles
         ch_preppedfiles = ch_mapped_assemblies
         ch_reference_cds = ch_cds
-        ch_cds_to_taxids
+        ch_cds_to_taxids = ch_cds_to_taxids
+        features = ch_features
         fastas = ch_fastas
 }
