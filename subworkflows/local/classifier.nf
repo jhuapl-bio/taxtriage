@@ -160,9 +160,6 @@ workflow CLASSIFIER {
                     return [ meta, file, 'metaphlan' ]
                 }
             }
-            // make ch_metaphlan  from params.metaphlan database path
-
-            // append METAPHLAN_METAPHLAN.out.report to ch_profile
             TAXPASTA_STANDARDISE(
                 ch_metaphlan_report,
                 ch_taxdump_dir

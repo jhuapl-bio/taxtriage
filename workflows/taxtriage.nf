@@ -654,6 +654,7 @@ workflow TAXTRIAGE {
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bedgraphs = ALIGNMENT.out.bedgraphs
+        ch_versions = ch_versions.mix(ALIGNMENT.out.versions)
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
         ch_alignment_outmerg = ALIGNMENT.out.bams
@@ -697,6 +698,8 @@ workflow TAXTRIAGE {
             ch_assembly_txt
         )
         ch_diamond_output = ASSEMBLY.out.ch_diamond_output
+        ch_versions = ch_versions.mix(ASSEMBLY.out.versions)
+
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
         ch_assembly_analysis_opt = ch_assembly_analysis.ifEmpty {
             Channel.value(null)
@@ -730,11 +733,13 @@ workflow TAXTRIAGE {
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
     }
+    ch_collated_versions = ch_versions.unique().collectFile(name: 'all_mqc_versions.yml')
+    ch_multiqc_files = ch_multiqc_files.mix(ch_collated_versions)
 
-    // CUSTOM_DUMPSOFTWAREVERSIONS(
-    //     ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    // )
-    // //
+    CUSTOM_DUMPSOFTWAREVERSIONS(
+        ch_collated_versions
+    )
+    // // //
     // // // MODULE: MultiQC Pt 2
     // // //
     // Unused or Incomplete

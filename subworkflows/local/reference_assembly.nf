@@ -35,7 +35,6 @@ workflow REFERENCE_ASSEMBLY {
             ch_aligned_output.map{ m, fastq, fasta, bam -> fasta },
             false
         )
-        BCFTOOLS_MPILEUP.out.tbi.view()
         ch_versions = ch_versions.mix(BCFTOOLS_MPILEUP.out.versions)
         ch_merged_mpileup = BCFTOOLS_MPILEUP.out.vcf.join(BCFTOOLS_MPILEUP.out.tbi)
         ch_merged_mpileup = ch_merged_mpileup.join(ch_aligned_output.map{ m, fastq, fasta, bam -> [m, fasta] })

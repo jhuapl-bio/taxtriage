@@ -29,7 +29,6 @@ workflow ALIGNMENT {
     ch_stats = Channel.empty()
     ch_depths = Channel.empty()
     ch_pafs = Channel.empty()
-    ch_fastas = Channel.empty()
     ch_sams = Channel.empty()
     ch_aligners = Channel.empty()
     collected_bams  = Channel.empty()
@@ -81,6 +80,7 @@ workflow ALIGNMENT {
         )
         ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
         collected_bams = BOWTIE2_ALIGN.out.aligned
+        ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
     } else if (params.use_hisat2) {
         // Set null for hisat2 splicesites
         HISAT2_ALIGN(
@@ -116,6 +116,7 @@ workflow ALIGNMENT {
 
     if (params.get_variants || params.reference_assembly){
         ch_bam_with_fasta = sorted_bams.join(ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] })
+
         BEDTOOLS_BAMTOBED(
             ch_bam_with_fasta.map{ m, bam, _ -> [m, bam] },
         )
@@ -188,7 +189,6 @@ workflow ALIGNMENT {
     SAMTOOLS_INDEX(
         collected_bams
     )
-
     collected_bams.join(SAMTOOLS_INDEX.out.csi).set{ sorted_bams_with_index }
 
     ch_versions = ch_versions.mix(SAMTOOLS_SORT.out.versions)
@@ -206,8 +206,9 @@ workflow ALIGNMENT {
             m, bam, csi -> return [m, bam]
         }
     )
-    // ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
-    // // merge bedgraph on the same channel
+    
+    ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
+    // merge bedgraph on the same channel
     BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
     ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
     gcf_with_bam = collected_bams.join(fastq_reads.map{ m, fastq, fasta, map -> return [m, map] })

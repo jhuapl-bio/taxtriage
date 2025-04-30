@@ -25,6 +25,11 @@ workflow  REFERENCE_PREP {
     ch_prepfiles = Channel.empty()
     ch_fastas = Channel.empty()
 
+    ch_features = ch_samples.map{ meta, report -> {
+            return [ meta,  []]
+        }
+    }
+
     ch_cds_to_taxids = ch_samples.map{ meta, report -> {
             return [ meta,  []]
         }
@@ -349,10 +354,11 @@ workflow  REFERENCE_PREP {
 
     emit:
         versions = ch_versions
-        ch_bedfiles
+        ch_bedfiles = ch_bedfiles
         ch_preppedfiles = ch_mapped_assemblies
         ch_reference_cds = ch_cds
-        ch_cds_to_taxids
+        ch_cds_to_taxids = ch_cds_to_taxids
+        features = ch_features
         fastas = ch_fastas
         versions = ch_versions
         features = ch_features

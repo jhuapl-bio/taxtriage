@@ -40,6 +40,8 @@ workflow ASSEMBLY {
         ch_diamond_output = Channel.empty()
         ch_diamond_analysis = Channel.empty()
         ch_assembly_alignment = Channel.empty()
+        ch_versions = Channel.empty()
+
         ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
         if (params.use_denovo || params.use_diamond){
             // branch long and short reads
@@ -63,8 +65,7 @@ workflow ASSEMBLY {
                 ch_versions = ch_versions.mix(FLYE.out.versions)
                 ch_longreads_assembled = FLYE.out.fasta
             }
-            // if paired end then make a reads1 and reads2
-            // if single end then make a reads1 and empty file
+            // if paired end then make a reads1 and reads2, else do single reads input
             MEGAHIT(
                 branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> {
                         if (meta.single_end) {
@@ -157,6 +158,7 @@ workflow ASSEMBLY {
                     return [ meta,  ch_empty_file]
             }
             }.set{ ch_diamond_output }
+
         }
     emit:
         ch_diamond_output
