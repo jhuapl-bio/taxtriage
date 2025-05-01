@@ -642,6 +642,13 @@
                     "fa_icon": "fas fa-memory",
                     "default": null
                 },
+                "force_mem": {
+                    "type": "string",
+                    "description": "Force the aligners and kraken2 to use a specific amount of memory rather than the max/process default",
+                    "fa_icon": "fas fa-memory",
+                    "help_text": "This is a string that is a number followed by GB or MB e.g. 10GB or 100MB. If left empty it opts for the default memory of the process or the max_memory (if specified), whichever is smaller.",
+                    "default": null
+                },
                 "max_time": {
                     "type": "string",
                     "description": "Maximum amount of time to use for the pipeline",
