@@ -130,9 +130,7 @@ workflow CLASSIFIER {
 
             if (ch_save_fastq_classified){
                 ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
-                // EXTRACT_TOP_SEQS(
-                //     TOP_HITS.out.taxids
-                // )
+             
             }
 
             if (params.fuzzy){
