@@ -51,10 +51,34 @@ if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && param
     exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
 }
 
+println "Working Directory: ${workflow.workDir}"
 
-
-// Check mandatory parameters
-if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+// Either use an existing samplesheet file or build one from fastq parameters
+if (params.fastq_1) {
+    // Determine sample name: use --sample if provided, otherwise strip the fastq extension from fastq_1 basename
+    def sampleName = params.sample ? params.sample : file(params.fastq_1).getBaseName().replaceFirst(/(\.fastq.*)/, '')
+    // Use provided platform or default to ILLUMINA
+    def platform = params.platform ? params.platform : 'ILLUMINA'
+    // Build CSV content following the samplesheet format:
+    // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+    // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
+    def csvContent = """\
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary ?: ''},${params.trim ?: 'false'},${params.type ?: 'UNKNOWN'}
+"""
+    // Write the CSV content to a temporary file in the workflow work directory
+    def filenamecsv = "${workflow.workDir}/temp_samplesheet.csv"
+    println "Creating temporary samplesheet: ${filenamecsv}"
+    def tmpSheet = file(filenamecsv)
+    tmpSheet.text = csvContent
+    ch_input = tmpSheet
+} else if (params.input) {
+    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+} else {
+    ex
+    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+}
+println "Input samplesheet: ${ch_input}"
 
 if (params.minq) {
     ch_minq_shortreads = params.minq
@@ -505,6 +529,7 @@ workflow TAXTRIAGE {
     //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
 
     ch_reads = HOST_REMOVAL.out.unclassified_reads
+    ch_reads.view()
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
         SEQTK_SAMPLE(
