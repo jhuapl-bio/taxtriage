@@ -59,6 +59,11 @@ if (params.fastq_1) {
     def sampleName = params.sample ? params.sample : file(params.fastq_1).getBaseName().replaceFirst(/(\.fastq.*)/, '')
     // Use provided platform or default to ILLUMINA
     def platform = params.platform ? params.platform : 'ILLUMINA'
+    // if platform is ILLUMINA then check if _R1 or _1 or _2 or _R2 ignore case as well, is in the fastq_1 and remove it from the sampleName, otherwise skip it
+    if (platform == 'ILLUMINA') {
+        sampleName = sampleName.replaceFirst(/(_R1|_1|_2|_R2)/, '')
+    }
+    
     // Build CSV content following the samplesheet format:
     // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
     // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
@@ -529,7 +534,6 @@ workflow TAXTRIAGE {
     //////////////////// RUN OPTIONAL SEQTK to subsample arbitrarily ////////////////////
 
     ch_reads = HOST_REMOVAL.out.unclassified_reads
-    ch_reads.view()
     if (params.subsample && params.subsample > 0) {
         ch_subsample  = params.subsample
         SEQTK_SAMPLE(
