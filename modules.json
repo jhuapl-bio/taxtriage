@@ -10,6 +10,11 @@
                         "git_sha": "589f39c39e05fdd9493e765b1d2b4385d3b68fde",
                         "installed_by": ["modules"]
                     },
+                    "bbmap/bbnorm": {
+                        "branch": "master",
+                        "git_sha": "f06465ff69516528b0178b2a2a5f6b1d4287faa9",
+                        "installed_by": ["modules"]
+                    },
                     "bcftools/consensus": {
                         "branch": "master",
                         "git_sha": "c9c3ef86c1892413b3c86fb38c4e39fd7288512f",
@@ -92,12 +97,12 @@
                     },
                     "diamond/blastx": {
                         "branch": "master",
-                        "git_sha": "06c8865e36741e05ad32ef70ab3fac127486af48",
+                        "git_sha": "05954dab2ff481bcb999f24455da29a5828af08d",
                         "installed_by": ["modules"]
                     },
                     "diamond/makedb": {
                         "branch": "master",
-                        "git_sha": "b29f6beb86d1d24d680277fb1a3f4de7b8b8a92c",
+                        "git_sha": "05954dab2ff481bcb999f24455da29a5828af08d",
                         "installed_by": ["modules"]
                     },
                     "fastp": {

@@ -63,7 +63,7 @@ if (params.fastq_1) {
     if (platform == 'ILLUMINA') {
         sampleName = sampleName.replaceFirst(/(_R1|_1|_2|_R2)/, '')
     }
-    
+
     // Build CSV content following the samplesheet format:
     // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
     // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
@@ -236,8 +236,9 @@ include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_table
 include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include { REFERENCE_REHEADER } from '../modules/local/reheader'
-include { KHMER_NORMALIZEBYMEDIAN } from '../modules/local/khmer'
-/*
+include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
+
+                                                                               /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -490,11 +491,11 @@ workflow TAXTRIAGE {
     // When calling the module, pass the empty file instead of null:
     ch_reads.view()
     if (params.downsample) {
-        KHMER_NORMALIZEBYMEDIAN(
+        BBMAP_BBNORM(
             ch_reads
         )
-        ch_reads = KHMER_NORMALIZEBYMEDIAN.out.reads
-        ch_versions = ch_versions.mix(KHMER_NORMALIZEBYMEDIAN.out.versions)
+        ch_reads = BBMAP_BBNORM.out.fastq
+        ch_versions = ch_versions.mix(BBMAP_BBNORM.out.versions)
     }
     COUNT_READS(ch_reads)
     readCountChannel = COUNT_READS.out.count
