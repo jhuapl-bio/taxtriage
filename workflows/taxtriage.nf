@@ -489,7 +489,6 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_porechop_out.collect { it[1] }.ifEmpty([]))
     // Create an empty file if se_reads is null
     // When calling the module, pass the empty file instead of null:
-    ch_reads.view()
     if (params.downsample) {
         BBMAP_BBNORM(
             ch_reads
