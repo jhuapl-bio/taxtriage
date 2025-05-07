@@ -19,21 +19,45 @@
 // #
 
 include { SAMPLESHEET_CHECK } from '../../modules/local/samplesheet_check'
+include { GENERATE_SAMPLESHEET } from '../../modules/local/samplesheet_generate'
 
 workflow INPUT_CHECK {
-    take:
-    samplesheet // file: /path/to/samplesheet.csv
-
     main:
-    SAMPLESHEET_CHECK ( samplesheet )
-        .csv
-        .splitCsv ( header:true, sep:',' )
-        .map { create_fastq_channel(it) }
-        .set { reads }
+
+
+    if (params.fastq_1) {
+        // Create a synthetic samplesheet from fastq params
+        GENERATE_SAMPLESHEET(
+            [
+                sampleName: params.sample ?: 'sample',
+                platform  : params.platform ?: 'ILLUMINA',
+                fastq_1   : params.fastq_1,
+                fastq_2   : params.fastq_2,
+                seq_summary: params.seq_summary,
+                trim      : params.trim,
+                type      : params.type
+            ]
+        )
+
+        GENERATE_SAMPLESHEET.out.csv
+            .splitCsv(header: true, sep: ',')
+            .map { create_fastq_channel(it) }
+            .set { reads }
+    } else if (params.input) {
+        // Use the provided samplesheet
+        SAMPLESHEET_CHECK(file(params.input))
+            .csv
+            .splitCsv(header: true, sep: ',')
+            .map { create_fastq_channel(it) }
+            .set { reads }
+            versions = SAMPLESHEET_CHECK.out.versions
+        }
+    else {
+        error "ERROR: Must specify either --input or --fastq_1"
+    }
 
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
-    versions = SAMPLESHEET_CHECK.out.versions // channel: [ versions.yml ]
 }
 
 // Function to get list of [ meta, [ fastq_1, fastq_2 ] ]

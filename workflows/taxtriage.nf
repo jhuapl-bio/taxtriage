@@ -54,35 +54,22 @@ println "Working Directory: ${workflow.workDir}"
 
 // Either use an existing samplesheet file or build one from fastq parameters
 if (params.fastq_1) {
-    // Determine sample name: use --sample if provided, otherwise strip the fastq extension from fastq_1 basename
-    def sampleName = params.sample ? params.sample : file(params.fastq_1).getBaseName().replaceFirst(/(\.fastq.*)/, '')
-    // Use provided platform or default to ILLUMINA
-    def platform = params.platform ? params.platform : 'ILLUMINA'
-    // if platform is ILLUMINA then check if _R1 or _1 or _2 or _R2 ignore case as well, is in the fastq_1 and remove it from the sampleName, otherwise skip it
-    if (platform == 'ILLUMINA') {
-        sampleName = sampleName.replaceFirst(/(_R1|_1|_2|_R2)/, '')
+    // check that fastq_1 exists
+    if (!file(params.fastq_1).exists()) {
+        exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
     }
-
-    // Build CSV content following the samplesheet format:
-    // sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
-    // Note: sequencing_summary is left empty, trim is set to TRUE and type is set to nasal (adjust if needed)
-    def csvContent = """\
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
-${sampleName},${platform},${params.fastq_1},${params.fastq_2 ?: ''},${params.seq_summary ?: ''},${params.trim ?: 'false'},${params.type ?: 'UNKNOWN'}
-"""
-    // Write the CSV content to a temporary file in the workflow work directory
-    def filenamecsv = "${workflow.workDir}/temp_samplesheet.csv"
-    println "Creating temporary samplesheet: ${filenamecsv}"
-    def tmpSheet = file(filenamecsv)
-    tmpSheet.text = csvContent
-    ch_input = tmpSheet
+    if (params.fastq_2){
+        // check that fastq_2 exists
+        if (!file(params.fastq_2).exists()) {
+            exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
+        }
+    }
 } else if (params.input) {
-    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
 } else {
     ex
     it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
 }
-println "Input samplesheet: ${ch_input}"
 
 if (params.minq) {
     ch_minq_shortreads = params.minq
@@ -419,9 +406,7 @@ workflow TAXTRIAGE {
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
-    INPUT_CHECK(
-        ch_input
-    )
+    INPUT_CHECK()
 
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
