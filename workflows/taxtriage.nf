@@ -44,17 +44,32 @@ if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== '
     exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
 }
 
-for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
 if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
     exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
 }
 
+println "Working Directory: ${workflow.workDir}"
 
-
-// Check mandatory parameters
-if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not specified!' }
+// Either use an existing samplesheet file or build one from fastq parameters
+if (params.fastq_1) {
+    // check that fastq_1 exists
+    if (!file(params.fastq_1).exists()) {
+        exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
+    }
+    if (params.fastq_2){
+        // check that fastq_2 exists
+        if (!file(params.fastq_2).exists()) {
+            exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
+        }
+    }
+} else if (params.input) {
+    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
+} else {
+    ex
+    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+}
 
 if (params.minq) {
     ch_minq_shortreads = params.minq
@@ -207,8 +222,9 @@ include { NCBIGENOMEDOWNLOAD_FEATURES } from '../modules/local/get_feature_table
 include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include { REFERENCE_REHEADER } from '../modules/local/reheader'
-include { KHMER_NORMALIZEBYMEDIAN } from '../modules/local/khmer'
-/*
+include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
+
+                                                                               /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -390,9 +406,7 @@ workflow TAXTRIAGE {
     // //
     // // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     // //
-    INPUT_CHECK(
-        ch_input
-    )
+    INPUT_CHECK()
 
     // Example nextflow.config file or within the script
     println "Nextflow version: ${workflow.nextflow.version}"
@@ -460,11 +474,11 @@ workflow TAXTRIAGE {
     // Create an empty file if se_reads is null
     // When calling the module, pass the empty file instead of null:
     if (params.downsample) {
-        KHMER_NORMALIZEBYMEDIAN(
+        BBMAP_BBNORM(
             ch_reads
         )
-        ch_reads = KHMER_NORMALIZEBYMEDIAN.out.reads
-        ch_versions = ch_versions.mix(KHMER_NORMALIZEBYMEDIAN.out.versions)
+        ch_reads = BBMAP_BBNORM.out.fastq
+        ch_versions = ch_versions.mix(BBMAP_BBNORM.out.versions)
     }
     COUNT_READS(ch_reads)
     readCountChannel = COUNT_READS.out.count

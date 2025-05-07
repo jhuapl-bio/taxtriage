@@ -46,9 +46,55 @@
                     "format": "directory-path",
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "fastq_1": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
+                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq). Will overwrite --input parameter if specified.",
+                    "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "fastq_2": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
+                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sample": {
+                    "type": "string",
+                    "description": "Sample name.  If left blank it retrieves the basename of the fastq_1 file",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "trim": {
+                    "type": "boolean",
+                    "description": "Whether or not to trim your fastq file(s)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "seq_summary": {
+                    "type": "string",
+                    "description": "OXFORD only sequencing summary file",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "type": {
+                    "type": "string",
+                    "description": "1",
+                    "fa_icon": "fas fa-file-signature",
+                    "enum": ["blood", "skin", "stool", "nasal", "unknown", "sterile"]
+                },
+                "platform": {
+                    "type": "string",
+                    "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
+                    "fa_icon": "fas fa-file-signature",
+                    "enum": ["ILLUMINA", "OXFORD"]
                 }
             },
-            "required": ["input", "db", "outdir"]
+            "required": ["db", "outdir"],
+            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }],
+            "errorMessage": {
+                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
+            }
         },
         "prelim_and_qc": {
             "title": "Preliminary and QC",

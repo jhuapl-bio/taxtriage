@@ -11,25 +11,48 @@ process KHMER_NORMALIZEBYMEDIAN {
     tuple val(meta), path(files)
 
     output:
-    tuple val(meta), path("${meta.id}.fastq.gz"), emit: reads
+    tuple val(meta), path("${meta.id}.normalized_*.fastq.gz"), emit: reads
     path "versions.yml"    , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-    def args = task.ext.args ?: ''
+    // calculate the amount of memory for khmer
     def m = task.memory * 0.8
-    def mode = meta.single_end ? ' ' : ' --force_single '
+    // build two alternate commands
+    def seCmd = """\
+        normalize-by-median.py \\
+            -M ${m.toMega()}e6 \\
+            --gzip \\
+            --force-single \\
+            ${files} \\
+            -o ${meta.id}.normalized.fastq.gz
+        """.stripIndent()
 
+    def peCmd = """\
+        normalize-by-median.py \\
+            -M ${m.toMega()}e6 \\
+            --gzip \\
+            --paired \\
+            ${files} \\
+            -o - \\
+        | split-paired-reads.py --gzip \\
+            -1 ${meta.id}.normalized_R1.fastq.gz \\
+            -2 ${meta.id}.normalized_R2.fastq.gz \\
+            -
+        """.stripIndent()
 
+    // choose the right one
+    if ( meta.single_end ) {
+        seCmd
+    } else {
+        peCmd
+    }
+    
+    // and then write out your versions.yml as before
     """
-    normalize-by-median.py \\
-        -M ${m.toMega()}e6 \\
-        --gzip $args \\
-        -o ${meta.id}.fastq.gz \\
-        $mode \\
-        $files
+    ${ meta.single_end ? seCmd : peCmd }
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
