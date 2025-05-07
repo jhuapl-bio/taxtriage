@@ -22,6 +22,8 @@ include { SAMPLESHEET_CHECK } from '../../modules/local/samplesheet_check'
 include { GENERATE_SAMPLESHEET } from '../../modules/local/samplesheet_generate'
 
 workflow INPUT_CHECK {
+
+
     main:
 
 
@@ -43,6 +45,7 @@ workflow INPUT_CHECK {
             .splitCsv(header: true, sep: ',')
             .map { create_fastq_channel(it) }
             .set { reads }
+        versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
         // Use the provided samplesheet
         SAMPLESHEET_CHECK(file(params.input))
