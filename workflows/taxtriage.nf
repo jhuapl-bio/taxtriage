@@ -44,7 +44,6 @@ if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== '
     exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
 }
 
-for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 // check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
 if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
