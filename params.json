@@ -18,7 +18,6 @@
     "blastdb": null,
     "use_bt2": false,
     "distributions": null,
-    "remoteblast": false,
     "skip_fastp": false,
     "get_features": false,
     "get_variants": false,

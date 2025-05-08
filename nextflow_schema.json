@@ -736,11 +736,6 @@
                     "description": "Sequencing center",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "remoteblast": {
-                    "type": "boolean",
-                    "description": "Run BLAST remote",
-                    "fa_icon": "fas fa-file-signature"
-                },
                 "multiqc_config": {
                     "type": "string",
                     "format": "file-path",
