@@ -20,6 +20,8 @@
 import os
 import pandas as pd
 import numpy as np
+from pandas.api.types import CategoricalDtype
+
 import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
@@ -168,9 +170,9 @@ def import_data(inputfiles ):
     df['% Reads'] = df['% Reads'].apply(lambda x: float(x) if not pd.isna(x) else 0)
     # set # Reads Aligned as int
     df['# Reads Aligned'] = df['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
-
+    # set TASS Score as a float
     # sort the dataframe by the Sample THEN the # Reads
-    df = df.sort_values(by=["Specimen ID",  "TASS Score", "Microbial Category"], ascending=[True, False, True])
+    # df = df.sort_values(by=["Specimen ID",  "TASS Score", "Microbial Category"], ascending=[True, False, True])
     # trim all of NAme column  of whitespace either side
     df["Detected Organism"] = df["Detected Organism"].str.strip()
     dictnames = {
@@ -181,7 +183,7 @@ def import_data(inputfiles ):
     # set if putative to it with *  in Detected organism using lambda x
     df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
     df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}°' if x['AnnClass'] == 'Derived' else x["Detected Organism"], axis=1)
-    df['Detected Organism'] = df.apply(lambda x: f'★ {x["Detected Organism"]}' if x['High Consequence'] else x["Detected Organism"], axis=1)
+    df['Detected Organism'] = df.apply(lambda x: f'★ {x["Detected Organism"]}' if x['High Consequence'] == True else x["Detected Organism"], axis=1)
     df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
     df = df.fillna("")
@@ -746,10 +748,25 @@ def main():
         # load the taxdump file
         taxdump_dict = load_taxdump(args.taxdump)
     df_full = import_data(args.input)
+    # Set tass score as a flaot
+    # fill High Consequence with False if it is NaN
+    df_full['High Consequence'].fillna(False, inplace=True)
+    # fill empty string with False for high consequence
+    df_full['High Consequence'] = df_full['High Consequence'].apply(lambda x: False if x == "" else x)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: float(x) if not pd.isna(x) else 0)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
     # for Detected Organism, add (Group) if it is not null or not Unknown
     df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']} ({x['Group']})" if x['Group'] != "Unknown" else x["Taxonomic ID #"], axis=1)
-    df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
+    # 1) create the rank
+    # If your column is actually booleans + NaN, you can do:
+
+    # 2) sort by rank desc, then TASS Score desc
+    df_full.sort_values(
+        by=['High Consequence', 'TASS Score'],
+        ascending=[False, False],
+        inplace=True
+    )
+
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
@@ -764,7 +781,6 @@ def main():
     # convert all body_site with map
     df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
     # Sort on # Reads aligned
-    df_full = df_full.sort_values(by=["High Consequence", "TASS Score"], ascending=False)
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
         if x['abundance'] == x['% Reads']:
