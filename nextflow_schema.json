@@ -572,6 +572,11 @@
                     "description": "Start generating variant call analysis relative to aligned reads to references",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "compress_species": {
+                    "type": "boolean",
+                    "description": "Compress taxonomy at species level within the ODR or MultiQC",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "show_potentials": {
                     "type": "boolean",
                     "description": "Show all known/listed potential organisms in the final discovery report",
