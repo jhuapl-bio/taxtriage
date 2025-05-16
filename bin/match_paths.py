@@ -1659,6 +1659,7 @@ def main():
                     if accession in assembly_to_accession:
                         for acc in assembly_to_accession[accession]:
                             if acc in reference_hits:
+
                                 reference_hits[acc]['isSpecies'] = isSpecies
                                 if args.compress_species:
                                     reference_hits[acc]['toplevelkey'] = species_taxid
@@ -2527,19 +2528,21 @@ def calculate_scores(
                     high_cons = high_cons_spec
         listpathogensstrains = []
         fullstrains = []
-        count['annClass'] = annClass
+
+        callclasses = set()
         if strainlist:
             pathogenic_reads = 0
             merged_strains = defaultdict(dict)
 
             for x in strainlist:
-                keyx = x.get('strainname', x.get('taxid', ""))
-                # strainanme = x.get('strainname', None)
-
-                # if formatname != strainanme and strainanme:
-                #     formatname = formatname.replace(strainanme, "")
-                # elif not strainanme or not formatname:
-                #     formatname = x.get('fullname', "Unnamed Organism")
+                strainname = x.get('strainname', None)
+                taxid = x.get('taxid', None)
+                if taxid:
+                    keyx = taxid
+                elif not taxid and strainname:
+                    keyx = strainname
+                else:
+                    keyx = None
                 if keyx in merged_strains:
                     merged_strains[keyx]['numreads'] += x.get('numreads', 0)
                     merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
@@ -2559,18 +2562,28 @@ def calculate_scores(
                     pathstrain = pathogens.get(x.get('taxid'))
                 elif x.get('fullname') in pathogens:
                     pathstrain = pathogens.get(x.get('fullname'))
-                # if "Fenollaria massiliensis" in formatname:
-                #     print(pathstrain)
                 if pathstrain:
                     taxx = x.get('taxid', "")
+                    if pathstrain.get('callclass') not in ["commensal", "Unknown", 'unknown', '', None]:
+                        callclasses.add(pathstrain.get('callclass').capitalize())
+                    annClassN = pathstrain.get('callclass', "Unknown")
                     if sample_type in pathstrain.get('pathogenic_sites', []):
                         pathogenic_reads += x.get('numreads', 0)
                         percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
                         listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
 
+
+
             if callfamclass == "" or len(listpathogensstrains) > 0:
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-
+        if len(callclasses) > 0:
+            # if Primary set is_pathogen to primary, if opposite set to opportunistic if potential set to potential
+            if "Primary" in callclasses:
+                is_pathogen = "Primary"
+            elif "Opportunistic" in callclasses:
+                is_pathogen = "Opportunistic"
+            elif "Potential" in callclasses:
+                is_pathogen = "Potential"
         breadth_total = count.get('breadth_total', 0)
         countreads = sum(count['numreads'])
         if aligned_total == 0:

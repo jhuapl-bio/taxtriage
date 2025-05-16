@@ -574,7 +574,7 @@
                 },
                 "compress_species": {
                     "type": "boolean",
-                    "description": "Compress taxonomy at species level within the ODR or MultiQC",
+                    "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_potentials": {
