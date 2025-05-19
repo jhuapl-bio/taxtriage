@@ -87,7 +87,7 @@
                     "type": "string",
                     "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
                     "fa_icon": "fas fa-file-signature",
-                    "enum": ["ILLUMINA", "OXFORD"]
+                    "enum": ["ILLUMINA", "OXFORD", "PACBIO"]
                 }
             },
             "required": ["db", "outdir"],
