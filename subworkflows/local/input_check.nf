@@ -25,9 +25,23 @@ workflow INPUT_CHECK {
 
 
     main:
+    ch_infile = Channel.empty()
 
-
-    if (params.fastq_1) {
+    if (params.batch){
+        println "Batch mode is enabled, using batch file: ${params.batch}"
+        GENERATE_SAMPLESHEET(
+            [
+                sampleName: params.sample ?: 'sample',
+                platform  : params.platform ?: 'ILLUMINA',
+                fastq_1   : params.batch,
+                seq_summary: params.seq_summary,
+                trim      : params.trim,
+                type      : params.type
+            ]
+        )
+        ch_infile = GENERATE_SAMPLESHEET.out.csv
+        versions = GENERATE_SAMPLESHEET.out.versions
+    } else if (params.fastq_1) {
         // Create a synthetic samplesheet from fastq params
         GENERATE_SAMPLESHEET(
             [
@@ -40,24 +54,21 @@ workflow INPUT_CHECK {
                 type      : params.type
             ]
         )
-
-        GENERATE_SAMPLESHEET.out.csv
-            .splitCsv(header: true, sep: ',')
-            .map { create_fastq_channel(it) }
-            .set { reads }
+        ch_infile = GENERATE_SAMPLESHEET.out.csv
         versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
-        // Use the provided samplesheet
-        SAMPLESHEET_CHECK(file(params.input))
-            .csv
-            .splitCsv(header: true, sep: ',')
-            .map { create_fastq_channel(it) }
-            .set { reads }
-            versions = SAMPLESHEET_CHECK.out.versions
-        }
-    else {
+        ch_infile = file(params.input)
+    } else {
         error "ERROR: Must specify either --input or --fastq_1"
     }
+    // Use the provided samplesheet
+    SAMPLESHEET_CHECK(ch_infile)
+        .csv
+        .splitCsv(header: true, sep: ',')
+        .map { create_fastq_channel(it) }
+        .set { reads }
+        versions = SAMPLESHEET_CHECK.out.versions
+
 
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]

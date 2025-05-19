@@ -15,6 +15,7 @@
                     "type": "string",
                     "format": "file-path",
                     "mimetype": "text/csv",
+                    "exists": true,
                     "pattern": "^\\S+\\.csv$",
                     "schema": "assets/schema_input.json",
                     "description": "Path to comma-separated file containing information about the samples in the experiment.",
@@ -47,17 +48,25 @@
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "batch": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "exists": true,
+                    "description": "A directory of fastq files. Uses this INSTEAD of fastq_1 or input parameter. This is useful if you have more than one sample in a directory. If you have a single sample of ONT data, then you should instead provide the --fastq_1 or specify the dir in the --input samplesheet.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "fastq_1": {
                     "type": "string",
-                    "format": "file-path",
-                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq). Will overwrite --input parameter if specified.",
+                    "format": "path",
+                    "exists": true,
+                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq) OR it is a directory (single sample) of fastq files with the mentioned extensions directly within it. Will overwrite --input parameter if specified.",
                     "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "fastq_2": {
                     "type": "string",
                     "format": "file-path",
+                    "exists": true,
                     "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
                     "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
                     "fa_icon": "fas fa-file-signature"
@@ -91,9 +100,9 @@
                 }
             },
             "required": ["db", "outdir"],
-            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }],
+            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }, { "required": ["batch"] }],
             "errorMessage": {
-                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
+                "anyOf": "Either the 'input' parameter or the 'fastq_1' or the 'batch' parameter must be provided. Also, ensure that db and outdir have a value."
             }
         },
         "prelim_and_qc": {
