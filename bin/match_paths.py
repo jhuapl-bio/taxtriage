@@ -162,7 +162,7 @@ def parse_args(argv=None):
         help="Assembly refseq file",
     )
     parser.add_argument(
-        "-k",  "--compress_species", default=False,  help="Compress species to species level",  action='store_true'
+        "-k",  "--strains", default=False,  help="Show below/sub-species level hits in the output files",  action='store_true'
     )
     parser.add_argument(
         "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
@@ -1630,6 +1630,7 @@ def main():
                     reference_hits[accession]['taxid'] = taxid
                 reference_hits[accession]['name'] = name
                 reference_hits[accession]['assembly'] = assembly
+                reference_hits[accession]['annotated'] = True
                 taxid_to_accession[accession] = taxid
                 if accession not in assembly_to_accession[assembly]:
                     assembly_to_accession[assembly].add(accession)
@@ -1661,7 +1662,7 @@ def main():
                             if acc in reference_hits:
 
                                 reference_hits[acc]['isSpecies'] = isSpecies
-                                if args.compress_species:
+                                if not args.strains:
                                     reference_hits[acc]['toplevelkey'] = species_taxid
                                 else:
                                     reference_hits[acc]['toplevelkey'] = taxid
@@ -1687,7 +1688,7 @@ def main():
             else:
                 v['toplevelkey'] = k
 
-    if args.compress_species:
+    if not args.strains:
         # Need to convert reference_hits to only species species level in a new dictionary
         for key, value in reference_hits.items():
             key = value.get('accession')
@@ -1793,9 +1794,10 @@ def main():
                     "coverages": [],
                     "breadth_total": 0,
                     "prevalence_disparity": 0,
+                    'annotated': False,
                     "coeffs": [],
                     'baseqs': [],
-                    "isSpecies": True if  args.compress_species  else data.get('isSpecies', False),
+                    "isSpecies": True if  not args.strains  else data.get('isSpecies', False),
                     'strainslist': [],
                     'covered_regions': 0,
                     'name': data.get('name', ""),  # Assuming the species name is the same for all strains
@@ -1852,18 +1854,25 @@ def main():
                 species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
                 species_aggregated[top_level_key]['depths'].append(data['meandepth'])
                 name = data['name']
+                if not species_aggregated[top_level_key].get('annotated', False):
+                    species_aggregated[top_level_key]['annotated'] = data.get('annotated', False)
+                isannotated = data.get('annotated', False)
+                print(">>>>>", data['name'])
+
                 if 'strain' in data:
                     species_aggregated[top_level_key]['strainslist'].append({
-                        "strainname": data['strain'],
-                        "fullname":data['name'],
+                        "strainname": data['strain'] if not isannotated and not name else name,
+                        "fullname":f"{data['name']}",
                         "subkey": val_key,
+                        'isannotated': isannotated,
                         "numreads": data['numreads'],
                         "taxid": data['taxid'] if "taxid" in data else None,
                     })
                 else:
                     species_aggregated[top_level_key]['strainslist'].append({
-                        "strainname":val_key,
+                        "strainname":val_key  if not isannotated and not name else name ,
                         "fullname":val_key,
+                        'isannotated': isannotated,
                         "subkey": val_key,
                         "numreads": data['numreads'],
                         "taxid": data['taxid'] if "taxid" in data else None,
@@ -2106,7 +2115,7 @@ def main():
             abus = []
             for body_site in body_sites:
                 taxids = value.get('taxids', [])
-                if args.compress_species:
+                if not args.strains:
                     taxids = [key]
                 for taxid in taxids:
                     if not taxid:
@@ -2165,6 +2174,7 @@ def main():
     #           "\n\t\tBreadthLog:", math.log2(2-entry['breadth_total']),
     #           "\n\t\tBreadthsqrt:", math.sqrt(1-entry['breadth_total'])
     #     )
+    # exit()
     header = [
         "Detected Organism",
         "Specimen ID",
@@ -2557,20 +2567,23 @@ def calculate_scores(
                     fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('taxid', '')}: {x.get('numreads', 0)} reads)")
                 else:
                     fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('numreads', 0)} reads)")
-
                 if x.get('taxid') in pathogens:
                     pathstrain = pathogens.get(x.get('taxid'))
                 elif x.get('fullname') in pathogens:
                     pathstrain = pathogens.get(x.get('fullname'))
                 if pathstrain:
-                    taxx = x.get('taxid', "")
                     if pathstrain.get('callclass') not in ["commensal", "Unknown", 'unknown', '', None]:
                         callclasses.add(pathstrain.get('callclass').capitalize())
-                    annClassN = pathstrain.get('callclass', "Unknown")
-                    if sample_type in pathstrain.get('pathogenic_sites', []):
-                        pathogenic_reads += x.get('numreads', 0)
                         percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
-                        listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
+                        pathstrname = x.get('strainname', None)
+                        if pathstrain.get('name'):
+                            if pathstrain.get('name') != formatname:
+                                listpathogensstrains.append(f"{pathstrain.get('name', 'N/A')} ({percentreads}%)")
+                        elif x.get('strainname', None):
+                            if pathstrname != formatname:
+                                listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
+                        pathogenic_reads += x.get('numreads', 0)
+
 
 
 
@@ -2693,7 +2706,7 @@ def write_to_tsv(output_path, final_scores, header):
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.090  :
                 print(f"Reference: {ref} - {formatname}, High Cons?: {high_conse}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")

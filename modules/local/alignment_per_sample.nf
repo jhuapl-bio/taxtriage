@@ -51,7 +51,7 @@ process ALIGNMENT_PER_SAMPLE {
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
     def output_dir = "search_results"
-    def compress_species = params.compress_species ? " --compress_species " : " "
+    def strains = params.strains ? " --strains " : " "
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
@@ -82,7 +82,7 @@ process ALIGNMENT_PER_SAMPLE {
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $ignore_alignment $compress_species
+        $min_reads_align $ignore_alignment $strains
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

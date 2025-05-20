@@ -27,22 +27,7 @@ workflow INPUT_CHECK {
     main:
     ch_infile = Channel.empty()
 
-    if (params.batch){
-        println "Batch mode is enabled, using batch file: ${params.batch}"
-        GENERATE_SAMPLESHEET(
-            [
-                sampleName: params.sample ?: 'sample',
-                platform  : params.platform ?: 'ILLUMINA',
-                fastq_1   : params.batch,
-                seq_summary: params.seq_summary,
-                trim      : params.trim,
-                type      : params.type
-            ]
-        )
-        ch_infile = GENERATE_SAMPLESHEET.out.csv
-        versions = GENERATE_SAMPLESHEET.out.versions
-    } else if (params.fastq_1) {
-        // Create a synthetic samplesheet from fastq params
+    if (params.fastq_1) {
         GENERATE_SAMPLESHEET(
             [
                 sampleName: params.sample ?: 'sample',
@@ -51,22 +36,25 @@ workflow INPUT_CHECK {
                 fastq_2   : params.fastq_2,
                 seq_summary: params.seq_summary,
                 trim      : params.trim,
-                type      : params.type
+                type      : params.type,
+                batch     : params.batch,
             ]
         )
         ch_infile = GENERATE_SAMPLESHEET.out.csv
         versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
+        println "INFO: Using input file: ${params.input}"
         ch_infile = file(params.input)
     } else {
-        error "ERROR: Must specify either --input or --fastq_1"
+        error "ERROR: Must specify either --input or --fastq_1 or --batch"
     }
     // Use the provided samplesheet
     SAMPLESHEET_CHECK(ch_infile)
         .csv
         .splitCsv(header: true, sep: ',')
-        .map { create_fastq_channel(it) }
+        .flatMap { row -> create_fastq_channel(row) }
         .set { reads }
+
         versions = SAMPLESHEET_CHECK.out.versions
 
 
@@ -74,72 +62,114 @@ workflow INPUT_CHECK {
         reads                                     // channel: [ val(meta), [ reads ] ]
 }
 
-// Function to get list of [ meta, [ fastq_1, fastq_2 ] ]
-def create_fastq_channel(LinkedHashMap row) {
-    // create meta map
-    def meta = [:]
-    // if fastq_2 is not a column then set it as null for all rows
 
+/**
+ * @param row  A LinkedHashMap containing:
+ *             sample, platform, fastq_1, fastq_2, sequencing_summary,
+ *             trim, type, batch
+ * @return     A List of [ metaMap, List<File> ] tuples
+ */
+ def create_fastq_channel( LinkedHashMap row ) {
+    def results = []
 
-    meta.id         = row.sample
-    meta.platform = row.platform ? row.platform : 'ILLUMINA'
-    meta.fastq_1 = row.fastq_1
-    // Check if 'fastq_2' exists in 'row'
-    if (row.containsKey('fastq_2')) {
-        meta.fastq_2 = row.fastq_2
-    } else {
-        meta.fastq_2 = null
-    }
-    meta.needscompressing = row.needscompressing ? row.needscompressing : null
+    // ─── declare all flags / inputs up front ────────────────────────────────────
+    boolean isBatch   = row.batch?.toString()?.toLowerCase() == 'true'
+    boolean doTrim    = row.trim?.toString()?.toLowerCase()   == 'true'
+    String  samp      = row.sample
+    String  plat      = row.platform ?: 'ILLUMINA'
+    String  seqSum    = row.sequencing_summary ?: ''
+    String  type      = row.type ?: 'UNKNOWN'
 
-    // if meta.needscompressing is null or false AND the filename ends with .fastq or .fq then set to true
-    // if (!meta.needscompressing && (meta.fastq_1.endsWith('.fastq') || meta.fastq_1.endsWith('.fq'))) {
-    //     meta.needscompressing = true
-    // }
-    // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
-    meta.single_end = row.fastq_2  ? false : true
-    meta.aligner  = row.aligner ? row.aligner : 'minimap2'
-    // if meta.aligner is not minimap2, hisat2, or bowtie2 then exit and send error
-    if (meta.aligner != 'minimap2' && meta.aligner != 'hisat2' && meta.aligner != 'bowtie2') {
-        exit 1, "ERROR: Please check input samplesheet -> aligner is not specified as minimap2, hisat2, or bowtie2 \n${meta.sample}"
+    // ─── build our "inPath" and verify it exists ───────────────────────────────
+    def inPath = new File(row.fastq_1)
+    if( ! inPath.exists() ) {
+        error "ERROR: Path does not exist: ${inPath}"
     }
-    // Check if fastq_1 exists if not then error out and print error
-    if (!file(meta.fastq_1).exists()) {
-        exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
-    }
-    if (!meta.single_end && !file(meta.fastq_2).exists()) {
-        exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
-    }
-
-    if (row.trim && row.trim.toLowerCase() == "true"){
-        meta.trim = true
-    } else if (!row.trim  || (row.trim && row.trim.toLowerCase() == "false")){
-        meta.trim = false
-    }
-    meta.type = row.type
-    meta.directory = row.directory ?  row.directory.toBoolean() : null
-    meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
-    // add path(s) of the fastq file(s) to the meta map
-    def fastq_meta = []
-    if (meta.directory ){
-        if (meta.platform == 'OXFORD' || meta.platform == "PACBIO"){
-            fastq_meta = [ meta, [ file(meta.fastq_1) ]  ]
-        } else {
-            exit 1, "ERROR: Please check input samplesheet -> the platform is not specified as OXFORD or PACBIO \n${meta.sample}"
+    def dir = inPath.isDirectory() ? inPath : inPath.parentFile
+    if( isBatch && dir ) {
+        // ─── batch mode: scan only the top level for .fastq/.fq (with or without .gz)
+        def fastqs = dir.listFiles().findAll {
+            it.name ==~ /(?i).+\.(fastq|fq)(\.gz)?$/
         }
-    } else {
-        if (!file(meta.fastq_1).exists()) {
-            exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
-        }
-        if (meta.single_end) {
-            fastq_meta = [ meta, [ file(meta.fastq_1) ] ]
-        } else {
-            if (meta.fastq_2 && !file(meta.fastq_2).exists()) {
-                exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
+
+        // if Oxford (or PacBio), skip R1/R2 pairing entirely:
+        if( plat.equalsIgnoreCase('OXFORD') ) {
+            fastqs.each { f ->
+                // derive a sample ID from the filename (strip ext)
+                def sampleId = f.name.replaceAll(/(?i)\.(fastq|fq)(?:\.gz)?$/, '')
+                def needsCompress = f.name ==~ /(?i).+\.(fastq|fq)$/
+
+                def meta = [
+                    id                 : sampleId,
+                    platform           : plat,
+                    type               : row.type   ?: 'UNKNOWN',
+                    trim               : row.trim.toBoolean() ?: false,
+                    sequencing_summary : row.sequencing_summary ?: null,
+                    single_end         : true,
+                    directory          : false,
+                    batch              : true,
+                    fastq_1            : f1,
+                    fastq_2            : null,
+                    needscompressing   : needsCompress
+                ]
+                results << [ meta, [ file(f1) ] ]
             }
-            fastq_meta = [ meta, [ file(meta.fastq_1), file(meta.fastq_2) ] ]
         }
+        else {
+            // non-Oxford: do your normal R1/R2 grouping
+            def pattern = ~/(?i)(.+?)(?:[_.]R?([12]))?\.(?:fastq|fq)(?:\.gz)?$/
+            def groups  = fastqs.groupBy { f ->
+                def m = (f.name =~ pattern)
+                m ? m[0][1] : f.name
+            }
+            groups.each { base, files ->
+                def f1 = files.find{ it.name =~ /(?i)[_.]R?1\./ } ?: files[0]
+                def f2 = files.find{ it.name =~ /(?i)[_.]R?2\./ }
+                def needsCompress = f1.name ==~ /(?i).+\.(fastq|fq)$/
+
+                // strip off the R1 suffix for your sample ID
+                def sampleId = f1.name.replaceAll(/(?i)[_.]R?1\.(?:fastq|fq)(?:\.gz)?$/, '')
+
+                def meta = [
+                    id                 : sampleId,
+                    sample             : sampleId,
+                    platform           : plat,
+                    type               : row.type   ?: 'UNKNOWN',
+                    trim               : row.trim?.toString().toLowerCase()=='true',
+                    sequencing_summary : row.sequencing_summary ?: null,
+                    single_end         : (f2==null),
+                    directory          : false,
+                    batch              : true,
+                    needscompressing   : needsCompress
+                ]
+                def fileList = [ file(f1) ] + (f2 ? [ file(f2) ] : [])
+                results << [ meta, fileList ]
+            }
+        }
+    } else {
+        // ─── single‐sample mode: emit exactly one tuple ──────────────────────────
+        def f1 = file(row.fastq_1)
+        def f2 = row.fastq_2 ? file(row.fastq_2) : null
+        if( f2 && ! f2.exists() ) {
+            error "ERROR: Read2 does not exist: ${f2}"
+        }
+        def meta = [
+            id                 : row.sample ?: 'Unknown_Sample',
+            platform           : row.platform ?: 'ILLUMINA',
+            type               : row.type ?: 'UNKNOWN',
+            trim               : row.trim.toBoolean() ?: false,
+            sequencing_summary : row.sequencing_summary ?: null,
+            single_end         : row.single_end.toBoolean() ?: false,
+            directory          : row.directory.toBoolean() ?: false,
+            batch              : row.batch.toBoolean() ?: false,
+            needscompressing   : row.needscompressing.toBoolean() ?: false
+
+        ]
+
+
+        def fileList = [ f1 ] + (f2 ? [ f2 ] : [])
+        results << [ meta, fileList ]
     }
 
-    return fastq_meta
+    return results
 }

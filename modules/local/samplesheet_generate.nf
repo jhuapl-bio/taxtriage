@@ -20,10 +20,11 @@ process GENERATE_SAMPLESHEET {
     def seq_sum    = meta.seq_summary ?: ''
     def trim       = meta.trim       ?: 'false'
     def type       = meta.type       ?: 'UNKNOWN'
+    def batch      = meta.batch      ?: 'batch'
 
     """
-    echo "sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type" > temp_samplesheet.csv
-    echo "${sampleName},${platform},${fastq_1},${fastq_2},${seq_sum},${trim},${type}" >> temp_samplesheet.csv
+    echo "sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type,batch" > temp_samplesheet.csv
+    echo "${sampleName},${platform},${fastq_1},${fastq_2},${seq_sum},${trim},${type},${batch}" >> temp_samplesheet.csv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
