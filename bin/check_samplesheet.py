@@ -277,14 +277,23 @@ def check_samplesheet(file_in, file_out):
     header = list(reader.fieldnames)
     if "fastq_2" not in header:
         header.insert(1, "fastq_2")
-    header.insert(1, "single_end")
-    header.insert(1, "sequencing_summary")
-    header.insert(1, "platform")
-    header.insert(1, "type")
-    header.insert(1, "directory")
-    header.insert(1, "needscompressing")
-    header.insert(1, "trim")
-    header.insert(1, "batch")
+    # if single_end not in header:
+    if "single_end" not in header:
+        header.insert(1, "single_end")
+    if "directory" not in header:
+        header.insert(1, "directory")
+    if "needscompressing" not in header:
+        header.insert(1, "needscompressing")
+    if "trim" not in header:
+        header.insert(1, "trim")
+    if "batch" not in header:
+        header.insert(1, "batch")
+    if "platform" not in header:
+        header.insert(1, "platform")
+    if "sequencing_summary" not in header:
+        header.insert(1, "sequencing_summary")
+    if "type" not in header:
+        header.insert(1, "type")
     # remove any header that is empty string
     header = [x for x in header if x != '']
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
