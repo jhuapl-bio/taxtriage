@@ -40,6 +40,7 @@ workflow INPUT_CHECK {
                 batch     : params.batch,
             ]
         )
+
         ch_infile = GENERATE_SAMPLESHEET.out.csv
         versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
@@ -54,6 +55,8 @@ workflow INPUT_CHECK {
         .splitCsv(header: true, sep: ',')
         .flatMap { row -> create_fastq_channel(row) }
         .set { reads }
+
+        reads.view()
 
         versions = SAMPLESHEET_CHECK.out.versions
 
