@@ -2576,6 +2576,12 @@ def calculate_scores(
                         callclasses.add(pathstrain.get('callclass').capitalize())
                         percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
                         pathstrname = x.get('strainname', None)
+                        # check if any of the pathogenic sites are same as sample type, set annClass to direct if so
+                        if sample_type in pathstrain.get('pathogenic_sites', []):
+                            annClass = "Direct"
+                        high_cons_strain = pathstrain.get('high_cons', False)
+                        if high_cons_strain:
+                            high_cons = True
                         if pathstrain.get('name'):
                             if pathstrain.get('name') != formatname:
                                 listpathogensstrains.append(f"{pathstrain.get('name', 'N/A')} ({percentreads}%)")

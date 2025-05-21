@@ -48,6 +48,12 @@
                     "description": "Output directory full of files. Report will be generated at <PATH>/multiqc/multiqc_report.html",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "batch": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Partitions your --fastq_1 into bins or sets based on the basename. You must provide a directory as input for this to function. It will set one sample per basename present in the directory (must be on directory down. this doesn't work recursively) ",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "fastq_1": {
                     "type": "string",
                     "format": "path",
@@ -90,12 +96,6 @@
                     "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
                     "fa_icon": "fas fa-file-signature",
                     "enum": ["ILLUMINA", "OXFORD", "PACBIO"]
-                },
-                "batch": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Partitions your --fastq_1 into bins or sets based on the basename. You must provide a directory as input for this to function. It will set one sample per basename present in the directory (must be on directory down. this doesn't work recursively) ",
-                    "fa_icon": "fas fa-file-signature"
                 }
             },
             "required": ["db", "outdir"],

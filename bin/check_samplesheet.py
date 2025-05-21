@@ -56,8 +56,10 @@ class RowChecker:
         first_col="fastq_1",
         second_col="fastq_2",
         single_col="single_end",
+        batch_col='batch',
         dir_col="directory",
-        needscompressing="needscompressing",
+        trim_col="trim",
+        needscompressing_col="needscompressing",
         **kwargs,
     ):
         """
@@ -81,10 +83,12 @@ class RowChecker:
         self._sample_col = sample_col
         self._first_col = first_col
         self._second_col = second_col
+        self._trim_col = trim_col
         self._dir_col = dir_col
         self._single_col = single_col
-        self._needscompressing = needscompressing
+        self._needscompressing = needscompressing_col
         self._seen = set()
+        self._batch = batch_col
         self.modified = []
 
     def validate_and_transform(self, row):
@@ -274,8 +278,13 @@ def check_samplesheet(file_in, file_out):
     if "fastq_2" not in header:
         header.insert(1, "fastq_2")
     header.insert(1, "single_end")
+    header.insert(1, "sequencing_summary")
+    header.insert(1, "platform")
+    header.insert(1, "type")
     header.insert(1, "directory")
     header.insert(1, "needscompressing")
+    header.insert(1, "trim")
+    header.insert(1, "batch")
     # remove any header that is empty string
     header = [x for x in header if x != '']
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.

@@ -480,7 +480,6 @@ workflow TAXTRIAGE {
         ch_reads = BBMAP_BBNORM.out.fastq
         ch_versions = ch_versions.mix(BBMAP_BBNORM.out.versions)
     }
-    ch_reads.view()
     COUNT_READS(ch_reads)
     readCountChannel = COUNT_READS.out.count
     // Update the meta with the read count by reading the file content

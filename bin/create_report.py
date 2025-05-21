@@ -427,15 +427,22 @@ def create_report(
             "Detected Organism",
             "# Reads Aligned",
             "TASS Score",
-            "Taxonomic ID #", "Pathogenic Subsp/Strains",
-            "Coverage",
+            "Taxonomic ID #",
+            "Pathogenic Subsp/Strains",
+            "Coverage(s)",
             "HHS Percentile",
             "K2 Reads"
         ]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
-
+        # if PAthogen Subsp/Strains is empty or string is "" for all then remove it from columns
+        try:
+            if df_identified_paths['Pathogenic Subsp/Strains'].isnull().all() or df_identified_paths['Pathogenic Subsp/Strains'].eq("").all():
+                # remove string from columns_yes
+                columns_yes.remove("Pathogenic Subsp/Strains")
+        except Exception as e:
+            print(e)
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -586,7 +593,7 @@ def create_report(
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        'TASS Score',
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage(s)",
                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -621,7 +628,7 @@ def create_report(
         columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
+                       "Pathogenic Subsp/Strains", "Coverage(s)",  "HHS Percentile", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
@@ -646,7 +653,7 @@ def create_report(
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage(s)",
                         "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -678,7 +685,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
+        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage(s)",  "HHS Percentile", "K2 Reads"]
         data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
         if df_unidentified['K2 Reads'].sum() == 0:
             columns_no = columns_no[:-1]
@@ -864,6 +871,7 @@ def main():
         "abundance": "% of Aligned",
         # "Pathogenic Sites": "Locations",
         "% Reads": "% Reads of Organism",
+        'Coverage': 'Coverage(s)',
         "Microbial Category": "Microbial Category",
         'Quant': "# Reads Aligned",
         "Gini Coefficient": "Gini Coeff",
