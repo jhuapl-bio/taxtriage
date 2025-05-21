@@ -88,6 +88,7 @@ workflow INPUT_CHECK {
     if( ! inPath.exists() ) {
         error "ERROR: Path does not exist: ${inPath}"
     }
+    println "INFO: Input path: ${row}"
     def dir = inPath.isDirectory() ? inPath : inPath.parentFile
     if( isBatch && dir ) {
         // ─── batch mode: scan only the top level for .fastq/.fq (with or without .gz)
