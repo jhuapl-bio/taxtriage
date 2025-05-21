@@ -74,6 +74,7 @@ workflow INPUT_CHECK {
  */
  def create_fastq_channel( LinkedHashMap row ) {
     def results = []
+    println "INFO: Input path: ${row}"
 
     // ─── declare all flags / inputs up front ────────────────────────────────────
     boolean isBatch   = row.batch?.toString()?.toLowerCase() == 'true'
@@ -88,7 +89,6 @@ workflow INPUT_CHECK {
     if( ! inPath.exists() ) {
         error "ERROR: Path does not exist: ${inPath}"
     }
-    println "INFO: Input path: ${row}"
     def dir = inPath.isDirectory() ? inPath : inPath.parentFile
     if( isBatch && dir ) {
         // ─── batch mode: scan only the top level for .fastq/.fq (with or without .gz)
