@@ -91,7 +91,7 @@ workflow INPUT_CHECK {
     println "6"
     // ─── build our "inPath" and verify it exists ───────────────────────────────
     // *** replace new File() with Nextflow's file() ***
-    Path inPath = file(row.fastq_1)
+    def inPath = new File(row.fastq_1)
 
     // this will now actually stage/download the S3 object if needed,
     // then check for its existence locally
@@ -99,10 +99,13 @@ workflow INPUT_CHECK {
     //   error "ERROR: Path does not exist: ${row.fastq_1}"
     // }
 
-    println "8"
-    def dir = inPath.isDirectory() ? inPath : inPath.parentFile
-    println "9"
-    if( isBatch && dir ) {
+    println "8 $inPath"
+    def isdir = inPath.isDirectory()
+
+    println "9 $isdir"
+    if( isBatch && isdir ) {
+        def dir = inPath
+        println "10 $dir"
         // ─── batch mode: scan only the top level for .fastq/.fq (with or without .gz)
         def fastqs = dir.listFiles().findAll {
             it.name ==~ /(?i).+\.(fastq|fq)(\.gz)?$/
