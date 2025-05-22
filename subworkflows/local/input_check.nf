@@ -89,9 +89,8 @@ workflow INPUT_CHECK {
     println "5"
     String  type      = row.type ?: 'UNKNOWN'
     println "6"
-    // ─── build our "inPath" and verify it exists ───────────────────────────────
     // *** replace new File() with Nextflow's file() ***
-    def inPath = new File(row.fastq_1)
+    Path inPath = file(row.fastq_1)
 
     // this will now actually stage/download the S3 object if needed,
     // then check for its existence locally
@@ -99,10 +98,10 @@ workflow INPUT_CHECK {
     //   error "ERROR: Path does not exist: ${row.fastq_1}"
     // }
 
-    println "8 $inPath"
+    println "8"
     def isdir = inPath.isDirectory()
-
     println "9 $isdir"
+
     if( isBatch && isdir ) {
         def dir = inPath
         println "10 $dir"
