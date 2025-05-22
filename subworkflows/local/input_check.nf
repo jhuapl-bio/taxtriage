@@ -77,13 +77,18 @@ workflow INPUT_CHECK {
     println "INFO: Input path: ${row}"
 
     // ─── declare all flags / inputs up front ────────────────────────────────────
-    boolean isBatch   = row.batch?.toString()?.toLowerCase() == 'true'
-    boolean doTrim    = row.trim?.toString()?.toLowerCase()   == 'true'
+    boolean isBatch   = row.batch.toBoolean() ?: false
+    println "1"
+    boolean doTrim    = row.trim.toBoolean() ?: false
+    println "2"
     String  samp      = row.sample
+    println "3"
     String  plat      = row.platform ?: 'ILLUMINA'
+    println "4"
     String  seqSum    = row.sequencing_summary ?: ''
+    println "5"
     String  type      = row.type ?: 'UNKNOWN'
-
+    println "6"
     // ─── build our "inPath" and verify it exists ───────────────────────────────
     def inPath = new File(row.fastq_1)
     if( ! inPath.exists() ) {
