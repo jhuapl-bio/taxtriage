@@ -114,7 +114,7 @@ There are additional parameters that all equate to the columns of a samplesheet 
 nextflow run main.nf -profile mce,docker -resume --fastq_1 examples/data/iss_reads_R1.fastq.gz --fastq_2 examples/data/iss_reads_R2.fastq.gz --type blood --sample test
 ```
 
-⚠️This process will download the pathogen fasta file on the first run. You can also download the fasta file directly like: 
+⚠️This process will download the pathogen fasta file on the first run. You can also download the fasta file directly like:
 
 ```
 wget https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz && gzip -d pathogens.fasta.gz
@@ -126,8 +126,7 @@ Then run:
 nextflow run main.nf -profile mce_seqera,docker -resume --fastq_1 examples/data/iss_reads_R1.fastq.gz --fastq_2 examples/data/iss_reads_R2.fastq.gz --type blood --sample test --reference_fasta_file pathogens.fasta
 ```
 
-❗ The purpose of this is to ALWAYS align against known pathogens in the pathogen annotation sheet. 
-
+❗ The purpose of this is to ALWAYS align against known pathogens in the pathogen annotation sheet.
 
 ### CLI Parameters Possible and Explained
 
