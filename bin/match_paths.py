@@ -2566,13 +2566,15 @@ def calculate_scores(
                     taxx = x.get('taxid', "")
                     if pathstrain.get('callclass') not in ["commensal", "Unknown", 'unknown', '', None]:
                         callclasses.add(pathstrain.get('callclass').capitalize())
-                    annClassN = pathstrain.get('callclass', "Unknown")
-                    if sample_type in pathstrain.get('pathogenic_sites', []):
+                    # annClassN = pathstrain.get('callclass', "Unknown")
+                    # if the pathstrain is high consequence set high_cons to True
+                    # callclasses.add(annClassN.capitalize())
+                    if pathstrain.get('high_cons', False):
+                        high_cons = True
+                    if sample_type in pathstrain.get('pathogenic_sites', []) or sample_type == pathstrain.get('general_classification', ''):
                         pathogenic_reads += x.get('numreads', 0)
                         percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
                         listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
-
-
 
             if callfamclass == "" or len(listpathogensstrains) > 0:
                 callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""

@@ -113,7 +113,7 @@ def parse_args(argv=None):
 
 
 # Function to adjust font size based on text length
-def adjust_font_size(text, max_length=8, default_font_size=8, min_font_size=6):
+def adjust_font_size(text, max_length=10, default_font_size=10, min_font_size=6):
     if len(text) > max_length:
         # Calculate new font size (simple linear reduction, could be improved)
         new_size = max(default_font_size - (len(text) - max_length) // 5, min_font_size)
