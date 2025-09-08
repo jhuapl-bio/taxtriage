@@ -586,7 +586,7 @@ def create_report(
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        'TASS Score',
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "Taxonomic ID #", "Coverage",
                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
