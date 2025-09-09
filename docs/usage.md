@@ -1,4 +1,4 @@
-# TaxTriage: Usage
+<img width="66" height="17" alt="image" src="https://github.com/user-attachments/assets/498df803-9385-4e46-94ab-817a749b3dad" /># TaxTriage: Usage
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
 > 
@@ -30,6 +30,8 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
+### Sample Types and HMP
+
 Additionally (see below for more info) we employ several stages of filtering post-alignment. One includes the human microbiome project (HMP) which supports 5 sample types (last column in the example):
 
 1. stool
@@ -38,7 +40,7 @@ Additionally (see below for more info) we employ several stages of filtering pos
 4. skin
 5. vaginal
 
-**Note**: there are additional sample types available in the usage table below. These sample types are not required to run taxtriage on your samples but can influence the distribution steps on filtering downstream from alignment. If left blank or a sample type is specified but not in the above list, the distribution filtering step will be skipped.
+❗**Note**: there are additional sample types available in the usage table below. These sample types are not required to run taxtriage on your samples but can influence the distribution steps on filtering downstream from alignment. If left blank or a sample type is specified but not in the above list, the distribution filtering step will be skipped.
 
 Any other body site not listed will not take HMP into consideration. Only abundances hitting the "threshold" for top hits `--top_hits` or `--top_per_taxa` will be considered. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/TASSDiagram.png) for decision tree information on how top hits are calculated at a high level. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#cli-parameters-possible-and-explained) for parameter descriptions.
 
@@ -64,7 +66,8 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 | `fastq_2`            | OPTIONAL Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `trim`               | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `sequencing_summary` | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `type`               | OPTIONAL But Recommended. Type of sample such as blood, stool etc. Supported values: blood, csf, sterile, nasal, oral, vaginal, gut, abscess, lung, abscess, stool, skin, ear, sputum, urine. Note that not all types are supported using the HMP dataset as an additional filter step.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `type`               | OPTIONAL But Recommended. Type of sample such as blood, stool etc. Supported values: 
+**blood, csf, sterile, nasal, oral, vaginal, gut, abscess, lung, abscess, stool, skin, ear, sputum, urine**. Note that not all types are supported using the HMP dataset as an additional filter step.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `needscompressing`   | OPTIONAL but required if providing a non-compressed fastq file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
@@ -81,7 +84,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage --input samplesheet.csv --o
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
 
-Note that the pipeline will create the following files in your working directory:
+❗ Note that the pipeline will create the following files in your working directory:
 
 ```console
 work                # Directory containing the nextflow working files
@@ -89,6 +92,28 @@ work                # Directory containing the nextflow working files
 .nextflow_log       # Log file from Nextflow
 # Other nextflow hidden files, eg. history of pipeline runs and old logs.
 ```
+### All (Currently Used) Sample Sites/Types
+
+1. blood
+2. csf
+3. sterile
+4. nasal
+5. oral
+6. vaginal
+7. gut
+8. abscess
+9. lung
+10. abscess
+11. stool
+12. skin
+13. ear
+14. sputum
+15. urine
+
+The above names are currently used to match pathogens in the annotation [sheet](../assets/pathogen_sheet.csv). However, only those in bold (see [here for more info](#sample-types-and-hmp)). Within the samplesheet, the **general_classification**, **pathogenic_sites**, and **commensal_sites** columns will try to match to these, priority being in reverse order. In general, if a sample-type you've specified matches a value in these columns in this priority, the organism will be listed as that in the PDF.
+
+❗ Note that commensal or potential pathogens will by default be hidden in the PDF but available in the **.paths.txt** file in the reports folder [see here for more info](#final-text-output-location). They can also be enabled, in the PDF, with `--show_potentials --show_commensal`
+
 
 ##### Define single samples
 
