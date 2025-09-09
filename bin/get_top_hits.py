@@ -23,11 +23,8 @@ import argparse
 import csv
 import logging
 import sys
-from collections import Counter
 from pathlib import Path
 import re
-import os
-import numpy as np
 from distributions import import_distributions, body_site_map
 import pandas as pd
 logger = logging.getLogger()
@@ -317,8 +314,10 @@ def main(argv=None):
             pathogen_sheet['pathogenic_sites'] = pathogen_sheet['pathogenic_sites'].apply(translate_and_deduplicate_sites)
             # check if (lowercase) args.body_site is anywhere in pathogen_orgs body_site column, if not filter
             if len(body_sites) > 0:
-                pathogen_sheet = pathogen_sheet[pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites)]
-
+                pathogen_sheet = pathogen_sheet[
+                    (pathogen_sheet['pathogenic_sites'].str.lower().isin(body_sites))
+                    | (('sterile' in body_sites))
+                ]
             # filter out where general_classification is pathogen or opportunistic pathogen
             pathogen_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["primary", "opportunistic", "potential", "oportunistic"])]['taxid']
 
@@ -333,7 +332,7 @@ def main(argv=None):
 
 
             # Check if `remove_commensals` is True, and if so, remove taxids from the mapping
-            if args.remove_commensals:
+            if args.remove_commensals and not "sterile" in body_sites:
                 # get all taxids where general classification is commensal
                 commensal_orgs = pathogen_sheet[pathogen_sheet['general_classification'].isin(["commensal"])]['taxid']
                 remove_taxids.extend(commensal_orgs)

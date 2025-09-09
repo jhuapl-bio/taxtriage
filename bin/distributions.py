@@ -7,6 +7,8 @@ import math
 def body_site_map(x):
     body_sites = {
         'gut': "stool",
+        "clean": "sterile",
+        "CSF": "csf",
         "nose": "nasal",
         "vagina": "vaginal",
         "teeth": "oral",

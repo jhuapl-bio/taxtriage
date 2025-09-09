@@ -22,9 +22,6 @@ from collections import defaultdict
 import sys
 from scipy.stats import norm
 import time
-from intervaltree import Interval, IntervalTree
-import statistics
-import math as Math
 from distributions import import_distributions, body_site_map
 import argparse
 import re
@@ -1316,17 +1313,14 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
         excluded_regions = defaultdict(list)
         # check if the alignment was paired end or single end
         start_time = time.time()
+        seenpairs = set()
         for read in bam_file.fetch():
-            # Only process paired reads
-            # if not read.is_paired:
-            #     continue
-            # For paired-end reads, only count the first mate to avoid double-counting
 
-            # if not read.is_read1 and read.is_paired:
-            #     continue
 
             ref = read.reference_name
             total_reads += 1
+
+
 
             # Skip reads that are in alignments_to_remove if provided
             if alignments_to_remove and read.query_name in alignments_to_remove and ref in alignments_to_remove[read.query_name]:
@@ -1344,6 +1338,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
             # Process only mapped reads
             if not read.is_unmapped:
                 aligned_reads += 1
+
+
                 # Accumulate base quality scores
                 if read.query_qualities:
                     reference_stats[ref]["sum_baseq"] += sum(read.query_qualities)
@@ -2054,6 +2050,7 @@ def main():
 
     pathogens = import_pathogens(pathogenfile)
 
+
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -2091,6 +2088,11 @@ def main():
         sampletype = body_site_map(args.sampletype.lower())
     else:
         sampletype = "Unknown"
+    if sampletype == "sterile":
+        # set ALL pathogens in pathogens dict to pathogenic
+        for k, v in pathogens.items():
+            # if v['callclass'] == "commensal":
+            v['callclass'] = "primary (sterile)"
     if args.hmp:
         if sampletype == "Unknown":
             body_sites = []
@@ -2487,7 +2489,11 @@ def calculate_scores(
             high_cons = ref.get('high_cons', False)
             # pathogenic_sites = ref.get('pathogenic_sites', [])
             commensal_sites = ref.get('commensal_sites', [])
-            if sample_type in pathogenic_sites:
+            if sample_type == "sterile":
+                direct_match = True
+                is_pathogen = callclass.capitalize() if callclass else "Primary (sterile)"
+                isPathi = True
+            elif sample_type in pathogenic_sites:
                 if callclass != "commensal":
                     is_pathogen = callclass.capitalize()
                     isPathi = True
