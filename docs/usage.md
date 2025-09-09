@@ -1,4 +1,4 @@
-# taxtriage: Usage
+<img width="66" height="17" alt="image" src="https://github.com/user-attachments/assets/bc5c5cd7-affa-47c9-a2e1-6d08ca7c087b" /># taxtriage: Usage
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
 
@@ -324,6 +324,19 @@ Additionally, any organism deemed a potential or primary pathogen from our curat
 
 Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](<https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf>). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
 
+### Updating the Pathogen sheet
+
+We list a highly curated set of over 1.5k pathogens [here](../assets/pathogen_sheet.csv). While not entirely exhaustive, we want to encompass as many pathogens within a clinical setting based on general needs in bioinformatics. However, this is a simple CSV file (comma-delimited) and can be adjusted as needed for your use case. Simply edit an existing row for your sample types OR add any rows as needed. The only required columns are:
+
+1. name (Name of the organism, can be customized and doesn't have to match Refseq, Genbank or NCBI)
+2. taxid (the NCBI taxonomy for the organism genome)
+3. general_classification (fallback/primary annotation e.g. Primary, Opportunistic, Potential, Commensal)
+4. high_consequence (will always be in the PDF regardless of the TASS Score minimum)
+
+though we recommend filling in as many as possible. For instance, if you have a new sample site you can add that to the 5th column: **pathogenic_sites** which will label that organism, if aligned as a primary pathogen and keep all other sample types as the general classification (those different from your new one). As another example, if you have a fresh organism from NCBI not listed in the CSV currently, you can add a new row with (at minimum) the 4 listed columns above. The general classification would be used by default as well unless you specify customized **pathogenic_sites** or **commensal_sites** as well.
+
+Lastly, feel free to open a new issue to add new organisms to the sheet and we will attempt to update in an timely manner.
+
 ### Tips
 
 Unless you are using Seqera, most of the temporary directories and final outputs will be present on your filesystem. By default, all temporary files are generated in `--work-dir` which is set to `work` by default. A handy tip is to look at the status of each module/step in the stdout if you want to debug a specific step for whatever reason. For example, you can navigate to the example dir like so:
@@ -367,6 +380,7 @@ In order to retain an "agnostic" approach for organism while allowing adequate a
 
 - Kraken2 additional AWS databases [here](https://benlangmead.github.io/aws-indexes/k2)
 - Metaphlan4 [here](http://cmprod1.cibio.unitn.it/biobakery4/metaphlan_databases/) - Download the .tar files
+
 
 ## AWS with Nextflow Tower
 
