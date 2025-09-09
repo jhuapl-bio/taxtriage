@@ -1,7 +1,7 @@
-<img width="66" height="17" alt="image" src="https://github.com/user-attachments/assets/bc5c5cd7-affa-47c9-a2e1-6d08ca7c087b" /># taxtriage: Usage
+# TaxTriage: Usage
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
-
+> 
 See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
 
 ## Introduction
