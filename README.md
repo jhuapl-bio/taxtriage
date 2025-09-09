@@ -308,7 +308,7 @@ We thank the following people for their extensive assistance in the development 
 
 If you would like to contribute to this pipeline, please see the [contributing guidelines](.github/CONTRIBUTING.md).
 
-## Citation 
+## Citation
 
 If you use this software, please cite doi: [10.1101/2025.07.16.664785](https://doi.org/10.1101/2025.07.16.664785) or BibTeX
 
@@ -322,8 +322,6 @@ If you use this software, please cite doi: [10.1101/2025.07.16.664785](https://d
   url     = {https://doi.org/10.1101/2025.07.16.664785}
 }
 ```
-
-
 
 > **The nf-core framework for community-curated bioinformatics pipelines.**
 >
