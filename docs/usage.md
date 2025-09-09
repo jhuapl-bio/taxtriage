@@ -1,8 +1,8 @@
-# taxtriage: Usage
+# TaxTriage: Usage
 
 > _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
-
-See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
+>
+> See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
 
 ## Introduction
 
@@ -30,13 +30,17 @@ longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
 shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
 ```
 
-Supported "type" available from HMP
+### Sample Types and HMP
+
+Additionally (see below for more info) we employ several stages of filtering post-alignment. One includes the human microbiome project (HMP) which supports 5 sample types (last column in the example):
 
 1. stool
 2. oral
 3. throat
 4. skin
 5. vaginal
+
+❗**Note**: there are additional sample types available in the usage table below. These sample types are not required to run taxtriage on your samples but can influence the distribution steps on filtering downstream from alignment. If left blank or a sample type is specified but not in the above list, the distribution filtering step will be skipped.
 
 Any other body site not listed will not take HMP into consideration. Only abundances hitting the "threshold" for top hits `--top_hits` or `--top_per_taxa` will be considered. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/TASSDiagram.png) for decision tree information on how top hits are calculated at a high level. See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#cli-parameters-possible-and-explained) for parameter descriptions.
 
@@ -54,16 +58,17 @@ shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_
 
 ### Samplesheet Information
 
-| Column               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sample`             | **MANDATORY** Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`).                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `platform`           | **MANDATORY** Platform used, [ILLUMINA, OXFORD, PACBIO]. If omitted or left blank, assumes ILLUMINA. If using PacBio, specify PACBIO. If using ONT tools, specify OXFORD. Else, specify ILLUMINA. Other sequencing platforms are NOT directly supported but can be replaced/swapped for their respective platform based on the "type" of sequencing read set. For instance, if using paired-end reads of non Illumina sequencers, specify ILLUMINA. There is no guaruntee that, if the platform is not one of these three, that all steps will be supported or work properly so use at your own discretion. |
-| `fastq_1`            | **MANDATORY** Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `fastq_2`            | OPTIONAL Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `trim`               | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `sequencing_summary` | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `type`               | OPTIONAL But Recommended. Type of sample such as blood, stool etc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `needscompressing`   | OPTIONAL but required if providing a non-compressed fastq file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Column                                                                                                                                                                                                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`                                                                                                                                                                                               | **MANDATORY** Custom sample name. This entry will be identical for multiple sequencing libraries/runs from the same sample. Spaces in sample names are automatically converted to underscores (`_`).                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `platform`                                                                                                                                                                                             | **MANDATORY** Platform used, [ILLUMINA, OXFORD, PACBIO]. If omitted or left blank, assumes ILLUMINA. If using PacBio, specify PACBIO. If using ONT tools, specify OXFORD. Else, specify ILLUMINA. Other sequencing platforms are NOT directly supported but can be replaced/swapped for their respective platform based on the "type" of sequencing read set. For instance, if using paired-end reads of non Illumina sequencers, specify ILLUMINA. There is no guaruntee that, if the platform is not one of these three, that all steps will be supported or work properly so use at your own discretion. |
+| `fastq_1`                                                                                                                                                                                              | **MANDATORY** Full path to FastQ file for Illumina short reads 1 OR OXFORD reads. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `fastq_2`                                                                                                                                                                                              | OPTIONAL Full path to FastQ file for Illumina short reads 2. File MUST be gzipped and have the extension ".fastq.gz" or ".fq.gz".                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `trim`                                                                                                                                                                                                 | OPTIONAL TRUE/FALSE, do you want to run trimming on the sample?                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `sequencing_summary`                                                                                                                                                                                   | OPTIONAL If detected, output plots based on the the sequencing summary file for that sample                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `type`                                                                                                                                                                                                 | OPTIONAL But Recommended. Type of sample such as blood, stool etc. Supported values:                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **blood, csf, sterile, nasal, oral, vaginal, gut, abscess, lung, abscess, stool, skin, ear, sputum, urine**. Note that not all types are supported using the HMP dataset as an additional filter step. |
+| `needscompressing`                                                                                                                                                                                     | OPTIONAL but required if providing a non-compressed fastq file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 An [example samplesheet](../examples/Samplesheet.csv) has been provided with the pipeline alongside some demo data.
 
@@ -79,7 +84,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage --input samplesheet.csv --o
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
 
-Note that the pipeline will create the following files in your working directory:
+❗ Note that the pipeline will create the following files in your working directory:
 
 ```console
 work                # Directory containing the nextflow working files
@@ -87,6 +92,28 @@ work                # Directory containing the nextflow working files
 .nextflow_log       # Log file from Nextflow
 # Other nextflow hidden files, eg. history of pipeline runs and old logs.
 ```
+
+### All (Currently Used) Sample Sites/Types
+
+1. blood
+2. csf
+3. sterile
+4. nasal
+5. oral
+6. vaginal
+7. gut
+8. abscess
+9. lung
+10. abscess
+11. stool
+12. skin
+13. ear
+14. sputum
+15. urine
+
+The above names are currently used to match pathogens in the annotation [sheet](../assets/pathogen_sheet.csv). However, only those in bold (see [here for more info](#sample-types-and-hmp)). Within the samplesheet, the **general_classification**, **pathogenic_sites**, and **commensal_sites** columns will try to match to these, priority being in reverse order. In general, if a sample-type you've specified matches a value in these columns in this priority, the organism will be listed as that in the PDF.
+
+❗ Note that commensal or potential pathogens will by default be hidden in the PDF but available in the **.paths.txt** file in the reports folder [see here for more info](#final-text-output-location). They can also be enabled, in the PDF, with `--show_potentials --show_commensal`
 
 ##### Define single samples
 
@@ -321,6 +348,19 @@ The distribution metrics are defined based on a all publicly available healthy h
 Additionally, any organism deemed a potential or primary pathogen from our curated pathogen sheet of ~1600 taxa ([see here for more info](#top-hits-calculation)) is included in the Organism discovery analysis, regardless of relative abundance.
 
 Finally, we mark alignment confidence using the gini coefficient, which has recently been applied from standard inequality identification practices in economics to [biologically based gene expression analysis](<https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf>). The goal is to understand, in a manner separate of organism classification or identity, how well an alignment should be considered trustworthy based on the inequality of depth and breadth of coverage for all contigs/chromosomes/plasmid found for a given realignment to an assembly. Ultimately, low confidence indicates a very low level of equal distribution across a genome. The goal is to ensure that, while there may be a **large** number of reads aligniing to one organism, we are analyzing whether or not most reads are situtated in only a small number of positions across that assembly. Values are reported from 0 (low confidence) to 1 (high confidence), inclusively.
+
+### Updating the Pathogen sheet
+
+We list a highly curated set of over 1.5k pathogens [here](../assets/pathogen_sheet.csv). While not entirely exhaustive, we want to encompass as many pathogens within a clinical setting based on general needs in bioinformatics. However, this is a simple CSV file (comma-delimited) and can be adjusted as needed for your use case. Simply edit an existing row for your sample types OR add any rows as needed. The only required columns are:
+
+1. name (Name of the organism, can be customized and doesn't have to match Refseq, Genbank or NCBI)
+2. taxid (the NCBI taxonomy for the organism genome)
+3. general_classification (fallback/primary annotation e.g. Primary, Opportunistic, Potential, Commensal)
+4. high_consequence (will always be in the PDF regardless of the TASS Score minimum)
+
+though we recommend filling in as many as possible. For instance, if you have a new sample site you can add that to the 5th column: **pathogenic_sites** which will label that organism, if aligned as a primary pathogen and keep all other sample types as the general classification (those different from your new one). As another example, if you have a fresh organism from NCBI not listed in the CSV currently, you can add a new row with (at minimum) the 4 listed columns above. The general classification would be used by default as well unless you specify customized **pathogenic_sites** or **commensal_sites** as well.
+
+Lastly, feel free to open a new issue to add new organisms to the sheet and we will attempt to update in an timely manner.
 
 ### Tips
 

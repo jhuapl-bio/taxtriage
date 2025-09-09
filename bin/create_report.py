@@ -304,15 +304,15 @@ def return_table_style(df=pd.DataFrame(), color_pathogen=False):
             derived = row['AnnClass']
             # Get Sample Type value from row
             # sampletype = row['Specimen Type']
-            if val == "Primary" and derived == "Direct":
+            if "Primary" in val and derived == "Direct":
                 color = 'lightcoral'
-            elif val == "Primary" :
+            elif "Primary" in val:
                 color = '#fab462'
-            elif val == "Commensal":
+            elif "Commensal" in val:
                 color = 'lightgreen'
-            elif val == "Opportunistic":
+            elif "Opportunistic" in val:
                 color = "#ffe6a8"
-            elif val == "Potential":
+            elif "Potential" in val:
                 color = 'lightblue'
             else:
                 color = "white"
@@ -586,7 +586,7 @@ def create_report(
         columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        'TASS Score',
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "Taxonomic ID #", "Coverage",
                        "HHS Percentile", "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:

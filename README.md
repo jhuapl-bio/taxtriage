@@ -1,13 +1,12 @@
-[![AWS CI](https://img.shields.io/badge/CI%20tests-full%20size-FF9900?labelColor=000000&logo=Amazon%20AWS)](https://nf-co.re/taxtriage/results)
-[![Cite with Zenodo](http://img.shields.io/badge/DOI-10.5281/zenodo.XXXXXXX-1073c8?labelColor=000000)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://img.shields.io/badge/doi-10.1101/2025.07.16.664785-blue)](https://doi.org/10.1101/2025.07.16.664785)
 
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
-[![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
-[![run with singularityCE v4+](https://img.shields.io/badge/run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
+[![Tutorial: install & run with docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
+[![Tutorial: install & with singularityCE v4+](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
 
-[![Get help on Slack](http://img.shields.io/badge/slack-nf--core%20%23taxtriage-4A154B?labelColor=000000&logo=slack)](https://nfcore.slack.com/channels/taxtriage)
-[![Follow on Twitter](http://img.shields.io/badge/twitter-%40nf__core-1DA1F2?labelColor=000000&logo=twitter)](https://twitter.com/nf_core)
-[![Watch on YouTube](http://img.shields.io/badge/youtube-nf--core-FF0000?labelColor=000000&logo=youtube)](https://www.youtube.com/c/nf-core)
+[![Get nf-core help on Slack](http://img.shields.io/badge/slack-nf--core%20%23taxtriage-4A154B?labelColor=000000&logo=slack)](https://nfcore.slack.com/channels/taxtriage)
+[![Follow nf-core on Twitter](http://img.shields.io/badge/twitter-%40nf__core-1DA1F2?labelColor=000000&logo=twitter)](https://twitter.com/nf_core)
+[![Watch nf-core videos on YouTube](http://img.shields.io/badge/youtube-nf--core-FF0000?labelColor=000000&logo=youtube)](https://www.youtube.com/c/nf-core)
 
 ## About
 
@@ -309,15 +308,20 @@ We thank the following people for their extensive assistance in the development 
 
 If you would like to contribute to this pipeline, please see the [contributing guidelines](.github/CONTRIBUTING.md).
 
-## Citations
+## Citation
 
-<!-- TODO Add citation for pipeline after first release. Uncomment lines below and update Zenodo doi and badge at the top of this file. -->
-<!-- If you use  taxtriage for your analysis, please cite it using the following doi: [10.5281/zenodo.XXXXXX](https://doi.org/10.5281/zenodo.XXXXXX) -->
+If you use this software, please cite doi: [10.1101/2025.07.16.664785](https://doi.org/10.1101/2025.07.16.664785) or BibTeX
 
-<!-- TODO Add bibliography of tools and data used in your pipeline -->
-
-An extensive list of references for the tools used by the pipeline can be found in the [`CITATIONS.md`](CITATIONS.md) file.
-You can cite the `nf-core` publication as follows:
+```bibtex
+@article{Merritt2025.07.16.664785,
+  title   = {TaxTriage: An Open-Source Metagenomic Sequencing Data Analysis Pipeline Enabling Putative Pathogen Detection},
+  author  = {Merritt, Brian and Ratcliff, Jeremy D and Ta, Stanley and Osis, Gunars and Mauldin, Matthew R. and Thielen, Peter M},
+  journal = {bioRxiv},
+  year    = {2025},
+  doi     = {10.1101/2025.07.16.664785},
+  url     = {https://doi.org/10.1101/2025.07.16.664785}
+}
+```
 
 > **The nf-core framework for community-curated bioinformatics pipelines.**
 >
@@ -327,7 +331,7 @@ You can cite the `nf-core` publication as follows:
 
 ## Copyright
 
-Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
+Copyright 2022-2025 The Johns Hopkins University Applied Physics Laboratory LLC
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this
 software and associated documentation files (the "Software"), to deal in the Software
