@@ -223,7 +223,6 @@ include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include { REFERENCE_REHEADER } from '../modules/local/reheader'
 include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
-include { MICROBERT_PREDICT } from '../modules/local/microbert_predict'
                                                                                /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -555,19 +554,7 @@ workflow TAXTRIAGE {
     } else{
         distributions = Channel.fromPath(params.distributions)
     }
-    if (params.microbert){
-        // ch_microbert_model = Channel.fromPath(params.microbert)
-        // get the parent path of the model params.microbert
-        ch_microbert_model = Channel.fromPath(params.microbert, checkIfExists: true)
-        // get the parent path of ch_microbert_model
-        // get the basename of the model
-        ch_basename_microbert = ch_microbert_model.map { path -> path.getName() }
-        ch_microbert_model = ch_microbert_model.map { path -> path.parent }
-        ch_test = ch_filtered_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }.combine(ch_microbert_model).combine(ch_basename_microbert)
-        MICROBERT_PREDICT(
-            ch_test
-        )
-    }
+
     //////////////////////////////RUN CLASSIFIER(S) for top hits calculations//////////////////////////////////////////////////////////////////
     CLASSIFIER(
         ch_filtered_reads,
@@ -706,6 +693,7 @@ workflow TAXTRIAGE {
             ////////////////////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
+
 
             REPORT(
                 input_alignment_files,
