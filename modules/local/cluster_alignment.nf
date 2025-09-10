@@ -1,5 +1,5 @@
 // ##############################################################################################
-// # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
+// # Copyright 2022-25 The Johns Hopkins University Applied Physics Laboratory LLC
 // # All rights reserved.
 // # Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // # software and associated documentation files (the "Software"), to deal in the Software
@@ -15,13 +15,13 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 process CLUSTER_ALIGNMENT {
+    tag "$meta.id"
     label 'process_medium'
-    tag "${meta.id}"
 
-    conda (params.enable_conda ? "R" : null)
+    conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'docker://jhuaplbio/microbert-classify:1.0.0' :
-        'microbert-classify:1.0.0' }"          // Fallback Docker image
+        'docker://quay.io/jhuaplbio/taxtriage_confidence:2.1' :
+        'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
     tuple val(meta), path(bamfile)
@@ -39,15 +39,12 @@ process CLUSTER_ALIGNMENT {
 
     """
 
-        /Users/merribb1/Documents/Projects/APHL/taxtriage/bin/cluster_alignments.py \
-        --bam $bamfile \
-        --out unique_top5.fasta \
-        --method pos+mmseqs \
-        --window 25 \
-        --top-unique-pct 5 \
-        --min-unique-per-ref 3 \
-        --min-mapq 10 \
-        --min-seq-id 0.97 --cov 0.8
-
+        cluster_alignments.py \\
+        --bam $bamfile \\
+        --out unique_top5.fasta \\
+        --window 25 \\
+        --top-unique-pct 5 \\
+        --min-unique-per-ref 3 \\
+        --min-mapq 10 \\
     """
 }

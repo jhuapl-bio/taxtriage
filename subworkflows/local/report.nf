@@ -23,6 +23,7 @@ include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { CLUSTER_ALIGNMENT } from '../../modules/local/cluster_alignment'
+ include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
 
 workflow REPORT {
     take:
@@ -41,7 +42,6 @@ workflow REPORT {
         accepted_list = accepted_list.flatten().toSortedList()
         // get just the BAM files from alignments
         ch_bams = alignments.map { [it[0], it[1]] }
-        ch_bams.view()
         if (params.microbert){
             // ch_microbert_model = Channel.fromPath(params.microbert)
             // get the parent path of the model params.microbert
@@ -51,9 +51,17 @@ workflow REPORT {
             ch_basename_microbert = ch_microbert_model.map { path -> path.getName() }
             ch_microbert_model = ch_microbert_model.map { path -> path.parent }
             ch_test = ch_bams.combine(ch_microbert_model).combine(ch_basename_microbert)
-            // MICROBERT_PREDICT(
-            //     ch_test
-            // )
+            CLUSTER_ALIGNMENT(
+                ch_bams
+            )
+            MMSEQS_EASYCLUSTER(
+                CLUSTER_ALIGNMENT.out.fasta,
+            )
+
+            MICROBERT_PREDICT(
+                MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model).combine(ch_basename_microbert)
+            )
+            MICROBERT_PREDICT.out.predictions.view()
         }
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
