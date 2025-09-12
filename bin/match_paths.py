@@ -323,6 +323,13 @@ def parse_args(argv=None):
         default=0.0,
         help="Minimum ANI threshold to consider references comparable (default=0.7)"
     )
+    parser.add_argument(
+        "-y",
+        "--microbert",
+        required=False,
+        metavar="MICROBERT",
+        help="OPTIONAL: Microbert Predictions on downsampled dataset. Contains columns for each rank, e.g. superkingdom, phylum, class, order, family, genus, species and avg, median, and std probablity columns",
+    )
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
     parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
@@ -1593,6 +1600,13 @@ def main():
 
     assembly_to_accession = defaultdict(set)
     taxid_to_accession = defaultdict(int)
+    mmbert_dict = dict()
+    if args.microbert:
+        # import the tsv as a dictionary
+        mmbert = pd.read_csv(args.microbert, sep='\t', header=0)
+        # set the taxid col to str
+        mmbert['taxid'] = mmbert['taxid'].astype(str)
+        mmbert_dict = mmbert.set_index('taxid').T.to_dict()
     if args.match and os.path.exists(matcher):
         # open the match file and import the match file
         header = True
@@ -2143,6 +2157,12 @@ def main():
         for key, value in species_aggregated.items():
             value['zscore'] = 3
             value['hmp_percentile'] = 100
+    for k, v in species_aggregated.items():
+        species_taxid = v.get('species_taxid', None)
+        if species_taxid and (species_taxid) in mmbert_dict:
+            v['mmbert'] = mmbert_dict.get(str(species_taxid), {}).get('avg', 0)
+        else:
+            v['mmbert'] = None
     final_scores = calculate_scores(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
@@ -2198,7 +2218,8 @@ def main():
         "K2 Disparity Score",
         "Siblings score",
         "Breadth Weight Score",
-        "TASS Score"
+        "TASS Score",
+        "MicrobeRT Probability"
     ]
     write_to_tsv(output, final_scores, "\t".join(header))
     if cfig:
@@ -2640,6 +2661,7 @@ def calculate_scores(
                 status=status,
                 annClass=annClass,
                 high_cons = high_cons,
+                mmbert = count.get('mmbert', None),
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2663,6 +2685,7 @@ def write_to_tsv(output_path, final_scores, header):
     with open (output_path, 'w') as file:
         file.write(f"{header}\n")
         for entry in final_scores:
+            print(entry)
             is_pathogen = entry.get('is_pathogen', "Unknown")
             formatname = entry.get('formatname', "N/A")
             sample_name = entry.get('sample_name', "N/A")
@@ -2694,6 +2717,7 @@ def write_to_tsv(output_path, final_scores, header):
             aligned_total = entry.get('total_reads', 0)
             pathogenic_reads = entry.get('pathogenic_reads', 0)
             percent_total = entry.get('percent_total', 0)
+            mmbert_proportion = entry.get('mmbert', None)
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
@@ -2728,6 +2752,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
                 print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
                 print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
+                print(f"\tMicrobertProportion: {entry.get('mmbert', 'N/A')}")
                 print()
                 total+=1
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
@@ -2736,7 +2761,7 @@ def write_to_tsv(output_path, final_scores, header):
                 f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
-                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
+                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\t{mmbert_proportion}\n"
             )
             fulltotal+=1
     print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")

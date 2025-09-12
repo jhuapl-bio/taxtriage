@@ -18,7 +18,7 @@ process CLUSTER_ALIGNMENT {
     tag "$meta.id"
     label 'process_medium'
 
-    conda (params.enable_conda ? "bioconda::pysam" : null)
+    conda (params.enable_conda ? "bioconda::pandas" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'docker://quay.io/jhuaplbio/taxtriage_confidence:2.1' :
         'jhuaplbio/taxtriage_confidence:2.1' }"
@@ -40,11 +40,11 @@ process CLUSTER_ALIGNMENT {
     """
 
         cluster_alignments.py \\
-        --bam $bamfile \\
-        --out unique_top5.fasta \\
-        --window 25 \\
-        --top-unique-pct 5 \\
-        --min-unique-per-ref 3 \\
-        --min-mapq 10 \\
+            --bam $bamfile \\
+            --out $outfile \\
+            --window 25 \\
+            --top-unique-pct 5 \\
+            --min-unique-per-ref 3 \\
+            --min-mapq 10 \\
     """
 }

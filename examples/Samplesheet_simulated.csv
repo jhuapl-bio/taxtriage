@@ -1,3 +1,3 @@
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
-shortreads,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,nasal
-longreads,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut
+Miseq Run A,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,nasal
+ONT Run A,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut

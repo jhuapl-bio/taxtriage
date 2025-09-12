@@ -23,7 +23,8 @@ include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { CLUSTER_ALIGNMENT } from '../../modules/local/cluster_alignment'
- include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
+include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
+include { MICROBERT_PARSE } from '../../modules/local/microbert_parse'
 
 workflow REPORT {
     take:
@@ -61,7 +62,11 @@ workflow REPORT {
             MICROBERT_PREDICT(
                 MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model).combine(ch_basename_microbert)
             )
-            MICROBERT_PREDICT.out.predictions.view()
+            ch_parse_files = MMSEQS_EASYCLUSTER.out.representatives.join(MICROBERT_PREDICT.out.predictions).join(MMSEQS_EASYCLUSTER.out.tsv)
+            ch_parse_files.view()
+            MICROBERT_PARSE(
+                ch_parse_files
+            )
         }
         // Perform the difference operation
         missing_samples = all_samples - accepted_list

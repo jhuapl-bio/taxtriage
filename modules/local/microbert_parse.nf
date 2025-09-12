@@ -14,35 +14,38 @@
 // # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
-process MICROBERT_PREDICT {
+process MICROBERT_PARSE {
     label 'process_low'
     tag "${meta.id}"
 
-    conda (params.enable_conda ? "R" : null)
+    conda (params.enable_conda ? "bioconda::pandas" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'docker://jhuaplbio/microbert-classify:1.0.0' :
-        'microbert-classify:1.0.0' }"          // Fallback Docker image
+        'docker://quay.io/jhuaplbio/taxtriage_confidence:2.1' :
+        'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(input), path(model), val(modelname)
+    tuple val(meta), path(reps), path(predictions), path(clusters)
 
 
     output:
-    tuple val(meta), path("*json"), optional: false, emit: predictions
+    tuple val(meta), path("*microbert.annotations.tsv"), optional: false, emit: annotations
+    tuple val(meta), path("*microbert.report.tsv"), optional: false, emit: report
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline for maine coon
 
-    outfile = "${meta.id}_microbert_predictions.json"
+    outfile = "${meta.id}.microbert.annotations.tsv"
+    outreport = "${meta.id}.microbert.report.tsv"
 
     """
-        ln -s $model /analysis/data
-
-        python3 /analysis/analysis/experiment/test_sequences.py -i ${input} \\
-            -o ${outfile} \\
-            -b 50 \\
-            -m ${modelname}
+        map_clusters_to_taxa.py \\
+            --fasta  ${reps} \\
+            --json ${predictions} \\
+            --taxa-report ${outreport} \\
+            --clusters ${clusters} \\
+            --out ${outfile} \\
+            --include-prob
     """
 }
