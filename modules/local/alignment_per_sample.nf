@@ -24,7 +24,7 @@ process ALIGNMENT_PER_SAMPLE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list)
     file assembly
 
     output:
@@ -66,7 +66,7 @@ process ALIGNMENT_PER_SAMPLE {
     def sensitive = params.sensitive ? " --sensitive " : " "
     def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
-
+    def mbert_report = microbert_report.name != "NO_FILE" ? " --microbert ${microbert_report} " : " "
     """
 
     match_paths.py \\
@@ -82,7 +82,7 @@ process ALIGNMENT_PER_SAMPLE {
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $ignore_alignment $compress_species
+        $min_reads_align $ignore_alignment $compress_species $mbert_report
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

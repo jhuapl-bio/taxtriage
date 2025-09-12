@@ -37,6 +37,9 @@ workflow REPORT {
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
+        // make the ch_report_microbert an empty path channel
+        ch_report_microbert = Channel.empty()
+
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
         accepted_list = alignments.map { it[0].id }.collect()
@@ -63,11 +66,15 @@ workflow REPORT {
                 MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model).combine(ch_basename_microbert)
             )
             ch_parse_files = MMSEQS_EASYCLUSTER.out.representatives.join(MICROBERT_PREDICT.out.predictions).join(MMSEQS_EASYCLUSTER.out.tsv)
-            ch_parse_files.view()
             MICROBERT_PARSE(
                 ch_parse_files
             )
+            ch_report_microbert = MICROBERT_PARSE.out.report
+        } else {
+            ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILE") ] }
         }
+        alignments = alignments.join(ch_report_microbert)
+
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
         missing_samples = missing_samples.flatten().toSortedList()
