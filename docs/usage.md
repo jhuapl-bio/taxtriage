@@ -120,7 +120,7 @@ If you would not like to use a csv file as input (samplesheet) you can currently
 
 1. `fastq_1` & `fastq_2` (optional - for paired end sets)
 2. `sample` (optional) - this is the sample name you want to give. If left undefined it will default to the basename of `fastq_1`
-3. `type` (optional) - sample type as defined earlier e.g. blood, stool etc. Leafing it blank will set it to "unknown"
+3. `type` (optional) - sample type as defined earlier e.g. blood, stool etc. Leaving it blank will set it to "unknown"
 
 To run, you simply specify command such as:
 
