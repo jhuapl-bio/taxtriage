@@ -192,6 +192,11 @@
                     "fa_icon": "fas fa-book",
                     "description": "Save all read classifications as a txt file"
                 },
+                "save_k2_read_assignment": {
+                    "type": "boolean",
+                    "description": "Save the kraken2 per-read classification output file. Default is FALSE",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "save_classified_fastq": {
                     "type": "boolean",
                     "description": "Save classified fastqs from k2 and use them downstream - all classified are passed, unclassified are discarded",

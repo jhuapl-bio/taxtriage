@@ -2,6 +2,8 @@
 import argparse, json, sys
 from collections import defaultdict, OrderedDict
 import pandas as pd
+import os
+
 
 def read_fasta_headers_in_order(fa_path):
     """Return a list of FASTA headers (without '>') in the order they appear."""
@@ -77,6 +79,7 @@ def main():
     ap.add_argument("--json", required=True, help="JSON with per-representative predictions (indexed to FASTA order).")
     ap.add_argument("--clusters", required=True, help="MMseqs clusters.tsv (representative<TAB>member).")
     ap.add_argument("--out", required=True, help="Output TSV path.")
+    ap.add_argument("--modelname", required=False, help="Name of the MicrobeRT model.")
     ap.add_argument("--include-prob", action="store_true",
                     help="Also include *_prob columns for each rank (top-1 probability).")
     # NEW: optional taxa report
@@ -108,6 +111,7 @@ def main():
 
     # 4) Build rows
     rows = []
+    modelname = os.path.basename(args.modelname) if args.modelname else None
     for i in range(N):
         rep = reps_in_order[i]
         ann = annotations_by_index[i]  # dict rank -> (label, prob)
@@ -136,7 +140,6 @@ def main():
 
     df = pd.DataFrame(rows, columns=cols)
     df.to_csv(args.out, sep="\t", index=False)
-
     # 6) Optional taxa profile/report (rank × taxid: avg, median, std of top-1 prob)
     if args.taxa_report:
         # Build per-representative (not per-member) long table to avoid double-counting
@@ -147,7 +150,7 @@ def main():
                 label, prob = ann.get(rank, (None, None))
                 if label is None or prob is None:
                     continue
-                long_rows.append({"rank": rank, "taxid": label, "probability": float(prob)})
+                long_rows.append({"rank": rank, "taxid": label, "probability": float(prob), 'model': modelname})
 
         if long_rows:
             ldf = pd.DataFrame(long_rows)
@@ -159,10 +162,12 @@ def main():
             prof = prof[["rank", "taxid", "avg", "median", "std"]]
             # fill prof with 0 if empty or NaN
             prof = prof.fillna(0.0)
+            # add the basename of the model to the prof df
+            prof['model'] = modelname
             prof.to_csv(args.taxa_report, sep="\t", index=False)
         else:
             # empty file with header
-            pd.DataFrame(columns=["rank", "taxid", "avg", "median", "std"]) \
+            pd.DataFrame(columns=["rank", "taxid", "avg", "median", "std", 'model']) \
               .to_csv(args.taxa_report, sep="\t", index=False)
 
 if __name__ == "__main__":

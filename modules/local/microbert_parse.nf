@@ -24,7 +24,7 @@ process MICROBERT_PARSE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(reps), path(predictions), path(clusters)
+    tuple val(meta), path(reps), path(predictions), path(clusters), val(modelname)
 
 
     output:
@@ -46,6 +46,7 @@ process MICROBERT_PARSE {
             --taxa-report ${outreport} \\
             --clusters ${clusters} \\
             --out ${outfile} \\
+            --modelname ${modelname} \\
             --include-prob
     """
 }

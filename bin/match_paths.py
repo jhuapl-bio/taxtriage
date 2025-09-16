@@ -2163,6 +2163,7 @@ def main():
             v['mmbert'] = mmbert_dict.get(str(species_taxid), {}).get('avg', 0)
         else:
             v['mmbert'] = None
+        v['mmbert_model'] = mmbert_dict.get(str(species_taxid), {}).get('model', None)
     final_scores = calculate_scores(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
@@ -2219,7 +2220,8 @@ def main():
         "Siblings score",
         "Breadth Weight Score",
         "TASS Score",
-        "MicrobeRT Probability"
+        "MicrobeRT Probability",
+        "MicrobeRT Model"
     ]
     write_to_tsv(output, final_scores, "\t".join(header))
     if cfig:
@@ -2662,6 +2664,7 @@ def calculate_scores(
                 annClass=annClass,
                 high_cons = high_cons,
                 mmbert = count.get('mmbert', None),
+                mmbert_model = count.get('mmbert_model', None),
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2722,6 +2725,7 @@ def write_to_tsv(output_path, final_scores, header):
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
             high_conse = entry.get('high_cons', False)
+            mmbert_model = entry.get('mmbert_model', None)
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
@@ -2752,7 +2756,8 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
                 print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
                 print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
-                print(f"\tMicrobertProportion: {entry.get('mmbert', 'N/A')}")
+                print(f"\tMicrobeRT Proportion: {entry.get('mmbert', 'N/A')}")
+                print(f"\tMicrobeRT Model: {entry.get('mmbert_model', 'N/A')}")
                 print()
                 total+=1
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
@@ -2761,7 +2766,8 @@ def write_to_tsv(output_path, final_scores, header):
                 f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
-                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\t{mmbert_proportion}\n"
+                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t"
+                f"{tass_score:.2f}\t{mmbert_proportion}\t{mmbert_model}\n"
             )
             fulltotal+=1
     print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")

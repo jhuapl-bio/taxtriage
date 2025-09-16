@@ -67,7 +67,7 @@ workflow CLASSIFIER {
                 ch_reads,
                 ch_db,
                 ch_save_fastq_classified,
-                false
+                params.save_k2_read_assignment
             )
 
             ch_kraken2_report = KRAKEN2_KRAKEN2.out.report
@@ -130,7 +130,7 @@ workflow CLASSIFIER {
 
             if (ch_save_fastq_classified){
                 ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
-             
+
             }
 
             if (params.fuzzy){

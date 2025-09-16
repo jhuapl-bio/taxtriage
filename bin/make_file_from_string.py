@@ -20,7 +20,10 @@ import argparse
 def process_arguments(inputs, output_file):
     with open(output_file, 'w') as f:
         for item in inputs:
-            f.write("%s\n" % item)
+            # split item on spaces if possible and iterate
+            item = item.split()
+            for i in item:
+                f.write("%s\n" % i)
     f.close()
 
 def parse_args(argv=None):

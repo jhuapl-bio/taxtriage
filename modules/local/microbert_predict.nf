@@ -15,7 +15,7 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 process MICROBERT_PREDICT {
-    label 'process_low'
+    label 'process_high'
     tag "${meta.id}"
 
     conda (params.enable_conda ? "R" : null)
