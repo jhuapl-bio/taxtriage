@@ -1,0 +1,112 @@
+<?xml version="1.0" ?>
+
+<project name="TaxTriage" default="distribute" basedir=".">
+
+    <property file="plugin.properties"/>
+    <property name="build" location="build"/>
+    <property name="classes" location="classes"/>
+    <property name="src" location="src"/>
+    <property name="test" location="test"/>
+
+    <path id="classpath">
+        <fileset dir="lib">
+            <include name="GeneiousPublicAPI.jar"/>
+            <include name="jdom.jar"/>
+            <include name="jebl.jar"/>
+        </fileset>
+    </path>
+
+    <path id="test-classpath">
+        <path refid="classpath"/>
+        <fileset dir="lib" erroronmissingdir="false">
+            <include name="junit-jupiter-api-*.jar"/>
+            <include name="junit-jupiter-engine-*.jar"/>
+            <include name="junit-platform-launcher-*.jar"/>
+            <include name="mockito-core-*.jar"/>
+            <include name="mockito-junit-jupiter-*.jar"/>
+            <include name="byte-buddy-*.jar"/>
+            <include name="objenesis-*.jar"/>
+        </fileset>
+        <pathelement location="${classes}"/>
+    </path>
+
+    <target name="distribute" depends="build">
+        <zip zipfile="${build}/${short-plugin-name}.gplugin">
+            <fileset dir="${build}" includes="${plugin-name}/**" />
+        </zip>
+        <echo message="Created ${build}/${short-plugin-name}.gplugin"/>
+    </target>
+
+    <target name="build" depends="compile">
+        <!-- This is a folder type plugin that provides its jar file and resources inside a folder -->
+
+        <mkdir dir="${build}/${plugin-name}"/>
+        <jar jarfile="${build}/${plugin-name}/${short-plugin-name}.jar">
+            <fileset dir="${classes}"/>
+        </jar>
+
+        <!-- Copy plugin.properties to build directory -->
+        <copy file="plugin.properties" todir="${build}/${plugin-name}"/>
+
+        <!-- Copy presets and templates -->
+        <copy todir="${build}/${plugin-name}" failonerror="false">
+            <fileset dir="." erroronmissingdir="false">
+                <include name="presets/**"/>
+                <include name="templates/**"/>
+            </fileset>
+        </copy>
+
+        <!-- Copy resources if any exist -->
+        <copy todir="${build}/${plugin-name}" failonerror="false">
+            <fileset dir="resources" erroronmissingdir="false">
+                <include name="**/*"/>
+            </fileset>
+        </copy>
+
+        <!-- Set executable permissions on the bundled Nextflow binary -->
+        <chmod file="${build}/${plugin-name}/bin/nextflow" perm="755" failonerror="false"/>
+    </target>
+
+    <target name="compile" depends="prepare">
+        <javac target="11" source="11" destdir="${classes}" debug="true" includeantruntime="false">
+            <classpath refid="classpath"/>
+            <src path="${src}"/>
+        </javac>
+    </target>
+
+    <target name="compile-tests" depends="compile">
+        <javac target="11" source="11" destdir="${classes}" debug="true" includeantruntime="false">
+            <classpath refid="test-classpath"/>
+            <src path="${test}"/>
+        </javac>
+    </target>
+
+    <target name="test" depends="compile-tests" description="Run unit tests">
+        <echo message="Running unit tests..."/>
+        <java classname="org.junit.platform.console.ConsoleLauncher" fork="true" failonerror="true">
+            <classpath refid="test-classpath"/>
+            <arg value="--scan-classpath"/>
+            <arg value="--include-package=com.jhuapl.taxtriage.geneious.docker"/>
+            <arg value="--reports-dir=${build}/test-reports"/>
+        </java>
+    </target>
+
+    <target name="prepare">
+        <mkdir dir="${build}"/>
+        <mkdir dir="${classes}"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${classes}"/>
+    </target>
+
+    <target name="install" depends="distribute">
+        <!-- Copy the plugin to Geneious plugins directory for testing -->
+        <copy file="${build}/${short-plugin-name}.gplugin"
+              todir="${user.home}/.geneious/plugins"
+              failonerror="false"/>
+        <echo message="Plugin installed to ~/.geneious/plugins/"/>
+    </target>
+
+</project>

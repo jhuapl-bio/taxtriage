@@ -11,6 +11,7 @@ nf-core/*
 ./test
 tmp*
 test_*
+test_output/
 ./nf-core
 tmp*
 ./nf-core

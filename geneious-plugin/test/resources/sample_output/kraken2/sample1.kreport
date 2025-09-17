@@ -1,0 +1,14 @@
+100.00	10000	5000	U	0	unclassified
+85.50	8550	100	R	1	root
+80.00	8000	50	D	2	Bacteria
+75.00	7500	25	P	1224	Proteobacteria
+70.00	7000	30	C	28211	Alphaproteobacteria
+65.00	6500	40	O	204455	Rhizobiales
+60.00	6000	20	F	31989	Rhizobiaceae
+55.00	5500	15	G	382	Sinorhizobium
+50.00	5000	5000	S	266834	Sinorhizobium meliloti
+25.00	2500	10	P	976	Bacteroidetes
+20.00	2000	5	C	200643	Bacteroidia
+15.00	1500	8	O	171549	Bacteroidales
+10.00	1000	1000	S	818	Bacteroides thetaiotaomicron
+5.00	500	500	S	28116	Bacteroides fragilis
