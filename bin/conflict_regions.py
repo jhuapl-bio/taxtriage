@@ -1323,29 +1323,34 @@ def calculate_breadth_coverage_from_bam(bam_fs, reflengths, removed_ids):
 
         # Fetch all reads spanning the entire reference.
         for read in bam_fs.fetch(ref, 0, ref_length):
-            read_id = read.query_name
-            # Skip this read if it is in the removed_ids for this reference.
-            if read_id in removed_ids and ref in removed_ids[read_id]:
-                continue
+            try:
+                read_id = read.query_name
+                if read.is_unmapped or read.reference_start is None or read.reference_end is None:
+                    continue
+                # Skip this read if it is in the removed_ids for this reference.
+                if read_id in removed_ids and ref in removed_ids[read_id]:
+                    continue
 
-            # Clamp the read's aligned region to the reference boundaries.
-            read_start = max(read.reference_start, 0)
-            read_end = min(read.reference_end, ref_length)
-            if read_start >= read_end:
-                continue  # Ignore reads that don't contribute coverage
+                # Clamp the read's aligned region to the reference boundaries.
+                read_start = max(read.reference_start, 0)
+                read_end = min(read.reference_end, ref_length)
+                if read_start >= read_end:
+                    continue
 
-            # Merge intervals on the fly.
-            if current_start is None:
-                current_start, current_end = read_start, read_end
-            else:
-                if read_start <= current_end + 1:
-                    # Overlapping or adjacent; extend current interval.
-                    current_end = max(current_end, read_end)
-                else:
-                    # No overlap; add the current interval length and start a new one.
-                    total_covered += current_end - current_start
+                # Merge intervals on the fly.
+                if current_start is None:
                     current_start, current_end = read_start, read_end
-
+                else:
+                    if read_start <= current_end + 1:
+                        # Overlapping or adjacent; extend current interval.
+                        current_end = max(current_end, read_end)
+                    else:
+                        # No overlap; add the current interval length and start a new one.
+                        total_covered += current_end - current_start
+                        current_start, current_end = read_start, read_end
+            except Exception as tr:
+                print(f"Error processing read {read.query_name} on reference {ref}: {tr}")
+                continue
         # Add the final interval if any.
         if current_start is not None:
             total_covered += current_end - current_start
@@ -1872,6 +1877,7 @@ def determine_conflicts(
     includable_read_ids = dict()
     sum_of_ref_aligned = defaultdict(int)
     output_file = os.path.join(output_dir, "failed_reads.txt")
+    print("Writing failed reads to outputfile:", output_file)
     with open (output_file, 'w') as f:
         for read, refs in removed_read_ids.items():
             for ref in refs:
