@@ -53,7 +53,7 @@ workflow REPORT {
             // get the parent path of ch_microbert_model
             // get the basename of the model
             ch_basename_microbert = ch_microbert_model.map { path -> path.getName() }
-            ch_microbert_model = ch_microbert_model.map { path -> path.parent }
+            // ch_microbert_model = ch_microbert_model.map { path -> path.parent }
             CLUSTER_ALIGNMENT(
                 ch_bams
             )
@@ -62,7 +62,7 @@ workflow REPORT {
             )
 
             MICROBERT_PREDICT(
-                MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model).combine(ch_basename_microbert)
+                MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model)
             )
             ch_parse_files = MMSEQS_EASYCLUSTER.out.representatives.join(MICROBERT_PREDICT.out.predictions).join(MMSEQS_EASYCLUSTER.out.tsv)
             MICROBERT_PARSE(

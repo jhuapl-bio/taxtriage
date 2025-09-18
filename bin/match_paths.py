@@ -1661,6 +1661,7 @@ def main():
                     taxid = splitline[5]
                     species_taxid = splitline[6]
                     name = splitline[7]
+                    # if not args.compress_species:
                     strain = splitline[8].replace("strain=", "")
                     isolate = splitline[9]
                     isSpecies = False if species_taxid != taxid else True
@@ -1757,27 +1758,7 @@ def main():
     # Step 2: Define a function to calculate disparity for each organism
     # Define a function to calculate disparity with softer variance influence
     # Step 2: Define a function to dynamically dampen variance based on the proportion of reads
-    def z(numreads, total_reads, variance_reads, k=1000):
-        """
-        Dynamically dampens the variance effect based on the proportion of reads.
-        numreads: Total number of reads aligned to the organism (sum of reads)
-        total_reads: Total number of reads aligned in the sample
-        variance_reads: Variance of the aligned reads across all organisms
-        k: Damping factor to control the influence of the proportion on the penalty
-        """
-        if total_reads == 0:
-            return 0  # Avoid division by zero
 
-        # Calculate the proportion of aligned reads
-        proportion = numreads / total_reads
-
-        # Dynamically adjust the variance penalty based on the proportion of reads
-        dampened_variance = variance_reads / (1 + k * proportion)
-
-        # Calculate disparity based on the proportion and the dynamically dampened variance
-        disparity = proportion * (1 + dampened_variance)
-
-        return disparity
     i=0
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
@@ -2054,13 +2035,10 @@ def main():
                 value['k2_disparity'] = 0
 
 
-        ## Test: Mapq of NT,
         # get all mapq scores
         normalized_mapq = normalize_mapq(value.get('meanmapq', 0), max_mapq, min_mapq)
         value['alignment_score'] = normalized_mapq
 
-
-        ## Test: Min threshold of CDs found  - are there coding regions at the min amount?
 
     pathogens = import_pathogens(pathogenfile)
 
@@ -2145,9 +2123,6 @@ def main():
             percent_total_reads_expected =  sum_abus_expected * total_reads
             stdsum = sum([x.get('std',0) for x in abus])
             zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
-            # set zscore max 3 if greater
-            # if zscore > 3:
-            #     zscore = 3.1
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
 
@@ -2173,21 +2148,7 @@ def main():
         aligned_total = aligned_total,
         weights = weights
     )
-    # print("Final Scores:")
-    # for entry in final_scores:
-    #     if entry['tass_score'] < 0.4:
-    #         continue
-    #     print("\t",entry['formatname'])
-    #     print("\t\tTASS Score:",entry['tass_score'],
-    #           "\n\t\tGini:", entry['gini_coefficient'],
-    #           "\n\t\tAlignment:", entry['alignment_score'],
-    #           "\n\t\tSiblings:", entry['siblings_score'],
-    #           "\n\t\tDisparity:", entry['disparity_score'],
-    #           "\n\t\tBreadth:", entry['breadth_total'],
-    #           "\n\t\tBreadth2:", ((entry['breadth_total'])**2),
-    #           "\n\t\tBreadthLog:", math.log2(2-entry['breadth_total']),
-    #           "\n\t\tBreadthsqrt:", math.sqrt(1-entry['breadth_total'])
-    #     )
+
     header = [
         "Detected Organism",
         "Specimen ID",
@@ -2688,7 +2649,6 @@ def write_to_tsv(output_path, final_scores, header):
     with open (output_path, 'w') as file:
         file.write(f"{header}\n")
         for entry in final_scores:
-            print(entry)
             is_pathogen = entry.get('is_pathogen', "Unknown")
             formatname = entry.get('formatname', "N/A")
             sample_name = entry.get('sample_name', "N/A")

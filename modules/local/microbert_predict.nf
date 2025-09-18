@@ -24,7 +24,7 @@ process MICROBERT_PREDICT {
         'microbert-classify:1.0.0' }"          // Fallback Docker image
 
     input:
-    tuple val(meta), path(input), path(model), val(modelname)
+    tuple val(meta), path(input), path(model)
 
 
     output:
@@ -38,11 +38,9 @@ process MICROBERT_PREDICT {
     outfile = "${meta.id}_microbert_predictions.json"
 
     """
-        ln -s $model /analysis/data
-
         python3 /analysis/analysis/experiment/test_sequences.py -i ${input} \\
             -o ${outfile} \\
             -b 50 \\
-            -m ${modelname}
+            -d ${model}
     """
 }
