@@ -164,6 +164,12 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": null
                 },
+                "microbert_maxlen": {
+                    "type": "integer",
+                    "description": "What max length you would like to use for microbert clustering. Default is 2000. We do not recommend going above 5k bp",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": null
+                },
                 "classifiers": {
                     "type": "string",
                     "description": "List of classifiers, separated by a space. Choose from [kraken2, metaphlan, centrifuge]",

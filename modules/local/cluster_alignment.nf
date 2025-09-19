@@ -36,7 +36,7 @@ process CLUSTER_ALIGNMENT {
     script: // This script is bundled with the pipeline for maine coon
 
     outfile = "${meta.id}.cluster.fasta"
-
+    maxlen  = params.microbert_maxlen ? "--max-length ${params.microbert_maxlen}" : ""
     """
 
         cluster_alignments.py \\
@@ -45,6 +45,7 @@ process CLUSTER_ALIGNMENT {
             --window 25 \\
             --top-unique-pct 5 \\
             --min-unique-per-ref 3 \\
-            --min-mapq 10 \\
+            --min-mapq 0 $maxlen \\
+
     """
 }
