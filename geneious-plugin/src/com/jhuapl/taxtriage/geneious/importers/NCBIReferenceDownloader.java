@@ -175,61 +175,8 @@ public class NCBIReferenceDownloader {
         return importGenBankFiles(genBankFiles, referenceNameMap, progressListener);
     }
 
-    /**
-     * Imports GenBank files using folder importer for organized storage.
-     *
-     * @param genBankFiles Map of accession to GenBank file
-     * @param referenceNameMap Map of accession to desired reference name from BAM
-     * @param progressListener Progress listener
-     * @param folderImporter Folder-based importer for organized storage
-     * @return List of imported documents with corrected names
-     */
-    public static List<AnnotatedPluginDocument> importGenBankFiles(Map<String, File> genBankFiles,
-                                                                   Map<String, String> referenceNameMap,
-                                                                   ProgressListener progressListener,
-                                                                   FolderBasedImporter folderImporter) {
-        List<AnnotatedPluginDocument> importedDocs = new ArrayList<>();
-
-        logger.info("===== IMPORTING GENBANK FILES TO REFERENCES FOLDER =====");
-        logger.info("Files to import: " + genBankFiles.size());
-
-        for (Map.Entry<String, File> entry : genBankFiles.entrySet()) {
-            String accession = entry.getKey();
-            File gbFile = entry.getValue();
-
-            if (!gbFile.exists()) {
-                logger.warning("GenBank file does not exist: " + gbFile);
-                continue;
-            }
-
-            try {
-                // Import the GenBank file to References folder
-                List<AnnotatedPluginDocument> docs = folderImporter.importToFolder(gbFile, "References", progressListener);
-                logger.info("Imported " + docs.size() + " document(s) from " + gbFile.getName());
-
-                // Rename documents to match BAM reference names if needed
-                String targetName = referenceNameMap.get(accession);
-                if (targetName != null) {
-                    for (AnnotatedPluginDocument doc : docs) {
-                        try {
-                            String originalName = doc.getName();
-                            doc.setName(targetName);
-                            logger.info("RENAMED: '" + originalName + "' -> '" + targetName + "'");
-                        } catch (Exception e) {
-                            logger.log(Level.WARNING, "Could not rename document", e);
-                        }
-                    }
-                }
-
-                importedDocs.addAll(docs);
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "Failed to import GenBank file: " + gbFile, e);
-            }
-        }
-
-        logger.info("Completed GenBank import: " + importedDocs.size() + " documents");
-        return importedDocs;
-    }
+    // REMOVED: Method using deleted FolderBasedImporter class
+    // Use the SampleBasedImporter version instead
 
     /**
      * Imports GenBank files into Geneious and renames them to match BAM reference names.

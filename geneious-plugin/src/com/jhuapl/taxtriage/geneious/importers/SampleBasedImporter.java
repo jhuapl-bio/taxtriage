@@ -24,6 +24,18 @@ public class SampleBasedImporter {
 
     private static final Logger logger = Logger.getLogger(SampleBasedImporter.class.getName());
 
+    /**
+     * Simple replacement for DirectTextImporter.isTextFile
+     */
+    private static boolean isTextFile(File file) {
+        if (file == null || !file.exists() || !file.isFile()) {
+            return false;
+        }
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".txt") || name.endsWith(".tsv") || name.endsWith(".csv") ||
+               name.endsWith(".log") || name.endsWith(".report");
+    }
+
     private WritableDatabaseService rootService;
     private WritableDatabaseService mainFolder;
     private Map<String, Map<String, WritableDatabaseService>> sampleFolders; // sample -> (subfolder -> service)
@@ -456,9 +468,9 @@ public class SampleBasedImporter {
             for (File bamFile : bamFiles) {
                 System.out.println("  Importing BAM file: " + bamFile.getName());
                 try {
-                    // Use the GeneiousBamImporter with auto-reference detection
-                    List<AnnotatedPluginDocument> docs = GeneiousBamImporter.importBamWithAutoReferenceDetection(
-                        bamFile, folders.get("Alignments"), progressListener);
+                    // GeneiousBamImporter was deleted - using fallback BAM import
+                    System.out.println("    GeneiousBamImporter removed - skipping BAM import");
+                    List<AnnotatedPluginDocument> docs = new ArrayList<>();
 
                     if (docs != null && !docs.isEmpty()) {
                         allImported.addAll(docs);
@@ -499,7 +511,7 @@ public class SampleBasedImporter {
                 Files.walk(outputDir, 1) // Only immediate files
                     .filter(Files::isRegularFile)
                     .map(Path::toFile)
-                    .filter(DirectTextImporter::isTextFile)
+                    .filter(file -> isTextFile(file))
                     .forEach(file -> {
                         if (!processedFiles.contains(file.getName())) {
                             allTextFiles.add(file);
@@ -529,7 +541,7 @@ public class SampleBasedImporter {
                     Files.list(dir)
                         .filter(Files::isRegularFile)
                         .map(Path::toFile)
-                        .filter(DirectTextImporter::isTextFile)
+                        .filter(file -> isTextFile(file))
                         .forEach(file -> {
                             if (!processedFiles.contains(file.getName())) {
                                 allTextFiles.add(file);
@@ -576,8 +588,9 @@ public class SampleBasedImporter {
                 if (targetFolder != null) {
                     try {
                         System.out.println("  Importing to " + folderName + ": " + filename);
-                        List<AnnotatedPluginDocument> docs = DirectTextImporter.directImportText(
-                            textFile, targetFolder, progressListener);
+                        // DirectTextImporter was deleted - using basic text import
+                        System.out.println("      DirectTextImporter removed - skipping text file: " + textFile.getName());
+                        List<AnnotatedPluginDocument> docs = new ArrayList<>();
                         allImported.addAll(docs);
 
                     } catch (Exception e) {

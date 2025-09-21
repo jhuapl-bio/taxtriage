@@ -14,8 +14,9 @@ import com.jhuapl.taxtriage.geneious.config.TaxTriageConfig;
 import com.jhuapl.taxtriage.geneious.docker.DockerException;
 import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
-import com.jhuapl.taxtriage.geneious.importer.ImportResult;
-import com.jhuapl.taxtriage.geneious.importer.ResultImporter;
+// Removed imports to deleted importer package
+// import com.jhuapl.taxtriage.geneious.importer.ImportResult;
+// import com.jhuapl.taxtriage.geneious.importer.ResultImporter;
 import jebl.util.ProgressListener;
 
 import java.io.File;
