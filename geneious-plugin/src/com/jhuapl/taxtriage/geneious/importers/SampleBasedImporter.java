@@ -354,6 +354,23 @@ public class SampleBasedImporter {
             // Check for GenBank downloads in minimap2 folder (co-located with BAM files)
             Path minimap2Dir = outputDir.resolve("minimap2");
             if (Files.exists(minimap2Dir)) {
+                // Debug: Show all files in minimap2 directory
+                System.out.println("  === GenBank Import Debug ===");
+                System.out.println("  Sample name: " + sample);
+                System.out.println("  Minimap2 directory: " + minimap2Dir);
+                try {
+                    List<Path> allFiles = Files.list(minimap2Dir).collect(Collectors.toList());
+                    System.out.println("  Total files in minimap2: " + allFiles.size());
+                    for (Path p : allFiles) {
+                        String filename = p.getFileName().toString();
+                        if (filename.endsWith(".gb") || filename.endsWith(".gbk") || filename.endsWith(".genbank")) {
+                            System.out.println("    GenBank file found: " + filename);
+                        }
+                    }
+                } catch (IOException e) {
+                    System.out.println("  Error listing directory: " + e.getMessage());
+                }
+
                 // First, fix any GenBank files to ensure proper field matching
                 System.out.println("  Checking and fixing GenBank files in minimap2 folder...");
                 int fixedCount = GenBankFileFixer.fixGenBankFilesInDirectory(minimap2Dir);
@@ -361,15 +378,33 @@ public class SampleBasedImporter {
                     System.out.println("  Fixed " + fixedCount + " GenBank file(s) for proper field matching");
                 }
 
-                List<File> gbFiles = findFilesForSample(sample,
-                    Arrays.asList(minimap2Dir),
-                    Arrays.asList(".gb", ".gbk", ".genbank"));
+                // Use special method for GenBank files since they're named by accession, not sample
+                List<File> gbFiles = findGenBankReferenceFiles(Arrays.asList(minimap2Dir));
+
+                System.out.println("  GenBank reference files found: " + gbFiles.size());
+                for (File f : gbFiles) {
+                    System.out.println("    - " + f.getName());
+                }
 
                 for (File file : gbFiles) {
                     try {
-                        // Validate the GenBank file
+                        // Validate and fix the GenBank file if needed
+                        System.out.println("  Processing GenBank file: " + file.getName());
                         if (!GenBankFileFixer.validateGenBankFile(file)) {
-                            System.out.println("  Warning: GenBank file may have mismatched fields: " + file.getName());
+                            System.out.println("    File has mismatched fields, attempting to fix...");
+                            boolean fixed = GenBankFileFixer.fixGenBankFile(file);
+                            if (fixed) {
+                                System.out.println("    Successfully fixed field mismatches");
+                                // Re-validate after fixing
+                                if (!GenBankFileFixer.validateGenBankFile(file)) {
+                                    System.out.println("    WARNING: File still has issues after fix attempt");
+                                }
+                            } else {
+                                System.out.println("    WARNING: Could not fix field mismatches");
+                                // Continue anyway, import might still work
+                            }
+                        } else {
+                            System.out.println("    File validation passed");
                         }
 
                         System.out.println("  Importing GenBank from minimap2 to References: " + file.getName());
@@ -414,9 +449,8 @@ public class SampleBasedImporter {
                     System.out.println("  Fixed " + fixedCount + " GenBank file(s)");
                 }
 
-                List<File> gbFiles = findFilesForSample(sample,
-                    Arrays.asList(genBankDir),
-                    Arrays.asList(".gb", ".gbk", ".genbank"));
+                // Use special method for GenBank files since they're named by accession, not sample
+                List<File> gbFiles = findGenBankReferenceFiles(Arrays.asList(genBankDir));
 
                 for (File file : gbFiles) {
                     try {
@@ -701,6 +735,34 @@ public class SampleBasedImporter {
                         .forEach(files::add);
                 } catch (IOException e) {
                     logger.warning("Error reading directory: " + dir);
+                }
+            }
+        }
+
+        return files;
+    }
+
+    /**
+     * Finds GenBank reference files in directories.
+     * These files are named by accession number, not sample name.
+     */
+    private List<File> findGenBankReferenceFiles(List<Path> dirs) {
+        List<File> files = new ArrayList<>();
+
+        for (Path dir : dirs) {
+            if (Files.exists(dir)) {
+                try {
+                    Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> {
+                            String name = p.getFileName().toString().toLowerCase();
+                            // GenBank files have specific extensions
+                            return name.endsWith(".gb") || name.endsWith(".gbk") || name.endsWith(".genbank");
+                        })
+                        .map(Path::toFile)
+                        .forEach(files::add);
+                } catch (IOException e) {
+                    logger.warning("Error reading directory for GenBank files: " + dir);
                 }
             }
         }
