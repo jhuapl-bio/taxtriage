@@ -3,8 +3,10 @@ package com.jhuapl.taxtriage.geneious.importers;
 import com.biomatters.geneious.publicapi.databaseservice.DatabaseServiceException;
 import com.biomatters.geneious.publicapi.databaseservice.WritableDatabaseService;
 import com.biomatters.geneious.publicapi.documents.AnnotatedPluginDocument;
+import com.biomatters.geneious.publicapi.documents.DocumentUtilities;
 import com.biomatters.geneious.publicapi.plugin.DocumentImportException;
 import com.biomatters.geneious.publicapi.plugin.PluginUtilities;
+import com.jhuapl.taxtriage.geneious.documents.TaxTriageResultDocument;
 import jebl.util.ProgressListener;
 
 import java.io.File;
@@ -371,15 +373,25 @@ public class SampleBasedImporter {
                         }
 
                         System.out.println("  Importing GenBank from minimap2 to References: " + file.getName());
-                        // Import directly to the References folder
-                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
-                            file, folders.get("References"), progressListener);
+                        // First import the documents
+                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocuments(file, progressListener);
 
                         if (docs != null && !docs.isEmpty()) {
-                            allImported.addAll(docs);
-                            System.out.println("    Successfully imported " + docs.size() + " document(s)");
+                            WritableDatabaseService referencesFolder = folders.get("References");
+                            System.out.println("    Imported " + docs.size() + " document(s) from file");
+
+                            // Add each document to the References folder
                             for (AnnotatedPluginDocument doc : docs) {
-                                System.out.println("      - " + doc.getName());
+                                try {
+                                    AnnotatedPluginDocument copiedDoc = referencesFolder.addDocumentCopy(doc, ProgressListener.EMPTY);
+                                    if (copiedDoc != null) {
+                                        allImported.add(copiedDoc);
+                                        System.out.println("      - Added to References: " + copiedDoc.getName());
+                                    }
+                                } catch (Exception e) {
+                                    System.out.println("      - Failed to add to References: " + doc.getName() + " - " + e.getMessage());
+                                    logger.log(Level.WARNING, "Failed to add document to References folder", e);
+                                }
                             }
                         } else {
                             System.out.println("    Warning: No documents imported from " + file.getName());
@@ -409,10 +421,23 @@ public class SampleBasedImporter {
                 for (File file : gbFiles) {
                     try {
                         System.out.println("  Importing GenBank from genbank_downloads to References: " + file.getName());
-                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
-                            file, folders.get("References"), progressListener);
+                        // First import the documents
+                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocuments(file, progressListener);
+
                         if (docs != null && !docs.isEmpty()) {
-                            allImported.addAll(docs);
+                            WritableDatabaseService referencesFolder = folders.get("References");
+                            // Add each document to the References folder
+                            for (AnnotatedPluginDocument doc : docs) {
+                                try {
+                                    AnnotatedPluginDocument copiedDoc = referencesFolder.addDocumentCopy(doc, ProgressListener.EMPTY);
+                                    if (copiedDoc != null) {
+                                        allImported.add(copiedDoc);
+                                        System.out.println("    - Added to References: " + copiedDoc.getName());
+                                    }
+                                } catch (Exception ex) {
+                                    logger.log(Level.WARNING, "Failed to add document to References folder: " + doc.getName(), ex);
+                                }
+                            }
                         }
                     } catch (Exception e) {
                         logger.log(Level.WARNING, "Failed to import GenBank file: " + file.getName(), e);
@@ -468,12 +493,23 @@ public class SampleBasedImporter {
             for (File bamFile : bamFiles) {
                 System.out.println("  Importing BAM file: " + bamFile.getName());
                 try {
-                    // GeneiousBamImporter was deleted - using fallback BAM import
-                    System.out.println("    GeneiousBamImporter removed - skipping BAM import");
-                    List<AnnotatedPluginDocument> docs = new ArrayList<>();
+                    // Use BamFileImporter which handles multiple import strategies
+                    List<AnnotatedPluginDocument> docs = BamFileImporter.importBamFile(bamFile, progressListener);
 
                     if (docs != null && !docs.isEmpty()) {
-                        allImported.addAll(docs);
+                        // Add each document to the Alignments folder
+                        WritableDatabaseService alignmentsFolder = folders.get("Alignments");
+                        for (AnnotatedPluginDocument doc : docs) {
+                            try {
+                                AnnotatedPluginDocument copiedDoc = alignmentsFolder.addDocumentCopy(doc, ProgressListener.EMPTY);
+                                if (copiedDoc != null) {
+                                    allImported.add(copiedDoc);
+                                    System.out.println("    - Added to Alignments: " + copiedDoc.getName());
+                                }
+                            } catch (Exception ex) {
+                                logger.log(Level.WARNING, "Failed to add BAM document to Alignments folder", ex);
+                            }
+                        }
                         System.out.println("    Successfully imported BAM with " + docs.size() + " alignment(s)");
                     } else {
                         System.out.println("    Warning: No alignments imported from BAM");
@@ -588,10 +624,40 @@ public class SampleBasedImporter {
                 if (targetFolder != null) {
                     try {
                         System.out.println("  Importing to " + folderName + ": " + filename);
-                        // DirectTextImporter was deleted - using basic text import
-                        System.out.println("      DirectTextImporter removed - skipping text file: " + textFile.getName());
-                        List<AnnotatedPluginDocument> docs = new ArrayList<>();
-                        allImported.addAll(docs);
+
+                        // Read text file content using Files.readAllBytes
+                        try {
+                            byte[] fileBytes = Files.readAllBytes(textFile.toPath());
+                            String content = new String(fileBytes, "UTF-8");
+
+                            // Determine file format and result type
+                            String fileFormat = determineFileFormat(filename);
+                            String resultType = determineResultType(filename);
+
+                            // Create TaxTriageResultDocument with the content
+                            TaxTriageResultDocument resultDoc = new TaxTriageResultDocument(
+                                filename, content, resultType, textFile.getAbsolutePath(), fileFormat);
+
+                            // Convert to AnnotatedPluginDocument using DocumentUtilities
+                            AnnotatedPluginDocument annotatedDoc = DocumentUtilities.createAnnotatedPluginDocument(resultDoc);
+
+                            // Add to target folder using addDocumentCopy
+                            AnnotatedPluginDocument copiedDoc = targetFolder.addDocumentCopy(annotatedDoc, ProgressListener.EMPTY);
+
+                            if (copiedDoc != null) {
+                                allImported.add(copiedDoc);
+                                System.out.println("      Successfully imported text file: " + filename + " (" + fileFormat + ")");
+                            } else {
+                                System.out.println("      Warning: Failed to copy document to folder: " + filename);
+                            }
+
+                        } catch (IOException ioException) {
+                            logger.log(Level.WARNING, "Failed to read text file: " + filename, ioException);
+                            System.out.println("      Error reading file: " + ioException.getMessage());
+                        } catch (Exception docException) {
+                            logger.log(Level.WARNING, "Failed to create document from text file: " + filename, docException);
+                            System.out.println("      Error creating document: " + docException.getMessage());
+                        }
 
                     } catch (Exception e) {
                         logger.warning("Failed to import text file: " + filename + " - " + e.getMessage());
@@ -756,5 +822,59 @@ public class SampleBasedImporter {
 
         System.out.println("  === GenBank download complete ===");
         System.out.println();
+    }
+
+    /**
+     * Determines the file format based on filename extension.
+     * @param filename The name of the file
+     * @return File format string (e.g., "TXT", "TSV", "CSV", "HTML", "JSON")
+     */
+    private String determineFileFormat(String filename) {
+        String lowerName = filename.toLowerCase();
+
+        if (lowerName.endsWith(".tsv")) {
+            return "TSV";
+        } else if (lowerName.endsWith(".csv")) {
+            return "CSV";
+        } else if (lowerName.endsWith(".html") || lowerName.endsWith(".htm")) {
+            return "HTML";
+        } else if (lowerName.endsWith(".json")) {
+            return "JSON";
+        } else if (lowerName.endsWith(".log")) {
+            return "LOG";
+        } else {
+            return "TXT"; // Default to TXT for .txt and other text files
+        }
+    }
+
+    /**
+     * Determines the result type based on filename patterns.
+     * @param filename The name of the file
+     * @return Result type string describing the content
+     */
+    private String determineResultType(String filename) {
+        String lowerName = filename.toLowerCase();
+
+        if (lowerName.contains("kraken") && lowerName.contains("report")) {
+            return "Kraken Report";
+        } else if (lowerName.contains("krona")) {
+            return "Krona Report";
+        } else if (lowerName.contains("count")) {
+            return "Count Data";
+        } else if (lowerName.contains("top")) {
+            return "Top Results";
+        } else if (lowerName.contains("combine")) {
+            return "Combined Results";
+        } else if (lowerName.contains("multiqc")) {
+            return "MultiQC Report";
+        } else if (lowerName.contains("taxtriage")) {
+            return "TaxTriage Analysis";
+        } else if (lowerName.contains("assembly")) {
+            return "Assembly Summary";
+        } else if (lowerName.contains("complete")) {
+            return "Completion Report";
+        } else {
+            return "Analysis Result"; // Default generic type
+        }
     }
 }
