@@ -1,0 +1,747 @@
+package com.jhuapl.taxtriage.geneious.importers;
+
+import com.biomatters.geneious.publicapi.databaseservice.DatabaseServiceException;
+import com.biomatters.geneious.publicapi.databaseservice.WritableDatabaseService;
+import com.biomatters.geneious.publicapi.documents.AnnotatedPluginDocument;
+import com.biomatters.geneious.publicapi.plugin.DocumentImportException;
+import com.biomatters.geneious.publicapi.plugin.PluginUtilities;
+import jebl.util.ProgressListener;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+/**
+ * Helper class to import TaxTriage documents into organized sample-based folder structure.
+ * Creates subfolders for each sample and data type.
+ */
+public class SampleBasedImporter {
+
+    private static final Logger logger = Logger.getLogger(SampleBasedImporter.class.getName());
+
+    private WritableDatabaseService rootService;
+    private WritableDatabaseService mainFolder;
+    private Map<String, Map<String, WritableDatabaseService>> sampleFolders; // sample -> (subfolder -> service)
+    private String runName;
+    private Path outputDir;
+
+    /**
+     * Creates a new sample-based importer.
+     * @param runName Name for the main folder (e.g., "TaxTriage_output_20240916")
+     * @param outputDir Path to TaxTriage output directory
+     */
+    public SampleBasedImporter(String runName, Path outputDir) {
+        this.runName = runName;
+        this.outputDir = outputDir;
+        this.sampleFolders = new HashMap<>();
+        initializeRootService();
+    }
+
+    /**
+     * Initializes the root database service.
+     */
+    private void initializeRootService() {
+        try {
+            // Get the local database service
+            Object service = PluginUtilities.getGeneiousService(PluginUtilities.LOCAL_DATABASE_SERVICE_UNIQUE_ID);
+            if (service instanceof WritableDatabaseService) {
+                this.rootService = (WritableDatabaseService) service;
+                logger.info("Got local database service");
+            } else {
+                // Fallback to generic WritableDatabaseService
+                service = PluginUtilities.getGeneiousService("WritableDatabaseService");
+                if (service instanceof WritableDatabaseService) {
+                    this.rootService = (WritableDatabaseService) service;
+                    logger.info("Got generic writable database service");
+                }
+            }
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Could not get database service", e);
+        }
+    }
+
+    /**
+     * Discovers samples from the TaxTriage output directory.
+     * @return Set of sample names
+     */
+    public Set<String> discoverSamples() {
+        Set<String> samples = new HashSet<>();
+
+        try {
+            // Look for sample-specific files in various directories
+            Path[] checkDirs = {
+                outputDir.resolve("kraken2"),
+                outputDir.resolve("minimap2"),
+                outputDir.resolve("alignment"),
+                outputDir.resolve("consensus"),
+                outputDir.resolve("download")
+            };
+
+            for (Path dir : checkDirs) {
+                if (Files.exists(dir)) {
+                    Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .map(p -> p.getFileName().toString())
+                        .forEach(filename -> {
+                            // Extract sample name from filename
+                            // Patterns: sample.kraken2.report.txt, sample.bam, sample.consensus.fasta
+                            String sample = extractSampleName(filename);
+                            if (sample != null && !sample.isEmpty()) {
+                                samples.add(sample);
+                            }
+                        });
+                }
+            }
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Error discovering samples", e);
+        }
+
+        if (samples.isEmpty()) {
+            // Default to a single sample called "results"
+            samples.add("results");
+        }
+
+        logger.info("Discovered samples: " + samples);
+        System.out.println("Discovered samples: " + samples);
+        return samples;
+    }
+
+    /**
+     * Extracts sample name from a filename.
+     */
+    private String extractSampleName(String filename) {
+        // Remove common suffixes to get sample name
+        String[] suffixes = {
+            ".kraken2.report.txt",
+            ".krakenreport.krona.txt",
+            ".consensus.fasta",
+            ".dwnld.references.fasta",
+            ".dwnld.references.bam",
+            ".bam.bai",
+            ".bam",
+            ".combined.gcfids.txt",
+            ".topnames.txt",
+            ".toptaxids.txt",
+            ".histo.txt",
+            ".paths.txt"
+        };
+
+        for (String suffix : suffixes) {
+            if (filename.endsWith(suffix)) {
+                String sample = filename.substring(0, filename.length() - suffix.length());
+                // Handle double sample names like "test.test.dwnld.references.bam"
+                if (sample.contains(".")) {
+                    String[] parts = sample.split("\\.");
+                    if (parts.length >= 2 && parts[0].equals(parts[1])) {
+                        return parts[0]; // Return single sample name
+                    }
+                }
+                return sample;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Creates the folder structure for TaxTriage results.
+     * @param progressListener Progress tracking
+     * @return true if folder structure was created successfully
+     */
+    public boolean createFolderStructure(ProgressListener progressListener) {
+        if (rootService == null) {
+            logger.warning("No database service available - cannot create folder structure");
+            return false;
+        }
+
+        try {
+            logger.info("Creating folder structure for: " + runName);
+            System.out.println("===== CREATING FOLDER STRUCTURE =====");
+            System.out.println("Main folder: " + runName);
+
+            // Create main folder for this TaxTriage run
+            try {
+                mainFolder = rootService.createChildFolder(runName);
+            } catch (DatabaseServiceException e) {
+                logger.warning("Could not create main folder: " + runName + " - " + e.getMessage());
+            }
+
+            if (mainFolder == null) {
+                // Folder might already exist, try to get it
+                mainFolder = rootService.getChildService(runName);
+            }
+
+            if (mainFolder == null) {
+                logger.warning("Could not create or access main folder: " + runName);
+                return false;
+            }
+
+            // Discover samples
+            Set<String> samples = discoverSamples();
+
+            // Create folder structure for each sample
+            for (String sample : samples) {
+                createSampleFolders(sample, progressListener);
+            }
+
+            System.out.println("=====================================\n");
+            return true;
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to create folder structure", e);
+            return false;
+        }
+    }
+
+    /**
+     * Creates folders for a specific sample based on available data.
+     */
+    private void createSampleFolders(String sample, ProgressListener progressListener) {
+        System.out.println("Creating folders for sample: " + sample);
+
+        Map<String, WritableDatabaseService> folders = new HashMap<>();
+
+        // Create sample folder
+        WritableDatabaseService sampleFolder = null;
+        try {
+            sampleFolder = mainFolder.createChildFolder(sample);
+        } catch (DatabaseServiceException e) {
+            logger.warning("Could not create sample folder: " + sample + " - " + e.getMessage());
+        }
+
+        if (sampleFolder == null) {
+            sampleFolder = mainFolder.getChildService(sample);
+        }
+
+        if (sampleFolder == null) {
+            logger.warning("Could not create sample folder: " + sample);
+            return;
+        }
+
+        // Define subfolder types and their corresponding output directories
+        Map<String, List<Path>> subfolderMapping = new HashMap<>();
+
+        // References (FASTA and GenBank files - check minimap2 for co-located references)
+        subfolderMapping.put("References", Arrays.asList(
+            outputDir.resolve("download"),
+            outputDir.resolve("minimap2"),  // Check minimap2 for co-located GenBank files
+            outputDir.resolve("genbank_downloads")  // Legacy location
+        ));
+
+        // Kraken results
+        subfolderMapping.put("Kraken_Results", Arrays.asList(
+            outputDir.resolve("kraken2"),
+            outputDir.resolve("kreport"),
+            outputDir.resolve("mergedsubspecies")
+        ));
+
+        // Alignment results (keep BAM files here but don't import)
+        subfolderMapping.put("Alignments", Arrays.asList(
+            outputDir.resolve("minimap2"),
+            outputDir.resolve("alignment")
+        ));
+
+        // Reports
+        subfolderMapping.put("Reports", Arrays.asList(
+            outputDir.resolve("report"),
+            outputDir.resolve("top"),
+            outputDir.resolve("combine"),
+            outputDir.resolve("count")
+        ));
+
+        // Consensus sequences
+        subfolderMapping.put("Consensus", Arrays.asList(
+            outputDir.resolve("consensus")
+        ));
+
+        // Variant files
+        subfolderMapping.put("VCF_Files", Arrays.asList(
+            outputDir.resolve("variants"),
+            outputDir.resolve("vcf")
+        ));
+
+        // Only create subfolders that have content
+        for (Map.Entry<String, List<Path>> entry : subfolderMapping.entrySet()) {
+            String folderName = entry.getKey();
+            List<Path> sourceDirs = entry.getValue();
+
+            if (hasContentForSample(sample, sourceDirs)) {
+                WritableDatabaseService subfolder = null;
+                try {
+                    subfolder = sampleFolder.createChildFolder(folderName);
+                } catch (DatabaseServiceException e) {
+                    logger.warning("Could not create subfolder: " + folderName + " - " + e.getMessage());
+                }
+
+                if (subfolder == null) {
+                    subfolder = sampleFolder.getChildService(folderName);
+                }
+
+                if (subfolder != null) {
+                    folders.put(folderName, subfolder);
+                    System.out.println("  Created subfolder: " + sample + "/" + folderName);
+                }
+            }
+        }
+
+        sampleFolders.put(sample, folders);
+    }
+
+    /**
+     * Checks if there is content for a sample in the given directories.
+     */
+    private boolean hasContentForSample(String sample, List<Path> dirs) {
+        for (Path dir : dirs) {
+            if (Files.exists(dir)) {
+                try {
+                    boolean hasContent = Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .anyMatch(p -> {
+                            String filename = p.getFileName().toString();
+                            return filename.contains(sample) ||
+                                   filename.equals("assembly_summary_refseq.txt") ||
+                                   filename.startsWith("complete.") ||
+                                   filename.startsWith("multiqc");
+                        });
+                    if (hasContent) return true;
+                } catch (IOException e) {
+                    logger.warning("Error checking directory: " + dir);
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Imports files for a specific sample to appropriate subfolders.
+     */
+    public List<AnnotatedPluginDocument> importSampleFiles(String sample, ProgressListener progressListener)
+            throws IOException, DocumentImportException {
+
+        List<AnnotatedPluginDocument> allImported = new ArrayList<>();
+        Map<String, WritableDatabaseService> folders = sampleFolders.get(sample);
+
+        if (folders == null || folders.isEmpty()) {
+            logger.warning("No folders created for sample: " + sample);
+            return allImported;
+        }
+
+        System.out.println("\n===== IMPORTING FILES FOR SAMPLE: " + sample + " =====");
+
+        // First, check if we need to download GenBank references for BAM files
+        downloadGenBankReferencesForBamFiles(sample, progressListener);
+
+        // Import references (GenBank files from minimap2 folder where BAM files are)
+        if (folders.containsKey("References")) {
+            // Check for GenBank downloads in minimap2 folder (co-located with BAM files)
+            Path minimap2Dir = outputDir.resolve("minimap2");
+            if (Files.exists(minimap2Dir)) {
+                // First, fix any GenBank files to ensure proper field matching
+                System.out.println("  Checking and fixing GenBank files in minimap2 folder...");
+                int fixedCount = GenBankFileFixer.fixGenBankFilesInDirectory(minimap2Dir);
+                if (fixedCount > 0) {
+                    System.out.println("  Fixed " + fixedCount + " GenBank file(s) for proper field matching");
+                }
+
+                List<File> gbFiles = findFilesForSample(sample,
+                    Arrays.asList(minimap2Dir),
+                    Arrays.asList(".gb", ".gbk", ".genbank"));
+
+                for (File file : gbFiles) {
+                    try {
+                        // Validate the GenBank file
+                        if (!GenBankFileFixer.validateGenBankFile(file)) {
+                            System.out.println("  Warning: GenBank file may have mismatched fields: " + file.getName());
+                        }
+
+                        System.out.println("  Importing GenBank from minimap2 to References: " + file.getName());
+                        // Import directly to the References folder
+                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
+                            file, folders.get("References"), progressListener);
+
+                        if (docs != null && !docs.isEmpty()) {
+                            allImported.addAll(docs);
+                            System.out.println("    Successfully imported " + docs.size() + " document(s)");
+                            for (AnnotatedPluginDocument doc : docs) {
+                                System.out.println("      - " + doc.getName());
+                            }
+                        } else {
+                            System.out.println("    Warning: No documents imported from " + file.getName());
+                        }
+                    } catch (Exception e) {
+                        logger.log(Level.WARNING, "Failed to import GenBank file: " + file.getName(), e);
+                        System.out.println("    Error: " + e.getMessage());
+                    }
+                }
+                logger.info("Imported " + gbFiles.size() + " GenBank reference(s) for sample: " + sample);
+            }
+
+            // Also check legacy genbank_downloads folder if it exists
+            Path genBankDir = outputDir.resolve("genbank_downloads");
+            if (Files.exists(genBankDir)) {
+                // Fix GenBank files in this directory too
+                System.out.println("  Checking and fixing GenBank files in genbank_downloads folder...");
+                int fixedCount = GenBankFileFixer.fixGenBankFilesInDirectory(genBankDir);
+                if (fixedCount > 0) {
+                    System.out.println("  Fixed " + fixedCount + " GenBank file(s)");
+                }
+
+                List<File> gbFiles = findFilesForSample(sample,
+                    Arrays.asList(genBankDir),
+                    Arrays.asList(".gb", ".gbk", ".genbank"));
+
+                for (File file : gbFiles) {
+                    try {
+                        System.out.println("  Importing GenBank from genbank_downloads to References: " + file.getName());
+                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
+                            file, folders.get("References"), progressListener);
+                        if (docs != null && !docs.isEmpty()) {
+                            allImported.addAll(docs);
+                        }
+                    } catch (Exception e) {
+                        logger.log(Level.WARNING, "Failed to import GenBank file: " + file.getName(), e);
+                    }
+                }
+            }
+
+            // Skip workflow-generated FASTA files (test.dwnld.references.fasta)
+            // as these don't have annotations
+        }
+
+        // Import ALL text files first using direct import
+        importAllTextFiles(sample, folders, allImported, progressListener);
+
+        // Import HTML reports (non-text)
+        if (folders.containsKey("Reports")) {
+            List<File> htmlFiles = findFilesForSample(sample,
+                Arrays.asList(outputDir.resolve("report"), outputDir.resolve("pipeline_info")),
+                Arrays.asList(".html"));
+
+            for (File file : htmlFiles) {
+                try {
+                    List<AnnotatedPluginDocument> docs = importToFolder(file, folders.get("Reports"), progressListener);
+                    allImported.addAll(docs);
+                    System.out.println("  Imported HTML: " + file.getName());
+                } catch (Exception e) {
+                    logger.warning("Failed to import HTML file: " + file.getName());
+                }
+            }
+        }
+
+        // Import BAM files using Geneious API with auto-reference detection
+        if (folders.containsKey("Alignments")) {
+            List<File> bamFiles = findFilesForSample(sample,
+                Arrays.asList(outputDir.resolve("minimap2"), outputDir.resolve("alignment")),
+                Arrays.asList(".bam"));
+
+            // Log if GenBank references are in the same folder
+            Path minimap2Dir = outputDir.resolve("minimap2");
+            if (Files.exists(minimap2Dir)) {
+                try {
+                    long gbCount = Files.list(minimap2Dir)
+                        .filter(p -> p.toString().endsWith(".gb") || p.toString().endsWith(".gbk"))
+                        .count();
+                    if (gbCount > 0) {
+                        System.out.println("  Found " + gbCount + " GenBank reference(s) co-located with BAM files");
+                    }
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+
+            for (File bamFile : bamFiles) {
+                System.out.println("  Importing BAM file: " + bamFile.getName());
+                try {
+                    // Use the GeneiousBamImporter with auto-reference detection
+                    List<AnnotatedPluginDocument> docs = GeneiousBamImporter.importBamWithAutoReferenceDetection(
+                        bamFile, folders.get("Alignments"), progressListener);
+
+                    if (docs != null && !docs.isEmpty()) {
+                        allImported.addAll(docs);
+                        System.out.println("    Successfully imported BAM with " + docs.size() + " alignment(s)");
+                    } else {
+                        System.out.println("    Warning: No alignments imported from BAM");
+                    }
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Failed to import BAM file: " + bamFile.getName(), e);
+                    System.out.println("    Error importing BAM: " + e.getMessage());
+                }
+            }
+        }
+
+        System.out.println("Imported " + allImported.size() + " documents for sample: " + sample);
+        System.out.println("=====================================\n");
+
+        return allImported;
+    }
+
+    /**
+     * Imports ALL text files using direct import method.
+     * This ensures all text files are properly imported without parsing.
+     */
+    private void importAllTextFiles(String sample, Map<String, WritableDatabaseService> folders,
+                                    List<AnnotatedPluginDocument> allImported,
+                                    ProgressListener progressListener) {
+
+        System.out.println("\n  === Scanning for all text files ===");
+
+        // Collect all text files from all directories
+        List<File> allTextFiles = new ArrayList<>();
+        Set<String> processedFiles = new HashSet<>();
+
+        try {
+            // Scan root output directory
+            if (Files.exists(outputDir)) {
+                Files.walk(outputDir, 1) // Only immediate files
+                    .filter(Files::isRegularFile)
+                    .map(Path::toFile)
+                    .filter(DirectTextImporter::isTextFile)
+                    .forEach(file -> {
+                        if (!processedFiles.contains(file.getName())) {
+                            allTextFiles.add(file);
+                            processedFiles.add(file.getName());
+                            System.out.println("    Found text file: " + file.getName());
+                        }
+                    });
+            }
+
+            // Scan all subdirectories
+            Path[] scanDirs = {
+                outputDir.resolve("kraken2"),
+                outputDir.resolve("kreport"),
+                outputDir.resolve("mergedsubspecies"),
+                outputDir.resolve("mergedkrakenreport"),
+                outputDir.resolve("report"),
+                outputDir.resolve("top"),
+                outputDir.resolve("combine"),
+                outputDir.resolve("count"),
+                outputDir.resolve("alignment"),
+                outputDir.resolve("get"),
+                outputDir.resolve("pipeline_info")
+            };
+
+            for (Path dir : scanDirs) {
+                if (Files.exists(dir)) {
+                    Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .map(Path::toFile)
+                        .filter(DirectTextImporter::isTextFile)
+                        .forEach(file -> {
+                            if (!processedFiles.contains(file.getName())) {
+                                allTextFiles.add(file);
+                                processedFiles.add(file.getName());
+                                System.out.println("    Found text file in " + dir.getFileName() + ": " + file.getName());
+                            }
+                        });
+                }
+            }
+
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Error scanning for text files", e);
+        }
+
+        System.out.println("  Total text files found: " + allTextFiles.size());
+        System.out.println("\n  === Importing text files ===");
+
+        // Now import all text files
+        for (File textFile : allTextFiles) {
+            String filename = textFile.getName();
+
+            // Check if this file is relevant to our sample or is a general file
+            if (filename.contains(sample) ||
+                filename.startsWith("taxtriage_") ||
+                filename.contains("kraken") ||
+                filename.contains("krona") ||
+                filename.contains("report") ||
+                filename.contains("count") ||
+                filename.contains("complete") ||
+                filename.contains("multiqc")) {
+
+                // Determine target folder
+                WritableDatabaseService targetFolder = null;
+                String folderName = "";
+
+                if (filename.contains("kraken") || filename.contains("krona")) {
+                    targetFolder = folders.get("Kraken_Results");
+                    folderName = "Kraken_Results";
+                } else {
+                    targetFolder = folders.get("Reports");
+                    folderName = "Reports";
+                }
+
+                if (targetFolder != null) {
+                    try {
+                        System.out.println("  Importing to " + folderName + ": " + filename);
+                        List<AnnotatedPluginDocument> docs = DirectTextImporter.directImportText(
+                            textFile, targetFolder, progressListener);
+                        allImported.addAll(docs);
+
+                    } catch (Exception e) {
+                        logger.warning("Failed to import text file: " + filename + " - " + e.getMessage());
+                        System.out.println("    ERROR: Failed to import " + filename + ": " + e.getMessage());
+                    }
+                }
+            }
+        }
+
+        System.out.println("  === Text file import complete ===");
+        System.out.println();
+    }
+
+    /**
+     * Finds files for a specific sample in given directories.
+     */
+    private List<File> findFilesForSample(String sample, List<Path> dirs, List<String> extensions) {
+        List<File> files = new ArrayList<>();
+
+        for (Path dir : dirs) {
+            if (Files.exists(dir)) {
+                try {
+                    Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> {
+                            String name = p.getFileName().toString();
+                            // Check if file is for this sample or a general output file
+                            boolean isSampleFile = name.contains(sample) ||
+                                                  name.startsWith("taxtriage_") || // Include taxtriage_ prefixed files
+                                                  name.contains(".krakenreport") || // Include krakenreport files
+                                                  name.contains(".krona") || // Include krona files
+                                                  name.startsWith("complete.") ||
+                                                  name.startsWith("multiqc") ||
+                                                  name.equals("assembly_summary_refseq.txt") ||
+                                                  name.equals("count.txt");
+                            // Check extension
+                            boolean hasValidExt = extensions.stream().anyMatch(name::endsWith);
+                            return isSampleFile && hasValidExt;
+                        })
+                        .map(Path::toFile)
+                        .forEach(files::add);
+                } catch (IOException e) {
+                    logger.warning("Error reading directory: " + dir);
+                }
+            }
+        }
+
+        return files;
+    }
+
+    /**
+     * Imports a file to a specific folder.
+     */
+    private List<AnnotatedPluginDocument> importToFolder(File file, WritableDatabaseService folder,
+                                                         ProgressListener progressListener)
+                                                         throws IOException, DocumentImportException {
+
+        System.out.println("  Importing: " + file.getName());
+
+        try {
+            List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
+                file, folder, progressListener);
+
+            if (docs != null && !docs.isEmpty()) {
+                logger.info("Successfully imported " + docs.size() + " document(s) from " + file.getName());
+            }
+
+            return docs != null ? docs : new ArrayList<>();
+
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Failed to import file: " + file.getName(), e);
+            // Don't fail completely, just skip this file
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Gets all discovered samples.
+     */
+    public Set<String> getSamples() {
+        return new HashSet<>(sampleFolders.keySet());
+    }
+
+    /**
+     * Downloads GenBank references for BAM files and saves them in the minimap2 folder.
+     * This co-locates references with BAM files for better import success.
+     */
+    private void downloadGenBankReferencesForBamFiles(String sample, ProgressListener progressListener) {
+        Path minimap2Dir = outputDir.resolve("minimap2");
+        if (!Files.exists(minimap2Dir)) {
+            return;
+        }
+
+        System.out.println("\n  === Checking for BAM references to download ===");
+
+        // Find BAM files for this sample
+        List<File> bamFiles = findFilesForSample(sample,
+            Arrays.asList(minimap2Dir),
+            Arrays.asList(".bam"));
+
+        if (bamFiles.isEmpty()) {
+            System.out.println("  No BAM files found, skipping GenBank download");
+            return;
+        }
+
+        // Extract references from BAM files
+        Set<String> allAccessions = new HashSet<>();
+        for (File bamFile : bamFiles) {
+            try {
+                List<BamReferenceExtractor.ReferenceInfo> refs =
+                    BamReferenceExtractor.extractReferences(bamFile);
+                for (BamReferenceExtractor.ReferenceInfo ref : refs) {
+                    if (ref.accession != null && !ref.accession.isEmpty()) {
+                        allAccessions.add(ref.accession);
+                        System.out.println("  Found reference in BAM: " + ref.name + " (" + ref.accession + ")");
+                    }
+                }
+            } catch (Exception e) {
+                logger.warning("Could not extract references from BAM: " + bamFile.getName());
+            }
+        }
+
+        if (allAccessions.isEmpty()) {
+            System.out.println("  No accessions found in BAM files");
+            return;
+        }
+
+        // Check which GenBank files already exist
+        List<String> toDownload = new ArrayList<>();
+        for (String accession : allAccessions) {
+            File gbFile = minimap2Dir.resolve(accession + ".gb").toFile();
+            if (!gbFile.exists()) {
+                toDownload.add(accession);
+            } else {
+                System.out.println("  GenBank file already exists: " + gbFile.getName());
+            }
+        }
+
+        if (toDownload.isEmpty()) {
+            System.out.println("  All GenBank references already downloaded");
+            return;
+        }
+
+        // Download missing GenBank files to minimap2 folder
+        System.out.println("\n  Downloading " + toDownload.size() + " GenBank reference(s) to minimap2 folder...");
+        try {
+            Map<String, File> downloaded = NCBIReferenceDownloader.downloadGenBankFiles(
+                toDownload, minimap2Dir, progressListener);
+
+            for (Map.Entry<String, File> entry : downloaded.entrySet()) {
+                System.out.println("    Downloaded: " + entry.getValue().getName());
+            }
+
+            if (downloaded.size() < toDownload.size()) {
+                System.out.println("  Warning: Only " + downloaded.size() + " of " +
+                                  toDownload.size() + " files downloaded successfully");
+            }
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error downloading GenBank files", e);
+            System.out.println("  Error downloading GenBank files: " + e.getMessage());
+        }
+
+        System.out.println("  === GenBank download complete ===");
+        System.out.println();
+    }
+}
