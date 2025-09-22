@@ -65,6 +65,9 @@ public class BamFileImporter {
         // Log if reference documents are available
         if (referenceDocuments != null && !referenceDocuments.isEmpty()) {
             logger.info("Have " + referenceDocuments.size() + " reference documents available for BAM import");
+            for (AnnotatedPluginDocument ref : referenceDocuments) {
+                logger.info("  Reference: " + ref.getName());
+            }
         }
 
         // First, ensure the BAM file has an index
@@ -75,6 +78,18 @@ public class BamFileImporter {
         }
 
         // Try different import strategies in order of preference
+
+        // If we have reference documents, use BamImportHelper's reference-aware import
+        if (referenceDocuments != null && !referenceDocuments.isEmpty()) {
+            logger.info("Using reference-aware BAM import with " + referenceDocuments.size() + " reference(s)");
+            List<AnnotatedPluginDocument> result = BamImportHelper.importBamWithReferences(
+                bamFile, referenceDocuments, progressListener);
+            if (!result.isEmpty()) {
+                logger.info("Successfully imported BAM with reference linking");
+                return result;
+            }
+            logger.warning("Reference-aware import failed, falling back to standard import");
+        }
 
         // Strategy 1: Use PluginUtilities.importDocuments (simplest and most reliable)
         List<AnnotatedPluginDocument> result = importUsingPluginUtilities(bamFile, progressListener);

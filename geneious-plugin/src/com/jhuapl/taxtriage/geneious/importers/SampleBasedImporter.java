@@ -503,6 +503,30 @@ public class SampleBasedImporter {
             }
         }
 
+        // Collect all imported reference documents for BAM linking
+        List<AnnotatedPluginDocument> importedReferences = new ArrayList<>();
+        if (folders.containsKey("References")) {
+            try {
+                WritableDatabaseService referencesFolder = folders.get("References");
+                // Note: We track the references we imported earlier in allImported
+                // Filter to get only reference sequences (GenBank documents)
+                for (AnnotatedPluginDocument doc : allImported) {
+                    // Check if this is a sequence document that could be a reference
+                    if (doc.getDocumentClass() != null &&
+                        (doc.getDocumentClass().getName().contains("NucleotideSequence") ||
+                         doc.getDocumentClass().getName().contains("DefaultNucleotideSequence"))) {
+                        importedReferences.add(doc);
+                    }
+                }
+                System.out.println("  Collected " + importedReferences.size() + " reference sequences for BAM import");
+                for (AnnotatedPluginDocument ref : importedReferences) {
+                    System.out.println("    - Reference: " + ref.getName());
+                }
+            } catch (Exception e) {
+                logger.warning("Could not collect reference documents: " + e.getMessage());
+            }
+        }
+
         // Import BAM files using Geneious API with auto-reference detection
         if (folders.containsKey("Alignments")) {
             List<File> bamFiles = findFilesForSample(sample,
@@ -527,8 +551,15 @@ public class SampleBasedImporter {
             for (File bamFile : bamFiles) {
                 System.out.println("  Importing BAM file: " + bamFile.getName());
                 try {
-                    // Use BamFileImporter which handles multiple import strategies
-                    List<AnnotatedPluginDocument> docs = BamFileImporter.importBamFile(bamFile, progressListener);
+                    // Pass reference documents to BAM importer for proper linking
+                    List<AnnotatedPluginDocument> docs;
+                    if (!importedReferences.isEmpty()) {
+                        System.out.println("    Using " + importedReferences.size() + " reference(s) for BAM import");
+                        docs = BamFileImporter.importBamFile(bamFile, progressListener, importedReferences);
+                    } else {
+                        System.out.println("    No references available, using standard BAM import");
+                        docs = BamFileImporter.importBamFile(bamFile, progressListener);
+                    }
 
                     if (docs != null && !docs.isEmpty()) {
                         // Add each document to the Alignments folder
