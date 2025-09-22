@@ -57,7 +57,7 @@ def read_json_labels(json_path):
         if entry is None:
             annotations_by_index.append(rank_map)
             continue
-        for item in entry:
+        for item in entry.get('predictions', []):
             # be robust to missing keys
             rank = item.get('label_column')
             topk = item.get('topk_predictions') or []
