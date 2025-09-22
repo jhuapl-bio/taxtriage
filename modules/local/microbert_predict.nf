@@ -21,7 +21,7 @@ process MICROBERT_PREDICT {
     conda (params.enable_conda ? "R" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'docker://jhuaplbio/microbert-classify:1.0.0' :
-        'microbert-classify:1.0.0' }"          // Fallback Docker image
+        'docker.io/jhuaplbio/microbert-classify:1.0.0' }"
 
     input:
     tuple val(meta), path(input), path(model)
