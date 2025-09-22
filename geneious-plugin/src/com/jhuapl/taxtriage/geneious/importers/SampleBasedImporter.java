@@ -551,33 +551,42 @@ public class SampleBasedImporter {
             for (File bamFile : bamFiles) {
                 System.out.println("  Importing BAM file: " + bamFile.getName());
                 try {
-                    // Pass reference documents to BAM importer for proper linking
-                    List<AnnotatedPluginDocument> docs;
-                    if (!importedReferences.isEmpty()) {
-                        System.out.println("    Using " + importedReferences.size() + " reference(s) for BAM import");
-                        docs = BamFileImporter.importBamFile(bamFile, progressListener, importedReferences);
-                    } else {
-                        System.out.println("    No references available, using standard BAM import");
-                        docs = BamFileImporter.importBamFile(bamFile, progressListener);
-                    }
+                    // Import BAM directly to the database folder containing references
+                    // This ensures Geneious can find references automatically
+                    WritableDatabaseService targetFolder;
 
-                    if (docs != null && !docs.isEmpty()) {
-                        // Add each document to the Alignments folder
-                        WritableDatabaseService alignmentsFolder = folders.get("Alignments");
-                        for (AnnotatedPluginDocument doc : docs) {
-                            try {
-                                AnnotatedPluginDocument copiedDoc = alignmentsFolder.addDocumentCopy(doc, ProgressListener.EMPTY);
-                                if (copiedDoc != null) {
-                                    allImported.add(copiedDoc);
-                                    System.out.println("    - Added to Alignments: " + copiedDoc.getName());
-                                }
-                            } catch (Exception ex) {
-                                logger.log(Level.WARNING, "Failed to add BAM document to Alignments folder", ex);
+                    if (!importedReferences.isEmpty() && folders.containsKey("References")) {
+                        // Import to References folder where the reference sequences are
+                        targetFolder = folders.get("References");
+                        System.out.println("    Importing BAM directly to References folder with " + importedReferences.size() + " reference(s)");
+
+                        // Import BAM file directly to the folder
+                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
+                            bamFile, targetFolder, progressListener);
+
+                        if (docs != null && !docs.isEmpty()) {
+                            allImported.addAll(docs);
+                            System.out.println("    Successfully imported BAM with " + docs.size() + " alignment(s) to References folder");
+                            for (AnnotatedPluginDocument doc : docs) {
+                                System.out.println("      - " + doc.getName());
                             }
+                        } else {
+                            System.out.println("    Warning: No alignments imported from BAM");
                         }
-                        System.out.println("    Successfully imported BAM with " + docs.size() + " alignment(s)");
                     } else {
-                        System.out.println("    Warning: No alignments imported from BAM");
+                        // Fallback: Import to Alignments folder if no references
+                        targetFolder = folders.get("Alignments");
+                        System.out.println("    No references available, importing to Alignments folder");
+
+                        List<AnnotatedPluginDocument> docs = PluginUtilities.importDocumentsToDatabase(
+                            bamFile, targetFolder, progressListener);
+
+                        if (docs != null && !docs.isEmpty()) {
+                            allImported.addAll(docs);
+                            System.out.println("    Successfully imported BAM with " + docs.size() + " alignment(s) to Alignments folder");
+                        } else {
+                            System.out.println("    Warning: No alignments imported from BAM");
+                        }
                     }
                 } catch (Exception e) {
                     logger.log(Level.WARNING, "Failed to import BAM file: " + bamFile.getName(), e);
