@@ -38,7 +38,7 @@ process MICROBERT_PREDICT {
     outfile = "${meta.id}_microbert_predictions.json"
 
     """
-        python3 /analysis/analysis/experiment/test_sequences.py -i ${input} \\
+        HF_MODULES_CACHE='/tmp/huggingface_cache/modules' python3 /analysis/analysis/experiment/test_sequences.py -i ${input} \\
             -o ${outfile} \\
             -b 50 \\
             -d ${model}
