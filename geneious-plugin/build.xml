@@ -63,6 +63,19 @@
             </fileset>
         </copy>
 
+        <!-- Copy bundled databases (if available) -->
+        <!-- Note: To bundle viral database, place database files in resources/databases/viral/ -->
+        <copy todir="${build}/${plugin-name}/databases" failonerror="false">
+            <fileset dir="resources/databases" erroronmissingdir="false">
+                <include name="**/*.k2d"/>
+                <include name="**/*.map"/>
+                <include name="**/taxo.k2d"/>
+                <include name="**/hash.k2d"/>
+                <include name="**/opts.k2d"/>
+                <include name="**/seqid2taxid.map"/>
+            </fileset>
+        </copy>
+
         <!-- Set executable permissions on the bundled Nextflow binary -->
         <chmod file="${build}/${plugin-name}/bin/nextflow" perm="755" failonerror="false"/>
     </target>

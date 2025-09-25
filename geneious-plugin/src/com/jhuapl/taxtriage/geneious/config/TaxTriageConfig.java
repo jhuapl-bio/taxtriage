@@ -1,6 +1,8 @@
 package com.jhuapl.taxtriage.geneious.config;
 
 import com.jhuapl.taxtriage.geneious.TaxTriageOptions;
+import com.jhuapl.taxtriage.geneious.database.DatabaseManager;
+import com.jhuapl.taxtriage.geneious.database.DatabaseManager.DatabaseType;
 
 import java.io.File;
 import java.util.HashMap;
@@ -165,8 +167,20 @@ public class TaxTriageConfig {
         params.put("subsample_size", subsampleSize);
         params.put("max_cpus", threadCount);
         params.put("max_memory", memoryLimitGb + ".GB");
-        params.put("kraken_db", krakenDatabase);
-        params.put("bracken_db", brackenDatabase);
+
+        // Use DatabaseManager to resolve database paths
+        DatabaseManager dbManager = DatabaseManager.getInstance();
+        String resolvedKrakenDb = resolveDatabasePath(krakenDatabase, true);
+        String resolvedBrackenDb = resolveDatabasePath(brackenDatabase, false);
+
+        params.put("kraken_db", resolvedKrakenDb);
+        params.put("bracken_db", resolvedBrackenDb);
+
+        // Add download_db flag based on whether databases need downloading
+        boolean needsDownload = "DOWNLOAD_REQUIRED".equals(resolvedKrakenDb) ||
+                               "DOWNLOAD_REQUIRED".equals(resolvedBrackenDb);
+        params.put("download_db", needsDownload);
+
         params.put("outdir", outputDirectory.getAbsolutePath());
 
         // Advanced parameters
@@ -176,6 +190,56 @@ public class TaxTriageConfig {
         params.put("enable_multiqc", enableMultiQC);
 
         return params;
+    }
+
+    /**
+     * Resolves a database name to a path using DatabaseManager.
+     *
+     * @param databaseName The database name (e.g., "viral", "standard")
+     * @param allowDownload Whether to allow downloading if not cached
+     * @return The resolved database path or "DOWNLOAD_REQUIRED" if download is needed
+     */
+    private String resolveDatabasePath(String databaseName, boolean allowDownload) {
+        DatabaseManager dbManager = DatabaseManager.getInstance();
+
+        // Map database name to DatabaseType
+        DatabaseType dbType = mapDatabaseNameToType(databaseName);
+        if (dbType == null) {
+            // If not a recognized type, return as-is (might be a custom path)
+            return databaseName;
+        }
+
+        // Get the best available path for this database
+        String dbPath = dbManager.getDatabasePath(dbType, allowDownload);
+
+        // If no path available and download not allowed, use the name as-is
+        // (will trigger download via workflow)
+        if (dbPath == null) {
+            return databaseName;
+        }
+
+        return dbPath;
+    }
+
+    /**
+     * Maps a database name string to a DatabaseType enum.
+     */
+    private DatabaseType mapDatabaseNameToType(String databaseName) {
+        if (databaseName == null) {
+            return null;
+        }
+
+        String normalized = databaseName.toLowerCase().trim();
+
+        if (normalized.equals("viral") || normalized.contains("viral")) {
+            return DatabaseType.VIRAL;
+        } else if (normalized.equals("standard") || normalized.contains("standard")) {
+            return DatabaseType.STANDARD;
+        } else if (normalized.equals("minikraken") || normalized.contains("mini")) {
+            return DatabaseType.MINIKRAKEN;
+        }
+
+        return null; // Unknown database type
     }
 
     /**

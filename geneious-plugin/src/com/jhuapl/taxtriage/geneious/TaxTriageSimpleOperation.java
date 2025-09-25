@@ -11,6 +11,8 @@ import com.biomatters.geneious.publicapi.plugin.Options;
 import com.jhuapl.taxtriage.geneious.config.ConfigGenerator;
 import com.jhuapl.taxtriage.geneious.config.SampleSheetBuilder;
 import com.jhuapl.taxtriage.geneious.config.TaxTriageConfig;
+import com.jhuapl.taxtriage.geneious.database.DatabaseManager;
+import com.jhuapl.taxtriage.geneious.database.DatabaseManager.DatabaseType;
 import com.jhuapl.taxtriage.geneious.docker.DockerException;
 import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
@@ -590,14 +592,45 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             cmd.add("true");
         }
 
-        // Database configuration
-        // Use database name (e.g., "viral", "standard-8", "flukraken2")
-        cmd.add("--db");
-        cmd.add(options.getKrakenDatabase());
+        // Database configuration with DatabaseManager
+        DatabaseManager dbManager = DatabaseManager.getInstance();
+        String dbName = options.getKrakenDatabase();
+        DatabaseType dbType = mapDatabaseNameToType(dbName);
 
-        // Enable automatic database download
-        cmd.add("--download_db");
-        cmd.add("true");
+        if (dbType != null) {
+            // Try to use cached or bundled database
+            String dbPath = dbManager.getDatabasePath(dbType, false);
+
+            if (dbPath != null && !"DOWNLOAD_REQUIRED".equals(dbPath)) {
+                logger.info("==========================================");
+                logger.info("Using cached/bundled database for workflow");
+                logger.info("  Type: " + dbType.getId());
+                logger.info("  Path: " + dbPath);
+                logger.info("==========================================");
+
+                cmd.add("--db");
+                cmd.add(dbPath);
+                cmd.add("--download_db");
+                cmd.add("false");
+            } else {
+                logger.info("==========================================");
+                logger.info("Database will be downloaded by workflow");
+                logger.info("  Type: " + dbType.getId());
+                logger.info("  Name: " + dbName);
+                logger.info("==========================================");
+
+                cmd.add("--db");
+                cmd.add(dbName);
+                cmd.add("--download_db");
+                cmd.add("true");
+            }
+        } else {
+            // Unknown database type, use as-is
+            cmd.add("--db");
+            cmd.add(dbName);
+            cmd.add("--download_db");
+            cmd.add("true");
+        }
 
         // Resource limits
         cmd.add("--max_cpus");
@@ -616,6 +649,27 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         }
 
         return cmd;
+    }
+
+    /**
+     * Maps a database name string to a DatabaseType enum.
+     */
+    private DatabaseType mapDatabaseNameToType(String databaseName) {
+        if (databaseName == null) {
+            return null;
+        }
+
+        String normalized = databaseName.toLowerCase().trim();
+
+        if (normalized.equals("viral") || normalized.contains("viral")) {
+            return DatabaseType.VIRAL;
+        } else if (normalized.equals("standard") || normalized.contains("standard")) {
+            return DatabaseType.STANDARD;
+        } else if (normalized.equals("minikraken") || normalized.contains("mini")) {
+            return DatabaseType.MINIKRAKEN;
+        }
+
+        return null; // Unknown database type
     }
 
     /**
@@ -651,11 +705,116 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 progressListener.setMessage("Results generated in: " + outputDir.toAbsolutePath());
             }
 
+            // Check if databases were downloaded and cache them
+            cacheDownloadedDatabases(workspaceDir);
+
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error during result import", e);
         }
 
         return importedDocs;
+    }
+
+    /**
+     * Checks if databases were downloaded during workflow and caches them.
+     */
+    private void cacheDownloadedDatabases(Path workspaceDir) {
+        logger.info("==========================================");
+        logger.info("DATABASE CACHING: Checking for downloaded databases");
+        logger.info("==========================================");
+
+        try {
+            DatabaseManager dbManager = DatabaseManager.getInstance();
+
+            // Common locations where TaxTriage downloads databases
+            Path[] dbLocations = {
+                workspaceDir.resolve("databases"),
+                workspaceDir.resolve("db"),
+                workspaceDir.resolve("kraken2_db"),
+                workspaceDir.resolve("work").resolve("singularity"),
+                Paths.get(System.getProperty("user.home"), "taxtriage_databases")
+            };
+
+            // Look for database files in possible locations
+            for (Path dbPath : dbLocations) {
+                if (Files.exists(dbPath) && Files.isDirectory(dbPath)) {
+                    logger.info("  Checking location: " + dbPath);
+
+                    // Look for subdirectories that might be databases
+                    Files.list(dbPath)
+                        .filter(Files::isDirectory)
+                        .forEach(dir -> {
+                            String dirName = dir.getFileName().toString();
+                            DatabaseType dbType = mapDatabaseNameToType(dirName);
+
+                            if (dbType != null && isValidDatabaseDirectory(dir)) {
+                                logger.info("  Found downloaded database: " + dirName);
+                                logger.info("    Location: " + dir);
+
+                                // Cache this database
+                                String version = "Downloaded " +
+                                    LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+                                dbManager.cacheDownloadedDatabase(dbType, dir, version);
+
+                                logger.info("    ✓ Cached for future use");
+                            }
+                        });
+                }
+            }
+
+            // Also check the user's home directory for standard database location
+            Path homeDbPath = Paths.get(System.getProperty("user.home"), ".taxtriage", "databases");
+            if (Files.exists(homeDbPath)) {
+                logger.info("  Checking user home database location: " + homeDbPath);
+                cacheDirectoryIfDatabase(homeDbPath);
+            }
+
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error caching downloaded databases", e);
+        }
+
+        logger.info("==========================================");
+    }
+
+    /**
+     * Checks if a directory contains valid database files.
+     */
+    private boolean isValidDatabaseDirectory(Path dir) {
+        try {
+            // Check for Kraken2 database files
+            boolean hasHashFile = Files.exists(dir.resolve("hash.k2d"));
+            boolean hasTaxoFile = Files.exists(dir.resolve("taxo.k2d"));
+            boolean hasOptsFile = Files.exists(dir.resolve("opts.k2d"));
+
+            // Valid if has at least hash and taxo files
+            return hasHashFile && hasTaxoFile;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Caches a directory if it contains a valid database.
+     */
+    private void cacheDirectoryIfDatabase(Path dir) {
+        try {
+            Files.list(dir)
+                .filter(Files::isDirectory)
+                .forEach(subDir -> {
+                    String name = subDir.getFileName().toString();
+                    DatabaseType dbType = mapDatabaseNameToType(name);
+
+                    if (dbType != null && isValidDatabaseDirectory(subDir)) {
+                        DatabaseManager dbManager = DatabaseManager.getInstance();
+                        String version = "Downloaded " +
+                            LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+                        dbManager.cacheDownloadedDatabase(dbType, subDir, version);
+                        logger.info("    Cached database: " + name);
+                    }
+                });
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Error checking directory for databases", e);
+        }
     }
 
     /**
