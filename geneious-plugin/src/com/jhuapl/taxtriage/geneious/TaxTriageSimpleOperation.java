@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -797,16 +798,33 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                     totalDuplicatesRemoved += result.duplicatesRemoved;
                     logger.info("✓ Successfully deduplicated: " + bamFile.getFileName());
                     logger.info("  Duplicates removed: " + result.duplicatesRemoved);
-                    logger.info("  Output: " + result.outputPath);
+                    logger.info("  Deduplicated file: " + result.outputPath);
 
-                    // Optionally replace the original with deduplicated version
-                    // For now, we keep both files (original gets .original extension)
+                    // Replace original with deduplicated version for import
+                    // Move original to .original.bam and move deduplicated to original location
                     try {
-                        Path originalBackup = Paths.get(bamFile.toString() + ".original");
+                        Path originalBackup = Paths.get(bamFile.toString().replace(".bam", ".original.bam"));
+                        Path deduplicatedPath = Paths.get(result.outputPath);
+
+                        // Backup the original
                         Files.move(bamFile, originalBackup);
                         logger.info("  Original backed up to: " + originalBackup.getFileName());
+
+                        // Move deduplicated file to original location so it gets imported
+                        Files.move(deduplicatedPath, bamFile);
+                        logger.info("  Deduplicated file moved to: " + bamFile.getFileName());
+                        logger.info("  This deduplicated file will be imported to Geneious");
+
+                        // Also move the index file if it exists
+                        Path deduplicatedIndex = Paths.get(result.outputPath + ".bai");
+                        Path originalIndex = Paths.get(bamFile.toString() + ".bai");
+                        if (Files.exists(deduplicatedIndex)) {
+                            Files.move(deduplicatedIndex, originalIndex, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            logger.info("  Index file also moved");
+                        }
                     } catch (IOException e) {
-                        logger.warning("Could not backup original file: " + e.getMessage());
+                        logger.warning("Could not replace original with deduplicated file: " + e.getMessage());
+                        logger.warning("Original file will be imported instead");
                     }
                 } else {
                     logger.warning("Failed to deduplicate: " + bamFile.getFileName());

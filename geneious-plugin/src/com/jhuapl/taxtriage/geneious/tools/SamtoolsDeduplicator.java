@@ -16,12 +16,15 @@ import java.util.logging.Logger;
 /**
  * Handles deduplication of mapped reads in BAM files using samtools markdup.
  *
- * This class implements the workflow described in samtools markdup documentation:
+ * This class implements the workflow with samtools markdup including preprocessing:
  * 1. Sort by name (samtools sort -n)
  * 2. Fix mate information (samtools fixmate -m)
  * 3. Sort by coordinate (samtools sort)
- * 4. Mark duplicates (samtools markdup -r)
+ * 4. Mark and remove duplicates (samtools markdup -r -S)
  * 5. Index the deduplicated BAM (samtools index)
+ *
+ * The -S flag ensures that supplementary alignments of duplicate reads are also marked/removed.
+ * All intermediate files are kept for debugging purposes.
  */
 public class SamtoolsDeduplicator {
 
@@ -109,13 +112,13 @@ public class SamtoolsDeduplicator {
             return new DeduplicationResult(false, null, error, 0);
         }
 
-        // Generate temporary and output file names
+        // Generate output file names - keep all intermediate files for debugging
         String baseName = inputBam.getFileName().toString();
         if (baseName.endsWith(".bam")) {
             baseName = baseName.substring(0, baseName.length() - 4);
         }
 
-        Path tempDir = outputDir.resolve("temp_dedup");
+        Path tempDir = outputDir.resolve("dedup_intermediate");
         Path nameSorted = tempDir.resolve(baseName + ".namesorted.bam");
         Path fixmated = tempDir.resolve(baseName + ".fixmate.bam");
         Path coordSorted = tempDir.resolve(baseName + ".sorted.bam");
@@ -136,7 +139,7 @@ public class SamtoolsDeduplicator {
             })) {
                 return new DeduplicationResult(false, null, "Failed to sort BAM by name", 0);
             }
-            logger.info("  ✓ Name sorting complete");
+            logger.info("  ✓ Name sorting complete: " + nameSorted.getFileName());
 
             // Step 2: Fix mate information
             logger.info("\n[Step 2/5] Fixing mate information...");
@@ -149,10 +152,7 @@ public class SamtoolsDeduplicator {
             })) {
                 return new DeduplicationResult(false, null, "Failed to fix mate information", 0);
             }
-            logger.info("  ✓ Mate fixing complete");
-
-            // Delete name-sorted file to save space
-            Files.deleteIfExists(nameSorted);
+            logger.info("  ✓ Mate fixing complete: " + fixmated.getFileName());
 
             // Step 3: Sort by coordinate
             logger.info("\n[Step 3/5] Sorting BAM by coordinate...");
@@ -164,16 +164,15 @@ public class SamtoolsDeduplicator {
             })) {
                 return new DeduplicationResult(false, null, "Failed to sort BAM by coordinate", 0);
             }
-            logger.info("  ✓ Coordinate sorting complete");
+            logger.info("  ✓ Coordinate sorting complete: " + coordSorted.getFileName());
 
-            // Delete fixmate file to save space
-            Files.deleteIfExists(fixmated);
-
-            // Step 4: Mark and remove duplicates
+            // Step 4: Mark and remove duplicates with -S flag for supplementary alignments
             logger.info("\n[Step 4/5] Marking and removing duplicates...");
+            logger.info("  Using flags: -r (remove duplicates) -S (mark supplementary alignments)");
             if (!runSamtoolsCommand(new String[]{
                 "samtools", "markdup",
                 "-r",  // Remove duplicates (not just mark)
+                "-S",  // Mark supplementary alignments of duplicates
                 "-s",  // Print stats to stderr
                 "-@", String.valueOf(threads),
                 coordSorted.toString(),
@@ -182,9 +181,6 @@ public class SamtoolsDeduplicator {
                 return new DeduplicationResult(false, null, "Failed to mark/remove duplicates", 0);
             }
             logger.info("  ✓ Duplicate removal complete");
-
-            // Delete sorted file to save space
-            Files.deleteIfExists(coordSorted);
 
             // Step 5: Index the deduplicated BAM
             logger.info("\n[Step 5/5] Indexing deduplicated BAM...");
@@ -198,13 +194,8 @@ public class SamtoolsDeduplicator {
                 logger.info("  ✓ Indexing complete");
             }
 
-            // Clean up temp directory
-            try {
-                Files.deleteIfExists(tempDir);
-            } catch (IOException e) {
-                // Non-critical error
-                logger.fine("Could not delete temp directory: " + tempDir);
-            }
+            // Keep intermediate files for debugging - do not delete
+            logger.info("Intermediate files kept in: " + tempDir);
 
             // Parse stats to get duplicate count
             long duplicatesRemoved = parseStatsFile(statsFile);
@@ -222,15 +213,8 @@ public class SamtoolsDeduplicator {
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Deduplication failed with exception", e);
 
-            // Clean up any temporary files
-            try {
-                Files.deleteIfExists(nameSorted);
-                Files.deleteIfExists(fixmated);
-                Files.deleteIfExists(coordSorted);
-                Files.deleteIfExists(tempDir);
-            } catch (IOException ex) {
-                // Ignore cleanup errors
-            }
+            // Keep all files for debugging - don't clean up
+            logger.info("Keeping intermediate files for debugging in: " + tempDir);
 
             return new DeduplicationResult(false, null, "Deduplication failed: " + e.getMessage(), 0);
         }
