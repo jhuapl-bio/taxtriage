@@ -256,6 +256,15 @@ public class DatabaseManager {
     private DatabaseInfo getCachedDatabase(DatabaseType type) {
         Path cacheDir = Paths.get(CACHE_BASE_DIR, type.getId());
 
+        // Resolve symlinks and handle macOS /var -> /private/var mapping
+        try {
+            if (Files.exists(cacheDir)) {
+                cacheDir = cacheDir.toRealPath();
+            }
+        } catch (IOException e) {
+            // Ignore and use original path
+        }
+
         if (!Files.exists(cacheDir)) {
             return null;
         }
@@ -443,12 +452,21 @@ public class DatabaseManager {
     }
 
     private void copyDirectory(Path source, Path target) throws IOException {
+        // Create target directory if it doesn't exist
+        Files.createDirectories(target);
+
         Files.walk(source).forEach(sourcePath -> {
             try {
                 Path targetPath = target.resolve(source.relativize(sourcePath));
-                Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                if (Files.isDirectory(sourcePath)) {
+                    Files.createDirectories(targetPath);
+                } else {
+                    Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
             } catch (IOException e) {
-                logger.log(Level.WARNING, "Failed to copy file: " + sourcePath, e);
+                if (!e.getMessage().contains("already exists")) {
+                    logger.log(Level.WARNING, "Failed to copy file: " + sourcePath, e);
+                }
             }
         });
     }

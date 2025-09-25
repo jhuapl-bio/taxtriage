@@ -617,10 +617,22 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 logger.info("Database will be downloaded by workflow");
                 logger.info("  Type: " + dbType.getId());
                 logger.info("  Name: " + dbName);
+
+                // Create a persistent location for database downloads
+                Path dbDownloadPath = Paths.get(System.getProperty("user.home"),
+                                               "taxtriage_databases", dbName);
+                try {
+                    Files.createDirectories(dbDownloadPath.getParent());
+                    logger.info("  Download location: " + dbDownloadPath.toAbsolutePath());
+                } catch (IOException e) {
+                    logger.warning("  Could not create database directory: " + e.getMessage());
+                }
+
                 logger.info("==========================================");
 
+                // Pass the full path to the workflow so it downloads to a known location
                 cmd.add("--db");
-                cmd.add(dbName);
+                cmd.add(dbDownloadPath.toAbsolutePath().toString());
                 cmd.add("--download_db");
                 cmd.add("true");
             }
@@ -720,60 +732,142 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      */
     private void cacheDownloadedDatabases(Path workspaceDir) {
         logger.info("==========================================");
-        logger.info("DATABASE CACHING: Checking for downloaded databases");
+        logger.info("DATABASE CACHING: Scanning for downloaded databases");
+        logger.info("  Workspace: " + workspaceDir.toAbsolutePath());
         logger.info("==========================================");
 
         try {
             DatabaseManager dbManager = DatabaseManager.getInstance();
+            Set<Path> foundDatabases = new HashSet<>();
 
-            // Common locations where TaxTriage downloads databases
-            Path[] dbLocations = {
-                workspaceDir.resolve("databases"),
-                workspaceDir.resolve("db"),
-                workspaceDir.resolve("kraken2_db"),
-                workspaceDir.resolve("work").resolve("singularity"),
-                Paths.get(System.getProperty("user.home"), "taxtriage_databases")
+            // First, do a comprehensive scan of the work directory for .k2d files
+            Path workDir = workspaceDir.resolve("work");
+            if (Files.exists(workDir)) {
+                logger.info("\n[1] Scanning Nextflow work directory for database files...");
+                logger.info("    Path: " + workDir.toAbsolutePath());
+
+                Files.walk(workDir, 5)  // Limit depth to avoid too deep recursion
+                    .filter(Files::isDirectory)
+                    .forEach(dir -> {
+                        try {
+                            // Check if this directory contains Kraken2 database files
+                            boolean hasHashFile = Files.exists(dir.resolve("hash.k2d"));
+                            boolean hasTaxoFile = Files.exists(dir.resolve("taxo.k2d"));
+
+                            if (hasHashFile && hasTaxoFile) {
+                                foundDatabases.add(dir);
+                                logger.info("    ✓ Found database files in: " + dir.getFileName());
+                                logger.info("      Full path: " + dir.toAbsolutePath());
+
+                                // Try to determine database type from parent directory name
+                                String pathStr = dir.toString().toLowerCase();
+                                DatabaseType dbType = null;
+
+                                if (pathStr.contains("viral")) {
+                                    dbType = DatabaseType.VIRAL;
+                                } else if (pathStr.contains("standard")) {
+                                    dbType = DatabaseType.STANDARD;
+                                } else if (pathStr.contains("minikraken") || pathStr.contains("mini")) {
+                                    dbType = DatabaseType.MINIKRAKEN;
+                                }
+
+                                if (dbType != null) {
+                                    logger.info("      Detected type: " + dbType.getId());
+                                    String version = "Downloaded " +
+                                        LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+                                    dbManager.cacheDownloadedDatabase(dbType, dir, version);
+                                    logger.info("      ✓ Cached for future use");
+                                } else {
+                                    logger.info("      ⚠ Could not determine database type");
+                                }
+                            }
+                        } catch (Exception e) {
+                            // Ignore errors for individual directories
+                        }
+                    });
+            }
+
+            // Check common database locations
+            logger.info("\n[2] Checking standard database locations...");
+
+            // Check user's home for various database locations
+            Path[] homeLocations = {
+                Paths.get(System.getProperty("user.home"), "taxtriage_databases"),
+                Paths.get(System.getProperty("user.home"), ".taxtriage", "databases"),
+                Paths.get(System.getProperty("user.home"), ".nextflow", "assets"),
+                Paths.get(System.getProperty("user.home"), "kraken2_dbs")
             };
 
-            // Look for database files in possible locations
-            for (Path dbPath : dbLocations) {
-                if (Files.exists(dbPath) && Files.isDirectory(dbPath)) {
-                    logger.info("  Checking location: " + dbPath);
-
-                    // Look for subdirectories that might be databases
-                    Files.list(dbPath)
-                        .filter(Files::isDirectory)
-                        .forEach(dir -> {
-                            String dirName = dir.getFileName().toString();
-                            DatabaseType dbType = mapDatabaseNameToType(dirName);
-
-                            if (dbType != null && isValidDatabaseDirectory(dir)) {
-                                logger.info("  Found downloaded database: " + dirName);
-                                logger.info("    Location: " + dir);
-
-                                // Cache this database
-                                String version = "Downloaded " +
-                                    LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
-                                dbManager.cacheDownloadedDatabase(dbType, dir, version);
-
-                                logger.info("    ✓ Cached for future use");
-                            }
-                        });
+            for (Path dbPath : homeLocations) {
+                if (Files.exists(dbPath)) {
+                    logger.info("    Checking: " + dbPath);
+                    scanDirectoryForDatabases(dbPath, dbManager);
                 }
             }
 
-            // Also check the user's home directory for standard database location
-            Path homeDbPath = Paths.get(System.getProperty("user.home"), ".taxtriage", "databases");
-            if (Files.exists(homeDbPath)) {
-                logger.info("  Checking user home database location: " + homeDbPath);
-                cacheDirectoryIfDatabase(homeDbPath);
+            // Check workspace locations
+            logger.info("\n[3] Checking workspace-relative locations...");
+            Path[] workspaceLocations = {
+                workspaceDir.resolve("databases"),
+                workspaceDir.resolve("db"),
+                workspaceDir.resolve("kraken2_db"),
+                workspaceDir.resolve("output").resolve("databases"),
+                workspaceDir.resolve("output").resolve("db")
+            };
+
+            for (Path dbPath : workspaceLocations) {
+                if (Files.exists(dbPath)) {
+                    logger.info("    Checking: " + dbPath);
+                    scanDirectoryForDatabases(dbPath, dbManager);
+                }
+            }
+
+            // Log summary
+            if (foundDatabases.isEmpty()) {
+                logger.info("\n⚠ No databases found in work directory");
+                logger.info("  Databases may be:");
+                logger.info("  - Downloaded to a different location");
+                logger.info("  - Inside Docker containers (not accessible)");
+                logger.info("  - Already cached from a previous run");
+            } else {
+                logger.info("\n✓ Found " + foundDatabases.size() + " database(s)");
             }
 
         } catch (Exception e) {
-            logger.log(Level.WARNING, "Error caching downloaded databases", e);
+            logger.log(Level.WARNING, "Error during database caching", e);
+            e.printStackTrace();
         }
 
         logger.info("==========================================");
+    }
+
+    /**
+     * Scans a directory for database subdirectories and caches them.
+     */
+    private void scanDirectoryForDatabases(Path directory, DatabaseManager dbManager) {
+        try {
+            Files.list(directory)
+                .filter(Files::isDirectory)
+                .forEach(dir -> {
+                    String dirName = dir.getFileName().toString();
+                    DatabaseType dbType = mapDatabaseNameToType(dirName);
+
+                    if (isValidDatabaseDirectory(dir)) {
+                        logger.info("      Found database: " + dirName + " at " + dir);
+
+                        if (dbType != null) {
+                            String version = "Downloaded " +
+                                LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+                            dbManager.cacheDownloadedDatabase(dbType, dir, version);
+                            logger.info("      ✓ Cached as type: " + dbType.getId());
+                        } else {
+                            logger.info("      ⚠ Unknown database type: " + dirName);
+                        }
+                    }
+                });
+        } catch (IOException e) {
+            logger.warning("    Error scanning directory: " + e.getMessage());
+        }
     }
 
     /**
