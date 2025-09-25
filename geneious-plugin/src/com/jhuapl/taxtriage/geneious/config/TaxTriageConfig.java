@@ -75,7 +75,7 @@ public class TaxTriageConfig {
                 .withSubsampling(options.isSubsamplingEnabled(), options.getSubsampleSize())
                 .withComputeResources(options.getThreadCount(), options.getMemoryLimit())
                 .withDatabases(options.getKrakenDatabase(), options.getBrackenDatabase())
-                .withOutputDirectory(options.getOutputDirectory())
+                .withOutputDirectory(null) // Will use temp directory
                 .withDefaults()
                 .build();
     }

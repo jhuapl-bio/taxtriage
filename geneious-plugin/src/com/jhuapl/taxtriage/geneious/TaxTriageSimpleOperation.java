@@ -16,6 +16,7 @@ import com.jhuapl.taxtriage.geneious.database.DatabaseManager.DatabaseType;
 import com.jhuapl.taxtriage.geneious.docker.DockerException;
 import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
+import com.jhuapl.taxtriage.geneious.tools.SamtoolsDeduplicator;
 // Removed imports to deleted importer package
 // import com.jhuapl.taxtriage.geneious.importer.ImportResult;
 // import com.jhuapl.taxtriage.geneious.importer.ResultImporter;
@@ -113,7 +114,6 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         // Get input files from browsers
         List<File> inputFiles = taxTriageOptions.getInputFiles();
         File inputDirectory = taxTriageOptions.getInputDirectory();
-        File outputDirectory = taxTriageOptions.getOutputDirectory();
 
         // Log the file selections
         System.out.println("[TaxTriage] Input files from browser: " + (inputFiles != null ? inputFiles.size() : 0));
@@ -123,7 +123,6 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             }
         }
         System.out.println("[TaxTriage] Input directory: " + (inputDirectory != null ? inputDirectory.getAbsolutePath() : "null"));
-        System.out.println("[TaxTriage] Output directory: " + (outputDirectory != null ? outputDirectory.getAbsolutePath() : "null"));
 
         // Check if we have input files from browsers
         boolean hasFileInputs = (inputFiles != null && !inputFiles.isEmpty()) || inputDirectory != null;
@@ -294,7 +293,17 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 throw new DocumentOperationException(errorMsg);
             }
 
-            // Step 7: Import results back to Geneious
+            // Step 7: Optionally deduplicate BAM files if requested
+            if (options.isDeduplicationEnabled()) {
+                if (progressListener != null) {
+                    progressListener.setMessage("Deduplicating mapped reads...");
+                    progressListener.setProgress(0.85);
+                }
+
+                deduplicateBamFiles(workspaceDir, options.getThreadCount(), progressListener);
+            }
+
+            // Step 8: Import results back to Geneious
             if (progressListener != null) {
                 progressListener.setMessage("Importing results...");
                 progressListener.setProgress(0.9);
@@ -720,6 +729,106 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         }
 
         return importedDocs;
+    }
+
+    /**
+     * Deduplicates BAM files in the output directory using samtools markdup.
+     *
+     * @param workspaceDir The workspace directory containing output files
+     * @param threads Number of threads to use for deduplication
+     * @param progressListener Progress listener for updates
+     */
+    private void deduplicateBamFiles(Path workspaceDir, int threads, ProgressListener progressListener) {
+        logger.info("==========================================");
+        logger.info("Starting BAM deduplication process");
+        logger.info("==========================================");
+
+        try {
+            Path outputDir = workspaceDir.resolve("output");
+            if (!Files.exists(outputDir) || !Files.isDirectory(outputDir)) {
+                logger.warning("Output directory not found, skipping deduplication");
+                return;
+            }
+
+            // Create deduplicator instance
+            SamtoolsDeduplicator deduplicator = new SamtoolsDeduplicator();
+
+            // Check if samtools is available
+            if (!SamtoolsDeduplicator.isSamtoolsAvailable()) {
+                logger.warning("Samtools is not available, skipping deduplication");
+                if (progressListener != null) {
+                    progressListener.setMessage("Samtools not found - skipping deduplication");
+                }
+                return;
+            }
+
+            // Find all BAM files in the output directory
+            List<Path> bamFiles = new ArrayList<>();
+            Files.walk(outputDir)
+                .filter(Files::isRegularFile)
+                .filter(p -> p.getFileName().toString().endsWith(".bam"))
+                .filter(p -> !p.getFileName().toString().contains(".dedup."))  // Skip already deduplicated
+                .forEach(bamFiles::add);
+
+            if (bamFiles.isEmpty()) {
+                logger.info("No BAM files found for deduplication");
+                return;
+            }
+
+            logger.info("Found " + bamFiles.size() + " BAM file(s) to deduplicate");
+
+            // Deduplicate each BAM file
+            int processedCount = 0;
+            int totalDuplicatesRemoved = 0;
+
+            for (Path bamFile : bamFiles) {
+                logger.info("Processing: " + bamFile.getFileName());
+
+                if (progressListener != null) {
+                    progressListener.setMessage("Deduplicating: " + bamFile.getFileName());
+                }
+
+                // Deduplicate the BAM file
+                SamtoolsDeduplicator.DeduplicationResult result =
+                    deduplicator.deduplicateBam(bamFile, bamFile.getParent(), threads);
+
+                if (result.success) {
+                    processedCount++;
+                    totalDuplicatesRemoved += result.duplicatesRemoved;
+                    logger.info("✓ Successfully deduplicated: " + bamFile.getFileName());
+                    logger.info("  Duplicates removed: " + result.duplicatesRemoved);
+                    logger.info("  Output: " + result.outputPath);
+
+                    // Optionally replace the original with deduplicated version
+                    // For now, we keep both files (original gets .original extension)
+                    try {
+                        Path originalBackup = Paths.get(bamFile.toString() + ".original");
+                        Files.move(bamFile, originalBackup);
+                        logger.info("  Original backed up to: " + originalBackup.getFileName());
+                    } catch (IOException e) {
+                        logger.warning("Could not backup original file: " + e.getMessage());
+                    }
+                } else {
+                    logger.warning("Failed to deduplicate: " + bamFile.getFileName());
+                    if (result.errorMessage != null) {
+                        logger.warning("  Error: " + result.errorMessage);
+                    }
+                }
+            }
+
+            logger.info("==========================================");
+            logger.info("Deduplication complete");
+            logger.info("  Files processed: " + processedCount + "/" + bamFiles.size());
+            logger.info("  Total duplicates removed: " + totalDuplicatesRemoved);
+            logger.info("==========================================");
+
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error during BAM deduplication", e);
+            // Don't fail the whole workflow if deduplication fails
+            if (progressListener != null) {
+                progressListener.setMessage("Deduplication failed (non-critical) - continuing");
+            }
+        }
     }
 
     /**

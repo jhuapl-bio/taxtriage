@@ -23,8 +23,8 @@ public class TaxTriageOptions extends Options {
     // Option keys for serialization and retrieval
     private static final String INPUT_FILES_KEY = "inputFiles";
     private static final String INPUT_DIRECTORY_KEY = "inputDirectory";
-    private static final String OUTPUT_DIRECTORY_KEY = "outputDirectory";
     private static final String PRESET_KEY = "preset";
+    private static final String DEDUPLICATE_READS_KEY = "deduplicateReads";
     private static final String QUALITY_THRESHOLD_KEY = "qualityThreshold";
     private static final String MIN_READ_LENGTH_KEY = "minReadLength";
     private static final String SUBSAMPLE_SIZE_KEY = "subsampleSize";
@@ -101,16 +101,6 @@ public class TaxTriageOptions extends Options {
 
         addLabel(" ");
 
-        // === OUTPUT CONFIGURATION ===
-        addLabel("Output Configuration:");
-
-        // Output directory selection with browse button
-        FileSelectionOption outputOption = addFileSelectionOption(OUTPUT_DIRECTORY_KEY, "Output Directory:", getDefaultOutputDirectory().getAbsolutePath());
-        outputOption.setDescription("Browse to select directory where TaxTriage results will be saved");
-        outputOption.setSelectionType(JFileChooser.DIRECTORIES_ONLY);
-
-        addLabel(" ");
-
         // === ANALYSIS CONFIGURATION ===
         addLabel("Analysis Configuration:");
 
@@ -175,6 +165,15 @@ public class TaxTriageOptions extends Options {
 
         addIntegerOption(MEMORY_LIMIT_KEY, "Memory Limit (GB):", 8, 1, 64);
         getOption(MEMORY_LIMIT_KEY).setDescription("Maximum memory allocation for TaxTriage processes");
+
+        addLabel(" ");
+
+        // === POST-PROCESSING OPTIONS ===
+        addLabel("Post-Processing Options:");
+
+        // Deduplication option
+        addBooleanOption(DEDUPLICATE_READS_KEY, "Deduplicate Mapped Reads:", false);
+        getOption(DEDUPLICATE_READS_KEY).setDescription("Remove PCR duplicates from BAM files using samtools markdup (requires samtools installed)");
     }
 
     /**
@@ -225,16 +224,13 @@ public class TaxTriageOptions extends Options {
     }
 
     /**
-     * Gets the output directory.
+     * Gets whether to deduplicate mapped reads.
      *
-     * @return output directory file
+     * @return true if deduplication is enabled
      */
-    public File getOutputDirectory() {
-        String value = (String) getValue(OUTPUT_DIRECTORY_KEY);
-        if (value != null && !value.trim().isEmpty()) {
-            return new File(value.trim());
-        }
-        return getDefaultOutputDirectory();
+    public boolean isDeduplicationEnabled() {
+        Boolean value = (Boolean) getValue(DEDUPLICATE_READS_KEY);
+        return value != null ? value : false;
     }
 
     /**
@@ -361,11 +357,7 @@ public class TaxTriageOptions extends Options {
             }
         }
 
-        // Validate output directory
-        File outputDir = getOutputDirectory();
-        if (outputDir == null) {
-            return "Output directory must be specified";
-        }
+        // Output directory no longer needed - results are imported to Geneious
 
         // Validate quality threshold
         int quality = getQualityThreshold();
