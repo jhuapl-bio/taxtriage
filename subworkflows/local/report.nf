@@ -82,7 +82,8 @@ workflow REPORT {
         } else{
             ALIGNMENT_PER_SAMPLE(
                 alignments.combine(pathogens_list),
-                assemblyfile
+                assemblyfile,
+                params.minmapq,
             )
 
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel

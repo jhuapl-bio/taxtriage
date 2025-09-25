@@ -12,7 +12,6 @@ process MINIMAP2_ALIGN {
     val bam_format
     val cigar_paf_format
     val cigar_bam
-    val minmapq
 
     output:
     tuple val(meta), path("*.paf"), optional: true, emit: paf
@@ -38,10 +37,10 @@ process MINIMAP2_ALIGN {
     
     def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
 
-    def minmapq = minmapq ? " -q ${minmapq} " :  ""
+    // def minmapq = minmapq ? " -q ${minmapq} " :  ""
     def I_value = "${(task.memory.toMega() * Math.min(0.7 / task.cpus, 0.7)).longValue()}M"
     def S_value = "${(task.memory.toMega() * Math.min(0.10 / task.cpus, 0.10)).longValue()}M"
-    def bam_output = bam_format ? "-a | samtools sort -@ ${cpu_limit} -m $S_value | samtools view $minmapq -@ ${cpu_limit} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
+    def bam_output = bam_format ? "-a | samtools sort -@ ${cpu_limit} -m $S_value | samtools view -@ ${cpu_limit} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     // if input is illumina then use -ax sr else use -ax map-ont

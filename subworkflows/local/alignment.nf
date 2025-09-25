@@ -88,7 +88,6 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment,
             true,
             true,
-            params.minmapq
         )
         collected_bams = BOWTIE2_ALIGN.out.aligned
         ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
@@ -98,7 +97,6 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
-            params.minmapq
         )
         ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
 
@@ -109,7 +107,6 @@ workflow ALIGNMENT {
             true,
             true,
             true,
-            params.minmapq
         )
         ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions)
 

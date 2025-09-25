@@ -78,33 +78,37 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-length", type=int, default=2000,
                    help="Maximum length of each output read; splits longer reads evenly.")
     return p.parse_args()
-
-
 def bam_iter(bam_path: str,
              min_mapq: int = 0,
              include_secondary: bool = False,
              include_supplementary: bool = False,
              extract: str = "aligned") -> tuple[List[ReadRec], int]:
-    """Yield ReadRec for each primary alignment passing filters."""
     reads: List[ReadRec] = []
     total: int = 0
     with pysam.AlignmentFile(bam_path, "rb") as bam:
         for aln in bam.fetch(until_eof=True):
-            if aln.is_unmapped or aln.mapping_quality < min_mapq:
+            if aln.mapping_quality < min_mapq:
                 continue
             if not include_secondary and aln.is_secondary:
                 continue
             if not include_supplementary and aln.is_supplementary:
                 continue
 
-            seq = (aln.query_alignment_sequence if extract == "aligned"
-                   else aln.query_sequence)
-            qual = (aln.query_alignment_qualities if extract == "aligned"
-                    else aln.query_qualities) or []
+            is_unmapped = aln.is_unmapped
+
+            # Choose sequence/quality: no aligned portion for unmapped
+            if extract == "aligned" and not is_unmapped:
+                seq = aln.query_alignment_sequence
+                qual_list = aln.query_alignment_qualities or []
+            else:
+                seq = aln.query_sequence
+                qual_list = aln.query_qualities or []
+
             if not seq:
                 continue
 
             total += 1
+
             name = aln.query_name
             if aln.is_paired:
                 if aln.is_read1:
@@ -112,21 +116,28 @@ def bam_iter(bam_path: str,
                 elif aln.is_read2:
                     name += "/2"
 
-            rname = bam.get_reference_name(aln.reference_id)
-            start, end = aln.reference_start, aln.reference_end
-            strand = '-' if aln.is_reverse else '+'
-            mapq = aln.mapping_quality
-            aln_len = (end - start) if end is not None and start is not None else 0
-            qual_str = "".join(chr(q + 33) for q in qual)
+            if is_unmapped:
+                rname = "*"
+                start = None
+                end = None
+                strand = "."
+                aln_len = len(seq)
+            else:
+                # reference_id can be -1 for unmapped; we’re already in mapped branch
+                rname = bam.get_reference_name(aln.reference_id)
+                start, end = aln.reference_start, aln.reference_end
+                strand = '-' if aln.is_reverse else '+'
+                aln_len = (end - start) if end is not None and start is not None else 0
+
+            qual_str = "".join(chr(q + 33) for q in qual_list) if qual_list else ""
 
             reads.append(ReadRec(name, seq, qual_str,
-                                 rname, start, end, strand, mapq, aln_len))
+                                 rname, start, end, strand, aln.mapping_quality, aln_len))
     return reads, total
-
-
-def bin_pos(v: int, window: int) -> int:
+def bin_pos(v: int, window: int):
+    if v is None:
+        return None
     return int(floor(v / window) * window) if window > 0 else v
-
 
 def position_clusters(reads: Iterable[ReadRec], window: int,
                       min_cluster_size: int) -> Dict[Tuple[str,int,int,str], List[ReadRec]]:
