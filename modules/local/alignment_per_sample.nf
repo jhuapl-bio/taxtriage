@@ -39,7 +39,7 @@ process ALIGNMENT_PER_SAMPLE {
 
     def output = "${meta.id}.paths.txt"
     def id = meta.id
-    def minmapq = minmapq ? " -q ${minmapq} " :  ""
+    def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     def assemblyi = assembly ? " -j ${assembly} " : " "

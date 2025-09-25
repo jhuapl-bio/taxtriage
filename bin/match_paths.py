@@ -347,7 +347,7 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
-    parser.add_argument('-q', '--minmapq', required=False, type=int, default=0, help="Minimum mapping quality")
+    parser.add_argument('--minmapq', required=False, type=int, default=0, help="Minimum mapping quality")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )

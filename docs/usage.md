@@ -425,20 +425,28 @@ https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy and are as follow
 3. [NT Transformer](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/nucleotide-transformer-v2-50m-multi-species-taxonomy). **Short Reads Optimized**
    Please see the submission to bioRxiv for more info at [10.1101/2025.08.21.671544](https://doi.org/10.1101/2025.08.21.671544)
 
+You can download the models with the `huggingface cli` or use standard `git`
+
+First:
+
+1. Download it with `pip install huggingface_hub`
+
+Then, run either
+
+2. `hf download jhuapl-bio/microbert --local-dir ./`
+
+or
+
+2. `git clone https://huggingface.co/jhuapl-bio/microbert`
+
+Make sure you specify the correct model based on the platform of choice i.e. the sequence length type.
 For example, you could run:
 
 ```
-nextflow run main.nf -profile test,docker -resume --microbert models/microbert/taxonomy/nucleotide-transformer-v2-50m-multi-species-taxonomy --compress_species --microbert_maxlen 300
+nextflow run main.nf -profile test,docker -resume --microbert microbert/taxonomy/nucleotide-transformer-v2-50m-multi-species-taxonomy --compress_species --microbert_maxlen 300
 ```
 
 Notice the `--compress_species` flag which condenses the report to only annotate to the species level BECAUSE MicrobeRT models are also only trained down to the species level.
-
-Make sure you specify the correct model based on the platform of choice i.e. the sequence length type.
-
-You can download the models with the `huggingface-cli`
-
-1. Download it with `pip install huggingface_hub`
-2. `huggingface-cli download jhuapl-bio/microbert --local-dir ./models`
 
 ## AWS with Nextflow Tower
 
