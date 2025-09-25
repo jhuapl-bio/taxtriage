@@ -24,6 +24,7 @@ import jebl.util.ProgressListener;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -618,23 +619,17 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 logger.info("  Type: " + dbType.getId());
                 logger.info("  Name: " + dbName);
 
-                // Create a persistent location for database downloads
-                Path dbDownloadPath = Paths.get(System.getProperty("user.home"),
-                                               "taxtriage_databases", dbName);
-                try {
-                    Files.createDirectories(dbDownloadPath.getParent());
-                    logger.info("  Download location: " + dbDownloadPath.toAbsolutePath());
-                } catch (IOException e) {
-                    logger.warning("  Could not create database directory: " + e.getMessage());
-                }
-
+                // When downloading, just pass the database name (e.g., "viral")
+                // TaxTriage will download it to its own location
+                logger.info("  TaxTriage will download to workflow directory");
                 logger.info("==========================================");
 
-                // Pass the full path to the workflow so it downloads to a known location
                 cmd.add("--db");
-                cmd.add(dbDownloadPath.toAbsolutePath().toString());
+                cmd.add(dbName);  // Just use the name, not a full path
                 cmd.add("--download_db");
                 cmd.add("true");
+
+                // Note: After download, we'll scan the work directory to find and cache it
             }
         } else {
             // Unknown database type, use as-is
@@ -746,7 +741,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 logger.info("\n[1] Scanning Nextflow work directory for database files...");
                 logger.info("    Path: " + workDir.toAbsolutePath());
 
-                Files.walk(workDir, 5)  // Limit depth to avoid too deep recursion
+                // Look for directories containing .k2d files (Kraken2 database files)
+                Files.walk(workDir, FileVisitOption.FOLLOW_LINKS)
                     .filter(Files::isDirectory)
                     .forEach(dir -> {
                         try {
@@ -795,7 +791,13 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 Paths.get(System.getProperty("user.home"), "taxtriage_databases"),
                 Paths.get(System.getProperty("user.home"), ".taxtriage", "databases"),
                 Paths.get(System.getProperty("user.home"), ".nextflow", "assets"),
-                Paths.get(System.getProperty("user.home"), "kraken2_dbs")
+                Paths.get(System.getProperty("user.home"), "kraken2_dbs"),
+                // Check singularity cache locations
+                Paths.get(System.getProperty("user.home"), ".singularity", "cache"),
+                Paths.get(System.getProperty("user.home"), ".apptainer", "cache"),
+                // Check common Nextflow work locations
+                Paths.get(System.getProperty("java.io.tmpdir"), "nxf-work"),
+                workspaceDir.resolve("work").resolve("singularity")
             };
 
             for (Path dbPath : homeLocations) {
