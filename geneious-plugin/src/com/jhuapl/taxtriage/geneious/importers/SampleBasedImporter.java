@@ -43,6 +43,7 @@ public class SampleBasedImporter {
     private Map<String, Map<String, WritableDatabaseService>> sampleFolders; // sample -> (subfolder -> service)
     private String runName;
     private Path outputDir;
+    private WritableDatabaseService targetDatabaseService; // The selected folder to import into
 
     /**
      * Creates a new sample-based importer.
@@ -54,6 +55,24 @@ public class SampleBasedImporter {
         this.outputDir = outputDir;
         this.sampleFolders = new HashMap<>();
         initializeRootService();
+    }
+
+    /**
+     * Creates a new sample-based importer with a specific target database.
+     * @param runName Name for the main folder (e.g., "TaxTriage_output_20240916")
+     * @param outputDir Path to TaxTriage output directory
+     * @param targetDatabase The database service to import into (e.g., currently selected folder)
+     */
+    public SampleBasedImporter(String runName, Path outputDir, WritableDatabaseService targetDatabase) {
+        this.runName = runName;
+        this.outputDir = outputDir;
+        this.sampleFolders = new HashMap<>();
+        this.targetDatabaseService = targetDatabase;
+        if (targetDatabase != null) {
+            this.rootService = targetDatabase;
+        } else {
+            initializeRootService();
+        }
     }
 
     /**
@@ -560,13 +579,16 @@ public class SampleBasedImporter {
                 System.out.println("\n  Processing BAM file: " + bamFile.getName());
 
                 try {
-                    // Determine target folder
-                    WritableDatabaseService targetFolder = folders.containsKey("References")
-                        ? folders.get("References")
-                        : folders.get("Alignments");
+                    // Determine target folder - BAM files should go to Alignments folder
+                    WritableDatabaseService targetFolder = folders.get("Alignments");
+
+                    // If no Alignments folder exists, try References as fallback
+                    if (targetFolder == null) {
+                        targetFolder = folders.get("References");
+                    }
 
                     if (targetFolder == null) {
-                        System.out.println("    Error: No suitable folder for BAM import");
+                        System.out.println("    Error: No suitable folder for BAM import (need Alignments or References folder)");
                         continue;
                     }
 
@@ -575,6 +597,7 @@ public class SampleBasedImporter {
 
                     if (!colocatedReferences.isEmpty()) {
                         System.out.println("    Using ProperBamImporter with " + colocatedReferences.size() + " reference file(s)");
+                        System.out.println("    Target folder: " + (folders.get("Alignments") == targetFolder ? "Alignments" : "References"));
                         bamDocs = ProperBamImporter.importBamWithReferences(
                             bamFile,
                             colocatedReferences,
@@ -584,6 +607,7 @@ public class SampleBasedImporter {
                     } else {
                         System.out.println("    Using ProperBamImporter without explicit reference files");
                         System.out.println("    (Importer will look for references in the database)");
+                        System.out.println("    Target folder: " + (folders.get("Alignments") == targetFolder ? "Alignments" : "References"));
                         bamDocs = ProperBamImporter.importBam(
                             bamFile,
                             targetFolder,
