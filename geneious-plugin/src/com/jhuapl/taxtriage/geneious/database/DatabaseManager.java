@@ -256,30 +256,54 @@ public class DatabaseManager {
     private DatabaseInfo getCachedDatabase(DatabaseType type) {
         Path cacheDir = Paths.get(CACHE_BASE_DIR, type.getId());
 
+        logger.info("Checking for cached database:");
+        logger.info("  Type: " + type.getId());
+        logger.info("  Cache dir: " + cacheDir);
+
         // Resolve symlinks and handle macOS /var -> /private/var mapping
         try {
             if (Files.exists(cacheDir)) {
                 cacheDir = cacheDir.toRealPath();
+                logger.info("  Resolved path: " + cacheDir);
             }
         } catch (IOException e) {
-            // Ignore and use original path
+            logger.warning("  Could not resolve path: " + e.getMessage());
         }
 
         if (!Files.exists(cacheDir)) {
+            logger.info("  Cache directory does not exist");
             return null;
         }
 
         DatabaseMetadata metadata = metadataCache.get(type.getId());
         if (metadata == null) {
+            logger.info("  No metadata found for " + type.getId());
             return null;
         }
 
+        logger.info("  Found metadata: version=" + metadata.version + ", timestamp=" + metadata.downloadTimestamp);
+
         // Check if cache is expired
         if (metadata.isExpired(CACHE_EXPIRY_DAYS)) {
-            logger.info("Cached database " + type.getId() + " is expired (>" + CACHE_EXPIRY_DAYS + " days old)");
+            logger.info("  Cached database " + type.getId() + " is expired (>" + CACHE_EXPIRY_DAYS + " days old)");
         }
 
-        return new DatabaseInfo(cacheDir.toString(), metadata.version, metadata, true);
+        DatabaseInfo dbInfo = new DatabaseInfo(cacheDir.toString(), metadata.version, metadata, true);
+        logger.info("  Validating database files...");
+        boolean isValid = dbInfo.isValid();
+        logger.info("  Database validation result: " + (isValid ? "VALID" : "INVALID"));
+
+        if (!isValid) {
+            logger.warning("  Database validation failed - missing required files");
+            Path hashFile = Paths.get(dbInfo.path).resolve("hash.k2d");
+            Path taxoFile = Paths.get(dbInfo.path).resolve("taxo.k2d");
+            logger.warning("    hash.k2d exists: " + Files.exists(hashFile));
+            logger.warning("    taxo.k2d exists: " + Files.exists(taxoFile));
+            return null;
+        }
+
+        logger.info("  ✓ Cached database is valid");
+        return dbInfo;
     }
 
     private DatabaseInfo getBundledDatabase(DatabaseType type) {
