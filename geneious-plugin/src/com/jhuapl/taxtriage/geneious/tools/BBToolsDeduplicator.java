@@ -507,7 +507,15 @@ public class BBToolsDeduplicator {
      * Gets the BBTools Docker image name being used.
      * @return the Docker image name
      */
-    public String getBBToolsImage() {
+    public String getImageName() {
         return BBTOOLS_IMAGE;
+    }
+
+    /**
+     * Gets the substitution threshold being used for deduplication.
+     * @return the substitution threshold (0-10)
+     */
+    public int getSubstitutionThreshold() {
+        return substitutionThreshold;
     }
 }
