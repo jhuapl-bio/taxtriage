@@ -352,33 +352,47 @@ public class SampleBasedImporter {
             if (folderName.equals("Alignments-original")) {
                 // Check for non-deduplicated BAM files
                 shouldCreateFolder = hasOriginalBamFiles(sample, sourceDirs);
-                logger.fine("Checking for original BAM files: " + shouldCreateFolder);
+                logger.info("Checking for original BAM files for sample " + sample + ": " + shouldCreateFolder);
             } else if (folderName.equals("Alignments-deduplicated")) {
                 // Check for deduplicated BAM files
                 shouldCreateFolder = hasDeduplicatedBamFiles(sample, sourceDirs);
-                logger.fine("Checking for deduplicated BAM files: " + shouldCreateFolder);
+                logger.info("Checking for deduplicated BAM files for sample " + sample + ": " + shouldCreateFolder);
             } else if (folderName.equals("Alignments")) {
                 // Check for any BAM files
                 shouldCreateFolder = hasOriginalBamFiles(sample, sourceDirs) || hasDeduplicatedBamFiles(sample, sourceDirs);
-                logger.fine("Checking for any BAM files: " + shouldCreateFolder);
+                logger.info("Checking for any BAM files for sample " + sample + ": " + shouldCreateFolder);
             }
 
-            if (shouldCreateFolder) {
+            // Always create the folder if we detected deduplication to ensure both folders exist
+            if (shouldCreateFolder || (hasDeduplicatedFiles && folderName.startsWith("Alignments-"))) {
                 WritableDatabaseService subfolder = null;
                 try {
                     subfolder = sampleFolder.createChildFolder(folderName);
+                    logger.info("Successfully created subfolder: " + sample + "/" + folderName);
                 } catch (DatabaseServiceException e) {
                     logger.warning("Could not create subfolder: " + folderName + " - " + e.getMessage());
+                    // Try to get existing folder
+                    subfolder = sampleFolder.getChildService(folderName);
+                    if (subfolder != null) {
+                        logger.info("Retrieved existing subfolder: " + sample + "/" + folderName);
+                    }
                 }
 
                 if (subfolder == null) {
                     subfolder = sampleFolder.getChildService(folderName);
+                    if (subfolder != null) {
+                        logger.info("Retrieved existing subfolder: " + sample + "/" + folderName);
+                    }
                 }
 
                 if (subfolder != null) {
                     folders.put(folderName, subfolder);
-                    logger.info("Created subfolder: " + sample + "/" + folderName);
+                    logger.info("Added subfolder to map: " + sample + "/" + folderName);
+                } else {
+                    logger.warning("Failed to create or retrieve subfolder: " + sample + "/" + folderName);
                 }
+            } else {
+                logger.info("Skipping folder creation for " + sample + "/" + folderName + " - no content found");
             }
         }
 
@@ -389,36 +403,43 @@ public class SampleBasedImporter {
      * Checks if there are original (non-deduplicated) BAM files for the sample.
      */
     private boolean hasOriginalBamFiles(String sample, List<Path> dirs) {
-        logger.fine("Checking for original BAM files for sample: " + sample);
+        logger.info("Checking for original BAM files for sample: " + sample);
         for (Path dir : dirs) {
             if (Files.exists(dir)) {
-                logger.fine("Checking directory: " + dir);
+                logger.info("Checking directory: " + dir);
                 try {
-                    List<Path> originalFiles = Files.list(dir)
+                    List<Path> allBamFiles = Files.list(dir)
                         .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".bam"))
+                        .collect(Collectors.toList());
+
+                    logger.info("Found " + allBamFiles.size() + " total BAM files in " + dir.getFileName());
+
+                    List<Path> originalFiles = allBamFiles.stream()
                         .filter(p -> {
                             String filename = p.getFileName().toString();
                             // Original BAM files: contain sample name, end with .bam, but NOT .dedup.bam
                             boolean isOriginal = filename.contains(sample) &&
                                                  filename.endsWith(".bam") &&
                                                  !filename.endsWith(".dedup.bam");
-                            if (isOriginal) {
-                                logger.fine("Found original file: " + filename);
-                            }
+                            logger.info("  File: " + filename + " -> sample match: " + filename.contains(sample) + ", is BAM: " + filename.endsWith(".bam") + ", not dedup: " + !filename.endsWith(".dedup.bam") + " -> original: " + isOriginal);
                             return isOriginal;
                         })
                         .collect(Collectors.toList());
 
                     if (!originalFiles.isEmpty()) {
-                        logger.info("Found " + originalFiles.size() + " original BAM file(s)");
+                        logger.info("Found " + originalFiles.size() + " original BAM file(s) for sample " + sample);
+                        originalFiles.forEach(f -> logger.info("  - " + f.getFileName()));
                         return true;
                     }
                 } catch (IOException e) {
-                    logger.warning("Error checking for original BAM files: " + e.getMessage());
+                    logger.warning("Error checking for original BAM files in " + dir + ": " + e.getMessage());
                 }
+            } else {
+                logger.info("Directory does not exist: " + dir);
             }
         }
-        logger.fine("No original BAM files found");
+        logger.info("No original BAM files found for sample: " + sample);
         return false;
     }
 

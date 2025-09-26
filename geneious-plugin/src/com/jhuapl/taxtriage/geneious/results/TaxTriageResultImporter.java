@@ -17,6 +17,7 @@ import com.jhuapl.taxtriage.geneious.importers.NCBIReferenceDownloader;
 import com.jhuapl.taxtriage.geneious.importers.ReferenceManager;
 import com.jhuapl.taxtriage.geneious.importers.SimpleFastaImporter;
 import com.jhuapl.taxtriage.geneious.reports.TaxTriageHtmlReportGenerator;
+import com.jhuapl.taxtriage.geneious.utils.ArchiveManager;
 import jebl.util.ProgressListener;
 
 import java.io.File;
@@ -321,6 +322,10 @@ public class TaxTriageResultImporter {
         logger.info("========== IMPORT COMPLETE ===========");
         logger.info("Total imported documents: " + importedDocs.size());
         logger.info("BAM files prepared for manual import: " + bamFiles.size());
+
+        // Post-import archive creation
+        logger.info("Starting post-import archive creation...");
+        createPostImportArchive(outputDir, sampleImporter);
 
         return importedDocs;
     }
@@ -1956,6 +1961,83 @@ public class TaxTriageResultImporter {
         if (lowerName.contains("krona")) return "Krona Report";
         if (lowerName.contains("merged")) return "Merged Kraken Results";
         return "Kraken Output";
+    }
+
+    /**
+     * Creates a post-import archive of the TaxTriage results.
+     * This prompts the user for a save location and creates a .zip archive.
+     */
+    private void createPostImportArchive(Path outputDir, SampleBasedImporter sampleImporter) {
+        logger.info("===========================================");
+        logger.info("POST-IMPORT ARCHIVE CREATION");
+        logger.info("===========================================");
+
+        try {
+            // Use the folder name as the suggested archive name
+            String folderName = outputDir.getFileName().toString();
+            String suggestedName = "TaxTriage_" + folderName;
+
+            logger.info("Creating archive for output directory: " + outputDir);
+            logger.info("Suggested archive name: " + suggestedName);
+
+            // Create archive manager
+            ArchiveManager archiveManager = new ArchiveManager();
+
+            // Check if the directory can be archived
+            if (!archiveManager.canArchive(outputDir)) {
+                logger.warning("Directory cannot be archived: " + outputDir);
+                logger.warning("Archive creation cancelled");
+                return;
+            }
+
+            // Create archive with user dialog and progress monitoring
+            logger.info("Prompting user for archive save location...");
+            File archiveFile = archiveManager.createArchiveWithDialog(
+                outputDir,
+                suggestedName,
+                percentage -> {
+                    if (percentage % 10 == 0) { // Log every 10%
+                        logger.info("Archive creation progress: " + percentage + "%");
+                    }
+                }
+            );
+
+            if (archiveFile != null) {
+                logger.info("✓ Archive created successfully!");
+                logger.info("  Archive file: " + archiveFile.getAbsolutePath());
+                logger.info("  Archive size: " + formatFileSize(archiveFile.length()));
+
+                // Log to console for user visibility
+                System.out.println("===========================================");
+                System.out.println("TaxTriage Results Archive Created");
+                System.out.println("===========================================");
+                System.out.println("Archive: " + archiveFile.getAbsolutePath());
+                System.out.println("Size: " + formatFileSize(archiveFile.length()));
+                System.out.println("===========================================");
+            } else {
+                logger.info("Archive creation was cancelled by user or failed");
+                System.out.println("Archive creation cancelled or failed - results remain in: " + outputDir);
+            }
+
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error during post-import archive creation", e);
+            System.out.println("Archive creation failed: " + e.getMessage());
+            System.out.println("Results remain available in: " + outputDir);
+        }
+
+        logger.info("===========================================");
+        logger.info("POST-IMPORT ARCHIVE CREATION COMPLETE");
+        logger.info("===========================================");
+    }
+
+    /**
+     * Formats file size into human-readable string.
+     */
+    private String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        int exp = (int) (Math.log(bytes) / Math.log(1024));
+        String pre = "KMGTPE".charAt(exp - 1) + "";
+        return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
     }
 
 }

@@ -16,7 +16,7 @@ import com.jhuapl.taxtriage.geneious.database.DatabaseManager.DatabaseType;
 import com.jhuapl.taxtriage.geneious.docker.DockerException;
 import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
-import com.jhuapl.taxtriage.geneious.tools.GatkDeduplicator;
+import com.jhuapl.taxtriage.geneious.tools.BBToolsDeduplicator;
 import com.jhuapl.taxtriage.geneious.utils.FileTypeUtil;
 import com.jhuapl.taxtriage.geneious.utils.DatabasePathUtil;
 import jebl.util.ProgressListener;
@@ -357,16 +357,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 throw new DocumentOperationException(errorMsg);
             }
 
-            // Step 7: Optionally deduplicate BAM files if requested
-            Map<Path, Path> bamFileMapping = new HashMap<>();
-            if (options.isDeduplicationEnabled()) {
-                if (progressListener != null) {
-                    progressListener.setMessage("Deduplicating mapped reads...");
-                    progressListener.setProgress(0.85);
-                }
-
-                bamFileMapping = deduplicateBamFiles(workspaceDir, options.getThreadCount(), progressListener);
-            }
+            // Step 7: Deduplication is now handled by BBTools preprocessing
+            // No additional BAM deduplication needed
+            logger.info("Skipping BAM deduplication - reads were already deduplicated by BBTools preprocessing");
 
             // Step 8: Import results back to Geneious
             if (progressListener != null) {
@@ -529,7 +522,14 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         configGenerator.generateParams(config, paramsFile);
         logger.info("Generated parameters file: " + paramsFile.getAbsolutePath());
 
-        // Generate samplesheet with local filesystem paths
+        // Step 1: BBTools preprocessing BEFORE creating the sample sheet
+        logger.info("==========================================");
+        logger.info("BBTOOLS PREPROCESSING: Starting preprocessing pipeline");
+        logger.info("==========================================");
+
+        List<File> preprocessedFiles = performBBToolsPreprocessing(workspaceDir, inputFiles, options);
+
+        // Generate samplesheet with preprocessed files
         SampleSheetBuilder sampleSheetBuilder = new SampleSheetBuilder();
         File sampleSheetFile = workspaceDir.resolve("config").resolve("samplesheet.csv").toFile();
 
@@ -538,9 +538,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         Set<String> processedFilenames = new HashSet<>();
         List<File> workspaceInputFiles = new ArrayList<>();
 
-        logger.info("Processing " + inputFiles.size() + " input files for samplesheet generation");
+        logger.info("Processing " + preprocessedFiles.size() + " preprocessed files for samplesheet generation");
 
-        for (File inputFile : inputFiles) {
+        for (File inputFile : preprocessedFiles) {
             String filename = inputFile.getName();
 
             // Check if we've already processed this filename
@@ -549,29 +549,99 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 continue;
             }
 
-            // The files are copied to the workspace input directory
-            File workspaceFile = workspaceDir.resolve("input").resolve(filename).toFile();
-            workspaceInputFiles.add(workspaceFile);
+            // Use the preprocessed files directly (they're already in workspace)
+            workspaceInputFiles.add(inputFile);
             processedFilenames.add(filename);
 
-            logger.info("Added file to samplesheet: " + filename + " (source: " + inputFile.getAbsolutePath() + ")");
+            logger.info("Added preprocessed file to samplesheet: " + filename + " (source: " + inputFile.getAbsolutePath() + ")");
         }
 
-        logger.info("Final count: " + workspaceInputFiles.size() + " unique files will be added to samplesheet");
+        logger.info("Final count: " + workspaceInputFiles.size() + " unique preprocessed files will be added to samplesheet");
 
         sampleSheetBuilder.buildSampleSheet(workspaceInputFiles, sampleSheetFile,
             options.getSequencingPreset().name());
-        logger.info("Generated samplesheet: " + sampleSheetFile.getAbsolutePath());
-
-        // Copy input files to workspace (or create symlinks)
-        copyInputFilesToWorkspace(workspaceDir, inputFiles);
+        logger.info("Generated samplesheet with preprocessed files: " + sampleSheetFile.getAbsolutePath());
     }
 
     /**
-     * Copies input files to the workspace input directory.
+     * Performs BBTools preprocessing on input FASTQ files.
+     * This includes deduplication and quality preprocessing.
      */
-    private void copyInputFilesToWorkspace(Path workspaceDir, List<File> inputFiles) throws IOException {
+    private List<File> performBBToolsPreprocessing(Path workspaceDir, List<File> inputFiles, TaxTriageOptions options) throws IOException {
+        List<File> preprocessedFiles = new ArrayList<>();
         Path inputDir = workspaceDir.resolve("input");
+        Path preprocessedDir = workspaceDir.resolve("preprocessed");
+
+        // Create directories
+        Files.createDirectories(inputDir);
+        Files.createDirectories(preprocessedDir);
+
+        logger.info("Starting BBTools preprocessing for " + inputFiles.size() + " files");
+
+        try {
+            // Initialize BBTools deduplicator
+            BBToolsDeduplicator deduplicator = new BBToolsDeduplicator();
+
+            if (!deduplicator.isBBToolsAvailable()) {
+                logger.warning("BBTools not available via Docker - copying original files without preprocessing");
+                return copyInputFilesToWorkspace(workspaceDir, inputFiles);
+            }
+
+            int processedCount = 0;
+
+            for (File inputFile : inputFiles) {
+                logger.info("Processing file " + (processedCount + 1) + "/" + inputFiles.size() + ": " + inputFile.getName());
+
+                // Copy original file to input directory first
+                Path originalInWorkspace = inputDir.resolve(inputFile.getName());
+                Files.copy(inputFile.toPath(), originalInWorkspace, StandardCopyOption.REPLACE_EXISTING);
+
+                // Preprocess with BBTools
+                BBToolsDeduplicator.DeduplicationResult result = deduplicator.deduplicateReads(
+                    originalInWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
+
+                if (result.isSuccess()) {
+                    File preprocessedFile = new File(result.getOutputPath());
+                    preprocessedFiles.add(preprocessedFile);
+
+                    logger.info("✓ BBTools preprocessing successful for: " + inputFile.getName());
+                    logger.info("  Original: " + originalInWorkspace);
+                    logger.info("  Preprocessed: " + preprocessedFile.getAbsolutePath());
+                    logger.info("  Duplicates removed: " + result.getDuplicatesRemoved());
+                    logger.info("  Total reads: " + result.getTotalReads());
+                    logger.info("  Deduplication rate: " + String.format("%.2f%%", result.getDeduplicationPercentage()));
+                } else {
+                    logger.warning("BBTools preprocessing failed for: " + inputFile.getName());
+                    logger.warning("Error: " + result.getErrorMessage());
+                    logger.warning("Falling back to original file");
+
+                    // Use original file as fallback
+                    preprocessedFiles.add(originalInWorkspace.toFile());
+                }
+
+                processedCount++;
+            }
+
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "BBTools preprocessing failed, using original files", e);
+            // Fallback to copying original files
+            return copyInputFilesToWorkspace(workspaceDir, inputFiles);
+        }
+
+        logger.info("BBTools preprocessing completed. Processed " + preprocessedFiles.size() + " files");
+        logger.info("==========================================");
+
+        return preprocessedFiles;
+    }
+
+    /**
+     * Copies input files to the workspace input directory (fallback method).
+     */
+    private List<File> copyInputFilesToWorkspace(Path workspaceDir, List<File> inputFiles) throws IOException {
+        Path inputDir = workspaceDir.resolve("input");
+        List<File> copiedFiles = new ArrayList<>();
+
+        Files.createDirectories(inputDir);
 
         for (File inputFile : inputFiles) {
             Path targetPath = inputDir.resolve(inputFile.getName());
@@ -580,9 +650,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             Files.copy(inputFile.toPath(), targetPath,
                       java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             logger.fine("Copied input file: " + inputFile.getName());
+            copiedFiles.add(targetPath.toFile());
         }
 
         logger.info("Copied " + inputFiles.size() + " input files to workspace");
+        return copiedFiles;
     }
 
     /**
@@ -770,115 +842,6 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         return importedDocs;
     }
 
-    /**
-     * Deduplicates BAM files and organizes them for import to separate folders.
-     *
-     * @param workspaceDir The workspace directory containing output files
-     * @param threads Number of threads to use for deduplication
-     * @param progressListener Progress listener for updates
-     * @return Map of original to deduplicated BAM file paths for import
-     */
-    private Map<Path, Path> deduplicateBamFiles(Path workspaceDir, int threads, ProgressListener progressListener) {
-        logger.info("==========================================");
-        logger.info("Starting BAM deduplication process");
-        logger.info("==========================================");
-
-        Map<Path, Path> bamFileMapping = new HashMap<>();  // Maps original to deduplicated paths
-
-        try {
-            Path outputDir = workspaceDir.resolve("output");
-            if (!Files.exists(outputDir) || !Files.isDirectory(outputDir)) {
-                logger.warning("Output directory not found, skipping deduplication");
-                return bamFileMapping;
-            }
-
-            // Create GATK deduplicator instance
-            GatkDeduplicator deduplicator = new GatkDeduplicator();
-
-            // Check if Docker and GATK are available
-            if (!GatkDeduplicator.isGatkAvailable()) {
-                logger.warning("Docker or GATK image is not available, skipping deduplication");
-                if (progressListener != null) {
-                    progressListener.setMessage("Docker/GATK not available - skipping deduplication");
-                }
-                return bamFileMapping;
-            }
-
-            // Find all BAM files in the output directory
-            List<Path> bamFiles = new ArrayList<>();
-            Files.walk(outputDir)
-                .filter(Files::isRegularFile)
-                .filter(p -> p.getFileName().toString().endsWith(".bam"))
-                .filter(p -> !p.getFileName().toString().contains(".dedup."))  // Skip already deduplicated
-                .forEach(bamFiles::add);
-
-            if (bamFiles.isEmpty()) {
-                logger.info("No BAM files found for deduplication");
-                return bamFileMapping;
-            }
-
-            logger.info("Found " + bamFiles.size() + " BAM file(s) to deduplicate");
-
-            // Deduplicate each BAM file
-            int processedCount = 0;
-            int totalDuplicatesRemoved = 0;
-
-            for (Path bamFile : bamFiles) {
-                logger.info("Processing: " + bamFile.getFileName());
-
-                if (progressListener != null) {
-                    progressListener.setMessage("Deduplicating: " + bamFile.getFileName());
-                }
-
-                // Deduplicate the BAM file using GATK
-                GatkDeduplicator.DeduplicationResult result =
-                    deduplicator.deduplicateBam(bamFile, bamFile.getParent(), threads);
-
-                if (result.success) {
-                    processedCount++;
-                    totalDuplicatesRemoved += result.duplicatesRemoved;
-                    logger.info("✓ Successfully deduplicated: " + bamFile.getFileName());
-                    logger.info("  Duplicates removed: " + result.duplicatesRemoved);
-                    logger.info("  Deduplicated file: " + result.outputPath);
-
-                    // Keep both original and deduplicated files with clear naming
-                    // The deduplicated file already has .dedup.bam suffix from GatkDeduplicator
-                    Path deduplicatedPath = Paths.get(result.outputPath);
-                    bamFileMapping.put(bamFile, deduplicatedPath);
-
-                    logger.info("  Original file: " + bamFile.getFileName());
-                    logger.info("  Deduplicated file: " + deduplicatedPath.getFileName());
-                    logger.info("  Both files will be imported to separate folders in Geneious");
-
-                    // Keep the index file for the deduplicated BAM
-                    Path deduplicatedIndex = Paths.get(result.outputPath + ".bai");
-                    if (Files.exists(deduplicatedIndex)) {
-                        logger.info("  Index file created: " + deduplicatedIndex.getFileName());
-                    }
-                } else {
-                    logger.warning("Failed to deduplicate: " + bamFile.getFileName());
-                    if (result.errorMessage != null) {
-                        logger.warning("  Error: " + result.errorMessage);
-                    }
-                }
-            }
-
-            logger.info("==========================================");
-            logger.info("Deduplication complete");
-            logger.info("  Files processed: " + processedCount + "/" + bamFiles.size());
-            logger.info("  Total duplicates removed: " + totalDuplicatesRemoved);
-            logger.info("==========================================");
-
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Error during BAM deduplication", e);
-            // Don't fail the whole workflow if deduplication fails
-            if (progressListener != null) {
-                progressListener.setMessage("Deduplication failed (non-critical) - continuing");
-            }
-        }
-
-        return bamFileMapping;
-    }
 
     /**
      * Checks if databases were downloaded during workflow and caches them.
