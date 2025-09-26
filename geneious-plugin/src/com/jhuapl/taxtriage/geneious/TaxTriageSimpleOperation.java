@@ -522,12 +522,17 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         configGenerator.generateParams(config, paramsFile);
         logger.info("Generated parameters file: " + paramsFile.getAbsolutePath());
 
-        // Step 1: BBTools preprocessing BEFORE creating the sample sheet
-        logger.info("==========================================");
-        logger.info("BBTOOLS PREPROCESSING: Starting preprocessing pipeline");
-        logger.info("==========================================");
-
-        List<File> preprocessedFiles = performBBToolsPreprocessing(workspaceDir, inputFiles, options);
+        // Step 1: BBTools preprocessing BEFORE creating the sample sheet (if enabled)
+        List<File> preprocessedFiles;
+        if (options.isBBToolsPreprocessingEnabled()) {
+            logger.info("==========================================");
+            logger.info("BBTOOLS PREPROCESSING: Starting preprocessing pipeline");
+            logger.info("==========================================");
+            preprocessedFiles = performBBToolsPreprocessing(workspaceDir, inputFiles, options);
+        } else {
+            logger.info("BBTools preprocessing disabled - using original files");
+            preprocessedFiles = copyInputFilesToWorkspace(workspaceDir, inputFiles);
+        }
 
         // Generate samplesheet with preprocessed files
         SampleSheetBuilder sampleSheetBuilder = new SampleSheetBuilder();
@@ -579,8 +584,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         logger.info("Starting BBTools preprocessing for " + inputFiles.size() + " files");
 
         try {
-            // Initialize BBTools deduplicator
-            BBToolsDeduplicator deduplicator = new BBToolsDeduplicator();
+            // Initialize BBTools deduplicator with substitution threshold from options
+            int subsThreshold = options.getBBToolsSubstitutionThreshold();
+            BBToolsDeduplicator deduplicator = new BBToolsDeduplicator(subsThreshold);
+
+            logger.info("BBTools deduplicator initialized with substitution threshold: " + subsThreshold);
 
             if (!deduplicator.isBBToolsAvailable()) {
                 logger.warning("BBTools not available via Docker - copying original files without preprocessing");

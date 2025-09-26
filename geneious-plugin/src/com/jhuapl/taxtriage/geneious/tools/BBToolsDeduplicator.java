@@ -107,13 +107,24 @@ public class BBToolsDeduplicator {
     }
 
     private final DockerManager dockerManager;
+    private final int substitutionThreshold;
 
     /**
-     * Creates a new BBToolsDeduplicator instance.
+     * Creates a new BBToolsDeduplicator instance with default settings.
      * @throws DockerException if Docker is not available
      */
     public BBToolsDeduplicator() throws DockerException {
+        this(DEFAULT_SUBS_THRESHOLD);
+    }
+
+    /**
+     * Creates a new BBToolsDeduplicator instance with custom substitution threshold.
+     * @param subsThreshold substitution threshold for clumpify deduplication (0-10)
+     * @throws DockerException if Docker is not available
+     */
+    public BBToolsDeduplicator(int subsThreshold) throws DockerException {
         this.dockerManager = new DockerManager(BBTOOLS_IMAGE);
+        this.substitutionThreshold = Math.max(0, Math.min(10, subsThreshold)); // Clamp to 0-10
         validateBBToolsAvailability();
     }
 
@@ -138,7 +149,7 @@ public class BBToolsDeduplicator {
      * @return DeduplicationResult containing the path to deduplicated FASTQ or error message
      */
     public DeduplicationResult deduplicateReads(Path inputFile, Path outputDir, ProgressListener progressListener) {
-        return deduplicateReads(inputFile, outputDir, DEFAULT_SUBS_THRESHOLD, progressListener);
+        return deduplicateReads(inputFile, outputDir, this.substitutionThreshold, progressListener);
     }
 
     /**

@@ -25,6 +25,8 @@ public class TaxTriageOptions extends Options {
     private static final String INPUT_DIRECTORY_KEY = "inputDirectory";
     private static final String PRESET_KEY = "preset";
     private static final String DEDUPLICATE_READS_KEY = "deduplicateReads";
+    private static final String BBTOOLS_PREPROCESSING_KEY = "bbtoolsPreprocessing";
+    private static final String BBTOOLS_SUBS_KEY = "bbtoolsSubs";
     private static final String QUALITY_THRESHOLD_KEY = "qualityThreshold";
     private static final String MIN_READ_LENGTH_KEY = "minReadLength";
     private static final String SUBSAMPLE_SIZE_KEY = "subsampleSize";
@@ -168,12 +170,15 @@ public class TaxTriageOptions extends Options {
 
         addLabel(" ");
 
-        // === POST-PROCESSING OPTIONS ===
-        addLabel("Post-Processing Options:");
+        // === PREPROCESSING OPTIONS ===
+        addLabel("Preprocessing Options:");
 
-        // Deduplication option
-        addBooleanOption(DEDUPLICATE_READS_KEY, "Deduplicate Mapped Reads:", false);
-        getOption(DEDUPLICATE_READS_KEY).setDescription("Remove PCR duplicates from BAM files using GATK MarkDuplicates via Docker (requires Docker)");
+        // BBTools preprocessing option
+        addBooleanOption(BBTOOLS_PREPROCESSING_KEY, "BBTools Read Deduplication:", true);
+        getOption(BBTOOLS_PREPROCESSING_KEY).setDescription("Deduplicate reads before analysis using BBTools clumpify.sh (recommended, requires Docker)");
+
+        addIntegerOption(BBTOOLS_SUBS_KEY, "Clumpify Substitution Threshold:", 5, 0, 10);
+        getOption(BBTOOLS_SUBS_KEY).setDescription("Number of substitutions allowed for deduplication (0=exact match, 5=default)");
     }
 
     /**
@@ -224,13 +229,23 @@ public class TaxTriageOptions extends Options {
     }
 
     /**
-     * Gets whether to deduplicate mapped reads.
+     * Gets whether BBTools preprocessing is enabled.
      *
-     * @return true if deduplication is enabled
+     * @return true if BBTools preprocessing is enabled
      */
-    public boolean isDeduplicationEnabled() {
-        Boolean value = (Boolean) getValue(DEDUPLICATE_READS_KEY);
-        return value != null ? value : false;
+    public boolean isBBToolsPreprocessingEnabled() {
+        Boolean value = (Boolean) getValue(BBTOOLS_PREPROCESSING_KEY);
+        return value != null ? value : true; // Default to enabled
+    }
+
+    /**
+     * Gets the BBTools clumpify substitution threshold.
+     *
+     * @return substitution threshold (0-10)
+     */
+    public int getBBToolsSubstitutionThreshold() {
+        Integer value = (Integer) getValue(BBTOOLS_SUBS_KEY);
+        return value != null ? value : 5;
     }
 
     /**
