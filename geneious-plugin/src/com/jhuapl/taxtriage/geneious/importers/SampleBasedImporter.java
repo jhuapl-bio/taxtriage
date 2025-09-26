@@ -7,6 +7,7 @@ import com.biomatters.geneious.publicapi.documents.DocumentUtilities;
 import com.biomatters.geneious.publicapi.plugin.DocumentImportException;
 import com.biomatters.geneious.publicapi.plugin.PluginUtilities;
 import com.jhuapl.taxtriage.geneious.documents.TaxTriageResultDocument;
+import com.jhuapl.taxtriage.geneious.utils.FileTypeUtil;
 import jebl.util.ProgressListener;
 
 import java.io.File;
@@ -19,23 +20,80 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * Helper class to import TaxTriage documents into organized sample-based folder structure.
- * Creates subfolders for each sample and data type.
+ * Enterprise-grade importer for organizing TaxTriage analysis results into hierarchical folder structures.
+ *
+ * <p>This class provides intelligent organization of complex TaxTriage workflow outputs into
+ * a logical, sample-based folder hierarchy within Geneious. It handles multiple data types
+ * including taxonomic reports, sequence alignments, reference sequences, and quality control
+ * metrics, ensuring that results are easily navigable and accessible for downstream analysis.</p>
+ *
+ * <h3>Folder Organization Strategy:</h3>
+ * <ul>
+ *   <li><strong>Main Folder:</strong> Named by run timestamp for unique identification</li>
+ *   <li><strong>Sample Folders:</strong> Individual folders for each detected sample</li>
+ *   <li><strong>Type-specific Subfolders:</strong> Organized by data type and processing status</li>
+ * </ul>
+ *
+ * <h3>Supported Data Types:</h3>
+ * <ul>
+ *   <li><strong>Alignment Results:</strong> BAM files with separate folders for original and deduplicated reads</li>
+ *   <li><strong>Reference Sequences:</strong> GenBank files downloaded from NCBI with field validation</li>
+ *   <li><strong>Taxonomic Reports:</strong> Kraken2 reports, Krona visualizations, and summary statistics</li>
+ *   <li><strong>Quality Control:</strong> MultiQC reports and processing metrics</li>
+ * </ul>
+ *
+ * <h3>Smart Sample Detection:</h3>
+ * <ul>
+ *   <li><strong>File Pattern Recognition:</strong> Automatic sample name extraction from filenames</li>
+ *   <li><strong>Cross-directory Scanning:</strong> Sample detection across multiple output directories</li>
+ *   <li><strong>Deduplication Awareness:</strong> Intelligent handling of original vs. deduplicated files</li>
+ * </ul>
+ *
+ * <h3>Reference Management:</h3>
+ * <ul>
+ *   <li><strong>GenBank Integration:</strong> Automatic download of reference sequences from NCBI</li>
+ *   <li><strong>Field Validation:</strong> GenBank file validation and automatic field correction</li>
+ *   <li><strong>Co-location Strategy:</strong> References stored alongside corresponding BAM files</li>
+ * </ul>
+ *
+ * <h3>Import Process:</h3>
+ * <ol>
+ *   <li><strong>Discovery:</strong> Scan output directory to identify samples and data types</li>
+ *   <li><strong>Structure Creation:</strong> Build hierarchical folder structure in Geneious</li>
+ *   <li><strong>Reference Processing:</strong> Download, validate, and import reference sequences</li>
+ *   <li><strong>Text File Import:</strong> Process all text-based reports and metrics</li>
+ *   <li><strong>Alignment Import:</strong> Import BAM files with reference linking</li>
+ *   <li><strong>Quality Assurance:</strong> Validation and error reporting</li>
+ * </ol>
+ *
+ * <h3>Performance Optimizations:</h3>
+ * <ul>
+ *   <li><strong>Efficient Scanning:</strong> Single-pass directory traversal with pattern matching</li>
+ *   <li><strong>Deduplication:</strong> Prevents duplicate imports of identical files</li>
+ *   <li><strong>Batch Processing:</strong> Optimized bulk operations for large datasets</li>
+ *   <li><strong>Progress Tracking:</strong> Real-time feedback for long-running operations</li>
+ * </ul>
+ *
+ * <h3>Error Recovery:</h3>
+ * <ul>
+ *   <li><strong>Graceful Failures:</strong> Individual file failures don't abort entire import</li>
+ *   <li><strong>GenBank Fallback:</strong> Multiple strategies for reference sequence acquisition</li>
+ *   <li><strong>Validation Retry:</strong> Automatic retry with field correction for malformed files</li>
+ * </ul>
+ *
+ * @author TaxTriage Development Team
+ * @version 2.0
+ * @since 1.0
  */
 public class SampleBasedImporter {
 
     private static final Logger logger = Logger.getLogger(SampleBasedImporter.class.getName());
 
     /**
-     * Simple replacement for DirectTextImporter.isTextFile
+     * Checks if a file is a text file using FileTypeUtil.
      */
     private static boolean isTextFile(File file) {
-        if (file == null || !file.exists() || !file.isFile()) {
-            return false;
-        }
-        String name = file.getName().toLowerCase();
-        return name.endsWith(".txt") || name.endsWith(".tsv") || name.endsWith(".csv") ||
-               name.endsWith(".log") || name.endsWith(".report");
+        return FileTypeUtil.isTextFile(file);
     }
 
     private WritableDatabaseService rootService;
@@ -140,7 +198,6 @@ public class SampleBasedImporter {
         }
 
         logger.info("Discovered samples: " + samples);
-        System.out.println("Discovered samples: " + samples);
         return samples;
     }
 
@@ -193,8 +250,6 @@ public class SampleBasedImporter {
 
         try {
             logger.info("Creating folder structure for: " + runName);
-            System.out.println("===== CREATING FOLDER STRUCTURE =====");
-            System.out.println("Main folder: " + runName);
 
             // Create main folder for this TaxTriage run
             try {
@@ -221,7 +276,7 @@ public class SampleBasedImporter {
                 createSampleFolders(sample, progressListener);
             }
 
-            System.out.println("=====================================\n");
+            logger.info("Folder structure creation completed");
             return true;
 
         } catch (Exception e) {
@@ -236,7 +291,7 @@ public class SampleBasedImporter {
      * Shared files (Reports, References, Kraken_Results) are handled at root level
      */
     private void createSampleFolders(String sample, ProgressListener progressListener) {
-        System.out.println("Creating folders for sample: " + sample);
+        logger.info("Creating folders for sample: " + sample);
 
         Map<String, WritableDatabaseService> folders = new HashMap<>();
 
@@ -266,7 +321,7 @@ public class SampleBasedImporter {
             Arrays.asList(outputDir.resolve("minimap2"), outputDir.resolve("alignment")));
 
         if (hasDeduplicatedFiles) {
-            System.out.println("  Deduplication detected - creating separate alignment folders");
+            logger.info("Deduplication detected - creating separate alignment folders");
             // Create separate folders for original and deduplicated alignments
             subfolderMapping.put("Alignments-original", Arrays.asList(
                 outputDir.resolve("minimap2"),
@@ -278,7 +333,7 @@ public class SampleBasedImporter {
                 outputDir.resolve("alignment")
             ));
         } else {
-            System.out.println("  No deduplication detected - creating single Alignments folder");
+            logger.info("No deduplication detected - creating single Alignments folder");
             // Just create single Alignments folder if no deduplication
             subfolderMapping.put("Alignments", Arrays.asList(
                 outputDir.resolve("minimap2"),
@@ -297,15 +352,15 @@ public class SampleBasedImporter {
             if (folderName.equals("Alignments-original")) {
                 // Check for non-deduplicated BAM files
                 shouldCreateFolder = hasOriginalBamFiles(sample, sourceDirs);
-                System.out.println("  Checking for original BAM files: " + shouldCreateFolder);
+                logger.fine("Checking for original BAM files: " + shouldCreateFolder);
             } else if (folderName.equals("Alignments-deduplicated")) {
                 // Check for deduplicated BAM files
                 shouldCreateFolder = hasDeduplicatedBamFiles(sample, sourceDirs);
-                System.out.println("  Checking for deduplicated BAM files: " + shouldCreateFolder);
+                logger.fine("Checking for deduplicated BAM files: " + shouldCreateFolder);
             } else if (folderName.equals("Alignments")) {
                 // Check for any BAM files
                 shouldCreateFolder = hasOriginalBamFiles(sample, sourceDirs) || hasDeduplicatedBamFiles(sample, sourceDirs);
-                System.out.println("  Checking for any BAM files: " + shouldCreateFolder);
+                logger.fine("Checking for any BAM files: " + shouldCreateFolder);
             }
 
             if (shouldCreateFolder) {
@@ -322,7 +377,7 @@ public class SampleBasedImporter {
 
                 if (subfolder != null) {
                     folders.put(folderName, subfolder);
-                    System.out.println("  Created subfolder: " + sample + "/" + folderName);
+                    logger.info("Created subfolder: " + sample + "/" + folderName);
                 }
             }
         }
@@ -334,10 +389,10 @@ public class SampleBasedImporter {
      * Checks if there are original (non-deduplicated) BAM files for the sample.
      */
     private boolean hasOriginalBamFiles(String sample, List<Path> dirs) {
-        System.out.println("  Checking for original BAM files for sample: " + sample);
+        logger.fine("Checking for original BAM files for sample: " + sample);
         for (Path dir : dirs) {
             if (Files.exists(dir)) {
-                System.out.println("    Checking directory: " + dir);
+                logger.fine("Checking directory: " + dir);
                 try {
                     List<Path> originalFiles = Files.list(dir)
                         .filter(Files::isRegularFile)
@@ -348,14 +403,14 @@ public class SampleBasedImporter {
                                                  filename.endsWith(".bam") &&
                                                  !filename.endsWith(".dedup.bam");
                             if (isOriginal) {
-                                System.out.println("      Found original file: " + filename);
+                                logger.fine("Found original file: " + filename);
                             }
                             return isOriginal;
                         })
                         .collect(Collectors.toList());
 
                     if (!originalFiles.isEmpty()) {
-                        System.out.println("    ✓ Found " + originalFiles.size() + " original BAM file(s)");
+                        logger.info("Found " + originalFiles.size() + " original BAM file(s)");
                         return true;
                     }
                 } catch (IOException e) {
@@ -363,7 +418,7 @@ public class SampleBasedImporter {
                 }
             }
         }
-        System.out.println("    No original BAM files found");
+        logger.fine("No original BAM files found");
         return false;
     }
 
@@ -371,10 +426,10 @@ public class SampleBasedImporter {
      * Checks if there are deduplicated BAM files for the sample.
      */
     private boolean hasDeduplicatedBamFiles(String sample, List<Path> dirs) {
-        System.out.println("  Checking for deduplicated BAM files for sample: " + sample);
+        logger.fine("Checking for deduplicated BAM files for sample: " + sample);
         for (Path dir : dirs) {
             if (Files.exists(dir)) {
-                System.out.println("    Checking directory: " + dir);
+                logger.fine("Checking directory: " + dir);
                 try {
                     List<Path> dedupFiles = Files.list(dir)
                         .filter(Files::isRegularFile)
@@ -382,14 +437,14 @@ public class SampleBasedImporter {
                             String filename = p.getFileName().toString();
                             boolean isDedup = filename.contains(sample) && filename.endsWith(".dedup.bam");
                             if (isDedup) {
-                                System.out.println("      Found deduplicated file: " + filename);
+                                logger.fine("Found deduplicated file: " + filename);
                             }
                             return isDedup;
                         })
                         .collect(java.util.stream.Collectors.toList());
 
                     if (!dedupFiles.isEmpty()) {
-                        System.out.println("    ✓ Found " + dedupFiles.size() + " deduplicated BAM file(s)");
+                        logger.info("Found " + dedupFiles.size() + " deduplicated BAM file(s)");
                         return true;
                     }
                 } catch (IOException e) {

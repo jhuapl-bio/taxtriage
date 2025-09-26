@@ -20,15 +20,52 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * Operation to import TaxTriage results from an output directory.
- * Use this to import TaxTriage results that were generated on other systems.
+ * Standalone TaxTriage result import operation for external workflow integration.
+ *
+ * <p>This operation provides a dedicated interface for importing TaxTriage analysis
+ * results that were generated outside of Geneious, enabling seamless integration
+ * of results from high-performance computing clusters, cloud platforms, or other
+ * external systems into the Geneious workspace.</p>
+ *
+ * <h3>Use Cases:</h3>
+ * <ul>
+ *   <li><strong>HPC Integration:</strong> Import results from cluster-based TaxTriage runs</li>
+ *   <li><strong>Cloud Workflows:</strong> Integration with cloud-based genomics platforms</li>
+ *   <li><strong>Batch Processing:</strong> Import results from automated pipeline systems</li>
+ *   <li><strong>Collaborative Research:</strong> Share and import results across research teams</li>
+ * </ul>
+ *
+ * <h3>Import Configuration:</h3>
+ * <ul>
+ *   <li><strong>Flexible Input:</strong> User-configurable output directory path</li>
+ *   <li><strong>Selective Import:</strong> Checkboxes for specific result types</li>
+ *   <li><strong>Result Types:</strong> Kraken reports, top hits, filtered reports, alignments, QC reports</li>
+ * </ul>
+ *
+ * <h3>Validation and Safety:</h3>
+ * <ul>
+ *   <li><strong>Directory Validation:</strong> Existence and accessibility checks</li>
+ *   <li><strong>Format Validation:</strong> Ensures compatible TaxTriage output structure</li>
+ *   <li><strong>Error Handling:</strong> Graceful handling of malformed or incomplete results</li>
+ * </ul>
+ *
+ * <h3>Integration with Core Importer:</h3>
+ * <p>This operation delegates the actual import process to {@link TaxTriageResultImporter},
+ * ensuring consistency with the main workflow operation while providing a dedicated
+ * entry point for external result integration.</p>
+ *
+ * @author TaxTriage Development Team
+ * @version 2.0
+ * @since 1.0
+ * @see TaxTriageResultImporter
+ * @see TaxTriageSimpleOperation
  */
 public class TaxTriageImportOperation extends DocumentOperation {
 
     private static final Logger logger = Logger.getLogger(TaxTriageImportOperation.class.getName());
 
-    // Test path - you can modify this to point to your output directory
-    private static final String DEFAULT_OUTPUT_PATH = "/private/var/folders/pw/r9x37tvs2q5d6c044x2fhp200000gn/T/taxtriage_20250916_202306/output";
+    // Default output path for TaxTriage results import
+    private static final String DEFAULT_OUTPUT_PATH = System.getProperty("user.home") + "/taxtriage_output";
 
     @Override
     public String getHelp() {

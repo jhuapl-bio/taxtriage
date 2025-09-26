@@ -17,9 +17,8 @@ import com.jhuapl.taxtriage.geneious.docker.DockerException;
 import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
 import com.jhuapl.taxtriage.geneious.tools.GatkDeduplicator;
-// Removed imports to deleted importer package
-// import com.jhuapl.taxtriage.geneious.importer.ImportResult;
-// import com.jhuapl.taxtriage.geneious.importer.ResultImporter;
+import com.jhuapl.taxtriage.geneious.utils.FileTypeUtil;
+import com.jhuapl.taxtriage.geneious.utils.DatabasePathUtil;
 import jebl.util.ProgressListener;
 
 import java.io.File;
@@ -42,14 +41,62 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Simplified TaxTriage operation that appears in the Tools menu.
+ * Comprehensive TaxTriage genomic analysis operation for the Geneious platform.
  *
- * This class implements the complete TaxTriage workflow execution including:
- * - File selection and validation
- * - Docker environment setup
- * - Nextflow samplesheet and config generation
- * - TaxTriage workflow execution via Docker
- * - Result import back to Geneious
+ * <p>This class provides a complete integration of the TaxTriage taxonomic classification
+ * workflow within Geneious, enabling users to perform advanced metagenomic analysis
+ * directly from their sequence data. The operation supports multiple sequencing platforms
+ * and provides enterprise-grade workflow execution with comprehensive error handling
+ * and progress tracking.</p>
+ *
+ * <h3>Key Features:</h3>
+ * <ul>
+ *   <li><strong>Multi-platform Support:</strong> Illumina (paired-end, single-end) and Oxford Nanopore</li>
+ *   <li><strong>Flexible Input:</strong> File browser selection or Geneious document selection</li>
+ *   <li><strong>Database Management:</strong> Automatic database detection, download, and caching</li>
+ *   <li><strong>Workflow Orchestration:</strong> Nextflow-based pipeline execution with Docker containers</li>
+ *   <li><strong>Quality Control:</strong> Optional read deduplication using GATK MarkDuplicates</li>
+ *   <li><strong>Result Integration:</strong> Automatic import of analysis results with organized folder structure</li>
+ * </ul>
+ *
+ * <h3>Workflow Architecture:</h3>
+ * <ol>
+ *   <li><strong>Environment Validation:</strong> Docker availability and Nextflow binary location</li>
+ *   <li><strong>Database Preparation:</strong> Kraken2/Bracken database availability or download</li>
+ *   <li><strong>Workspace Setup:</strong> Temporary workspace creation with organized directory structure</li>
+ *   <li><strong>Input Processing:</strong> File validation, deduplication, and samplesheet generation</li>
+ *   <li><strong>Pipeline Execution:</strong> TaxTriage workflow via Nextflow with real-time monitoring</li>
+ *   <li><strong>Post-processing:</strong> Optional BAM deduplication using GATK MarkDuplicates</li>
+ *   <li><strong>Result Import:</strong> Structured import of taxonomic reports, alignments, and references</li>
+ * </ol>
+ *
+ * <h3>Performance Characteristics:</h3>
+ * <ul>
+ *   <li><strong>Scalability:</strong> Configurable thread count and memory limits</li>
+ *   <li><strong>Reliability:</strong> Comprehensive error handling with detailed logging</li>
+ *   <li><strong>Efficiency:</strong> Database caching and intermediate file management</li>
+ *   <li><strong>Monitoring:</strong> Real-time progress updates and workflow status tracking</li>
+ * </ul>
+ *
+ * <h3>Integration Points:</h3>
+ * <ul>
+ *   <li><strong>Geneious API:</strong> Document operations, progress tracking, and database services</li>
+ *   <li><strong>Docker Engine:</strong> Container orchestration for tool execution</li>
+ *   <li><strong>Nextflow:</strong> Workflow management and process coordination</li>
+ *   <li><strong>External Tools:</strong> Kraken2, Bracken, minimap2, GATK, samtools</li>
+ * </ul>
+ *
+ * <h3>Error Handling Strategy:</h3>
+ * <ul>
+ *   <li><strong>Graceful Degradation:</strong> Non-critical failures don't abort the entire workflow</li>
+ *   <li><strong>Detailed Logging:</strong> Comprehensive error reporting with context</li>
+ *   <li><strong>Resource Cleanup:</strong> Automatic cleanup of temporary resources on failure</li>
+ *   <li><strong>User Feedback:</strong> Clear error messages with actionable guidance</li>
+ * </ul>
+ *
+ * @author TaxTriage Development Team
+ * @version 2.0
+ * @since 1.0
  */
 public class TaxTriageSimpleOperation extends DocumentOperation {
 
@@ -61,15 +108,34 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     // Cache for the located Nextflow binary path
     private static String nextflowBinaryPath = null;
 
-    // Timeout for workflow execution (2 hours)
-    private static final int WORKFLOW_TIMEOUT_MINUTES = 120;
+    // Timeout constants
+    private static final int WORKFLOW_TIMEOUT_MINUTES = 120; // 2 hours
+    private static final int DATABASE_DOWNLOAD_TIMEOUT_MINUTES = 180; // 3 hours
+    private static final int DOCKER_CHECK_TIMEOUT_SECONDS = 10;
+    private static final int OUTPUT_READER_TIMEOUT_SECONDS = 5;
 
-    // Database cache directory
+    // Database cache constants
     private static final String CACHE_DIR_NAME = ".taxtriage-geneious";
     private static final String STANDARD_DB_NAME = "standard";
 
-    // Database download timeout (3 hours)
-    private static final int DATABASE_DOWNLOAD_TIMEOUT_MINUTES = 180;
+    // File extension constants
+    private static final String BAM_EXTENSION = ".bam";
+    private static final String FASTQ_EXTENSION = ".fastq";
+    private static final String FASTQ_GZ_EXTENSION = ".fastq.gz";
+    private static final String FQ_EXTENSION = ".fq";
+    private static final String FQ_GZ_EXTENSION = ".fq.gz";
+    private static final String K2D_EXTENSION = ".k2d";
+
+    // Progress tracking constants
+    private static final double PROGRESS_INITIAL = 0.05;
+    private static final double PROGRESS_VALIDATION = 0.1;
+    private static final double PROGRESS_DATABASE_CHECK = 0.15;
+    private static final double PROGRESS_WORKSPACE_SETUP = 0.2;
+    private static final double PROGRESS_CONFIG_GENERATION = 0.25;
+    private static final double PROGRESS_WORKFLOW_START = 0.3;
+    private static final double PROGRESS_DEDUPLICATION = 0.85;
+    private static final double PROGRESS_IMPORT = 0.9;
+    private static final double PROGRESS_COMPLETE = 1.0;
 
     @Override
     public GeneiousActionOptions getActionOptions() {
@@ -100,12 +166,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     public List<AnnotatedPluginDocument> performOperation(AnnotatedPluginDocument[] documents,
                                                           ProgressListener progressListener,
                                                           Options options) throws DocumentOperationException {
-        System.out.println("[TaxTriage] performOperation called");
-        System.out.println("[TaxTriage] Number of selected documents: " + (documents != null ? documents.length : 0));
+        logger.info("TaxTriage operation started with " + (documents != null ? documents.length : 0) + " selected documents");
 
         if (progressListener != null) {
             progressListener.setMessage("Starting TaxTriage analysis...");
-            progressListener.setProgress(0.1);
+            progressListener.setProgress(PROGRESS_VALIDATION);
         }
 
         List<AnnotatedPluginDocument> results = new ArrayList<>();
@@ -118,23 +183,23 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         File inputDirectory = taxTriageOptions.getInputDirectory();
 
         // Log the file selections
-        System.out.println("[TaxTriage] Input files from browser: " + (inputFiles != null ? inputFiles.size() : 0));
+        logger.info("Input files from browser: " + (inputFiles != null ? inputFiles.size() : 0));
         if (inputFiles != null) {
             for (File f : inputFiles) {
-                System.out.println("[TaxTriage]   - File: " + f.getAbsolutePath());
+                logger.fine("Input file: " + f.getAbsolutePath());
             }
         }
-        System.out.println("[TaxTriage] Input directory: " + (inputDirectory != null ? inputDirectory.getAbsolutePath() : "null"));
+        logger.info("Input directory: " + (inputDirectory != null ? inputDirectory.getAbsolutePath() : "none"));
 
         // Check if we have input files from browsers
         boolean hasFileInputs = (inputFiles != null && !inputFiles.isEmpty()) || inputDirectory != null;
 
-        System.out.println("[TaxTriage] Has file inputs from browser: " + hasFileInputs);
+        logger.fine("Has file inputs from browser: " + hasFileInputs);
 
         if (!hasFileInputs) {
             // Only check selected documents if no file browser input was provided
             boolean hasSelectedDocuments = documents != null && documents.length > 0;
-            System.out.println("[TaxTriage] Has selected documents: " + hasSelectedDocuments);
+            logger.fine("Has selected documents: " + hasSelectedDocuments);
 
             if (!hasSelectedDocuments) {
                 throw new DocumentOperationException("No input provided. Please use the file browsers to specify input files or directory.");
@@ -142,14 +207,14 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
             // If using selected documents (backward compatibility), validate they are sequence documents
             for (AnnotatedPluginDocument doc : documents) {
-                System.out.println("[TaxTriage] Checking document: " + doc.getName() + " - Type: " + doc.getDocument().getClass().getName());
+                logger.fine("Checking document: " + doc.getName() + " - Type: " + doc.getDocument().getClass().getName());
                 if (!(doc.getDocument() instanceof SequenceDocument)) {
                     throw new DocumentOperationException("Document '" + doc.getName() + "' is not a sequence document. Please use the file browsers instead.");
                 }
             }
         } else {
             // When using file browsers, ignore selected documents completely
-            System.out.println("[TaxTriage] Using file browser inputs, ignoring any selected documents");
+            logger.info("Using file browser inputs, ignoring any selected documents");
         }
 
         if (progressListener != null) {
@@ -159,18 +224,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         }
 
         // Log configuration
-        System.out.println("[TaxTriage] Configuration:");
-        System.out.println("[TaxTriage]   Preset: " + taxTriageOptions.getSequencingPreset());
-        System.out.println("[TaxTriage]   Kraken DB: " + taxTriageOptions.getKrakenDatabase());
-        System.out.println("[TaxTriage]   Bracken DB: " + taxTriageOptions.getBrackenDatabase());
-        System.out.println("[TaxTriage]   Threads: " + taxTriageOptions.getThreadCount());
-        System.out.println("[TaxTriage]   Memory: " + taxTriageOptions.getMemoryLimit() + " GB");
+        logger.info("TaxTriage Configuration:");
+        logger.info("  Preset: " + taxTriageOptions.getSequencingPreset());
+        logger.info("  Kraken DB: " + taxTriageOptions.getKrakenDatabase());
+        logger.info("  Bracken DB: " + taxTriageOptions.getBrackenDatabase());
+        logger.info("  Threads: " + taxTriageOptions.getThreadCount());
+        logger.info("  Memory: " + taxTriageOptions.getMemoryLimit() + " GB");
 
         try {
             // Locate bundled Nextflow binary before workflow execution
             if (progressListener != null) {
                 progressListener.setMessage("Preparing Nextflow environment...");
-                progressListener.setProgress(0.05);
+                progressListener.setProgress(PROGRESS_INITIAL);
             }
 
             locateNextflowBinary();
@@ -230,7 +295,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             // Step 3: Create temporary working directory
             if (progressListener != null) {
                 progressListener.setMessage("Setting up workspace...");
-                progressListener.setProgress(0.15);
+                progressListener.setProgress(PROGRESS_DATABASE_CHECK);
             }
 
             Path workspaceDir = createWorkspace();
@@ -273,14 +338,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 logger.severe("TaxTriage workflow failed with exit code: " + result.getExitCode());
                 if (standardOutput != null && !standardOutput.trim().isEmpty()) {
                     logger.severe("Standard output:\n" + standardOutput);
-                    System.err.println("[TaxTriage] Standard output:\n" + standardOutput);
                 }
                 if (errorOutput != null && !errorOutput.trim().isEmpty()) {
                     logger.severe("Error output:\n" + errorOutput);
-                    System.err.println("[TaxTriage] Error output:\n" + errorOutput);
                 } else {
                     logger.severe("No error output captured. The workflow may have failed silently.");
-                    System.err.println("[TaxTriage] No error output captured.");
                 }
 
                 // Build comprehensive error message
@@ -420,20 +482,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      * Only FASTQ files are supported for TaxTriage analysis.
      */
     private boolean isValidSequenceFile(File file) {
-        if (!file.exists() || !file.isFile()) {
-            return false;
-        }
-
-        String name = file.getName().toLowerCase();
-
-        // Only accept FASTQ files, not FASTA files
-        // Also filter out specific files that shouldn't be included
-        if (name.contains(".fastp.") || name.contains(".dwnld.") || name.contains("references")) {
-            return false;
-        }
-
-        return name.endsWith(".fastq") || name.endsWith(".fq") ||
-               name.endsWith(".fastq.gz") || name.endsWith(".fq.gz");
+        return FileTypeUtil.isValidSequenceFile(file);
     }
 
     /**
@@ -546,9 +595,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         // Build Nextflow command
         List<String> nextflowCommand = buildNextflowCommand(workspaceDir, options);
         String commandString = String.join(" ", nextflowCommand);
-        logger.info("Executing command: " + commandString);
-        System.out.println("[TaxTriage] Executing Nextflow command: " + commandString);
-        System.out.println("[TaxTriage] Working directory: " + workspaceDir.toAbsolutePath());
+        logger.info("Executing Nextflow command: " + commandString);
+        logger.info("Working directory: " + workspaceDir.toAbsolutePath());
 
         // Execute the workflow directly with ProcessBuilder
         ExecutionResult result = executeNextflowDirectly(
@@ -676,21 +724,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      * Maps a database name string to a DatabaseType enum.
      */
     private DatabaseType mapDatabaseNameToType(String databaseName) {
-        if (databaseName == null) {
-            return null;
-        }
-
-        String normalized = databaseName.toLowerCase().trim();
-
-        if (normalized.equals("viral") || normalized.contains("viral")) {
-            return DatabaseType.VIRAL;
-        } else if (normalized.equals("standard") || normalized.contains("standard")) {
-            return DatabaseType.STANDARD;
-        } else if (normalized.equals("minikraken") || normalized.contains("mini")) {
-            return DatabaseType.MINIKRAKEN;
-        }
-
-        return null; // Unknown database type
+        return DatabasePathUtil.mapDatabaseNameToType(databaseName);
     }
 
     /**
@@ -1000,17 +1034,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      * Checks if a directory contains valid database files.
      */
     private boolean isValidDatabaseDirectory(Path dir) {
-        try {
-            // Check for Kraken2 database files
-            boolean hasHashFile = Files.exists(dir.resolve("hash.k2d"));
-            boolean hasTaxoFile = Files.exists(dir.resolve("taxo.k2d"));
-            boolean hasOptsFile = Files.exists(dir.resolve("opts.k2d"));
-
-            // Valid if has at least hash and taxo files
-            return hasHashFile && hasTaxoFile;
-        } catch (Exception e) {
-            return false;
-        }
+        return DatabasePathUtil.isValidDatabaseDirectory(dir);
     }
 
     /**
@@ -1159,7 +1183,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             ProcessBuilder pb = new ProcessBuilder("docker", "--version");
             Process process = pb.start();
 
-            boolean finished = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            boolean finished = process.waitFor(DOCKER_CHECK_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 return false;
@@ -1270,8 +1294,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             }
 
             // Wait for output readers to finish
-            outputReader.join(5000); // 5 second timeout for output reading
-            errorReader.join(5000);
+            outputReader.join(OUTPUT_READER_TIMEOUT_SECONDS * 1000); // Convert seconds to milliseconds
+            errorReader.join(OUTPUT_READER_TIMEOUT_SECONDS * 1000);
 
             java.time.LocalDateTime endTime = java.time.LocalDateTime.now();
             int exitCode = process.exitValue();
@@ -1356,24 +1380,6 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         }
     }
 
-    /**
-     * Gets the path to the cached database directory for the specified database type.
-     *
-     * @param options TaxTriage configuration options
-     * @return absolute path to the database directory
-     */
-    private String getDatabasePath(TaxTriageOptions options) {
-        String userHome = System.getProperty("user.home");
-        Path cacheDir = Paths.get(userHome, CACHE_DIR_NAME);
-
-        String databaseType = options.getKrakenDatabase();
-        if (databaseType == null || databaseType.isEmpty()) {
-            databaseType = STANDARD_DB_NAME;
-        }
-
-        Path databasePath = cacheDir.resolve(databaseType);
-        return databasePath.toAbsolutePath().toString();
-    }
 
     /**
      * Ensures that the required database exists in the cache directory.
@@ -1391,26 +1397,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             databaseType = STANDARD_DB_NAME;
         }
 
-        String databasePath = getDatabasePath(options);
+        String databasePath = DatabasePathUtil.getDatabasePath(options.getKrakenDatabase());
         Path dbPath = Paths.get(databasePath);
 
         logger.info("Checking database at: " + databasePath);
 
         // Check if database directory exists and has content
         if (Files.exists(dbPath) && Files.isDirectory(dbPath)) {
-            try {
-                // Check if directory has database files (any .k2d files indicate a valid Kraken database)
-                boolean hasDbFiles = Files.walk(dbPath)
-                    .anyMatch(path -> path.toString().endsWith(".k2d") ||
-                                    path.toString().endsWith(".kmer_distrib") ||
-                                    path.toString().contains("taxonomy"));
+            boolean hasDbFiles = DatabasePathUtil.databaseHasContent(dbPath);
 
-                if (hasDbFiles) {
-                    logger.info("Database already exists at: " + databasePath);
-                    return;
-                }
-            } catch (IOException e) {
-                logger.warning("Error checking existing database: " + e.getMessage());
+            if (hasDbFiles) {
+                logger.info("Database already exists at: " + databasePath);
+                return;
             }
         }
 
@@ -1454,7 +1452,6 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             // Log the download command for debugging
             String commandString = String.join(" ", downloadCommand);
             logger.info("Executing database download command: " + commandString);
-            System.out.println("[TaxTriage] Downloading database with command: " + commandString);
 
             // Execute the download command
             ExecutionResult result = executeNextflowDirectly(
@@ -1467,12 +1464,10 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
                 logger.severe("Database download failed with exit code: " + result.getExitCode());
                 if (standardOutput != null && !standardOutput.trim().isEmpty()) {
-                    logger.severe("Standard output:\n" + standardOutput);
-                    System.err.println("[TaxTriage] Database download standard output:\n" + standardOutput);
+                    logger.severe("Database download standard output:\n" + standardOutput);
                 }
                 if (errorOutput != null && !errorOutput.trim().isEmpty()) {
-                    logger.severe("Error output:\n" + errorOutput);
-                    System.err.println("[TaxTriage] Database download error output:\n" + errorOutput);
+                    logger.severe("Database download error output:\n" + errorOutput);
                 }
 
                 String errorMsg = "Database download failed with exit code " + result.getExitCode();
