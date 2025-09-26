@@ -524,13 +524,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
         // Step 1: BBTools preprocessing BEFORE creating the sample sheet (if enabled)
         List<File> preprocessedFiles;
-        if (options.isBBToolsPreprocessingEnabled()) {
-            logger.info("==========================================");
-            logger.info("BBTOOLS PREPROCESSING: Starting preprocessing pipeline");
-            logger.info("==========================================");
+        boolean bbtoolsEnabled = options.isBBToolsPreprocessingEnabled();
+        logger.info("==========================================");
+        logger.info("PREPROCESSING CONFIGURATION:");
+        logger.info("  BBTools Preprocessing Enabled: " + bbtoolsEnabled);
+        logger.info("  Substitution Threshold: " + options.getBBToolsSubstitutionThreshold());
+        logger.info("==========================================");
+
+        if (bbtoolsEnabled) {
+            logger.info("Starting BBTools preprocessing pipeline...");
             preprocessedFiles = performBBToolsPreprocessing(workspaceDir, inputFiles, options);
         } else {
-            logger.info("BBTools preprocessing disabled - using original files");
+            logger.info("BBTools preprocessing disabled - copying original files to workspace");
             preprocessedFiles = copyInputFilesToWorkspace(workspaceDir, inputFiles);
         }
 
