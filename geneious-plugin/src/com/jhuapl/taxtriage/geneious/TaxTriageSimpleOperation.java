@@ -166,6 +166,12 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     public List<AnnotatedPluginDocument> performOperation(AnnotatedPluginDocument[] documents,
                                                           ProgressListener progressListener,
                                                           Options options) throws DocumentOperationException {
+        System.out.println("=================================================");
+        System.out.println("TAXTRIAGE PLUGIN EXECUTION STARTED");
+        System.out.println("Plugin Version: 2.0");
+        System.out.println("Timestamp: " + new java.util.Date());
+        System.out.println("=================================================");
+
         logger.info("TaxTriage operation started with " + (documents != null ? documents.length : 0) + " selected documents");
 
         if (progressListener != null) {
@@ -525,6 +531,13 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         // Step 1: BBTools preprocessing BEFORE creating the sample sheet (if enabled)
         List<File> preprocessedFiles;
         boolean bbtoolsEnabled = options.isBBToolsPreprocessingEnabled();
+
+        System.out.println("==========================================");
+        System.out.println("PREPROCESSING CONFIGURATION:");
+        System.out.println("  BBTools Preprocessing Enabled: " + bbtoolsEnabled);
+        System.out.println("  Substitution Threshold: " + options.getBBToolsSubstitutionThreshold());
+        System.out.println("==========================================");
+
         logger.info("==========================================");
         logger.info("PREPROCESSING CONFIGURATION:");
         logger.info("  BBTools Preprocessing Enabled: " + bbtoolsEnabled);
@@ -578,6 +591,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      * This includes deduplication and quality preprocessing.
      */
     private List<File> performBBToolsPreprocessing(Path workspaceDir, List<File> inputFiles, TaxTriageOptions options) throws IOException {
+        System.out.println(">>> ENTERED performBBToolsPreprocessing method");
+        System.out.println(">>> Input files count: " + inputFiles.size());
+
         List<File> preprocessedFiles = new ArrayList<>();
         Path inputDir = workspaceDir.resolve("input");
         Path preprocessedDir = workspaceDir.resolve("preprocessed");
@@ -586,17 +602,22 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         Files.createDirectories(inputDir);
         Files.createDirectories(preprocessedDir);
 
+        System.out.println(">>> Created directories: input and preprocessed");
         logger.info("Starting BBTools preprocessing for " + inputFiles.size() + " files");
 
         // Initialize BBTools deduplicator with substitution threshold from options
         int subsThreshold = options.getBBToolsSubstitutionThreshold();
+        System.out.println(">>> Substitution threshold: " + subsThreshold);
         logger.info("Configured substitution threshold: " + subsThreshold);
 
         BBToolsDeduplicator deduplicator;
         try {
+            System.out.println(">>> Attempting to initialize BBToolsDeduplicator...");
             deduplicator = new BBToolsDeduplicator(subsThreshold);
+            System.out.println(">>> BBTools deduplicator initialized successfully!");
             logger.info("✓ BBTools deduplicator initialized successfully");
         } catch (DockerException e) {
+            System.out.println(">>> BBTools initialization FAILED: " + e.getMessage());
             logger.warning("======================================");
             logger.warning("BBTools preprocessing FAILED to initialize:");
             logger.warning("  Reason: " + e.getMessage());
