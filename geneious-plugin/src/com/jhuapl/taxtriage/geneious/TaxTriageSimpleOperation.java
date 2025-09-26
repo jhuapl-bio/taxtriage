@@ -32,6 +32,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -295,13 +296,14 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             }
 
             // Step 7: Optionally deduplicate BAM files if requested
+            Map<Path, Path> bamFileMapping = new HashMap<>();
             if (options.isDeduplicationEnabled()) {
                 if (progressListener != null) {
                     progressListener.setMessage("Deduplicating mapped reads...");
                     progressListener.setProgress(0.85);
                 }
 
-                deduplicateBamFiles(workspaceDir, options.getThreadCount(), progressListener);
+                bamFileMapping = deduplicateBamFiles(workspaceDir, options.getThreadCount(), progressListener);
             }
 
             // Step 8: Import results back to Geneious
@@ -733,22 +735,25 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     }
 
     /**
-     * Deduplicates BAM files in the output directory using samtools markdup.
+     * Deduplicates BAM files and organizes them for import to separate folders.
      *
      * @param workspaceDir The workspace directory containing output files
      * @param threads Number of threads to use for deduplication
      * @param progressListener Progress listener for updates
+     * @return Map of original to deduplicated BAM file paths for import
      */
-    private void deduplicateBamFiles(Path workspaceDir, int threads, ProgressListener progressListener) {
+    private Map<Path, Path> deduplicateBamFiles(Path workspaceDir, int threads, ProgressListener progressListener) {
         logger.info("==========================================");
         logger.info("Starting BAM deduplication process");
         logger.info("==========================================");
+
+        Map<Path, Path> bamFileMapping = new HashMap<>();  // Maps original to deduplicated paths
 
         try {
             Path outputDir = workspaceDir.resolve("output");
             if (!Files.exists(outputDir) || !Files.isDirectory(outputDir)) {
                 logger.warning("Output directory not found, skipping deduplication");
-                return;
+                return bamFileMapping;
             }
 
             // Create GATK deduplicator instance
@@ -760,7 +765,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 if (progressListener != null) {
                     progressListener.setMessage("Docker/GATK not available - skipping deduplication");
                 }
-                return;
+                return bamFileMapping;
             }
 
             // Find all BAM files in the output directory
@@ -773,7 +778,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
             if (bamFiles.isEmpty()) {
                 logger.info("No BAM files found for deduplication");
-                return;
+                return bamFileMapping;
             }
 
             logger.info("Found " + bamFiles.size() + " BAM file(s) to deduplicate");
@@ -847,6 +852,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 progressListener.setMessage("Deduplication failed (non-critical) - continuing");
             }
         }
+
+        return bamFileMapping;
     }
 
     /**
