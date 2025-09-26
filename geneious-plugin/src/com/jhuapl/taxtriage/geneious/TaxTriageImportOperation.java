@@ -20,8 +20,8 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * Test operation to import TaxTriage results from a specific output directory.
- * This is a development tool to test importing results without running the full workflow.
+ * Operation to import TaxTriage results from an output directory.
+ * Use this to import TaxTriage results that were generated on other systems.
  */
 public class TaxTriageImportOperation extends DocumentOperation {
 
@@ -32,7 +32,7 @@ public class TaxTriageImportOperation extends DocumentOperation {
 
     @Override
     public String getHelp() {
-        return "Imports TaxTriage analysis results from a specified output directory (for testing).";
+        return "Imports TaxTriage analysis results from a specified output directory.";
     }
 
     @Override
@@ -43,8 +43,8 @@ public class TaxTriageImportOperation extends DocumentOperation {
 
     @Override
     public GeneiousActionOptions getActionOptions() {
-        return new GeneiousActionOptions("Import TaxTriage Results (Test)",
-                "Import completed TaxTriage results for testing")
+        return new GeneiousActionOptions("Import TaxTriage Results",
+                "Import completed TaxTriage results")
                 .setMainMenuLocation(GeneiousActionOptions.MainMenu.Tools)
                 .setInMainToolbar(false);
     }

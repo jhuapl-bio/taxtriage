@@ -1596,9 +1596,12 @@ public class TaxTriageResultImporter {
                         .filter(Files::isRegularFile)
                         .filter(p -> {
                             String name = p.getFileName().toString().toLowerCase();
-                            return name.endsWith(".gb") || name.endsWith(".gbk") ||
-                                   name.endsWith(".genbank") || name.endsWith(".fasta") ||
-                                   name.endsWith(".fa");
+                            // Skip dwnld.reference.fasta files - we already have GenBank versions
+                            if (name.startsWith("dwnld.") && name.endsWith(".fasta")) {
+                                return false;
+                            }
+                            // Only import GenBank files
+                            return name.endsWith(".gb") || name.endsWith(".gbk") || name.endsWith(".genbank");
                         })
                         .forEach(refFile -> {
                             try {
@@ -1661,17 +1664,17 @@ public class TaxTriageResultImporter {
                                 String filename = reportFile.getFileName().toString();
                                 processedFiles.add(filename.toLowerCase());
 
-                                if (filename.toLowerCase().endsWith(".html")) {
-                                    // Import HTML files directly
-                                    List<AnnotatedPluginDocument> imported = PluginUtilities.importDocuments(reportFile.toFile(), progressListener);
-                                    if (imported != null && !imported.isEmpty()) {
-                                        for (AnnotatedPluginDocument doc : imported) {
-                                            AnnotatedPluginDocument copiedDoc = reportsFolder.addDocumentCopy(doc, ProgressListener.EMPTY);
-                                            if (copiedDoc != null) {
-                                                docs.add(copiedDoc);
-                                                logger.info("Imported HTML report: " + filename);
-                                            }
-                                        }
+                                if (filename.toLowerCase().endsWith(".html") || filename.toLowerCase().endsWith(".htm")) {
+                                    // Import HTML files as text documents to avoid prompts
+                                    String content = Files.readString(reportFile);
+                                    TaxTriageResultDocument resultDoc = new TaxTriageResultDocument(
+                                        filename, content, "HTML Report", reportFile.toAbsolutePath().toString(), "HTML");
+                                    AnnotatedPluginDocument annotatedDoc = DocumentUtilities.createAnnotatedPluginDocument(resultDoc);
+                                    AnnotatedPluginDocument copiedDoc = reportsFolder.addDocumentCopy(annotatedDoc, ProgressListener.EMPTY);
+
+                                    if (copiedDoc != null) {
+                                        docs.add(copiedDoc);
+                                        logger.info("Imported HTML report: " + filename);
                                     }
                                 } else {
                                     // Import text files as TaxTriageResultDocument
