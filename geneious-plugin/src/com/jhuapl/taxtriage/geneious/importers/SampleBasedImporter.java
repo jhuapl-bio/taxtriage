@@ -232,6 +232,8 @@ public class SampleBasedImporter {
 
     /**
      * Creates folders for a specific sample based on available data.
+     * ONLY creates per-sample folders: Alignments-original, Alignments-deduplicated
+     * Shared files (Reports, References, Kraken_Results) are handled at root level
      */
     private void createSampleFolders(String sample, ProgressListener progressListener) {
         System.out.println("Creating folders for sample: " + sample);
@@ -256,21 +258,8 @@ public class SampleBasedImporter {
         }
 
         // Define subfolder types and their corresponding output directories
+        // ONLY PER-SAMPLE FOLDERS: Alignments-original, Alignments-deduplicated
         Map<String, List<Path>> subfolderMapping = new HashMap<>();
-
-        // References (FASTA and GenBank files - check minimap2 for co-located references)
-        subfolderMapping.put("References", Arrays.asList(
-            outputDir.resolve("download"),
-            outputDir.resolve("minimap2"),  // Check minimap2 for co-located GenBank files
-            outputDir.resolve("genbank_downloads")  // Legacy location
-        ));
-
-        // Kraken results
-        subfolderMapping.put("Kraken_Results", Arrays.asList(
-            outputDir.resolve("kraken2"),
-            outputDir.resolve("kreport"),
-            outputDir.resolve("mergedsubspecies")
-        ));
 
         // Check if deduplication was performed (look for .dedup.bam files)
         boolean hasDeduplicatedFiles = hasDeduplicatedBamFiles(sample,
@@ -297,25 +286,6 @@ public class SampleBasedImporter {
             ));
         }
 
-        // Reports
-        subfolderMapping.put("Reports", Arrays.asList(
-            outputDir.resolve("report"),
-            outputDir.resolve("top"),
-            outputDir.resolve("combine"),
-            outputDir.resolve("count")
-        ));
-
-        // Consensus sequences
-        subfolderMapping.put("Consensus", Arrays.asList(
-            outputDir.resolve("consensus")
-        ));
-
-        // Variant files
-        subfolderMapping.put("VCF_Files", Arrays.asList(
-            outputDir.resolve("variants"),
-            outputDir.resolve("vcf")
-        ));
-
         // Only create subfolders that have content
         for (Map.Entry<String, List<Path>> entry : subfolderMapping.entrySet()) {
             String folderName = entry.getKey();
@@ -332,9 +302,10 @@ public class SampleBasedImporter {
                 // Check for deduplicated BAM files
                 shouldCreateFolder = hasDeduplicatedBamFiles(sample, sourceDirs);
                 System.out.println("  Checking for deduplicated BAM files: " + shouldCreateFolder);
-            } else {
-                // For other folders, use the regular content check
-                shouldCreateFolder = hasContentForSample(sample, sourceDirs);
+            } else if (folderName.equals("Alignments")) {
+                // Check for any BAM files
+                shouldCreateFolder = hasOriginalBamFiles(sample, sourceDirs) || hasDeduplicatedBamFiles(sample, sourceDirs);
+                System.out.println("  Checking for any BAM files: " + shouldCreateFolder);
             }
 
             if (shouldCreateFolder) {
@@ -1040,6 +1011,25 @@ public class SampleBasedImporter {
      */
     public Set<String> getSamples() {
         return new HashSet<>(sampleFolders.keySet());
+    }
+
+    /**
+     * Gets the root database service for importing shared files.
+     * @return WritableDatabaseService for the root database
+     */
+    public WritableDatabaseService getRootDatabaseService() {
+        if (rootService == null) {
+            initializeRootService();
+        }
+        return rootService;
+    }
+
+    /**
+     * Gets the main folder (TaxTriage run folder) for importing shared files.
+     * @return WritableDatabaseService for the main folder
+     */
+    public WritableDatabaseService getMainFolder() {
+        return mainFolder;
     }
 
     /**
