@@ -173,7 +173,7 @@ public class TaxTriageOptions extends Options {
 
         // Deduplication option
         addBooleanOption(DEDUPLICATE_READS_KEY, "Deduplicate Mapped Reads:", false);
-        getOption(DEDUPLICATE_READS_KEY).setDescription("Remove PCR duplicates from BAM files using samtools markdup (requires samtools installed)");
+        getOption(DEDUPLICATE_READS_KEY).setDescription("Remove PCR duplicates from BAM files using GATK MarkDuplicates via Docker (requires Docker)");
     }
 
     /**

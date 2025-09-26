@@ -16,7 +16,7 @@ import com.jhuapl.taxtriage.geneious.database.DatabaseManager.DatabaseType;
 import com.jhuapl.taxtriage.geneious.docker.DockerException;
 import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
-import com.jhuapl.taxtriage.geneious.tools.SamtoolsDeduplicator;
+import com.jhuapl.taxtriage.geneious.tools.GatkDeduplicator;
 // Removed imports to deleted importer package
 // import com.jhuapl.taxtriage.geneious.importer.ImportResult;
 // import com.jhuapl.taxtriage.geneious.importer.ResultImporter;
@@ -751,14 +751,14 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 return;
             }
 
-            // Create deduplicator instance
-            SamtoolsDeduplicator deduplicator = new SamtoolsDeduplicator();
+            // Create GATK deduplicator instance
+            GatkDeduplicator deduplicator = new GatkDeduplicator();
 
-            // Check if samtools is available
-            if (!SamtoolsDeduplicator.isSamtoolsAvailable()) {
-                logger.warning("Samtools is not available, skipping deduplication");
+            // Check if Docker and GATK are available
+            if (!GatkDeduplicator.isGatkAvailable()) {
+                logger.warning("Docker or GATK image is not available, skipping deduplication");
                 if (progressListener != null) {
-                    progressListener.setMessage("Samtools not found - skipping deduplication");
+                    progressListener.setMessage("Docker/GATK not available - skipping deduplication");
                 }
                 return;
             }
@@ -789,8 +789,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                     progressListener.setMessage("Deduplicating: " + bamFile.getFileName());
                 }
 
-                // Deduplicate the BAM file
-                SamtoolsDeduplicator.DeduplicationResult result =
+                // Deduplicate the BAM file using GATK
+                GatkDeduplicator.DeduplicationResult result =
                     deduplicator.deduplicateBam(bamFile, bamFile.getParent(), threads);
 
                 if (result.success) {
