@@ -412,39 +412,86 @@ public class DatabaseManager {
             return;
         }
 
-        // Basic parsing logic - would be better with proper JSON library
-        String[] entries = json.replaceAll("[{}\\[\\]]", "").split("},");
-        for (String entry : entries) {
-            DatabaseMetadata metadata = new DatabaseMetadata();
-            String[] fields = entry.split(",");
-            for (String field : fields) {
-                String[] kv = field.split(":");
-                if (kv.length == 2) {
-                    String key = kv[0].trim().replaceAll("\"", "");
-                    String value = kv[1].trim().replaceAll("\"", "");
+        try {
+            // Remove outer braces and split by database entries
+            json = json.trim();
+            if (json.startsWith("{") && json.endsWith("}")) {
+                json = json.substring(1, json.length() - 1).trim();
+            }
 
-                    switch (key) {
-                        case "databaseType":
-                            metadata.databaseType = value;
-                            break;
-                        case "version":
-                            metadata.version = value;
-                            break;
-                        case "downloadTimestamp":
-                            metadata.downloadTimestamp = Long.parseLong(value);
-                            break;
-                        case "sizeBytes":
-                            metadata.sizeBytes = Long.parseLong(value);
-                            break;
-                        case "source":
-                            metadata.source = value;
-                            break;
+            // Split by top-level entries (each database type)
+            String[] databases = json.split("\\},\\s*\"");
+
+            for (String dbEntry : databases) {
+                // Clean up the entry
+                dbEntry = dbEntry.replaceAll("^\"", "").trim();
+
+                // Extract database name and content
+                int colonIndex = dbEntry.indexOf("\":");
+                if (colonIndex < 0) continue;
+
+                String dbName = dbEntry.substring(0, colonIndex).replaceAll("\"", "").trim();
+                String content = dbEntry.substring(colonIndex + 2).trim();
+
+                // Remove opening brace if present
+                if (content.startsWith("{")) {
+                    content = content.substring(1);
+                }
+                // Remove closing brace if present
+                if (content.endsWith("}")) {
+                    content = content.substring(0, content.length() - 1);
+                }
+
+                // Parse the metadata fields
+                DatabaseMetadata metadata = new DatabaseMetadata();
+                String[] fields = content.split(",\\s*\"");
+
+                for (String field : fields) {
+                    field = field.replaceAll("^\"", "").replaceAll("\"$", "").trim();
+                    String[] kv = field.split("\"\\s*:\\s*");
+
+                    if (kv.length >= 2) {
+                        String key = kv[0].replaceAll("\"", "").trim();
+                        String value = kv[1].replaceAll("\"", "").trim();
+
+                        switch (key) {
+                            case "databaseType":
+                                metadata.databaseType = value;
+                                break;
+                            case "version":
+                                metadata.version = value;
+                                break;
+                            case "downloadTimestamp":
+                                try {
+                                    metadata.downloadTimestamp = Long.parseLong(value);
+                                } catch (NumberFormatException e) {
+                                    logger.warning("Failed to parse timestamp: " + value);
+                                }
+                                break;
+                            case "sizeBytes":
+                                try {
+                                    metadata.sizeBytes = Long.parseLong(value);
+                                } catch (NumberFormatException e) {
+                                    logger.warning("Failed to parse size: " + value);
+                                }
+                                break;
+                            case "source":
+                                metadata.source = value;
+                                break;
+                        }
                     }
                 }
+
+                if (metadata.databaseType != null) {
+                    metadataCache.put(dbName, metadata);
+                    logger.info("Loaded metadata for database: " + dbName +
+                               " (type=" + metadata.databaseType +
+                               ", version=" + metadata.version + ")");
+                }
             }
-            if (metadata.databaseType != null) {
-                metadataCache.put(metadata.databaseType, metadata);
-            }
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Failed to parse metadata JSON: " + e.getMessage(), e);
+            logger.warning("JSON content: " + json);
         }
     }
 
@@ -588,7 +635,7 @@ public class DatabaseManager {
             Path hashFile = dbPath.resolve("hash.k2d");
             Path taxoFile = dbPath.resolve("taxo.k2d");
 
-            return Files.exists(hashFile) || Files.exists(taxoFile);
+            return Files.exists(hashFile) && Files.exists(taxoFile);
         }
     }
 }

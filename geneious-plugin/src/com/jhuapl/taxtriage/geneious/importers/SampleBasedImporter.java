@@ -272,11 +272,30 @@ public class SampleBasedImporter {
             outputDir.resolve("mergedsubspecies")
         ));
 
-        // Alignment results (keep BAM files here but don't import)
-        subfolderMapping.put("Alignments", Arrays.asList(
-            outputDir.resolve("minimap2"),
-            outputDir.resolve("alignment")
-        ));
+        // Check if deduplication was performed (look for .dedup.bam files)
+        boolean hasDeduplicatedFiles = hasDeduplicatedBamFiles(sample,
+            Arrays.asList(outputDir.resolve("minimap2"), outputDir.resolve("alignment")));
+
+        if (hasDeduplicatedFiles) {
+            System.out.println("  Deduplication detected - creating separate alignment folders");
+            // Create separate folders for original and deduplicated alignments
+            subfolderMapping.put("Alignments-original", Arrays.asList(
+                outputDir.resolve("minimap2"),
+                outputDir.resolve("alignment")
+            ));
+
+            subfolderMapping.put("Alignments-deduplicated", Arrays.asList(
+                outputDir.resolve("minimap2"),
+                outputDir.resolve("alignment")
+            ));
+        } else {
+            System.out.println("  No deduplication detected - creating single Alignments folder");
+            // Just create single Alignments folder if no deduplication
+            subfolderMapping.put("Alignments", Arrays.asList(
+                outputDir.resolve("minimap2"),
+                outputDir.resolve("alignment")
+            ));
+        }
 
         // Reports
         subfolderMapping.put("Reports", Arrays.asList(
@@ -302,7 +321,23 @@ public class SampleBasedImporter {
             String folderName = entry.getKey();
             List<Path> sourceDirs = entry.getValue();
 
-            if (hasContentForSample(sample, sourceDirs)) {
+            boolean shouldCreateFolder = false;
+
+            // Special handling for alignment folders
+            if (folderName.equals("Alignments-original")) {
+                // Check for non-deduplicated BAM files
+                shouldCreateFolder = hasOriginalBamFiles(sample, sourceDirs);
+                System.out.println("  Checking for original BAM files: " + shouldCreateFolder);
+            } else if (folderName.equals("Alignments-deduplicated")) {
+                // Check for deduplicated BAM files
+                shouldCreateFolder = hasDeduplicatedBamFiles(sample, sourceDirs);
+                System.out.println("  Checking for deduplicated BAM files: " + shouldCreateFolder);
+            } else {
+                // For other folders, use the regular content check
+                shouldCreateFolder = hasContentForSample(sample, sourceDirs);
+            }
+
+            if (shouldCreateFolder) {
                 WritableDatabaseService subfolder = null;
                 try {
                     subfolder = sampleFolder.createChildFolder(folderName);
@@ -322,6 +357,77 @@ public class SampleBasedImporter {
         }
 
         sampleFolders.put(sample, folders);
+    }
+
+    /**
+     * Checks if there are original (non-deduplicated) BAM files for the sample.
+     */
+    private boolean hasOriginalBamFiles(String sample, List<Path> dirs) {
+        System.out.println("  Checking for original BAM files for sample: " + sample);
+        for (Path dir : dirs) {
+            if (Files.exists(dir)) {
+                System.out.println("    Checking directory: " + dir);
+                try {
+                    List<Path> originalFiles = Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> {
+                            String filename = p.getFileName().toString();
+                            // Original BAM files: contain sample name, end with .bam, but NOT .dedup.bam
+                            boolean isOriginal = filename.contains(sample) &&
+                                                 filename.endsWith(".bam") &&
+                                                 !filename.endsWith(".dedup.bam");
+                            if (isOriginal) {
+                                System.out.println("      Found original file: " + filename);
+                            }
+                            return isOriginal;
+                        })
+                        .collect(Collectors.toList());
+
+                    if (!originalFiles.isEmpty()) {
+                        System.out.println("    ✓ Found " + originalFiles.size() + " original BAM file(s)");
+                        return true;
+                    }
+                } catch (IOException e) {
+                    logger.warning("Error checking for original BAM files: " + e.getMessage());
+                }
+            }
+        }
+        System.out.println("    No original BAM files found");
+        return false;
+    }
+
+    /**
+     * Checks if there are deduplicated BAM files for the sample.
+     */
+    private boolean hasDeduplicatedBamFiles(String sample, List<Path> dirs) {
+        System.out.println("  Checking for deduplicated BAM files for sample: " + sample);
+        for (Path dir : dirs) {
+            if (Files.exists(dir)) {
+                System.out.println("    Checking directory: " + dir);
+                try {
+                    List<Path> dedupFiles = Files.list(dir)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> {
+                            String filename = p.getFileName().toString();
+                            boolean isDedup = filename.contains(sample) && filename.endsWith(".dedup.bam");
+                            if (isDedup) {
+                                System.out.println("      Found deduplicated file: " + filename);
+                            }
+                            return isDedup;
+                        })
+                        .collect(java.util.stream.Collectors.toList());
+
+                    if (!dedupFiles.isEmpty()) {
+                        System.out.println("    ✓ Found " + dedupFiles.size() + " deduplicated BAM file(s)");
+                        return true;
+                    }
+                } catch (IOException e) {
+                    logger.warning("Error checking for deduplicated BAM files: " + e.getMessage());
+                }
+            }
+        }
+        System.out.println("    No deduplicated BAM files found");
+        return false;
     }
 
     /**
@@ -547,7 +653,11 @@ public class SampleBasedImporter {
         }
 
         // Import BAM files using proper DocumentFileImporter API
-        if (folders.containsKey("Alignments") || folders.containsKey("References")) {
+        // Check if we have separate folders for original and deduplicated alignments
+        boolean hasDeduplicationFolders = folders.containsKey("Alignments-original") &&
+                                          folders.containsKey("Alignments-deduplicated");
+
+        if (folders.containsKey("Alignments") || hasDeduplicationFolders || folders.containsKey("References")) {
             List<File> bamFiles = findFilesForSample(sample,
                 Arrays.asList(outputDir.resolve("minimap2"), outputDir.resolve("alignment")),
                 Arrays.asList(".bam"));
@@ -574,58 +684,68 @@ public class SampleBasedImporter {
                 }
             }
 
-            // Import each BAM file with its references
+            // Separate BAM files into original and deduplicated
+            List<File> originalBamFiles = new ArrayList<>();
+            List<File> dedupBamFiles = new ArrayList<>();
+
+            System.out.println("\n  Categorizing " + bamFiles.size() + " BAM file(s):");
             for (File bamFile : bamFiles) {
-                System.out.println("\n  Processing BAM file: " + bamFile.getName());
+                String filename = bamFile.getName();
+                if (filename.endsWith(".dedup.bam")) {
+                    dedupBamFiles.add(bamFile);
+                    System.out.println("    - " + filename + " → deduplicated");
+                } else if (filename.endsWith(".bam") && !filename.contains(".dedup")) {
+                    originalBamFiles.add(bamFile);
+                    System.out.println("    - " + filename + " → original");
+                }
+            }
 
-                try {
-                    // Determine target folder - BAM files should go to Alignments folder
-                    WritableDatabaseService targetFolder = folders.get("Alignments");
+            System.out.println("\n  Folder structure: hasDeduplicationFolders=" + hasDeduplicationFolders);
+            System.out.println("    Alignments-original folder exists: " + folders.containsKey("Alignments-original"));
+            System.out.println("    Alignments-deduplicated folder exists: " + folders.containsKey("Alignments-deduplicated"));
+            System.out.println("    Alignments folder exists: " + folders.containsKey("Alignments"));
 
-                    // If no Alignments folder exists, try References as fallback
-                    if (targetFolder == null) {
-                        targetFolder = folders.get("References");
+            // Import original BAM files
+            if (!originalBamFiles.isEmpty() && hasDeduplicationFolders) {
+                WritableDatabaseService originalFolder = folders.get("Alignments-original");
+                if (originalFolder != null) {
+                    System.out.println("\n  Importing " + originalBamFiles.size() + " original BAM file(s) to Alignments-original folder:");
+                    for (File bamFile : originalBamFiles) {
+                        importBamFile(bamFile, originalFolder, colocatedReferences, progressListener, allImported);
                     }
+                } else {
+                    System.out.println("\n  ERROR: Alignments-original folder not found, cannot import original BAM files");
+                }
+            }
 
-                    if (targetFolder == null) {
-                        System.out.println("    Error: No suitable folder for BAM import (need Alignments or References folder)");
-                        continue;
+            // Import deduplicated BAM files
+            if (!dedupBamFiles.isEmpty() && hasDeduplicationFolders) {
+                WritableDatabaseService dedupFolder = folders.get("Alignments-deduplicated");
+                if (dedupFolder != null) {
+                    System.out.println("\n  Importing " + dedupBamFiles.size() + " deduplicated BAM file(s) to Alignments-deduplicated folder:");
+                    for (File bamFile : dedupBamFiles) {
+                        importBamFile(bamFile, dedupFolder, colocatedReferences, progressListener, allImported);
                     }
+                } else {
+                    System.out.println("\n  ERROR: Alignments-deduplicated folder not found, cannot import deduplicated BAM files");
+                }
+            }
 
-                    // Use the proper BAM importer with references
-                    List<AnnotatedPluginDocument> bamDocs;
+            // If no deduplication folders, import all BAM files to single Alignments folder
+            if (!hasDeduplicationFolders) {
+                WritableDatabaseService targetFolder = folders.get("Alignments");
+                if (targetFolder == null) {
+                    targetFolder = folders.get("References");
+                }
 
-                    if (!colocatedReferences.isEmpty()) {
-                        System.out.println("    Using ProperBamImporter with " + colocatedReferences.size() + " reference file(s)");
-                        System.out.println("    Target folder: " + (folders.get("Alignments") == targetFolder ? "Alignments" : "References"));
-                        bamDocs = ProperBamImporter.importBamWithReferences(
-                            bamFile,
-                            colocatedReferences,
-                            targetFolder,
-                            progressListener
-                        );
-                    } else {
-                        System.out.println("    Using ProperBamImporter without explicit reference files");
-                        System.out.println("    (Importer will look for references in the database)");
-                        System.out.println("    Target folder: " + (folders.get("Alignments") == targetFolder ? "Alignments" : "References"));
-                        bamDocs = ProperBamImporter.importBam(
-                            bamFile,
-                            targetFolder,
-                            progressListener
-                        );
+                if (targetFolder == null) {
+                    System.out.println("    Error: No suitable folder for BAM import (need Alignments or References folder)");
+                } else {
+                    System.out.println("\n  Importing BAM files to " +
+                                     (folders.get("Alignments") == targetFolder ? "Alignments" : "References") + " folder:");
+                    for (File bamFile : bamFiles) {
+                        importBamFile(bamFile, targetFolder, colocatedReferences, progressListener, allImported);
                     }
-
-                    if (bamDocs != null && !bamDocs.isEmpty()) {
-                        allImported.addAll(bamDocs);
-                        System.out.println("    Successfully imported " + bamDocs.size() + " document(s) from BAM");
-                    } else {
-                        System.out.println("    Warning: No documents imported from BAM file");
-                    }
-
-                } catch (Exception e) {
-                    logger.log(Level.WARNING, "Failed to import BAM file: " + bamFile.getName(), e);
-                    System.out.println("    Error importing BAM: " + e.getMessage());
-                    e.printStackTrace();
                 }
             }
         }
@@ -634,6 +754,50 @@ public class SampleBasedImporter {
         System.out.println("=====================================\n");
 
         return allImported;
+    }
+
+    /**
+     * Helper method to import a single BAM file
+     */
+    private void importBamFile(File bamFile, WritableDatabaseService targetFolder,
+                               List<File> colocatedReferences, ProgressListener progressListener,
+                               List<AnnotatedPluginDocument> allImported) {
+        System.out.println("      Processing: " + bamFile.getName());
+
+        try {
+            // Use the proper BAM importer with references
+            List<AnnotatedPluginDocument> bamDocs;
+
+            if (!colocatedReferences.isEmpty()) {
+                System.out.println("        Using ProperBamImporter with " + colocatedReferences.size() + " reference file(s)");
+                bamDocs = ProperBamImporter.importBamWithReferences(
+                    bamFile,
+                    colocatedReferences,
+                    targetFolder,
+                    progressListener
+                );
+            } else {
+                System.out.println("        Using ProperBamImporter without explicit reference files");
+                System.out.println("        (Importer will look for references in the database)");
+                bamDocs = ProperBamImporter.importBam(
+                    bamFile,
+                    targetFolder,
+                    progressListener
+                );
+            }
+
+            if (bamDocs != null && !bamDocs.isEmpty()) {
+                allImported.addAll(bamDocs);
+                System.out.println("        Successfully imported " + bamDocs.size() + " document(s) from BAM");
+            } else {
+                System.out.println("        Warning: No documents imported from BAM file");
+            }
+
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Failed to import BAM file: " + bamFile.getName(), e);
+            System.out.println("        Error importing BAM: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     /**

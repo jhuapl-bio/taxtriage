@@ -611,10 +611,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         DatabaseType dbType = mapDatabaseNameToType(dbName);
 
         if (dbType != null) {
-            // Try to use cached or bundled database
+            // First check if cached or bundled database exists (without allowing download)
             String dbPath = dbManager.getDatabasePath(dbType, false);
 
-            if (dbPath != null && !"DOWNLOAD_REQUIRED".equals(dbPath)) {
+            if (dbPath != null) {
+                // We have a cached or bundled database - use it
                 logger.info("==========================================");
                 logger.info("Using cached/bundled database for workflow");
                 logger.info("  Type: " + dbType.getId());
@@ -626,8 +627,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 cmd.add("--download_db");
                 cmd.add("false");
             } else {
+                // No cached database exists - need to download
                 logger.info("==========================================");
-                logger.info("Database will be downloaded by workflow");
+                logger.info("No cached database found - will download");
                 logger.info("  Type: " + dbType.getId());
                 logger.info("  Name: " + dbName);
 
@@ -805,31 +807,19 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                     logger.info("  Duplicates removed: " + result.duplicatesRemoved);
                     logger.info("  Deduplicated file: " + result.outputPath);
 
-                    // Replace original with deduplicated version for import
-                    // Move original to .original.bam and move deduplicated to original location
-                    try {
-                        Path originalBackup = Paths.get(bamFile.toString().replace(".bam", ".original.bam"));
-                        Path deduplicatedPath = Paths.get(result.outputPath);
+                    // Keep both original and deduplicated files with clear naming
+                    // The deduplicated file already has .dedup.bam suffix from GatkDeduplicator
+                    Path deduplicatedPath = Paths.get(result.outputPath);
+                    bamFileMapping.put(bamFile, deduplicatedPath);
 
-                        // Backup the original
-                        Files.move(bamFile, originalBackup);
-                        logger.info("  Original backed up to: " + originalBackup.getFileName());
+                    logger.info("  Original file: " + bamFile.getFileName());
+                    logger.info("  Deduplicated file: " + deduplicatedPath.getFileName());
+                    logger.info("  Both files will be imported to separate folders in Geneious");
 
-                        // Move deduplicated file to original location so it gets imported
-                        Files.move(deduplicatedPath, bamFile);
-                        logger.info("  Deduplicated file moved to: " + bamFile.getFileName());
-                        logger.info("  This deduplicated file will be imported to Geneious");
-
-                        // Also move the index file if it exists
-                        Path deduplicatedIndex = Paths.get(result.outputPath + ".bai");
-                        Path originalIndex = Paths.get(bamFile.toString() + ".bai");
-                        if (Files.exists(deduplicatedIndex)) {
-                            Files.move(deduplicatedIndex, originalIndex, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                            logger.info("  Index file also moved");
-                        }
-                    } catch (IOException e) {
-                        logger.warning("Could not replace original with deduplicated file: " + e.getMessage());
-                        logger.warning("Original file will be imported instead");
+                    // Keep the index file for the deduplicated BAM
+                    Path deduplicatedIndex = Paths.get(result.outputPath + ".bai");
+                    if (Files.exists(deduplicatedIndex)) {
+                        logger.info("  Index file created: " + deduplicatedIndex.getFileName());
                     }
                 } else {
                     logger.warning("Failed to deduplicate: " + bamFile.getFileName());
