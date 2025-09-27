@@ -618,24 +618,30 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             logger.info("✓ BBTools deduplicator initialized successfully");
         } catch (DockerException e) {
             System.out.println(">>> BBTools initialization FAILED: " + e.getMessage());
-            logger.warning("======================================");
-            logger.warning("BBTools preprocessing FAILED to initialize:");
-            logger.warning("  Reason: " + e.getMessage());
-            logger.warning("  Falling back to original files without preprocessing");
-            logger.warning("  Note: BBTools requires Docker to be installed and running");
-            logger.warning("======================================");
-            return copyInputFilesToWorkspace(workspaceDir, inputFiles);
+            String errorMsg = "BBTools preprocessing is enabled but failed to initialize.\n\n" +
+                            "Error: " + e.getMessage() + "\n\n" +
+                            "To fix this issue:\n" +
+                            "1. Ensure Docker is installed and running\n" +
+                            "2. Check Docker permissions\n" +
+                            "3. Or disable BBTools preprocessing in the plugin options";
+            logger.severe(errorMsg);
+            throw new IOException(errorMsg, e);
         }
 
+        System.out.println(">>> Checking if BBTools Docker image is available...");
         if (!deduplicator.isBBToolsAvailable()) {
-            logger.warning("======================================");
-            logger.warning("BBTools Docker image not available");
-            logger.warning("  Falling back to original files without preprocessing");
-            logger.warning("  Note: The BBTools image (" + deduplicator.getImageName() + ") needs to be pulled");
-            logger.warning("======================================");
-            return copyInputFilesToWorkspace(workspaceDir, inputFiles);
+            System.out.println(">>> BBTools Docker image NOT available - FAILING workflow");
+            String errorMsg = "BBTools preprocessing is enabled but the Docker image is not available.\n\n" +
+                            "Required: " + deduplicator.getImageName() + "\n\n" +
+                            "To fix this issue:\n" +
+                            "1. Ensure Docker is running\n" +
+                            "2. Pull the BBTools image: docker pull " + deduplicator.getImageName() + "\n" +
+                            "3. Or disable BBTools preprocessing in the plugin options";
+            logger.severe(errorMsg);
+            throw new IOException(errorMsg);
         }
 
+        System.out.println(">>> BBTools Docker image IS available: " + deduplicator.getImageName());
         logger.info("✓ BBTools Docker image available: " + deduplicator.getImageName());
 
         try {
@@ -643,6 +649,7 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             int processedCount = 0;
 
             for (File inputFile : inputFiles) {
+                System.out.println(">>> PROCESSING FILE " + (processedCount + 1) + "/" + inputFiles.size() + ": " + inputFile.getName());
                 logger.info("======================================");
                 logger.info("PROCESSING FILE " + (processedCount + 1) + "/" + inputFiles.size() + ": " + inputFile.getName());
                 logger.info("======================================");
@@ -650,16 +657,24 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 // Copy original file to input directory first
                 Path originalInWorkspace = inputDir.resolve(inputFile.getName());
                 Files.copy(inputFile.toPath(), originalInWorkspace, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println(">>> Copied to workspace: " + originalInWorkspace);
                 logger.info("Copied to workspace: " + originalInWorkspace);
 
                 // Preprocess with BBTools
+                System.out.println(">>> Starting BBTools 4-step pipeline...");
                 logger.info("Starting BBTools 4-step pipeline...");
                 BBToolsDeduplicator.DeduplicationResult result = deduplicator.deduplicateReads(
                     originalInWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
+                System.out.println(">>> BBTools pipeline completed, checking result...");
 
                 if (result.isSuccess()) {
+                    System.out.println(">>> SUCCESS! Result output path: " + result.getOutputPath());
                     File preprocessedFile = new File(result.getOutputPath());
                     preprocessedFiles.add(preprocessedFile);
+
+                    System.out.println(">>> Duplicates removed: " + result.getDuplicatesRemoved());
+                    System.out.println(">>> Total reads: " + result.getTotalReads());
+                    System.out.println(">>> Preprocessed file added to list: " + preprocessedFile.getAbsolutePath());
 
                     logger.info("");
                     logger.info("\u2713\u2713\u2713 BBTools preprocessing SUCCESSFUL \u2713\u2713\u2713");
@@ -677,6 +692,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                         }
                     }
                 } else {
+                    System.out.println(">>> FAILED! Error: " + result.getErrorMessage());
+                    System.out.println(">>> Falling back to original file");
                     logger.warning("");
                     logger.warning("\u2717\u2717\u2717 BBTools preprocessing FAILED \u2717\u2717\u2717");
                     logger.warning("  File: " + inputFile.getName());
