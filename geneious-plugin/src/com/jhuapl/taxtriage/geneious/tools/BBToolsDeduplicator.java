@@ -5,8 +5,10 @@ import com.jhuapl.taxtriage.geneious.docker.DockerManager;
 import com.jhuapl.taxtriage.geneious.docker.ExecutionResult;
 import jebl.util.ProgressListener;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -324,14 +326,14 @@ public class BBToolsDeduplicator {
                                           Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("reformat.sh");
-        command.add("in=" + input.getFileName());
-        command.add("out=" + output1.getFileName());
+        command.add("in=/data/" + input.getFileName());
+        command.add("out=/data/" + output1.getFileName());
         if (output2 != null) {
-            command.add("out2=" + output2.getFileName());
+            command.add("out2=/data/" + output2.getFileName());
         }
         command.add("ow=t"); // Overwrite existing files
 
-        return executeDockerCommand(operation, command, workDir, progressListener);
+        return executeDockerCommandDirect(operation, command, workDir, progressListener);
     }
 
     /**
@@ -341,12 +343,12 @@ public class BBToolsDeduplicator {
                                                      Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("reformat.sh");
-        command.add("in=" + input1.getFileName());
-        command.add("in2=" + input2.getFileName());
-        command.add("out=" + output.getFileName());
+        command.add("in=/data/" + input1.getFileName());
+        command.add("in2=/data/" + input2.getFileName());
+        command.add("out=/data/" + output.getFileName());
         command.add("ow=t"); // Overwrite existing files
 
-        return executeDockerCommand(operation, command, workDir, progressListener);
+        return executeDockerCommandDirect(operation, command, workDir, progressListener);
     }
 
     /**
@@ -356,16 +358,16 @@ public class BBToolsDeduplicator {
                                           int subsThreshold, Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("clumpify.sh");
-        command.add("in=" + input1.getFileName());
-        command.add("in2=" + input2.getFileName());
-        command.add("out=" + output1.getFileName());
-        command.add("out2=" + output2.getFileName());
+        command.add("in=/data/" + input1.getFileName());
+        command.add("in2=/data/" + input2.getFileName());
+        command.add("out=/data/" + output1.getFileName());
+        command.add("out2=/data/" + output2.getFileName());
         command.add("dedupe");
         command.add("subs=" + subsThreshold);
         command.add("addcount=t"); // Add count information to read names
         command.add("ow=t"); // Overwrite existing files
 
-        return executeDockerCommand("Deduplicate reads", command, workDir, progressListener);
+        return executeDockerCommandDirect("Deduplicate reads", command, workDir, progressListener);
     }
 
     /**
@@ -374,33 +376,75 @@ public class BBToolsDeduplicator {
     private ExecutionResult executeRename(Path input, Path output, Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("rename.sh");
-        command.add("in=" + input.getFileName());
-        command.add("out=" + output.getFileName());
+        command.add("in=/data/" + input.getFileName());
+        command.add("out=/data/" + output.getFileName());
         command.add("ow=t"); // Overwrite existing files
 
-        return executeDockerCommand("Clean read names", command, workDir, progressListener);
+        return executeDockerCommandDirect("Clean read names", command, workDir, progressListener);
     }
 
     /**
-     * Executes a BBTools command in Docker container.
+     * Executes a BBTools command directly in Docker container with proper volume mounting.
      */
-    private ExecutionResult executeDockerCommand(String operation, List<String> command, Path workDir,
-                                                ProgressListener progressListener) throws DockerException {
+    private ExecutionResult executeDockerCommandDirect(String operation, List<String> command, Path workDir,
+                                                      ProgressListener progressListener) throws DockerException {
         logger.info("  Executing: " + operation);
         logger.info("  Command: " + String.join(" ", command));
 
-        // Build the full command for Docker execution
-        String fullCommand = String.join(" ", command);
+        try {
+            // Build Docker command with proper volume mounting
+            List<String> dockerCmd = new ArrayList<>();
+            dockerCmd.add("docker");
+            dockerCmd.add("run");
+            dockerCmd.add("--rm");
+            dockerCmd.add("-v");
+            dockerCmd.add(workDir.toAbsolutePath() + ":/data");
+            dockerCmd.add(BBTOOLS_IMAGE);
+            dockerCmd.addAll(command);
 
-        // Execute using DockerManager with volume mounting
-        return dockerManager.executeNextflowCommand(
-            fullCommand,
-            workDir,  // input directory (where files are located)
-            workDir,  // output directory (where results go)
-            workDir,  // working directory
-            progressListener,
-            DEFAULT_TIMEOUT_MINUTES
-        );
+            logger.info("  Docker command: " + String.join(" ", dockerCmd));
+
+            // Execute the command
+            ProcessBuilder pb = new ProcessBuilder(dockerCmd);
+            pb.redirectErrorStream(false);
+            Process process = pb.start();
+
+            // Capture output
+            StringBuilder stdout = new StringBuilder();
+            StringBuilder stderr = new StringBuilder();
+
+            try (BufferedReader stdoutReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                 BufferedReader stderrReader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+
+                String line;
+                while ((line = stdoutReader.readLine()) != null) {
+                    stdout.append(line).append("\n");
+                    logger.fine(line);
+                }
+
+                while ((line = stderrReader.readLine()) != null) {
+                    stderr.append(line).append("\n");
+                    logger.fine(line);
+                }
+            }
+
+            // Wait for completion
+            boolean finished = process.waitFor(DEFAULT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+            if (!finished) {
+                process.destroy();
+                throw new DockerException("BBTools command timed out after " + DEFAULT_TIMEOUT_MINUTES + " minutes");
+            }
+
+            int exitCode = process.exitValue();
+            return new com.jhuapl.taxtriage.geneious.docker.ExecutionResult(
+                String.join(" ", dockerCmd), exitCode, stdout.toString(), stderr.toString(),
+                java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
+            );
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to execute BBTools command", e);
+            throw new DockerException("Failed to execute BBTools command: " + e.getMessage(), e);
+        }
     }
 
     /**
