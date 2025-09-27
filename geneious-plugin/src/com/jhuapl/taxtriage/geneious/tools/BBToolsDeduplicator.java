@@ -198,14 +198,19 @@ public class BBToolsDeduplicator {
         try {
             Files.createDirectories(workDir);
 
-            // Define intermediate and final file paths
+            // Copy input file to workDir so all files are in the same directory for Docker volume mount
+            Path inputInWorkDir = workDir.resolve(inputFile.getFileName());
+            Files.copy(inputFile, inputInWorkDir, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Copied input file to work directory: " + inputInWorkDir);
+
+            // Define intermediate and final file paths (all in workDir)
             Path splitR1 = workDir.resolve(baseName + ".R1.fq.gz");
             Path splitR2 = workDir.resolve(baseName + ".R2.fq.gz");
             Path dedupR1 = workDir.resolve(baseName + "_dedupe.R1.fq.gz");
             Path dedupR2 = workDir.resolve(baseName + "_dedupe.R2.fq.gz");
             Path cleanR1 = workDir.resolve(baseName + "_clean.R1.fq.gz");
             Path cleanR2 = workDir.resolve(baseName + "_clean.R2.fq.gz");
-            Path finalOutput = outputDir.resolve(baseName + "_dedupe.fq.gz");
+            Path finalOutput = workDir.resolve(baseName + "_dedupe.fq.gz");
 
             // Progress tracking
             if (progressListener != null) {
@@ -217,7 +222,7 @@ public class BBToolsDeduplicator {
             logger.info("\n[Step 1/4] Splitting interleaved FASTQ...");
             ExecutionResult step1Result = executeReformat(
                 "Split interleaved reads",
-                inputFile, splitR1, splitR2, workDir, progressListener
+                inputInWorkDir, splitR1, splitR2, workDir, progressListener
             );
 
             if (!step1Result.isSuccessful()) {
