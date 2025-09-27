@@ -693,15 +693,17 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                     }
                 } else {
                     System.out.println(">>> FAILED! Error: " + result.getErrorMessage());
-                    System.out.println(">>> Falling back to original file");
-                    logger.warning("");
-                    logger.warning("\u2717\u2717\u2717 BBTools preprocessing FAILED \u2717\u2717\u2717");
-                    logger.warning("  File: " + inputFile.getName());
-                    logger.warning("  Error: " + result.getErrorMessage());
-                    logger.warning("  Action: Falling back to original file");
-
-                    // Use original file as fallback
-                    preprocessedFiles.add(originalInWorkspace.toFile());
+                    System.out.println(">>> ABORTING workflow - preprocessing is required");
+                    String errorMsg = "BBTools preprocessing failed for file: " + inputFile.getName() + "\n\n" +
+                                    "Error: " + result.getErrorMessage() + "\n\n" +
+                                    "Preprocessing is enabled and required. The workflow cannot continue.\n" +
+                                    "To fix this issue:\n" +
+                                    "1. Check Docker is running\n" +
+                                    "2. Ensure input files are valid FASTQ format\n" +
+                                    "3. Check available disk space\n" +
+                                    "4. Or disable BBTools preprocessing in the plugin options";
+                    logger.severe(errorMsg);
+                    throw new IOException(errorMsg);
                 }
 
                 processedCount++;

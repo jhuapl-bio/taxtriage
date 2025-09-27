@@ -161,9 +161,8 @@ public class DockerManager {
         command.add("-w");
         command.add("/data/work");
 
-        // User mapping (to avoid permission issues)
-        command.add("-u");
-        command.add(System.getProperty("user.name", "1000:1000"));
+        // Don't add user mapping - it causes issues when username doesn't exist in container
+        // Files will be created as root but this is acceptable for temporary workflow files
 
         // Environment variables
         command.add("-e");
