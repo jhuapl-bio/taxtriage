@@ -208,8 +208,6 @@ public class BBToolsDeduplicator {
             Path splitR2 = workDir.resolve(baseName + ".R2.fq.gz");
             Path dedupR1 = workDir.resolve(baseName + "_dedupe.R1.fq.gz");
             Path dedupR2 = workDir.resolve(baseName + "_dedupe.R2.fq.gz");
-            Path cleanR1 = workDir.resolve(baseName + "_clean.R1.fq.gz");
-            Path cleanR2 = workDir.resolve(baseName + "_clean.R2.fq.gz");
             Path finalOutput = workDir.resolve(baseName + "_dedupe.fq.gz");
 
             // Progress tracking
@@ -259,42 +257,22 @@ public class BBToolsDeduplicator {
 
             if (progressListener != null) {
                 progressListener.setProgress(0.6);
-                progressListener.setMessage("Cleaning read names...");
-            }
-
-            // Step 3: Clean read names
-            logger.info("\n[Step 3/4] Cleaning read names...");
-            ExecutionResult step3R1Result = executeRename(dedupR1, cleanR1, workDir, progressListener);
-            ExecutionResult step3R2Result = executeRename(dedupR2, cleanR2, workDir, progressListener);
-
-            if (!step3R1Result.isSuccessful() || !step3R2Result.isSuccessful()) {
-                String error = "Failed to clean read names: R1=" + step3R1Result.getErrorOutput() +
-                              ", R2=" + step3R2Result.getErrorOutput();
-                logger.warning(error);
-                return new DeduplicationResult(false, null, error, 0, 0, stepResults);
-            }
-            stepResults.add("Clean R1: " + step3R1Result.getSummary());
-            stepResults.add("Clean R2: " + step3R2Result.getSummary());
-            logger.info("  ✓ Read name cleaning complete");
-
-            if (progressListener != null) {
-                progressListener.setProgress(0.8);
                 progressListener.setMessage("Re-interleaving reads...");
             }
 
-            // Step 4: Re-interleave
-            logger.info("\n[Step 4/4] Re-interleaving reads...");
-            ExecutionResult step4Result = executeReformatInterleave(
-                "Re-interleave cleaned reads",
-                cleanR1, cleanR2, finalOutput, workDir, progressListener
+            // Step 3: Re-interleave with underscore replacement for copy counts
+            logger.info("\n[Step 3/3] Re-interleaving reads and formatting names...");
+            ExecutionResult step3Result = executeReformatInterleaveWithUnderscore(
+                "Re-interleave deduplicated reads",
+                dedupR1, dedupR2, finalOutput, workDir, progressListener
             );
 
-            if (!step4Result.isSuccessful()) {
-                String error = "Failed to re-interleave reads: " + step4Result.getErrorOutput();
+            if (!step3Result.isSuccessful()) {
+                String error = "Failed to re-interleave reads: " + step3Result.getErrorOutput();
                 logger.warning(error);
                 return new DeduplicationResult(false, null, error, 0, 0, stepResults);
             }
-            stepResults.add("Re-interleave: " + step4Result.getSummary());
+            stepResults.add("Re-interleave: " + step3Result.getSummary());
             logger.info("  ✓ Re-interleaving complete: " + finalOutput.getFileName());
 
             if (progressListener != null) {
@@ -351,6 +329,23 @@ public class BBToolsDeduplicator {
         command.add("in=/data/" + input1.getFileName());
         command.add("in2=/data/" + input2.getFileName());
         command.add("out=/data/" + output.getFileName());
+        command.add("ow=t"); // Overwrite existing files
+
+        return executeDockerCommandDirect(operation, command, workDir, progressListener);
+    }
+
+    /**
+     * Executes reformat.sh for re-interleaving two FASTQ files into one with underscore replacement.
+     * This replaces spaces in read names with underscores, converting " copies=X" to "_copies=X".
+     */
+    private ExecutionResult executeReformatInterleaveWithUnderscore(String operation, Path input1, Path input2, Path output,
+                                                                   Path workDir, ProgressListener progressListener) throws DockerException {
+        List<String> command = new ArrayList<>();
+        command.add("reformat.sh");
+        command.add("in=/data/" + input1.getFileName());
+        command.add("in2=/data/" + input2.getFileName());
+        command.add("out=/data/" + output.getFileName());
+        command.add("underscore=t"); // Replace spaces with underscores in read names
         command.add("ow=t"); // Overwrite existing files
 
         return executeDockerCommandDirect(operation, command, workDir, progressListener);
