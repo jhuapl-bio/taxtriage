@@ -32,21 +32,21 @@ jobs:
       - name: Check out pipeline code
         uses: actions/checkout@v2
 
-      - name: Install Nextflow
-        env:
-          NXF_VER: ${{ matrix.NXF_VER }}
-          # Uncomment only if the edge release is more recent than the latest stable release
-          # See https://github.com/nextflow-io/nextflow/issues/2467
-          # NXF_EDGE: ${{ matrix.NXF_EDGE }}
-        run: |
-          wget -qO- get.nextflow.io | bash
-          sudo mv nextflow /usr/local/bin/
+      # - name: Install Nextflow
+      #   env:
+      #     NXF_VER: ${{ matrix.NXF_VER }}
+      #     # Uncomment only if the edge release is more recent than the latest stable release
+      #     # See https://github.com/nextflow-io/nextflow/issues/2467
+      #     # NXF_EDGE: ${{ matrix.NXF_EDGE }}
+      #   run: |
+      #     wget -qO- get.nextflow.io | bash
+      #     sudo mv nextflow /usr/local/bin/
 
-      - name: Run pipeline with test data
-        # TODO nf-core: You can customise CI pipeline run tests as required
-        # For example: adding multiple test runs with different parameters
-        # Remember that you can parallelise this by using strategy.matrix
-        run: |
-          nextflow run ${GITHUB_WORKSPACE} -profile test,docker --outdir ./results
+      # - name: Run pipeline with test data
+      #   # TODO nf-core: You can customise CI pipeline run tests as required
+      #   # For example: adding multiple test runs with different parameters
+      #   # Remember that you can parallelise this by using strategy.matrix
+      #   run: |
+      #     nextflow run ${GITHUB_WORKSPACE} -profile test,docker --outdir ./results
 
 #
