@@ -28,6 +28,7 @@ public class GatkDeduplicator {
     private static final Logger logger = Logger.getLogger(GatkDeduplicator.class.getName());
     private static final int PROCESS_TIMEOUT_MINUTES = 30;
     private static final String GATK_DOCKER_IMAGE = "broadinstitute/gatk:4.3.0.0";
+    private static final String dockerCommand = findDockerCommand();
 
     /**
      * Result of a deduplication operation.
@@ -50,21 +51,37 @@ public class GatkDeduplicator {
      * Check if Docker is available and GATK image is accessible.
      */
     public static boolean isGatkAvailable() {
+        logger.info("=== GATK Availability Check ===");
+        logger.info("Docker command: " + dockerCommand);
+
         try {
-            // Check if Docker is running
-            Process dockerCheck = new ProcessBuilder("docker", "info")
+            // Check if Docker is running - use 'docker ps' to verify daemon is accessible
+            logger.info("Checking Docker daemon with: " + dockerCommand + " ps");
+            Process dockerCheck = new ProcessBuilder(dockerCommand, "ps")
                 .redirectErrorStream(true)
                 .start();
 
-            boolean dockerAvailable = dockerCheck.waitFor(5, TimeUnit.SECONDS) && dockerCheck.exitValue() == 0;
+            boolean finished = dockerCheck.waitFor(5, TimeUnit.SECONDS);
+            int exitCode = finished ? dockerCheck.exitValue() : -1;
+            logger.info("Docker ps - finished: " + finished + ", exit code: " + exitCode);
+
+            boolean dockerAvailable = finished && exitCode == 0;
             if (!dockerAvailable) {
-                logger.warning("Docker is not available or not running");
+                // Capture error output
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(dockerCheck.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        logger.warning("Docker check output: " + line);
+                    }
+                }
+                logger.warning("Docker daemon is not available or not running");
                 return false;
             }
+            logger.info("Docker daemon is available");
 
             // Check if GATK image exists or can be pulled
             logger.info("Checking for GATK Docker image: " + GATK_DOCKER_IMAGE);
-            Process imageCheck = new ProcessBuilder("docker", "images", "-q", GATK_DOCKER_IMAGE)
+            Process imageCheck = new ProcessBuilder(dockerCommand, "images", "-q", GATK_DOCKER_IMAGE)
                 .redirectErrorStream(true)
                 .start();
 
@@ -79,9 +96,10 @@ public class GatkDeduplicator {
                 logger.info("GATK image found: " + imageId);
             }
 
+            logger.info("=== GATK Availability Check Complete - SUCCESS ===");
             return true;
         } catch (Exception e) {
-            logger.log(Level.WARNING, "Error checking GATK availability", e);
+            logger.log(Level.SEVERE, "Error checking GATK availability", e);
             return false;
         }
     }
@@ -161,7 +179,7 @@ public class GatkDeduplicator {
 
             // Build Docker command
             List<String> dockerCmd = new ArrayList<>();
-            dockerCmd.add("docker");
+            dockerCmd.add(dockerCommand);
             dockerCmd.add("run");
             dockerCmd.add("--rm");  // Remove container after execution
             dockerCmd.add("-v");
@@ -384,5 +402,80 @@ public class GatkDeduplicator {
         }
 
         return results;
+    }
+
+    /**
+     * Finds the Docker command executable, checking common installation locations.
+     *
+     * @return the path to the docker executable
+     */
+    private static String findDockerCommand() {
+        logger.info("=== GATK: Searching for Docker executable ===");
+
+        // Log current PATH for debugging
+        String path = System.getenv("PATH");
+        logger.info("System PATH: " + (path != null ? path : "null"));
+
+        // Try standard 'docker' command first (will use PATH)
+        logger.info("Checking if 'docker' command is available in PATH...");
+        if (isCommandAvailable("docker")) {
+            logger.info("Found 'docker' in PATH");
+            return "docker";
+        }
+        logger.info("'docker' not found in PATH, checking common installation locations...");
+
+        // Try common installation paths on macOS and Linux
+        String[] commonPaths = {
+            "/usr/local/bin/docker",           // macOS Homebrew, Linux standard
+            "/usr/bin/docker",                 // Linux standard
+            "/opt/homebrew/bin/docker",        // macOS Apple Silicon Homebrew
+            "/Applications/Docker.app/Contents/Resources/bin/docker"  // macOS Docker Desktop
+        };
+
+        for (String checkPath : commonPaths) {
+            logger.info("Checking: " + checkPath);
+            File dockerFile = new File(checkPath);
+            if (dockerFile.exists()) {
+                logger.info("  File exists: " + dockerFile.exists());
+                logger.info("  Is executable: " + dockerFile.canExecute());
+                if (dockerFile.canExecute()) {
+                    logger.info("SUCCESS: Found Docker at: " + checkPath);
+                    return checkPath;
+                }
+            } else {
+                logger.info("  File does not exist");
+            }
+        }
+
+        // Default to 'docker' and let it fail with a clear error
+        logger.warning("Docker not found in any common locations. Will try 'docker' command and may fail.");
+        logger.warning("If Docker is installed in a non-standard location, consider adding it to PATH.");
+        return "docker";
+    }
+
+    /**
+     * Checks if a command is available in the system PATH.
+     *
+     * @param command the command to check
+     * @return true if the command is available
+     */
+    private static boolean isCommandAvailable(String command) {
+        try {
+            logger.fine("Testing command availability: " + command + " --version");
+            ProcessBuilder pb = new ProcessBuilder(command, "--version");
+            Process process = pb.start();
+            boolean finished = process.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                logger.fine("Command timed out: " + command);
+                process.destroyForcibly();
+                return false;
+            }
+            int exitCode = process.exitValue();
+            logger.fine("Command " + command + " exit code: " + exitCode);
+            return exitCode == 0;
+        } catch (Exception e) {
+            logger.fine("Command not available: " + command + " - " + e.getMessage());
+            return false;
+        }
     }
 }

@@ -27,6 +27,7 @@ public class TaxTriageOptions extends Options {
     private static final String DEDUPLICATE_READS_KEY = "deduplicateReads";
     private static final String BBTOOLS_PREPROCESSING_KEY = "bbtoolsPreprocessing";
     private static final String BBTOOLS_SUBS_KEY = "bbtoolsSubs";
+    private static final String BBTOOLS_MEMORY_KEY = "bbtoolsMemory";
     private static final String QUALITY_THRESHOLD_KEY = "qualityThreshold";
     private static final String MIN_READ_LENGTH_KEY = "minReadLength";
     private static final String SUBSAMPLE_SIZE_KEY = "subsampleSize";
@@ -179,6 +180,9 @@ public class TaxTriageOptions extends Options {
 
         addIntegerOption(BBTOOLS_SUBS_KEY, "Clumpify Substitution Threshold:", 5, 0, 10);
         getOption(BBTOOLS_SUBS_KEY).setDescription("Number of substitutions allowed for deduplication (0=exact match, 5=default)");
+
+        addIntegerOption(BBTOOLS_MEMORY_KEY, "BBTools Memory (GB):", 8, 1, 64);
+        getOption(BBTOOLS_MEMORY_KEY).setDescription("Memory allocation for BBTools in gigabytes (increase if you get out-of-memory errors)");
     }
 
     /**
@@ -246,6 +250,16 @@ public class TaxTriageOptions extends Options {
     public int getBBToolsSubstitutionThreshold() {
         Integer value = (Integer) getValue(BBTOOLS_SUBS_KEY);
         return value != null ? value : 5;
+    }
+
+    /**
+     * Gets the BBTools memory allocation in gigabytes.
+     *
+     * @return memory allocation in GB
+     */
+    public int getBBToolsMemoryGB() {
+        Integer value = (Integer) getValue(BBTOOLS_MEMORY_KEY);
+        return value != null ? value : 8;
     }
 
     /**

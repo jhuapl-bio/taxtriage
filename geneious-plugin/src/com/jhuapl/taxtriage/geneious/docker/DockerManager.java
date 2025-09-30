@@ -32,6 +32,7 @@ public class DockerManager {
     private static final int DEFAULT_TIMEOUT_MINUTES = 120;
 
     private final String dockerImage;
+    private final String dockerCommand;
 
     /**
      * Creates a new DockerManager with the default TaxTriage image.
@@ -50,6 +51,7 @@ public class DockerManager {
      */
     public DockerManager(String dockerImage) throws DockerException {
         this.dockerImage = dockerImage;
+        this.dockerCommand = findDockerCommand();
         validateDockerAvailability();
     }
 
@@ -142,7 +144,7 @@ public class DockerManager {
         List<String> command = new ArrayList<>();
 
         // Base Docker command
-        command.add("docker");
+        command.add(dockerCommand);
         command.add("run");
         command.add("--rm"); // Remove container after execution
         command.add("-i"); // Interactive mode
@@ -307,29 +309,142 @@ public class DockerManager {
      * @throws DockerException if Docker is not available
      */
     private void validateDockerAvailability() throws DockerException {
+        logger.info("=== Docker Validation Starting ===");
+        logger.info("Docker command path: " + dockerCommand);
+
         try {
-            // Test Docker availability with simple version command
-            ProcessBuilder pb = new ProcessBuilder("docker", "--version");
+            // Test Docker daemon availability with 'docker ps' command
+            // This verifies both that docker exists AND that the daemon is running
+            logger.info("Executing: " + dockerCommand + " ps");
+            ProcessBuilder pb = new ProcessBuilder(dockerCommand, "ps");
             Process process = pb.start();
 
             boolean finished = process.waitFor(10, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                throw DockerException.dockerNotAvailable();
+                String error = "Docker daemon is not responding. Please ensure Docker Desktop is running.";
+                logger.severe("Docker validation failed: " + error);
+                throw new DockerException(error);
             }
 
             int exitCode = process.exitValue();
+            logger.info("Docker ps exit code: " + exitCode);
+
             if (exitCode != 0) {
-                throw DockerException.dockerNotAvailable();
+                // Capture both stdout and stderr for better diagnostics
+                StringBuilder errorOutput = new StringBuilder();
+                StringBuilder stdOutput = new StringBuilder();
+
+                try (BufferedReader errReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+                     BufferedReader outReader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = errReader.readLine()) != null) {
+                        errorOutput.append(line).append("\n");
+                        logger.warning("Docker stderr: " + line);
+                    }
+                    while ((line = outReader.readLine()) != null) {
+                        stdOutput.append(line).append("\n");
+                        logger.info("Docker stdout: " + line);
+                    }
+                }
+
+                String errorMsg = "Docker daemon is not running. Please start Docker Desktop.\n" +
+                                 "Command: " + dockerCommand + " ps\n" +
+                                 "Exit code: " + exitCode + "\n" +
+                                 "Error output: " + errorOutput.toString() +
+                                 "Standard output: " + stdOutput.toString();
+                logger.severe("Docker validation failed: " + errorMsg);
+                throw new DockerException(errorMsg);
             }
 
-            logger.info("Docker availability confirmed");
+            logger.info("Docker daemon availability confirmed at: " + dockerCommand);
+            logger.info("=== Docker Validation Complete - SUCCESS ===");
 
         } catch (IOException e) {
-            throw new DockerException("Docker command not found", e);
+            String errorMsg = "Docker command not found at: " + dockerCommand +
+                             ". Please ensure Docker is installed and in your PATH.";
+            logger.log(Level.SEVERE, "Docker validation failed with IOException: " + errorMsg, e);
+            throw new DockerException(errorMsg, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new DockerException("Docker availability check was interrupted", e);
+            String errorMsg = "Docker availability check was interrupted";
+            logger.log(Level.SEVERE, "Docker validation interrupted", e);
+            throw new DockerException(errorMsg, e);
+        }
+    }
+
+    /**
+     * Finds the Docker command executable, checking common installation locations.
+     *
+     * @return the path to the docker executable
+     */
+    private String findDockerCommand() {
+        logger.info("=== Searching for Docker executable ===");
+
+        // Log current PATH for debugging
+        String path = System.getenv("PATH");
+        logger.info("System PATH: " + (path != null ? path : "null"));
+
+        // Try standard 'docker' command first (will use PATH)
+        logger.info("Checking if 'docker' command is available in PATH...");
+        if (isCommandAvailable("docker")) {
+            logger.info("Found 'docker' in PATH");
+            return "docker";
+        }
+        logger.info("'docker' not found in PATH, checking common installation locations...");
+
+        // Try common installation paths on macOS and Linux
+        String[] commonPaths = {
+            "/usr/local/bin/docker",           // macOS Homebrew, Linux standard
+            "/usr/bin/docker",                 // Linux standard
+            "/opt/homebrew/bin/docker",        // macOS Apple Silicon Homebrew
+            "/Applications/Docker.app/Contents/Resources/bin/docker"  // macOS Docker Desktop
+        };
+
+        for (String checkPath : commonPaths) {
+            logger.info("Checking: " + checkPath);
+            File dockerFile = new File(checkPath);
+            if (dockerFile.exists()) {
+                logger.info("  File exists: " + dockerFile.exists());
+                logger.info("  Is executable: " + dockerFile.canExecute());
+                if (dockerFile.canExecute()) {
+                    logger.info("SUCCESS: Found Docker at: " + checkPath);
+                    return checkPath;
+                }
+            } else {
+                logger.info("  File does not exist");
+            }
+        }
+
+        // Default to 'docker' and let it fail with a clear error
+        logger.warning("Docker not found in any common locations. Will try 'docker' command and may fail.");
+        logger.warning("If Docker is installed in a non-standard location, consider adding it to PATH.");
+        return "docker";
+    }
+
+    /**
+     * Checks if a command is available in the system PATH.
+     *
+     * @param command the command to check
+     * @return true if the command is available
+     */
+    private boolean isCommandAvailable(String command) {
+        try {
+            logger.fine("Testing command availability: " + command + " --version");
+            ProcessBuilder pb = new ProcessBuilder(command, "--version");
+            Process process = pb.start();
+            boolean finished = process.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                logger.fine("Command timed out: " + command);
+                process.destroyForcibly();
+                return false;
+            }
+            int exitCode = process.exitValue();
+            logger.fine("Command " + command + " exit code: " + exitCode);
+            return exitCode == 0;
+        } catch (Exception e) {
+            logger.fine("Command not available: " + command + " - " + e.getMessage());
+            return false;
         }
     }
 
@@ -340,7 +455,7 @@ public class DockerManager {
      */
     public boolean isImageAvailable() {
         try {
-            ProcessBuilder pb = new ProcessBuilder("docker", "images", "-q", dockerImage);
+            ProcessBuilder pb = new ProcessBuilder(dockerCommand, "images", "-q", dockerImage);
             Process process = pb.start();
 
             boolean finished = process.waitFor(30, TimeUnit.SECONDS);
@@ -372,7 +487,7 @@ public class DockerManager {
      */
     public boolean isDockerAvailable() {
         try {
-            ProcessBuilder pb = new ProcessBuilder("docker", "--version");
+            ProcessBuilder pb = new ProcessBuilder(dockerCommand, "ps");
             Process process = pb.start();
 
             boolean finished = process.waitFor(10, TimeUnit.SECONDS);
@@ -399,6 +514,15 @@ public class DockerManager {
     }
 
     /**
+     * Gets the Docker command path being used.
+     *
+     * @return the Docker command path
+     */
+    public String getDockerCommand() {
+        return dockerCommand;
+    }
+
+    /**
      * Pulls the TaxTriage Docker image if not available.
      *
      * @throws DockerException if pull fails
@@ -419,7 +543,7 @@ public class DockerManager {
      */
     private void pullImage() throws DockerException {
         try {
-            ProcessBuilder pb = new ProcessBuilder("docker", "pull", dockerImage);
+            ProcessBuilder pb = new ProcessBuilder(dockerCommand, "pull", dockerImage);
             Process process = pb.start();
 
             boolean finished = process.waitFor(10, TimeUnit.MINUTES); // 10 minute timeout for pull

@@ -60,6 +60,9 @@ public class BBToolsDeduplicator {
     /** Default timeout for each BBTools operation in minutes */
     private static final int DEFAULT_TIMEOUT_MINUTES = 30;
 
+    /** Default memory allocation for BBTools (in GB) */
+    private static final int DEFAULT_MEMORY_GB = 8;
+
     /** Default substitution threshold for clumpify deduplication */
     private static final int DEFAULT_SUBS_THRESHOLD = 5;
 
@@ -110,6 +113,7 @@ public class BBToolsDeduplicator {
 
     private final DockerManager dockerManager;
     private final int substitutionThreshold;
+    private final int memoryGB;
 
     /**
      * Creates a new BBToolsDeduplicator instance with default settings.
@@ -125,8 +129,19 @@ public class BBToolsDeduplicator {
      * @throws DockerException if Docker is not available
      */
     public BBToolsDeduplicator(int subsThreshold) throws DockerException {
+        this(subsThreshold, DEFAULT_MEMORY_GB);
+    }
+
+    /**
+     * Creates a new BBToolsDeduplicator instance with custom substitution threshold and memory.
+     * @param subsThreshold substitution threshold for clumpify deduplication (0-10)
+     * @param memoryGB memory allocation in gigabytes (1-64)
+     * @throws DockerException if Docker is not available
+     */
+    public BBToolsDeduplicator(int subsThreshold, int memoryGB) throws DockerException {
         this.dockerManager = new DockerManager(BBTOOLS_IMAGE);
         this.substitutionThreshold = Math.max(0, Math.min(10, subsThreshold)); // Clamp to 0-10
+        this.memoryGB = Math.max(1, Math.min(64, memoryGB)); // Clamp to 1-64 GB
         validateBBToolsAvailability();
     }
 
@@ -135,11 +150,166 @@ public class BBToolsDeduplicator {
      * @throws DockerException if BBTools image is not accessible
      */
     private void validateBBToolsAvailability() throws DockerException {
+        logger.info("=== BBTools Validation Starting ===");
+        logger.info("BBTools Docker image: " + BBTOOLS_IMAGE);
+        logger.info("Docker command: " + dockerManager.getDockerCommand());
+
         if (!dockerManager.isDockerAvailable()) {
-            throw new DockerException("Docker is not available for BBTools operations");
+            String error = "Docker is not available for BBTools operations";
+            logger.severe("BBTools validation failed: " + error);
+            throw new DockerException(error);
         }
 
         logger.info("BBTools Docker integration validated successfully");
+        logger.info("=== BBTools Validation Complete - SUCCESS ===");
+    }
+
+    /**
+     * Deduplicates reads from separate R1 and R2 FASTQ files (paired-end).
+     * Skips the split and re-interleave steps since files are already separated.
+     *
+     * @param inputR1 Path to the R1 FASTQ file
+     * @param inputR2 Path to the R2 FASTQ file
+     * @param outputDir Directory where deduplicated FASTQ will be saved
+     * @param progressListener Optional progress listener for monitoring
+     * @return DeduplicationResult containing the path to deduplicated interleaved FASTQ
+     */
+    public DeduplicationResult deduplicatePairedReads(Path inputR1, Path inputR2, Path outputDir,
+                                                      ProgressListener progressListener) {
+        return deduplicatePairedReads(inputR1, inputR2, outputDir, this.substitutionThreshold, progressListener);
+    }
+
+    /**
+     * Deduplicates reads from separate R1 and R2 FASTQ files with custom threshold.
+     *
+     * @param inputR1 Path to the R1 FASTQ file
+     * @param inputR2 Path to the R2 FASTQ file
+     * @param outputDir Directory where deduplicated FASTQ will be saved
+     * @param subsThreshold Substitution threshold for clumpify
+     * @param progressListener Optional progress listener for monitoring
+     * @return DeduplicationResult containing the path to deduplicated interleaved FASTQ
+     */
+    public DeduplicationResult deduplicatePairedReads(Path inputR1, Path inputR2, Path outputDir,
+                                                      int subsThreshold, ProgressListener progressListener) {
+        logger.info("==========================================");
+        logger.info("BBTOOLS PAIRED DEDUPLICATION: Starting paired-end read deduplication");
+        logger.info("  R1 Input: " + inputR1);
+        logger.info("  R2 Input: " + inputR2);
+        logger.info("  Output dir: " + outputDir);
+        logger.info("  Substitution threshold: " + subsThreshold);
+        logger.info("  Docker image: " + BBTOOLS_IMAGE);
+        logger.info("==========================================");
+
+        List<String> stepResults = new ArrayList<>();
+
+        // Validate inputs
+        if (!Files.exists(inputR1)) {
+            String error = "R1 FASTQ file does not exist: " + inputR1;
+            logger.warning(error);
+            return new DeduplicationResult(false, null, error, 0, 0, stepResults);
+        }
+        if (!Files.exists(inputR2)) {
+            String error = "R2 FASTQ file does not exist: " + inputR2;
+            logger.warning(error);
+            return new DeduplicationResult(false, null, error, 0, 0, stepResults);
+        }
+
+        try {
+            Files.createDirectories(outputDir);
+        } catch (IOException e) {
+            String error = "Failed to create output directory: " + e.getMessage();
+            logger.log(Level.WARNING, error, e);
+            return new DeduplicationResult(false, null, error, 0, 0, stepResults);
+        }
+
+        // Generate file names
+        String baseName = getBaseName(inputR1.getFileName().toString()).replaceAll("[-_.]R?1$", "");
+        Path workDir = outputDir.resolve("bbtools_work");
+
+        try {
+            Files.createDirectories(workDir);
+
+            // Copy input files to workDir
+            Path r1InWorkDir = workDir.resolve(inputR1.getFileName());
+            Path r2InWorkDir = workDir.resolve(inputR2.getFileName());
+            Files.copy(inputR1, r1InWorkDir, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(inputR2, r2InWorkDir, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Copied input files to work directory: " + r1InWorkDir + ", " + r2InWorkDir);
+
+            // Define output file paths
+            Path dedupR1 = workDir.resolve(baseName + "_dedupe.R1.fq.gz");
+            Path dedupR2 = workDir.resolve(baseName + "_dedupe.R2.fq.gz");
+            Path finalOutput = workDir.resolve(baseName + "_dedupe.fq.gz");
+
+            if (progressListener != null) {
+                progressListener.setMessage("Starting BBTools paired deduplication...");
+                progressListener.setProgress(0.1);
+            }
+
+            // Step 1: Deduplicate with clumpify (directly on paired files)
+            logger.info("\n[Step 1/2] Deduplicating paired reads with clumpify...");
+            ExecutionResult step1Result = executeClumpify(
+                r1InWorkDir, r2InWorkDir, dedupR1, dedupR2, subsThreshold, workDir, progressListener
+            );
+
+            if (!step1Result.isSuccessful()) {
+                String error = "Failed to deduplicate reads: " + step1Result.getErrorOutput();
+                logger.warning(error);
+                return new DeduplicationResult(false, null, error, 0, 0, stepResults);
+            }
+            stepResults.add("Deduplicate: " + step1Result.getSummary());
+
+            // Parse deduplication statistics
+            long duplicatesRemoved = parseDuplicateCount(step1Result.getStandardOutput());
+            long totalReads = parseReadCount(step1Result.getStandardOutput());
+            logger.info("  ✓ Deduplication complete: " + duplicatesRemoved + " duplicates removed");
+
+            if (progressListener != null) {
+                progressListener.setProgress(0.6);
+                progressListener.setMessage("Re-interleaving deduplicated reads...");
+            }
+
+            // Step 2: Interleave the deduplicated reads
+            logger.info("\n[Step 2/2] Interleaving deduplicated reads...");
+            ExecutionResult step2Result = executeReformatInterleaveWithUnderscore(
+                "Interleave deduplicated reads",
+                dedupR1, dedupR2, finalOutput, workDir, progressListener
+            );
+
+            if (!step2Result.isSuccessful()) {
+                String error = "Failed to interleave reads: " + step2Result.getErrorOutput();
+                logger.warning(error);
+                return new DeduplicationResult(false, null, error, 0, 0, stepResults);
+            }
+            stepResults.add("Interleave: " + step2Result.getSummary());
+            logger.info("  ✓ Interleaving complete: " + finalOutput.getFileName());
+
+            if (progressListener != null) {
+                progressListener.setProgress(1.0);
+                progressListener.setMessage("BBTools paired deduplication complete");
+            }
+
+            // Log summary
+            logger.info("\n==========================================");
+            logger.info("BBTOOLS PAIRED DEDUPLICATION COMPLETE");
+            logger.info("  R1 Input: " + inputR1.getFileName());
+            logger.info("  R2 Input: " + inputR2.getFileName());
+            logger.info("  Output: " + finalOutput);
+            logger.info("  Total reads processed: " + totalReads);
+            logger.info("  Duplicates removed: " + duplicatesRemoved);
+            logger.info("  Deduplication rate: " + String.format("%.2f%%",
+                       totalReads > 0 ? (double) duplicatesRemoved / totalReads * 100.0 : 0.0));
+            logger.info("  Working directory: " + workDir);
+            logger.info("==========================================\n");
+
+            return new DeduplicationResult(true, finalOutput.toString(), null,
+                                         duplicatesRemoved, totalReads, stepResults);
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "BBTools paired deduplication failed with exception", e);
+            String error = "Paired deduplication failed: " + e.getMessage();
+            return new DeduplicationResult(false, null, error, 0, 0, stepResults);
+        }
     }
 
     /**
@@ -309,6 +479,7 @@ public class BBToolsDeduplicator {
                                           Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("reformat.sh");
+        command.add("-Xmx" + memoryGB + "g"); // Pass memory directly to BBTools
         command.add("in=/data/" + input.getFileName());
         command.add("out=/data/" + output1.getFileName());
         if (output2 != null) {
@@ -326,6 +497,7 @@ public class BBToolsDeduplicator {
                                                      Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("reformat.sh");
+        command.add("-Xmx" + memoryGB + "g"); // Pass memory directly to BBTools
         command.add("in=/data/" + input1.getFileName());
         command.add("in2=/data/" + input2.getFileName());
         command.add("out=/data/" + output.getFileName());
@@ -342,6 +514,7 @@ public class BBToolsDeduplicator {
                                                                    Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("reformat.sh");
+        command.add("-Xmx" + memoryGB + "g"); // Pass memory directly to BBTools
         command.add("in=/data/" + input1.getFileName());
         command.add("in2=/data/" + input2.getFileName());
         command.add("out=/data/" + output.getFileName());
@@ -358,6 +531,7 @@ public class BBToolsDeduplicator {
                                           int subsThreshold, Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("clumpify.sh");
+        command.add("-Xmx" + memoryGB + "g"); // Pass memory directly to BBTools
         command.add("in=/data/" + input1.getFileName());
         command.add("in2=/data/" + input2.getFileName());
         command.add("out=/data/" + output1.getFileName());
@@ -376,6 +550,7 @@ public class BBToolsDeduplicator {
     private ExecutionResult executeRename(Path input, Path output, Path workDir, ProgressListener progressListener) throws DockerException {
         List<String> command = new ArrayList<>();
         command.add("rename.sh");
+        command.add("-Xmx" + memoryGB + "g"); // Pass memory directly to BBTools
         command.add("in=/data/" + input.getFileName());
         command.add("out=/data/" + output.getFileName());
         command.add("ow=t"); // Overwrite existing files
@@ -394,7 +569,7 @@ public class BBToolsDeduplicator {
         try {
             // Build Docker command with proper volume mounting
             List<String> dockerCmd = new ArrayList<>();
-            dockerCmd.add("docker");
+            dockerCmd.add(dockerManager.getDockerCommand());  // Use resolved Docker path
             dockerCmd.add("run");
             dockerCmd.add("--rm");
             dockerCmd.add("-v");
@@ -403,6 +578,7 @@ public class BBToolsDeduplicator {
             dockerCmd.addAll(command);
 
             logger.info("  Docker command: " + String.join(" ", dockerCmd));
+            logger.info("  Memory allocation: " + memoryGB + " GB (passed via -Xmx flag)");
 
             // Execute the command
             ProcessBuilder pb = new ProcessBuilder(dockerCmd);
@@ -561,5 +737,119 @@ public class BBToolsDeduplicator {
      */
     public int getSubstitutionThreshold() {
         return substitutionThreshold;
+    }
+
+    /**
+     * Pulls the BBTools Docker image if not already available.
+     * @param progressListener optional progress listener for monitoring pull progress
+     * @throws DockerException if the pull fails
+     */
+    public void pullImageIfNeeded(ProgressListener progressListener) throws DockerException {
+        logger.info("=== BBTools Image Pull ===");
+        logger.info("Checking if image needs to be pulled: " + BBTOOLS_IMAGE);
+
+        if (dockerManager.isImageAvailable()) {
+            logger.info("BBTools image already available, no pull needed");
+            return;
+        }
+
+        logger.info("BBTools image not found, pulling from Docker Hub...");
+        if (progressListener != null) {
+            progressListener.setMessage("Pulling BBTools Docker image: " + BBTOOLS_IMAGE);
+            progressListener.setProgress(0.1);
+        }
+
+        try {
+            pullImage(progressListener);
+            logger.info("Successfully pulled BBTools image: " + BBTOOLS_IMAGE);
+            if (progressListener != null) {
+                progressListener.setProgress(1.0);
+                progressListener.setMessage("BBTools image ready");
+            }
+        } catch (DockerException e) {
+            logger.log(Level.SEVERE, "Failed to pull BBTools image", e);
+            throw e;
+        }
+    }
+
+    /**
+     * Pulls the BBTools Docker image.
+     * @param progressListener optional progress listener
+     * @throws DockerException if pull fails
+     */
+    private void pullImage(ProgressListener progressListener) throws DockerException {
+        logger.info("Executing: " + dockerManager.getDockerCommand() + " pull " + BBTOOLS_IMAGE);
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(dockerManager.getDockerCommand(), "pull", BBTOOLS_IMAGE);
+            pb.redirectErrorStream(false);
+            Process process = pb.start();
+
+            // Monitor output
+            StringBuilder stdout = new StringBuilder();
+            StringBuilder stderr = new StringBuilder();
+
+            Thread outputThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        stdout.append(line).append("\n");
+                        logger.info("Docker pull: " + line);
+
+                        // Update progress based on pull status
+                        if (progressListener != null && line.contains("Downloading")) {
+                            progressListener.setProgress(0.3);
+                        } else if (progressListener != null && line.contains("Extracting")) {
+                            progressListener.setProgress(0.6);
+                        } else if (progressListener != null && line.contains("Pull complete")) {
+                            progressListener.setProgress(0.9);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Error reading pull stdout", e);
+                }
+            });
+
+            Thread errorThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        stderr.append(line).append("\n");
+                        logger.warning("Docker pull error: " + line);
+                    }
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Error reading pull stderr", e);
+                }
+            });
+
+            outputThread.start();
+            errorThread.start();
+
+            // Wait for pull to complete (10 minute timeout)
+            boolean finished = process.waitFor(10, TimeUnit.MINUTES);
+            outputThread.join(5000);
+            errorThread.join(5000);
+
+            if (!finished) {
+                process.destroyForcibly();
+                throw new DockerException("BBTools image pull timed out after 10 minutes");
+            }
+
+            int exitCode = process.exitValue();
+            logger.info("Docker pull exit code: " + exitCode);
+
+            if (exitCode != 0) {
+                String errorMsg = "Failed to pull BBTools Docker image: " + BBTOOLS_IMAGE + "\n" +
+                               "Exit code: " + exitCode + "\n" +
+                               "Error output: " + stderr.toString();
+                throw new DockerException(errorMsg);
+            }
+
+        } catch (IOException e) {
+            throw new DockerException("Failed to execute docker pull command", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new DockerException("Docker pull was interrupted", e);
+        }
     }
 }

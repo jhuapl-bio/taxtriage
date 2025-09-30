@@ -605,15 +605,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         System.out.println(">>> Created directories: input and preprocessed");
         logger.info("Starting BBTools preprocessing for " + inputFiles.size() + " files");
 
-        // Initialize BBTools deduplicator with substitution threshold from options
+        // Initialize BBTools deduplicator with configuration from options
         int subsThreshold = options.getBBToolsSubstitutionThreshold();
+        int memoryGB = options.getBBToolsMemoryGB();
         System.out.println(">>> Substitution threshold: " + subsThreshold);
+        System.out.println(">>> Memory allocation: " + memoryGB + " GB");
         logger.info("Configured substitution threshold: " + subsThreshold);
+        logger.info("Configured memory allocation: " + memoryGB + " GB");
 
         BBToolsDeduplicator deduplicator;
         try {
             System.out.println(">>> Attempting to initialize BBToolsDeduplicator...");
-            deduplicator = new BBToolsDeduplicator(subsThreshold);
+            deduplicator = new BBToolsDeduplicator(subsThreshold, memoryGB);
             System.out.println(">>> BBTools deduplicator initialized successfully!");
             logger.info("✓ BBTools deduplicator initialized successfully");
         } catch (DockerException e) {
@@ -630,41 +633,85 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
         System.out.println(">>> Checking if BBTools Docker image is available...");
         if (!deduplicator.isBBToolsAvailable()) {
-            System.out.println(">>> BBTools Docker image NOT available - FAILING workflow");
-            String errorMsg = "BBTools preprocessing is enabled but the Docker image is not available.\n\n" +
-                            "Required: " + deduplicator.getImageName() + "\n\n" +
-                            "To fix this issue:\n" +
-                            "1. Ensure Docker is running\n" +
-                            "2. Pull the BBTools image: docker pull " + deduplicator.getImageName() + "\n" +
-                            "3. Or disable BBTools preprocessing in the plugin options";
-            logger.severe(errorMsg);
-            throw new IOException(errorMsg);
+            System.out.println(">>> BBTools Docker image not found locally, attempting to pull...");
+            logger.info("BBTools Docker image not found, pulling: " + deduplicator.getImageName());
+            try {
+                deduplicator.pullImageIfNeeded(null);
+                System.out.println(">>> Successfully pulled BBTools Docker image: " + deduplicator.getImageName());
+                logger.info("✓ Successfully pulled BBTools Docker image: " + deduplicator.getImageName());
+            } catch (Exception e) {
+                System.out.println(">>> FAILED to pull BBTools Docker image: " + e.getMessage());
+                String errorMsg = "BBTools preprocessing is enabled but failed to pull the Docker image.\n\n" +
+                                "Required: " + deduplicator.getImageName() + "\n\n" +
+                                "Error: " + e.getMessage() + "\n\n" +
+                                "To fix this issue:\n" +
+                                "1. Ensure Docker is running\n" +
+                                "2. Check internet connectivity\n" +
+                                "3. Try manually: docker pull " + deduplicator.getImageName() + "\n" +
+                                "4. Or disable BBTools preprocessing in the plugin options";
+                logger.severe(errorMsg);
+                throw new IOException(errorMsg, e);
+            }
+        } else {
+            System.out.println(">>> BBTools Docker image IS available: " + deduplicator.getImageName());
+            logger.info("✓ BBTools Docker image available: " + deduplicator.getImageName());
         }
 
-        System.out.println(">>> BBTools Docker image IS available: " + deduplicator.getImageName());
-        logger.info("✓ BBTools Docker image available: " + deduplicator.getImageName());
+        // Group input files into samples (pair R1/R2 or keep as interleaved)
+        List<FastqFilePair> samplePairs = groupFastqFiles(inputFiles);
+        System.out.println(">>> Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
+        logger.info("Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
 
         try {
-
             int processedCount = 0;
 
-            for (File inputFile : inputFiles) {
-                System.out.println(">>> PROCESSING FILE " + (processedCount + 1) + "/" + inputFiles.size() + ": " + inputFile.getName());
+            for (FastqFilePair pair : samplePairs) {
+                processedCount++;
+                System.out.println(">>> PROCESSING SAMPLE " + processedCount + "/" + samplePairs.size() + ": " + pair.sampleName);
                 logger.info("======================================");
-                logger.info("PROCESSING FILE " + (processedCount + 1) + "/" + inputFiles.size() + ": " + inputFile.getName());
+                logger.info("PROCESSING SAMPLE " + processedCount + "/" + samplePairs.size() + ": " + pair.sampleName);
                 logger.info("======================================");
 
-                // Copy original file to input directory first
-                Path originalInWorkspace = inputDir.resolve(inputFile.getName());
-                Files.copy(inputFile.toPath(), originalInWorkspace, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println(">>> Copied to workspace: " + originalInWorkspace);
-                logger.info("Copied to workspace: " + originalInWorkspace);
+                BBToolsDeduplicator.DeduplicationResult result;
 
-                // Preprocess with BBTools
-                System.out.println(">>> Starting BBTools 4-step pipeline...");
-                logger.info("Starting BBTools 4-step pipeline...");
-                BBToolsDeduplicator.DeduplicationResult result = deduplicator.deduplicateReads(
-                    originalInWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
+                if (pair.isPaired) {
+                    // Paired R1/R2 files
+                    System.out.println(">>> Processing paired files: " + pair.r1File.getName() + " + " + pair.r2File.getName());
+                    logger.info("Processing paired R1/R2 files:");
+                    logger.info("  R1: " + pair.r1File.getName());
+                    logger.info("  R2: " + pair.r2File.getName());
+
+                    // Copy files to input directory
+                    Path r1InWorkspace = inputDir.resolve(pair.r1File.getName());
+                    Path r2InWorkspace = inputDir.resolve(pair.r2File.getName());
+                    Files.copy(pair.r1File.toPath(), r1InWorkspace, StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(pair.r2File.toPath(), r2InWorkspace, StandardCopyOption.REPLACE_EXISTING);
+                    System.out.println(">>> Copied paired files to workspace");
+                    logger.info("Copied paired files to workspace");
+
+                    // Process paired files (skip de-interleave step)
+                    System.out.println(">>> Starting BBTools paired deduplication (2 steps: dedupe + interleave)...");
+                    logger.info("Starting BBTools paired deduplication pipeline...");
+                    result = deduplicator.deduplicatePairedReads(
+                        r1InWorkspace, r2InWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
+                } else {
+                    // Single interleaved file
+                    System.out.println(">>> Processing interleaved file: " + pair.r1File.getName());
+                    logger.info("Processing interleaved FASTQ file: " + pair.r1File.getName());
+
+                    // Copy file to input directory
+                    Path originalInWorkspace = inputDir.resolve(pair.r1File.getName());
+                    Files.copy(pair.r1File.toPath(), originalInWorkspace, StandardCopyOption.REPLACE_EXISTING);
+                    System.out.println(">>> Copied to workspace: " + originalInWorkspace);
+                    logger.info("Copied to workspace: " + originalInWorkspace);
+
+                    // Process interleaved file (full 3-step pipeline)
+                    System.out.println(">>> Starting BBTools full pipeline (3 steps: split + dedupe + interleave)...");
+                    logger.info("Starting BBTools full deduplication pipeline...");
+                    result = deduplicator.deduplicateReads(
+                        originalInWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
+                }
+
                 System.out.println(">>> BBTools pipeline completed, checking result...");
 
                 if (result.isSuccess()) {
@@ -678,8 +725,14 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
                     logger.info("");
                     logger.info("\u2713\u2713\u2713 BBTools preprocessing SUCCESSFUL \u2713\u2713\u2713");
-                    logger.info("  Original file:     " + originalInWorkspace);
-                    logger.info("  Preprocessed file: " + preprocessedFile.getAbsolutePath());
+                    logger.info("  Sample name:        " + pair.sampleName);
+                    if (pair.isPaired) {
+                        logger.info("  Original R1:        " + pair.r1File.getName());
+                        logger.info("  Original R2:        " + pair.r2File.getName());
+                    } else {
+                        logger.info("  Original file:      " + pair.r1File.getName());
+                    }
+                    logger.info("  Preprocessed file:  " + preprocessedFile.getAbsolutePath());
                     logger.info("  Duplicates removed: " + result.getDuplicatesRemoved());
                     logger.info("  Total reads:        " + result.getTotalReads());
                     logger.info("  Deduplication rate: " + String.format("%.2f%%", result.getDeduplicationPercentage()));
@@ -694,7 +747,8 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 } else {
                     System.out.println(">>> FAILED! Error: " + result.getErrorMessage());
                     System.out.println(">>> ABORTING workflow - preprocessing is required");
-                    String errorMsg = "BBTools preprocessing failed for file: " + inputFile.getName() + "\n\n" +
+                    String inputDesc = pair.isPaired ? pair.r1File.getName() + " + " + pair.r2File.getName() : pair.r1File.getName();
+                    String errorMsg = "BBTools preprocessing failed for sample: " + pair.sampleName + " (" + inputDesc + ")\n\n" +
                                     "Error: " + result.getErrorMessage() + "\n\n" +
                                     "Preprocessing is enabled and required. The workflow cannot continue.\n" +
                                     "To fix this issue:\n" +
@@ -747,6 +801,164 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
         logger.info("Copied " + inputFiles.size() + " input files to workspace");
         return copiedFiles;
+    }
+
+    /**
+     * Helper class to represent a pair of R1/R2 files or a single interleaved file.
+     */
+    private static class FastqFilePair {
+        File r1File;
+        File r2File;
+        boolean isPaired;  // true if R1/R2 pair, false if single interleaved file
+        String sampleName;
+
+        FastqFilePair(File r1, File r2, String sampleName) {
+            this.r1File = r1;
+            this.r2File = r2;
+            this.isPaired = true;
+            this.sampleName = sampleName;
+        }
+
+        FastqFilePair(File interleavedFile, String sampleName) {
+            this.r1File = interleavedFile;
+            this.r2File = null;
+            this.isPaired = false;
+            this.sampleName = sampleName;
+        }
+    }
+
+    /**
+     * Groups FASTQ files into pairs (R1/R2) or singles (interleaved).
+     * Detects paired files by common patterns: _R1/_R2, .R1/.R2, _1/_2, .1/.2
+     */
+    private List<FastqFilePair> groupFastqFiles(List<File> inputFiles) {
+        List<FastqFilePair> pairs = new ArrayList<>();
+        Set<File> processedFiles = new HashSet<>();
+
+        logger.info("Grouping " + inputFiles.size() + " FASTQ files into samples...");
+
+        for (File file : inputFiles) {
+            if (processedFiles.contains(file)) {
+                continue;
+            }
+
+            String fileName = file.getName();
+            File pairedFile = findPairedFile(file, inputFiles);
+
+            if (pairedFile != null && !processedFiles.contains(pairedFile)) {
+                // Found a pair
+                String sampleName = getSampleName(fileName);
+                File r1, r2;
+
+                // Determine which is R1 and which is R2
+                if (isR1File(fileName)) {
+                    r1 = file;
+                    r2 = pairedFile;
+                } else {
+                    r1 = pairedFile;
+                    r2 = file;
+                }
+
+                pairs.add(new FastqFilePair(r1, r2, sampleName));
+                processedFiles.add(file);
+                processedFiles.add(pairedFile);
+                logger.info("  Paired sample '" + sampleName + "': " + r1.getName() + " + " + r2.getName());
+            } else {
+                // Single interleaved file
+                String sampleName = getSampleName(fileName);
+                pairs.add(new FastqFilePair(file, sampleName));
+                processedFiles.add(file);
+                logger.info("  Single sample '" + sampleName + "': " + fileName);
+            }
+        }
+
+        logger.info("Grouped into " + pairs.size() + " samples");
+        return pairs;
+    }
+
+    /**
+     * Finds the paired R1 or R2 file for a given file.
+     */
+    private File findPairedFile(File file, List<File> allFiles) {
+        String fileName = file.getName();
+        String baseName = getBaseName(fileName);
+        String extension = getFileExtension(fileName);
+
+        // Try different pairing patterns
+        String[] patterns = {
+            "_R1", "_R2",
+            ".R1", ".R2",
+            "_1", "_2",
+            ".1", ".2"
+        };
+
+        for (String pattern : patterns) {
+            if (fileName.contains(pattern)) {
+                // Determine the opposite pattern
+                String oppositePattern = pattern.contains("1") ?
+                    pattern.replace("1", "2") : pattern.replace("2", "1");
+
+                String pairedFileName = fileName.replace(pattern, oppositePattern);
+
+                // Search for the paired file
+                for (File candidate : allFiles) {
+                    if (candidate.getName().equals(pairedFileName)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts sample name from FASTQ file name by removing R1/R2 and extensions.
+     */
+    private String getSampleName(String fileName) {
+        String name = fileName;
+
+        // Remove common extensions
+        name = name.replaceAll("\\.(fastq|fq)(\\.gz)?$", "");
+
+        // Remove R1/R2 suffixes
+        name = name.replaceAll("[_\\.]R?[12]$", "");
+
+        return name;
+    }
+
+    /**
+     * Checks if a file is an R1 file.
+     */
+    private boolean isR1File(String fileName) {
+        return fileName.matches(".*[_\\.]R?1[_\\.].*") ||
+               fileName.matches(".*[_\\.]R?1\\.(fastq|fq)(\\.gz)?$");
+    }
+
+    /**
+     * Gets file extension including compression.
+     */
+    private String getFileExtension(String fileName) {
+        if (fileName.endsWith(".gz")) {
+            int idx = fileName.lastIndexOf('.', fileName.length() - 4);
+            if (idx > 0) {
+                return fileName.substring(idx);
+            }
+        }
+        int idx = fileName.lastIndexOf('.');
+        return idx > 0 ? fileName.substring(idx) : "";
+    }
+
+    /**
+     * Gets base name without extension.
+     */
+    private String getBaseName(String fileName) {
+        String name = fileName;
+        if (name.endsWith(".gz")) {
+            name = name.substring(0, name.length() - 3);
+        }
+        int idx = name.lastIndexOf('.');
+        return idx > 0 ? name.substring(0, idx) : name;
     }
 
     /**
@@ -1253,6 +1465,251 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     }
 
     /**
+     * Configures Java environment for Nextflow execution.
+     * Strategy: Prefer system Java (to avoid path issues with spaces), fallback to Geneious Java.
+     *
+     * @param env the environment map to configure
+     * @throws DockerException if Java configuration fails
+     */
+    private void configureJavaEnvironment(java.util.Map<String, String> env) throws DockerException {
+        System.out.println("=== Configuring Java environment for Nextflow ===");
+        logger.info("=== Configuring Java environment for Nextflow ===");
+
+        // First try to detect system Java
+        String systemJava = detectSystemJava();
+
+        if (systemJava != null) {
+            // System Java found - use it
+            System.out.println("SUCCESS: Using system Java: " + systemJava);
+            logger.info("Using system Java: " + systemJava);
+            String javaHome = getJavaHomeFromExecutable(systemJava);
+
+            env.put("JAVA_CMD", systemJava);
+            if (javaHome != null) {
+                env.put("JAVA_HOME", javaHome);
+                System.out.println("Set JAVA_HOME to: " + javaHome);
+                logger.info("Set JAVA_HOME to: " + javaHome);
+            } else {
+                System.out.println("WARNING: Could not determine JAVA_HOME from: " + systemJava);
+            }
+        } else {
+            // Fallback to Geneious bundled Java
+            System.out.println("System Java not found, falling back to Geneious bundled Java");
+            logger.info("System Java not found, falling back to Geneious bundled Java");
+            String geneiousJavaHome = System.getProperty("java.home");
+            System.out.println("Geneious Java home: " + geneiousJavaHome);
+            logger.info("Geneious Java home: " + geneiousJavaHome);
+
+            if (geneiousJavaHome != null) {
+                // Check if path contains spaces - if so, create a symlink to avoid shell parsing issues
+                if (geneiousJavaHome.contains(" ")) {
+                    System.out.println("WARNING: Java home path contains spaces, creating symlink to avoid shell issues");
+                    logger.warning("Java home path contains spaces, creating symlink to avoid shell issues");
+
+                    try {
+                        // Create temporary symlink without spaces
+                        Path tempDir = Files.createTempDirectory("geneious-java");
+                        Path symlink = tempDir.resolve("java");
+                        Path javaExec = Paths.get(geneiousJavaHome, "bin", "java");
+
+                        Files.createSymbolicLink(symlink, javaExec);
+
+                        String symlinkPath = symlink.toString();
+                        env.put("JAVA_CMD", symlinkPath);
+                        System.out.println("Created symlink to Java at: " + symlinkPath);
+                        logger.info("Created symlink to Java at: " + symlinkPath);
+
+                        // For JAVA_HOME, we still need to set it, but Nextflow will primarily use JAVA_CMD
+                        env.put("JAVA_HOME", geneiousJavaHome);
+
+                        // Add both the symlink directory and the actual Java bin to PATH
+                        String currentPath = env.get("PATH");
+                        String newPath = tempDir.toString() + File.pathSeparator +
+                                       geneiousJavaHome + File.separator + "bin";
+                        if (currentPath != null) {
+                            env.put("PATH", newPath + File.pathSeparator + currentPath);
+                        } else {
+                            env.put("PATH", newPath);
+                        }
+                        System.out.println("Updated PATH with symlink directory and Java bin");
+
+                    } catch (Exception e) {
+                        System.out.println("ERROR: Failed to create symlink, will try using path with spaces");
+                        logger.log(Level.WARNING, "Failed to create Java symlink", e);
+                        // Fall through to use the path with spaces
+                        setupGeneiousJavaWithSpaces(env, geneiousJavaHome);
+                    }
+                } else {
+                    // No spaces in path, use directly
+                    setupGeneiousJavaWithSpaces(env, geneiousJavaHome);
+                }
+            } else {
+                throw new DockerException("Could not determine Java installation location");
+            }
+        }
+
+        System.out.println("Final Java environment variables:");
+        System.out.println("  JAVA_HOME=" + env.get("JAVA_HOME"));
+        System.out.println("  JAVA_CMD=" + env.get("JAVA_CMD"));
+        System.out.println("  PATH=" + env.get("PATH"));
+        System.out.println("Java environment configured successfully");
+        logger.info("Java environment configured successfully");
+    }
+
+    /**
+     * Helper method to set up Geneious Java environment variables (including paths with spaces).
+     *
+     * @param env the environment map to configure
+     * @param geneiousJavaHome the Geneious Java home directory
+     */
+    private void setupGeneiousJavaWithSpaces(java.util.Map<String, String> env, String geneiousJavaHome) {
+        env.put("JAVA_HOME", geneiousJavaHome);
+
+        // Try to construct path to java executable
+        String javaBin = geneiousJavaHome + File.separator + "bin" + File.separator + "java";
+        File javaBinFile = new File(javaBin);
+        System.out.println("Checking for Java executable at: " + javaBin);
+        System.out.println("File exists: " + javaBinFile.exists() + ", canExecute: " + javaBinFile.canExecute());
+
+        if (javaBinFile.exists() && javaBinFile.canExecute()) {
+            env.put("JAVA_CMD", javaBin);
+            System.out.println("Set JAVA_CMD to: " + javaBin);
+            logger.info("Set JAVA_CMD to: " + javaBin);
+        } else {
+            System.out.println("WARNING: Could not find executable Java binary at: " + javaBin);
+            logger.warning("Could not find executable Java binary at: " + javaBin);
+        }
+
+        // Add Java bin directory to PATH
+        String currentPath = env.get("PATH");
+        String javaBinDir = geneiousJavaHome + File.separator + "bin";
+        if (currentPath != null) {
+            env.put("PATH", javaBinDir + File.pathSeparator + currentPath);
+        } else {
+            env.put("PATH", javaBinDir);
+        }
+        System.out.println("Updated PATH with Java bin directory: " + javaBinDir);
+    }
+
+    /**
+     * Detects system Java installation by checking common locations.
+     *
+     * @return path to system Java executable, or null if not found
+     */
+    private String detectSystemJava() {
+        System.out.println("Detecting system Java...");
+        logger.info("Detecting system Java...");
+
+        // First check if 'java' is in PATH
+        System.out.println("Checking for 'java' command in PATH...");
+        String javaInPath = testJavaExecutable("java");
+        if (javaInPath != null) {
+            System.out.println("SUCCESS: Found Java in PATH");
+            logger.info("Found Java in PATH");
+            return "java";
+        }
+        System.out.println("'java' command not found in PATH");
+
+        // Check common installation locations
+        String[] commonJavaLocations = {
+            "/usr/bin/java",
+            "/usr/local/bin/java",
+            "/opt/homebrew/bin/java",
+            System.getProperty("user.home") + "/.sdkman/candidates/java/current/bin/java"
+        };
+
+        System.out.println("Checking common Java installation locations:");
+        for (String location : commonJavaLocations) {
+            System.out.println("  Checking: " + location);
+            String result = testJavaExecutable(location);
+            if (result != null) {
+                System.out.println("  SUCCESS: Found Java at: " + location);
+                logger.info("Found Java at: " + location);
+                return location;
+            }
+            System.out.println("  Not found or not executable");
+        }
+
+        System.out.println("No system Java found in any checked location");
+        logger.info("No system Java found");
+        return null;
+    }
+
+    /**
+     * Tests if a Java executable is valid and working.
+     *
+     * @param javaPath path to Java executable to test
+     * @return the path if valid, null otherwise
+     */
+    private String testJavaExecutable(String javaPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(javaPath, "-version");
+            Process process = pb.start();
+
+            boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                System.out.println("    Test timed out for: " + javaPath);
+                return null;
+            }
+
+            if (process.exitValue() == 0) {
+                System.out.println("    Test successful for: " + javaPath);
+                return javaPath;
+            } else {
+                System.out.println("    Test failed with exit code " + process.exitValue() + " for: " + javaPath);
+            }
+        } catch (Exception e) {
+            System.out.println("    Exception testing: " + javaPath + " - " + e.getMessage());
+            logger.log(Level.FINE, "Java test failed for: " + javaPath, e);
+        }
+        return null;
+    }
+
+    /**
+     * Derives JAVA_HOME from a Java executable path.
+     *
+     * @param javaExecutable path to Java executable
+     * @return JAVA_HOME path, or null if cannot be determined
+     */
+    private String getJavaHomeFromExecutable(String javaExecutable) {
+        try {
+            // If it's just "java" in PATH, try to resolve it
+            if ("java".equals(javaExecutable)) {
+                ProcessBuilder pb = new ProcessBuilder("which", "java");
+                Process process = pb.start();
+                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+
+                if (process.exitValue() == 0) {
+                    java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()));
+                    String resolvedPath = reader.readLine();
+                    if (resolvedPath != null) {
+                        javaExecutable = resolvedPath.trim();
+                    }
+                }
+            }
+
+            // Try to get actual path if it's a symlink
+            File javaFile = new File(javaExecutable);
+            if (javaFile.exists()) {
+                String canonicalPath = javaFile.getCanonicalPath();
+                // JAVA_HOME is typically two directories up from bin/java
+                File binDir = new File(canonicalPath).getParentFile();
+                if (binDir != null && "bin".equals(binDir.getName())) {
+                    File javaHome = binDir.getParentFile();
+                    if (javaHome != null) {
+                        return javaHome.getAbsolutePath();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.log(Level.FINE, "Could not derive JAVA_HOME from: " + javaExecutable, e);
+        }
+        return null;
+    }
+
+    /**
      * Executes Nextflow command directly on the host system using ProcessBuilder.
      *
      * @param nextflowCommand the Nextflow command components
@@ -1282,15 +1739,13 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             // Set environment variables
             java.util.Map<String, String> env = processBuilder.environment();
 
+            // Configure Java for Nextflow
+            // Strategy: Prefer system Java (to avoid path issues), fallback to Geneious Java
+            configureJavaEnvironment(env);
+
             // Ensure Nextflow home directory
             if (!env.containsKey("NXF_HOME")) {
                 env.put("NXF_HOME", System.getProperty("user.home") + "/.nextflow");
-            }
-
-            // Ensure Docker is available in PATH
-            String currentPath = env.get("PATH");
-            if (currentPath != null && !currentPath.contains("/usr/local/bin")) {
-                env.put("PATH", currentPath + ":/usr/local/bin:/opt/homebrew/bin");
             }
 
             // Start the process
