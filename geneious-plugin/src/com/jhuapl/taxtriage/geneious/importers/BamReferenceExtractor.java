@@ -236,20 +236,20 @@ public class BamReferenceExtractor {
             ProcessBuilder pb = new ProcessBuilder("samtools", "view", "-H", bamFile.getAbsolutePath());
             Process process = pb.start();
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
 
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("@SQ")) {
-                    ReferenceInfo ref = parseSQLine(line);
-                    if (ref != null) {
-                        references.add(ref);
-                        System.out.println("    Found reference via native samtools: " + ref.name + " (length: " + ref.length + ", accession: " + ref.accession + ")");
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("@SQ")) {
+                        ReferenceInfo ref = parseSQLine(line);
+                        if (ref != null) {
+                            references.add(ref);
+                            System.out.println("    Found reference via native samtools: " + ref.name + " (length: " + ref.length + ", accession: " + ref.accession + ")");
+                        }
                     }
                 }
             }
 
-            reader.close();
             process.waitFor();
 
         } catch (Exception e) {
@@ -300,20 +300,20 @@ public class BamReferenceExtractor {
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
 
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("@SQ")) {
-                    ReferenceInfo ref = parseSQLine(line);
-                    if (ref != null) {
-                        references.add(ref);
-                        System.out.println("    Found reference via Docker samtools: " + ref.name + " (length: " + ref.length + ", accession: " + ref.accession + ")");
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("@SQ")) {
+                        ReferenceInfo ref = parseSQLine(line);
+                        if (ref != null) {
+                            references.add(ref);
+                            System.out.println("    Found reference via Docker samtools: " + ref.name + " (length: " + ref.length + ", accession: " + ref.accession + ")");
+                        }
                     }
                 }
             }
 
-            reader.close();
             boolean finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
 
             if (!finished) {

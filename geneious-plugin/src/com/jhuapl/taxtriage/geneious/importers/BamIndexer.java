@@ -15,8 +15,9 @@ import java.util.logging.Logger;
 public class BamIndexer {
 
     private static final Logger logger = Logger.getLogger(BamIndexer.class.getName());
-    private static String samtoolsPath = null;
-    private static Boolean dockerAvailable = null;
+    // Thread-safe publication of static state using volatile
+    private static volatile String samtoolsPath = null;
+    private static volatile Boolean dockerAvailable = null;
 
     static {
         // Try to find samtools in PATH only (no hardcoded paths)
@@ -116,15 +117,14 @@ public class BamIndexer {
             Process process = pb.start();
 
             // Read output
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream())
-            );
-            String line;
             StringBuilder output = new StringBuilder();
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
             }
-            reader.close();
 
             int exitCode = process.waitFor();
 
@@ -174,16 +174,15 @@ public class BamIndexer {
             Process process = pb.start();
 
             // Read output
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream())
-            );
-            String line;
             StringBuilder output = new StringBuilder();
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-                System.out.println("  Docker: " + line);
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    System.out.println("  Docker: " + line);
+                }
             }
-            reader.close();
 
             boolean finished = process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
 

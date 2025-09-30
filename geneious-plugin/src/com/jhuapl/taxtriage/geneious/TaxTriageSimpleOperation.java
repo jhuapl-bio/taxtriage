@@ -102,6 +102,10 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
     private static final Logger logger = Logger.getLogger(TaxTriageSimpleOperation.class.getName());
 
+    // TaxTriage repository constants
+    private static final String TAXTRIAGE_REPO_URL = "https://github.com/jhuapl-bio/taxtriage";
+    private static final String TAXTRIAGE_DEFAULT_BRANCH = "main";
+
     // Nextflow binary relative path within the plugin directory
     private static final String NEXTFLOW_RELATIVE_PATH = "bin/nextflow";
 
@@ -113,6 +117,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     private static final int DATABASE_DOWNLOAD_TIMEOUT_MINUTES = 180; // 3 hours
     private static final int DOCKER_CHECK_TIMEOUT_SECONDS = 10;
     private static final int OUTPUT_READER_TIMEOUT_SECONDS = 5;
+    private static final int PROCESS_WAIT_TIMEOUT_SECONDS = 5;
+
+    // BAM file constants
+    private static final int BAM_MAGIC_NUMBER_SIZE = 4;
+    private static final int MIN_VALID_GENBANK_FILE_SIZE = 100;
 
     // Database cache constants
     private static final String CACHE_DIR_NAME = ".taxtriage-geneious";
@@ -593,32 +602,87 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
     private List<File> performBBToolsPreprocessing(Path workspaceDir, List<File> inputFiles, TaxTriageOptions options) throws IOException {
         System.out.println(">>> ENTERED performBBToolsPreprocessing method");
         System.out.println(">>> Input files count: " + inputFiles.size());
+        logger.info("Starting BBTools preprocessing for " + inputFiles.size() + " files");
 
-        List<File> preprocessedFiles = new ArrayList<>();
+        // Setup preprocessing workspace
+        PreprocessingWorkspace workspace = setupPreprocessingWorkspace(workspaceDir);
+
+        // Initialize and validate BBTools deduplicator
+        BBToolsDeduplicator deduplicator = initializeBBToolsDeduplicator(options);
+
+        // Ensure BBTools Docker image is available
+        ensureBBToolsImageAvailable(deduplicator);
+
+        // Group input files into sample pairs
+        List<FastqFilePair> samplePairs = groupFastqFiles(inputFiles);
+        System.out.println(">>> Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
+        logger.info("Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
+
+        try {
+            // Process all sample pairs
+            List<File> preprocessedFiles = processSamplesWithBBTools(samplePairs, deduplicator, workspace);
+            logger.info("BBTools preprocessing completed. Processed " + preprocessedFiles.size() + " files");
+            logger.info("==========================================");
+            return preprocessedFiles;
+        } catch (Exception e) {
+            logger.warning("======================================");
+            logger.warning("BBTools preprocessing encountered an error:");
+            logger.warning("  Error: " + e.getMessage());
+            logger.warning("  Falling back to original files without preprocessing");
+            logger.warning("======================================");
+            logger.log(Level.FINE, "BBTools preprocessing detailed error", e);
+            // Fallback to copying original files
+            return copyInputFilesToWorkspace(workspaceDir, inputFiles);
+        }
+    }
+
+    /**
+     * Helper class to hold preprocessing workspace paths.
+     */
+    private static class PreprocessingWorkspace {
+        final Path inputDir;
+        final Path preprocessedDir;
+
+        PreprocessingWorkspace(Path inputDir, Path preprocessedDir) {
+            this.inputDir = inputDir;
+            this.preprocessedDir = preprocessedDir;
+        }
+    }
+
+    /**
+     * Sets up the preprocessing workspace directories.
+     */
+    private PreprocessingWorkspace setupPreprocessingWorkspace(Path workspaceDir) throws IOException {
         Path inputDir = workspaceDir.resolve("input");
         Path preprocessedDir = workspaceDir.resolve("preprocessed");
 
-        // Create directories
         Files.createDirectories(inputDir);
         Files.createDirectories(preprocessedDir);
 
         System.out.println(">>> Created directories: input and preprocessed");
-        logger.info("Starting BBTools preprocessing for " + inputFiles.size() + " files");
+        logger.info("Created preprocessing workspace directories");
 
-        // Initialize BBTools deduplicator with configuration from options
+        return new PreprocessingWorkspace(inputDir, preprocessedDir);
+    }
+
+    /**
+     * Initializes the BBTools deduplicator with options.
+     */
+    private BBToolsDeduplicator initializeBBToolsDeduplicator(TaxTriageOptions options) throws IOException {
         int subsThreshold = options.getBBToolsSubstitutionThreshold();
         int memoryGB = options.getBBToolsMemoryGB();
+
         System.out.println(">>> Substitution threshold: " + subsThreshold);
         System.out.println(">>> Memory allocation: " + memoryGB + " GB");
         logger.info("Configured substitution threshold: " + subsThreshold);
         logger.info("Configured memory allocation: " + memoryGB + " GB");
 
-        BBToolsDeduplicator deduplicator;
         try {
             System.out.println(">>> Attempting to initialize BBToolsDeduplicator...");
-            deduplicator = new BBToolsDeduplicator(subsThreshold, memoryGB);
+            BBToolsDeduplicator deduplicator = new BBToolsDeduplicator(subsThreshold, memoryGB);
             System.out.println(">>> BBTools deduplicator initialized successfully!");
             logger.info("✓ BBTools deduplicator initialized successfully");
+            return deduplicator;
         } catch (DockerException e) {
             System.out.println(">>> BBTools initialization FAILED: " + e.getMessage());
             String errorMsg = "BBTools preprocessing is enabled but failed to initialize.\n\n" +
@@ -630,11 +694,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             logger.severe(errorMsg);
             throw new IOException(errorMsg, e);
         }
+    }
 
+    /**
+     * Ensures the BBTools Docker image is available, pulling if necessary.
+     */
+    private void ensureBBToolsImageAvailable(BBToolsDeduplicator deduplicator) throws IOException {
         System.out.println(">>> Checking if BBTools Docker image is available...");
+
         if (!deduplicator.isBBToolsAvailable()) {
             System.out.println(">>> BBTools Docker image not found locally, attempting to pull...");
             logger.info("BBTools Docker image not found, pulling: " + deduplicator.getImageName());
+
             try {
                 deduplicator.pullImageIfNeeded(null);
                 System.out.println(">>> Successfully pulled BBTools Docker image: " + deduplicator.getImageName());
@@ -656,128 +727,175 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             System.out.println(">>> BBTools Docker image IS available: " + deduplicator.getImageName());
             logger.info("✓ BBTools Docker image available: " + deduplicator.getImageName());
         }
+    }
 
-        // Group input files into samples (pair R1/R2 or keep as interleaved)
-        List<FastqFilePair> samplePairs = groupFastqFiles(inputFiles);
-        System.out.println(">>> Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
-        logger.info("Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
+    /**
+     * Processes all sample pairs through the BBTools pipeline.
+     */
+    private List<File> processSamplesWithBBTools(List<FastqFilePair> samplePairs,
+                                                  BBToolsDeduplicator deduplicator,
+                                                  PreprocessingWorkspace workspace) throws IOException {
+        List<File> preprocessedFiles = new ArrayList<>();
+        int sampleNumber = 0;
 
-        try {
-            int processedCount = 0;
+        for (FastqFilePair pair : samplePairs) {
+            sampleNumber++;
+            System.out.println(">>> PROCESSING SAMPLE " + sampleNumber + "/" + samplePairs.size() + ": " + pair.sampleName);
+            logger.info("======================================");
+            logger.info("PROCESSING SAMPLE " + sampleNumber + "/" + samplePairs.size() + ": " + pair.sampleName);
+            logger.info("======================================");
 
-            for (FastqFilePair pair : samplePairs) {
-                processedCount++;
-                System.out.println(">>> PROCESSING SAMPLE " + processedCount + "/" + samplePairs.size() + ": " + pair.sampleName);
-                logger.info("======================================");
-                logger.info("PROCESSING SAMPLE " + processedCount + "/" + samplePairs.size() + ": " + pair.sampleName);
-                logger.info("======================================");
+            BBToolsDeduplicator.DeduplicationResult result = processSingleSample(
+                pair, deduplicator, workspace);
 
-                BBToolsDeduplicator.DeduplicationResult result;
-
-                if (pair.isPaired) {
-                    // Paired R1/R2 files
-                    System.out.println(">>> Processing paired files: " + pair.r1File.getName() + " + " + pair.r2File.getName());
-                    logger.info("Processing paired R1/R2 files:");
-                    logger.info("  R1: " + pair.r1File.getName());
-                    logger.info("  R2: " + pair.r2File.getName());
-
-                    // Copy files to input directory
-                    Path r1InWorkspace = inputDir.resolve(pair.r1File.getName());
-                    Path r2InWorkspace = inputDir.resolve(pair.r2File.getName());
-                    Files.copy(pair.r1File.toPath(), r1InWorkspace, StandardCopyOption.REPLACE_EXISTING);
-                    Files.copy(pair.r2File.toPath(), r2InWorkspace, StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println(">>> Copied paired files to workspace");
-                    logger.info("Copied paired files to workspace");
-
-                    // Process paired files (skip de-interleave step)
-                    System.out.println(">>> Starting BBTools paired deduplication (2 steps: dedupe + interleave)...");
-                    logger.info("Starting BBTools paired deduplication pipeline...");
-                    result = deduplicator.deduplicatePairedReads(
-                        r1InWorkspace, r2InWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
-                } else {
-                    // Single interleaved file
-                    System.out.println(">>> Processing interleaved file: " + pair.r1File.getName());
-                    logger.info("Processing interleaved FASTQ file: " + pair.r1File.getName());
-
-                    // Copy file to input directory
-                    Path originalInWorkspace = inputDir.resolve(pair.r1File.getName());
-                    Files.copy(pair.r1File.toPath(), originalInWorkspace, StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println(">>> Copied to workspace: " + originalInWorkspace);
-                    logger.info("Copied to workspace: " + originalInWorkspace);
-
-                    // Process interleaved file (full 3-step pipeline)
-                    System.out.println(">>> Starting BBTools full pipeline (3 steps: split + dedupe + interleave)...");
-                    logger.info("Starting BBTools full deduplication pipeline...");
-                    result = deduplicator.deduplicateReads(
-                        originalInWorkspace, preprocessedDir, jebl.util.ProgressListener.EMPTY);
-                }
-
-                System.out.println(">>> BBTools pipeline completed, checking result...");
-
-                if (result.isSuccess()) {
-                    System.out.println(">>> SUCCESS! Result output path: " + result.getOutputPath());
-                    File preprocessedFile = new File(result.getOutputPath());
-                    preprocessedFiles.add(preprocessedFile);
-
-                    System.out.println(">>> Duplicates removed: " + result.getDuplicatesRemoved());
-                    System.out.println(">>> Total reads: " + result.getTotalReads());
-                    System.out.println(">>> Preprocessed file added to list: " + preprocessedFile.getAbsolutePath());
-
-                    logger.info("");
-                    logger.info("\u2713\u2713\u2713 BBTools preprocessing SUCCESSFUL \u2713\u2713\u2713");
-                    logger.info("  Sample name:        " + pair.sampleName);
-                    if (pair.isPaired) {
-                        logger.info("  Original R1:        " + pair.r1File.getName());
-                        logger.info("  Original R2:        " + pair.r2File.getName());
-                    } else {
-                        logger.info("  Original file:      " + pair.r1File.getName());
-                    }
-                    logger.info("  Preprocessed file:  " + preprocessedFile.getAbsolutePath());
-                    logger.info("  Duplicates removed: " + result.getDuplicatesRemoved());
-                    logger.info("  Total reads:        " + result.getTotalReads());
-                    logger.info("  Deduplication rate: " + String.format("%.2f%%", result.getDeduplicationPercentage()));
-
-                    // Log the processing steps
-                    if (!result.getStepResults().isEmpty()) {
-                        logger.info("  Pipeline steps completed:");
-                        for (String step : result.getStepResults()) {
-                            logger.info("    - " + step);
-                        }
-                    }
-                } else {
-                    System.out.println(">>> FAILED! Error: " + result.getErrorMessage());
-                    System.out.println(">>> ABORTING workflow - preprocessing is required");
-                    String inputDesc = pair.isPaired ? pair.r1File.getName() + " + " + pair.r2File.getName() : pair.r1File.getName();
-                    String errorMsg = "BBTools preprocessing failed for sample: " + pair.sampleName + " (" + inputDesc + ")\n\n" +
-                                    "Error: " + result.getErrorMessage() + "\n\n" +
-                                    "Preprocessing is enabled and required. The workflow cannot continue.\n" +
-                                    "To fix this issue:\n" +
-                                    "1. Check Docker is running\n" +
-                                    "2. Ensure input files are valid FASTQ format\n" +
-                                    "3. Check available disk space\n" +
-                                    "4. Or disable BBTools preprocessing in the plugin options";
-                    logger.severe(errorMsg);
-                    throw new IOException(errorMsg);
-                }
-
-                processedCount++;
-            }
-
-        } catch (Exception e) {
-            logger.warning("======================================");
-            logger.warning("BBTools preprocessing encountered an error:");
-            logger.warning("  Error: " + e.getMessage());
-            logger.warning("  Falling back to original files without preprocessing");
-            logger.warning("======================================");
-            logger.log(Level.FINE, "BBTools preprocessing detailed error", e);
-            // Fallback to copying original files
-            return copyInputFilesToWorkspace(workspaceDir, inputFiles);
+            File preprocessedFile = handlePreprocessingResult(result, pair, preprocessedFiles);
         }
 
-        logger.info("BBTools preprocessing completed. Processed " + preprocessedFiles.size() + " files");
-        logger.info("==========================================");
-
         return preprocessedFiles;
+    }
+
+    /**
+     * Processes a single sample (paired or interleaved) through BBTools.
+     */
+    private BBToolsDeduplicator.DeduplicationResult processSingleSample(
+            FastqFilePair pair,
+            BBToolsDeduplicator deduplicator,
+            PreprocessingWorkspace workspace) throws IOException {
+
+        if (pair.isPaired) {
+            return processPairedSample(pair, deduplicator, workspace);
+        } else {
+            return processInterleavedSample(pair, deduplicator, workspace);
+        }
+    }
+
+    /**
+     * Processes a paired-end sample.
+     */
+    private BBToolsDeduplicator.DeduplicationResult processPairedSample(
+            FastqFilePair pair,
+            BBToolsDeduplicator deduplicator,
+            PreprocessingWorkspace workspace) throws IOException {
+
+        System.out.println(">>> Processing paired files: " + pair.r1File.getName() + " + " + pair.r2File.getName());
+        logger.info("Processing paired R1/R2 files:");
+        logger.info("  R1: " + pair.r1File.getName());
+        logger.info("  R2: " + pair.r2File.getName());
+
+        // Copy files to workspace
+        Path r1InWorkspace = workspace.inputDir.resolve(pair.r1File.getName());
+        Path r2InWorkspace = workspace.inputDir.resolve(pair.r2File.getName());
+        Files.copy(pair.r1File.toPath(), r1InWorkspace, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(pair.r2File.toPath(), r2InWorkspace, StandardCopyOption.REPLACE_EXISTING);
+        System.out.println(">>> Copied paired files to workspace");
+        logger.info("Copied paired files to workspace");
+
+        // Process paired files
+        System.out.println(">>> Starting BBTools paired deduplication (2 steps: dedupe + interleave)...");
+        logger.info("Starting BBTools paired deduplication pipeline...");
+        return deduplicator.deduplicatePairedReads(
+            r1InWorkspace, r2InWorkspace, workspace.preprocessedDir, jebl.util.ProgressListener.EMPTY);
+    }
+
+    /**
+     * Processes an interleaved sample.
+     */
+    private BBToolsDeduplicator.DeduplicationResult processInterleavedSample(
+            FastqFilePair pair,
+            BBToolsDeduplicator deduplicator,
+            PreprocessingWorkspace workspace) throws IOException {
+
+        System.out.println(">>> Processing interleaved file: " + pair.r1File.getName());
+        logger.info("Processing interleaved FASTQ file: " + pair.r1File.getName());
+
+        // Copy file to workspace
+        Path originalInWorkspace = workspace.inputDir.resolve(pair.r1File.getName());
+        Files.copy(pair.r1File.toPath(), originalInWorkspace, StandardCopyOption.REPLACE_EXISTING);
+        System.out.println(">>> Copied to workspace: " + originalInWorkspace);
+        logger.info("Copied to workspace: " + originalInWorkspace);
+
+        // Process interleaved file
+        System.out.println(">>> Starting BBTools full pipeline (3 steps: split + dedupe + interleave)...");
+        logger.info("Starting BBTools full deduplication pipeline...");
+        return deduplicator.deduplicateReads(
+            originalInWorkspace, workspace.preprocessedDir, jebl.util.ProgressListener.EMPTY);
+    }
+
+    /**
+     * Handles the result of BBTools preprocessing and updates the preprocessed files list.
+     */
+    private File handlePreprocessingResult(BBToolsDeduplicator.DeduplicationResult result,
+                                           FastqFilePair pair,
+                                           List<File> preprocessedFiles) throws IOException {
+        System.out.println(">>> BBTools pipeline completed, checking result...");
+
+        if (result.isSuccess()) {
+            System.out.println(">>> SUCCESS! Result output path: " + result.getOutputPath());
+            File preprocessedFile = new File(result.getOutputPath());
+            preprocessedFiles.add(preprocessedFile);
+
+            logSuccessfulPreprocessing(result, pair, preprocessedFile);
+            return preprocessedFile;
+        } else {
+            throwPreprocessingError(result, pair);
+            return null; // Never reached, but needed for compilation
+        }
+    }
+
+    /**
+     * Logs detailed information about successful preprocessing.
+     */
+    private void logSuccessfulPreprocessing(BBToolsDeduplicator.DeduplicationResult result,
+                                            FastqFilePair pair, File preprocessedFile) {
+        System.out.println(">>> Duplicates removed: " + result.getDuplicatesRemoved());
+        System.out.println(">>> Total reads: " + result.getTotalReads());
+        System.out.println(">>> Preprocessed file added to list: " + preprocessedFile.getAbsolutePath());
+
+        logger.info("");
+        logger.info("✓✓✓ BBTools preprocessing SUCCESSFUL ✓✓✓");
+        logger.info("  Sample name:        " + pair.sampleName);
+        if (pair.isPaired) {
+            logger.info("  Original R1:        " + pair.r1File.getName());
+            logger.info("  Original R2:        " + pair.r2File.getName());
+        } else {
+            logger.info("  Original file:      " + pair.r1File.getName());
+        }
+        logger.info("  Preprocessed file:  " + preprocessedFile.getAbsolutePath());
+        logger.info("  Duplicates removed: " + result.getDuplicatesRemoved());
+        logger.info("  Total reads:        " + result.getTotalReads());
+        logger.info("  Deduplication rate: " + String.format("%.2f%%", result.getDeduplicationPercentage()));
+
+        // Log the processing steps
+        if (!result.getStepResults().isEmpty()) {
+            logger.info("  Pipeline steps completed:");
+            for (String step : result.getStepResults()) {
+                logger.info("    - " + step);
+            }
+        }
+    }
+
+    /**
+     * Throws an IOException with detailed preprocessing error information.
+     */
+    private void throwPreprocessingError(BBToolsDeduplicator.DeduplicationResult result,
+                                         FastqFilePair pair) throws IOException {
+        System.out.println(">>> FAILED! Error: " + result.getErrorMessage());
+        System.out.println(">>> ABORTING workflow - preprocessing is required");
+
+        String inputDesc = pair.isPaired ?
+            pair.r1File.getName() + " + " + pair.r2File.getName() :
+            pair.r1File.getName();
+
+        String errorMsg = "BBTools preprocessing failed for sample: " + pair.sampleName + " (" + inputDesc + ")\n\n" +
+                        "Error: " + result.getErrorMessage() + "\n\n" +
+                        "Preprocessing is enabled and required. The workflow cannot continue.\n" +
+                        "To fix this issue:\n" +
+                        "1. Check Docker is running\n" +
+                        "2. Ensure input files are valid FASTQ format\n" +
+                        "3. Check available disk space\n" +
+                        "4. Or disable BBTools preprocessing in the plugin options";
+        logger.severe(errorMsg);
+        throw new IOException(errorMsg);
     }
 
     /**
@@ -1000,9 +1118,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         // Use the extracted Nextflow binary
         cmd.add(getNextflowBinaryPath());
         cmd.add("run");
-        cmd.add("https://github.com/jhuapl-bio/taxtriage");
+        cmd.add(TAXTRIAGE_REPO_URL);
         cmd.add("-r");
-        cmd.add("main");
+        cmd.add(TAXTRIAGE_DEFAULT_BRANCH);
         cmd.add("-profile");
         cmd.add("docker");
 
@@ -2011,9 +2129,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         // Use the extracted Nextflow binary
         cmd.add(getNextflowBinaryPath());
         cmd.add("run");
-        cmd.add("https://github.com/jhuapl-bio/taxtriage");
+        cmd.add(TAXTRIAGE_REPO_URL);
         cmd.add("-r");
-        cmd.add("main");
+        cmd.add(TAXTRIAGE_DEFAULT_BRANCH);
         cmd.add("-profile");
         cmd.add("docker");
 

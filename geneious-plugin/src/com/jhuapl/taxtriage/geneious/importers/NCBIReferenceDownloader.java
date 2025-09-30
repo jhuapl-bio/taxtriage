@@ -251,13 +251,21 @@ public class NCBIReferenceDownloader {
                 logger.info("Imported " + docs.size() + " document(s) from " + gbFile.getName());
 
                 // Rename documents to match BAM reference names if needed
-                String targetName = referenceNameMap.get(accession);
+                String targetName = referenceNameMap != null ? referenceNameMap.get(accession) : null;
                 logger.info("Target name for accession '" + accession + "': " +
                            (targetName != null ? "'" + targetName + "'" : "null (no mapping)"));
 
-                if (targetName != null) {
+                if (targetName != null && !targetName.trim().isEmpty()) {
                     for (AnnotatedPluginDocument doc : docs) {
+                        if (doc == null) {
+                            logger.warning("Encountered null document in import list");
+                            continue;
+                        }
                         String originalName = doc.getName();
+                        if (originalName == null) {
+                            logger.warning("Document has null name, skipping rename");
+                            continue;
+                        }
                         try {
                             // Set the name to match what's in the BAM file
                             doc.setName(targetName);
