@@ -223,7 +223,6 @@ include { METRIC_MERGE } from '../modules/local/merge_confidence_contigs'
 include { MAP_GCF } from '../modules/local/map_gcfs'
 include { REFERENCE_REHEADER } from '../modules/local/reheader'
 include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
-
                                                                                /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -555,6 +554,7 @@ workflow TAXTRIAGE {
     } else{
         distributions = Channel.fromPath(params.distributions)
     }
+
     //////////////////////////////RUN CLASSIFIER(S) for top hits calculations//////////////////////////////////////////////////////////////////
     CLASSIFIER(
         ch_filtered_reads,
@@ -693,6 +693,7 @@ workflow TAXTRIAGE {
             ////////////////////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
+
 
             REPORT(
                 input_alignment_files,

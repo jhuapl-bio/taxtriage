@@ -166,7 +166,6 @@ def import_data(inputfiles ):
         dfs.append(df)
     df = pd.concat(dfs)
 
-    # set % Reads aligned as float
     df['% Reads'] = df['% Reads'].apply(lambda x: float(x) if not pd.isna(x) else 0)
     # set # Reads Aligned as int
     df['# Reads Aligned'] = df['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
@@ -435,7 +434,8 @@ def create_report(
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
-
+        if "MicrobeRT Probability" in df_identified_paths.columns.values:
+            columns_yes.insert(4, "MicrobeRT Probability")
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_paths, color_pathogen=True)
@@ -591,6 +591,8 @@ def create_report(
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
+        if "MicrobeRT Probability" in df_high_cons_low_conf.columns.values:
+            columns_yes.insert(4, "MicrobeRT Probability")
         # if all of Group is Unknown, then remove it from list
 
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
@@ -625,7 +627,8 @@ def create_report(
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
-
+        if "MicrobeRT Probability" in df_potentials.columns.values:
+            columns_opp.insert(4, "MicrobeRT Probability")
         data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
         table_style = return_table_style(df_potentials, color_pathogen=True)
         table = make_table(
@@ -651,6 +654,8 @@ def create_report(
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
+        if "MicrobeRT Probability" in df_identified_others.columns.values:
+            columns_yes.insert(4, "MicrobeRT Probability")
         # if all of Group is Unknown, then remove it from list
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
         data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
@@ -766,7 +771,25 @@ def main():
         ascending=[False, False],
         inplace=True
     )
+    # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
 
+    if "MicrobeRT Probability" in df_full.columns:
+        # Replace empty strings with NaN
+        # if all is empty strings or empty rows in total then drop it
+        if df_full["MicrobeRT Probability"].replace("", np.nan).isna().all():
+            df_full.drop(columns=["MicrobeRT Probability"], inplace=True)
+        else:
+            df_full["MicrobeRT Probability"].replace("", np.nan, inplace=True)
+
+            # Convert to float where possible
+            df_full["MicrobeRT Probability"] = pd.to_numeric(df_full["MicrobeRT Probability"], errors="coerce")
+
+            # Format to 2 decimals, keep NaN as is
+            df_full["MicrobeRT Probability"] = df_full["MicrobeRT Probability"].apply(
+                lambda x: f"{x:.2f}" if not pd.isna(x) else np.nan
+            )
+            # reformat nan to empty string
+            df_full["MicrobeRT Probability"] = df_full["MicrobeRT Probability"].replace(np.nan, "")
     if args.output_txt:
         # write out the data to a txt file
         # sort df_full on "TASS Score"
@@ -788,7 +811,8 @@ def main():
         else:
             return f"{x['# Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
     df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
-    # add body sit to Sample col with ()
+    # append MicrobeRT Probability to TASS Score if it is present
+    # add body site to Sample col with ()
     if args.percentile:
         # filter where value is above percentile only
         df_full = df_full[df_full['HHS Percentile'] >= args.percentile]

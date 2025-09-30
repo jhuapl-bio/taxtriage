@@ -21,6 +21,10 @@
 include { ALIGNMENT_PER_SAMPLE } from '../../modules/local/alignment_per_sample'
 include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
+include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
+include { CLUSTER_ALIGNMENT } from '../../modules/local/cluster_alignment'
+include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
+include { MICROBERT_PARSE } from '../../modules/local/microbert_parse'
 
 workflow REPORT {
     take:
@@ -33,10 +37,42 @@ workflow REPORT {
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
+        // make the ch_report_microbert an empty path channel
+        ch_report_microbert = Channel.empty()
+
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
         accepted_list = alignments.map { it[0].id }.collect()
         accepted_list = accepted_list.flatten().toSortedList()
+        // get just the BAM files from alignments
+        ch_bams = alignments.map { [it[0], it[1]] }
+        if (params.microbert){
+            // ch_microbert_model = Channel.fromPath(params.microbert)
+            // get the parent path of the model params.microbert
+            ch_microbert_model = Channel.fromPath(params.microbert, checkIfExists: true)
+            // get the parent path of ch_microbert_model
+            // get the basename of the model
+            ch_basename_microbert = ch_microbert_model.map { path -> path.getName() }
+            // ch_microbert_model = ch_microbert_model.map { path -> path.parent }
+            CLUSTER_ALIGNMENT(
+                ch_bams
+            )
+            MMSEQS_EASYCLUSTER(
+                CLUSTER_ALIGNMENT.out.fasta,
+            )
+
+            MICROBERT_PREDICT(
+                MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model)
+            )
+            ch_parse_files = MMSEQS_EASYCLUSTER.out.representatives.join(MICROBERT_PREDICT.out.predictions).join(MMSEQS_EASYCLUSTER.out.tsv)
+            MICROBERT_PARSE(
+                ch_parse_files.combine(ch_basename_microbert)
+            )
+            ch_report_microbert = MICROBERT_PARSE.out.report
+        } else {
+            ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILE") ] }
+        }
+        alignments = alignments.join(ch_report_microbert)
 
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
@@ -46,7 +82,8 @@ workflow REPORT {
         } else{
             ALIGNMENT_PER_SAMPLE(
                 alignments.combine(pathogens_list),
-                assemblyfile
+                assemblyfile,
+                params.minmapq,
             )
 
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel

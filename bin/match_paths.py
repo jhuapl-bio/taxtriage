@@ -323,6 +323,13 @@ def parse_args(argv=None):
         default=0.0,
         help="Minimum ANI threshold to consider references comparable (default=0.7)"
     )
+    parser.add_argument(
+        "-y",
+        "--microbert",
+        required=False,
+        metavar="MICROBERT",
+        help="OPTIONAL: Microbert Predictions on downsampled dataset. Contains columns for each rank, e.g. superkingdom, phylum, class, order, family, genus, species and avg, median, and std probablity columns",
+    )
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
     parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
@@ -340,6 +347,7 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
+    parser.add_argument('--minmapq', required=False, type=int, default=0, help="Minimum mapping quality")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -1316,7 +1324,9 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None):
         seenpairs = set()
         for read in bam_file.fetch():
 
-
+            if read.is_unmapped:
+                unaligned += 1
+                continue
             ref = read.reference_name
             total_reads += 1
 
@@ -1504,6 +1514,9 @@ def main():
     import pandas as pd
     comparison_df =  pd.DataFrame()
     alignments_to_remove = defaultdict(set)
+    if args.abu_file:
+        print(args.abu_file)
+        exit()
     if args.minhash_weight > 0:
 
 
@@ -1593,6 +1606,13 @@ def main():
 
     assembly_to_accession = defaultdict(set)
     taxid_to_accession = defaultdict(int)
+    mmbert_dict = dict()
+    if args.microbert:
+        # import the tsv as a dictionary
+        mmbert = pd.read_csv(args.microbert, sep='\t', header=0)
+        # set the taxid col to str
+        mmbert['taxid'] = mmbert['taxid'].astype(str)
+        mmbert_dict = mmbert.set_index('taxid').T.to_dict()
     if args.match and os.path.exists(matcher):
         # open the match file and import the match file
         header = True
@@ -1647,6 +1667,7 @@ def main():
                     taxid = splitline[5]
                     species_taxid = splitline[6]
                     name = splitline[7]
+                    # if not args.compress_species:
                     strain = splitline[8].replace("strain=", "")
                     isolate = splitline[9]
                     isSpecies = False if species_taxid != taxid else True
@@ -1743,27 +1764,7 @@ def main():
     # Step 2: Define a function to calculate disparity for each organism
     # Define a function to calculate disparity with softer variance influence
     # Step 2: Define a function to dynamically dampen variance based on the proportion of reads
-    def z(numreads, total_reads, variance_reads, k=1000):
-        """
-        Dynamically dampens the variance effect based on the proportion of reads.
-        numreads: Total number of reads aligned to the organism (sum of reads)
-        total_reads: Total number of reads aligned in the sample
-        variance_reads: Variance of the aligned reads across all organisms
-        k: Damping factor to control the influence of the proportion on the penalty
-        """
-        if total_reads == 0:
-            return 0  # Avoid division by zero
 
-        # Calculate the proportion of aligned reads
-        proportion = numreads / total_reads
-
-        # Dynamically adjust the variance penalty based on the proportion of reads
-        dampened_variance = variance_reads / (1 + k * proportion)
-
-        # Calculate disparity based on the proportion and the dynamically dampened variance
-        disparity = proportion * (1 + dampened_variance)
-
-        return disparity
     i=0
     # Aggregate data at the species level
     for top_level_key, entries in final_format.items():
@@ -2040,13 +2041,10 @@ def main():
                 value['k2_disparity'] = 0
 
 
-        ## Test: Mapq of NT,
         # get all mapq scores
         normalized_mapq = normalize_mapq(value.get('meanmapq', 0), max_mapq, min_mapq)
         value['alignment_score'] = normalized_mapq
 
-
-        ## Test: Min threshold of CDs found  - are there coding regions at the min amount?
 
     pathogens = import_pathogens(pathogenfile)
 
@@ -2131,9 +2129,6 @@ def main():
             percent_total_reads_expected =  sum_abus_expected * total_reads
             stdsum = sum([x.get('std',0) for x in abus])
             zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
-            # set zscore max 3 if greater
-            # if zscore > 3:
-            #     zscore = 3.1
             value['zscore'] = zscore
             percentile = norm.cdf(zscore)
 
@@ -2143,6 +2138,13 @@ def main():
         for key, value in species_aggregated.items():
             value['zscore'] = 3
             value['hmp_percentile'] = 100
+    for k, v in species_aggregated.items():
+        species_taxid = v.get('species_taxid', None)
+        if species_taxid and (species_taxid) in mmbert_dict:
+            v['mmbert'] = mmbert_dict.get(str(species_taxid), {}).get('avg', 0)
+        else:
+            v['mmbert'] = None
+        v['mmbert_model'] = mmbert_dict.get(str(species_taxid), {}).get('model', None)
     final_scores = calculate_scores(
         aggregated_stats=species_aggregated,
         pathogens=pathogens,
@@ -2152,21 +2154,7 @@ def main():
         aligned_total = aligned_total,
         weights = weights
     )
-    # print("Final Scores:")
-    # for entry in final_scores:
-    #     if entry['tass_score'] < 0.4:
-    #         continue
-    #     print("\t",entry['formatname'])
-    #     print("\t\tTASS Score:",entry['tass_score'],
-    #           "\n\t\tGini:", entry['gini_coefficient'],
-    #           "\n\t\tAlignment:", entry['alignment_score'],
-    #           "\n\t\tSiblings:", entry['siblings_score'],
-    #           "\n\t\tDisparity:", entry['disparity_score'],
-    #           "\n\t\tBreadth:", entry['breadth_total'],
-    #           "\n\t\tBreadth2:", ((entry['breadth_total'])**2),
-    #           "\n\t\tBreadthLog:", math.log2(2-entry['breadth_total']),
-    #           "\n\t\tBreadthsqrt:", math.sqrt(1-entry['breadth_total'])
-    #     )
+
     header = [
         "Detected Organism",
         "Specimen ID",
@@ -2198,7 +2186,9 @@ def main():
         "K2 Disparity Score",
         "Siblings score",
         "Breadth Weight Score",
-        "TASS Score"
+        "TASS Score",
+        "MicrobeRT Probability",
+        "MicrobeRT Model"
     ]
     write_to_tsv(output, final_scores, "\t".join(header))
     if cfig:
@@ -2640,6 +2630,8 @@ def calculate_scores(
                 status=status,
                 annClass=annClass,
                 high_cons = high_cons,
+                mmbert = count.get('mmbert', None),
+                mmbert_model = count.get('mmbert_model', None),
                 pathogenic_reads = pathogenic_reads,
                 gini_coefficient=count.get('meangini', 0),
                 meanbaseq=count.get('meanbaseq', 0),
@@ -2694,10 +2686,12 @@ def write_to_tsv(output_path, final_scores, header):
             aligned_total = entry.get('total_reads', 0)
             pathogenic_reads = entry.get('pathogenic_reads', 0)
             percent_total = entry.get('percent_total', 0)
+            mmbert_proportion = entry.get('mmbert', None)
             k2_disparity_score = entry.get('k2_disparity', 0)
             hmp_percentile = entry.get('hmp_percentile', 0)
             log_breadth_weight = entry.get('log_breadth_weight', 0)
             high_conse = entry.get('high_cons', False)
+            mmbert_model = entry.get('mmbert_model', None)
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
@@ -2728,6 +2722,8 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tHMP ZScore: {entry.get('zscore', 0)}")
                 print(f"\tHMP Percentile: {entry.get('hmp_percentile', 0)}")
                 print(f"\tLogWeightBreath: {entry.get('log_breadth_weight', 0)}")
+                print(f"\tMicrobeRT Proportion: {entry.get('mmbert', 'N/A')}")
+                print(f"\tMicrobeRT Model: {entry.get('mmbert_model', 'N/A')}")
                 print()
                 total+=1
         # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
@@ -2736,7 +2732,8 @@ def write_to_tsv(output_path, final_scores, header):
                 f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
                 f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
-                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t{tass_score:.2f}\n"
+                f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t"
+                f"{tass_score:.2f}\t{mmbert_proportion}\t{mmbert_model}\n"
             )
             fulltotal+=1
     print(f"Total pathogenic orgs: {total}, Total entire: {fulltotal}")

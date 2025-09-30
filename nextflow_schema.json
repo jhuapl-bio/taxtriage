@@ -158,6 +158,18 @@
                     "description": "Add irregular distribution genomes to the top hits",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "microbert": {
+                    "type": "string",
+                    "description": "To enable microbert or not, testing space currently",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": null
+                },
+                "microbert_maxlen": {
+                    "type": "integer",
+                    "description": "What max length you would like to use for microbert clustering. Default is 2000. We do not recommend going above 5k bp",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": null
+                },
                 "classifiers": {
                     "type": "string",
                     "description": "List of classifiers, separated by a space. Choose from [kraken2, metaphlan, centrifuge]",
@@ -185,6 +197,11 @@
                     "type": "boolean",
                     "fa_icon": "fas fa-book",
                     "description": "Save all read classifications as a txt file"
+                },
+                "save_k2_read_assignment": {
+                    "type": "boolean",
+                    "description": "Save the kraken2 per-read classification output file. Default is FALSE",
+                    "fa_icon": "fas fa-file-signature"
                 },
                 "save_classified_fastq": {
                     "type": "boolean",

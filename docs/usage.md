@@ -216,6 +216,8 @@ nextflow run main.nf -profile mce_seqera,docker -resume --fastq_1 examples/data/
 | `--top_per_taxa "<taxid:amount:rank>"]`               | One or more 3 element values for the minimum taxa at a rank. Example "10239:20:S 2:20:S" is minimum 20 virus species (10239 is Virus) AND (separated by space for a new definition) 20 Bacteria (2) species. Possible Rank codes to use are the single alphabet letter: G(enus),S(pecies),P(hylum),F(amily),O(rder),C(lass)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--genome`                                            | Pull one of the pre-made igenomes databases for host removal. Available list at [here](https://github.com/nf-core/rnaseq/blob/e049f51f0214b2aef7624b9dd496a404a7c34d14/conf/igenomes.config#L22) or [here](https://ewels.github.io/AWS-iGenomes/) (aws cli or curl command) to download them locally                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--remove_reference_file`                             | Remove all reads that align to a set of accessions in a single fasta file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--microbert`                                         | Specify a microbert directory to enable alignment clustering and AI/ML predictions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `----microbert_maxlen`                                | The Maximum length to chunk the sequences for microbert processing. This will take a read that has aligned/not aligned, chunk it into n spaces based on the value of this parameter and then cluster with mmseqs2. Default is 2k bp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--demux`                                             | If your Samplesheet contains a folder (rather than 1-2 fastq files), you MUST call this flag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--use_megahit_longreads`                             | If running denovo assembly, use MEGAHIT for longreads. Default is disabled = FLYE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `--decompress_pre_megahit`                            | Some HPC envs cant use megahit with gz files, enable if this is the case or you experience INPUT/OUTPUT errors at this step.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -404,6 +406,48 @@ In order to retain an "agnostic" approach for organism while allowing adequate a
 
 - Kraken2 additional AWS databases [here](https://benlangmead.github.io/aws-indexes/k2)
 - Metaphlan4 [here](http://cmprod1.cibio.unitn.it/biobakery4/metaphlan_databases/) - Download the .tar files
+
+## MicrobeRT Module (Optional)
+
+As of Sept. 2025, TaxTriage can implement an AI/ML-based approach using MicrobeRT which is based on genomic language models. The output of this module is generated by going through 3 steps:
+
+1. Bin the alignments (post minimap2/bowtie2/hisat2) based on position and prioritize higher MAPQs per organism. This is to reduce redundant downstream steps.
+2. Cluster the sequences using MMSeqs2 & take each representative sequence, mapping all the members for later steps.
+3. Run MicrobeRT using a CPU (only supported in TaxTriage) on the downsampled data.
+4. Map and Explode the members of each cluster according the probabilities assigned to each representative. Each probability is associated ONLY with the reads that were classified, not the ones missed.
+5. Match each taxid to the alignments in the Report step(s), adding an additional column to the TASS Score.
+
+You can specify the module with `--microbert` followed by the model of choice. We currently host pre-trained models here:
+
+https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy and are as follows:
+
+1. [Hyena](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/hyenadna-large-1m-seqlen-hf-taxonomy) **Long Reads Optimized**
+2. [DNABERT](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/DNABERT-2-117M-taxonomy) **Short Reads Optimized**
+3. [NT Transformer](https://huggingface.co/jhuapl-bio/microbert/tree/main/taxonomy/nucleotide-transformer-v2-50m-multi-species-taxonomy). **Short Reads Optimized**
+   Please see the submission to bioRxiv for more info at [10.1101/2025.08.21.671544](https://doi.org/10.1101/2025.08.21.671544)
+
+You can download the models with the `huggingface cli` or use standard `git`
+
+First:
+
+1. Download it with `pip install huggingface_hub`
+
+Then, run either
+
+2. `hf download jhuapl-bio/microbert --local-dir ./`
+
+or
+
+2. `git clone https://huggingface.co/jhuapl-bio/microbert`
+
+Make sure you specify the correct model based on the platform of choice i.e. the sequence length type.
+For example, you could run:
+
+```
+nextflow run main.nf -profile test,docker -resume --microbert microbert/taxonomy/nucleotide-transformer-v2-50m-multi-species-taxonomy --compress_species --microbert_maxlen 300
+```
+
+Notice the `--compress_species` flag which condenses the report to only annotate to the species level BECAUSE MicrobeRT models are also only trained down to the species level.
 
 ## AWS with Nextflow Tower
 
