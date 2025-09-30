@@ -16,27 +16,38 @@ public class BamIndexer {
 
     private static final Logger logger = Logger.getLogger(BamIndexer.class.getName());
     private static String samtoolsPath = null;
+    private static Boolean dockerAvailable = null;
 
     static {
-        // Try to find samtools in common locations
-        String[] possiblePaths = {
-            "/usr/local/bin/samtools",
-            "/usr/bin/samtools",
-            "/opt/homebrew/bin/samtools",
-            "/Users/dho/miniforge3/bin/samtools",
-            "samtools" // Try PATH
-        };
-
-        for (String path : possiblePaths) {
-            if (isSamtoolsAvailable(path)) {
-                samtoolsPath = path;
-                logger.info("Found samtools at: " + path);
-                break;
-            }
+        // Try to find samtools in PATH only (no hardcoded paths)
+        if (isSamtoolsAvailable("samtools")) {
+            samtoolsPath = "samtools";
+            logger.info("Found samtools in PATH");
+            System.out.println("BamIndexer: Found native samtools in PATH");
+        } else {
+            logger.info("Native samtools not found in PATH");
+            System.out.println("BamIndexer: Native samtools not found in PATH");
         }
 
-        if (samtoolsPath == null) {
-            logger.warning("Samtools not found in common locations");
+        // Check if Docker is available as fallback
+        dockerAvailable = isDockerAvailable();
+        if (dockerAvailable) {
+            System.out.println("BamIndexer: Docker is available for samtools operations");
+        } else {
+            System.out.println("BamIndexer: Docker is not available");
+        }
+    }
+
+    /**
+     * Check if Docker is available.
+     */
+    private static boolean isDockerAvailable() {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"docker", "version"});
+            p.waitFor();
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -74,21 +85,29 @@ public class BamIndexer {
             return true;
         }
 
-        // Try to create index using samtools
+        // Try native samtools first
         if (samtoolsPath != null) {
-            return createIndexWithSamtools(bamFile);
+            if (createIndexWithNativeSamtools(bamFile)) {
+                return true;
+            }
         }
 
-        logger.warning("Cannot create BAM index - samtools not available");
+        // Fall back to Docker samtools
+        if (dockerAvailable != null && dockerAvailable) {
+            logger.info("Trying Docker samtools for indexing");
+            return createIndexWithDockerSamtools(bamFile);
+        }
+
+        logger.warning("Cannot create BAM index - neither samtools nor Docker available");
         return false;
     }
 
     /**
-     * Creates a BAM index using samtools.
+     * Creates a BAM index using native samtools.
      */
-    private static boolean createIndexWithSamtools(File bamFile) {
+    private static boolean createIndexWithNativeSamtools(File bamFile) {
         try {
-            logger.info("Creating BAM index for: " + bamFile.getName());
+            logger.info("Creating BAM index using native samtools for: " + bamFile.getName());
 
             String[] command = {samtoolsPath, "index", bamFile.getAbsolutePath()};
 
@@ -119,7 +138,77 @@ public class BamIndexer {
             }
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Error creating BAM index", e);
+            logger.log(Level.SEVERE, "Error creating BAM index with native samtools", e);
+            return false;
+        }
+    }
+
+    /**
+     * Creates a BAM index using Docker samtools.
+     */
+    private static boolean createIndexWithDockerSamtools(File bamFile) {
+        try {
+            logger.info("Creating BAM index using Docker samtools for: " + bamFile.getName());
+            System.out.println("Creating BAM index using Docker samtools...");
+
+            // Get parent directory for volume mounting
+            File bamDir = bamFile.getParentFile();
+            String containerBamPath = "/data/" + bamFile.getName();
+
+            // Pull the image if needed
+            Process pullProcess = Runtime.getRuntime().exec(new String[]{
+                "docker", "pull", "-q", "staphb/samtools:1.19"
+            });
+            pullProcess.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+
+            // Run samtools index in Docker
+            String[] dockerCommand = {
+                "docker", "run", "--rm",
+                "-v", bamDir.getAbsolutePath() + ":/data",
+                "staphb/samtools:1.19",
+                "samtools", "index", containerBamPath
+            };
+
+            ProcessBuilder pb = new ProcessBuilder(dockerCommand);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            // Read output
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream())
+            );
+            String line;
+            StringBuilder output = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+                System.out.println("  Docker: " + line);
+            }
+            reader.close();
+
+            boolean finished = process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
+
+            if (!finished) {
+                logger.warning("Docker samtools index timed out");
+                process.destroyForcibly();
+                return false;
+            }
+
+            int exitCode = process.exitValue();
+
+            if (exitCode == 0) {
+                logger.info("Successfully created BAM index using Docker for: " + bamFile.getName());
+                System.out.println("✓ Successfully created BAM index using Docker");
+                return true;
+            } else {
+                logger.warning("Failed to create BAM index with Docker. Exit code: " + exitCode +
+                              "\nOutput: " + output.toString());
+                System.out.println("✗ Docker samtools index failed with exit code: " + exitCode);
+                return false;
+            }
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Error creating BAM index with Docker samtools", e);
+            System.out.println("✗ Error creating BAM index with Docker: " + e.getMessage());
             return false;
         }
     }

@@ -43,15 +43,25 @@ public class NCBIReferenceDownloader {
                                                          ProgressListener progressListener) {
         Map<String, File> downloadedFiles = new HashMap<>();
 
+        System.out.println("\n=== NCBIReferenceDownloader: Starting GenBank downloads ===");
+        System.out.println("  Accessions to download: " + accessions.size());
+        for (String acc : accessions) {
+            System.out.println("    - " + acc);
+        }
+        System.out.println("  Output directory: " + outputDir);
+
         if (accessions == null || accessions.isEmpty()) {
             logger.warning("No accessions provided for download");
+            System.out.println("  ERROR: No accessions provided for download");
             return downloadedFiles;
         }
 
         try {
             Files.createDirectories(outputDir);
+            System.out.println("  Output directory created/verified: " + outputDir);
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Could not create output directory", e);
+            System.out.println("  ERROR: Could not create output directory: " + e.getMessage());
             return downloadedFiles;
         }
 
@@ -66,23 +76,33 @@ public class NCBIReferenceDownloader {
                 progressListener.setMessage("Downloading " + accession + " from NCBI...");
             }
 
+            System.out.println("\n  Downloading accession " + (count + 1) + "/" + accessions.size() + ": " + accession);
             try {
                 File gbFile = downloadSingleGenBankFile(accession, outputDir);
                 if (gbFile != null && gbFile.exists()) {
+                    System.out.println("    ✓ Downloaded successfully: " + gbFile.getName() + " (" + gbFile.length() + " bytes)");
+
                     // Fix the GenBank file to ensure LOCUS and ACCESSION match VERSION
                     logger.info("Fixing GenBank file fields for " + accession);
+                    System.out.println("    Fixing GenBank file fields...");
                     boolean fixed = GenBankFileFixer.fixGenBankFile(gbFile);
                     if (fixed) {
                         logger.info("Successfully fixed GenBank file for " + accession);
+                        System.out.println("    ✓ GenBank file fixed successfully");
                     } else {
                         logger.warning("Could not fix GenBank file for " + accession + " - may cause import issues");
+                        System.out.println("    ⚠ Warning: Could not fix GenBank file - may cause import issues");
                     }
 
                     downloadedFiles.put(accession, gbFile);
                     logger.info("Downloaded GenBank file for " + accession);
+                } else {
+                    System.out.println("    ✗ Download failed: File not created or empty");
                 }
             } catch (Exception e) {
                 logger.log(Level.WARNING, "Failed to download GenBank file for " + accession, e);
+                System.out.println("    ✗ Download failed: " + e.getMessage());
+                e.printStackTrace(System.out);
             }
 
             count++;
@@ -101,6 +121,12 @@ public class NCBIReferenceDownloader {
         }
 
         logger.info("Downloaded " + downloadedFiles.size() + " of " + accessions.size() + " GenBank files");
+        System.out.println("\n=== Download Summary ===");
+        System.out.println("  Successfully downloaded: " + downloadedFiles.size() + " of " + accessions.size() + " GenBank files");
+        if (downloadedFiles.size() < accessions.size()) {
+            System.out.println("  ⚠ Warning: Some downloads failed. Check errors above.");
+        }
+        System.out.println("=== NCBIReferenceDownloader: Complete ===\n");
         return downloadedFiles;
     }
 
@@ -112,6 +138,7 @@ public class NCBIReferenceDownloader {
         String urlString = String.format("%s?db=nuccore&id=%s&rettype=gbwithparts&retmode=text",
                                         EFETCH_URL, accession);
 
+        System.out.println("    Connecting to NCBI: " + urlString);
         logger.fine("Downloading from: " + urlString);
 
         URL url = new URL(urlString);
@@ -120,13 +147,19 @@ public class NCBIReferenceDownloader {
         conn.setConnectTimeout(30000);
         conn.setReadTimeout(30000);
 
+        System.out.println("    Sending HTTP request...");
         int responseCode = conn.getResponseCode();
+        System.out.println("    HTTP response code: " + responseCode);
+
         if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw new IOException("HTTP error " + responseCode + " downloading " + accession);
+            String errorMsg = "HTTP error " + responseCode + " downloading " + accession;
+            System.out.println("    ✗ " + errorMsg);
+            throw new IOException(errorMsg);
         }
 
         // Save to file
         File outputFile = outputDir.resolve(accession + ".gb").toFile();
+        System.out.println("    Saving to: " + outputFile.getAbsolutePath());
 
         try (InputStream is = conn.getInputStream();
              BufferedInputStream bis = new BufferedInputStream(is);
@@ -142,6 +175,7 @@ public class NCBIReferenceDownloader {
                 totalBytes += bytesRead;
             }
 
+            System.out.println("    Downloaded " + totalBytes + " bytes");
             logger.fine("Downloaded " + totalBytes + " bytes for " + accession);
         }
 
@@ -150,6 +184,7 @@ public class NCBIReferenceDownloader {
         // Verify the file contains GenBank data
         if (outputFile.length() < 100) {
             logger.warning("Downloaded file for " + accession + " seems too small");
+            System.out.println("    ✗ Warning: Downloaded file seems too small (" + outputFile.length() + " bytes)");
             outputFile.delete();
             return null;
         }

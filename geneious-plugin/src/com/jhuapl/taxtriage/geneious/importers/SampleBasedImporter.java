@@ -1132,18 +1132,33 @@ public class SampleBasedImporter {
 
         // Extract references from BAM files
         Set<String> allAccessions = new HashSet<>();
+        System.out.println("  Extracting references from " + bamFiles.size() + " BAM file(s)...");
         for (File bamFile : bamFiles) {
+            System.out.println("\n  Processing BAM file: " + bamFile.getName());
+            System.out.println("  BAM file path: " + bamFile.getAbsolutePath());
+            System.out.println("  BAM file exists: " + bamFile.exists());
+            System.out.println("  BAM file size: " + bamFile.length() + " bytes");
+
             try {
                 List<BamReferenceExtractor.ReferenceInfo> refs =
                     BamReferenceExtractor.extractReferences(bamFile);
+
+                System.out.println("  Extracted " + refs.size() + " reference(s) from BAM");
+
                 for (BamReferenceExtractor.ReferenceInfo ref : refs) {
+                    System.out.println("    Reference: name='" + ref.name + "', length=" + ref.length + ", accession=" +
+                                     (ref.accession != null ? "'" + ref.accession + "'" : "null"));
                     if (ref.accession != null && !ref.accession.isEmpty()) {
                         allAccessions.add(ref.accession);
-                        System.out.println("  Found reference in BAM: " + ref.name + " (" + ref.accession + ")");
+                        System.out.println("      ✓ Added accession: " + ref.accession);
+                    } else {
+                        System.out.println("      ✗ No accession extracted from this reference");
                     }
                 }
             } catch (Exception e) {
                 logger.warning("Could not extract references from BAM: " + bamFile.getName());
+                System.out.println("  ✗ ERROR extracting references from BAM: " + e.getMessage());
+                e.printStackTrace(System.out);
             }
         }
 
