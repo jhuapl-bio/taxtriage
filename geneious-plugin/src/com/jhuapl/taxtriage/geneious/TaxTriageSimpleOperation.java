@@ -337,13 +337,21 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
             generateWorkflowConfig(workspaceDir, allInputFiles, options);
 
+            System.out.println("===============================================");
+            System.out.println("DEBUG: Returned from generateWorkflowConfig");
+            System.out.println("  About to call executeWorkflow");
+            System.out.println("===============================================");
+            logger.info("=== About to execute Nextflow workflow ===");
+
             // Step 6: Execute TaxTriage workflow
             if (progressListener != null) {
                 progressListener.setMessage("Starting TaxTriage analysis...");
                 progressListener.setProgress(0.3);
             }
 
+            System.out.println(">>> Calling executeWorkflow method...");
             ExecutionResult result = executeWorkflow(workspaceDir, options, progressListener);
+            System.out.println(">>> executeWorkflow returned with exit code: " + result.getExitCode());
 
             if (!result.isSuccessful()) {
                 String standardOutput = result.getStandardOutput();
@@ -593,6 +601,13 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         sampleSheetBuilder.buildSampleSheet(workspaceInputFiles, sampleSheetFile,
             options.getSequencingPreset().name());
         logger.info("Generated samplesheet with preprocessed files: " + sampleSheetFile.getAbsolutePath());
+
+        System.out.println("===========================================");
+        System.out.println("WORKFLOW CONFIGURATION COMPLETE");
+        System.out.println("  Samplesheet: " + sampleSheetFile.getAbsolutePath());
+        System.out.println("  Ready to start Nextflow workflow");
+        System.out.println("===========================================");
+        logger.info("=== Workflow configuration completed successfully, proceeding to workflow execution ===");
     }
 
     /**
@@ -1084,9 +1099,12 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      */
     private ExecutionResult executeWorkflow(Path workspaceDir, TaxTriageOptions options,
                                           ProgressListener progressListener) throws DockerException {
+        System.out.println(">>> ENTERED executeWorkflow method");
+        System.out.println(">>> Workspace: " + workspaceDir.toAbsolutePath());
         logger.info("Starting TaxTriage workflow execution with native Nextflow");
 
         // Build Nextflow command
+        System.out.println(">>> Building Nextflow command...");
         List<String> nextflowCommand = buildNextflowCommand(workspaceDir, options);
         String commandString = String.join(" ", nextflowCommand);
         logger.info("Executing Nextflow command: " + commandString);
@@ -1485,13 +1503,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
             // Verify the binary is executable (and make it executable if needed)
             if (!nextflowFile.canExecute()) {
+                System.out.println(">>> Nextflow binary is not executable, setting permissions...");
                 logger.warning("Nextflow binary is not executable, attempting to set executable permission");
                 if (!nextflowFile.setExecutable(true, false)) {
                     throw new DockerException("Cannot make Nextflow binary executable: " + nextflowPath.toAbsolutePath());
                 }
+                System.out.println(">>> Successfully set executable permission on Nextflow binary");
+            } else {
+                System.out.println(">>> Nextflow binary is already executable");
             }
 
             nextflowBinaryPath = nextflowPath.toAbsolutePath().toString();
+            System.out.println(">>> Successfully located Nextflow binary at: " + nextflowBinaryPath);
             logger.info("Successfully located Nextflow binary at: " + nextflowBinaryPath);
 
         } catch (Exception e) {
@@ -1841,7 +1864,12 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                                                    Path workspaceDir,
                                                    ProgressListener progressListener,
                                                    int timeoutMinutes) throws DockerException {
+        System.out.println(">>> ENTERED executeNextflowDirectly method");
+        System.out.println(">>> Command: " + String.join(" ", nextflowCommand));
+        System.out.println(">>> Working directory: " + workspaceDir.toAbsolutePath());
+
         try {
+            System.out.println(">>> Inside try block, setting progress...");
             if (progressListener != null) {
                 progressListener.setMessage("Starting Nextflow workflow...");
                 progressListener.setProgress(0.1);
@@ -1852,7 +1880,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             // Set up ProcessBuilder
             ProcessBuilder processBuilder = new ProcessBuilder(nextflowCommand);
             processBuilder.directory(workspaceDir.toFile());
-            processBuilder.redirectErrorStream(false);
+
+            // CRITICAL: Inherit I/O instead of capturing streams
+            // Nextflow uses exec to replace the bash process with Java, which breaks stream redirection
+            processBuilder.inheritIO();
+            System.out.println(">>> Using inheritIO() for Nextflow process");
 
             // Set environment variables
             java.util.Map<String, String> env = processBuilder.environment();
@@ -1860,18 +1892,53 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             // Configure Java for Nextflow
             // Strategy: Prefer system Java (to avoid path issues), fallback to Geneious Java
             configureJavaEnvironment(env);
+            System.out.println(">>> Returned from configureJavaEnvironment");
 
             // Ensure Nextflow home directory
+            System.out.println(">>> Setting NXF_HOME...");
             if (!env.containsKey("NXF_HOME")) {
                 env.put("NXF_HOME", System.getProperty("user.home") + "/.nextflow");
             }
+            System.out.println(">>> NXF_HOME set to: " + env.get("NXF_HOME"));
+
+            // Disable ANSI output for better stream handling
+            env.put("NXF_ANSI_LOG", "false");
+            System.out.println(">>> Set NXF_ANSI_LOG=false to disable ANSI colors");
+
+            System.out.println("===========================================");
+            System.out.println("ABOUT TO START NEXTFLOW PROCESS");
+            System.out.println("Command: " + String.join(" ", nextflowCommand));
+            System.out.println("Working dir: " + workspaceDir.toAbsolutePath());
+            System.out.println("===========================================");
 
             // Start the process
             java.time.LocalDateTime startTime = java.time.LocalDateTime.now();
+            System.out.println(">>> Starting process...");
             Process process = processBuilder.start();
+            System.out.println(">>> Process started! PID: " + process.pid());
+            System.out.println(">>> Process is alive: " + process.isAlive());
 
-            // Monitor the process with progress updates
-            ExecutionResult result = monitorNextflowProcess(process, nextflowCommand, progressListener, timeoutMinutes);
+            // Wait for process to complete (using inheritIO, so no stream monitoring needed)
+            System.out.println(">>> Waiting for Nextflow to complete...");
+            boolean finished = process.waitFor(timeoutMinutes, java.util.concurrent.TimeUnit.MINUTES);
+
+            if (!finished) {
+                System.out.println(">>> Process timed out after " + timeoutMinutes + " minutes!");
+                process.destroyForcibly();
+                throw new DockerException("Nextflow process timed out after " + timeoutMinutes + " minutes");
+            }
+
+            int exitCode = process.exitValue();
+            System.out.println(">>> Nextflow completed with exit code: " + exitCode);
+
+            ExecutionResult result = new ExecutionResult(
+                String.join(" ", nextflowCommand),
+                exitCode,
+                "",  // No output captured with inheritIO
+                "",  // No error output captured
+                startTime,
+                java.time.LocalDateTime.now()
+            );
 
             java.time.LocalDateTime endTime = java.time.LocalDateTime.now();
 
@@ -1900,6 +1967,10 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                                                  List<String> command,
                                                  ProgressListener progressListener,
                                                  int timeoutMinutes) throws DockerException {
+        System.out.println(">>> ENTERED monitorNextflowProcess");
+        System.out.println(">>> Process is alive: " + process.isAlive());
+        System.out.println(">>> Timeout set to: " + timeoutMinutes + " minutes");
+
         java.time.LocalDateTime startTime = java.time.LocalDateTime.now();
 
         try {
@@ -1910,10 +1981,12 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             Thread outputReader = new Thread(() -> readNextflowStream(process.getInputStream(), standardOutput, progressListener));
             Thread errorReader = new Thread(() -> readNextflowStream(process.getErrorStream(), errorOutput, null));
 
+            System.out.println(">>> Starting output reader threads...");
             outputReader.start();
             errorReader.start();
 
             // Wait for process completion with timeout
+            System.out.println(">>> Waiting for process to complete (timeout: " + timeoutMinutes + " minutes)...");
             boolean finished = process.waitFor(timeoutMinutes, java.util.concurrent.TimeUnit.MINUTES);
 
             if (!finished) {
@@ -1955,9 +2028,16 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      * @param progressListener optional progress listener for updates
      */
     private void readNextflowStream(java.io.InputStream inputStream, StringBuilder output, ProgressListener progressListener) {
+        System.out.println(">>> Stream reader started");
+        int lineCount = 0;
+
         try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
             String line;
             while ((line = reader.readLine()) != null) {
+                lineCount++;
+                if (lineCount <= 5) {
+                    System.out.println(">>> Read line " + lineCount + ": " + (line.length() > 100 ? line.substring(0, 100) + "..." : line));
+                }
                 output.append(line).append("\n");
 
                 // Update progress listener if available

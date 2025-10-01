@@ -76,6 +76,13 @@
             </fileset>
         </copy>
 
+        <!-- Copy bundled Nextflow binary -->
+        <copy todir="${build}/${plugin-name}/bin" failonerror="false">
+            <fileset dir="bin" erroronmissingdir="false">
+                <include name="nextflow"/>
+            </fileset>
+        </copy>
+
         <!-- Set executable permissions on the bundled Nextflow binary -->
         <chmod file="${build}/${plugin-name}/bin/nextflow" perm="755" failonerror="false"/>
     </target>
