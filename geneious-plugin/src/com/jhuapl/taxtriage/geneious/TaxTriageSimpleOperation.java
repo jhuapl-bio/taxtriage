@@ -1482,16 +1482,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             // System Java found - use it
             System.out.println("SUCCESS: Using system Java: " + systemJava);
             logger.info("Using system Java: " + systemJava);
-            String javaHome = getJavaHomeFromExecutable(systemJava);
 
+            // DON'T set JAVA_HOME for system Java - let the system wrapper handle it
             env.put("JAVA_CMD", systemJava);
-            if (javaHome != null) {
-                env.put("JAVA_HOME", javaHome);
-                System.out.println("Set JAVA_HOME to: " + javaHome);
-                logger.info("Set JAVA_HOME to: " + javaHome);
-            } else {
-                System.out.println("WARNING: Could not determine JAVA_HOME from: " + systemJava);
-            }
+            System.out.println("Using system Java without setting JAVA_HOME (system wrapper handles JVM location)");
+            logger.info("Using system Java without setting JAVA_HOME (system wrapper handles JVM location)");
         } else {
             // Fallback to Geneious bundled Java
             System.out.println("System Java not found, falling back to Geneious bundled Java");
