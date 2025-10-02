@@ -69,8 +69,7 @@ workflow HOST_REMOVAL {
                 ch_reads.map{ meta, reads -> return [meta, reads, ch_reference_fasta_removal] },
                 true,
                 true,
-                true,
-                false
+                true
             )
 
             ch_bam_hosts = FILTER_MINIMAP2.out.bam
