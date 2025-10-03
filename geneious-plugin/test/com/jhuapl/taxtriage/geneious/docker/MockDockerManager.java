@@ -3,7 +3,7 @@ package com.jhuapl.taxtriage.geneious.docker;
 import jebl.util.ProgressListener;
 
 import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
+import java.time.LocalDateTime;
 
 /**
  * Mock implementation of Docker operations for testing without requiring actual Docker.
@@ -11,10 +11,13 @@ import java.util.concurrent.CompletableFuture;
  * This class simulates Docker behavior for unit tests, allowing complete testing
  * of the TaxTriage plugin functionality in environments where Docker is not available.
  *
+ * Note: This is a standalone mock that does not extend DockerManager to avoid
+ * Docker validation requirements during test initialization.
+ *
  * @author Johns Hopkins University Applied Physics Laboratory
  * @version 1.0.0
  */
-public class MockDockerManager extends DockerManager {
+public class MockDockerManager {
 
     private boolean dockerAvailable = true;
     private boolean shouldFailExecution = false;
@@ -22,56 +25,40 @@ public class MockDockerManager extends DockerManager {
     private String mockError = "";
     private int mockExitCode = 0;
     private long executionDelayMs = 100;
+    private final String dockerImage;
 
     /**
      * Creates a new MockDockerManager with default successful behavior.
-     *
-     * @throws DockerException never thrown in mock implementation
      */
-    public MockDockerManager() throws DockerException {
-        super(new MockVolumeMapper(), new MockExecutionMonitor(), "mock-docker");
+    public MockDockerManager() {
+        this.dockerImage = "mock-docker";
     }
 
     /**
-     * Creates a MockDockerManager with custom mock components.
+     * Creates a MockDockerManager with custom docker image name.
      *
-     * @param volumeMapper mock volume mapper
-     * @param executionMonitor mock execution monitor
-     * @throws DockerException never thrown in mock implementation
+     * @param dockerImage the mock docker image name
      */
-    public MockDockerManager(VolumeMapper volumeMapper, ExecutionMonitor executionMonitor) throws DockerException {
-        super(volumeMapper, executionMonitor, "mock-docker");
+    public MockDockerManager(String dockerImage) {
+        this.dockerImage = dockerImage;
     }
 
-    @Override
     public boolean isDockerAvailable() {
         return dockerAvailable;
     }
 
-    @Override
-    public void pullImageIfNeeded(String imageName, ProgressListener progressListener) throws DockerException {
+    public void pullImageIfNeeded() throws DockerException {
         if (!dockerAvailable) {
             throw new DockerException("Mock Docker is not available");
         }
-
-        if (progressListener != null) {
-            progressListener.setMessage("Mock: Checking image " + imageName);
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            progressListener.setMessage("Mock: Image " + imageName + " is ready");
-        }
+        // Mock image pull - do nothing
     }
 
-    @Override
     public ExecutionResult executeNextflowCommand(
-            String imageName,
             String nextflowCommand,
             Path inputDirectory,
             Path outputDirectory,
-            Path workDirectory,
+            Path workingDirectory,
             ProgressListener progressListener) throws DockerException {
 
         if (!dockerAvailable) {
@@ -93,23 +80,27 @@ public class MockDockerManager extends DockerManager {
             progressListener.setProgress(1.0);
         }
 
-        return new ExecutionResult(mockExitCode, mockOutput, mockError);
+        LocalDateTime now = LocalDateTime.now();
+        return new ExecutionResult(nextflowCommand, mockExitCode, mockOutput, mockError, now, now);
     }
 
-    @Override
-    public void stopContainer(String containerId) throws DockerException {
-        if (!dockerAvailable) {
-            throw new DockerException("Mock Docker is not available");
-        }
-        // Mock container stop - do nothing
+    public ExecutionResult executeNextflowCommand(
+            String nextflowCommand,
+            Path inputDirectory,
+            Path outputDirectory,
+            Path workingDirectory,
+            ProgressListener progressListener,
+            int timeoutMinutes) throws DockerException {
+        // Timeout is ignored in mock, just delegate to main method
+        return executeNextflowCommand(nextflowCommand, inputDirectory, outputDirectory, workingDirectory, progressListener);
     }
 
-    @Override
-    public void removeContainer(String containerId) throws DockerException {
-        if (!dockerAvailable) {
-            throw new DockerException("Mock Docker is not available");
-        }
-        // Mock container removal - do nothing
+    public String getDockerImage() {
+        return dockerImage;
+    }
+
+    public boolean isImageAvailable() {
+        return dockerAvailable;
     }
 
     /**
@@ -189,46 +180,6 @@ public class MockDockerManager extends DockerManager {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * Mock VolumeMapper implementation for testing.
-     */
-    public static class MockVolumeMapper extends VolumeMapper {
-
-        public MockVolumeMapper() {
-            super("mock-platform");
-        }
-
-        @Override
-        public boolean validatePermissions(Path path) {
-            return true; // Always return true for mock
-        }
-    }
-
-    /**
-     * Mock ExecutionMonitor implementation for testing.
-     */
-    public static class MockExecutionMonitor extends ExecutionMonitor {
-
-        @Override
-        public CompletableFuture<ExecutionResult> monitorExecution(Process process, ProgressListener progressListener) {
-            return CompletableFuture.supplyAsync(() -> {
-                if (progressListener != null) {
-                    progressListener.setMessage("Mock: Monitoring execution");
-                    progressListener.setProgress(1.0);
-                }
-                return new ExecutionResult(0, "Mock execution output", "");
-            });
-        }
-
-        @Override
-        public double parseProgress(String line) {
-            if (line != null && line.contains("Mock")) {
-                return 0.5; // Return mock progress
-            }
-            return super.parseProgress(line);
         }
     }
 }

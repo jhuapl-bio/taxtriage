@@ -41,6 +41,17 @@ public class DockerException extends Exception {
     }
 
     /**
+     * Creates a new DockerException with a cause.
+     *
+     * @param cause the underlying cause
+     */
+    public DockerException(Throwable cause) {
+        super(cause);
+        this.dockerCommand = null;
+        this.exitCode = -1;
+    }
+
+    /**
      * Creates a new DockerException for a failed Docker command.
      *
      * @param message the error message
@@ -92,14 +103,24 @@ public class DockerException extends Exception {
      */
     @Override
     public String getMessage() {
-        StringBuilder msg = new StringBuilder(super.getMessage());
+        String baseMessage = super.getMessage();
+        if (baseMessage == null) {
+            baseMessage = "";
+        }
+        StringBuilder msg = new StringBuilder(baseMessage);
 
         if (dockerCommand != null) {
-            msg.append(" (Command: ").append(dockerCommand).append(")");
+            if (msg.length() > 0) {
+                msg.append(" ");
+            }
+            msg.append("(Command: ").append(dockerCommand).append(")");
         }
 
         if (exitCode != -1) {
-            msg.append(" (Exit code: ").append(exitCode).append(")");
+            if (msg.length() > 0) {
+                msg.append(" ");
+            }
+            msg.append("(Exit code: ").append(exitCode).append(")");
         }
 
         return msg.toString();

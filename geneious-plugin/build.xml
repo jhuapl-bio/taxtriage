@@ -21,7 +21,11 @@
         <fileset dir="lib" erroronmissingdir="false">
             <include name="junit-jupiter-api-*.jar"/>
             <include name="junit-jupiter-engine-*.jar"/>
+            <include name="junit-platform-console-*.jar"/>
+            <include name="junit-platform-commons-*.jar"/>
+            <include name="junit-platform-engine-*.jar"/>
             <include name="junit-platform-launcher-*.jar"/>
+            <include name="opentest4j-*.jar"/>
             <include name="mockito-core-*.jar"/>
             <include name="mockito-junit-jupiter-*.jar"/>
             <include name="byte-buddy-*.jar"/>
@@ -106,8 +110,7 @@
         <java classname="org.junit.platform.console.ConsoleLauncher" fork="true" failonerror="true">
             <classpath refid="test-classpath"/>
             <arg value="--scan-classpath"/>
-            <arg value="--include-package=com.jhuapl.taxtriage.geneious.docker"/>
-            <arg value="--reports-dir=${build}/test-reports"/>
+            <arg value="--include-package=com.jhuapl.taxtriage.geneious"/>
         </java>
     </target>
 

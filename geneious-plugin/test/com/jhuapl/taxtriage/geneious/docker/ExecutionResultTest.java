@@ -2,6 +2,8 @@ package com.jhuapl.taxtriage.geneious.docker;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -17,136 +19,169 @@ class ExecutionResultTest {
 
     @Test
     void testSuccessfulExecution() {
-        ExecutionResult result = new ExecutionResult(0, "Success output", "");
+        LocalDateTime now = LocalDateTime.now();
+        ExecutionResult result = new ExecutionResult("test command", 0, "Success output", "", now, now);
 
         assertEquals(0, result.getExitCode());
-        assertEquals("Success output", result.getOutput());
+        assertEquals("Success output", result.getStandardOutput());
         assertEquals("", result.getErrorOutput());
         assertTrue(result.isSuccess());
+        assertTrue(result.isSuccessful());
     }
 
     @Test
     void testFailedExecution() {
-        ExecutionResult result = new ExecutionResult(1, "Partial output", "Error occurred");
+        LocalDateTime now = LocalDateTime.now();
+        ExecutionResult result = new ExecutionResult("test command", 1, "Partial output", "Error occurred", now, now);
 
         assertEquals(1, result.getExitCode());
-        assertEquals("Partial output", result.getOutput());
+        assertEquals("Partial output", result.getStandardOutput());
         assertEquals("Error occurred", result.getErrorOutput());
         assertFalse(result.isSuccess());
+        assertFalse(result.isSuccessful());
+        assertTrue(result.isFailed());
     }
 
     @Test
     void testConstructorWithNullValues() {
-        ExecutionResult result = new ExecutionResult(0, null, null);
+        LocalDateTime now = LocalDateTime.now();
+        ExecutionResult result = new ExecutionResult("test command", 0, null, null, now, now);
 
         assertEquals(0, result.getExitCode());
-        assertEquals("", result.getOutput());
+        assertEquals("", result.getStandardOutput());
         assertEquals("", result.getErrorOutput());
         assertTrue(result.isSuccess());
     }
 
     @Test
-    void testGetAllOutputWithBothOutputs() {
-        ExecutionResult result = new ExecutionResult(0, "Standard output", "Error output");
+    void testStaticFactoryMethods() {
+        ExecutionResult success = ExecutionResult.success("test command", "Success output");
+        assertTrue(success.isSuccessful());
+        assertEquals(0, success.getExitCode());
+        assertEquals("Success output", success.getStandardOutput());
 
-        String allOutput = result.getAllOutput();
-        assertTrue(allOutput.contains("STDOUT:"));
-        assertTrue(allOutput.contains("Standard output"));
-        assertTrue(allOutput.contains("STDERR:"));
-        assertTrue(allOutput.contains("Error output"));
+        ExecutionResult failure = ExecutionResult.failure("test command", 1, "Error output");
+        assertTrue(failure.isFailed());
+        assertEquals(1, failure.getExitCode());
+        assertEquals("Error output", failure.getErrorOutput());
+
+        ExecutionResult fromException = ExecutionResult.fromException("test command", new RuntimeException("Test error"));
+        assertTrue(fromException.isFailed());
+        assertEquals(-1, fromException.getExitCode());
+        assertTrue(fromException.getErrorOutput().contains("Test error"));
     }
 
     @Test
-    void testGetAllOutputWithOnlyStdout() {
-        ExecutionResult result = new ExecutionResult(0, "Only stdout", "");
+    void testOutputLines() {
+        LocalDateTime now = LocalDateTime.now();
+        String multilineOutput = "Line 1\nLine 2\nLine 3";
+        String multilineError = "Error line 1\nError line 2";
 
-        String allOutput = result.getAllOutput();
-        assertTrue(allOutput.contains("STDOUT:"));
-        assertTrue(allOutput.contains("Only stdout"));
-        assertFalse(allOutput.contains("STDERR:"));
-    }
+        ExecutionResult result = new ExecutionResult("test command", 0, multilineOutput, multilineError, now, now);
 
-    @Test
-    void testGetAllOutputWithOnlyStderr() {
-        ExecutionResult result = new ExecutionResult(1, "", "Only stderr");
-
-        String allOutput = result.getAllOutput();
-        assertFalse(allOutput.contains("STDOUT:"));
-        assertTrue(allOutput.contains("STDERR:"));
-        assertTrue(allOutput.contains("Only stderr"));
-    }
-
-    @Test
-    void testGetAllOutputWithNoOutput() {
-        ExecutionResult result = new ExecutionResult(0, "", "");
-
-        String allOutput = result.getAllOutput();
-        assertEquals("", allOutput);
+        assertEquals(3, result.getOutputLines().size());
+        assertEquals(2, result.getErrorLines().size());
+        assertEquals("Line 1", result.getOutputLines().get(0));
+        assertEquals("Error line 1", result.getErrorLines().get(0));
     }
 
     @Test
     void testToString() {
-        ExecutionResult result = new ExecutionResult(1, "Some output", "Some error");
+        LocalDateTime now = LocalDateTime.now();
+        ExecutionResult result = new ExecutionResult("test command", 1, "Some output", "Some error", now, now);
 
         String toString = result.toString();
         assertTrue(toString.contains("exitCode=1"));
-        assertTrue(toString.contains("outputLength=11"));
-        assertTrue(toString.contains("errorOutputLength=10"));
-        assertTrue(toString.contains("success=false"));
-    }
-
-    @Test
-    void testToStringWithLongOutput() {
-        String longOutput = "A".repeat(1000);
-        String longError = "B".repeat(500);
-        ExecutionResult result = new ExecutionResult(0, longOutput, longError);
-
-        String toString = result.toString();
-        assertTrue(toString.contains("outputLength=1000"));
-        assertTrue(toString.contains("errorOutputLength=500"));
-        assertTrue(toString.contains("success=true"));
+        assertTrue(toString.contains("successful=false"));
+        assertTrue(toString.contains("test command"));
     }
 
     @Test
     void testIsSuccessWithVariousExitCodes() {
-        assertTrue(new ExecutionResult(0, "", "").isSuccess());
-        assertFalse(new ExecutionResult(1, "", "").isSuccess());
-        assertFalse(new ExecutionResult(-1, "", "").isSuccess());
-        assertFalse(new ExecutionResult(127, "", "").isSuccess());
-        assertFalse(new ExecutionResult(255, "", "").isSuccess());
+        LocalDateTime now = LocalDateTime.now();
+        assertTrue(new ExecutionResult("cmd", 0, "", "", now, now).isSuccess());
+        assertFalse(new ExecutionResult("cmd", 1, "", "", now, now).isSuccess());
+        assertFalse(new ExecutionResult("cmd", -1, "", "", now, now).isSuccess());
+        assertFalse(new ExecutionResult("cmd", 127, "", "", now, now).isSuccess());
+        assertFalse(new ExecutionResult("cmd", 255, "", "", now, now).isSuccess());
     }
 
     @Test
-    void testMultilineOutputs() {
-        String multilineOutput = "Line 1\nLine 2\nLine 3";
-        String multilineError = "Error line 1\nError line 2";
+    void testContainsInOutput() {
+        LocalDateTime now = LocalDateTime.now();
+        String output = "Line 1\nLine 2 with pattern\nLine 3";
+        ExecutionResult result = new ExecutionResult("test command", 0, output, "", now, now);
 
-        ExecutionResult result = new ExecutionResult(0, multilineOutput, multilineError);
-
-        assertEquals(multilineOutput, result.getOutput());
-        assertEquals(multilineError, result.getErrorOutput());
-
-        String allOutput = result.getAllOutput();
-        assertTrue(allOutput.contains("Line 1"));
-        assertTrue(allOutput.contains("Line 2"));
-        assertTrue(allOutput.contains("Line 3"));
-        assertTrue(allOutput.contains("Error line 1"));
-        assertTrue(allOutput.contains("Error line 2"));
+        assertTrue(result.containsInOutput("pattern"));
+        assertFalse(result.containsInOutput("notfound"));
     }
 
     @Test
-    void testSpecialCharactersInOutput() {
-        String specialOutput = "Output with \"quotes\" and 'apostrophes' and \t tabs \n newlines";
-        String specialError = "Error with unicode: \u2603 and symbols: $@#%";
+    void testContainsInError() {
+        LocalDateTime now = LocalDateTime.now();
+        String error = "Error line 1\nError line 2 with error pattern\nError line 3";
+        ExecutionResult result = new ExecutionResult("test command", 1, "", error, now, now);
 
-        ExecutionResult result = new ExecutionResult(0, specialOutput, specialError);
+        assertTrue(result.containsInError("error pattern"));
+        assertFalse(result.containsInError("notfound"));
+    }
 
-        assertEquals(specialOutput, result.getOutput());
-        assertEquals(specialError, result.getErrorOutput());
+    @Test
+    void testFindInOutput() {
+        LocalDateTime now = LocalDateTime.now();
+        String output = "Line 1\nLine 2 with pattern\nLine 3";
+        ExecutionResult result = new ExecutionResult("test command", 0, output, "", now, now);
 
-        String allOutput = result.getAllOutput();
-        assertTrue(allOutput.contains("\"quotes\""));
-        assertTrue(allOutput.contains("\u2603"));
-        assertTrue(allOutput.contains("$@#%"));
+        String found = result.findInOutput("pattern");
+        assertNotNull(found);
+        assertTrue(found.contains("pattern"));
+
+        String notFound = result.findInOutput("notfound");
+        assertNull(notFound);
+    }
+
+    @Test
+    void testFindInError() {
+        LocalDateTime now = LocalDateTime.now();
+        String error = "Error line 1\nError line 2 with error pattern\nError line 3";
+        ExecutionResult result = new ExecutionResult("test command", 1, "", error, now, now);
+
+        String found = result.findInError("error pattern");
+        assertNotNull(found);
+        assertTrue(found.contains("error pattern"));
+
+        String notFound = result.findInError("notfound");
+        assertNull(notFound);
+    }
+
+    @Test
+    void testHasErrorOutput() {
+        LocalDateTime now = LocalDateTime.now();
+        ExecutionResult withError = new ExecutionResult("test command", 1, "", "Error", now, now);
+        ExecutionResult withoutError = new ExecutionResult("test command", 0, "Output", "", now, now);
+
+        assertTrue(withError.hasErrorOutput());
+        assertFalse(withoutError.hasErrorOutput());
+    }
+
+    @Test
+    void testExecutionTime() {
+        LocalDateTime start = LocalDateTime.now();
+        LocalDateTime end = start.plusSeconds(10);
+        ExecutionResult result = new ExecutionResult("test command", 0, "", "", start, end);
+
+        assertEquals(10, result.getExecutionSeconds());
+        assertTrue(result.getExecutionMillis() >= 10000);
+    }
+
+    @Test
+    void testGetSummary() {
+        LocalDateTime now = LocalDateTime.now();
+        ExecutionResult result = new ExecutionResult("test command", 0, "Output", "Error", now, now);
+
+        String summary = result.getSummary();
+        assertTrue(summary.contains("test command"));
+        assertTrue(summary.contains("Exit Code: 0"));
+        assertTrue(summary.contains("SUCCESS"));
     }
 }

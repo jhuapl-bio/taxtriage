@@ -35,20 +35,21 @@ public class SimpleDockerManagerTest {
         System.out.println("Testing ExecutionResult...");
 
         // Test successful result
-        ExecutionResult success = new ExecutionResult(0, "Success output", "");
+        ExecutionResult success = ExecutionResult.success("test command", "Success output");
         assert success.isSuccess() : "Should be successful";
         assert success.getExitCode() == 0 : "Exit code should be 0";
-        assert "Success output".equals(success.getOutput()) : "Output should match";
+        assert "Success output".equals(success.getStandardOutput()) : "Output should match";
 
         // Test failed result
-        ExecutionResult failure = new ExecutionResult(1, "Partial output", "Error occurred");
+        ExecutionResult failure = ExecutionResult.failure("test command", 1, "Error occurred");
         assert !failure.isSuccess() : "Should not be successful";
         assert failure.getExitCode() == 1 : "Exit code should be 1";
         assert failure.getErrorOutput().contains("Error") : "Should contain error";
 
         // Test null handling
-        ExecutionResult nullResult = new ExecutionResult(0, null, null);
-        assert "".equals(nullResult.getOutput()) : "Null output should become empty string";
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        ExecutionResult nullResult = new ExecutionResult("test command", 0, null, null, now, now);
+        assert "".equals(nullResult.getStandardOutput()) : "Null output should become empty string";
         assert "".equals(nullResult.getErrorOutput()) : "Null error should become empty string";
 
         System.out.println("ExecutionResult tests passed!");
