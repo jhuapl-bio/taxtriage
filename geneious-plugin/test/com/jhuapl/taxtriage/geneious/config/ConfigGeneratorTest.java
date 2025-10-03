@@ -410,50 +410,47 @@ class ConfigGeneratorTest {
      * Mock template loader for testing.
      */
     private static class MockTemplateLoader implements ConfigGenerator.TemplateLoader {
-        private String configTemplate = """
-                params {
-                    preset = '${preset}'
-                    quality_threshold = ${quality_threshold}
-                    min_read_length = ${min_read_length}
-                    enable_subsampling = ${enable_subsampling}
-                    subsample_size = ${subsample_size}
-                    max_cpus = ${max_cpus}
-                    max_memory = '${max_memory}'
-                    kraken_db = '${kraken_db}'
-                    bracken_db = '${bracken_db}'
-                    outdir = '${outdir}'
-                    top_taxa = ${top_taxa}
-                    confidence_threshold = ${confidence_threshold}
-                    enable_krona = ${enable_krona}
-                    enable_multiqc = ${enable_multiqc}
-                }
+        private String configTemplate =
+                "params {\n" +
+                "    preset = '${preset}'\n" +
+                "    quality_threshold = ${quality_threshold}\n" +
+                "    min_read_length = ${min_read_length}\n" +
+                "    enable_subsampling = ${enable_subsampling}\n" +
+                "    subsample_size = ${subsample_size}\n" +
+                "    max_cpus = ${max_cpus}\n" +
+                "    max_memory = '${max_memory}'\n" +
+                "    kraken_db = '${kraken_db}'\n" +
+                "    bracken_db = '${bracken_db}'\n" +
+                "    outdir = '${outdir}'\n" +
+                "    top_taxa = ${top_taxa}\n" +
+                "    confidence_threshold = ${confidence_threshold}\n" +
+                "    enable_krona = ${enable_krona}\n" +
+                "    enable_multiqc = ${enable_multiqc}\n" +
+                "}\n\n" +
+                "profiles {\n" +
+                "    ${docker_profile} {\n" +
+                "        docker.enabled = true\n" +
+                "        docker.runOptions = \"-v ${docker_volumes}\"\n" +
+                "    }\n" +
+                "}\n";
 
-                profiles {
-                    ${docker_profile} {
-                        docker.enabled = true
-                        docker.runOptions = "-v ${docker_volumes}"
-                    }
-                }
-                """;
-
-        private String paramsTemplate = """
-                {
-                    "preset": ${preset},
-                    "quality_threshold": ${quality_threshold},
-                    "min_read_length": ${min_read_length},
-                    "enable_subsampling": ${enable_subsampling},
-                    "subsample_size": ${subsample_size},
-                    "max_cpus": ${max_cpus},
-                    "max_memory": ${max_memory},
-                    "kraken_db": ${kraken_db},
-                    "bracken_db": ${bracken_db},
-                    "outdir": ${outdir},
-                    "top_taxa": ${top_taxa},
-                    "confidence_threshold": ${confidence_threshold},
-                    "enable_krona": ${enable_krona},
-                    "enable_multiqc": ${enable_multiqc}
-                }
-                """;
+        private String paramsTemplate =
+                "{\n" +
+                "    \"preset\": ${preset},\n" +
+                "    \"quality_threshold\": ${quality_threshold},\n" +
+                "    \"min_read_length\": ${min_read_length},\n" +
+                "    \"enable_subsampling\": ${enable_subsampling},\n" +
+                "    \"subsample_size\": ${subsample_size},\n" +
+                "    \"max_cpus\": ${max_cpus},\n" +
+                "    \"max_memory\": ${max_memory},\n" +
+                "    \"kraken_db\": ${kraken_db},\n" +
+                "    \"bracken_db\": ${bracken_db},\n" +
+                "    \"outdir\": ${outdir},\n" +
+                "    \"top_taxa\": ${top_taxa},\n" +
+                "    \"confidence_threshold\": ${confidence_threshold},\n" +
+                "    \"enable_krona\": ${enable_krona},\n" +
+                "    \"enable_multiqc\": ${enable_multiqc}\n" +
+                "}\n";
 
         private boolean shouldFail = false;
 
