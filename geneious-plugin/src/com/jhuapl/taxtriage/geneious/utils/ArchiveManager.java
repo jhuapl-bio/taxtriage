@@ -206,12 +206,26 @@ public class ArchiveManager {
         try {
             // First pass: count files and calculate total size
             logger.info("Scanning directory for archive size estimation...");
-            Files.walkFileTree(sourceDirectory, new SimpleFileVisitor<Path>() {
+            // Do NOT follow symlinks to avoid loops and duplicate files
+            Files.walkFileTree(sourceDirectory,
+                java.util.EnumSet.noneOf(FileVisitOption.class), // Don't follow symlinks
+                Integer.MAX_VALUE,
+                new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     if (attrs.isRegularFile()) {
                         totalFiles.incrementAndGet();
                         totalBytes.addAndGet(attrs.size());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    // Skip Nextflow's work directory - it contains symlinks and intermediate files
+                    if (dir.getFileName() != null && dir.getFileName().toString().equals("work")) {
+                        logger.info("Skipping work directory during file count: " + dir);
+                        return FileVisitResult.SKIP_SUBTREE;
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -223,12 +237,16 @@ public class ArchiveManager {
             try (FileOutputStream fos = new FileOutputStream(targetFile.toFile());
                  ZipOutputStream zos = new ZipOutputStream(fos)) {
 
-                // Set compression level
-                zos.setLevel(9); // Maximum compression
+                // Set compression level (6 = good balance of speed/compression)
+                zos.setLevel(6);
 
                 // Second pass: add files to archive
                 logger.info("Adding files to archive...");
-                Files.walkFileTree(sourceDirectory, new SimpleFileVisitor<Path>() {
+                // Do NOT follow symlinks to avoid loops and duplicate files
+                Files.walkFileTree(sourceDirectory,
+                    java.util.EnumSet.noneOf(FileVisitOption.class), // Don't follow symlinks
+                    Integer.MAX_VALUE,
+                    new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                         if (attrs.isRegularFile()) {
@@ -250,6 +268,12 @@ public class ArchiveManager {
 
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                        // Skip Nextflow's work directory - it contains symlinks and intermediate files
+                        if (dir.getFileName() != null && dir.getFileName().toString().equals("work")) {
+                            logger.info("Skipping work directory: " + dir);
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+
                         if (!dir.equals(sourceDirectory)) {
                             addDirectoryToArchive(zos, sourceDirectory, dir);
                         }
@@ -294,11 +318,18 @@ public class ArchiveManager {
 
     /**
      * Shows a file save dialog for selecting the archive location.
+     * In headless mode or when no display is available, automatically uses default location.
      *
      * @param suggestedName suggested filename without extension
      * @return selected File or null if cancelled
      */
     private File showSaveDialog(String suggestedName) {
+        // Check if running in headless mode or no display available
+        if (java.awt.GraphicsEnvironment.isHeadless() || findParentComponent() == null) {
+            logger.info("Running in headless mode - using default archive location");
+            return getDefaultArchiveFile(suggestedName);
+        }
+
         try {
             // Ensure we're on the EDT for Swing operations
             if (SwingUtilities.isEventDispatchThread()) {
@@ -316,9 +347,32 @@ public class ArchiveManager {
                 return future.get();
             }
         } catch (Exception e) {
-            logger.log(Level.WARNING, "Error showing save dialog", e);
-            return null;
+            logger.log(Level.WARNING, "Error showing save dialog, using default location", e);
+            return getDefaultArchiveFile(suggestedName);
         }
+    }
+
+    /**
+     * Gets the default archive file location when dialog cannot be shown.
+     *
+     * @param suggestedName suggested filename without extension
+     * @return default archive file location
+     */
+    private File getDefaultArchiveFile(String suggestedName) {
+        String userHome = System.getProperty("user.home");
+        File downloadsDir = new File(userHome, "Downloads");
+
+        // Use Downloads directory if it exists, otherwise user home
+        File baseDir = (downloadsDir.exists() && downloadsDir.isDirectory()) ? downloadsDir : new File(userHome);
+
+        String filename = (suggestedName != null && !suggestedName.isEmpty()) ? suggestedName : "TaxTriage_Results";
+        if (!filename.endsWith(ARCHIVE_EXTENSION)) {
+            filename += ARCHIVE_EXTENSION;
+        }
+
+        File archiveFile = new File(baseDir, filename);
+        logger.info("Using default archive location: " + archiveFile.getAbsolutePath());
+        return archiveFile;
     }
 
     /**
@@ -395,14 +449,35 @@ public class ArchiveManager {
 
     /**
      * Adds a file to the zip archive.
+     * Uses STORED mode for already-compressed files to improve performance.
      */
     private void addFileToArchive(ZipOutputStream zos, Path baseDir, Path file,
                                 BasicFileAttributes attrs) throws IOException {
         String entryName = baseDir.relativize(file).toString().replace('\\', '/');
+        String fileName = file.getFileName().toString().toLowerCase();
+
+        // Check if file is already compressed - don't re-compress these
+        boolean alreadyCompressed = fileName.endsWith(".gz") ||
+                                   fileName.endsWith(".zip") ||
+                                   fileName.endsWith(".bz2") ||
+                                   fileName.endsWith(".xz") ||
+                                   fileName.endsWith(".bam") ||
+                                   fileName.endsWith(".cram") ||
+                                   fileName.endsWith(".bcf") ||
+                                   fileName.endsWith(".jpg") ||
+                                   fileName.endsWith(".jpeg") ||
+                                   fileName.endsWith(".png") ||
+                                   fileName.endsWith(".pdf");
 
         ZipEntry entry = new ZipEntry(entryName);
         entry.setSize(attrs.size());
         entry.setTime(attrs.lastModifiedTime().toMillis());
+
+        if (alreadyCompressed) {
+            entry.setMethod(ZipEntry.STORED);
+            entry.setCompressedSize(attrs.size());
+            entry.setCrc(calculateCRC(file));
+        }
 
         zos.putNextEntry(entry);
 
@@ -415,6 +490,21 @@ public class ArchiveManager {
         }
 
         zos.closeEntry();
+    }
+
+    /**
+     * Calculates CRC32 checksum for a file (required for STORED entries).
+     */
+    private long calculateCRC(Path file) throws IOException {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        try (InputStream fis = Files.newInputStream(file)) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                crc.update(buffer, 0, bytesRead);
+            }
+        }
+        return crc.getValue();
     }
 
     /**

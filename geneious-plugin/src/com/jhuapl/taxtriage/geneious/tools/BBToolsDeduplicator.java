@@ -259,10 +259,18 @@ public class BBToolsDeduplicator {
             }
             stepResults.add("Deduplicate: " + step1Result.getSummary());
 
-            // Parse deduplication statistics
-            long duplicatesRemoved = parseDuplicateCount(step1Result.getStandardOutput());
-            long totalReads = parseReadCount(step1Result.getStandardOutput());
-            logger.info("  ✓ Deduplication complete: " + duplicatesRemoved + " duplicates removed");
+            // Parse deduplication statistics (BBTools outputs to both stdout and stderr)
+            String combinedOutput = step1Result.getStandardOutput() + "\n" + step1Result.getErrorOutput();
+
+            long duplicatesRemoved = parseDuplicateCount(combinedOutput);
+            long totalReads = parseReadCount(combinedOutput);
+
+            if (totalReads == 0 || duplicatesRemoved == 0) {
+                logger.warning("Failed to parse BBTools statistics. Output length - stdout: " +
+                    step1Result.getStandardOutput().length() + ", stderr: " + step1Result.getErrorOutput().length());
+            }
+
+            logger.info("  ✓ Deduplication complete: " + duplicatesRemoved + " duplicates removed from " + totalReads + " total reads");
 
             if (progressListener != null) {
                 progressListener.setProgress(0.6);
@@ -419,11 +427,18 @@ public class BBToolsDeduplicator {
             }
             stepResults.add("Deduplicate: " + step2Result.getSummary());
 
-            // Parse deduplication statistics
-            long duplicatesRemoved = parseDuplicateCount(step2Result.getStandardOutput());
-            long totalReads = parseReadCount(step2Result.getStandardOutput());
+            // Parse deduplication statistics (BBTools outputs to both stdout and stderr)
+            String combinedOutput = step2Result.getStandardOutput() + "\n" + step2Result.getErrorOutput();
 
-            logger.info("  ✓ Deduplication complete: " + duplicatesRemoved + " duplicates removed");
+            long duplicatesRemoved = parseDuplicateCount(combinedOutput);
+            long totalReads = parseReadCount(combinedOutput);
+
+            if (totalReads == 0 || duplicatesRemoved == 0) {
+                logger.warning("Failed to parse BBTools statistics. Output length - stdout: " +
+                    step2Result.getStandardOutput().length() + ", stderr: " + step2Result.getErrorOutput().length());
+            }
+
+            logger.info("  ✓ Deduplication complete: " + duplicatesRemoved + " duplicates removed from " + totalReads + " total reads");
 
             if (progressListener != null) {
                 progressListener.setProgress(0.6);
@@ -625,65 +640,92 @@ public class BBToolsDeduplicator {
 
     /**
      * Parses the duplicate count from clumpify output.
+     * BBTools outputs: "Duplicates Found:       313758"
      */
     private long parseDuplicateCount(String output) {
         if (output == null) return 0;
 
-        // Look for patterns like "Duplicates found: 12345"
-        Pattern pattern = Pattern.compile("(?i)duplicates?\\s+(?:found|removed):\\s*(\\d+)");
+        // Primary pattern: "Duplicates Found:" (standard BBTools clumpify output)
+        Pattern pattern = Pattern.compile("(?i)Duplicates?\\s+Found:\\s*(\\d+)");
         Matcher matcher = pattern.matcher(output);
         if (matcher.find()) {
             try {
-                return Long.parseLong(matcher.group(1));
+                long count = Long.parseLong(matcher.group(1));
+                logger.fine("Parsed duplicate count: " + count + " using 'Duplicates Found' pattern");
+                return count;
             } catch (NumberFormatException e) {
                 logger.fine("Could not parse duplicate count: " + matcher.group(1));
             }
         }
 
-        // Alternative pattern: "Removed X duplicates"
-        pattern = Pattern.compile("(?i)removed\\s+(\\d+)\\s+duplicates?");
-        matcher = pattern.matcher(output);
-        if (matcher.find()) {
-            try {
-                return Long.parseLong(matcher.group(1));
-            } catch (NumberFormatException e) {
-                logger.fine("Could not parse removed duplicates count: " + matcher.group(1));
+        // Fallback patterns for other BBTools versions
+        String[] fallbackPatterns = {
+            "(?i)duplicates?\\s+(?:removed):\\s*(\\d+)",                  // "Duplicates removed: 12345"
+            "(?i)removed\\s+(\\d+)\\s+duplicates?",                       // "Removed 12345 duplicates"
+            "(?i)duplicates?\\s*=\\s*(\\d+)"                              // "Duplicates = 12345"
+        };
+
+        for (String patternStr : fallbackPatterns) {
+            pattern = Pattern.compile(patternStr);
+            matcher = pattern.matcher(output);
+            if (matcher.find()) {
+                try {
+                    long count = Long.parseLong(matcher.group(1));
+                    logger.fine("Parsed duplicate count: " + count + " using fallback pattern: " + patternStr);
+                    return count;
+                } catch (NumberFormatException e) {
+                    logger.fine("Could not parse duplicate count: " + matcher.group(1));
+                }
             }
         }
 
-        logger.fine("No duplicate count pattern found in output");
+        logger.warning("No duplicate count pattern found in BBTools output");
         return 0;
     }
 
     /**
      * Parses the total read count from clumpify output.
+     * BBTools outputs: "Reads In:               328710"
      */
     private long parseReadCount(String output) {
         if (output == null) return 0;
 
-        // Look for patterns like "Reads processed: 67890"
-        Pattern pattern = Pattern.compile("(?i)reads?\\s+(?:processed|input):\\s*(\\d+)");
+        // Primary pattern: "Reads In:" (standard BBTools clumpify output)
+        Pattern pattern = Pattern.compile("(?i)Reads\\s+In:\\s*(\\d+)");
         Matcher matcher = pattern.matcher(output);
         if (matcher.find()) {
             try {
-                return Long.parseLong(matcher.group(1));
+                long count = Long.parseLong(matcher.group(1));
+                logger.fine("Parsed read count: " + count + " using 'Reads In' pattern");
+                return count;
             } catch (NumberFormatException e) {
                 logger.fine("Could not parse read count: " + matcher.group(1));
             }
         }
 
-        // Alternative pattern: "Input reads: X"
-        pattern = Pattern.compile("(?i)input\\s+reads?:\\s*(\\d+)");
-        matcher = pattern.matcher(output);
-        if (matcher.find()) {
-            try {
-                return Long.parseLong(matcher.group(1));
-            } catch (NumberFormatException e) {
-                logger.fine("Could not parse input reads count: " + matcher.group(1));
+        // Fallback patterns for other BBTools tools or versions
+        String[] fallbackPatterns = {
+            "(?i)input\\s+reads?:\\s*(\\d+)",                             // "Input reads: 67890"
+            "(?i)Input:\\s*(\\d+)\\s+reads?",                             // "Input: 67890 reads"
+            "(?i)Total\\s+reads?:\\s*(\\d+)",                             // "Total reads: 67890"
+            "(?i)reads?\\s+(?:input):\\s*(\\d+)"                          // "Reads input: 67890"
+        };
+
+        for (String patternStr : fallbackPatterns) {
+            pattern = Pattern.compile(patternStr);
+            matcher = pattern.matcher(output);
+            if (matcher.find()) {
+                try {
+                    long count = Long.parseLong(matcher.group(1));
+                    logger.fine("Parsed read count: " + count + " using fallback pattern: " + patternStr);
+                    return count;
+                } catch (NumberFormatException e) {
+                    logger.fine("Could not parse read count: " + matcher.group(1));
+                }
             }
         }
 
-        logger.fine("No read count pattern found in output");
+        logger.warning("No read count pattern found in BBTools output");
         return 0;
     }
 

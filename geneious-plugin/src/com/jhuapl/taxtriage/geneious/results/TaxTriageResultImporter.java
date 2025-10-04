@@ -1647,7 +1647,7 @@ public class TaxTriageResultImporter {
             outputDir.resolve("combine"),
             outputDir.resolve("count"),
             outputDir.resolve("pipeline_info"),
-            outputDir // Root directory for summary files
+            outputDir // Root directory for summary files (includes BBTools report)
         };
 
         Set<String> processedFiles = new HashSet<>();

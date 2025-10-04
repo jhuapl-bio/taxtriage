@@ -662,6 +662,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         System.out.println(">>> Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
         logger.info("Grouped " + inputFiles.size() + " files into " + samplePairs.size() + " samples");
 
+        // Track statistics for report
+        List<BBToolsPreprocessingStats> allStats = new ArrayList<>();
+
         try {
             int processedCount = 0;
 
@@ -723,6 +726,22 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                     System.out.println(">>> Total reads: " + result.getTotalReads());
                     System.out.println(">>> Preprocessed file added to list: " + preprocessedFile.getAbsolutePath());
 
+                    // Console output for user visibility
+                    System.out.println("==========================================");
+                    System.out.println("BBTools Preprocessing Complete: " + pair.sampleName);
+                    if (pair.isPaired) {
+                        System.out.println("  Input R1: " + pair.r1File.getName());
+                        System.out.println("  Input R2: " + pair.r2File.getName());
+                    } else {
+                        System.out.println("  Input: " + pair.r1File.getName());
+                    }
+                    System.out.println("  Total reads processed: " + result.getTotalReads());
+                    System.out.println("  Reads after deduplication: " + (result.getTotalReads() - result.getDuplicatesRemoved()));
+                    System.out.println("  Duplicates removed: " + result.getDuplicatesRemoved() +
+                                     " (" + String.format("%.2f%%", result.getDeduplicationPercentage()) + ")");
+                    System.out.println("  Output: " + preprocessedFile.getName());
+                    System.out.println("==========================================");
+
                     logger.info("");
                     logger.info("\u2713\u2713\u2713 BBTools preprocessing SUCCESSFUL \u2713\u2713\u2713");
                     logger.info("  Sample name:        " + pair.sampleName);
@@ -744,6 +763,18 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                             logger.info("    - " + step);
                         }
                     }
+
+                    // Collect stats for report
+                    String inputDesc = pair.isPaired ?
+                        pair.r1File.getName() + " + " + pair.r2File.getName() :
+                        pair.r1File.getName();
+                    allStats.add(new BBToolsPreprocessingStats(
+                        pair.sampleName,
+                        inputDesc,
+                        result.getTotalReads(),
+                        result.getDuplicatesRemoved(),
+                        preprocessedFile.getName()
+                    ));
                 } else {
                     System.out.println(">>> FAILED! Error: " + result.getErrorMessage());
                     System.out.println(">>> ABORTING workflow - preprocessing is required");
@@ -777,7 +808,106 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         logger.info("BBTools preprocessing completed. Processed " + preprocessedFiles.size() + " files");
         logger.info("==========================================");
 
+        // Create BBTools preprocessing report
+        if (!allStats.isEmpty()) {
+            logger.info("Creating BBTools preprocessing report with " + allStats.size() + " sample(s)");
+            try {
+                createBBToolsReport(workspaceDir, allStats, subsThreshold, memoryGB);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Failed to create BBTools preprocessing report", e);
+            }
+        } else {
+            logger.warning("No BBTools statistics collected - report will not be created");
+        }
+
         return preprocessedFiles;
+    }
+
+    /**
+     * Creates a BBTools preprocessing report file.
+     */
+    private void createBBToolsReport(Path workspaceDir, List<BBToolsPreprocessingStats> stats,
+                                    int subsThreshold, int memoryGB) throws IOException {
+        logger.info("Creating BBTools preprocessing report...");
+
+        // Create report in the output directory (same as other reports)
+        Path reportDir = workspaceDir.resolve("output");
+        Files.createDirectories(reportDir);
+        Path reportFile = reportDir.resolve("BBTools_Preprocessing_Report.txt");
+
+        StringBuilder report = new StringBuilder();
+        report.append("=".repeat(80)).append("\n");
+        report.append("BBTools Preprocessing Report\n");
+        report.append("=".repeat(80)).append("\n\n");
+
+        report.append("Date: ").append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))).append("\n");
+        report.append("Tool: clumpify.sh (BBTools)\n");
+        report.append("Substitution Threshold: ").append(subsThreshold).append("\n");
+        report.append("Memory Allocation: ").append(memoryGB).append(" GB\n");
+        report.append("Total Samples Processed: ").append(stats.size()).append("\n\n");
+
+        report.append("=".repeat(80)).append("\n");
+        report.append("Sample Statistics\n");
+        report.append("=".repeat(80)).append("\n\n");
+
+        // Calculate totals
+        long totalReadsProcessed = 0;
+        long totalDuplicatesRemoved = 0;
+        for (BBToolsPreprocessingStats stat : stats) {
+            totalReadsProcessed += stat.totalReads;
+            totalDuplicatesRemoved += stat.duplicatesRemoved;
+        }
+
+        // Add per-sample details
+        for (int i = 0; i < stats.size(); i++) {
+            BBToolsPreprocessingStats stat = stats.get(i);
+            report.append(String.format("Sample %d: %s\n", i + 1, stat.sampleName));
+            report.append(String.format("  Input: %s\n", stat.inputFiles));
+            report.append(String.format("  Total reads processed: %,d\n", stat.totalReads));
+            report.append(String.format("  Reads after deduplication: %,d\n", stat.readsAfterDedup));
+            report.append(String.format("  Duplicates removed: %,d (%.2f%%)\n",
+                stat.duplicatesRemoved, stat.deduplicationRate));
+            report.append(String.format("  Output: %s\n", stat.outputFile));
+            report.append("\n");
+        }
+
+        // Add summary
+        report.append("=".repeat(80)).append("\n");
+        report.append("Overall Summary\n");
+        report.append("=".repeat(80)).append("\n\n");
+
+        report.append(String.format("Total reads processed across all samples: %,d\n", totalReadsProcessed));
+        report.append(String.format("Total reads after deduplication: %,d\n",
+            totalReadsProcessed - totalDuplicatesRemoved));
+        report.append(String.format("Total duplicates removed: %,d\n", totalDuplicatesRemoved));
+        double overallRate = totalReadsProcessed > 0 ?
+            (double) totalDuplicatesRemoved / totalReadsProcessed * 100.0 : 0.0;
+        report.append(String.format("Overall deduplication rate: %.2f%%\n", overallRate));
+        report.append("\n");
+
+        report.append("=".repeat(80)).append("\n");
+        report.append("BBTools Commands\n");
+        report.append("=".repeat(80)).append("\n\n");
+
+        report.append("Deduplication command template:\n");
+        report.append(String.format("  clumpify.sh -Xmx%dg in=<R1> in2=<R2> out=<out_R1> out2=<out_R2> " +
+            "dedupe subs=%d addcount=t ow=t\n\n", memoryGB, subsThreshold));
+
+        report.append("Re-interleaving command template:\n");
+        report.append(String.format("  reformat.sh -Xmx%dg in=<R1> in2=<R2> out=<output> underscore=t ow=t\n\n",
+            memoryGB));
+
+        report.append("=".repeat(80)).append("\n");
+
+        // Write report to file
+        Files.writeString(reportFile, report.toString());
+
+        logger.info("BBTools preprocessing report created: " + reportFile.toAbsolutePath());
+        System.out.println("==========================================");
+        System.out.println("BBTools preprocessing report created:");
+        System.out.println("  Location: " + reportFile.toAbsolutePath());
+        System.out.println("  This report will be imported to the Reports folder in Geneious");
+        System.out.println("==========================================");
     }
 
     /**
@@ -801,6 +931,30 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
         logger.info("Copied " + inputFiles.size() + " input files to workspace");
         return copiedFiles;
+    }
+
+    /**
+     * Helper class to track BBTools preprocessing statistics.
+     */
+    private static class BBToolsPreprocessingStats {
+        String sampleName;
+        String inputFiles;
+        long totalReads;
+        long duplicatesRemoved;
+        long readsAfterDedup;
+        double deduplicationRate;
+        String outputFile;
+
+        BBToolsPreprocessingStats(String sampleName, String inputFiles, long totalReads,
+                                 long duplicatesRemoved, String outputFile) {
+            this.sampleName = sampleName;
+            this.inputFiles = inputFiles;
+            this.totalReads = totalReads;
+            this.duplicatesRemoved = duplicatesRemoved;
+            this.readsAfterDedup = totalReads - duplicatesRemoved;
+            this.deduplicationRate = totalReads > 0 ? (double) duplicatesRemoved / totalReads * 100.0 : 0.0;
+            this.outputFile = outputFile;
+        }
     }
 
     /**
@@ -984,11 +1138,124 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         // Log execution details
         if (result.isSuccessful()) {
             logger.info("TaxTriage workflow completed successfully");
+
+            // Cache any databases that were downloaded to output/download/
+            try {
+                cacheDownloadedDatabases(workspaceDir, options);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Failed to cache downloaded databases", e);
+            }
         } else {
             logger.severe("TaxTriage workflow failed: " + result.getErrorOutput());
         }
 
         return result;
+    }
+
+    /**
+     * Caches databases that were downloaded to output/download/ directory.
+     * Moves them to ~/.taxtriage-geneious/ for reuse in future runs.
+     */
+    private void cacheDownloadedDatabases(Path workspaceDir, TaxTriageOptions options) throws IOException {
+        Path downloadDir = workspaceDir.resolve("output").resolve("download");
+
+        if (!Files.exists(downloadDir) || !Files.isDirectory(downloadDir)) {
+            logger.fine("No download directory found - databases may have been cached already");
+            return;
+        }
+
+        // Check for viral database
+        Path viralDownload = downloadDir.resolve("viral");
+        if (Files.exists(viralDownload) && Files.isDirectory(viralDownload)) {
+            logger.info("Found downloaded viral database, caching to ~/.taxtriage-geneious/");
+            cacheDatabase(DatabaseType.VIRAL, viralDownload);
+        }
+
+        // Check for standard database
+        Path standardDownload = downloadDir.resolve("standard");
+        if (Files.exists(standardDownload) && Files.isDirectory(standardDownload)) {
+            logger.info("Found downloaded standard database, caching to ~/.taxtriage-geneious/");
+            cacheDatabase(DatabaseType.STANDARD, standardDownload);
+        }
+
+        // Check for minikraken database
+        Path miniDownload = downloadDir.resolve("minikraken");
+        if (Files.exists(miniDownload) && Files.isDirectory(miniDownload)) {
+            logger.info("Found downloaded minikraken database, caching to ~/.taxtriage-geneious/");
+            cacheDatabase(DatabaseType.MINIKRAKEN, miniDownload);
+        }
+    }
+
+    /**
+     * Caches a downloaded database to the persistent cache directory.
+     */
+    private void cacheDatabase(DatabaseType dbType, Path sourcePath) throws IOException {
+        Path cacheDir = DatabasePathUtil.getCacheDirectory();
+        Path targetPath = cacheDir.resolve(dbType.getId());
+
+        logger.info("Caching " + dbType.getId() + " database:");
+        logger.info("  From: " + sourcePath.toAbsolutePath());
+        logger.info("  To: " + targetPath.toAbsolutePath());
+
+        // Create cache directory if needed
+        Files.createDirectories(cacheDir);
+
+        // Remove existing cached version if present
+        if (Files.exists(targetPath)) {
+            logger.info("  Removing old cached version");
+            deleteDirectory(targetPath);
+        }
+
+        // Copy the database
+        logger.info("  Copying database files...");
+        copyDirectory(sourcePath, targetPath);
+
+        // Verify the database is valid
+        if (DatabasePathUtil.isValidDatabaseDirectory(targetPath)) {
+            logger.info("  ✓ Database cached successfully");
+
+            // Register with DatabaseManager
+            DatabaseManager dbManager = DatabaseManager.getInstance();
+            String version = "Downloaded " + LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+            dbManager.cacheDownloadedDatabase(dbType, targetPath, version);
+        } else {
+            logger.warning("  ✗ Cached database appears invalid");
+        }
+    }
+
+    /**
+     * Recursively copies a directory.
+     */
+    private void copyDirectory(Path source, Path target) throws IOException {
+        Files.walk(source).forEach(sourcePath -> {
+            try {
+                Path targetPath = target.resolve(source.relativize(sourcePath));
+                if (Files.isDirectory(sourcePath)) {
+                    Files.createDirectories(targetPath);
+                } else {
+                    Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to copy: " + sourcePath, e);
+            }
+        });
+    }
+
+    /**
+     * Recursively deletes a directory.
+     */
+    private void deleteDirectory(Path directory) throws IOException {
+        if (Files.exists(directory)) {
+            Files.walk(directory)
+                .sorted((a, b) -> -a.compareTo(b)) // Reverse order to delete files before directories
+                .forEach(path -> {
+                    try {
+                        Files.delete(path);
+                    } catch (IOException e) {
+                        logger.warning("Failed to delete: " + path);
+                    }
+                });
+        }
     }
 
     /**

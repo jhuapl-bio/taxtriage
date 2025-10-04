@@ -168,17 +168,29 @@ public class TaxTriageConfig {
         params.put("max_cpus", threadCount);
         params.put("max_memory", memoryLimitGb + ".GB");
 
+        // Ensure database cache directory exists
+        com.jhuapl.taxtriage.geneious.utils.DatabasePathUtil.ensureCacheDirectoryExists();
+        String dbCacheDir = com.jhuapl.taxtriage.geneious.utils.DatabasePathUtil.getCacheDirectory().toAbsolutePath().toString();
+
         // Use DatabaseManager to resolve database paths
         DatabaseManager dbManager = DatabaseManager.getInstance();
         String resolvedKrakenDb = resolveDatabasePath(krakenDatabase, true);
         String resolvedBrackenDb = resolveDatabasePath(brackenDatabase, false);
 
+        // If download is required, provide the path where it should be downloaded/cached
+        if ("DOWNLOAD_REQUIRED".equals(resolvedKrakenDb)) {
+            // Use the cache directory path where the database should be stored
+            resolvedKrakenDb = com.jhuapl.taxtriage.geneious.utils.DatabasePathUtil.getDatabasePath(krakenDatabase);
+        }
+
         params.put("kraken_db", resolvedKrakenDb);
         params.put("bracken_db", resolvedBrackenDb);
 
-        // Add download_db flag based on whether databases need downloading
-        boolean needsDownload = "DOWNLOAD_REQUIRED".equals(resolvedKrakenDb) ||
-                               "DOWNLOAD_REQUIRED".equals(resolvedBrackenDb);
+        // Add database cache directory for persistent storage
+        params.put("db_cache_dir", dbCacheDir);
+
+        // The workflow should download to db_cache_dir if kraken_db doesn't exist
+        boolean needsDownload = !new java.io.File(resolvedKrakenDb).exists();
         params.put("download_db", needsDownload);
 
         params.put("outdir", outputDirectory.getAbsolutePath());
