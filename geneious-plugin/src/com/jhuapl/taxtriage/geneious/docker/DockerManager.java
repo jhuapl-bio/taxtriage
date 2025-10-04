@@ -103,7 +103,13 @@ public class DockerManager {
                 progressListener.setProgress(0.1);
             }
 
-            logger.info("Executing Docker command: " + String.join(" ", dockerCommand));
+            String fullCommand = String.join(" ", dockerCommand);
+            logger.info("Executing Docker command: " + fullCommand);
+            System.out.println("========================================");
+            System.out.println("[TaxTriage] DOCKER COMMAND:");
+            System.out.println(fullCommand);
+            System.out.println("========================================");
+            System.out.flush();
 
             // Execute the command
             LocalDateTime startTime = LocalDateTime.now();
@@ -111,6 +117,9 @@ public class DockerManager {
             processBuilder.redirectErrorStream(false);
 
             Process process = processBuilder.start();
+
+            System.out.println("[TaxTriage] Docker process started, PID (if available): " + process.pid());
+            System.out.flush();
 
             // Monitor the process with progress updates
             ExecutionResult result = monitorProcess(process, dockerCommand, progressListener, timeoutMinutes);
@@ -166,9 +175,24 @@ public class DockerManager {
         // Don't add user mapping - it causes issues when username doesn't exist in container
         // Files will be created as root but this is acceptable for temporary workflow files
 
-        // Environment variables
+        // Environment variables for Nextflow
         command.add("-e");
         command.add("NXF_HOME=/tmp/.nextflow");
+
+        // Force plain text output (disable ANSI colors and terminal features)
+        command.add("-e");
+        command.add("NXF_ANSI_LOG=false");
+
+        command.add("-e");
+        command.add("NXF_ANSI_SUMMARY=false");
+
+        // Set log level to info for more output
+        command.add("-e");
+        command.add("NXF_LOG_LEVEL=info");
+
+        // Ensure output is unbuffered
+        command.add("-e");
+        command.add("PYTHONUNBUFFERED=1");
 
         // Docker image
         command.add(dockerImage);
@@ -183,6 +207,7 @@ public class DockerManager {
 
     /**
      * Monitors a running process and captures output.
+     * Uses ExecutionMonitor for detailed progress tracking.
      *
      * @param process the process to monitor
      * @param command the command being executed
@@ -198,39 +223,26 @@ public class DockerManager {
         LocalDateTime startTime = LocalDateTime.now();
 
         try {
-            // Start output readers
-            StringBuilder standardOutput = new StringBuilder();
-            StringBuilder errorOutput = new StringBuilder();
+            // Use ExecutionMonitor for enhanced progress tracking
+            ExecutionMonitor monitor = new ExecutionMonitor();
 
-            Thread outputReader = new Thread(() -> readStream(process.getInputStream(), standardOutput, progressListener));
-            Thread errorReader = new Thread(() -> readStream(process.getErrorStream(), errorOutput, null));
+            if (progressListener != null) {
+                progressListener.setMessage("TaxTriage: Initializing workflow...");
+            }
 
-            outputReader.start();
-            errorReader.start();
+            // Monitor the execution with the ExecutionMonitor
+            java.util.concurrent.CompletableFuture<ExecutionResult> monitorFuture =
+                monitor.monitorExecution(process, progressListener);
 
-            // Wait for process completion with timeout
-            boolean finished = process.waitFor(timeoutMinutes, TimeUnit.MINUTES);
-
-            if (!finished) {
+            // Wait for completion with timeout
+            try {
+                ExecutionResult result = monitorFuture.get(timeoutMinutes, TimeUnit.MINUTES);
+                return result;
+            } catch (java.util.concurrent.TimeoutException e) {
+                monitor.requestCancellation();
                 process.destroyForcibly();
                 throw new DockerException("Docker process timed out after " + timeoutMinutes + " minutes");
             }
-
-            // Wait for output readers to finish
-            outputReader.join(5000); // 5 second timeout for output reading
-            errorReader.join(5000);
-
-            LocalDateTime endTime = LocalDateTime.now();
-            int exitCode = process.exitValue();
-
-            return new ExecutionResult(
-                String.join(" ", command),
-                exitCode,
-                standardOutput.toString(),
-                errorOutput.toString(),
-                startTime,
-                endTime
-            );
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -242,66 +254,6 @@ public class DockerManager {
         }
     }
 
-    /**
-     * Reads from an input stream and appends to a StringBuilder.
-     *
-     * @param inputStream the stream to read from
-     * @param output the StringBuilder to append to
-     * @param progressListener optional progress listener for updates
-     */
-    private void readStream(InputStream inputStream, StringBuilder output, ProgressListener progressListener) {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-
-                // Update progress listener if available
-                if (progressListener != null) {
-                    updateProgressFromOutput(line, progressListener);
-                }
-
-                // Log important lines
-                if (line.contains("ERROR") || line.contains("WARN")) {
-                    logger.warning("Docker output: " + line);
-                } else if (line.contains("Completed") || line.contains("SUCCESS")) {
-                    logger.info("Docker output: " + line);
-                }
-            }
-        } catch (IOException e) {
-            logger.log(Level.WARNING, "Error reading from Docker process stream", e);
-        }
-    }
-
-    /**
-     * Updates progress based on output from the Docker process.
-     *
-     * @param outputLine the output line from Docker
-     * @param progressListener the progress listener to update
-     */
-    private void updateProgressFromOutput(String outputLine, ProgressListener progressListener) {
-        // Simple progress estimation based on Nextflow output patterns
-        if (outputLine.contains("Launching workflow")) {
-            progressListener.setProgress(0.2);
-            progressListener.setMessage("Launching workflow...");
-        } else if (outputLine.contains("Staging foreign files")) {
-            progressListener.setProgress(0.3);
-            progressListener.setMessage("Staging input files...");
-        } else if (outputLine.contains("Running pipeline")) {
-            progressListener.setProgress(0.4);
-            progressListener.setMessage("Running analysis pipeline...");
-        } else if (outputLine.contains("Process")) {
-            progressListener.setProgress(0.6);
-            progressListener.setMessage("Processing samples...");
-        } else if (outputLine.contains("Completed at")) {
-            progressListener.setProgress(0.9);
-            progressListener.setMessage("Finalizing results...");
-        }
-
-        // Check for cancellation
-        if (progressListener.isCanceled()) {
-            logger.info("Progress listener indicates cancellation");
-        }
-    }
 
     /**
      * Validates that Docker is available and accessible.

@@ -285,7 +285,7 @@ public class WorkflowExecutor {
 
             logger.info("Executing Nextflow command: " + nextflowCommand);
 
-            // Create a delegating progress listener that updates context
+            // Create a delegating progress listener that updates context and preserves detailed messages
             ProgressListener delegatingListener = new ProgressListener() {
                 @Override
                 protected void _setProgress(double progress) {
@@ -300,10 +300,16 @@ public class WorkflowExecutor {
 
                 @Override
                 protected void _setMessage(String message) {
+                    // Pass through the detailed message from ExecutionMonitor
                     if (progressListener != null) {
                         progressListener.setMessage(message);
                     }
                     context.setCurrentMessage(message);
+
+                    // Log process changes for debugging
+                    if (message != null && message.contains("TaxTriage:")) {
+                        logger.fine("Workflow progress: " + message);
+                    }
                 }
 
                 @Override
@@ -413,6 +419,14 @@ public class WorkflowExecutor {
     private String buildNextflowCommand(WorkflowContext context) {
         StringBuilder cmd = new StringBuilder();
         cmd.append("nextflow run");
+
+        // Add logging options for better output capture
+        cmd.append(" -log /data/work/.nextflow.log");
+        cmd.append(" -ansi-log false");  // Disable ANSI formatting
+
+        // Enable trace file for progress monitoring
+        // This creates output/pipeline_info/execution_trace_*.txt
+        cmd.append(" -with-trace");
 
         // Add TaxTriage workflow (assuming it's bundled in the Docker image)
         cmd.append(" /opt/taxtriage");

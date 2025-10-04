@@ -1273,6 +1273,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         cmd.add("-profile");
         cmd.add("docker");
 
+        // Enable trace file for progress monitoring
+        cmd.add("-with-trace");
+
         // Core parameters - use local filesystem paths
         cmd.add("--input");
         cmd.add(workspaceDir.resolve("config").resolve("samplesheet.csv").toAbsolutePath().toString());
@@ -2014,8 +2017,9 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
             java.time.LocalDateTime startTime = java.time.LocalDateTime.now();
             Process process = processBuilder.start();
 
-            // Monitor the process with progress updates
-            ExecutionResult result = monitorNextflowProcess(process, nextflowCommand, progressListener, timeoutMinutes);
+            // Monitor the process with progress updates (passing workspace dir for trace file monitoring)
+            ExecutionResult result = monitorNextflowProcess(process, nextflowCommand, workspaceDir,
+                progressListener, timeoutMinutes);
 
             java.time.LocalDateTime endTime = java.time.LocalDateTime.now();
 
@@ -2032,9 +2036,11 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
 
     /**
      * Monitors a running Nextflow process and captures output.
+     * Also monitors the trace file for accurate progress tracking.
      *
      * @param process the process to monitor
      * @param command the command being executed
+     * @param workspaceDir the workspace directory containing output
      * @param progressListener optional progress listener
      * @param timeoutMinutes timeout in minutes
      * @return execution result
@@ -2042,9 +2048,23 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      */
     private ExecutionResult monitorNextflowProcess(Process process,
                                                  List<String> command,
+                                                 Path workspaceDir,
                                                  ProgressListener progressListener,
                                                  int timeoutMinutes) throws DockerException {
         java.time.LocalDateTime startTime = java.time.LocalDateTime.now();
+
+        // Start trace file monitor for progress tracking
+        Path outputDir = workspaceDir.resolve("output");
+        com.jhuapl.taxtriage.geneious.docker.NextflowTraceMonitor traceMonitor = null;
+        Thread traceMonitorThread = null;
+
+        if (progressListener != null) {
+            traceMonitor = new com.jhuapl.taxtriage.geneious.docker.NextflowTraceMonitor(outputDir, progressListener);
+            traceMonitorThread = new Thread(traceMonitor, "NextflowTraceMonitor");
+            traceMonitorThread.setDaemon(true);
+            traceMonitorThread.start();
+            logger.info("Started trace file monitor for progress tracking");
+        }
 
         try {
             // Start output readers
@@ -2088,21 +2108,49 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
         } catch (Exception e) {
             process.destroyForcibly();
             throw new DockerException("Failed to monitor Nextflow process", e);
+        } finally {
+            // Stop trace monitor
+            if (traceMonitor != null) {
+                traceMonitor.stop();
+                logger.info("Stopped trace file monitor");
+            }
         }
     }
 
     /**
      * Reads from an input stream and appends to a StringBuilder.
+     * ALWAYS prints ALL output to console for visibility.
      *
      * @param inputStream the stream to read from
      * @param output the StringBuilder to append to
      * @param progressListener optional progress listener for updates
      */
     private void readNextflowStream(java.io.InputStream inputStream, StringBuilder output, ProgressListener progressListener) {
+        // Determine if this is STDOUT or STDERR based on progressListener
+        String streamType = (progressListener != null) ? "STDOUT" : "STDERR";
+        System.out.println("========================================");
+        System.out.println("[TaxTriage] Starting to read Nextflow " + streamType + "...");
+        System.out.println("[TaxTriage] ALL output will be displayed below");
+        System.out.println("========================================");
+        System.out.flush();
+
+        int lineCount = 0;
         try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
             String line;
             while ((line = reader.readLine()) != null) {
+                lineCount++;
                 output.append(line).append("\n");
+
+                // ALWAYS print to console for complete visibility
+                if (progressListener != null) {
+                    // This is STDOUT
+                    System.out.println("[TaxTriage Nextflow] " + line);
+                    System.out.flush();
+                } else {
+                    // This is STDERR
+                    System.err.println("[TaxTriage Error] " + line);
+                    System.err.flush();
+                }
 
                 // Update progress listener if available
                 if (progressListener != null) {
@@ -2117,39 +2165,114 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 }
             }
         } catch (java.io.IOException e) {
+            System.err.println("[TaxTriage] ERROR reading from Nextflow " + streamType + ": " + e.getMessage());
+            System.err.flush();
             logger.log(Level.WARNING, "Error reading from Nextflow process stream", e);
         }
+
+        System.out.println("========================================");
+        System.out.println("[TaxTriage] Finished reading Nextflow " + streamType + " (" + lineCount + " lines)");
+        System.out.println("========================================");
+        System.out.flush();
     }
 
     /**
      * Updates progress based on output from the Nextflow process.
+     * Uses ExecutionMonitor for detailed process tracking and progress parsing.
      *
      * @param outputLine the output line from Nextflow
      * @param progressListener the progress listener to update
      */
     private void updateProgressFromNextflowOutput(String outputLine, ProgressListener progressListener) {
-        // Simple progress estimation based on Nextflow output patterns
-        if (outputLine.contains("Launching workflow")) {
+        // Use ExecutionMonitor for consistent progress tracking
+        com.jhuapl.taxtriage.geneious.docker.ExecutionMonitor monitor =
+            new com.jhuapl.taxtriage.geneious.docker.ExecutionMonitor();
+
+        // Extract and format process name if available
+        String processName = monitor.extractProcessName(outputLine);
+        if (processName != null) {
+            // The ExecutionMonitor will format this nicely
+            String formatted = formatProcessNameForDisplay(processName);
+            String message = "TaxTriage: " + formatted;
+            progressListener.setMessage(message);
+            System.out.println("[TaxTriage Progress] >>> " + message);
+            System.out.flush();
+        } else if (outputLine.contains("Launching workflow")) {
             progressListener.setProgress(0.2);
-            progressListener.setMessage("Launching workflow...");
+            String message = "TaxTriage: Launching workflow...";
+            progressListener.setMessage(message);
+            System.out.println("[TaxTriage Progress] >>> " + message);
+            System.out.flush();
         } else if (outputLine.contains("Staging foreign files")) {
             progressListener.setProgress(0.3);
-            progressListener.setMessage("Staging input files...");
-        } else if (outputLine.contains("Running pipeline")) {
-            progressListener.setProgress(0.4);
-            progressListener.setMessage("Running analysis pipeline...");
-        } else if (outputLine.contains("Process")) {
-            progressListener.setProgress(0.6);
-            progressListener.setMessage("Processing samples...");
+            String message = "TaxTriage: Staging input files...";
+            progressListener.setMessage(message);
+            System.out.println("[TaxTriage Progress] >>> " + message);
+            System.out.flush();
+        } else if (outputLine.contains("Pulling")) {
+            String message = "TaxTriage: Pulling container images...";
+            progressListener.setMessage(message);
+            System.out.println("[TaxTriage Progress] >>> " + message);
+            System.out.flush();
         } else if (outputLine.contains("Completed at")) {
             progressListener.setProgress(0.9);
-            progressListener.setMessage("Finalizing results...");
+            String message = "TaxTriage: Finalizing results...";
+            progressListener.setMessage(message);
+            System.out.println("[TaxTriage Progress] >>> " + message);
+            System.out.flush();
+        }
+
+        // Parse and update progress if available
+        double progress = monitor.parseProgress(outputLine);
+        if (progress >= 0) {
+            progressListener.setProgress(progress);
+            System.out.println("[TaxTriage Progress] Progress: " + (int)(progress * 100) + "%");
+            System.out.flush();
         }
 
         // Check for cancellation
         if (progressListener.isCanceled()) {
             logger.info("Progress listener indicates cancellation");
         }
+    }
+
+    /**
+     * Formats a Nextflow process name for display in progress messages.
+     *
+     * @param processName the raw process name
+     * @return formatted process name
+     */
+    private String formatProcessNameForDisplay(String processName) {
+        if (processName == null || processName.isEmpty()) {
+            return "Running";
+        }
+
+        // Remove common prefixes
+        String name = processName;
+        if (name.contains(":")) {
+            String[] parts = name.split(":");
+            name = parts[parts.length - 1];
+        }
+
+        // Handle duplicated names (e.g., "KRAKEN2_KRAKEN2" -> "KRAKEN2")
+        String[] parts = name.split("_");
+        if (parts.length == 2 && parts[0].equals(parts[1])) {
+            name = parts[0];
+        }
+
+        // Convert to Title Case
+        String[] words = name.split("_");
+        StringBuilder formatted = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) formatted.append(" ");
+            String word = words[i].toLowerCase();
+            if (word.length() > 0) {
+                formatted.append(Character.toUpperCase(word.charAt(0)));
+                formatted.append(word.substring(1));
+            }
+        }
+
+        return formatted.toString();
     }
 
 
