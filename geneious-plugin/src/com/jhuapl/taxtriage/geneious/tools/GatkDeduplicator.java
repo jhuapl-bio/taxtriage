@@ -120,6 +120,19 @@ public class GatkDeduplicator {
         logger.info("  Docker image: " + GATK_DOCKER_IMAGE);
         logger.info("==========================================");
 
+        // Check for null inputs
+        if (inputBam == null) {
+            String error = "Input BAM path is null";
+            logger.warning(error);
+            return new DeduplicationResult(false, null, error, 0);
+        }
+
+        if (outputDir == null) {
+            String error = "Output directory path is null";
+            logger.warning(error);
+            return new DeduplicationResult(false, null, error, 0);
+        }
+
         // Check if Docker and GATK are available
         if (!isGatkAvailable()) {
             String error = "Docker or GATK image is not available. Cannot perform deduplication.";

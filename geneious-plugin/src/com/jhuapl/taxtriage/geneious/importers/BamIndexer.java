@@ -72,8 +72,18 @@ public class BamIndexer {
      * @return true if index was created or already exists, false on error
      */
     public static boolean ensureIndexExists(File bamFile) {
+        if (bamFile == null) {
+            logger.warning("BAM file is null");
+            return false;
+        }
+
         if (!bamFile.exists()) {
             logger.warning("BAM file does not exist: " + bamFile);
+            return false;
+        }
+
+        if (!bamFile.isFile()) {
+            logger.warning("Path is not a file: " + bamFile);
             return false;
         }
 
