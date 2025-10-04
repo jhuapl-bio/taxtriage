@@ -1327,20 +1327,22 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
                 logger.info("  Type: " + dbType.getId());
                 logger.info("  Name: " + dbName);
 
-                // When downloading, just pass the database name (e.g., "viral")
-                // TaxTriage will download it to its own location
+                // Map user-friendly names to Nextflow database identifiers
+                String nextflowDbName = mapToNextflowDatabaseName(dbName);
+                logger.info("  Mapped to Nextflow: " + nextflowDbName);
                 logger.info("  TaxTriage will download to workflow directory");
                 logger.info("==========================================");
 
                 cmd.add("--db");
-                cmd.add(dbName);  // Just use the name, not a full path
+                cmd.add(nextflowDbName);  // Use mapped Nextflow identifier
                 cmd.add("--download_db");
                 cmd.add("true");
 
                 // Note: After download, we'll scan the work directory to find and cache it
             }
         } else {
-            // Unknown database type, use as-is
+            // Unknown database type, use as-is (might be custom path)
+            logger.info("Unknown database type, using as-is: " + dbName);
             cmd.add("--db");
             cmd.add(dbName);
             cmd.add("--download_db");
@@ -1371,6 +1373,71 @@ public class TaxTriageSimpleOperation extends DocumentOperation {
      */
     private DatabaseType mapDatabaseNameToType(String databaseName) {
         return DatabasePathUtil.mapDatabaseNameToType(databaseName);
+    }
+
+    /**
+     * Maps user-friendly database names to Nextflow workflow database identifiers.
+     *
+     * Nextflow supported databases:
+     * - standard8, standard, viral, pluspf, pluspfp16, pluspf8, eupath, minikraken2, flukraken2, test
+     *
+     * @param userDatabaseName User-friendly name (e.g., "standard-8", "viral")
+     * @return Nextflow database identifier or the original name if no mapping exists
+     */
+    private String mapToNextflowDatabaseName(String userDatabaseName) {
+        if (userDatabaseName == null) {
+            return null;
+        }
+
+        String normalized = userDatabaseName.toLowerCase().trim();
+
+        // Map user-friendly names to Nextflow database identifiers
+        switch (normalized) {
+            case "standard-8":
+            case "standard8":
+                return "standard8";
+
+            case "standard-16":
+            case "standard16":
+                return "standard16";
+
+            case "standard":
+                return "standard";
+
+            case "viral":
+                return "viral";
+
+            case "pluspf-8":
+            case "pluspf8":
+                return "pluspf8";
+
+            case "pluspf-16":
+            case "pluspfp16":
+            case "pluspfp-16":
+                return "pluspfp16";
+
+            case "pluspf":
+                return "pluspf";
+
+            case "eupath":
+            case "eupathdb":
+                return "eupath";
+
+            case "minikraken":
+            case "minikraken2":
+                return "minikraken2";
+
+            case "flukraken":
+            case "flukraken2":
+                return "flukraken2";
+
+            case "test":
+                return "test";
+
+            default:
+                // Return original name for custom paths or unknown databases
+                return userDatabaseName;
+        }
     }
 
     /**

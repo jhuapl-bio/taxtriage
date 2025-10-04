@@ -91,7 +91,8 @@ public final class DatabasePathUtil {
 
         if (normalized.equals("viral") || normalized.contains("viral")) {
             return DatabaseType.VIRAL;
-        } else if (normalized.equals("standard") || normalized.contains("standard")) {
+        } else if (normalized.equals("standard") || normalized.startsWith("standard-") || normalized.contains("standard")) {
+            // Handle standard database variants: standard, standard-8, standard-16, kraken2-standard, etc.
             return DatabaseType.STANDARD;
         } else if (normalized.equals("minikraken") || normalized.contains("mini")) {
             return DatabaseType.MINIKRAKEN;

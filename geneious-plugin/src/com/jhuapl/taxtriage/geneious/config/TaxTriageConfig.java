@@ -177,21 +177,32 @@ public class TaxTriageConfig {
         String resolvedKrakenDb = resolveDatabasePath(krakenDatabase, true);
         String resolvedBrackenDb = resolveDatabasePath(brackenDatabase, false);
 
-        // If download is required, provide the path where it should be downloaded/cached
-        if ("DOWNLOAD_REQUIRED".equals(resolvedKrakenDb)) {
-            // Use the cache directory path where the database should be stored
-            resolvedKrakenDb = com.jhuapl.taxtriage.geneious.utils.DatabasePathUtil.getDatabasePath(krakenDatabase);
-        }
+        // Determine if the database is a known identifier or a custom path
+        boolean isKnownDatabase = mapDatabaseNameToType(krakenDatabase) != null;
 
-        params.put("kraken_db", resolvedKrakenDb);
-        params.put("bracken_db", resolvedBrackenDb);
+        // Determine if we need to download the database
+        boolean needsDownload = "DOWNLOAD_REQUIRED".equals(resolvedKrakenDb) ||
+                                (isKnownDatabase && !new java.io.File(resolvedKrakenDb).exists());
+
+        if (needsDownload && isKnownDatabase) {
+            // When download is needed for a known database, map to Nextflow identifier and pass it
+            // The Nextflow workflow will handle downloading to the cache directory
+            String nextflowDbName = mapToNextflowDatabaseName(krakenDatabase);
+            params.put("db", nextflowDbName);
+            params.put("download_db", true);
+        } else {
+            // When database already exists locally or is a custom path
+            // For known databases, always use the mapped Nextflow identifier
+            // For custom paths, use the path as-is
+            String dbValue = isKnownDatabase ? mapToNextflowDatabaseName(krakenDatabase) : resolvedKrakenDb;
+            params.put("db", dbValue);
+            params.put("kraken_db", resolvedKrakenDb);
+            params.put("bracken_db", resolvedBrackenDb);
+            params.put("download_db", false);
+        }
 
         // Add database cache directory for persistent storage
         params.put("db_cache_dir", dbCacheDir);
-
-        // The workflow should download to db_cache_dir if kraken_db doesn't exist
-        boolean needsDownload = !new java.io.File(resolvedKrakenDb).exists();
-        params.put("download_db", needsDownload);
 
         params.put("outdir", outputDirectory.getAbsolutePath());
 
@@ -245,13 +256,79 @@ public class TaxTriageConfig {
 
         if (normalized.equals("viral") || normalized.contains("viral")) {
             return DatabaseType.VIRAL;
-        } else if (normalized.equals("standard") || normalized.contains("standard")) {
+        } else if (normalized.equals("standard") || normalized.startsWith("standard-") || normalized.contains("standard")) {
+            // Handle standard database variants: standard, standard-8, standard-16, kraken2-standard, etc.
             return DatabaseType.STANDARD;
         } else if (normalized.equals("minikraken") || normalized.contains("mini")) {
             return DatabaseType.MINIKRAKEN;
         }
 
         return null; // Unknown database type
+    }
+
+    /**
+     * Maps user-friendly database names to Nextflow workflow database identifiers.
+     *
+     * Nextflow supported databases:
+     * - standard8, standard, viral, pluspf, pluspfp16, pluspf8, eupath, minikraken2, flukraken2, test
+     *
+     * @param userDatabaseName User-friendly name (e.g., "standard-8", "viral")
+     * @return Nextflow database identifier or the original name if no mapping exists
+     */
+    private String mapToNextflowDatabaseName(String userDatabaseName) {
+        if (userDatabaseName == null) {
+            return null;
+        }
+
+        String normalized = userDatabaseName.toLowerCase().trim();
+
+        // Map user-friendly names to Nextflow database identifiers
+        switch (normalized) {
+            case "standard-8":
+            case "standard8":
+                return "standard8";
+
+            case "standard-16":
+            case "standard16":
+                return "standard16";  // Note: May not exist in workflow, will use as-is
+
+            case "standard":
+                return "standard";
+
+            case "viral":
+                return "viral";
+
+            case "pluspf-8":
+            case "pluspf8":
+                return "pluspf8";
+
+            case "pluspf-16":
+            case "pluspfp16":
+            case "pluspfp-16":
+                return "pluspfp16";
+
+            case "pluspf":
+                return "pluspf";
+
+            case "eupath":
+            case "eupathdb":
+                return "eupath";
+
+            case "minikraken":
+            case "minikraken2":
+                return "minikraken2";
+
+            case "flukraken":
+            case "flukraken2":
+                return "flukraken2";
+
+            case "test":
+                return "test";
+
+            default:
+                // Return original name for custom paths or unknown databases
+                return userDatabaseName;
+        }
     }
 
     /**

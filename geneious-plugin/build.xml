@@ -110,6 +110,7 @@
         <echo message="Running unit tests..."/>
         <java classname="org.junit.platform.console.ConsoleLauncher" fork="true" failonerror="true">
             <classpath refid="test-classpath"/>
+            <arg value="execute"/>
             <arg value="--scan-classpath"/>
             <arg value="--include-package=com.jhuapl.taxtriage.geneious"/>
         </java>
