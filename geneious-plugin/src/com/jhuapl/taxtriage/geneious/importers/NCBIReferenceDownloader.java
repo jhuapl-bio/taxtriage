@@ -76,12 +76,32 @@ public class NCBIReferenceDownloader {
                 progressListener.setMessage("Downloading " + accession + " from NCBI...");
             }
 
-            System.out.println("\n  Downloading accession " + (count + 1) + "/" + accessions.size() + ": " + accession);
-            try {
-                File gbFile = downloadSingleGenBankFile(accession, outputDir);
-                if (gbFile != null && gbFile.exists()) {
-                    System.out.println("    ✓ Downloaded successfully: " + gbFile.getName() + " (" + gbFile.length() + " bytes)");
+            System.out.println("\n  Processing accession " + (count + 1) + "/" + accessions.size() + ": " + accession);
 
+            // Check if file already exists
+            File existingFile = outputDir.resolve(accession + ".gb").toFile();
+            File gbFile = null;
+
+            if (existingFile.exists() && existingFile.length() > 100) {
+                System.out.println("    ✓ GenBank file already exists: " + existingFile.getName() + " (" + existingFile.length() + " bytes)");
+                System.out.println("    Skipping download from NCBI");
+                logger.info("Using existing GenBank file for " + accession);
+                gbFile = existingFile;
+            } else {
+                System.out.println("    Downloading from NCBI...");
+                try {
+                    gbFile = downloadSingleGenBankFile(accession, outputDir);
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Failed to download GenBank file for " + accession, e);
+                    System.out.println("    ✗ Download failed: " + e.getMessage());
+                    e.printStackTrace(System.out);
+                    count++;
+                    continue;
+                }
+            }
+
+            try {
+                if (gbFile != null && gbFile.exists()) {
                     // Fix the GenBank file to ensure LOCUS and ACCESSION match VERSION
                     logger.info("Fixing GenBank file fields for " + accession);
                     System.out.println("    Fixing GenBank file fields...");
@@ -95,13 +115,13 @@ public class NCBIReferenceDownloader {
                     }
 
                     downloadedFiles.put(accession, gbFile);
-                    logger.info("Downloaded GenBank file for " + accession);
+                    logger.info("GenBank file ready for " + accession);
                 } else {
-                    System.out.println("    ✗ Download failed: File not created or empty");
+                    System.out.println("    ✗ File not available");
                 }
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Failed to download GenBank file for " + accession, e);
-                System.out.println("    ✗ Download failed: " + e.getMessage());
+                logger.log(Level.WARNING, "Failed to process GenBank file for " + accession, e);
+                System.out.println("    ✗ Processing failed: " + e.getMessage());
                 e.printStackTrace(System.out);
             }
 
