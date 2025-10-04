@@ -30,6 +30,7 @@
             <include name="mockito-junit-jupiter-*.jar"/>
             <include name="byte-buddy-*.jar"/>
             <include name="objenesis-*.jar"/>
+            <include name="apiguardian-api-*.jar"/>
         </fileset>
         <pathelement location="${classes}"/>
     </path>
