@@ -110,6 +110,7 @@ if (matches) {
 if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
     exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
 }
+ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
 
 // if params.pathogens, check if file ends with .tsv or .txt
 if (params.pathogens) {
@@ -160,7 +161,6 @@ ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_expla
 // // // // MODULE:  Pathogens
 // // // //
 //// Get Pathogen sheet by default
-ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
 // // // //
 // // // //
 
