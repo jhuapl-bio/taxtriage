@@ -1,6 +1,6 @@
 process MINIMAP2_ALIGN {
     tag "$meta.id"
-    label 'process_high'
+    label 'process_standard'
 
     conda (params.enable_conda ? 'bioconda::minimap2=2.21 bioconda::samtools=1.12' : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -48,11 +48,14 @@ process MINIMAP2_ALIGN {
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
     // if it contains the substring "dnwld" in reference 
     // then download the reference and use it
+    def split_prefix  = params.split_prefix ? "--split-prefix ${meta.id}.prefix" : ''
+
+
     """
 
     minimap2 \\
         $args $mapx \\
-        -t $cpu_limit -I $I_value \\
+        -t $cpu_limit -I $I_value $split_prefix \\
         $reference \\
         $input_reads \\
         $cigar_paf $mmap2_window $mmap2_fraction_filter \\

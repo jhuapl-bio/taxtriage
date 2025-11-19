@@ -247,6 +247,12 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": null
                 },
+                "split_prefix": {
+                    "type": "boolean",
+                    "description": "Split the alignment fasta files for minimap2 to reduce RAM overhead",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "use_megahit_longreads": {
                     "type": "boolean",
                     "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
