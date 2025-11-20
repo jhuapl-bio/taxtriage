@@ -517,7 +517,7 @@
                     "schema": "assets/schema_input.json",
                     "description": "List of all metagenome distributions that contain abundances found in public HMP data for each taxa and body site combination",
                     "help_text": "",
-                    "default": null,
+                    "default": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/assets/taxid_abundance_stats.hmp.tsv.gz",
                     "fa_icon": "fas fa-file-csv"
                 }
             }
