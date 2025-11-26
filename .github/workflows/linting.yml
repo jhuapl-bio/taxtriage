@@ -30,7 +30,10 @@ jobs:
       - uses: actions/setup-node@v2
 
       - name: Install Prettier
-        run: npm install -g prettier
+        run: npm install -g prettier@3.0.3
+
+      - name: Check Prettier version
+        run: prettier --version
 
       - name: Run Prettier --check
         run: prettier --check ${GITHUB_WORKSPACE}
