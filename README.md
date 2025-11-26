@@ -34,6 +34,8 @@ See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/ma
 
 See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#top-hits-calculation) for information on how "top hits" is located
 
+See collaborative efforts with groups outside JHU/APL [here](README.md#uw-madison--a-custom-geneious-prime-plugin-for-taxtriage)
+
 #### Alerts
 
 :warning: If you make changes to the code within a nextflow-pulled repo, a change can result in a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters. If you expect to make local changes frequently, you should just `git clone` and `git pull` manually and run the pipeline from the `main.nf` file. See [here](https://github.com/jhuapl-bio/taxtriage?tab=readme-ov-file#running-on-local-nf-files-test-config) for more info
@@ -297,6 +299,16 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 - :warning:Currently, the only realignment is going to be based on a taxid call. For example, if there will not be a complete realignment of "order" despite there being multiple species all within that order. For the most part, this is limited to more specific ranks like species, strain, subspecies etc.
 
 8. Report Generation ( MultiQC – Illumina, Oxford Nanopore)
+
+### Collaborative Efforts
+
+### UW Madison & a Custom Geneious Prime Plugin for TaxTriage
+
+Dave O'Connor's Laboratory at the University of Wisconsin-Madison has developed a custom Geneious Prime plugin to interface with the TaxTriage pipeline. This plugin allows users to run TaxTriage analyses directly from within the Geneious Prime environment, streamlining the workflow for researchers who utilize Geneious for sequence analysis.
+
+A `gplugin` file for the TaxTriage Geneious plugin can be found in the `src/geneious-plugin/build/distributions/` directory of this repository after building the plugin. This file was built with a Mac OSX ARM-based system and should be compatible with other Mac systems running Geneious Prime version 2024.0.2 or later. It may function appropriately for Windows or Linux systems as well, but this has not been tested.
+
+Instructions for building and installing the plugin are provided in the [Geneious Plugin Documentation](src/geneious-plugin/docs/README.md#taxtriage-geneious-plugin).
 
 ## Credits
 
