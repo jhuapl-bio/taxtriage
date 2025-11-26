@@ -4,28 +4,28 @@ This directory contains the Geneious plugin implementation for TaxTriage, which 
 
 ## Project Structure
 
-```
+```text
 src/geneious-plugin/
-├── src/                                    # Java source code
+├── src/                  # Java source code
 │   └── com/
 │       └── jhuapl/
 │           └── taxtriage/
 │               └── geneious/
-├── test/                                   # Unit tests
+├── test/                 # Unit tests
 │   └── com/
 │       └── jhuapl/
 │           └── taxtriage/
 │               └── geneious/
-├── lib/                                    # Required JAR dependencies
-│   ├── GeneiousPublicAPI.jar              # Geneious plugin API
-│   ├── jdom.jar                           # XML processing
-│   └── jebl.jar                           # Bioinformatics utilities
-├── resources/                              # Plugin resources
-│   ├── presets/                           # Predefined analysis presets
-│   └── templates/                         # Configuration templates
-├── plugin.properties                       # Plugin metadata
-├── build.xml                              # Ant build script
-└── README.md                              # This file
+├── lib/                  # Required JAR dependencies
+│   ├── GeneiousPublicAPI.jar  # Geneious plugin API
+│   ├── jdom.jar               # XML processing
+│   └── jebl.jar               # Bioinformatics utilities
+├── resources/            # Plugin resources
+│   ├── presets/          # Predefined analysis presets
+│   └── templates/        # Configuration templates
+├── plugin.properties     # Plugin metadata
+├── build.xml             # Ant build script
+└── README.md             # This file
 ```
 
 ## Dependencies

@@ -10,7 +10,7 @@ Successfully built a working TaxTriage Geneious plugin that integrates taxonomic
 
 #### Plugin Architecture
 
-- **Main Plugin Class**: `TaxTriagePlugin` - Successfully registers with Geneious API 4.1+
+- **Main Plugin Class**: `TaxTriagePlugin` - Registers with Geneious API 4.1+
 - **Primary Operation**: `TaxTriageOperation` - Handles document processing and workflow execution
 - **Options Management**: `TaxTriageOptions` - Configurable parameters for different sequencing platforms
 
