@@ -306,7 +306,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 
 Dave O'Connor's Laboratory at the University of Wisconsin-Madison has developed a custom Geneious Prime plugin to interface with the TaxTriage pipeline. This plugin allows users to run TaxTriage analyses directly from within the Geneious Prime environment, streamlining the workflow for researchers who utilize Geneious for sequence analysis.
 
-A `gplugin` file for the TaxTriage Geneious plugin can be found in the `src/geneious-plugin/build/distributions/` directory of this repository after building the plugin. This file was built with a Mac OSX ARM-based system and should be compatible with other Mac systems running Geneious Prime version 2024.0.2 or later. It may function appropriately for Windows or Linux systems as well, but this has not been tested.
+A `gplugin` file for the TaxTriage Geneious plugin can be found in the `src/geneious-plugin/TaxTriage.gplugin` directory of this repository after building the plugin. This file was built with a Mac OSX ARM-based system and should be compatible with other Mac systems running Geneious Prime version 2024.0.2 or later. It may function appropriately for Windows or Linux systems as well, but this has not been tested.
 
 Instructions for building and installing the plugin are provided in the [Geneious Plugin Documentation](src/geneious-plugin/docs/README.md#taxtriage-geneious-plugin).
 
