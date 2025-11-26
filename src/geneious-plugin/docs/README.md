@@ -5,7 +5,7 @@ This directory contains the Geneious plugin implementation for TaxTriage, which 
 ## Project Structure
 
 ```
-geneious-plugin/
+src/geneious-plugin/
 ├── src/                                    # Java source code
 │   └── com/
 │       └── jhuapl/
@@ -47,6 +47,8 @@ These dependencies are automatically copied from the Geneious devkit during proj
 - Geneious devkit (for API dependencies)
 
 ### Build Commands
+
+Make sure you `cd src/geneious-plugin/` before running the following commands:
 
 ```bash
 # Clean previous builds
