@@ -32,6 +32,9 @@ jobs:
       - name: Install Prettier
         run: npm install -g prettier
 
+      - name: Install Prettier
+        run: prettier --version
+
       - name: Run Prettier --check
         run: prettier --check ${GITHUB_WORKSPACE}
 
