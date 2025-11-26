@@ -21,6 +21,7 @@
 include { ALIGNMENT_PER_SAMPLE } from '../../modules/local/alignment_per_sample'
 include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
+include { CREATE_COMPARISON_REPORT } from '../../modules/local/create_comparison_report'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { CLUSTER_ALIGNMENT } from '../../modules/local/cluster_alignment'
 include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
@@ -103,6 +104,14 @@ workflow REPORT {
                 missing_samples,
                 ch_taxdump_nodes
             )
+
+            ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)
+
+            CREATE_COMPARISON_REPORT(
+                ORGANISM_MERGE_REPORT.out.report,
+                ch_template
+            )
+
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
         }
     emit:

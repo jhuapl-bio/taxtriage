@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>TaxTriage Multi Run Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+    <script id="BOOTSTRAP" type="application/json">
+      __BOOTSTRAP_JSON__
+    </script>
+
+    <script>
+      // read it back into JS variables
+      let BOOT = JSON.parse(document.getElementById("BOOTSTRAP").textContent);
+      let data = BOOT.records;
+      let cols = BOOT.all_cols;
+      let numericCols = BOOT.numeric_cols;
+      let selectedCols = [...cols];
+      let currentValueCol = numericCols.includes("TASS Score") ? "TASS Score" : numericCols[0];
+    </script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+
+      /* Top banner + legend */
+      #top-banner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3em;
+        background: #007bff;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        font-size: 1.2em;
+        font-weight: 700;
+      }
+      #legend {
+        position: fixed;
+        top: 3em;
+        left: 0;
+        right: 0;
+        background: #f0f0f0;
+        padding: 0.5em 1em;
+        z-index: 999;
+      }
+
+      /* Layout */
+      #content-wrapper {
+        position: absolute;
+        top: calc(3em + 2em);
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+      }
+      #content-area {
+        flex: 1;
+        position: relative;
+        overflow-y: auto;
+        padding: 1em;
+      }
+      #sidebar {
+        width: 280px;
+        border-left: 1px solid #ddd;
+        background: #fafafa;
+        padding: 1em;
+        overflow-y: auto;
+      }
+
+      /* Tabs (in sidebar) */
+      #tabs {
+        display: flex;
+        gap: 0.5em;
+        margin-bottom: 1em;
+      }
+      #tabs button {
+        flex: 1;
+        padding: 0.5em;
+        border: none;
+        background: #007bff55;
+        color: white;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      #tabs button.active {
+        background: #0056aa;
+        font-weight: 700;
+      }
+
+      /* Controls in sidebar */
+      #sidebar label {
+        display: block;
+        margin-top: 0.75em;
+        font-weight: 600;
+      }
+      #sidebar .row {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+      }
+      #sidebar input[type="text"],
+      #sidebar input[type="number"],
+      #sidebar select {
+        width: 100%;
+        margin-top: 0.25em;
+        padding: 0.35em;
+      }
+      #sidebar input[type="color"] {
+        width: 1.5em;
+        height: 1.5em;
+        padding: 0;
+        border: none;
+        background: none;
+      }
+      #upload-zone {
+        border: 2px dashed #007bff;
+        padding: 1em;
+        text-align: center;
+        margin-top: 0.75em;
+        cursor: pointer;
+        border-radius: 6px;
+        background: #f8faff;
+      }
+
+      /* Content panes */
+      .tab-content {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+
+      /* Heatmap */
+      #heatmap {
+        width: 100%;
+        height: 640px;
+      }
+
+      /* Table */
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 0.5em;
+      }
+      th,
+      td {
+        border: 1px solid #999;
+        padding: 0.25em 0.5em;
+      }
+      th {
+        background: #eee;
+        cursor: pointer;
+        position: sticky;
+        top: 0;
+      }
+      th.sorted {
+        background: rgba(0, 255, 255, 0.2);
+      }
+
+      /* Loaded tables list */
+      #table-list .item {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.25em 0;
+      }
+      #table-list .item span {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #table-list .item button {
+        background: none;
+        border: none;
+        cursor: pointer;
+      }
+
+      /* Sample color list */
+      #sample-color-list ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      #sample-color-list li {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        margin: 0.25em 0;
+      }
+      #sample-color-list li span {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #sample-color-list li button {
+        background: none;
+        border: none;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="top-banner">TaxTriage Multi Run Analysis</div>
+    <div id="content-wrapper">
+      <div id="content-area">
+        <div id="heatmap-tab" class="tab-content active">
+          <div id="heatmap"></div>
+        </div>
+
+        <div id="table-tab" class="tab-content">
+          <div class="row" style="gap: 0.5em; align-items: center">
+            <strong>Columns:&nbsp;</strong>
+            <select multiple id="col-toggle" style="flex: 1; min-height: 4.5em"></select>
+          </div>
+          <table id="data-table">
+            <thead>
+              <tr id="header-row"></tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="sidebar">
+        <!-- Tabs -->
+        <div id="tabs">
+          <button data-tab="heatmap" class="active">Heatmap</button>
+          <button data-tab="table">Table</button>
+        </div>
+
+        <!-- Filters -->
+        <label for="axis-filter">Filter (Specimen / Organism)</label>
+        <input id="axis-filter" type="text" placeholder="e.g. ^sample" />
+        <label class="row" style="margin-top: 0.5em; font-weight: 500">
+          <input type="checkbox" id="ignore-case" checked />
+          <span>Ignore case</span>
+        </label>
+
+        <label for="min-filter">Min Value (current column)</label>
+        <input id="min-filter" type="number" step="0.05" value="0.6" placeholder="e.g. 0.5" />
+
+        <label for="value-col">Heatmap Column</label>
+        <select id="value-col"></select>
+
+        <label class="row" style="margin-top: 0.75em">
+          <input type="checkbox" id="show-annotations" checked />
+          <span>Show cell values</span>
+        </label>
+        <label class="row" style="margin-top: 0.5em">
+          <input type="checkbox" id="only-high-consequence" />
+          <span>Show only High Consequence</span>
+        </label>
+        <div class="row">
+          <input type="color" id="cell-text-color" value="#FFFFFF" />
+          <small>Cell text color</small>
+        </div>
+
+        <!-- Upload -->
+        <div id="upload-zone">
+          Drop TSV here or click to upload
+          <input type="file" id="file-upload" accept=".tsv,.txt" style="display: none" />
+        </div>
+
+        <!-- Loaded tables -->
+        <label style="margin-top: 1em">Loaded Tables</label>
+        <div id="table-list"></div>
+
+        <!-- Per-sample colors -->
+        <label style="margin-top: 1em">Sample Row Colors</label>
+        <div id="sample-color-list">
+          <ul></ul>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* --------------------------
+       Data & State
+    ---------------------------*/
+      // Seed with a tiny default so UI works before uploads
+
+      // let data = []
+      // Columns & current metric
+      // let cols = Object.keys(data[0] || {});
+      // let numericCols = deriveNumericCols(data, cols);
+      // let currentValueCol = 'TASS Score' || numericCols[0] || cols[0]
+
+      // Tables management (each upload is a logical table)
+      // entry: { name, data: [rows], hidden: false }
+      let tables = [{ name: "default", data: structuredClone(data), hidden: false }];
+
+      // Per-sample appearance & visibility
+      const sampleColors = {}; // Specimen ID -> hex
+      const sampleHidden = {}; // Specimen ID -> boolean
+
+      // DOM handles
+      const minInput = document.getElementById("min-filter");
+      const showAnnInput = document.getElementById("show-annotations");
+      const showonlyHighCons = document.getElementById("show-highonly");
+      const cellColorInput = document.getElementById("cell-text-color");
+
+      /* --------------------------
+       Helpers
+    ---------------------------*/
+      function structuredClone(o) {
+        return JSON.parse(JSON.stringify(o));
+      }
+
+      function deriveNumericCols(arr, columns) {
+        if (!arr.length) return [];
+        // consider a column numeric if ANY row parses to a number
+        return columns.filter((c) => arr.some((r) => !isNaN(parseFloat(r[c]))));
+      }
+      function isTruthyHC(val) {
+        if (typeof val === "boolean") return val;
+        if (typeof val === "number") return val === 1;
+        if (typeof val === "string") {
+          const s = val.trim().toLowerCase();
+          return s === "true" || s === "yes" || s === "y" || s === "1" || s === "t";
+        }
+        return false;
+      }
+
+      function recordIsHC(rec) {
+        return isTruthyHC(rec?.["High Consequence"]);
+      }
+
+      // For table rows (in case the HC column isn't visible), look up the backing record
+      function rowIsHC(specimen, organism) {
+        const rec = data.find(
+          (r) => (r["Specimen ID"] || "") === specimen && (r["Detected Organism"] || "") === organism,
+        );
+        return recordIsHC(rec);
+      }
+
+      function preprocessDetectedOrganisms(rows) {
+        rows.forEach((r) => {
+          if (typeof r["Detected Organism"] === "string") {
+            r["Detected Organism"] = r["Detected Organism"].replace(/°/g, "").trim();
+          }
+        });
+      }
+
+      // Merge all non-hidden tables into the working data
+      function getMergedData() {
+        return tables.filter((t) => !t.hidden).flatMap((t) => t.data);
+      }
+
+      // Update state, rebuild UI, and redraw
+      function updateData() {
+        data = getMergedData();
+
+        // Rebuild columns & numeric cols safely
+        cols = Object.keys(data[0] || {});
+        numericCols = deriveNumericCols(data, cols);
+
+        if (!currentValueCol || !cols.includes(currentValueCol)) {
+          currentValueCol = "TASS Score" || numericCols[0] || cols[0];
+        }
+
+        // UI pieces
+        buildValueDropdown();
+        populateColumnToggles();
+        renderTableHeaders();
+        populateTableData();
+        renderSampleColorPickers();
+        updateTableList();
+
+        // Apply filters & draw plot
+        applyTableFilter();
+        redrawHeatmap();
+      }
+
+      // Get array of visible columns from multi-select
+      function getVisibleColumns() {
+        const sel = document.getElementById("col-toggle");
+        const selected = Array.from(sel.selectedOptions).map((o) => o.textContent);
+        if (!selected.length) return cols; // if nothing selected, show all
+        // Only include existing cols
+        return cols.filter((c) => selected.includes(c));
+      }
+
+      // Convert hex color to rgba with alpha
+      function hexToRgba(hex, alpha = 0.2) {
+        const m = hex.match(/^#?([A-F\d]{2})([A-F\d]{2})([A-F\d]{2})$/i);
+        if (!m) return `rgba(0,0,0,${alpha})`;
+        const r = parseInt(m[1], 16),
+          g = parseInt(m[2], 16),
+          b = parseInt(m[3], 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+      }
+
+      /* --------------------------
+       Sidebar: Tabs
+    ---------------------------*/
+      document.querySelectorAll("#tabs button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll("#tabs button").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          const tab = btn.dataset.tab;
+          document.querySelectorAll(".tab-content").forEach((tc) => tc.classList.remove("active"));
+          document.getElementById(tab + "-tab").classList.add("active");
+        });
+      });
+
+      /* --------------------------
+       Filters (sidebar)
+    ---------------------------*/
+      document.getElementById("axis-filter").addEventListener("input", () => {
+        applyTableFilter();
+        redrawHeatmap();
+      });
+      document.getElementById("ignore-case").addEventListener("change", () => {
+        applyTableFilter();
+        redrawHeatmap();
+      });
+      minInput.addEventListener("input", () => {
+        applyTableFilter();
+        redrawHeatmap();
+      });
+      showAnnInput.addEventListener("change", () => {
+        redrawHeatmap();
+      });
+      cellColorInput.addEventListener("input", () => {
+        redrawHeatmap();
+      });
+      const onlyHCInput = document.getElementById("only-high-consequence");
+      onlyHCInput.addEventListener("change", () => {
+        applyTableFilter();
+        redrawHeatmap();
+      });
+
+      /* --------------------------
+       Upload TSV (sidebar)
+    ---------------------------*/
+      const uploadZone = document.getElementById("upload-zone");
+      const fileInput = document.getElementById("file-upload");
+
+      uploadZone.addEventListener("click", () => fileInput.click());
+      uploadZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadZone.style.background = "#e0f0ff";
+      });
+      uploadZone.addEventListener("dragleave", () => {
+        uploadZone.style.background = "#f8faff";
+      });
+      uploadZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadZone.style.background = "#f8faff";
+        const file = e.dataTransfer.files[0];
+        if (file) readTSV(file);
+      });
+      fileInput.addEventListener("change", (e) => {
+        const f = e.target.files[0];
+        if (f) readTSV(f);
+      });
+
+      function readTSV(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const lines = reader.result.trim().split(/\r?\n/);
+          const headers = lines[0].split("\t");
+          const jsonData = lines.slice(1).map((line) => {
+            const values = line.split("\t");
+            const entry = {};
+            headers.forEach((h, i) => (entry[h.trim()] = values[i]));
+            return entry;
+          });
+          initializeFromData(jsonData, file.name);
+        };
+        reader.readAsText(file);
+      }
+
+      function initializeFromData(newData, fileName) {
+        preprocessDetectedOrganisms(newData);
+        const base = fileName.replace(/^.*[\\/]/, "");
+        tables.push({ name: base, data: newData, hidden: false });
+        updateData();
+      }
+
+      /* --------------------------
+       Loaded Tables list
+    ---------------------------*/
+      function updateTableList() {
+        const container = document.getElementById("table-list");
+        container.innerHTML = "";
+        tables.forEach((t, idx) => {
+          const row = document.createElement("div");
+          row.className = "item";
+
+          const name = document.createElement("span");
+          name.textContent = t.name;
+          row.appendChild(name);
+
+          const hideBtn = document.createElement("button");
+          hideBtn.innerHTML = t.hidden ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+          hideBtn.title = t.hidden ? "Show table" : "Hide table";
+          hideBtn.addEventListener("click", () => {
+            t.hidden = !t.hidden;
+            updateData();
+          });
+          row.appendChild(hideBtn);
+
+          const trashBtn = document.createElement("button");
+          trashBtn.innerHTML = '<i class="fas fa-trash"></i>';
+          trashBtn.title = "Remove table";
+          trashBtn.addEventListener("click", () => {
+            tables.splice(idx, 1);
+            updateData();
+          });
+          row.appendChild(trashBtn);
+
+          container.appendChild(row);
+        });
+      }
+
+      /* --------------------------
+       Per-sample color pickers + visibility
+    ---------------------------*/
+      function renderSampleColorPickers() {
+        const ul = document.querySelector("#sample-color-list ul");
+        ul.innerHTML = "";
+        const specimens = Array.from(new Set(data.map((r) => r["Specimen ID"] || "")))
+          .filter(Boolean)
+          .sort();
+
+        specimens.forEach((id) => {
+          if (!sampleColors[id]) sampleColors[id] = "#d3d3d3";
+          if (sampleHidden[id] === undefined) sampleHidden[id] = false;
+
+          const li = document.createElement("li");
+
+          const cp = document.createElement("input");
+          cp.type = "color";
+          cp.value = sampleColors[id];
+          cp.addEventListener("input", () => {
+            sampleColors[id] = cp.value;
+            updateRowColors();
+          });
+          li.appendChild(cp);
+
+          const lbl = document.createElement("span");
+          lbl.textContent = id;
+          li.appendChild(lbl);
+
+          const eyeBtn = document.createElement("button");
+          eyeBtn.innerHTML = sampleHidden[id] ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+          eyeBtn.title = sampleHidden[id] ? "Show sample" : "Hide sample";
+          eyeBtn.addEventListener("click", () => {
+            sampleHidden[id] = !sampleHidden[id];
+            eyeBtn.innerHTML = sampleHidden[id] ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+            eyeBtn.title = sampleHidden[id] ? "Show sample" : "Hide sample";
+            applyTableFilter();
+            redrawHeatmap();
+          });
+          li.appendChild(eyeBtn);
+
+          ul.appendChild(li);
+        });
+      }
+
+      function updateRowColors() {
+        const specimenIdx = cols.indexOf("Specimen ID");
+        document.querySelectorAll("#table-body tr").forEach((tr) => {
+          const sp = tr.cells[specimenIdx]?.textContent || "";
+          const hex = sampleColors[sp] || "#d3d3d3";
+          tr.style.backgroundColor = hexToRgba(hex, 0.18);
+        });
+      }
+
+      /* --------------------------
+       Heatmap
+    ---------------------------*/
+      function redrawHeatmap() {
+        const txt = document.getElementById("axis-filter").value || "";
+        const ic = document.getElementById("ignore-case").checked;
+        const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
+        const minRaw = minInput.value;
+        const minVal = minRaw === "" ? -Infinity : parseFloat(minRaw);
+        const onlyHC = onlyHCInput.checked;
+
+        const fd = data.filter((r) => {
+          const sp = r["Specimen ID"] || "";
+          if (sampleHidden[sp]) return false; // sample-level hide
+
+          const og = r["Detected Organism"] || "";
+          const v = parseFloat(r[currentValueCol]);
+
+          const passText = !rx || rx.test(sp) || rx.test(og);
+          const passMin = !isNaN(v) && v >= minVal;
+          const passHC = !onlyHC || recordIsHC(r);
+
+          return passText && passMin && passHC;
+        });
+
+        const specimens = Array.from(new Set(fd.map((r) => r["Specimen ID"] || "")))
+          .filter(Boolean)
+          .sort();
+        const organisms = Array.from(new Set(fd.map((r) => r["Detected Organism"] || "")))
+          .filter(Boolean)
+          .sort();
+
+        const div = document.getElementById("heatmap");
+        div.innerHTML = "";
+        Plotly.purge(div);
+
+        if (!specimens.length || !organisms.length || !currentValueCol) {
+          Plotly.newPlot(div, [], {
+            title: "No data available to render heatmap",
+            xaxis: { title: "Specimen ID" },
+            yaxis: { title: "Detected Organism" },
+          });
+          return;
+        }
+
+        // Build z and hovertext
+        const z = organisms.map((o) =>
+          specimens.map((s) => {
+            const rec = fd.find((r) => (r["Detected Organism"] || "") === o && (r["Specimen ID"] || "") === s);
+            const v = rec ? parseFloat(rec[currentValueCol]) : NaN;
+            return isNaN(v) ? NaN : v;
+          }),
+        );
+
+        const hoverText = organisms.map((o) =>
+          specimens.map((s) => {
+            const rec = fd.find((r) => (r["Detected Organism"] || "") === o && (r["Specimen ID"] || "") === s);
+            return rec ? cols.map((c) => `${c}: ${rec[c]}`).join("<br>") : "";
+          }),
+        );
+
+        // Custom colorscale (grey → light green → light orange → orange → light red → red)
+        const customColorscale = [
+          [0.0, "#D3D3D3"],
+          [0.2, "#90EE90"],
+          [0.4, "#FFD27F"],
+          [0.6, "#FFA500"],
+          [0.8, "#FF7F7F"],
+          [1.0, "#FF0000"],
+        ];
+
+        const trace = {
+          z,
+          x: specimens,
+          y: organisms,
+          type: "heatmap",
+          colorscale: customColorscale,
+          hovertext: hoverText,
+          hoverinfo: "text",
+          hoverongaps: false,
+          // Optionally set zmin/zmax if you want consistent color bounds:
+          // zmin: 0, zmax: 1
+        };
+
+        const layout = {
+          title: `Heatmap: ${currentValueCol}`,
+          xaxis: { title: "Specimen ID", automargin: true },
+          yaxis: { title: "Detected Organism", automargin: true },
+          margin: { l: 150, t: 40, b: 80 },
+          annotations: [],
+        };
+
+        // Add cell value annotations if enabled
+        if (showAnnInput.checked) {
+          const textColor = cellColorInput.value || "#FFFFFF";
+          for (let i = 0; i < organisms.length; i++) {
+            for (let j = 0; j < specimens.length; j++) {
+              const val = z[i][j];
+              layout.annotations.push({
+                xref: "x",
+                yref: "y",
+                x: specimens[j],
+                y: organisms[i],
+                text: isNaN(val) ? "" : String(val),
+                showarrow: false,
+                font: { size: 12, color: textColor },
+              });
+            }
+          }
+        }
+
+        Plotly.newPlot(div, [trace], layout, { responsive: true });
+      }
+
+      /* --------------------------
+       Table (headers, sort, data, filter)
+    ---------------------------*/
+      function renderTableHeaders() {
+        const headerRow = document.getElementById("header-row");
+        headerRow.innerHTML = "";
+        const visCols = getVisibleColumns();
+
+        visCols.forEach((c, idx) => {
+          const th = document.createElement("th");
+          th.textContent = c;
+          th.addEventListener("click", () => sortTableByColumn(idx, c, visCols));
+          headerRow.appendChild(th);
+        });
+      }
+
+      function populateColumnToggles() {
+        const sel = document.getElementById("col-toggle");
+        const prevSelection = new Set(Array.from(sel.selectedOptions).map((o) => o.textContent));
+        sel.innerHTML = "";
+        cols.forEach((c) => {
+          const opt = document.createElement("option");
+          opt.textContent = c;
+          opt.selected = prevSelection.size ? prevSelection.has(c) : true; // select all by default
+          sel.appendChild(opt);
+        });
+        sel.addEventListener("change", () => {
+          renderTableHeaders();
+          populateTableData();
+          applyTableFilter();
+        });
+      }
+
+      function populateTableData() {
+        const tbody = document.getElementById("table-body");
+        tbody.innerHTML = "";
+        const visCols = getVisibleColumns();
+
+        data.forEach((row) => {
+          const tr = document.createElement("tr");
+          visCols.forEach((c) => {
+            const td = document.createElement("td");
+            td.textContent = row[c];
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+
+        updateRowColors();
+      }
+
+      function sortTableByColumn(idx, colName, visCols) {
+        const tbody = document.getElementById("table-body");
+        const rows = Array.from(tbody.rows);
+        const asc = !(tbody.dataset.sortAsc === "true") || tbody.dataset.sortColumn !== colName;
+
+        rows.sort((a, b) => {
+          let va = a.cells[idx]?.textContent ?? "";
+          let vb = b.cells[idx]?.textContent ?? "";
+          if (numericCols.includes(colName)) {
+            va = parseFloat(va);
+            vb = parseFloat(vb);
+            if (isNaN(va)) va = -Infinity;
+            if (isNaN(vb)) vb = -Infinity;
+            return asc ? va - vb : vb - va;
+          } else {
+            return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+          }
+        });
+
+        tbody.innerHTML = "";
+        rows.forEach((r) => tbody.appendChild(r));
+        tbody.dataset.sortAsc = asc;
+        tbody.dataset.sortColumn = colName;
+      }
+
+      function applyTableFilter() {
+        const txt = document.getElementById("axis-filter").value || "";
+        const ic = document.getElementById("ignore-case").checked;
+        const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
+
+        const minRaw = minInput.value;
+        const minVal = minRaw === "" ? -Infinity : parseFloat(minRaw);
+        const onlyHC = onlyHCInput.checked;
+        const visCols = getVisibleColumns();
+        const specIdx = visCols.indexOf("Specimen ID");
+        const orgIdx = visCols.indexOf("Detected Organism");
+        const valIdx = visCols.indexOf(currentValueCol);
+
+        Array.from(document.getElementById("table-body").rows).forEach((tr) => {
+          const sp = specIdx >= 0 ? tr.cells[specIdx].textContent : "";
+          const og = orgIdx >= 0 ? tr.cells[orgIdx].textContent : "";
+          const valText = valIdx >= 0 ? tr.cells[valIdx].textContent : "";
+          const v = parseFloat(valText);
+
+          const passText = !rx || rx.test(sp) || rx.test(og);
+          const passMin = !isNaN(v) && v >= minVal;
+          const passSample = !sampleHidden[sp];
+          const passHC = !onlyHC || rowIsHC(sp, og);
+
+          tr.style.display = passText && passMin && passSample ? "" : "none";
+        });
+      }
+
+      function buildValueDropdown() {
+        const sel = document.getElementById("value-col");
+        const prev = currentValueCol;
+        sel.innerHTML = "";
+        numericCols.forEach((col) => {
+          const opt = document.createElement("option");
+          opt.value = col;
+          opt.textContent = col;
+          if (col === prev) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        // If previous not available, select the first
+        if (!sel.value && numericCols.length) sel.value = numericCols[0];
+        currentValueCol = sel.value || currentValueCol;
+
+        sel.onchange = (e) => {
+          currentValueCol = e.target.value;
+          applyTableFilter();
+          redrawHeatmap();
+        };
+      }
+
+      /* --------------------------
+       Init
+    ---------------------------*/
+      // Initial build
+      updateData();
+    </script>
+  </body>
+</html>
