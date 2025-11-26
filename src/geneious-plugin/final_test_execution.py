@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 import json
 from datetime import datetime
+import argparse
+
 
 def run_command(cmd, cwd=None, capture_output=True, timeout=300):
     """Run a command and return success, stdout, stderr"""
@@ -24,8 +26,8 @@ def run_command(cmd, cwd=None, capture_output=True, timeout=300):
     except Exception as e:
         return False, "", str(e)
 
-def main():
-    plugin_dir = "/Users/dho/Documents/taxtriage/geneious-plugin"
+
+def run_full_test(plugin_dir, verbose=False):
     print("=" * 80)
     print("TAXTRIAGE GENEIOUS PLUGIN - FINAL COMPREHENSIVE TEST")
     print("=" * 80)
@@ -35,15 +37,14 @@ def main():
 
     if not os.path.exists(plugin_dir):
         print(f"❌ Plugin directory not found: {plugin_dir}")
-        return 1
+        return 1, {"plugin_dir_found": False}
 
     os.chdir(plugin_dir)
 
     results = {}
-    overall_success = True
 
-    # Phase 1: Source Analysis
-    print("📋 PHASE 1: SOURCE CODE ANALYSIS")
+    # Step 1: Source Analysis
+    print("📋 Step 1: SOURCE CODE ANALYSIS")
     print("-" * 50)
 
     src_files = list(Path("src").rglob("*.java")) if Path("src").exists() else []
@@ -62,30 +63,36 @@ def main():
 
     print()
 
-    # Phase 2: Dependencies Check
-    print("📦 PHASE 2: DEPENDENCIES CHECK")
+    results["source_files_count"] = len(src_files)
+    results["test_files_count"] = len(test_files)
+
+    # Step 2: Dependencies Check
+    print("📦 Step 2: DEPENDENCIES CHECK")
     print("-" * 50)
 
     required_jars = ["GeneiousPublicAPI.jar", "jdom.jar", "jebl.jar"]
     lib_dir = Path("lib")
-
+    results["dependencies"] = {}
     if lib_dir.exists():
         for jar in required_jars:
             jar_path = lib_dir / jar
             if jar_path.exists():
                 size = jar_path.stat().st_size
                 print(f"  ✓ {jar} ({size:,} bytes)")
+                results["dependencies"][jar] = {"present": True, "size": size}
             else:
                 print(f"  ❌ {jar} - MISSING")
+                results["dependencies"][jar] = {"present": False, "size": 0}
                 overall_success = False
     else:
         print("  ❌ lib directory not found")
+        results["dependencies"]["lib_dir_missing"] = True
         overall_success = False
 
     print()
 
-    # Phase 3: Clean Build
-    print("🧹 PHASE 3: CLEAN BUILD")
+    # Step 3: Clean Build
+    print("🧹 Step 3: CLEAN BUILD")
     print("-" * 50)
 
     success, stdout, stderr = run_command("ant clean")
@@ -93,14 +100,16 @@ def main():
         print("  ✓ Clean successful")
         results['clean'] = True
     else:
-        print(f"  ❌ Clean failed: {stderr}")
+        print(f"  ❌ Clean failed")
+        if verbose:
+            print(f"  stderr: {stderr}")
         results['clean'] = False
         overall_success = False
 
     print()
 
-    # Phase 4: Compilation
-    print("🔨 PHASE 4: COMPILATION")
+    # Step 4: Compilation
+    print("🔨 Step 4: COMPILATION")
     print("-" * 50)
 
     success, stdout, stderr = run_command("ant compile")
@@ -108,37 +117,42 @@ def main():
         print("  ✓ Compilation successful")
         results['compile'] = True
 
-        # Count compiled classes
         classes_dir = Path("classes")
         if classes_dir.exists():
             class_files = list(classes_dir.rglob("*.class"))
             print(f"  📦 Compiled {len(class_files)} class files")
+            results["class_files_count"] = len(class_files)
 
-            # Show key classes
             key_classes = [
                 "com/jhuapl/taxtriage/geneious/TaxTriagePlugin.class",
                 "com/jhuapl/taxtriage/geneious/TaxTriageOperation.class",
                 "com/jhuapl/taxtriage/geneious/TaxTriageOptions.class"
             ]
 
+            results["key_classes"] = {}
             for key_class in key_classes:
                 class_path = classes_dir / key_class
                 if class_path.exists():
                     print(f"    ✓ {key_class}")
+                    results["key_classes"][key_class] = True
                 else:
                     print(f"    ❌ {key_class} - Missing")
+                    results["key_classes"][key_class] = False
         else:
             print("  ⚠️ No classes directory found")
+            results["class_files_count"] = 0
     else:
         print(f"  ❌ Compilation failed")
         print(f"  Error details: {stderr}")
+        if verbose:
+            print(f"  stdout: {stdout}")
         results['compile'] = False
         overall_success = False
 
     print()
 
-    # Phase 5: Test Compilation
-    print("🧪 PHASE 5: TEST COMPILATION")
+    # Step 5: Test Compilation
+    print("🧪 Step 5: TEST COMPILATION")
     print("-" * 50)
 
     success, stdout, stderr = run_command("ant compile-tests")
@@ -147,13 +161,14 @@ def main():
         results['compile_tests'] = True
     else:
         print("  ⚠️ Test compilation failed (may be expected)")
-        print(f"  Info: {stderr}")
+        if verbose:
+            print(f"  Info: {stderr}")
         results['compile_tests'] = False
 
     print()
 
-    # Phase 6: Plugin Build
-    print("📦 PHASE 6: PLUGIN BUILD")
+    # Step 6: Plugin Build
+    print("📦 Step 6: PLUGIN BUILD")
     print("-" * 50)
 
     if results.get('compile', False):
@@ -162,15 +177,20 @@ def main():
             print("  ✓ Plugin build successful")
             results['build'] = True
 
-            # Check for JAR
             jar_path = Path("build/TaxTriage/TaxTriage.jar")
             if jar_path.exists():
                 size = jar_path.stat().st_size
                 print(f"  📦 JAR created: {jar_path} ({size:,} bytes)")
+                results["jar_path"] = str(jar_path)
+                results["jar_size"] = size
             else:
                 print("  ⚠️ JAR not found at expected location")
+                results["jar_path"] = None
+                results["jar_size"] = 0
         else:
-            print(f"  ❌ Build failed: {stderr}")
+            print(f"  ❌ Build failed")
+            if verbose:
+                print(f"  stderr: {stderr}")
             results['build'] = False
             overall_success = False
     else:
@@ -179,8 +199,8 @@ def main():
 
     print()
 
-    # Phase 7: Distribution
-    print("📤 PHASE 7: DISTRIBUTION PACKAGE")
+    # Step 7: Distribution
+    print("📤 Step 7: DISTRIBUTION PACKAGE")
     print("-" * 50)
 
     if results.get('build', False):
@@ -189,27 +209,34 @@ def main():
             print("  ✓ Distribution package created")
             results['distribute'] = True
 
-            # Check for gplugin
             gplugin_path = Path("build/TaxTriage.gplugin")
             if gplugin_path.exists():
                 size = gplugin_path.stat().st_size
                 print(f"  📦 Plugin package: {gplugin_path} ({size:,} bytes)")
                 results['plugin_ready'] = True
+                results['gplugin_path'] = str(gplugin_path)
+                results['gplugin_size'] = size
             else:
                 print("  ⚠️ Plugin package not found")
                 results['plugin_ready'] = False
+                results['gplugin_path'] = None
+                results['gplugin_size'] = 0
         else:
-            print(f"  ❌ Distribution failed: {stderr}")
+            print(f"  ❌ Distribution failed")
+            if verbose:
+                print(f"  stderr: {stderr}")
             results['distribute'] = False
+            results['plugin_ready'] = False
             overall_success = False
     else:
         print("  ⏭️ Skipping distribution (build failed)")
         results['distribute'] = False
+        results['plugin_ready'] = False
 
     print()
 
-    # Phase 8: Manual Test (if available)
-    print("🧪 PHASE 8: MANUAL TEST EXECUTION")
+    # Step 8: Manual Test (if available)
+    print("🧪 Step 8: MANUAL TEST EXECUTION")
     print("-" * 50)
 
     if results.get('compile', False):
@@ -226,7 +253,8 @@ def main():
             results['manual_test'] = True
         else:
             print("  ⚠️ Manual test failed (expected without full Geneious environment)")
-            print(f"  Note: {stderr}")
+            if verbose:
+                print(f"  Note: {stderr}")
             results['manual_test'] = False
     else:
         print("  ⏭️ Skipping manual test (compilation failed)")
@@ -243,8 +271,10 @@ def main():
 
     print("Test Results:")
     for test_name, result in results.items():
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"  {test_name.replace('_', ' ').title()}: {status}")
+        # skip non-boolean entries when summarizing pass/fail
+        if isinstance(result, bool):
+            status = "✅ PASS" if result else "❌ FAIL"
+            print(f"  {test_name.replace('_', ' ').title()}: {status}")
 
     print()
     print(f"Critical Tests Passed: {passed_critical}/{len(critical_tests)}")
@@ -295,7 +325,52 @@ def main():
     print("=" * 80)
     print(f"Test completed: {datetime.now().isoformat()}")
 
+    return exit_code, results
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run final comprehensive tests for the TaxTriage Geneious plugin."
+    )
+
+    parser.add_argument(
+        "-p", "--plugin-dir",
+        default=".",
+        help="Path to the Geneious plugin directory"
+    )
+
+    parser.add_argument(
+        "-o", "--output",
+        help="Optional JSON file to write the test summary/results"
+    )
+
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Print detailed stdout/stderr for failing steps"
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    exit_code, results = run_full_test(args.plugin_dir, verbose=args.verbose)
+
+    if args.output:
+        # add some metadata
+        results_out = {
+            "plugin_dir": os.path.abspath(args.plugin_dir),
+            "timestamp": datetime.now().isoformat(),
+            "exit_code": exit_code,
+            "results": results,
+        }
+        with open(args.output, "w") as f:
+            json.dump(results_out, f, indent=2)
+        print(f"\nJSON summary written to: {args.output}")
+
     return exit_code
+
 
 if __name__ == "__main__":
     sys.exit(main())

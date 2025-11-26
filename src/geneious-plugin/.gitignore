@@ -4,6 +4,7 @@ classes/
 *.gplugin
 *.class
 *.jar
+*.sh
 
 # IDE files
 .idea/
