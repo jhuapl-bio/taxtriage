@@ -11,9 +11,11 @@ The Docker integration provides a complete solution for executing TaxTriage work
 ### Core Classes
 
 #### 1. DockerManager
+
 **Location:** `src/com/jhuapl/taxtriage/geneious/docker/DockerManager.java`
 
 Main Docker operations manager that provides:
+
 - Docker availability detection
 - Container image management and pulling
 - Nextflow command execution inside containers
@@ -22,51 +24,61 @@ Main Docker operations manager that provides:
 - Cross-platform compatibility (Windows, macOS, Linux)
 
 **Key Methods:**
+
 - `isDockerAvailable()` - Checks if Docker is installed and running
 - `pullImageIfNeeded()` - Pulls TaxTriage Docker image if needed
 - `executeNextflowCommand()` - Executes Nextflow workflows in containers
 - `stopContainer()` / `removeContainer()` - Container lifecycle management
 
 #### 2. VolumeMapper
+
 **Location:** `src/com/jhuapl/taxtriage/geneious/docker/VolumeMapper.java`
 
 Handles path mapping between host and container file systems:
+
 - Cross-platform path conversion (Windows drive letters to Unix paths)
 - Special character and space handling in paths
 - Permission validation and directory creation
 - Docker volume mount configuration
 
 **Key Methods:**
+
 - `createVolumeMounts()` - Creates volume mappings for input/output/work directories
 - `convertToDockerPath()` - Converts local paths to Docker-compatible format
 - `escapePathForDocker()` - Escapes special characters for Docker commands
 - `validatePermissions()` - Validates file/directory permissions
 
 #### 3. ExecutionMonitor
+
 **Location:** `src/com/jhuapl/taxtriage/geneious/docker/ExecutionMonitor.java`
 
 Monitors Nextflow execution and provides real-time progress tracking:
+
 - Parses Nextflow output for progress information
 - Detects errors and completion status
 - Handles cancellation requests
 - Updates progress listeners with workflow status
 
 **Key Methods:**
+
 - `monitorExecution()` - Monitors a running process with progress updates
 - `parseProgress()` - Extracts progress from Nextflow output lines
 - `isErrorLine()` - Detects error messages in output
 - `requestCancellation()` - Handles workflow cancellation
 
 #### 4. ExecutionResult
+
 **Location:** `src/com/jhuapl/taxtriage/geneious/docker/ExecutionResult.java`
 
 Immutable result object containing:
+
 - Exit code (0 for success)
 - Standard output
 - Error output
 - Success status and utility methods
 
 #### 5. DockerException
+
 **Location:** `src/com/jhuapl/taxtriage/geneious/docker/DockerException.java`
 
 Custom exception for Docker-related errors with proper cause chaining.
@@ -74,9 +86,11 @@ Custom exception for Docker-related errors with proper cause chaining.
 ### Integration Helper
 
 #### TaxTriageDockerIntegration
+
 **Location:** `src/com/jhuapl/taxtriage/geneious/docker/TaxTriageDockerIntegration.java`
 
 High-level integration helper that demonstrates how to use the Docker manager with TaxTriage workflows:
+
 - Exports Geneious sequence documents to FASTQ files
 - Builds appropriate Nextflow commands
 - Manages workflow execution lifecycle
@@ -85,28 +99,33 @@ High-level integration helper that demonstrates how to use the Docker manager wi
 ## Features
 
 ### Cross-Platform Support
+
 - **Windows**: Converts drive letters (C:\) to Docker format (/c/)
 - **macOS**: Direct path mapping with proper permissions
 - **Linux**: Native Unix path support
 
 ### Path Handling
+
 - Automatic escaping of paths with spaces and special characters
 - UNC path support for Windows network drives
 - Absolute path conversion and validation
 
 ### Progress Monitoring
+
 - Real-time parsing of Nextflow execution output
 - Progress percentage calculation from process completion ratios
 - Error detection and reporting
 - Workflow stage identification
 
 ### Error Handling
+
 - Comprehensive exception hierarchy
 - Detailed error messages with context
 - Proper cleanup on failures
 - Timeout handling for long-running operations
 
 ### Testing
+
 - Complete unit test coverage (85%+)
 - Mock implementations for testing without Docker
 - Cross-platform test scenarios
@@ -115,6 +134,7 @@ High-level integration helper that demonstrates how to use the Docker manager wi
 ## Usage Examples
 
 ### Basic Usage
+
 ```java
 // Create Docker manager
 DockerManager dockerManager = new DockerManager();
@@ -141,6 +161,7 @@ if (result.isSuccess()) {
 ```
 
 ### Integration with Geneious
+
 ```java
 // Use the integration helper
 TaxTriageDockerIntegration integration = new TaxTriageDockerIntegration();
@@ -154,6 +175,7 @@ ExecutionResult result = integration.executeTaxTriageWorkflow(
 ```
 
 ### Custom Parameters
+
 ```java
 // Execute with custom Nextflow parameters
 ExecutionResult result = integration.executeTaxTriageWorkflow(
@@ -167,7 +189,9 @@ ExecutionResult result = integration.executeTaxTriageWorkflow(
 ## Testing
 
 ### Unit Tests
+
 The package includes comprehensive JUnit 5 tests:
+
 - `DockerManagerTest.java` - Tests all Docker manager functionality
 - `VolumeMapperTest.java` - Tests path mapping and volume operations
 - `ExecutionMonitorTest.java` - Tests progress monitoring and parsing
@@ -175,16 +199,19 @@ The package includes comprehensive JUnit 5 tests:
 - `DockerExceptionTest.java` - Tests exception handling
 
 ### Mock Testing
+
 - `MockDockerManager.java` - Complete mock implementation for testing without Docker
 - Configurable success/failure scenarios
 - Simulated progress updates and execution delays
 
 ### Simple Testing
+
 - `SimpleDockerManagerTest.java` - Basic assertion-based tests that run without external dependencies
 - Demonstrates core functionality verification
 - Can be run with: `java -cp classes com.jhuapl.taxtriage.geneious.docker.SimpleDockerManagerTest`
 
 ### Running Tests
+
 ```bash
 # Compile tests (requires JUnit 5 and Mockito dependencies)
 ant compile-tests
@@ -214,11 +241,13 @@ The Docker components are integrated with the existing Ant build system:
 ## Dependencies
 
 ### Required at Runtime
+
 - Docker Engine (latest stable version)
 - Java 11+
 - Geneious Public API
 
 ### Required for Testing
+
 - JUnit 5 (jupiter-api, jupiter-engine)
 - Mockito (core, junit-jupiter)
 - Supporting libraries (byte-buddy, objenesis)
@@ -226,14 +255,17 @@ The Docker components are integrated with the existing Ant build system:
 ## Configuration
 
 ### Docker Image
+
 Default image: `jhuaplbio/taxtriage:latest`
 
 ### Container Paths
+
 - Input: `/input`
 - Output: `/output`
 - Work: `/work`
 
 ### Timeouts
+
 - Docker commands: 5 minutes
 - Image pulls: 10 minutes
 - Workflow execution: 1 hour
@@ -241,6 +273,7 @@ Default image: `jhuaplbio/taxtriage:latest`
 ## Error Handling
 
 Common error scenarios and handling:
+
 1. **Docker not installed**: DockerException with guidance
 2. **Image pull failures**: Automatic retry with progress updates
 3. **Volume mount issues**: Path validation and permission fixes

@@ -31,6 +31,7 @@ geneious-plugin/
 ## Dependencies
 
 The plugin requires the following Geneious SDK components:
+
 - **GeneiousPublicAPI.jar**: Core plugin API for Geneious integration
 - **jdom.jar**: XML document processing
 - **jebl.jar**: Java Evolutionary Biology Library
@@ -40,6 +41,7 @@ These dependencies are automatically copied from the Geneious devkit during proj
 ## Building the Plugin
 
 ### Prerequisites
+
 - Java 11 or higher
 - Apache Ant
 - Geneious devkit (for API dependencies)
@@ -74,10 +76,12 @@ ant install
 The TaxTriage Geneious plugin follows the standard Geneious plugin architecture:
 
 1. **Main Plugin Class**: `com.jhuapl.taxtriage.geneious.TaxTriagePlugin`
+
    - Extends `GeneiousPlugin`
    - Defines plugin metadata and services
 
 2. **Service Classes**: Implement specific analysis operations
+
    - Taxonomic classification services
    - Report generation services
    - Data import/export services
@@ -90,6 +94,7 @@ The TaxTriage Geneious plugin follows the standard Geneious plugin architecture:
 ## Development Guidelines
 
 ### Package Structure
+
 - Use the base package: `com.jhuapl.taxtriage.geneious`
 - Organize classes into logical subpackages:
   - `.services` - Analysis services
@@ -98,11 +103,13 @@ The TaxTriage Geneious plugin follows the standard Geneious plugin architecture:
   - `.model` - Data models
 
 ### API Version Compatibility
+
 - Target Geneious API version 4.1+
 - Use compatible Java features (Java 11+)
 - Follow Geneious plugin development best practices
 
 ### Testing
+
 - Place unit tests in the `test/` directory
 - Mirror the source package structure in tests
 - Use standard JUnit testing framework
@@ -110,6 +117,7 @@ The TaxTriage Geneious plugin follows the standard Geneious plugin architecture:
 ## Integration with TaxTriage
 
 This plugin integrates with the main TaxTriage pipeline by:
+
 1. Providing a Geneious-native interface for taxonomic analysis
 2. Executing TaxTriage workflows on sequence data within Geneious
 3. Displaying results in Geneious viewers and reports
@@ -127,6 +135,7 @@ This plugin integrates with the main TaxTriage pipeline by:
 ## Development Status
 
 This is the initial project structure setup. The following components need to be implemented:
+
 - [ ] Main plugin class
 - [ ] Taxonomic classification service
 - [ ] UI components for parameter configuration

@@ -1,9 +1,11 @@
 # Geneious Plugin for TaxTriage
 
 ## Summary
+
 This is a Geneious Prime plugin that integrates TaxTriage taxonomic classification into the Geneious bioinformatics platform. This plugin enables researchers to perform metagenomic analysis directly from within Geneious using Docker-based workflows.
 
 ### Package Structure
+
 ```
 com.jhuapl.taxtriage.geneious/
 ├── TaxTriagePlugin.java          # Plugin entry point
@@ -36,6 +38,7 @@ com.jhuapl.taxtriage.geneious/
 ## Installation
 
 ### Building the Plugin
+
 ```bash
 cd geneious-plugin
 ant clean build distribute
@@ -44,7 +47,9 @@ ant clean build distribute
 This creates `build/TaxTriage.gplugin` for installation.
 
 ### Installing in Geneious
+
 Copy `TaxTriage.gplugin` to the Geneious plugins directory:
+
 - **macOS:** `~/.geneious/plugins/`
 - **Windows:** `%USERPROFILE%\.geneious\plugins\`
 - **Linux:** `~/.geneious/plugins/`
@@ -56,6 +61,7 @@ Note that this has only been tested on macOS.
 ## Requirements
 
 ### System Requirements
+
 - Tested on Geneious Prime 2025.2.2
 - Docker Desktop installed and running
 - Minimum 8GB RAM (16GB+ recommended)
