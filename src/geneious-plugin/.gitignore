@@ -1,7 +1,7 @@
 # Build artifacts
 build/
 classes/
-*.gplugin
+build/*gplugin
 *.class
 *.jar
 *.sh
