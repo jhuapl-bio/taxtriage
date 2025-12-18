@@ -5,6 +5,7 @@ file.gz
 scratch
 examples/Samplesheet_tongue_metaphlan.csv
 bin/taxdump
+community.ipynb
 null
 test/*
 nf-core/*
