@@ -140,9 +140,16 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "-t",
-        "--assembly_refseq_file",
+        "--assembly_metadata",
         type=Path,
+        nargs="+",
         help="Assembly refseq to pull taxids or names from instead of pulling straight from a set of IDs. Map the taxid to accession",
+    )
+    parser.add_argument(
+        '--taxids',
+        action='store_true',
+        default=False,
+        help='Add taxids as a 5th column to the output gcfmapping file',
     )
     parser.add_argument(
         "-e",
@@ -195,123 +202,164 @@ def import_genome_file(filename, kraken2output):
     return refs
 
 #
-def import_assembly_file(input, filename, matchcol, idx, nameidx, index_ftp, missingfile = None, skip_incomplete = False):
-    assemblies  = dict()
-    first = dict()
 
-    # matchcol is the column is number of column where you match the top hits to
-    # idx is the column number where you get the ftp path from
-    # nameidx is the column where the name to the fasta file is to be
-    if (not isinstance(input, list)):
+def import_assembly_file(
+    input,
+    filename,
+    matchcol,
+    idx,
+    nameidx,
+    index_ftp,
+    missingfile=None,
+    skip_incomplete=False,
+):
+    assemblies = {}
+    first = {}
+
+    # Normalize input -> list
+    if not isinstance(input, list):
         input = input.split(" ")
+
+    # Normalize filename -> list (ordered)
+    if isinstance(filename, str):
+        filenames = [filename]
+    else:
+        filenames = list(filename)
+
     matchcol = str(matchcol)
     assembly_cols = [int(x) for x in matchcol.split(",")]
-    def get_url(utl, id):
-        bb = os.path.basename(utl)
-        return utl+"/"+bb+"_genomic.fna.gz"
-    priorities = dict()
-    seencols = dict()
-    with open(filename, "r") as f:
-        line = f.readline()
-        next(f)
 
-        for line in f:
-            line = line.strip()
-            linesplit = line.split("\t")
-            gcfidx = linesplit[idx]
-            matchidces = [linesplit[x] for x in assembly_cols]
-            # get values of linepslit for indexes in assembly_cols
-            # namecol = linesplit[nameidx]
-            namecol = linesplit[nameidx]
-            urlcol = linesplit[index_ftp]
-            formatted_header = namecol.replace(" ", "_")
-            formatted_header = str(formatted_header)
-            match_index = -1
-            for match in matchidces:
-                if match in input:
-                    # If a match is found, get the index from 'input_list'
-                    match_index = input.index(match)
-                    break  # Stop searching after the first match is found
-            if len(linesplit) >= 12 and ( match_index > -1):
-                # get the value for which x in matchidcs is in input array
+    def get_url(utl, id_):
+        bb = os.path.basename(utl)
+        return utl + "/" + bb + "_genomic.fna.gz"
+
+    # priorities[matchval][prio] = (file_index, obj)
+    priorities = {}
+    seencols = set()
+
+    def maybe_set(priorities_dict, matchval, prio_key, file_i, obj):
+        """
+        Keep the earliest-file entry for a given (matchval, prio_key).
+        """
+        cur = priorities_dict[matchval].get(prio_key)
+        if cur is None or file_i < cur[0]:
+            priorities_dict[matchval][prio_key] = (file_i, obj)
+
+    for file_i, fn in enumerate(filenames):
+        with open(fn, "r") as f:
+            # Preserve your header handling style (you had readline + next)
+            _ = f.readline()
+            try:
+                next(f)
+            except StopIteration:
+                continue
+
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                linesplit = line.split("\t")
+                # sanity: need indexes
+                if len(linesplit) <= max(idx, nameidx, index_ftp, 11, 4):
+                    continue
+
+                gcfidx = linesplit[idx]
+                matchidces = [linesplit[x] for x in assembly_cols if x < len(linesplit)]
+                namecol = linesplit[nameidx]
+                taxidcol = linesplit[5]
+                species_taxidcol = linesplit[6]
+                urlcol = linesplit[index_ftp]
+
+                formatted_header = str(namecol).replace(" ", "_")
+
+                # find first match in input order
+                match_index = -1
+                for match in matchidces:
+                    if match in input:
+                        match_index = input.index(match)
+                        break
+                if match_index < 0:
+                    continue
+
+                # optional filter
+                if skip_incomplete and linesplit[11] != "Complete Genome":
+                    continue
+
                 matchval = input[match_index]
+                seencols.add(matchval)
 
                 if matchval not in priorities:
-                    priorities[matchval] = dict()
-                seencols[matchval] = True
+                    priorities[matchval] = {}
+
                 obj = dict(
-                    id="{}|{}".format(
-                        gcfidx,
-                        formatted_header
-                    ),
-                    accession = gcfidx,
-                    characteristic = None,
-                    chrs = [],
-                    organism = namecol,
+                    id="{}|{}".format(gcfidx, formatted_header),
+                    accession=gcfidx,
+                    characteristic=None,
+                    chrs=[],
+                    organism=namecol,
                     reference=get_url(urlcol, gcfidx),
-                    name = formatted_header,
+                    name=formatted_header,
+                    taxidcol=taxidcol,
+                    species_taxidcol=species_taxidcol,
                 )
-                if linesplit[11] != "Complete Genome" and skip_incomplete:
-                    continue
-                #If the refseq_category column in the assembly.txt is reference genome
 
-                if linesplit[4] == "representative genome" and priorities[matchval].get('0') is None:
-                    obj['characteristic'] = "representative"
-                    priorities[matchval]['0'] = obj
-                elif linesplit[4] == "reference genome" and priorities[matchval].get('1') is None:
-                    obj['characteristic'] = "reference"
-                    priorities[matchval]['1'] = obj
-                elif linesplit[11] == "Complete Genome" and priorities[matchval].get('2') is None:
-                    obj['characteristic'] = "complete genome"
-                    priorities[matchval]['2'] = obj
-                #If there is no reference genome
+                # assign priority bucket
+                # NOTE: your numbering comments say 1-4 but your code uses '0','1','2','3'
+                # We'll keep your existing meaning:
+                # 0 = representative genome
+                # 1 = reference genome
+                # 2 = complete genome
+                # 3 = other
+
+                if linesplit[4] == "representative genome":
+                    obj["characteristic"] = "representative"
+                    maybe_set(priorities, matchval, "0", file_i, obj)
+
+                elif linesplit[4] == "reference genome":
+                    obj["characteristic"] = "reference"
+                    maybe_set(priorities, matchval, "1", file_i, obj)
+
+                elif linesplit[11] == "Complete Genome":
+                    obj["characteristic"] = "complete genome"
+                    maybe_set(priorities, matchval, "2", file_i, obj)
+
                 else:
-                    #If this is the first time the taxa without reference genome is seen
+                    # preserve your "first time seen" behavior
                     if formatted_header not in first:
-                        #Save reference to dict
-                        obj['characteristic'] = "other"
-                        if priorities[matchval].get('3') is None:
-                            priorities[matchval]['3'] = obj
-            #If no complete genome found, pass
-            else:
-                pass
-    # figure out which inputs are missing from seencols
+                        first[formatted_header] = True
+                        obj["characteristic"] = "other"
+                        maybe_set(priorities, matchval, "3", file_i, obj)
 
-
-    # iterate through priorities, if 0 then set refs to the 0 value, if not 0 then 1 and so on until 3 or not found at all
-
-    for key, value in priorities.items():
-        if value.get('0'):
-            assemblies[key] = value['0']
-        elif value.get('1'):
-            assemblies[key] = value['1']
-        elif value.get('2'):
-            assemblies[key] = value['2']
-        elif value.get('3'):
-            assemblies[key] = value['3']
+    # pick best per matchval: lowest prio, then earliest file index
+    for matchval, prmap in priorities.items():
+        for prio in ("0", "1", "2", "3"):
+            if prmap.get(prio):
+                assemblies[matchval] = prmap[prio][1]  # obj
+                break
         else:
-            print("No reference genome found for", key)
-    assembliesformat = dict()
-    for key, item in assemblies.items():
+            print("No reference genome found for", matchval)
 
-        assembliesformat[item['organism']] = dict(
-            accession=item['accession'],
-            id=item['id'],
-            name=item['name'],
-            reference=item['reference'],
-            chrs=item['chrs'],
+    # format as you did: keyed by organism
+    assembliesformat = {}
+    for _, item in assemblies.items():
+        assembliesformat[item["organism"]] = dict(
+            accession=item["accession"],
+            id=item["id"],
+            name=item["name"],
+            reference=item["reference"],
+            chrs=item["chrs"],
+            taxid=item["taxidcol"],   # taxid
+            species_taxid=item["species_taxidcol"],   # species taxid
         )
-    missing = list(set(input) - set(seencols.keys()))
-    if len(missing) > 0:
-        # get dirname of input file and write missing to a file
-        print("Missing", missing, )
-        # print out missing inputs to a file
+    missing = list(set(input) - set(seencols))
+    if missing:
+        print("Missing", missing)
         if missingfile:
             with open(os.path.join(missingfile), "w") as w:
-                matchname = ""
                 for m in missing:
                     w.write(f"{m}\n")
-            w.close()
+
     return assembliesformat
 
 
@@ -352,7 +400,6 @@ def get_assemblies(assemblies, outfile, GCFs_to_skip, refresh):
     accessions = [x for x in accessions if x not in GCFs_to_skip]
     caught_ncs = [ ]
     new_mapping = dict()
-    seen = dict()
     typee = "a"
     if refresh:
         typee = "w"
@@ -523,7 +570,7 @@ def main(argv=None):
         seen_in_tops = args.input
 
     assemblies = import_assembly_file(
-        seen_in_tops, args.assembly_refseq_file, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile, args.skip_incomplete
+        seen_in_tops, args.assembly_metadata, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile, args.skip_incomplete
     )
 
 
@@ -579,10 +626,16 @@ def main(argv=None):
         )
         if args.gcf_map:
             with open(args.gcf_map, "w") as w:
-                for key, value in assemblies.items():
-                    for chr in value['chrs']:
-                        outstring = f"{chr['acc']}\t{value['accession']}\t{key}\t{chr['name']}"
-                        w.write(f"{outstring}\n")
+                for organism_key, value in assemblies.items():
+                    # organism_key is the dict key you used (organism name)
+                    for chr in value["chrs"]:
+                        if args.taxids:
+                            taxid = value.get("taxid", "")
+                            species_taxid = value.get("species_taxid", "")
+                            outstring = f"{chr['acc']}\t{value['accession']}\t{organism_key}\t{chr['name']}\t{taxid}\t{species_taxid}"
+                        else:
+                            outstring = f"{chr['acc']}\t{value['accession']}\t{organism_key}\t{chr['name']}"
+                        w.write(outstring + "\n")
             w.close()
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ def parse_args(argv=None):
         "--ref_file",
         metavar="REF_FILE",
         type=Path,
+        nargs='+',
         required=True,
         help="Reference file with GCF accession and taxid",
     )
@@ -81,7 +82,7 @@ def main(argv=None):
     args = parse_args(argv)
 
     input_df = read_input_file(args.file_in)
-    ref_df = read_reference_file(args.ref_file)
+    ref_df = pd.concat([read_reference_file(f) for f in args.ref_file], ignore_index=True)
 
     mapped_df = map_gcf_to_taxid(input_df, ref_df, args.column)
     # Write the output to the specified file
