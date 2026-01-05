@@ -1,5 +1,5 @@
 [![DOI](https://img.shields.io/badge/doi-10.1101/2025.07.16.664785-blue)](https://doi.org/10.1101/2025.07.16.664785)
-
+[![Zenodo](https://img.shields.io/badge/doi-10.5281/zenodo.17081353-red)](https://doi.org/10.5281/zenodo.17081353)
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 [![Tutorial: install & run with docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![Tutorial: install & with singularityCE v4+](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
