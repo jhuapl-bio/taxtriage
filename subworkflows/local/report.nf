@@ -71,7 +71,7 @@ workflow REPORT {
             )
             ch_report_microbert = MICROBERT_PARSE.out.report
         } else {
-            ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILE") ] }
+            ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILEmicrobert") ] }
         }
         alignments = alignments.join(ch_report_microbert)
 
