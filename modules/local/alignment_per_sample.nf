@@ -68,7 +68,7 @@ process ALIGNMENT_PER_SAMPLE {
     def sensitive = params.sensitive ? " --sensitive " : " "
     def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
-    def mbert_report = microbert_report.name != "NO_FILE" ? " --microbert ${microbert_report} " : " "
+    def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
     """
 
     match_paths.py \\
