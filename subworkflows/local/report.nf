@@ -71,7 +71,7 @@ workflow REPORT {
             )
             ch_report_microbert = MICROBERT_PARSE.out.report
         } else {
-            ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILE") ] }
+            ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILEmicrobert") ] }
         }
         alignments = alignments.join(ch_report_microbert)
 
@@ -81,6 +81,7 @@ workflow REPORT {
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
+            alignments.view()
             ALIGNMENT_PER_SAMPLE(
                 alignments.combine(pathogens_list),
                 assemblyfile,

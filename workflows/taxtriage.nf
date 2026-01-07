@@ -704,26 +704,6 @@ workflow TAXTRIAGE {
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
-
-        // if (!params.skip_confidence) {
-        //     METRIC_ALIGNMENT(
-        //         ch_combined
-        //     )
-
-        //     METRIC_MERGE(
-        //         METRIC_ALIGNMENT.out.tsv
-        //     )
-        //     CONVERT_METRICS(
-        //         METRIC_MERGE.out.metrics
-        //     )
-
-        //     MERGE_ALIGNMENT_MERGES(
-        //         CONVERT_METRICS.out.tsv.map {  file ->  file }.collect()
-        //     )
-
-        //     ch_mergedtsv = MERGE_ALIGNMENT_MERGES.out.metrics_report
-        //     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
-        // }
     }
     ch_collated_versions = ch_versions.unique().collectFile(name: 'all_mqc_versions.yml')
     ch_multiqc_files = ch_multiqc_files.mix(ch_collated_versions)

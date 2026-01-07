@@ -26,6 +26,7 @@ include { BEDTOOLS_COVERAGE } from '../../modules/nf-core/bedtools/coverage/main
 include { FEATURES_MAP } from '../../modules/local/features_map'
 include { MAP_PROT_ASSEMBLY } from '../../modules/local/map_prot_assembly'
 include { FLYE } from '../../modules/nf-core/flye/main'
+include { PATHOGENICITY } from './pathogenicity'
 
 workflow ASSEMBLY {
     take:
@@ -87,7 +88,13 @@ workflow ASSEMBLY {
                     ch_bedout
                 )
             }
+            if (params.pathogenicity){
 
+                PATHOGENICITY(
+                    ch_assembled_files
+                )
+                // ch_versions = ch_versions.mix(PATHOGENICITY.out.versions)}
+            }
             try {
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []

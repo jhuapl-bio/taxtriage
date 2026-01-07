@@ -585,6 +585,11 @@
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "pathogenicity": {
+                    "type": "boolean",
+                    "description": "Align your assembly (denovo) to pathogen references for pathogenicity analysis. Returns a TSV set for both VFs and AMR hits",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "get_features": {
                     "type": "boolean",
                     "description": "Start generating annotations from alignments that take place. Requires LOTS of RAM for large data files/genomes",
