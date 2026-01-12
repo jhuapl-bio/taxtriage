@@ -20,16 +20,15 @@ process REMOVE_HOSTREADS {
     script:
     def args = task.ext.args ?: ''
     def paired = meta.paired ? "-1 ${input[0]} -2 ${input[1]}" : "-U ${input}"
-    def flag = !meta.single_end ? "-f 12" : "-f 4"
+    def flag = params.both_unmapped ? "-f 12 -F 0x900" : "-f 4 -F 0x900"
     def cmd = !meta.single_end ? \
-        " -1 ${meta.id}_1.hostremoved.fastq.gz -2 ${meta.id}_2.hostremoved.fastq.gz" : \
+        " -1 ${meta.id}_1.hostremoved.fastq.gz -2 ${meta.id}_2.hostremoved.fastq.gz -0 ${meta.id}.hostremoved.singletons.fastq.gz" : \
         meta.platform == "OXFORD" ? "-0 ${meta.id}.hostremoved.fastq.gz -s /dev/null" : \
         " -o ${meta.id}.hostremoved.fastq.gz -s /dev/null -0 /dev/null"
     """
     samtools view -b ${flag} ${input} | \\
-        samtools fastq \\
-        ${cmd} - \\
-        ${args} -n
+        samtools fastq -n ${args} \\
+        ${cmd} -
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
