@@ -58,7 +58,6 @@ workflow INPUT_CHECK {
     else {
         error "ERROR: Must specify either --input or --fastq_1"
     }
-
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
 }

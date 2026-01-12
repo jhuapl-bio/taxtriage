@@ -14,7 +14,7 @@ process GENERATE_SAMPLESHEET {
 
     script:
     def sampleName = meta.sampleName ?: 'sample'
-    def platform   = meta.platform   ?: 'ILLUMINA'
+    def platform   = meta.platform ?: 'ILLUMINA'
     def fastq_1    = meta.fastq_1
     def fastq_2    = meta.fastq_2    ?: ''
     def seq_sum    = meta.seq_summary ?: ''
