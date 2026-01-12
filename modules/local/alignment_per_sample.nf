@@ -31,6 +31,9 @@ process ALIGNMENT_PER_SAMPLE {
     output:
         path "versions.yml"           , emit: versions
         tuple val(meta), path("*.txt")    , optional:false, emit: txt
+        tuple val(meta), path("accession_similarity_matrix.csv"), optional: true, emit: sim_matrix
+        tuple val(meta), path("shared_windows_report.csv"), optional: true, emit: shared_windows
+
 
     when:
     task.ext.when == null || task.ext.when
