@@ -303,6 +303,130 @@ def parse_split(region_name):
     end = int(coords[1])
     return (refname, start, end)
 
+def build_reference_window_index(
+    fasta_files,
+    *,
+    ksize=31,
+    scaled=200,
+    window=10_000,
+    step=1_000,
+    max_n_frac=0.05,
+):
+    """
+    Returns:
+      ref_sigs: dict[window_id] = signature
+      sbt_by_contig: dict[contig] = SBT containing ONLY windows from that contig
+    """
+    ref_sigs = {}
+    sigs_by_contig = defaultdict(dict)
+
+    for fp in fasta_files:
+        label = os.path.basename(fp)
+        sigs = window_sigs_from_fasta(
+            fp,
+            fasta_label=label,
+            ksize=ksize,
+            scaled=scaled,
+            window=window,
+            step=step,
+            max_n_frac=max_n_frac,
+        )
+        ref_sigs.update(sigs)
+
+        # group by contig (chrom)
+        for wid, sig in sigs.items():
+            _, contig, _, _ = parse_window_id(wid)
+            sigs_by_contig[contig][wid] = sig
+
+    # build SBT per contig
+    sbt_by_contig = {}
+    for contig, contig_sigs in sigs_by_contig.items():
+        factory = GraphFactory(ksize=ksize, n_tables=1, starting_size=max(1, len(contig_sigs)))
+        sbt = SBT(factory)
+        for wid, sig in contig_sigs.items():
+            sbt.add_node(SigLeaf(wid, sig))
+        sbt_by_contig[contig] = sbt
+
+    return ref_sigs, sbt_by_contig
+
+def compare_bed_regions_to_reference_windows(
+    bed_siglist,                 # list[(region_name, sig)]
+    ref_sbt_by_contig,           # dict[contig] -> SBT
+    output_csv,
+    *,
+    min_threshold=0.10,
+    top_k_per_contig=1,          # keep only best hit per contig to avoid spam
+    max_total_hits=10,           # cap total hits per query region
+):
+    """
+    Writes CSV like your region_comparisons.csv BUT region2 is a reference window id.
+    Also returns sum_comparisons in your usual format:
+      sum_comparisons[r1].append({jaccard,to,s2,e2,s1,e1})
+    Where 'to' is the matched contig and s2/e2 are window coords.
+    """
+    sum_comparisons = defaultdict(list)
+
+    with open(output_csv, "w", newline="") as outfh:
+        w = csv.writer(outfh)
+        w.writerow([
+            "reference1","start1","end1",
+            "reference2","start2","end2",
+            "jaccard","containment_1_in_2","containment_2_in_1",
+            "match_window_id"
+        ])
+
+        for region1, sig1 in bed_siglist:
+            r1, s1, e1 = parse_split(region1)  # your existing parser (ref, start, end)
+            mh1 = sig1.minhash
+
+            all_hits = []
+
+            # search all contigs except the query contig
+            for contig, sbt in ref_sbt_by_contig.items():
+                if contig == r1:
+                    continue
+
+                # collect best hits for this contig
+                contig_hits = []
+                for sr in sbt.search(sig1, threshold=min_threshold, best_only=False):
+                    wid = sr.signature.name  # window_id
+                    _, m_contig, m_s, m_e = parse_window_id(wid)
+                    j = float(sr.score)
+                    mh2 = sr.signature.minhash
+                    c12 = mh1.avg_containment(mh2)
+                    c21 = mh2.avg_containment(mh1)
+                    contig_hits.append((j, m_contig, m_s, m_e, c12, c21, wid))
+
+                if contig_hits:
+                    contig_hits.sort(key=lambda x: x[0], reverse=True)
+                    all_hits.extend(contig_hits[:top_k_per_contig])
+
+            if not all_hits:
+                continue
+
+            all_hits.sort(key=lambda x: x[0], reverse=True)
+            all_hits = all_hits[:max_total_hits]
+
+            for (j, r2, s2, e2, c12, c21, wid) in all_hits:
+                w.writerow([r1, s1, e1, r2, s2, e2, j, c12, c21, wid])
+
+                # your downstream expects this shape
+                sum_comparisons[r1].append(dict(
+                    jaccard=j,
+                    to=r2,
+                    s1=s1, e1=e1,
+                    s2=s2, e2=e2
+                ))
+                # optional: make symmetric entry
+                sum_comparisons[r2].append(dict(
+                    jaccard=j,
+                    to=r1,
+                    s1=s2, e1=e2,
+                    s2=s1, e2=e1
+                ))
+
+    return sum_comparisons
+
 def build_sbt_index(siglist, ksize=31, sbt_name="my_sbt", clusters={}):
     """
     Build an SBT index in memory (or on disk).
@@ -568,6 +692,19 @@ def slow_mode_linear(siglist, output_csv, min_threshold=0.1, cluster_map=None):
     #                     f"\t\tto {entry['to']}:{entry['s2']}-{entry['e2']}"
     #                 )
     return sum_comparisons
+def filter_sum_comparisons_by_mat(sum_comparisons, mat, min_mat_sim=0.0):
+    if not mat or min_mat_sim <= 0:
+        return sum_comparisons
+
+    filtered = defaultdict(list)
+    for ref, conflicts in sum_comparisons.items():
+        for c in conflicts:
+            other = c["to"]
+            if mat_sim(mat, ref, other) >= min_mat_sim:
+                filtered[ref].append(c)
+    return filtered
+
+
 
 def create_filtered_bam(bam_in, output_bam_path, alignments_to_skip):
     """
@@ -1837,6 +1974,7 @@ def report_shared_windows_across_fastas(
     print("Done.")
 
 
+
 def build_similarity_matrix_from_shared_windows(
     report_csv: str,
     output_matrix_csv: str | None = None,
@@ -1904,6 +2042,285 @@ def build_similarity_matrix_from_shared_windows(
         mat.to_csv(output_matrix_csv)
 
     return mat
+import pandas as pd
+import numpy as np
+
+def build_support_weighted_matrix(
+    report_csv: str,
+    *,
+    accession_level: str = "contig",   # "contig" | "fasta_contig"
+    jaccard_col: str = "jaccard",
+    hit_threshold: float = 0.10,
+    min_hit_windows: int = 5,          # require at least this many windows supporting the pair
+    window_size: int = 2000,
+    step: int = 500,
+    output_csv: str | None = None,
+) -> pd.DataFrame:
+    """
+    Similarity(i,j) = fraction of i's windows that have >=1 hit to j with jaccard>=hit_threshold.
+    Then symmetrize by averaging i->j and j->i.
+    """
+    df = pd.read_csv(report_csv)
+    df[jaccard_col] = pd.to_numeric(df[jaccard_col], errors="coerce")
+    df = df.dropna(subset=[jaccard_col])
+
+    # nodes
+    if accession_level == "fasta_contig":
+        df["A"] = df["query_fasta"].astype(str) + "::" + df["query_contig"].astype(str)
+        df["B"] = df["match_fasta"].astype(str) + "::" + df["match_contig"].astype(str)
+    else:
+        df["A"] = df["query_contig"].astype(str)
+        df["B"] = df["match_contig"].astype(str)
+
+    # window id for query side (so we can count unique windows that matched)
+    df["A_win"] = df["A"] + ":" + df["q_start"].astype(str) + "-" + df["q_end"].astype(str)
+
+    # keep only sufficiently good hits
+    df = df[df[jaccard_col] >= hit_threshold].copy()
+    if df.empty:
+        raise ValueError("No hits left after applying hit_threshold.")
+
+    # Count how many unique query windows matched each (A,B)
+    win_hits = (
+        df.groupby(["A", "B"])["A_win"]
+          .nunique()
+          .reset_index(name="hit_windows")
+    )
+
+    # Estimate number of windows per accession A from observed max coordinate range in the report
+    # (better: compute from FASTA lengths; but this works for “matrix from report” only)
+    # Here we approximate n_windows_A as count of unique query windows appearing for A in the report.
+    nwin_A = (
+        df.groupby("A")["A_win"]
+          .nunique()
+          .to_dict()
+    )
+
+    win_hits["frac_A_to_B"] = win_hits.apply(
+        lambda r: r["hit_windows"] / max(1, nwin_A.get(r["A"], 1)),
+        axis=1
+    )
+
+    # Apply minimum support requirement (prevents “one perfect window”)
+    win_hits = win_hits[win_hits["hit_windows"] >= min_hit_windows].copy()
+
+    accs = sorted(set(win_hits["A"]).union(set(win_hits["B"])))
+    mat = pd.DataFrame(0.0, index=accs, columns=accs)
+
+    # Fill directed fractions
+    for _, r in win_hits.iterrows():
+        mat.at[r["A"], r["B"]] = max(mat.at[r["A"], r["B"]], float(r["frac_A_to_B"]))
+
+    # Symmetrize by averaging A->B and B->A
+    mat_sym = mat.copy()
+    for i in accs:
+        for j in accs:
+            if i == j:
+                mat_sym.at[i, j] = 1.0
+            else:
+                mat_sym.at[i, j] = 0.5 * (mat.at[i, j] + mat.at[j, i])
+
+    if output_csv:
+        mat_sym.to_csv(output_csv)
+
+    return mat_sym
+def mat_sim(mat: dict | None, ref1: str, ref2: str) -> float:
+    if not mat:
+        return 0.0
+    # mat could be dict-of-dict or pd.DataFrame.to_dict(); try both directions safely
+    if ref1 in mat and ref2 in mat[ref1]:
+        return float(mat[ref1][ref2])
+    if ref2 in mat and ref1 in mat[ref2]:
+        return float(mat[ref2][ref1])
+    return 0.0
+def infer_gt_from_readname(readname: str) -> str | None:
+    parts = readname.split("_")
+    if len(parts) < 3:
+        return None
+    return "_".join(parts[:-2])  # your existing convention
+
+def resolve_conflict_groups_gt_biased(
+    conflict_groups,
+    bam_fs,
+    reflengths,
+    mat: dict | None = None,
+    min_mat_sim: float = 0.0,
+    remove_mode: str = "all_wrong",  # or "random_wrong"
+    random_seed: int | None = None,
+):
+    """
+    For each conflict group (regions across refs), pull reads from those regions.
+    If GT exists, mark read as removable ONLY on refs != GT (and preferably only if mat says they’re similar).
+    Returns removed_read_ids: dict read_id -> [refs_to_remove_from]
+    """
+    if random_seed is not None:
+        random.seed(random_seed)
+
+    removed_read_ids = defaultdict(list)
+
+    for group in conflict_groups:
+        # group: {(ref,s,e), ...}
+        by_ref = defaultdict(list)
+        for (ref, s, e) in group:
+            by_ref[ref].append((s, e))
+
+        # Gather reads per ref from the group’s regions
+        reads_per_ref = {}
+        for ref, segs in by_ref.items():
+            uniq = {}
+            for (s, e) in segs:
+                for read in bam_fs.fetch(ref, s, e):
+                    if read.is_unmapped:
+                        continue
+                    if read.is_secondary or read.is_supplementary:
+                        continue
+                    uniq[read.query_name] = True
+            reads_per_ref[ref] = list(uniq.keys())
+
+        # For each ref, decide which reads to remove from that ref
+        refs = list(reads_per_ref.keys())
+        for ref in refs:
+            for rid in reads_per_ref[ref]:
+                gt = infer_gt_from_readname(rid)
+                if gt is None:
+                    continue  # no GT => skip here; you can add MAPQ/AS fallback later
+
+                # Only remove from the "wrong" ref, and only if ref is similar to gt (optional)
+                if gt != ref:
+                    if (not mat) or (mat_sim(mat, gt, ref) >= min_mat_sim):
+                        removed_read_ids[rid].append(ref)
+
+    return removed_read_ids
+def overlap_len(a0, a1, b0, b1) -> int:
+    return max(0, min(a1, b1) - max(a0, b0))
+
+def region_ambiguity_hits(
+    chrom: str,
+    start: int,
+    end: int,
+    shared_idx: dict[str, list[tuple[int,int,str,int,int,float]]],
+) -> list[dict]:
+    """
+    Returns a list of hits, each hit includes:
+      other_chrom, jaccard, overlap_bp, overlap_frac_of_region
+    """
+    hits = []
+    if chrom not in shared_idx:
+        return hits
+
+    region_len = max(1, end - start)
+
+    # shared_idx[chrom] sorted by window start; cheap scan.
+    # (If huge, swap to interval tree later.)
+    for (ws, we, other_chr, os, oe, j) in shared_idx[chrom]:
+        if we <= start:
+            continue
+        if ws >= end:
+            break
+        ol = overlap_len(start, end, ws, we)
+        if ol > 0:
+            hits.append({
+                "other_chrom": other_chr,
+                "jaccard": j,
+                "overlap_bp": ol,
+                "overlap_frac": ol / region_len,
+                "win_start": ws,
+                "win_end": we,
+                "other_start": os,
+                "other_end": oe,
+            })
+    return hits
+
+def ambiguity_score_from_hits(hits: list[dict]) -> float:
+    """
+    Turn overlap hits into a single [0..1+] score.
+    This version: sum(overlap_frac * jaccard), capped at 1.0.
+    """
+    if not hits:
+        return 0.0
+    s = sum(h["overlap_frac"] * h["jaccard"] for h in hits)
+    return min(1.0, float(s))
+
+def load_shared_windows_index(
+    report_csv: str,
+    *,
+    jaccard_threshold: float = 0.75,
+    require_diff_chrom: bool = True,
+) -> dict[str, list[tuple[int,int,str,int,int,float]]]:
+    """
+    Returns:
+      idx[chrom] = [(s,e, other_chrom, os, oe, jaccard), ...]
+    Includes BOTH directions (query->match and match->query) so overlap checks are easy.
+    """
+    df = pd.read_csv(report_csv)
+    df["jaccard"] = pd.to_numeric(df["jaccard"], errors="coerce")
+    df = df.dropna(subset=["jaccard"])
+    df = df[df["jaccard"] >= jaccard_threshold].copy()
+
+    idx = defaultdict(list)
+
+    for r in df.itertuples(index=False):
+        q_chr = str(r.query_contig);  qs = int(r.q_start);  qe = int(r.q_end)
+        m_chr = str(r.match_contig);  ms = int(r.m_start);  me = int(r.m_end)
+        j = float(r.jaccard)
+
+        if require_diff_chrom and (q_chr == m_chr):
+            continue
+
+        # add both directions
+        idx[q_chr].append((qs, qe, m_chr, ms, me, j))
+        idx[m_chr].append((ms, me, q_chr, qs, qe, j))
+
+    # optional: sort for faster overlap scanning
+    for chrom in idx:
+        idx[chrom].sort(key=lambda x: x[0])
+
+    return dict(idx)
+
+def annotate_regions_with_ambiguity(merged_regions_df, shared_idx):
+    merged = merged_regions_df.copy()
+    scores = []
+    partners = []
+    for r in merged.itertuples(index=False):
+        hits = region_ambiguity_hits(str(r.chrom), int(r.start), int(r.end), shared_idx)
+        scores.append(ambiguity_score_from_hits(hits))
+        partners.append(",".join(sorted(set(h["other_chrom"] for h in hits))) if hits else "")
+    merged["ambiguity_score"] = scores
+    merged["ambiguous_partners"] = partners
+    return merged
+
+
+def compute_remove_counts_from_ambiguity(
+    merged_regions_df,
+    reads_map,
+    *,
+    alpha: float = 1.0,           # 1.0 = remove up to N*A reads
+    min_remove: int = 0,
+    max_remove_frac: float = 0.95, # never remove >95% from a region
+):
+    """
+    Returns remove_counts: dict[(chrom,start,end)] -> remove_n
+    """
+    remove_counts = {}
+    for r in merged_regions_df.itertuples(index=False):
+        chrom = str(r.chrom); start = int(r.start); end = int(r.end)
+        A = float(getattr(r, "ambiguity_score", 0.0))
+        if A <= 0:
+            continue
+
+        region_reads = fetch_reads_in_region(reads_map, chrom, start, end)
+        N = len(region_reads)
+        if N == 0:
+            continue
+
+        remove_n = int(math.floor(N * A * alpha))
+        remove_n = max(min_remove, remove_n)
+        remove_n = min(remove_n, int(math.floor(N * max_remove_frac)))
+
+        if remove_n > 0:
+            remove_counts[(chrom, start, end)] = remove_n
+
+    return remove_counts
 
 def determine_conflicts(
         output_dir = None,
@@ -1926,11 +2343,33 @@ def determine_conflicts(
         cpu_count=None,
         jump_threshold=None,
         gap_allowance = 0.1,
+        shared_windows_report_csv = None,
+        compare_to_reference_windows = False
+
 ):
     os.makedirs(output_dir, exist_ok=True)
     import time
     print(f"Starting conflict region detection at {time.ctime()}")
     print(fasta_files)
+    # report_shared_windows_across_fastas(
+    #     fasta_files=fasta_files,
+    #     output_csv="shared_windows_report.csv",
+    #     ksize=21,
+    #     scaled=800,
+    #     window=10000,
+    #     step=1000,
+    #     jaccard_threshold=0.75,
+    #     max_hits_per_query=5,
+    #     skip_self_same_fasta=False,
+    # )
+    # mat = build_support_weighted_matrix(
+    #     "shared_windows_report.csv",
+    #     accession_level="contig",
+    #     hit_threshold=0.12,
+    #     min_hit_windows=105,
+    #     output_csv="support_weighted_matrix.csv"
+    # )
+
     if len(fasta_files) == 0:
         print("No fasta files provided, using sensitive mode")
     elif sensitive:
@@ -1965,6 +2404,7 @@ def determine_conflicts(
     print(f"Merging regions (using {stat_name} <= {threshold}, Gap: {gap_allowance})...")
     start_time = time.time()
 
+
     merged_regions = merge_bedgraph_regions(
         regions,
         max_stat_threshold=threshold,
@@ -1982,6 +2422,7 @@ def determine_conflicts(
     print(f"Length of merged regions: {len(merged_regions)}")
     start = time.time()
     gt_performances = dict()
+
 
     reads_map = defaultdict(list)
     if not sigfile or not os.path.exists(sigfile):
@@ -2041,39 +2482,72 @@ def determine_conflicts(
     signatures = list(signatures.items())
     start_stime = time.time()
     print(f"Total references with reads: {len(reads_map)}. Done in {time.time()-start_stime} seconds")
-
-
-    if FAST_MODE:
-        print("Building SBT index for fast mode...")
-        start_time = time.time()
-        sbt_index = build_sbt_index(
-            signatures,
-            ksize=51,
-            clusters=clusters,
+    compare_to_reference_windows = True
+    if compare_to_reference_windows:
+        # Build FASTA window index
+        _, ref_sbt_by_contig = build_reference_window_index(
+            fasta_files,
+            ksize=kmer_size,
+            scaled=scaled,
+            window=10_000,
+            step=1_000
         )
-        print(f"SBT index built in {time.time() - start_time:.2f} seconds.")
-        start_time = time.time()
-        print("Searching SBT...")
-        sum_comparisons = fast_mode_sbt(
-            signatures,
-            sbt_index,
+
+        sum_comparisons = compare_bed_regions_to_reference_windows(
+            signatures,                    # bed siglist (list of tuples already)
+            ref_sbt_by_contig,
             output_csv,
-            min_threshold,
-            clusters
+            min_threshold=min_threshold,    # reuse your threshold
+            top_k_per_contig=1,
+            max_total_hits=10
         )
-        print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
+        for k, v in sum_comparisons.items():
+            print(k)
+            for record in v:
+                print("\t",record)
+
+
     else:
-        print("Using linear pairwise comparison (slow mode)...")
-        start_time = time.time()
-        sum_comparisons = slow_mode_linear(
-            signatures,
-            output_csv,
-            min_threshold,
-            cluster_map=clusters
-        )
-        print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
-    print("Building Conflict Groups")
+        # existing behavior: bed regions vs bed regions
+        if FAST_MODE:
+            sbt_index = build_sbt_index(signatures, ksize=51, clusters=clusters)
+            sum_comparisons = fast_mode_sbt(signatures, sbt_index, output_csv, min_threshold, clusters)
+        else:
+            sum_comparisons = slow_mode_linear(signatures, output_csv, min_threshold, cluster_map=clusters)
 
+
+    # if FAST_MODE:
+    #     print("Building SBT index for fast mode...")
+    #     start_time = time.time()
+    #     sbt_index = build_sbt_index(
+    #         signatures,
+    #         ksize=51,
+    #         clusters=clusters,
+    #     )
+    #     print(f"SBT index built in {time.time() - start_time:.2f} seconds.")
+    #     start_time = time.time()
+    #     print("Searching SBT...")
+    #     sum_comparisons = fast_mode_sbt(
+    #         signatures,
+    #         sbt_index,
+    #         output_csv,
+    #         min_threshold,
+    #         clusters
+    #     )
+    #     print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
+    # else:
+    #     print("Using linear pairwise comparison (slow mode)...")
+    #     start_time = time.time()
+    #     sum_comparisons = slow_mode_linear(
+    #         signatures,
+    #         output_csv,
+    #         min_threshold,
+    #         cluster_map=clusters
+    #     )
+    #     print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
+    # print("Building Conflict Groups")
+    # print(signatures)
+    exit()
     # 1) Build conflict groups from sum_comparisons
     start_time = time.time()
     conflict_groups = build_conflict_groups(
@@ -2083,33 +2557,9 @@ def determine_conflicts(
     print(f"Conflict groups length: {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
     start_time = time.time()
 
-    report_shared_windows_across_fastas(
-        fasta_files=fasta_files,
-        output_csv="shared_windows_report.csv",
-        ksize=21,
-        scaled=8000,
-        window=2000,
-        step=1000,
-        jaccard_threshold=0.4,
-        max_hits_per_query=3,
-        skip_self_same_fasta=False,
-    )
-    mat = build_similarity_matrix_from_shared_windows(
-        report_csv="shared_windows_report.csv",
-        output_matrix_csv="accession_similarity_matrix.csv",
-        accession_level="contig",   # or "fasta_contig"
-        score_col="jaccard",
-        agg="max"
-    )
 
 
-    # 2) For each group, remove 1 read from each region
-    removed_read_ids = finalize_proportional_removal(
-        conflict_groups,
-        bam_fs,
-        fetch_reads_in_region,
-        remove_mode='random'
-    )
+    exit()
     start_time = time.time()
     comparison_df = None
     includable_read_ids = dict()
