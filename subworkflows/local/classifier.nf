@@ -36,8 +36,8 @@ include { KRONA_KTIMPORTTEXT  } from '../../modules/nf-core/krona/ktimporttext/m
 include { KRAKENTOOLS_COMBINEKREPORTS   } from '../../modules/nf-core/krakentools/combinekreports/main'
 include { MERGEDSUBSPECIES } from '../../modules/local/merged_subspecies'
 
-//include { CENTRIFUGE_CENTRIFUGE } from '../../modules/nf-core/centrifuge/centrifuge/main'
-//include { CENTRIFUGE_KREPORT } from '../../modules/nf-core/centrifuge/kreport/main'
+include { CENTRIFUGE_CENTRIFUGE } from '../../modules/nf-core/centrifuge/centrifuge/main'
+include { CENTRIFUGE_KREPORT } from '../../modules/nf-core/centrifuge/kreport/main'
 
 workflow CLASSIFIER {
     take:
@@ -55,7 +55,80 @@ workflow CLASSIFIER {
         ch_tops = Channel.empty()
         ch_krona_plot = Channel.empty()
         ch_empty_file = file("$projectDir/assets/NO_FILE")
-        if (!params.skip_kraken2){
+        if (params.centrifuge){
+            println "Running Centrifuge for classification"
+            CENTRIFUGE_CENTRIFUGE(
+                ch_reads,
+                ch_db,
+                ch_save_fastq_classified,
+                params.save_k2_read_assignment
+            )
+            ch_centrifuge_report = CENTRIFUGE_CENTRIFUGE.out.report
+
+            CENTRIFUGE_KREPORT(
+                ch_centrifuge_report,
+                ch_db
+            )
+            ch_kraken2_report = CENTRIFUGE_KREPORT.out.kreport
+            KREPORT_TO_KRONATXT(
+                ch_kraken2_report
+            )
+
+            ch_krona_txt = KREPORT_TO_KRONATXT.out.txt
+
+            ch_combined = ch_krona_txt
+                        .map{ it[1] }        // Get the file path
+                        .collect()            // Collect all file parts into a list
+                        .map { files ->
+                            // Join the files with single quotes and space
+                            // String joinedFiles = files.collect { "'$it'" }.join(' ')
+                            // if single file then make it [files] otherwise just files
+                            [[id:'combined_krona_kreports'], files instanceof List ? files : [files]]  // Combine with new ID
+                        }
+            KRONA_KTIMPORTTEXT(
+                ch_combined
+            )
+            ch_krona_plot = KRONA_KTIMPORTTEXT.out.html
+
+            TOP_HITS(
+                ch_kraken2_report.combine(distributions).combine(ch_pathogens)
+            )
+            ch_tops = TOP_HITS.out.tops
+            MERGEDSUBSPECIES(
+                ch_kraken2_report.map{
+                    meta, report -> report
+                }.collect(),
+                ch_pathogens
+            )
+
+            MERGEDKRAKENREPORT(
+                TOP_HITS.out.krakenreport.map { meta, file ->  file }.collect()
+            )
+            FILTERKRAKEN(
+                MERGEDKRAKENREPORT.out.krakenreport
+            )
+
+            if (ch_save_fastq_classified){
+                ch_reads = KRAKEN2_KRAKEN2.out.classified_reads_fastq.map { m, r-> [m, r.findAll { it =~ /.*\.classified.*(fq|fastq)(\.gz)?/  }] }
+
+            }
+
+            if (params.fuzzy){
+                ch_organisms = TOP_HITS.out.names
+            } else {
+                ch_organisms = TOP_HITS.out.taxids
+            }
+            // mix ch_organisms_to_download with ch_organisms 2nd index list
+            ch_organisms_to_download = ch_organisms_to_download.join(
+                ch_organisms
+            ).map{
+                meta, report, organisms -> {
+                    report.add(organisms)
+                    return [meta, report]
+                }
+            }
+        }
+        else if (!params.skip_kraken2){
             // // // // // //
             // // // // // // MODULE: Run Kraken2
             // // // // // //
