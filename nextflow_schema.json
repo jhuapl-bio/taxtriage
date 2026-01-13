@@ -35,11 +35,10 @@
                     "format": "directory-path",
                     "description": "Path to database for Metaphlan"
                 },
-                "centrifuge_db": {
-                    "type": "string",
+                "centrifuge": {
+                    "type": "boolean",
                     "fa_icon": "fas fa-book",
-                    "format": "directory-path",
-                    "description": "Path to database for Centrifuge"
+                    "description": "Enable centrifuge classifier instead of kraken2. Set db with --db as always"
                 },
                 "outdir": {
                     "type": "string",
