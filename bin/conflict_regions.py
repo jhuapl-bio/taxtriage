@@ -16,6 +16,7 @@ from functools import partial
 import pandas as pd
 import pysam
 from tqdm import tqdm
+import bisect
 import time
 
 
@@ -2241,41 +2242,171 @@ def ambiguity_score_from_hits(hits: list[dict]) -> float:
     s = sum(h["overlap_frac"] * h["jaccard"] for h in hits)
     return min(1.0, float(s))
 
-def load_shared_windows_index(
-    report_csv: str,
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class SharedWindow:
+    # window on "this" contig
+    contig: str
+    start: int
+    end: int
+    # corresponding window on the alternative contig
+    alt_contig: str
+    alt_start: int
+    alt_end: int
+    jaccard: float
+
+
+def load_shared_windows_csv(
+    csv_path: str,
     *,
-    jaccard_threshold: float = 0.75,
-    require_diff_chrom: bool = True,
-) -> dict[str, list[tuple[int,int,str,int,int,float]]]:
+    min_jaccard: float = 1.0,
+    skip_same_contig: bool = True
+) -> Dict[str, List[SharedWindow]]:
     """
+    Load shared window pairs and index them by contig.
+
     Returns:
-      idx[chrom] = [(s,e, other_chrom, os, oe, jaccard), ...]
-    Includes BOTH directions (query->match and match->query) so overlap checks are easy.
+      index[contig] = list of SharedWindow objects sorted by start
+    Includes BOTH directions:
+      query->match and match->query
     """
-    df = pd.read_csv(report_csv)
-    df["jaccard"] = pd.to_numeric(df["jaccard"], errors="coerce")
-    df = df.dropna(subset=["jaccard"])
-    df = df[df["jaccard"] >= jaccard_threshold].copy()
+    idx: Dict[str, List[SharedWindow]] = {}
 
-    idx = defaultdict(list)
+    with open(csv_path, newline="") as fp:
+        r = csv.DictReader(fp)
+        required = {"query_contig", "q_start", "q_end", "match_contig", "m_start", "m_end", "jaccard"}
+        missing = required - set(r.fieldnames or [])
+        if missing:
+            raise ValueError(f"CSV missing required columns: {missing}")
 
-    for r in df.itertuples(index=False):
-        q_chr = str(r.query_contig);  qs = int(r.q_start);  qe = int(r.q_end)
-        m_chr = str(r.match_contig);  ms = int(r.m_start);  me = int(r.m_end)
-        j = float(r.jaccard)
+        for row in r:
+            try:
+                j = float(row["jaccard"])
+            except Exception:
+                continue
+            if j < min_jaccard:
+                continue
 
-        if require_diff_chrom and (q_chr == m_chr):
+            qc = row["query_contig"]
+            mc = row["match_contig"]
+            if skip_same_contig and qc == mc:
+                continue
+
+            qs, qe = int(row["q_start"]), int(row["q_end"])
+            ms, me = int(row["m_start"]), int(row["m_end"])
+
+            # store forward
+            idx.setdefault(qc, []).append(SharedWindow(qc, qs, qe, mc, ms, me, j))
+            # store reverse too (so we can query by either contig)
+            idx.setdefault(mc, []).append(SharedWindow(mc, ms, me, qc, qs, qe, j))
+
+    # sort each contig list by start for interval querying
+    for contig in idx:
+        idx[contig].sort(key=lambda w: (w.start, w.end, w.alt_contig))
+    return idx
+
+
+def _windows_overlapping(
+    windows_sorted: List[SharedWindow],
+    pos_start: int,
+    pos_end: int
+) -> List[SharedWindow]:
+    """
+    Return windows that overlap [pos_start, pos_end) on a contig.
+    windows_sorted must be sorted by start.
+    """
+    if not windows_sorted:
+        return []
+
+    starts = [w.start for w in windows_sorted]
+    # Candidate windows start before pos_end
+    i = bisect.bisect_left(starts, pos_end)
+
+    hits = []
+    # scan backwards a bit (typical window sizes make this cheap)
+    # stop when window.end <= pos_start and since we're scanning backward by start, it will only get worse
+    for w in reversed(windows_sorted[:i]):
+        if w.end <= pos_start:
+            break
+        if w.start < pos_end and w.end > pos_start:
+            hits.append(w)
+    return hits
+
+
+def mark_reads_in_shared_regions(
+    bam_path: str,
+    shared_idx: Dict[str, List[SharedWindow]],
+    *,
+    only_primary: bool = True,
+) -> List[dict]:
+    """
+    Scan BAM alignments. If an alignment overlaps any SharedWindow on its contig,
+    emit a record with read_id and alternative contig info.
+
+    Returns: list of dicts with:
+      read_id, aligned_contig, aln_start, aln_end,
+      shared_contig, shared_start, shared_end,
+      alt_contig, alt_start, alt_end, jaccard
+    """
+    out: List[dict] = []
+    bam = pysam.AlignmentFile(bam_path, "rb")
+
+    for read in bam:
+        if read.is_unmapped:
+            continue
+        if only_primary and (read.is_secondary or read.is_supplementary):
+            continue
+        if read.reference_name is None or read.reference_start is None or read.reference_end is None:
             continue
 
-        # add both directions
-        idx[q_chr].append((qs, qe, m_chr, ms, me, j))
-        idx[m_chr].append((ms, me, q_chr, qs, qe, j))
+        contig = read.reference_name
+        if contig not in shared_idx:
+            continue
 
-    # optional: sort for faster overlap scanning
-    for chrom in idx:
-        idx[chrom].sort(key=lambda x: x[0])
+        aln_s = int(read.reference_start)
+        aln_e = int(read.reference_end)
 
-    return dict(idx)
+        overlaps = _windows_overlapping(shared_idx[contig], aln_s, aln_e)
+        if not overlaps:
+            continue
+
+        for w in overlaps:
+            out.append({
+                "read_id": read.query_name,
+                "aligned_contig": contig,
+                "aln_start": aln_s,
+                "aln_end": aln_e,
+                "shared_contig": w.contig,
+                "shared_start": w.start,
+                "shared_end": w.end,
+                "alt_contig": w.alt_contig,
+                "alt_start": w.alt_start,
+                "alt_end": w.alt_end,
+                "jaccard": w.jaccard,
+            })
+
+    bam.close()
+    return out
+
+
+def write_marked_reads_tsv(marked: List[dict], out_tsv: str) -> None:
+    if not marked:
+        # still write header
+        header = [
+            "read_id","aligned_contig","aln_start","aln_end",
+            "shared_contig","shared_start","shared_end",
+            "alt_contig","alt_start","alt_end","jaccard"
+        ]
+        with open(out_tsv, "w", newline="") as fp:
+            fp.write("\t".join(header) + "\n")
+        return
+
+    header = list(marked[0].keys())
+    with open(out_tsv, "w", newline="") as fp:
+        fp.write("\t".join(header) + "\n")
+        for row in marked:
+            fp.write("\t".join(str(row[h]) for h in header) + "\n")
 
 def annotate_regions_with_ambiguity(merged_regions_df, shared_idx):
     merged = merged_regions_df.copy()
@@ -2321,6 +2452,246 @@ def compute_remove_counts_from_ambiguity(
             remove_counts[(chrom, start, end)] = remove_n
 
     return remove_counts
+
+def load_ambiguous_windows(report_csv: str, jaccard_min: float = 0.75):
+    df = pd.read_csv(report_csv)
+
+    # force numeric
+    df["jaccard"] = pd.to_numeric(df["jaccard"], errors="coerce")
+    df = df.dropna(subset=["jaccard"])
+    df = df[df["jaccard"] >= jaccard_min].copy()
+
+    ambig = defaultdict(list)
+
+    # Store BOTH directions so lookup works no matter which chrom is the region chrom
+    for r in df.itertuples(index=False):
+        qchrom, qs, qe = str(r.query_contig), int(r.q_start), int(r.q_end)
+        mchrm, ms, me = str(r.match_contig), int(r.m_start), int(r.m_end)
+        j = float(r.jaccard)
+
+        ambig[qchrom].append((qs, qe, mchrm, ms, me, j))
+        ambig[mchrm].append((ms, me, qchrom, qs, qe, j))
+
+    # sort by start for each contig
+    for chrom in list(ambig.keys()):
+        ambig[chrom].sort(key=lambda x: x[0])
+
+    return ambig
+
+def overlaps(a_start, a_end, b_start, b_end):
+    return (a_end > b_start) and (a_start < b_end)
+
+def find_overlapping_ambig(ambig_list, start, end):
+    """
+    ambig_list is sorted by interval start:
+      [(s,e, pchr, ps, pe, j), ...]
+    Return subset that overlaps [start,end)
+    """
+    if not ambig_list:
+        return []
+
+    starts = [x[0] for x in ambig_list]
+    # find candidate insertion point near region start
+    i = bisect_left(starts, start)
+    i = max(0, i - 1)
+
+    hits = []
+    for k in range(i, len(ambig_list)):
+        s, e, pchr, ps, pe, j = ambig_list[k]
+        if s >= end:
+            break
+        if overlaps(s, e, start, end):
+            hits.append((s, e, pchr, ps, pe, j))
+    return hits
+
+
+def flag_reads_in_ambiguous_ranges(
+    bam_path: str,
+    merged_regions_df: pd.DataFrame,   # columns: chrom,start,end
+    ambig_map: dict,                   # output of load_ambiguous_windows
+    *,
+    require_primary_only: bool = True,
+):
+    bam = pysam.AlignmentFile(bam_path, "rb")
+    flagged = defaultdict(list)
+
+    for row in merged_regions_df.itertuples(index=False):
+        chrom = str(row.chrom)
+        start = int(row.start)
+        end   = int(row.end)
+
+        ambig_list = ambig_map.get(chrom)
+        if not ambig_list:
+            continue
+
+        hits = find_overlapping_ambig(ambig_list, start, end)
+        if not hits:
+            continue
+
+        for (as_, ae, pchr, ps, pe, j) in hits:
+            # intersection sub-range on this chrom
+            ovl_s = max(start, as_)
+            ovl_e = min(end, ae)
+            if ovl_s >= ovl_e:
+                continue
+
+            for read in bam.fetch(chrom, ovl_s, ovl_e):
+                if read.is_unmapped:
+                    continue
+                if require_primary_only and (read.is_secondary or read.is_supplementary):
+                    continue
+
+                flagged[read.query_name].append({
+                    "on_chrom": chrom,
+                    "read_ref_start": read.reference_start,
+                    "read_ref_end": read.reference_end,
+                    "ambig_span_start": ovl_s,
+                    "ambig_span_end": ovl_e,
+                    "partner_chrom": pchr,
+                    "partner_span_start": ps,
+                    "partner_span_end": pe,
+                    "jaccard": j,
+                })
+
+    bam.close()
+    return flagged
+from bisect import bisect_left
+def alignment_alt_contigs(shared_idx, contig: str, aln_s: int, aln_e: int):
+    """
+    Returns (alt_set, overlap_bp_sum) for this alignment on contig.
+    alt_set: set of alternative contigs that share any window overlap with [aln_s, aln_e)
+    overlap_bp_sum: total overlapped bp across windows (double-counting possible if windows overlap)
+    """
+    if contig not in shared_idx:
+        return set(), 0
+
+    overlaps = _windows_overlapping(shared_idx[contig], aln_s, aln_e)
+    if not overlaps:
+        return set(), 0
+
+    alt_set = set()
+    overlap_bp_sum = 0
+    for w in overlaps:
+        # overlap on the contig coordinates
+        ovl_s = max(aln_s, w.start)
+        ovl_e = min(aln_e, w.end)
+        if ovl_s < ovl_e:
+            alt_set.add(w.alt_contig)
+            overlap_bp_sum += (ovl_e - ovl_s)
+
+    # Don't count self as alternative even if CSV had it
+    alt_set.discard(contig)
+    return alt_set, overlap_bp_sum
+from collections import defaultdict
+
+def build_removed_ids_best_alignment(
+    bam_path: str,
+    shared_idx: Dict[str, List[SharedWindow]],
+    *,
+    penalize_weight: float = 50.0,    # how harsh ambiguity is (MAPQ scale ~0-60)
+    as_weight: float = 0.0,           # set >0 if AS is present and useful
+    drop_contigs: set[str] | None = None,   # contigs you *know* are wrong
+    drop_if_ambiguous: bool = True,         # for drop_contigs: drop if ambiguous
+    min_alt_count: int = 1,                 # ambiguous if >= this many alt contigs
+    only_primary: bool = False,             # set True if you truly only want primary
+) -> Dict[str, List[str]]:
+    """
+    Returns removed_read_ids[read_id] = [refs_to_remove_from]
+
+    Logic:
+      - For each read, score each alignment.
+      - Keep best scoring alignment(s).
+      - Mark all others for removal.
+      - Additionally, if drop_contigs is provided, and alignment is on those contigs AND ambiguous,
+        mark for removal regardless of score (aggressive targeting).
+    """
+    if drop_contigs is None:
+        drop_contigs = set()
+
+    # Collect alignments per read
+    per_read = defaultdict(list)
+    bam = pysam.AlignmentFile(bam_path, "rb")
+
+    for r in bam:
+        if r.is_unmapped:
+            continue
+        if only_primary and (r.is_secondary or r.is_supplementary):
+            continue
+        if r.reference_name is None or r.reference_start is None or r.reference_end is None:
+            continue
+
+        contig = r.reference_name
+        s = int(r.reference_start)
+        e = int(r.reference_end)
+
+        alt_set, _ovl_bp = alignment_alt_contigs(shared_idx, contig, s, e)
+        alt_n = len(alt_set)
+
+        # Pull AS if present
+        AS = 0
+        try:
+            AS = int(r.get_tag("AS"))
+        except Exception:
+            AS = 0
+
+        mapq = int(r.mapping_quality)
+
+        # higher is better
+        score = mapq + as_weight * AS - penalize_weight * alt_n
+
+        per_read[r.query_name].append({
+            "contig": contig,
+            "score": score,
+            "mapq": mapq,
+            "AS": AS,
+            "alt_n": alt_n,
+            "is_secondary": bool(r.is_secondary or r.is_supplementary),
+        })
+
+    bam.close()
+
+    removed = defaultdict(list)
+
+    # Decide best alignment(s) per read
+    for rid, alns in per_read.items():
+        if not alns:
+            continue
+
+        best = max(a["score"] for a in alns)
+
+        # Keep everything tied for best (rare, but possible)
+        keep_contigs = {a["contig"] for a in alns if a["score"] == best}
+
+        for a in alns:
+            c = a["contig"]
+            ambiguous = (a["alt_n"] >= min_alt_count)
+
+            # Aggressive rule: if this contig is known-wrong and ambiguous, drop it no matter what
+            if (c in drop_contigs) and drop_if_ambiguous and ambiguous:
+                removed[rid].append(c)
+                continue
+
+            # Otherwise keep only best contig(s)
+            if c not in keep_contigs:
+                removed[rid].append(c)
+
+    # de-dupe
+    removed = {rid: sorted(set(refs)) for rid, refs in removed.items() if refs}
+    return removed
+
+
+
+def build_read_to_refs(bam_path: str, include_secondary=True):
+    bam = pysam.AlignmentFile(bam_path, "rb")
+    read2refs = defaultdict(set)
+    for r in bam:
+        if r.is_unmapped:
+            continue
+        if (not include_secondary) and (r.is_secondary or r.is_supplementary):
+            continue
+        read2refs[r.query_name].add(r.reference_name)
+    bam.close()
+    return read2refs
 
 def determine_conflicts(
         output_dir = None,
@@ -2458,7 +2829,82 @@ def determine_conflicts(
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
 
+    compare_to_reference_windows = True
+    if compare_to_reference_windows:
+        # Build FASTA window index
 
+        # report_shared_windows_across_fastas(
+        #     fasta_files=fasta_files,
+        #     output_csv="shared_windows_report.csv",
+        #     ksize=31,
+        #     scaled=800,
+        #     window=2000,
+        #     step=2000,
+        #     jaccard_threshold=0.60,
+        #     max_hits_per_query=3,
+        #     skip_self_same_fasta=False,
+        # )
+        # import shared_windows_report.csv as a dictionary
+
+
+
+        print("Reference SBT by contig:")
+
+        shared_idx = load_shared_windows_csv(
+            "shared_windows_report.csv",
+            min_jaccard=0.8,          # or 0.99 if you want near-identical too
+            skip_same_contig=True
+        )
+
+        marked = mark_reads_in_shared_regions(
+            "Miseq_Run_A.shigella_ecoli.bam",
+            shared_idx,
+            only_primary=True
+        )
+
+        write_marked_reads_tsv(marked, "reads_in_shared_regions.tsv")
+        print("Flagged alignments:", len(marked))
+
+        # creeate merged_regions from shared_idx
+        merged_regions_list = []
+        seen=dict()
+        for chr, windows in shared_idx.items():
+            for w in windows:
+                key = (w.contig, w.start, w.end)
+                if key in seen:
+                    continue
+                seen[key]=True
+                merged_regions_list.append({
+                    "chrom": w.contig,
+                    "start": w.start,
+                    "end": w.end,
+                    "depth": 1
+                })
+                key_alt = (w.alt_contig, w.alt_start, w.alt_end)
+                if key_alt in seen:
+                    continue
+                seen[key_alt]=True
+                merged_regions_list.append({
+                    "chrom": w.alt_contig,
+                    "start": w.alt_start,
+                    "end": w.alt_end,
+                    "depth": 1
+                })
+
+
+        # convert to dataframe
+        merged_regions_df = pd.DataFrame(merged_regions_list)
+
+        signatures_df = create_signatures_for_regions(
+            regions_df=merged_regions_df,
+            bam_path = input_bam,
+            fasta_paths = fasta_files,
+            kmer_size=kmer_size,
+            scaled=scaled,
+            num_workers=num_workers
+        )
+        # merge the two signature dicts
+        signatures.update(signatures_df)
 
     if matrix:
         dist_dict = import_matrix_ani(matrix)
@@ -2482,72 +2928,37 @@ def determine_conflicts(
     signatures = list(signatures.items())
     start_stime = time.time()
     print(f"Total references with reads: {len(reads_map)}. Done in {time.time()-start_stime} seconds")
-    compare_to_reference_windows = True
-    if compare_to_reference_windows:
-        # Build FASTA window index
-        _, ref_sbt_by_contig = build_reference_window_index(
-            fasta_files,
-            ksize=kmer_size,
-            scaled=scaled,
-            window=10_000,
-            step=1_000
-        )
 
-        sum_comparisons = compare_bed_regions_to_reference_windows(
-            signatures,                    # bed siglist (list of tuples already)
-            ref_sbt_by_contig,
+    if FAST_MODE:
+        print("Building SBT index for fast mode...")
+        start_time = time.time()
+        sbt_index = build_sbt_index(
+            signatures,
+            ksize=51,
+            clusters=clusters,
+        )
+        print(f"SBT index built in {time.time() - start_time:.2f} seconds.")
+        start_time = time.time()
+        print("Searching SBT...")
+        sum_comparisons = fast_mode_sbt(
+            signatures,
+            sbt_index,
             output_csv,
-            min_threshold=min_threshold,    # reuse your threshold
-            top_k_per_contig=1,
-            max_total_hits=10
+            min_threshold,
+            clusters
         )
-        for k, v in sum_comparisons.items():
-            print(k)
-            for record in v:
-                print("\t",record)
-
-
+        print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
     else:
-        # existing behavior: bed regions vs bed regions
-        if FAST_MODE:
-            sbt_index = build_sbt_index(signatures, ksize=51, clusters=clusters)
-            sum_comparisons = fast_mode_sbt(signatures, sbt_index, output_csv, min_threshold, clusters)
-        else:
-            sum_comparisons = slow_mode_linear(signatures, output_csv, min_threshold, cluster_map=clusters)
-
-
-    # if FAST_MODE:
-    #     print("Building SBT index for fast mode...")
-    #     start_time = time.time()
-    #     sbt_index = build_sbt_index(
-    #         signatures,
-    #         ksize=51,
-    #         clusters=clusters,
-    #     )
-    #     print(f"SBT index built in {time.time() - start_time:.2f} seconds.")
-    #     start_time = time.time()
-    #     print("Searching SBT...")
-    #     sum_comparisons = fast_mode_sbt(
-    #         signatures,
-    #         sbt_index,
-    #         output_csv,
-    #         min_threshold,
-    #         clusters
-    #     )
-    #     print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
-    # else:
-    #     print("Using linear pairwise comparison (slow mode)...")
-    #     start_time = time.time()
-    #     sum_comparisons = slow_mode_linear(
-    #         signatures,
-    #         output_csv,
-    #         min_threshold,
-    #         cluster_map=clusters
-    #     )
-    #     print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
-    # print("Building Conflict Groups")
-    # print(signatures)
-    exit()
+        print("Using linear pairwise comparison (slow mode)...")
+        start_time = time.time()
+        sum_comparisons = slow_mode_linear(
+            signatures,
+            output_csv,
+            min_threshold,
+            cluster_map=clusters
+        )
+        print(f"Comparisons done in {time.time() - start_time:.2f} seconds.")
+    print("Building Conflict Groups")
     # 1) Build conflict groups from sum_comparisons
     start_time = time.time()
     conflict_groups = build_conflict_groups(
@@ -2556,15 +2967,31 @@ def determine_conflicts(
     )
     print(f"Conflict groups length: {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
     start_time = time.time()
+    # removed_read_ids = finalize_proportional_removal(
+    #     conflict_groups,
+    #     bam_fs,
+    #     fetch_reads_in_region,
+    #     remove_mode='random'
+    # )
+    bad = {}
 
+    removed_read_ids = build_removed_ids_best_alignment(
+        bam_path=input_bam,
+        shared_idx=shared_idx,
+        penalize_weight=900.0,     # start here; raise to be more aggressive
+        as_weight=1.0,            # set 1.0 if you trust AS and it exists
+        drop_contigs=bad,
+        drop_if_ambiguous=True,
+        min_alt_count=1,          # ambiguous if ANY alternative exists
+        only_primary=False        # set True if you only have primaries anyway
+    )
 
-
-    exit()
     start_time = time.time()
     comparison_df = None
     includable_read_ids = dict()
     sum_of_ref_aligned = defaultdict(int)
     output_file = os.path.join(output_dir, "failed_reads.txt")
+
     print("Writing failed reads to outputfile:", output_file)
     with open (output_file, 'w') as f:
         for read, refs in removed_read_ids.items():
