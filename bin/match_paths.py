@@ -523,7 +523,7 @@ def get_dynamic_reward_factor(genome_length, baseline=5e4, max_length=1e7, max_r
         return 1.0 + (max_reward - 1.0) * ((genome_length - baseline) / (max_length - baseline))
 
 
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=5e5, max_length=1e9, reward_factor=2, beta=0.5):
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=5e5, max_length=1e9, reward_factor=0.2, beta=0.2):
     """
     Calculate an adjusted 'Gini-based' score for the fair distribution of coverage,
     and then penalize (or boost) it according to the disparity in positions of the regions.
@@ -1556,7 +1556,7 @@ def main():
                 jump_threshold = args.jump_threshold,
                 gap_allowance=args.gap_allowance
             )
-            exit()
+            # exit()
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
             with open(args.failed_reads, 'r') as f:
@@ -1811,8 +1811,8 @@ def main():
                                                reward_factor=args.reward_factor,
                                                beta=args.dispersion_factor
                                     )
-                    # if "Vaccinia" in data['name'] or "Monkey" in data['name']:
-                    #     print("\t",data.get('name'), gini_strain, gini_strain2)
+                    if "boydii" in data['name'] or "Monkey" in data['name']:
+                        print("\t",data.get('name'), gini_strain)
 
                 else:
                     gini_strain = 0
@@ -1824,16 +1824,25 @@ def main():
                     # Ensure 'accession' is a string and matches the index type
                     accession = str(data['accession']).strip()
                     if accession in comparison_df.index:
+                        # c1 = float(comparison_df.loc[accession, col_stat])
+                        # c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
+                        # comparison_value = min(
+                        #     1,
+                        #     (c1+c2) / 2
+                        # )
+
+
                         c1 = float(comparison_df.loc[accession, col_stat])
-                        c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
-                        comparison_value = min(
-                            1,
-                            (c1+c2) / 2
-                        )
-                        # weight it so that any value less than 0.9 is even lower by getting the log value
-                        # if comparison_value < 0.75:
-                        #     # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
-                        #     comparison_value = comparison_value ** 3.3
+                        d_all = float(comparison_df.loc[accession, col_stat2])
+
+                        # Center penalty around -10% with steepness k
+                        k = 0.90
+                        x0 = -10.0
+                        pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))  # in (0,1)
+
+                        # Combine: breadth * penalty (pen dominates)
+                        comparison_value = min(1.0, c1 * pen)
+                        data['comparison'] = comparison_value
 
                         data['comparison'] =  ( comparison_value  )
                     else:
@@ -1896,6 +1905,9 @@ def main():
         aggregated_data['meandepth'] = calculate_weighted_mean(aggregated_data['depths'],numreads)
         aggregated_data['meancoverage'] = calculate_weighted_mean(aggregated_data['coverages'],numreads)
         aggregated_data['meangini'] = calculate_weighted_mean(aggregated_data['coeffs'],numreads)
+        if "boydii" in aggregated_data.get('name'):
+            print(aggregated_data['meangini'], len(aggregated_data['coeffs']),"<<<<")
+            # exit()
         aggregated_data['meanminhash_reduction'] = calculate_weighted_mean(aggregated_data['minhash_reductions'],numreads)
         # Step 4: Calculate the disparity for this organism
         aggregated_data['disparity'] = calculate_disparity(sum(numreads), total_reads, variance_reads)

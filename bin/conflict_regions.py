@@ -2678,8 +2678,72 @@ def build_removed_ids_best_alignment(
     # de-dupe
     removed = {rid: sorted(set(refs)) for rid, refs in removed.items() if refs}
     return removed
+def report_removed_read_stats(
+    bam_path: str,
+    removed_read_ids: dict[str, list[str]],
+):
+    """
+    Prints:
+      - % of unique reads affected
+      - % of alignments removed
+      - per-contig removal percentages
+    """
+    bam = pysam.AlignmentFile(bam_path, "rb")
 
+    total_reads = set()
+    total_alignments = 0
 
+    removed_reads = set(removed_read_ids.keys())
+    removed_alignments = 0
+
+    per_contig_total = defaultdict(int)
+    per_contig_removed = defaultdict(int)
+
+    for r in bam:
+        if r.is_unmapped:
+            continue
+        total_alignments += 1
+        total_reads.add(r.query_name)
+
+        contig = r.reference_name
+        per_contig_total[contig] += 1
+
+        if r.query_name in removed_read_ids:
+            if contig in removed_read_ids[r.query_name]:
+                removed_alignments += 1
+                per_contig_removed[contig] += 1
+
+    bam.close()
+
+    n_reads = len(total_reads)
+    n_removed_reads = len(removed_reads)
+
+    print("\n=== Removal Summary ===")
+    print(f"Total unique reads:        {n_reads}")
+    print(f"Reads with ≥1 removal:     {n_removed_reads} "
+          f"({100.0 * n_removed_reads / max(1, n_reads):.2f}%)")
+
+    print(f"\nTotal alignments:          {total_alignments}")
+    print(f"Alignments removed:        {removed_alignments} "
+          f"({100.0 * removed_alignments / max(1, total_alignments):.2f}%)")
+
+    print("\nPer-contig alignment removal:")
+    for contig in sorted(per_contig_total):
+        tot = per_contig_total[contig]
+        rem = per_contig_removed.get(contig, 0)
+        if tot == 0:
+            continue
+        pct = 100.0 * rem / tot
+        print(f"  {contig:20s}  {rem:8d}/{tot:8d}  ({pct:6.2f}%)")
+
+    return {
+        "total_reads": n_reads,
+        "removed_reads": n_removed_reads,
+        "pct_reads_removed": 100.0 * n_removed_reads / max(1, n_reads),
+        "total_alignments": total_alignments,
+        "removed_alignments": removed_alignments,
+        "pct_alignments_removed": 100.0 * removed_alignments / max(1, total_alignments),
+    }
 
 def build_read_to_refs(bam_path: str, include_secondary=True):
     bam = pysam.AlignmentFile(bam_path, "rb")
@@ -2722,24 +2786,7 @@ def determine_conflicts(
     import time
     print(f"Starting conflict region detection at {time.ctime()}")
     print(fasta_files)
-    # report_shared_windows_across_fastas(
-    #     fasta_files=fasta_files,
-    #     output_csv="shared_windows_report.csv",
-    #     ksize=21,
-    #     scaled=800,
-    #     window=10000,
-    #     step=1000,
-    #     jaccard_threshold=0.75,
-    #     max_hits_per_query=5,
-    #     skip_self_same_fasta=False,
-    # )
-    # mat = build_support_weighted_matrix(
-    #     "shared_windows_report.csv",
-    #     accession_level="contig",
-    #     hit_threshold=0.12,
-    #     min_hit_windows=105,
-    #     output_csv="support_weighted_matrix.csv"
-    # )
+
 
     if len(fasta_files) == 0:
         print("No fasta files provided, using sensitive mode")
@@ -2832,33 +2879,33 @@ def determine_conflicts(
     compare_to_reference_windows = True
     if compare_to_reference_windows:
         # Build FASTA window index
-
+        # if not os.path.exists("shared_windows_report.csv"):
         # report_shared_windows_across_fastas(
         #     fasta_files=fasta_files,
         #     output_csv="shared_windows_report.csv",
-        #     ksize=31,
-        #     scaled=800,
-        #     window=2000,
+        #     ksize=21,
+        #     scaled=8000,
+        #     window=10000,
         #     step=2000,
-        #     jaccard_threshold=0.60,
+        #     jaccard_threshold=0.40,
         #     max_hits_per_query=3,
         #     skip_self_same_fasta=False,
         # )
         # import shared_windows_report.csv as a dictionary
-
+        shared_idx = load_shared_windows_csv(
+            "shared_windows_report.csv",
+            min_jaccard=0.6,          # or 0.99 if you want near-identical too
+            skip_same_contig=True
+        )
 
 
         print("Reference SBT by contig:")
 
-        shared_idx = load_shared_windows_csv(
-            "shared_windows_report.csv",
-            min_jaccard=0.8,          # or 0.99 if you want near-identical too
-            skip_same_contig=True
-        )
+
 
         marked = mark_reads_in_shared_regions(
-            "Miseq_Run_A.shigella_ecoli.bam",
-            shared_idx,
+            bam_path=input_bam,
+            shared_idx=shared_idx,
             only_primary=True
         )
 
@@ -2978,12 +3025,16 @@ def determine_conflicts(
     removed_read_ids = build_removed_ids_best_alignment(
         bam_path=input_bam,
         shared_idx=shared_idx,
-        penalize_weight=900.0,     # start here; raise to be more aggressive
-        as_weight=1.0,            # set 1.0 if you trust AS and it exists
+        penalize_weight=1.0,     # start here; raise to be more aggressive
+        as_weight=0.0,            # set 1.0 if you trust AS and it exists
         drop_contigs=bad,
         drop_if_ambiguous=True,
         min_alt_count=1,          # ambiguous if ANY alternative exists
         only_primary=False        # set True if you only have primaries anyway
+    )
+    stats = report_removed_read_stats(
+        bam_path=input_bam,
+        removed_read_ids=removed_read_ids
     )
 
     start_time = time.time()
@@ -3000,14 +3051,6 @@ def determine_conflicts(
         f.close()
 
     try:
-        # Create new variabels of only the filtered reads that passed based on the dict
-        # new_filtered_reads = []
-        # size_old_reads_map = sum([len(v) for k, v in reads_map.items()])
-        # print(f"Size of old all reads: {size_old_reads_map}")
-        # for k, v in sum_of_ref_aligned.items():
-        #     print(f"Reference {k} has {v} reads aligned")
-        # print(f"Size of new filtered reads: {len(new_filtered_reads)}")
-        # print(f"Completed Bread of coverage setting in {time.time() - start_time}")
         if filtered_bam_create:
             create_filtered_bam(
                 bam_fs,
@@ -3119,27 +3162,6 @@ def determine_conflicts(
         print(f"\tPrecision: {gt_performances['new']['overall']['micro_precision']:.4f}")
         print(f"\tRecall: {gt_performances['new']['overall']['micro_recall']:.4f}")
         print(f"\tF1: {gt_performances['new']['overall']['micro_f1']:.4f}")
-    # if abu_file:
-    #     # Parse ground truth coverage
-    #     ground_truth = parse_ground_truth(abu_file)
-    #     # Step 14: Compute coverage stats before and after filtering
-    #     print("Computing coverage statistics before filtering...")
-    #     original_coverage_stats = compute_breadth_and_depth(input_bam)
-    #     print("Computing coverage statistics after filtering...")
-    #     filtered_coverage_stats = compute_breadth_and_depth(filtered_bam)
-
-    #     # Step 15: Report coverage stats compared to ground truth
-    #     print("Reporting coverage statistics...")
-    #     report_coverage_stats(ground_truth, original_coverage_stats, filtered_coverage_stats, output_dir)
-
-    #     # Step 16: Compute performance metrics
-    #     print("Computing performance metrics based on ground truth and filtered BAM...")
-    #     TP, FP, FN, precision, recall, f1 = compute_performance(ground_truth, filtered_bam)
-    #     print("Performance Metrics:")
-    #     print(f"TP: {TP}, FP: {FP}, FN: {FN}")
-    #     print(f"Precision: {precision:.4f}")
-    #     print(f"Recall: {recall:.4f}")
-    #     print(f"F1-Score: {f1:.4f}")
 
         return removed_read_ids, comparison_df
     else:
