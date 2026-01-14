@@ -2887,14 +2887,14 @@ def determine_conflicts(
             scaled=8000,
             window=2000,
             step=2000,
-            jaccard_threshold=0.80,
-            max_hits_per_query=3,
+            jaccard_threshold=0.40,
+            max_hits_per_query=5,
             skip_self_same_fasta=False,
         )
         # import shared_windows_report.csv as a dictionary
         shared_idx = load_shared_windows_csv(
             "shared_windows_report.csv",
-            min_jaccard=1,          # or 0.99 if you want near-identical too
+            min_jaccard=0.8,          # or 0.99 if you want near-identical too
             skip_same_contig=True
         )
 
