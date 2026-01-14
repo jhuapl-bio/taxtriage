@@ -1557,7 +1557,7 @@ def main():
                 jump_threshold = args.jump_threshold,
                 gap_allowance=args.gap_allowance
             )
-            exit()
+            # exit()
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
             with open(args.failed_reads, 'r') as f:
