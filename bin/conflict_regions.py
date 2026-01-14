@@ -320,7 +320,7 @@ def build_reference_window_index(
     """
     ref_sigs = {}
     sigs_by_contig = defaultdict(dict)
-
+    # only do unique fasta files
     for fp in fasta_files:
         label = os.path.basename(fp)
         sigs = window_sigs_from_fasta(
@@ -2879,18 +2879,18 @@ def determine_conflicts(
     compare_to_reference_windows = True
     if compare_to_reference_windows:
         # Build FASTA window index
-        # if not os.path.exists("shared_windows_report.csv"):
-        # report_shared_windows_across_fastas(
-        #     fasta_files=fasta_files,
-        #     output_csv="shared_windows_report.csv",
-        #     ksize=21,
-        #     scaled=8000,
-        #     window=10000,
-        #     step=2000,
-        #     jaccard_threshold=0.40,
-        #     max_hits_per_query=3,
-        #     skip_self_same_fasta=False,
-        # )
+        if not os.path.exists("shared_windows_report.csv"):
+            report_shared_windows_across_fastas(
+                fasta_files=fasta_files,
+                output_csv="shared_windows_report.csv",
+                ksize=21,
+                scaled=8000,
+                window=10000,
+                step=2000,
+                jaccard_threshold=0.40,
+                max_hits_per_query=3,
+                skip_self_same_fasta=False,
+            )
         # import shared_windows_report.csv as a dictionary
         shared_idx = load_shared_windows_csv(
             "shared_windows_report.csv",

@@ -1534,6 +1534,7 @@ def main():
             print("Generating conflict regions info")
             if not args.output_dir:
                 args.output_dir = os.path.dirname(args.output)
+            args.fasta = list(set(args.fasta))  # only do unique fasta files
             alignments_to_remove, comparison_df = determine_conflicts(
                 output_dir = args.output_dir,
                 input_bam = args.input,
@@ -1556,7 +1557,7 @@ def main():
                 jump_threshold = args.jump_threshold,
                 gap_allowance=args.gap_allowance
             )
-            # exit()
+            exit()
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
             with open(args.failed_reads, 'r') as f:
