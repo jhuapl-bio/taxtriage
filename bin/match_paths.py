@@ -1825,25 +1825,25 @@ def main():
                     # Ensure 'accession' is a string and matches the index type
                     accession = str(data['accession']).strip()
                     if accession in comparison_df.index:
-                        # c1 = float(comparison_df.loc[accession, col_stat])
-                        # c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
-                        # comparison_value = min(
-                        #     1,
-                        #     (c1+c2) / 2
-                        # )
-
-
                         c1 = float(comparison_df.loc[accession, col_stat])
-                        d_all = float(comparison_df.loc[accession, col_stat2])
+                        c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
+                        comparison_value = min(
+                            1,
+                            (c1+c2) / 2
+                        )
+
+
+                        # c1 = float(comparison_df.loc[accession, col_stat])
+                        # d_all = float(comparison_df.loc[accession, col_stat2])
 
                         # Center penalty around -10% with steepness k
-                        k = 0.90
-                        x0 = -10.0
-                        pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))  # in (0,1)
+                        # k = 0.90
+                        # x0 = -10.0
+                        # pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))  # in (0,1)
 
-                        # Combine: breadth * penalty (pen dominates)
-                        comparison_value = min(1.0, c1 * pen)
-                        data['comparison'] = comparison_value
+                        # # Combine: breadth * penalty (pen dominates)
+                        # comparison_value = min(1.0, c1 * pen)
+                        # data['comparison'] = comparison_value
 
                         data['comparison'] =  ( comparison_value  )
                     else:

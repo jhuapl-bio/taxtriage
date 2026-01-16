@@ -2885,9 +2885,9 @@ def determine_conflicts(
             output_csv="shared_windows_report.csv",
             ksize=21,
             scaled=8000,
-            window=2000,
+            window=20000,
             step=2000,
-            jaccard_threshold=0.40,
+            jaccard_threshold=0.80,
             max_hits_per_query=5,
             skip_self_same_fasta=False,
         )
