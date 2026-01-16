@@ -3031,13 +3031,18 @@ def determine_conflicts(
             min_alt_count=1,          # ambiguous if ANY alternative exists
             only_primary=False        # set True if you only have primaries anyway
         )
-        stats = report_removed_read_stats(
-            bam_path=input_bam,
-            removed_read_ids=removed_read_ids
-        )
     else:
-
-
+        removed_read_ids = finalize_proportional_removal(
+            conflict_groups,
+            bam_fs,
+            fetch_reads_in_region,
+            remove_mode='random'
+        )
+    stats = report_removed_read_stats(
+        bam_path=input_bam,
+        removed_read_ids=removed_read_ids
+    )
+    print(stats)
     start_time = time.time()
     comparison_df = None
     includable_read_ids = dict()
