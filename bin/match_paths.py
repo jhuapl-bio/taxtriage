@@ -1801,7 +1801,7 @@ def main():
             }
 
 
-
+            y=0
             try:
 
                 # if accession isn't NC_042114.1 skip
@@ -1812,8 +1812,8 @@ def main():
                                                reward_factor=args.reward_factor,
                                                beta=args.dispersion_factor
                                     )
-                    if "boydii" in data['name'] or "Monkey" in data['name']:
-                        print("\t",data.get('name'), gini_strain)
+                    # if "boydii" in data['name'] or "Monkey" in data['name']:
+                    #     print("\t",data.get('name'), gini_strain)
 
                 else:
                     gini_strain = 0
@@ -1877,7 +1877,8 @@ def main():
                         "taxid": data['taxid'] if "taxid" in data else None,
                     })
             except Exception as e:
-                print(f"Error in top level: {e}")
+                y+=1
+            #     print(f"Error in top level: {e}: {data['name']}")
     all_readscounts = [sum(x['numreads']) for x in species_aggregated.values()]
     def calculate_var(read_counts):
         """

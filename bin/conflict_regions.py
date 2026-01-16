@@ -2876,7 +2876,6 @@ def determine_conflicts(
         loaded_sigs = load_signatures_sourmash(sigfile)
         signatures = rebuild_sig_dict(loaded_sigs)
 
-    compare_to_reference_windows = True
     if compare_to_reference_windows:
         # Build FASTA window index
         # if not os.path.exists("shared_windows_report.csv"):
@@ -2886,7 +2885,7 @@ def determine_conflicts(
             ksize=21,
             scaled=8000,
             window=20000,
-            step=2000,
+            step=20000,
             jaccard_threshold=0.80,
             max_hits_per_query=5,
             skip_self_same_fasta=False,
@@ -3021,21 +3020,23 @@ def determine_conflicts(
     #     remove_mode='random'
     # )
     bad = {}
+    if compare_to_reference_windows:
+        removed_read_ids = build_removed_ids_best_alignment(
+            bam_path=input_bam,
+            shared_idx=shared_idx,
+            penalize_weight=1.0,     # start here; raise to be more aggressive
+            as_weight=0.0,            # set 1.0 if you trust AS and it exists
+            drop_contigs=bad,
+            drop_if_ambiguous=True,
+            min_alt_count=1,          # ambiguous if ANY alternative exists
+            only_primary=False        # set True if you only have primaries anyway
+        )
+        stats = report_removed_read_stats(
+            bam_path=input_bam,
+            removed_read_ids=removed_read_ids
+        )
+    else:
 
-    removed_read_ids = build_removed_ids_best_alignment(
-        bam_path=input_bam,
-        shared_idx=shared_idx,
-        penalize_weight=1.0,     # start here; raise to be more aggressive
-        as_weight=0.0,            # set 1.0 if you trust AS and it exists
-        drop_contigs=bad,
-        drop_if_ambiguous=True,
-        min_alt_count=1,          # ambiguous if ANY alternative exists
-        only_primary=False        # set True if you only have primaries anyway
-    )
-    stats = report_removed_read_stats(
-        bam_path=input_bam,
-        removed_read_ids=removed_read_ids
-    )
 
     start_time = time.time()
     comparison_df = None
