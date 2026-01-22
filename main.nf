@@ -58,8 +58,11 @@ include { TAXTRIAGE } from './workflows/taxtriage'
 
 
 workflow NFCORE_TAXTRIAGE {
+    def awsClient = params.aws?.client ?: null
+    println "[startup] params.aws.client = ${awsClient}"
     TAXTRIAGE ()
 }
+
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
