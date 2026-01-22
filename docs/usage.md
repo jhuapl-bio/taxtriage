@@ -249,7 +249,7 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
   - `MultiQC` - [`multiqc_report.html`](../examples/report/multiqc_report.html)
   - `Microbial Sheet` - `<samplename|all>.report.txt`
   - `Krona` - `combined_krona_kreports.html`
-  - `Comparison Interactive File` - `all.comparison.report.html`
+  - `Comparison Interactive File` - [`all.comparison.report.html`](../examples/report/all.comparison.report.html)
 - `alignments`: Post minimap2 alignment to top hits or local reference fasta file(s). Also contains histograms of coverages
   - `Histogram` (v1.3.0 or later) - [`<samplename>.histo.txt`](../examples/report/Miseq_Run_A.histo.txt)
   - `BAM` - `<samplename>.bam`
