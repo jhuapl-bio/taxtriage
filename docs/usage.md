@@ -246,7 +246,7 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
 - `report`: Organism Discovery Report PDF, MultiQC, Krona Plot (from Kraken2), Microbial Detection Txt File
   - `Combined ODR` - [`all.organisms.report.pdf`](../examples/report/all.organisms.report.pdf)
   - `Sample ODR` - `<samplename>.organisms.report.pdf`
-  - `MultiQC` - [`multiqc_report.html`](../examples/report/multiqc_report.html)
+  - `MultiQC` - `multiqc_report.html`
   - `Microbial Sheet` - `<samplename|all>.report.txt`
   - `Krona` - `combined_krona_kreports.html`
   - `Comparison Interactive File` - [`all.comparison.report.html`](../examples/report/all.comparison.report.html)
