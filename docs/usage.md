@@ -244,13 +244,13 @@ In this case, the accession (can be any value, default is NCBI's nt or refseq ac
 ### Important output locations
 
 - `report`: Organism Discovery Report PDF, MultiQC, Krona Plot (from Kraken2), Microbial Detection Txt File
-  - `Combined ODR` - `all.organisms.report.pdf`
+  - `Combined ODR` - [`all.organisms.report.pdf`](../examples/report/all.organisms.report.pdf)
   - `Sample ODR` - `<samplename>.organisms.report.pdf`
-  - `MultiQC` - `multiqc_report.html`
+  - `MultiQC` - [`multiqc_report.html`](../examples/report/multiqc_report.html)
   - `Microbial Sheet` - `<samplename|all>.report.txt`
-  - `Krona` - `combined_krona_kreports.html`
+  - `Krona` - [`combined_krona_kreports.html`](../examples/report/combined_krona_kreports.html)
 - `alignments`: Post minimap2 alignment to top hits or local reference fasta file(s). Also contains histograms of coverages
-  - `Histogram` (v1.3.0 or later) - `<samplename>.histo.txt`
+  - `Histogram` (v1.3.0 or later) - [`<samplename>.histo.txt`](../examples/report/Miseq_Run_A.histo.txt)
   - `BAM` - `<samplename>.bam`
 - `samtools`: Raw Alignment Coverage and Depth Files
   - `Coverage` - `<samplename>.txt`
