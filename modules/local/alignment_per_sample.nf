@@ -72,6 +72,10 @@ process ALIGNMENT_PER_SAMPLE {
     def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
     def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
+    def compare_refs = params.ani_removal ? " --compare_references " : " "
+    def alpha = params.alpha ? " --alpha ${params.alpha} " : " --alpha 1.0 "
+    def scaled = params.scaled ? " --scaled ${params.scaled} " : " --scaled 1000 "
+
     """
 
     match_paths.py \\
@@ -80,14 +84,14 @@ process ALIGNMENT_PER_SAMPLE {
         -s $id $assemblyi \\
         $type $read_count \\
         --output_dir $output_dir $fastas $cpu_count \\
-        --scaled 8000 \\
-        --alpha 1.5 \\
+        $scaled \\
+        $alpha \\
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping $k2 $sensitive $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $ignore_alignment $compress_species $mbert_report $minmapq
+        $min_reads_align $ignore_alignment $compress_species $mbert_report $minmapq $compare_refs
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

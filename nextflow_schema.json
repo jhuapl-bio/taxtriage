@@ -362,6 +362,21 @@
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "alpha": {
+                    "type": "number",
+                    "description": "Gini Coefficient Alpha value for TASS Score calculation. Higher values give more weight to gini coefficient in the final TASS score",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "scaled":{
+                    "type": "number",
+                    "description": "Minimap2 scaled parameter for sketching. Higher values use less RAM but are less accurate. Default is 1000",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "ani_removal": {
+                    "type": "boolean",
+                    "description": "Compare, not only the shared signatures across aligned regions, but also whole assembly sequences from the original fasta file(s). Introduces a more aggressive method of removing potential multi-mapped or false-positively mapped reads.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "disparity_score_weight": {
                     "type": "number",
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",

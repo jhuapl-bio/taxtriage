@@ -3045,8 +3045,6 @@ def determine_conflicts(
     print(stats)
     start_time = time.time()
     comparison_df = None
-    includable_read_ids = dict()
-    sum_of_ref_aligned = defaultdict(int)
     output_file = os.path.join(output_dir, "failed_reads.txt")
 
     print("Writing failed reads to outputfile:", output_file)
