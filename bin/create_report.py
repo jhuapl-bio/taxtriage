@@ -87,6 +87,13 @@ def parse_args(argv=None):
                         choices=['Taxonomic ID #', 'Detected Organism'])
     parser.add_argument("--taxdump", metavar="TAXDUMP", required=False, default=None,
                         help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp")
+    parser.add_argument(
+        "--names",
+        metavar="NAMES_DMP",
+        required=False,
+        default=None,
+        help="Path to NCBI names.dmp to map taxid -> scientific name",
+    )
     parser.add_argument("--rank", metavar="TAXDUMP", required=False, default="genus",
                         help='IF merging with taxdump, what rank to merge on')
 
@@ -130,6 +137,27 @@ def format_cell_content(cell):
         # Adjust font size based on content length
         return adjust_font_size(str(cell))
 
+def load_names(names_dmp_path):
+    """
+    Parse names.dmp (NCBI) and return a dict mapping taxid -> scientific name.
+    Only keeps the 'scientific name' class.
+    """
+    names_map = {}
+    if not names_dmp_path or not os.path.exists(names_dmp_path):
+        return names_map
+
+    with open(names_dmp_path, 'r') as fh:
+        for line in fh:
+            # Typical format: "<taxid>\t|\t<name>\t|\t<unique name>\t|\t<name class>\t|"
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) < 4:
+                continue
+            taxid = parts[0]
+            name = parts[1]
+            name_class = parts[3]
+            if name_class == "scientific name":
+                names_map[taxid] = name
+    return names_map
 
 
 def import_data(inputfiles ):
@@ -187,6 +215,223 @@ def import_data(inputfiles ):
     # replace all NaN with ""
     df = df.fillna("")
     return df
+def extract_reads(value):
+    """
+    Extract leading integer read count from strings like:
+    '142 (63.62%)' or '8 (0.35% - 0.12%)'
+    """
+    if pd.isna(value):
+        return 0
+    s = str(value).strip()
+    if s == "":
+        return 0
+    try:
+        # take everything before first space or '('
+        for sep in [' ', '(']:
+            if sep in s:
+                s = s.split(sep)[0]
+                break
+        return int(float(s))
+    except Exception:
+        return 0
+def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=None, include_headers=True, columns=None):
+    """
+    Build a table with three levels:
+      - Sample header (spans full width)
+      - Group header (spans full width) inside each sample
+      - Member rows (one per df row)
+
+    Ensures every table row has the same number of columns (important when some rows
+    include a plot image cell and others do not).
+    Returns: data (list of rows), style_cmds (list of TableStyle commands)
+    """
+    data = []
+    style_cmds = []
+
+    # Work on a copy so we don't mutate caller's df
+    df_proc = df.copy()
+
+    if 'K2 Reads' in df_proc.columns:
+        df_proc['K2 Reads'] = df_proc['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) and x != "" else 0)
+
+    if columns is None:
+        columns = [c for c in df_proc.columns.values if c not in (sample_col, group_col, 'plot')]
+
+    # Determine whether we need an explicit plot column (so all rows have same width)
+    has_plot_column = len(plot_dict.keys()) > 0
+
+    # number of columns in member area: len(columns) + (1 plot col if present)
+    member_cols_count = len(columns) + (1 if has_plot_column else 0)
+    # total columns including the left "sample/group" placeholder
+    num_cols = 1 + member_cols_count
+
+    # small empty Flowable to use for blank cells (avoids plain strings)
+    empty_cell = Paragraph('', small_font_style)
+    empty_cell_normal = Paragraph('', styles['Normal'])  # for header-like blanks if needed
+
+    # Header (column titles) - single row above everything
+    if include_headers:
+        header_cells = [Paragraph('', styles['Normal'])]
+        for col in columns:
+            header_cells.append(Paragraph(f'<b>{col}</b>', styles['Normal']))
+        if has_plot_column:
+            header_cells.append(Paragraph(f'<b>Plot</b>', styles['Normal']))
+        # Ensure header row length equals num_cols (use Flowables)
+        while len(header_cells) < num_cols:
+            header_cells.append(empty_cell)
+        data.append(header_cells)
+        style_cmds.append(('BACKGROUND', (0,0), (-1,0), colors.gray))
+        style_cmds.append(('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke))
+        style_cmds.append(('ALIGN', (0,0), (-1,0), 'CENTER'))
+        start_row = 1
+    else:
+        start_row = 0
+
+    # helper to find reads column
+    possible_reads_cols = ['Reads Aligned', '# Reads Aligned', '# Reads Aligned to Sample', 'K2 Reads', 'Quant']
+    reads_col = next((c for c in possible_reads_cols if c in df_proc.columns), None)
+
+    # Build ordered list of samples (preserve df order)
+    sample_groups = []
+    for sample_key, sample_df in df_proc.groupby(sample_col, sort=False):
+        sample_groups.append((sample_key, sample_df))
+
+    current_row = start_row
+    for s_idx, (sample_key, sample_df) in enumerate(sample_groups):
+        # sample-level stats
+        sample_label = sample_key if sample_key and str(sample_key).strip() != "" else "Unknown Sample"
+        if reads_col:
+            # use extract_reads helper to robustly parse numeric-like strings
+            sample_reads = int(sample_df[reads_col].apply(extract_reads).sum())
+        else:
+            sample_reads = 0
+        sample_count = sample_df.shape[0]
+
+        # add sample header (span full width)
+        sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits — {sample_reads} alignments"
+        sample_para = Paragraph(sample_header_text, styles['Normal'])
+        sample_row = [sample_para] + [empty_cell_normal] * (num_cols - 1)
+        # ensure length (all Flowables)
+        while len(sample_row) < num_cols:
+            sample_row.append(empty_cell_normal)
+        data.append(sample_row)
+        style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
+        style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.darkgrey))
+        style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.whitesmoke))
+        style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'LEFT'))
+        style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'TOP'))
+        style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
+        style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
+
+        current_row += 1
+
+        # Build ordered list of groups for this sample
+        group_list = []
+        for group_key, group_df in sample_df.groupby(group_col, sort=False):
+            group_list.append((group_key, group_df))
+
+        for g_idx, (group_key, group_df) in enumerate(group_list):
+            group_taxid = str(group_key) if group_key is not None else ""
+            if names_map and group_taxid in names_map:
+                group_label = f"{names_map[group_taxid]} ({group_taxid})"
+            else:
+                group_label = group_taxid if group_taxid and group_taxid.lower() != "unknown" else group_taxid
+
+            # group-level stats
+            if reads_col:
+                group_reads = int(group_df[reads_col].apply(extract_reads).sum())
+            else:
+                group_reads = 0
+            group_count = group_df.shape[0]
+            high_con_sequence_count = group_df[group_df['High Consequence'] == True].shape[0]
+
+            group_header_text = f"<b>{group_label}</b><br/>{group_count} hits ({high_con_sequence_count} High Consequence) — {group_reads} alignments"
+            group_para = Paragraph(group_header_text, styles['Normal'])
+            group_row = [group_para] + [empty_cell_normal] * (num_cols - 1)
+            while len(group_row) < num_cols:
+                group_row.append(empty_cell_normal)
+            data.append(group_row)
+
+            # style for group header
+            style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
+            style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.lightgrey))
+            style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'LEFT'))
+            style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'TOP'))
+            style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
+            style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
+
+            current_row += 1
+
+            # add member rows under this group
+            for idx, row in group_df.iterrows():
+                # LEFT column must be a Flowable (not a raw string)
+                member_cells = [empty_cell]  # left column intentionally blank under group
+                for col in columns:
+                    cell_val = row.get(col, "")
+                    member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
+
+                # append plot image cell or empty Flowable to ensure constant width
+                if has_plot_column:
+                    plot_key = (row.get('Detected Organism'), row.get('Specimen Type'))
+                    if plot_key in plot_dict:
+                        plot_image = Image(plot_dict[plot_key])
+                        plot_image.drawHeight = 0.4 * inch
+                        plot_image.drawWidth = 0.9 * inch
+                        member_cells.append(plot_image)
+                    else:
+                        member_cells.append(empty_cell)
+
+                # Ensure member_cells length == num_cols (all Flowables)
+                while len(member_cells) < num_cols:
+                    member_cells.append(empty_cell)
+
+                data.append(member_cells)
+
+                # determine color for this member row (based on Microbial Category / AnnClass)
+                val = row.get('Microbial Category', "")
+                derived = row.get('AnnClass', "")
+
+                if "Primary" in str(val) and derived == "Direct":
+                    color = colors.lightcoral
+                elif "Primary" in str(val):
+                    color = colors.HexColor('#fab462')
+                elif "Commensal" in str(val):
+                    color = colors.lightgreen
+                elif "Opportunistic" in str(val):
+                    color = colors.HexColor('#ffe6a8')
+                elif "Potential" in str(val):
+                    color = colors.lightblue
+                else:
+                    color = colors.white
+
+                # background color for the member row
+                style_cmds.append(('BACKGROUND', (1, current_row), (-1, current_row), color))
+
+                # center-align all member cells (excluding the left spacer column)
+                style_cmds.append(('ALIGN', (1, current_row), (-1, current_row), 'CENTER'))
+
+                # vertical alignment
+                style_cmds.append(('VALIGN', (0, current_row), (-1, current_row), 'TOP'))
+
+                # subtle divider
+                style_cmds.append(('LINEBELOW', (0, current_row), (-1, current_row), 0.25, colors.lightgrey))
+
+                current_row += 1
+
+            # Only add a spacer after the group if it's not the last group in the sample
+            if g_idx < (len(group_list) - 1):
+                spacer_cells = [empty_cell] * num_cols
+                data.append(spacer_cells)
+                current_row += 1
+
+        # Only add a sample spacer if it's not the last sample overall
+        if s_idx < (len(sample_groups) - 1):
+            big_spacer = [empty_cell] * num_cols
+            data.append(big_spacer)
+            current_row += 1
+
+    return data, style_cmds
+
 
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
@@ -197,7 +442,6 @@ def split_df(df_full):
     df_opp = df_full[df_full['Microbial Category'].isin([ "Potential"])].copy()
     df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
     df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
-
     df_yes.reset_index(drop=True, inplace=True)
     df_opp.reset_index(drop=True, inplace=True)
     return df_yes, df_opp, df_comm, df_unidentified
@@ -253,86 +497,21 @@ styles = getSampleStyleSheet()
 small_font_style = ParagraphStyle(name='SmallFont', parent=styles['Normal'], fontSize=2)
 normal_style = styles['Normal']
 
-def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
-    data = []
-    # convert k2 reads to int
-    df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
-    if not columns:
-        columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
-    if len(plot_dict.keys()) > 0:
-        if "HHS Percentile" in columns:
-            columns.remove("HHS Percentile")
-    if include_headers:
-        headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
-        if len(plot_dict.keys()) > 0:
-            headers.append(Paragraph('<b>Percentile of Healthy Subject (HHS)</b>', styles['Normal']))  # Plot column header
-            # remove HHS Percentile if present from headers
-        data.append(headers)
-    for index, row in df.iterrows():
-        row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
-        # Insert the plot image
-        if len(plot_dict.keys()) > 0:
-            plot_key = (row['Detected Organism'], row['Specimen Type'])
-            if plot_key in plot_dict:
-                plot_image = Image(plot_dict[plot_key])
-                plot_image.drawHeight = 0.5 * inch  # Height of the image
-                plot_image.drawWidth = 1* inch  # Width of the image, adjusted from your figsize
-                row_data.append(plot_image)
-
-        data.append(row_data)
-    return data
-
 def return_table_style(df=pd.DataFrame(), color_pathogen=False):
-    # Start with the basic style
+    """
+    Basic table style: header/grid/valign. Actual body coloring is applied by the
+    table builder (prepare_three_layer_table) because it knows the exact row indices.
+    """
     table_style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.gray), # header
+        ('BACKGROUND', (0,0), (-1,0), colors.gray),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('GRID', (0,0), (-1,-1), 1, colors.black),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-
+        ('LEFTPADDING', (0,0), (-1,-1), 4),
+        ('RIGHTPADDING', (0,0), (-1,-1), 4),
     ])
-    if color_pathogen:
-        # Placeholder for cells to color (row_index, col_index) format
-        cells_to_color = []
-        colorindexcol = 1
-        # Example post-processing to mark cells
-        i=0
-        for row_idx, row in df.iterrows():
-            val = row['Microbial Category']
-            # if nan then set to empty string
-            derived = row['AnnClass']
-            # Get Sample Type value from row
-            # sampletype = row['Specimen Type']
-            if "Primary" in val and derived == "Direct":
-                color = 'lightcoral'
-            elif "Primary" in val:
-                color = '#fab462'
-            elif "Commensal" in val:
-                color = 'lightgreen'
-            elif "Opportunistic" in val:
-                color = "#ffe6a8"
-            elif "Potential" in val:
-                color = 'lightblue'
-            else:
-                color = "white"
-            # Ensure indices are within the table's dimensions
-            style_command = ('BACKGROUND', (colorindexcol, i+1), (colorindexcol, i+1), color)  # Or lightorange based on condition
-            table_style.add(*style_command)
-            i+=1
-    else:
-        table_style.add(*('BACKGROUND', (0,1), (-1,-1), colors.white))
     return table_style
 
-def make_table(data, table_style=None):
-    # Set table style to the return value of the function
-
-    # Set style
-    # Applying the custom style to the title and subtitle
-    # Table configuration
-    table = Table(data, repeatRows=1)
-    # Apply this style to your tables
-    table.setStyle(table_style)
-    return table
 def draw_vertical_line(canvas, doc):
         """
         Draw a vertical line 5% from the left of the page, starting 10% down from the top
@@ -347,6 +526,19 @@ def draw_vertical_line(canvas, doc):
         canvas.setLineWidth(1)
         canvas.line(line_x, start_y, line_x, end_y)
         canvas.restoreState()
+def make_table(data, table_style=None, col_widths=None):
+    """
+    Create a ReportLab Table with optional explicit column widths.
+    """
+    if col_widths:
+        table = Table(data, repeatRows=1, colWidths=col_widths)
+    else:
+        table = Table(data, repeatRows=1)
+
+    if table_style:
+        table.setStyle(table_style)
+    return table
+
 
 
 def create_report(
@@ -360,6 +552,7 @@ def create_report(
     version=None,
     missing_samples=None,
     min_conf=None,
+    names_map = {}
 ):
 
     # PDF file setup
@@ -422,7 +615,6 @@ def create_report(
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = [
-            "Specimen ID (Type)",
             "Detected Organism",
             "# Reads Aligned",
             "TASS Score",
@@ -437,12 +629,36 @@ def create_report(
         if "MicrobeRT Probability" in df_identified_paths.columns.values:
             columns_yes.insert(4, "MicrobeRT Probability")
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_identified_paths, plotbuffer, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_identified_paths, color_pathogen=True)
-        table = make_table(
-            data_yes,
-            table_style=table_style
+
+        page_width, _ = landscape(letter)
+
+        # total usable width (match your document margins)
+        usable_width = page_width * 0.88  # ~matches your left/right margins
+
+        # Make left spacer column narrow
+        left_col_width = 0.04 * usable_width   # ~4% of table width
+
+        # Remaining width split across real data columns
+        num_data_cols = len(columns_yes) + (1 if len(plotbuffer) > 0 else 0)
+        remaining_width = usable_width - left_col_width
+        data_col_width = remaining_width / num_data_cols
+
+        col_widths = [left_col_width] + [data_col_width] * num_data_cols
+
+        data_yes, style_cmds = prepare_three_layer_table(
+            df_identified_paths,
+            sample_col='Specimen ID (Type)',
+            group_col='Group',
+            plot_dict=plotbuffer,
+            names_map=names_map,
+            include_headers=True,
+            columns=columns_yes
         )
+        table_style = return_table_style(df_identified_paths, color_pathogen=True)
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table = make_table(data_yes, table_style=table_style, col_widths=col_widths)
+
 
         elements.append(table)
         elements.append(Spacer(1, 12))  # Space between tables
@@ -583,7 +799,7 @@ def create_report(
     ##########################################################################################
     if not df_high_cons_low_conf.empty:
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Specimen ID (Type)",
+        columns_yes = [
                        "Detected Organism",
                        'TASS Score',
                        "# Reads Aligned", "Taxonomic ID #", "Coverage",
@@ -596,21 +812,32 @@ def create_report(
         # if all of Group is Unknown, then remove it from list
 
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_high_cons_low_conf, {}, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+        # call new grouped builder — pass names_map (received into create_report)
+        data_hc, style_cmds = prepare_three_layer_table(
+            df_high_cons_low_conf,
+            sample_col='Specimen ID (Type)',
+            group_col='Group',
+            plot_dict={},  # if you don't want plots here
+            names_map=names_map,
+            include_headers=True,
+            columns=columns_yes
+        )
 
-        # # Add the title and subtitle
-        title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
-        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
-        elements.append(title)
-        elements.append(subtitle)
-        elements.append(Spacer(1, 12))
+
+
+
         # if data shape is >=1 then append, otherwise make text saying it is empty
         if df_high_cons_low_conf.shape[0] >= 1:
-            table = make_table(
-                data_yes,
-                table_style=table_style
-            )
+            table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+            for cmd in style_cmds:
+                table_style.add(*cmd)
+            table = make_table(data_hc, table_style=table_style, col_widths=col_widths)
+            # # Add the title and subtitle
+            title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
+            subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
+            elements.append(title)
+            elements.append(subtitle)
+            elements.append(Spacer(1, 12))
             elements.append(table)
         else:
             elements.append(Paragraph("No High Consequence Low Confidence Organisms", subtext_style))
@@ -620,7 +847,7 @@ def create_report(
     ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
-        columns_opp = ["Specimen ID (Type)", "Detected Organism",
+        columns_opp = ["Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
                        "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
@@ -629,12 +856,21 @@ def create_report(
             columns_opp = columns_opp[:-1]
         if "MicrobeRT Probability" in df_potentials.columns.values:
             columns_opp.insert(4, "MicrobeRT Probability")
-        data_opp = prepare_data_with_headers(df_potentials, {}, include_headers=True, columns=columns_opp)
-        table_style = return_table_style(df_potentials, color_pathogen=True)
-        table = make_table(
-            data_opp,
-            table_style=table_style
+        data_pot, style_cmds = prepare_three_layer_table(
+            df_potentials,
+            sample_col='Specimen ID (Type)',
+            group_col='Group',
+            plot_dict={},  # if you don't want plots here
+            names_map=names_map,
+            include_headers=True,
+            columns=columns_yes
         )
+        table_style = return_table_style(df_potentials, color_pathogen=True)
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table = make_table(data_pot, table_style=table_style, col_widths=col_widths)
+
+
         # Add the title and subtitle
         Title = Paragraph("Low Potential Pathogens", title_style)
         elements.append(Title)
@@ -647,7 +883,7 @@ def create_report(
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Specimen ID (Type)",
+        columns_yes = [
                        "Detected Organism",
                        "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
                         "HHS Percentile", "K2 Reads"]
@@ -658,12 +894,20 @@ def create_report(
             columns_yes.insert(4, "MicrobeRT Probability")
         # if all of Group is Unknown, then remove it from list
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_identified_others, color_pathogen=False)
-        table = make_table(
-            data_yes,
-            table_style=table_style
+        data_comm, style_cmds = prepare_three_layer_table(
+            df_identified_others,
+            sample_col='Specimen ID (Type)',
+            group_col='Group',
+            plot_dict=plotbuffer,
+            names_map=names_map,
+            include_headers=True,
+            columns=columns_yes
         )
+        table_style = return_table_style(df_identified_others, color_pathogen=False)
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table = make_table(data_comm, table_style=table_style, col_widths=col_widths)
+
         title = Paragraph("Commensals", title_style)
         subtitle = Paragraph(f"These were identified & were listed as a commensal directly", subtitle_style)
         elements.append(title)
@@ -676,22 +920,27 @@ def create_report(
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
-        ##########################################################################################
+    #     ##########################################################################################
         ### Section to Make the "Unannotated" Table
         second_title = "Unannotated Organisms"
         second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms (species only) contained within the samples that had atleast one read aligned"
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Specimen ID (Type)', 'Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
-        data_no = prepare_data_with_headers(df_unidentified, plotbuffer, include_headers=True, columns=columns_no)
-        if df_unidentified['K2 Reads'].sum() == 0:
-            columns_no = columns_no[:-1]
-        table_style = return_table_style(df_unidentified, color_pathogen=False)
-        table_no = make_table(
-            data_no,
-            table_style=table_style
+        columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
+        data_no, style_cmds = prepare_three_layer_table(
+            df_unidentified,
+            sample_col='Specimen ID (Type)',
+            group_col='Group',
+            plot_dict=plotbuffer,
+            names_map=names_map,
+            include_headers=True,
+            columns=columns_no
         )
+        table_style = return_table_style(df_unidentified, color_pathogen=False)
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table_no = make_table(data_no, table_style=table_style, col_widths=col_widths)
         elements.append(table_no)
     elements.append(Spacer(1, 12))  # Space between tables
 
@@ -743,7 +992,7 @@ def get_group_for_taxid(taxid, target_rank, taxdump_dict):
         if current == node['parent_taxid']:
             break
         current = node['parent_taxid']
-    return "Unknown"
+    return ''
 
 
 def main():
@@ -752,16 +1001,21 @@ def main():
     if args.taxdump:
         # load the taxdump file
         taxdump_dict = load_taxdump(args.taxdump)
+    names_map = {}
+    if args.names:
+        names_map = load_names(args.names)
     df_full = import_data(args.input)
     # Set tass score as a flaot
     # fill High Consequence with False if it is NaN
     df_full['High Consequence'].fillna(False, inplace=True)
+    df_full['Reads Aligned'] = df_full['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
+    df_full['Coverage'] = df_full['Coverage'].apply(lambda x: f"{100*x:.0f}%" if not pd.isna(x) else 0)
     # fill empty string with False for high consequence
     df_full['High Consequence'] = df_full['High Consequence'].apply(lambda x: False if x == "" else x)
-    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: float(x) if not pd.isna(x) else 0)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{100*x:.0f}" if not pd.isna(x) else 0)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
     # for Detected Organism, add (Group) if it is not null or not Unknown
-    df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']} ({x['Group']})" if x['Group'] != "Unknown" else x["Taxonomic ID #"], axis=1)
+    # df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']}, axis=1)
     # 1) create the rank
     # If your column is actually booleans + NaN, you can do:
 
@@ -806,10 +1060,12 @@ def main():
     # Sort on # Reads aligned
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
+        reads_aligned_formatted = f"{x['# Reads Aligned']:,}"
         if x['abundance'] == x['% Reads']:
-            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)"
+            # format # reads aligned to have commas
+            return f"{reads_aligned_formatted} ({x['abundance']:.2f}%)"
         else:
-            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
+            return f"{reads_aligned_formatted} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
     df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
     # append MicrobeRT Probability to TASS Score if it is present
     # add body site to Sample col with ()
@@ -875,7 +1131,7 @@ def main():
     if args.min_conf and args.min_conf > 0:
         df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
     print(f"Size of of low confidence high consequence pathogens: {df_high_cons_low_conf.shape[0]}")
     # lambda x add the % Reads column to name column
@@ -920,7 +1176,8 @@ def main():
         plotbuffer,
         version,
         missing_samples,
-        args.min_conf
+        args.min_conf,
+        names_map=names_map
     )
 
 

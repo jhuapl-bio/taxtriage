@@ -95,6 +95,7 @@ def validateBt2Scoremin(String scoremin) {
 String value = "G,-10,-2"
 boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
 ch_empty_file = file("$projectDir/assets/NO_FILE")
+ch_empty_file2 = file("$projectDir/assets/NO_FILE2")
 
 if (matches) {
     println("The value matches the pattern.")
@@ -344,14 +345,17 @@ workflow TAXTRIAGE {
         DOWNLOAD_TAXDUMP()
         ch_taxdump_nodes = DOWNLOAD_TAXDUMP.out.nodes
         ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
+        ch_taxdump_names = DOWNLOAD_TAXDUMP.out.names
     }
     else if (params.taxdump){
         // set ch_taxdump_nodes BUT add nodes.dmp to end as a file
         ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
         ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
+        ch_taxdump_names = file("$params.taxdump/names.dmp", checkIfExists: true)
     } else {
         // set to empty_file
         ch_taxdump_nodes = ch_empty_file
+        ch_taxdump_names = ch_empty_file2
         ch_taxdump_dir = ch_empty_file.parent
     }
 
@@ -692,13 +696,13 @@ workflow TAXTRIAGE {
             ////////////////////////////////////////////////////////////////////////////////////////////////
             all_samples = ch_pass_files.map{ it[0].id }.collect().flatten().toSortedList()
 
-
             REPORT(
                 input_alignment_files,
                 ch_pathogens,
                 distributions,
                 ch_assembly_txt,
                 ch_taxdump_nodes,
+                ch_taxdump_names,
                 all_samples
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
