@@ -367,7 +367,7 @@
                     "description": "Gini Coefficient Alpha value for TASS Score calculation. Higher values give more weight to gini coefficient in the final TASS score",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "scaled":{
+                "scaled": {
                     "type": "number",
                     "description": "Minimap2 scaled parameter for sketching. Higher values use less RAM but are less accurate. Default is 1000",
                     "fa_icon": "fas fa-file-signature"
