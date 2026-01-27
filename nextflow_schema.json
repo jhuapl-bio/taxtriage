@@ -603,6 +603,11 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "sorttass": {
+                    "type": "boolean",
+                    "description": "Sort the tables on JUST TASS Score. If disabled, sorts on High Consequence first then TASS Score",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "show_potentials": {
                     "type": "boolean",
                     "description": "Show all known/listed potential organisms in the final discovery report",

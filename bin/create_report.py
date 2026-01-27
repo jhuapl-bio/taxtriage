@@ -72,6 +72,8 @@ def parse_args(argv=None):
                         help="Only show organisms that are in the top percentile of healthy subjects expected abu")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
+    parser.add_argument("--sorttass", action="store_true", required=False,
+                        help="Sort the tables on JUST TASS Score. If disabled, sorts on High Con. first then TASS Score")
     parser.add_argument("--show_commensals", action="store_true", required=False,
                         help="Show the commensals table")
     parser.add_argument("--show_unidentified",   action="store_true", required=False,
@@ -766,11 +768,18 @@ def main():
     # If your column is actually booleans + NaN, you can do:
 
     # 2) sort by rank desc, then TASS Score desc
-    df_full.sort_values(
-        by=['High Consequence', 'TASS Score'],
-        ascending=[False, False],
-        inplace=True
-    )
+    if not args.sorttass:
+        df_full.sort_values(
+            by=['High Consequence', 'TASS Score'],
+            ascending=[False, False],
+            inplace=True
+        )
+    else:
+        df_full.sort_values(
+            by=['TASS Score', 'High Consequence'],
+            ascending=[False, False],
+            inplace=True
+        )
     # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
 
     if "MicrobeRT Probability" in df_full.columns:
