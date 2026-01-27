@@ -34,6 +34,7 @@ workflow REPORT {
         distributions
         assemblyfile
         ch_taxdump_nodes
+        ch_taxdump_names
         all_samples
     main:
         ch_pathogens_report = Channel.empty()
@@ -96,13 +97,15 @@ workflow REPORT {
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
                 false,
-                ch_taxdump_nodes
+                ch_taxdump_nodes,
+                ch_taxdump_names
             )
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(distributions),
                 missing_samples,
-                ch_taxdump_nodes
+                ch_taxdump_nodes,
+                ch_taxdump_names
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)

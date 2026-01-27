@@ -85,6 +85,7 @@ process ALIGNMENT_PER_SAMPLE {
         $type $read_count \\
         --output_dir $output_dir $fastas $cpu_count \\
         $scaled \\
+        $dispersion_factor $reward_factor \\
         $alpha \\
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping $k2 $sensitive $gap_allowance $jump_threshold \\

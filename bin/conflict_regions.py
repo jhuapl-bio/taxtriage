@@ -2778,7 +2778,7 @@ def determine_conflicts(
         cpu_count=None,
         jump_threshold=None,
         gap_allowance = 0.1,
-        shared_windows_report_csv = None,
+        sim_ani_threshold = 0.8,
         compare_to_reference_windows = False
 
 ):
@@ -2879,21 +2879,22 @@ def determine_conflicts(
     if compare_to_reference_windows:
         # Build FASTA window index
         # if not os.path.exists("shared_windows_report.csv"):
+        sim_ani_threshold = 0.8
         report_shared_windows_across_fastas(
             fasta_files=fasta_files,
             output_csv="shared_windows_report.csv",
             ksize=21,
             scaled=8000,
-            window=20000,
-            step=20000,
-            jaccard_threshold=0.80,
-            max_hits_per_query=5,
+            window=10000,
+            step=10000,
+            jaccard_threshold=sim_ani_threshold,
+            max_hits_per_query=4,
             skip_self_same_fasta=False,
         )
         # import shared_windows_report.csv as a dictionary
         shared_idx = load_shared_windows_csv(
             "shared_windows_report.csv",
-            min_jaccard=0.8,          # or 0.99 if you want near-identical too
+            min_jaccard=sim_ani_threshold,          # or 0.99 if you want near-identical too
             skip_same_contig=True
         )
 
