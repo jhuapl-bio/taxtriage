@@ -30,10 +30,9 @@ import math
 import os
 from conflict_regions import determine_conflicts
 import pysam
-from scipy.optimize import minimize
-from ground_truth import build_false_positive_reads_df, build_confusion_dataframe, collect_read_alignments, write_confusion_xlsx, build_ref_metadata
 from math import log2
 import random
+from optimize_weights import calculate_scores
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -244,7 +243,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--gt",
         metavar="GTFILE",
-        type=str,
+        type=bool,
         default=None,
         help="You want to provide a gt file to see how well you fare with the detections",
     )
@@ -1147,64 +1146,6 @@ def read_depth_as_runs(depthfile, reference_lengths):
             ref_runs[ref] = [(1, length, 0)]
 
     return ref_runs
-# Function to apply weights and format the result (assuming `format_non_zero_decimals` is defined)
-def apply_weight(value, weight):
-    try:
-        # Convert the value to float before multiplying by the weight
-        value = float(value)
-        return value * weight
-    except (TypeError, ValueError):
-        # If value cannot be converted to a float, return 0 or handle as needed
-        return 0
-def logarithmic_weight(breadth, min_breadth=1e-3):
-    """
-    Returns a weight between 0 and 1 for a given breadth value.
-    - When breadth == min_breadth, the weight is 1.
-    - When breadth == 1, the weight is 0.
-    - Values in between are mapped logarithmically.
-
-    Parameters:
-    breadth (float): The raw breadth value (expected to be between 0 and 1).
-    min_breadth (float): The minimum expected breadth (should be > 0 to avoid log(0)).
-    """
-    # Clamp breadth to the [min_breadth, 1] range
-    breadth = max(min_breadth, min(breadth, 1.0))
-
-    # Normalize the log value
-    normalized = (math.log(breadth) - math.log(min_breadth)) / (0 - math.log(min_breadth))
-    weight = 1 - normalized
-    return weight
-def compute_tass_score(count, weights):
-    """
-    count is a dictionary that might look like:
-    {
-      'normalized_disparity': <some_value>,
-      'alignment_score': <some_value>,
-      'meangini': <some_value>,
-      ...
-    }
-    We apply the known formula for TASS Score using the provided weights.
-    """
-    # normalize score of count to 0-1, min max range is 3, if larger than 3 set to 3 first
-    # convert z score to percentile
-
-    # Summation of each sub-score * weight
-
-
-
-    tass_score = sum([
-        apply_weight(count.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
-        apply_weight(count.get('alignment_score', 0),       weights.get('mapq_score', 0)),
-        apply_weight(count.get('meanminhash_reduction', 0),       weights.get('minhash_weight', 0)),
-        apply_weight(count.get('meangini', 0),             weights.get('gini_coefficient', 0)),
-        apply_weight(count.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
-        apply_weight(count.get('log_weight_breadth', 0),             weights.get('breadth_weight', 0)),
-        apply_weight(count.get('k2_disparity', 0),         weights.get('k2_disparity_weight', 0)),
-        apply_weight(count.get('diamond', {}).get('identity', 0),
-                     weights.get('diamond_identity', 0))  ])
-
-    return tass_score
-
 
 def adjust_bedgraph_coverage(bedgraph_path, excluded_interval_trees, output_bedgraph=None):
     """
@@ -1531,9 +1472,6 @@ def main():
     import pandas as pd
     comparison_df =  pd.DataFrame()
     alignments_to_remove = defaultdict(set)
-    if args.abu_file:
-        print(args.abu_file)
-        exit()
     if args.minhash_weight > 0:
 
 
@@ -1553,27 +1491,25 @@ def main():
                 args.output_dir = os.path.dirname(args.output)
             alignments_to_remove, comparison_df = determine_conflicts(
                 output_dir = args.output_dir,
-                input_bam = args.input,
-                matrix = args.matrix,
-                min_threshold = args.min_threshold,
-                abu_file = args.abu_file,
-                fasta_files = args.fasta,
-                min_similarity_comparable = args.min_similarity_comparable,
-                use_variance = args.use_variance,
-                apply_ground_truth = args.apply_ground_truth,
-                sigfile = args.sigfile,
-                bedfile = args.bedgraph,
-                reference_signatures = args.reference_signatures,
+                bam_path = args.input,
+                fasta_paths = args.fasta,
+                bedgraph_path = args.bedgraph,
+                gap_allowance_frac = args.gap_allowance,
                 scaled = args.scaled,
-                kmer_size = args.kmer_size,
-                FAST_MODE=args.fast,
-                filtered_bam_create=args.filtered_bam,
-                sensitive=args.sensitive,
-                cpu_count=args.cpu_count,
-                jump_threshold = args.jump_threshold,
-                gap_allowance=args.gap_allowance,
-                compare_to_reference_windows=args.compare_references
+                ksize = args.kmer_size,
+                write_filtered=args.filtered_bam,
+                merge_method="jump",
+                merge_threshold=0.1,
+                min_jaccard = args.min_similarity_comparable,
+                conflict_min_jaccard = args.min_similarity_comparable,
+                use_bam_for_signatures=False,
+                sig_cache=args.sigfile,
+                compare_to_reference_windows= False,
+                random_seed=0,
+                matchfile = args.match,
             )
+            exit()
+            # import the file args.output_dir/region_comparisons.csv
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
             with open(args.failed_reads, 'r') as f:
@@ -2119,7 +2055,7 @@ def main():
             body_sites = []
         else:
             body_sites = [sampletype]
-        dists, site_counts = import_distributions(
+        dists, _ = import_distributions(
             args.hmp,
             "tax_id",
             body_sites
@@ -2151,8 +2087,10 @@ def main():
             sum_norm_abu = sum([x.get('norm_abundance',0) for x in abus])
             percent_total_reads_expected =  sum_abus_expected * total_reads
             stdsum = sum([x.get('std',0) for x in abus])
-            zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
+            zscore = ((percent_total_reads_observed -sum_abus_expected)/ stdsum)  if stdsum > 0 else 3
+            # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
             value['zscore'] = zscore
+            name = value.get('name', 'Unknown')
             percentile = norm.cdf(zscore)
 
             value['hmp_percentile'] = percentile
@@ -2214,158 +2152,53 @@ def main():
         "MicrobeRT Model"
     ]
     write_to_tsv(output, final_scores, "\t".join(header))
-    # --- REPORT GENERATION (XLSX) ---
-    if args.report_confusion_xlsx:
-        ref_meta = build_ref_metadata(reference_hits)
-        if not args.output_dir:
-            args.output_dir = os.path.dirname(args.output)
 
-        out_xlsx = args.confusion_xlsx
-        if not out_xlsx:
-            out_xlsx = os.path.join(args.output_dir, "alignment_confusion_report.xlsx")
+    if (args.optimize):
+        ref_meta = {}
+        from ground_truth import build_ref_meta_from_match_file, optimize_three_weights
+        if args.match and os.path.exists(args.match):
+            ref_meta = build_ref_meta_from_match_file(
+                matcher_path=args.match,
+                accessioncol=args.accessioncol,
+                namecol=args.namecol,
+                taxcol=args.taxcol,
+                has_header=True,
+                sep="\t",
+            )
 
-        # Original alignments from input BAM
-        read_to_refs_orig, read_to_seq, all_reads = collect_read_alignments(args.input, alignments_to_remove=None)
+        # Use the BAM path that was passed as --input (same as used earlier)
+        input_bam = args.input
+        args.max_iterations = 300
+        best = optimize_three_weights(
+            bam_path=args.input,
+                match_tsv=args.match,
+                aggregated_stats=species_aggregated,   # keys are taxids at this point
+                pathogens=pathogens,
+                sample_name=args.samplename,
+                sample_type=sampletype,
+                total_reads=total_reads,
+                aligned_total=aligned_total,
+                initial=(args.breadth_weight, args.gini_weight, args.minhash_weight),
+                lambda_fp_max=50,
+                lambda_fp_mean=10,
+                maxiter=200,
+                verbose=True
+            )
 
-        # Decide what to use as "post-filter" BAM for reporting
-        post_bam = None
-        if args.filtered_bam and os.path.exists(args.filtered_bam):
-            post_bam = args.filtered_bam
-        else:
-            post_bam = None
-        if post_bam:
-            read_to_refs_filt, _, all_reads2 = collect_read_alignments(post_bam, alignments_to_remove=None)
-            # ensure we use union of read sets (should match, but be safe)
-            all_reads = all_reads.union(all_reads2)
-        else:
-            # No physical filtered BAM; apply alignments_to_remove logically
-            # NOTE: This assumes alignments_to_remove is keyed by read_id -> set(refs_to_remove).
-            read_to_refs_filt, _, _ = collect_read_alignments(args.input, alignments_to_remove=alignments_to_remove)
-
-        conf_old = build_confusion_dataframe(read_to_refs_orig, all_reads, ref_meta=ref_meta, prefix="OLD_")
-        conf_new = build_confusion_dataframe(read_to_refs_filt, all_reads, ref_meta=ref_meta, prefix="NEW_")
-
-        confusion_df = conf_old.merge(
-            conf_new.drop(columns=["Reference_TaxID","Reference_Organism"], errors="ignore"),
-            on="Reference",
-            how="outer"
-        )
-
-        fp_reads_df  = build_false_positive_reads_df(read_to_refs_orig, read_to_refs_filt, read_to_seq, all_reads)
-
-        write_confusion_xlsx(out_xlsx, confusion_df, fp_reads_df)
-        print(f"Wrote confusion XLSX report: {out_xlsx}")
-
-
-
-
-    if (args.gt and args.optimize):
-
-        # Usage
-        best_weights = optimize_weights(
-            aggregated_stats=species_aggregated,
-            pathogens=pathogens,
-            sample_name="Test_Sample",
-            sample_type="Unknown",
-            total_reads=total_reads,
-            aligned_total=aligned_total,
-            initial_weights=[1, 1, 1, 1, 1, 1, 1, 0],
-            max_iterations=args.max_iterations
-        )
-        print("Optimized Weights:")
-        for key, value in best_weights.items():
-            print(f"\t{key}: {value:.3f}")
-
-
-
-
-
-def format_non_zero_decimals(number):
-    # Convert number from the scientific notation to the tenth digit
-    number = "{:.10f}".format(number).rstrip('0').rstrip('.')
-    # Convert the number to a string
-    num_str = str(number)
-    if '.' not in num_str:
-        # If there's no decimal point, return the number as is
-        return number
-    else:
-        # Split into integer and decimal parts
-        integer_part, decimal_part = num_str.split('.')
-        non_zero_decimals = ''.join([d for d in decimal_part if d != '0'][:2])
-        # Count leading zeros in the decimal part
-        leading_zeros = len(decimal_part) - len(decimal_part.lstrip('0'))
-        # Construct the new number with two significant decimal digits
-        formatted_number = f"{integer_part}.{('0' * leading_zeros) + non_zero_decimals}"
-        # Convert back to float, then to string to remove trailing zeros
-        return str(float(formatted_number))
-
-
-def compute_cost(
-    aggregated_stats,
-    pathogens,
-    sample_name,
-    sample_type,
-    total_reads,
-    aligned_total,
-    weights
-):
-    """
-    Runs calculate_scores(...), then sums up penalties based on meancoverage & tass_score.
-    """
-    total_weight = sum(weights.values())
-    if total_weight != 1:
-        for key in weights:
-            if total_weight != 0:
-                weights[key] = weights[key] / total_weight
+        print("Optimized three weights (from GT):")
+        for k, v in best.items():
+            if k in ['optimized_weights']:
+                for k, v in v.items():
+                    if k == "gini_weight":
+                        print(f"\tGini Weight: {v:.3f}")
+                    elif k == "minhash_weight":
+                        print(f"\tMinHash Weight: {v:.3f}")
+                    elif k == "breadth_weight":
+                        print(f"\tBreadth Weight: {v:.3f}")
+            elif k == "fp_taxids" or k=="fn_taxids" or k=="tp_taxids":
+                print(f"\t{k}: {len(v)}")
             else:
-                weights[key] = 0
-    # First, get final_scores from your existing pipeline:
-    final_scores = calculate_scores(
-        aggregated_stats=aggregated_stats,
-        pathogens=pathogens,
-        sample_name=sample_name,
-        sample_type=sample_type,
-        total_reads=total_reads,
-        aligned_total=aligned_total,
-        weights=weights,
-    )
-
-    cost = 0.0
-    # print("__________")
-    perrefcost = {}
-    for rec in final_scores:
-        ref = rec.get('ref')
-        tass_score = rec['tass_score']
-        actual_coverage = rec.get('meancoverage', 0.0)
-
-        # The "ground-truth" coverage for this ref (already placed in aggregated_stats)
-        # e.g. aggregated_stats[ref]['gtcov'] may be 0 or >0
-        coverage = aggregated_stats.get(ref, {}).get('gtcov', 0.0)
-        # CASE 1: coverage == 0 => we want TASS ~ 0,
-        #         also penalize if actual_coverage is large (contradiction).
-        if coverage <= 0:
-            # The bigger the TASS (wrongly claiming positivity),
-            # or the bigger the actual coverage (contradiction),
-            # the larger this penalty.
-            cost += (1.0 + actual_coverage) * (tass_score ** 2)
-            perrefcost[ref] = (1.0 + actual_coverage) * (tass_score ** 2)
-        else:
-            # CASE 2: coverage > 0 => we want TASS near 1 for big coverage.
-            #  (A) penalize if TASS is low => cost ~ coverage * (1 - TASS)^2
-            #  (B) penalize if TASS is high but actual coverage is too small
-            #      => e.g. coverage_short = (coverage - actual_coverage)
-            #             cost2 = (tass_score^2) * coverage_short
-            #      meaning if ground-truth coverage is large but the pipeline
-            #      found less, it’s contradictory to have TASS=high.
-            cost1 = coverage * ((1.0 - tass_score) ** 2)
-
-            coverage_short = max(0.0, coverage - actual_coverage)
-            cost2 = (tass_score ** 2) * coverage_short
-
-            cost += (cost1 + cost2)
-            perrefcost[ref] =  (cost1 + cost2)
-        # print("\t",ref, actual_coverage, coverage, tass_score, rec['gini_coefficient'])
-    return cost, perrefcost
+                print(f"\t{k}: {v}")
 
 def random_tweak(weights, scale=0.2):
     """
@@ -2381,327 +2214,6 @@ def random_tweak(weights, scale=0.2):
 
         new_w[k] = candidate
     return new_w
-
-def optimize_weights(
-    aggregated_stats,
-    pathogens,
-    sample_name="No_Name",
-    sample_type="Unknown",
-    aligned_total=0,
-    total_reads=0,
-    initial_weights=None,
-    max_iterations=1000
-):
-    if initial_weights is None:
-        # Initialize with equal weights
-        initial_weights =[1, 1, 1, 1, 1, 1, 0],
-
-
-
-    # Normalize initial weights
-    total_sum = 0
-    for weight in initial_weights:
-        if isinstance(weight, (list)):
-            total_sum += sum(weight)
-        else:
-            total_sum += weight
-    normalized_weights = []
-    for weight in initial_weights:
-        if isinstance(weight, list):
-            # Normalize each element in the list
-            normalized_sub_weights = [w / total_sum for w in weight]
-            normalized_weights.append(normalized_sub_weights)
-        else:
-            # Normalize the single weight
-            normalized_weight = weight / total_sum
-            normalized_weights.append(normalized_weight)
-    # Define bounds for each weight
-    bounds = [(0, 1) for _ in initial_weights]
-
-    # Define the constraint that weights sum to 1
-    constraints = {'type': 'eq', 'fun': lambda w: sum(w) - 1}
-
-    # Objective function to minimize
-    def objective(w):
-        weight_dict = {
-            'mapq_score': w[0],
-            'disparity_score': w[1],
-            'gini_coefficient': w[2],
-            'breadth_score': w[3],
-            'minhash_score': w[4],
-            'siblings_score': w[5],
-            'k2_disparity_weight': w[6],
-            'diamond_identity': w[7],
-        }
-        cost, perrefcost = compute_cost(
-            aggregated_stats,
-            pathogens,
-            sample_name,
-            sample_type,
-            total_reads,
-            aligned_total,
-            weight_dict
-        )
-        return -cost  # Negate if you want to maximize the cost
-
-    # Perform optimization
-    result = minimize(
-        objective,
-        initial_weights,
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints,
-        options={'maxiter': max_iterations, 'disp': True}
-    )
-
-    if result.success:
-        optimized_weights = {
-            'mapq_score': result.x[0],
-            'disparity_score': result.x[1],
-            'gini_coefficient': result.x[2],
-            'breadth_score': result.x[3],
-            'minhash_score': result.x[4],
-            'siblings_score': result.x[5],
-            'k2_disparity_weight': result.x[6],
-            'diamond_identity': result.x[7],
-        }
-        # Extract the optimized weights
-        optimized_weights = {
-            'mapq_score': result.x[0],
-            'disparity_score': result.x[1],
-            'gini_coefficient': result.x[2],
-            'breadth_score': result.x[3],
-            'minhash_score': result.x[4],
-            'siblings_score': result.x[5],
-            'k2_disparity_weight': result.x[6],
-            'diamond_identity': result.x[7],
-        }
-
-        # Compute final cost and per-reference scores with optimized weights
-        final_cost, final_per_reference_scores = compute_cost(
-            aggregated_stats,
-            pathogens,
-            sample_name,
-            sample_type,
-            total_reads,
-            aligned_total,
-            optimized_weights
-        )
-
-        # for k, v in final_per_reference_scores.items():
-        #     print(f"\t{k}: {v:.4f}")
-        return optimized_weights
-    else:
-        raise RuntimeError(f"Optimization failed: {result.message}")
-
-
-def calculate_scores(
-        aggregated_stats,
-        pathogens,
-        sample_name="No_Name",
-        sample_type="Unknown",
-        total_reads=0,
-        aligned_total = 0,
-        weights={}
-    ):
-    """
-    Write reference hits and pathogen information to a TSV file.
-
-    Args:
-    reference_hits (dict): Dictionary with reference names as keys and counts as values.
-    pathogens (dict): Dictionary with reference names as keys and dictionaries of additional attributes as values.
-    output_file_path (str): Path to the output TSV file.
-    """
-    final_scores = []
-
-    # Write the header row
-    for ref, count in aggregated_stats.items():
-        strainlist = count.get('strainslist', [])
-        is_pathogen = "Unknown"
-        callfamclass = ""
-        annClass = "None"
-        refpath = pathogens.get(ref)
-        pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
-        # check if the sample type is in the pathogenic sites
-        direct_match = False
-        high_cons = False
-        def pathogen_label(ref):
-            is_pathogen = "Unknown"
-            isPathi = False
-            direct_match = False
-            callclass = ref.get('callclass', "N/A")
-            high_cons = ref.get('high_cons', False)
-            # pathogenic_sites = ref.get('pathogenic_sites', [])
-            commensal_sites = ref.get('commensal_sites', [])
-            if sample_type == "sterile":
-                direct_match = True
-                is_pathogen = callclass.capitalize() if callclass else "Primary (sterile)"
-                isPathi = True
-            elif sample_type in pathogenic_sites:
-                if callclass != "commensal":
-                    is_pathogen = callclass.capitalize()
-                    isPathi = True
-                else:
-                    is_pathogen = "Potential"
-                direct_match = True
-            elif sample_type in commensal_sites:
-                is_pathogen = "Commensal"
-                direct_match = True
-            elif callclass and callclass != "":
-                is_pathogen = callclass.capitalize() if callclass else "Unknown"
-                isPathi = True
-            return is_pathogen, isPathi, direct_match, high_cons
-
-        formatname = count.get('name', "N/A")
-
-        if refpath:
-            is_pathogen, isPathi, direct_match, high_cons = pathogen_label(refpath)
-            is_annotated = "Yes"
-            status = refpath.get('status', "N/A")
-            formatname = refpath.get('name', formatname)
-            if is_pathogen == "Commensal":
-                callfamclass = "Commensal Listing"
-        else:
-            is_annotated = "No"
-            taxid = count.get(ref, "")
-            status = ""
-        if direct_match:
-            annClass = "Direct"
-        else:
-            annClass = "Derived"
-            # take the species_taxid and see if it is a pathogen
-            if ref != count.get('species_taxid'):
-                ref_spec = pathogens.get(count.get('species_taxid'), None)
-                if ref_spec:
-                    is_pathogen_spec, _,_, high_cons_spec = pathogen_label(ref_spec)
-                    is_pathogen = is_pathogen_spec
-                    high_cons = high_cons_spec
-        listpathogensstrains = []
-        fullstrains = []
-
-        callclasses = set()
-        if strainlist:
-            pathogenic_reads = 0
-            merged_strains = defaultdict(dict)
-
-            for x in strainlist:
-                strainname = x.get('strainname', None)
-                taxid = x.get('taxid', None)
-                if taxid:
-                    keyx = taxid
-                elif not taxid and strainname:
-                    keyx = strainname
-                else:
-                    keyx = None
-                if keyx in merged_strains:
-                    merged_strains[keyx]['numreads'] += x.get('numreads', 0)
-                    merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
-                else:
-                    merged_strains[keyx] = x
-                    merged_strains[keyx]['numreads'] = x.get('numreads', 0)
-                    merged_strains[keyx]['subkeys'] = [x.get('subkey', "")]
-
-            for xref, x in merged_strains.items():
-                pathstrain = None
-                if x.get('taxid'):
-                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('taxid', '')}: {x.get('numreads', 0)} reads)")
-                else:
-                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('numreads', 0)} reads)")
-
-                if x.get('taxid') in pathogens:
-                    pathstrain = pathogens.get(x.get('taxid'))
-                elif x.get('fullname') in pathogens:
-                    pathstrain = pathogens.get(x.get('fullname'))
-                if pathstrain:
-                    taxx = x.get('taxid', "")
-                    if pathstrain.get('callclass') not in ["commensal", "Unknown", 'unknown', '', None]:
-                        callclasses.add(pathstrain.get('callclass').capitalize())
-                    # annClassN = pathstrain.get('callclass', "Unknown")
-                    # if the pathstrain is high consequence set high_cons to True
-                    # callclasses.add(annClassN.capitalize())
-                    if pathstrain.get('high_cons', False):
-                        high_cons = True
-                    if sample_type in pathstrain.get('pathogenic_sites', []) or sample_type == pathstrain.get('general_classification', ''):
-                        pathogenic_reads += x.get('numreads', 0)
-                        percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
-                        listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
-
-            if callfamclass == "" or len(listpathogensstrains) > 0:
-                callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-        if len(callclasses) > 0:
-            # if Primary set is_pathogen to primary, if opposite set to opportunistic if potential set to potential
-            if "Primary" in callclasses:
-                is_pathogen = "Primary"
-            elif "Opportunistic" in callclasses:
-                is_pathogen = "Opportunistic"
-            elif "Potential" in callclasses:
-                is_pathogen = "Potential"
-        breadth_total = count.get('breadth_total', 0)
-        countreads = sum(count['numreads'])
-        if aligned_total == 0:
-            percent_aligned = 0
-        else:
-            percent_aligned = format_non_zero_decimals(100*countreads / aligned_total)
-        if total_reads == 0:
-            percent_total = 0
-        else:
-            percent_total = format_non_zero_decimals(100*countreads / total_reads)
-        if len(pathogenic_sites) == 0:
-            pathogenic_sites = ""
-
-        # Apply weights to the relevant scores
-        # Example usage:
-        breadth = count.get('breadth_total')  # your raw value between 0 and 1
-        log_weight_breadth = 1-logarithmic_weight(breadth)
-        # get log weight of the breadth_total
-        count['log_weight_breadth'] = log_weight_breadth
-        tass_score = compute_tass_score(
-            count,
-            weights,
-        )
-        final_scores.append(
-            dict(
-                tass_score=tass_score,
-                formatname=formatname,
-                sample_name=sample_name,
-                sample_type=sample_type,
-                fullstrains=fullstrains,
-                listpathogensstrains=listpathogensstrains,
-                percent_total=percent_total,
-                percent_aligned=percent_aligned,
-                callfamclass=callfamclass,
-                log_breadth_weight = count.get('log_weight_breadth', 0),
-                total_reads=sum(count['numreads']),
-                reads_aligned=countreads,
-                hmp_percentile = count.get('hmp_percentile', 0),
-                zscore= count.get('zscore', 0),
-                meancoverage=count.get('meancoverage', 0),
-                breadth_total = breadth_total,
-                total_length = count.get('total_length', 0),
-                is_annotated=is_annotated,
-                is_pathogen=is_pathogen,
-                ref=ref,
-                status=status,
-                annClass=annClass,
-                high_cons = high_cons,
-                mmbert = count.get('mmbert', None),
-                mmbert_model = count.get('mmbert_model', None),
-                pathogenic_reads = pathogenic_reads,
-                gini_coefficient=count.get('meangini', 0),
-                meanbaseq=count.get('meanbaseq', 0),
-                meanmapq=count.get('meanmapq', 0),
-                alignment_score=count.get('alignment_score', 0),
-                disparity_score=count.get('normalized_disparity', 0),
-                covered_regions=count.get('covered_regions', 0),
-                siblings_score=count.get('raw_disparity', 0),
-                k2_reads=count.get('k2_numreads', 0),
-                k2_disparity=count.get('k2_disparity', 0),
-                gtcov=count.get('gtcov', 0),
-                minhash_score=count.get('meanminhash_reduction', 0),
-
-            )
-        )
-    return final_scores
 
 def write_to_tsv(output_path, final_scores, header):
     total=0

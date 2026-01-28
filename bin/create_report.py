@@ -38,6 +38,7 @@ from reportlab.lib.units import inch
 from datetime import datetime
 from io import StringIO
 from reportlab.lib.colors import Color
+from map_taxid import load_taxdump, load_names, load_merged, get_root
 
 import argparse
 def parse_args(argv=None):
@@ -86,14 +87,7 @@ def parse_args(argv=None):
                         help="What type of data is being processed. Options: 'Taxonomic ID #' or 'Detected Organism'.",
                         choices=['Taxonomic ID #', 'Detected Organism'])
     parser.add_argument("--taxdump", metavar="TAXDUMP", required=False, default=None,
-                        help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp")
-    parser.add_argument(
-        "--names",
-        metavar="NAMES_DMP",
-        required=False,
-        default=None,
-        help="Path to NCBI names.dmp to map taxid -> scientific name",
-    )
+                        help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp, names.dmp and potentially merged.dmp")
     parser.add_argument("--rank", metavar="TAXDUMP", required=False, default="genus",
                         help='IF merging with taxdump, what rank to merge on')
 
@@ -137,28 +131,12 @@ def format_cell_content(cell):
         # Adjust font size based on content length
         return adjust_font_size(str(cell))
 
-def load_names(names_dmp_path):
+def with_alpha(color, alpha):
     """
-    Parse names.dmp (NCBI) and return a dict mapping taxid -> scientific name.
-    Only keeps the 'scientific name' class.
+    Return a new Color with the same RGB as `color` but different alpha.
+    Works for reportlab Color objects.
     """
-    names_map = {}
-    if not names_dmp_path or not os.path.exists(names_dmp_path):
-        return names_map
-
-    with open(names_dmp_path, 'r') as fh:
-        for line in fh:
-            # Typical format: "<taxid>\t|\t<name>\t|\t<unique name>\t|\t<name class>\t|"
-            parts = [p.strip() for p in line.split('|')]
-            if len(parts) < 4:
-                continue
-            taxid = parts[0]
-            name = parts[1]
-            name_class = parts[3]
-            if name_class == "scientific name":
-                names_map[taxid] = name
-    return names_map
-
+    return colors.Color(color.red, color.green, color.blue, alpha=alpha)
 
 def import_data(inputfiles ):
     # Load your TSV data into a DataFrame
@@ -210,7 +188,7 @@ def import_data(inputfiles ):
     # set if putative to it with *  in Detected organism using lambda x
     df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
     df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}°' if x['AnnClass'] == 'Derived' else x["Detected Organism"], axis=1)
-    df['Detected Organism'] = df.apply(lambda x: f'★ {x["Detected Organism"]}' if x['High Consequence'] == True else x["Detected Organism"], axis=1)
+    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}' if x['High Consequence'] == True else x["Detected Organism"], axis=1)
     df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
     # replace all NaN with ""
     df = df.fillna("")
@@ -234,6 +212,7 @@ def extract_reads(value):
         return int(float(s))
     except Exception:
         return 0
+
 def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=None, include_headers=True, columns=None):
     """
     Build a table with three levels:
@@ -280,7 +259,7 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
         while len(header_cells) < num_cols:
             header_cells.append(empty_cell)
         data.append(header_cells)
-        style_cmds.append(('BACKGROUND', (0,0), (-1,0), colors.gray))
+        style_cmds.append(('BACKGROUND', (0,0), (-1,0), colors.slategray))
         style_cmds.append(('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke))
         style_cmds.append(('ALIGN', (0,0), (-1,0), 'CENTER'))
         start_row = 1
@@ -308,7 +287,7 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
         sample_count = sample_df.shape[0]
 
         # add sample header (span full width)
-        sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits — {sample_reads} alignments"
+        sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits — {sample_reads:,} alignments"
         sample_para = Paragraph(sample_header_text, styles['Normal'])
         sample_row = [sample_para] + [empty_cell_normal] * (num_cols - 1)
         # ensure length (all Flowables)
@@ -316,12 +295,14 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
             sample_row.append(empty_cell_normal)
         data.append(sample_row)
         style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
-        style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.darkgrey))
-        style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.whitesmoke))
+        # Neutral header background
+        style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.grey))
+        style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.black))
         style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'LEFT'))
         style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'TOP'))
         style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
         style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
+
 
         current_row += 1
 
@@ -345,7 +326,7 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
             group_count = group_df.shape[0]
             high_con_sequence_count = group_df[group_df['High Consequence'] == True].shape[0]
 
-            group_header_text = f"<b>{group_label}</b><br/>{group_count} hits ({high_con_sequence_count} High Consequence) — {group_reads} alignments"
+            group_header_text = f"<b>{group_label}</b><br/>{group_count} hits ({high_con_sequence_count} High Consequence) — {group_reads:,} alignments"
             group_para = Paragraph(group_header_text, styles['Normal'])
             group_row = [group_para] + [empty_cell_normal] * (num_cols - 1)
             while len(group_row) < num_cols:
@@ -354,18 +335,35 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
 
             # style for group header
             style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
+            # Neutral group header (span full width) so it doesn't get mistaken for coloring the data rows
             style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.lightgrey))
-            style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'LEFT'))
-            style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'TOP'))
+            style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.black))
+            style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'CENTER'))
+            style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'MIDDLE'))
             style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
             style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
+
 
             current_row += 1
 
             # add member rows under this group
+            star_style = ParagraphStyle(
+                name='StarStyle',
+                parent=styles['Normal'],
+                alignment=1,          # 1 = CENTER
+                fontSize=10,
+                leading=10
+            )
             for idx, row in group_df.iterrows():
-                # LEFT column must be a Flowable (not a raw string)
-                member_cells = [empty_cell]  # left column intentionally blank under group
+                # LEFT column: show a star if High Consequence else keep blank, keep it center aligned
+                if row.get('High Consequence', False) in (True, 'True', 'true', 1):
+                    left_cell = Paragraph('★', star_style)
+                else:
+                    left_cell = empty_cell
+
+                member_cells = [left_cell]
+
+                # Fill data columns as Paragraph flowables
                 for col in columns:
                     cell_val = row.get(col, "")
                     member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
@@ -378,8 +376,12 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
                         plot_image.drawHeight = 0.4 * inch
                         plot_image.drawWidth = 0.9 * inch
                         member_cells.append(plot_image)
+                        plot_is_empty = False
                     else:
                         member_cells.append(empty_cell)
+                        plot_is_empty = True
+                else:
+                    plot_is_empty = False  # no plot column at all
 
                 # Ensure member_cells length == num_cols (all Flowables)
                 while len(member_cells) < num_cols:
@@ -387,7 +389,7 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
 
                 data.append(member_cells)
 
-                # determine color for this member row (based on Microbial Category / AnnClass)
+                # determine color for the member data cells (based on Microbial Category / AnnClass)
                 val = row.get('Microbial Category', "")
                 derived = row.get('AnnClass', "")
 
@@ -404,16 +406,46 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
                 else:
                     color = colors.white
 
-                # background color for the member row
-                style_cmds.append(('BACKGROUND', (1, current_row), (-1, current_row), color))
+                # Determine indices:
+                # left spacer column index = 0
+                # data columns indices = 1 .. (num_cols-1)  if no plot column
+                # if plot column exists, plot column index = num_cols-1, so data columns end at num_cols-2
+                if has_plot_column:
+                    data_start_col = 1
+                    data_end_col = num_cols - 2
+                    plot_col_index = num_cols - 1
+                else:
+                    data_start_col = 1
+                    data_end_col = num_cols - 1
+                    plot_col_index = None
+                # Determine indices
+                data_start_col = 1
+                data_end_col = num_cols - 1 if plot_col_index is None else num_cols - 2
 
-                # center-align all member cells (excluding the left spacer column)
-                style_cmds.append(('ALIGN', (1, current_row), (-1, current_row), 'CENTER'))
 
-                # vertical alignment
+                # Semi-transparent version for data cells
+                faded_color = with_alpha(color, 0.22)
+                # Apply background color ONLY to the data columns (not left spacer, not plot cell)
+                # if data_end_col >= data_start_col:
+                #     style_cmds.append(('BACKGROUND', (data_start_col, current_row), (data_end_col, current_row), color))
+                style_cmds.append(('BACKGROUND', (0, current_row), (0, current_row), color))  # left spacer cell colored very lightly
+                # Data cells: same color but faded
+                if data_end_col >= data_start_col:
+                    style_cmds.append(('BACKGROUND', (data_start_col, current_row), (data_end_col, current_row), faded_color))
+
+                # center the star (if present) in that left cell
+                style_cmds.append(('ALIGN', (0, current_row), (0, current_row), 'CENTER'))
+                style_cmds.append(('VALIGN', (0, current_row), (0, current_row), 'MIDDLE'))
+                # If plot column exists and plot cell is empty, color just the plot cell subtly
+                if plot_col_index is not None and plot_is_empty:
+                    style_cmds.append(('BACKGROUND', (plot_col_index, current_row), (plot_col_index, current_row), colors.HexColor("#f2f2f2b8")))
+                # Center data cells (but do NOT color them)
+                if data_end_col >= data_start_col:
+                    style_cmds.append(('ALIGN', (data_start_col, current_row), (data_end_col, current_row), 'CENTER'))
+                    style_cmds.append(('VALIGN', (data_start_col, current_row), (data_end_col, current_row), 'TOP'))
+
+                # Keep entire-row vertical alignment and subtle divider
                 style_cmds.append(('VALIGN', (0, current_row), (-1, current_row), 'TOP'))
-
-                # subtle divider
                 style_cmds.append(('LINEBELOW', (0, current_row), (-1, current_row), 0.25, colors.lightgrey))
 
                 current_row += 1
@@ -620,7 +652,6 @@ def create_report(
             "TASS Score",
             "Taxonomic ID #", "Pathogenic Subsp/Strains",
             "Coverage",
-            "HHS Percentile",
             "K2 Reads"
         ]
         # check if all K2 reads column are 0 or nan
@@ -654,7 +685,7 @@ def create_report(
             include_headers=True,
             columns=columns_yes
         )
-        table_style = return_table_style(df_identified_paths, color_pathogen=True)
+        table_style = return_table_style(df_identified_paths, color_pathogen=False)
         for cmd in style_cmds:
             table_style.add(*cmd)
         table = make_table(data_yes, table_style=table_style, col_widths=col_widths)
@@ -752,7 +783,7 @@ def create_report(
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
         "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
-        "HHS Percentile: What percentile the abundance falls under relative to the given sample type based on HHS NCBI taxonomy classification information"
+        "HMP Plot: What percentile the abundance falls under relative to the given sample type based on Healthy Human Subject NCBI taxonomy classification information"
     ]
 
     # Create bullet points for each column explanation
@@ -803,7 +834,7 @@ def create_report(
                        "Detected Organism",
                        'TASS Score',
                        "# Reads Aligned", "Taxonomic ID #", "Coverage",
-                       "HHS Percentile", "K2 Reads"]
+                       "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
@@ -817,7 +848,7 @@ def create_report(
             df_high_cons_low_conf,
             sample_col='Specimen ID (Type)',
             group_col='Group',
-            plot_dict={},  # if you don't want plots here
+            plot_dict={},
             names_map=names_map,
             include_headers=True,
             columns=columns_yes
@@ -828,7 +859,7 @@ def create_report(
 
         # if data shape is >=1 then append, otherwise make text saying it is empty
         if df_high_cons_low_conf.shape[0] >= 1:
-            table_style = return_table_style(df_high_cons_low_conf, color_pathogen=True)
+            table_style = return_table_style(df_high_cons_low_conf, color_pathogen=False)
             for cmd in style_cmds:
                 table_style.add(*cmd)
             table = make_table(data_hc, table_style=table_style, col_widths=col_widths)
@@ -850,7 +881,7 @@ def create_report(
         columns_opp = ["Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage",  "HHS Percentile", "K2 Reads"
+                       "Pathogenic Subsp/Strains", "Coverage", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
@@ -860,7 +891,7 @@ def create_report(
             df_potentials,
             sample_col='Specimen ID (Type)',
             group_col='Group',
-            plot_dict={},  # if you don't want plots here
+            plot_dict=plotbuffer,  # if you don't want plots here
             names_map=names_map,
             include_headers=True,
             columns=columns_yes
@@ -886,7 +917,7 @@ def create_report(
         columns_yes = [
                        "Detected Organism",
                        "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
-                        "HHS Percentile", "K2 Reads"]
+                        "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
             columns_yes = columns_yes[:-1]
@@ -927,7 +958,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage",  "HHS Percentile", "K2 Reads"]
+        columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage", "K2 Reads"]
         data_no, style_cmds = prepare_three_layer_table(
             df_unidentified,
             sample_col='Specimen ID (Type)',
@@ -954,56 +985,18 @@ def create_report(
 
     print(f"PDF generated: {pdf_file}")
 
-def load_taxdump(taxdump):
-    taxdump_dict = {}
-    with open(taxdump) as f:
-        for line in f:
-            # Assuming the file is tab-delimited and the columns are ordered as:
-            # taxid, parent_taxid, rank, name
-            try:
-                parts = line.strip().split("\t")
-                taxid = parts[0]
-                parent_taxid = parts[2]
-                rank = parts[4]
-                taxdump_dict[taxid] = {
-                    'parent_taxid': parent_taxid,
-                    'rank': rank
-                }
-            except Exception as ex:
-                print(f"Error parsing line: {line}, {ex}")
-    f.close()
-    return taxdump_dict
-
-# Then, define a helper function that traverses the hierarchy.
-def get_group_for_taxid(taxid, target_rank, taxdump_dict):
-    """
-    Traverse upward in the taxonomy tree starting at taxid until a node with
-    rank==target_rank is found. If found, return its name; otherwise, return 'Unknown'.
-    """
-    # Make sure taxid is a string (since our keys are strings)
-    current = str(taxid)
-
-    # Walk up the tree until you either find the target rank or hit the root.
-    while current in taxdump_dict:
-        node = taxdump_dict[current]
-        if node['rank'] == target_rank:
-            return node['parent_taxid']
-        # If we have reached the root (or there's a circular reference), break.
-        if current == node['parent_taxid']:
-            break
-        current = node['parent_taxid']
-    return ''
-
 
 def main():
     args = parse_args()
-    taxdump_dict = {}
+    taxdump_dict, names_map, merged_data = {}, {}, {}
     if args.taxdump:
         # load the taxdump file
-        taxdump_dict = load_taxdump(args.taxdump)
-    names_map = {}
-    if args.names:
-        names_map = load_names(args.names)
+        if os.path.exists(f"{args.taxdump}/nodes.dmp"):
+            taxdump_dict = load_taxdump(f"{args.taxdump}/nodes.dmp")
+        if os.path.exists(f"{args.taxdump}/names.dmp"):
+            names_map = load_names(f"{args.taxdump}/names.dmp")
+        if os.path.exists(f"{args.taxdump}/merged.dmp"):
+            merged_data = load_merged(f"{args.taxdump}/merged.dmp")
     df_full = import_data(args.input)
     # Set tass score as a flaot
     # fill High Consequence with False if it is NaN
@@ -1013,12 +1006,13 @@ def main():
     # fill empty string with False for high consequence
     df_full['High Consequence'] = df_full['High Consequence'].apply(lambda x: False if x == "" else x)
     df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{100*x:.0f}" if not pd.isna(x) else 0)
-    df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_group_for_taxid(x, args.rank, taxdump_dict))
+    df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_root(x, args.rank, taxdump_dict))
     # for Detected Organism, add (Group) if it is not null or not Unknown
     # df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']}, axis=1)
     # 1) create the rank
     # If your column is actually booleans + NaN, you can do:
-
+    # fill all None for Group as "Unknown"
+    df_full['Group'].fillna('Others', inplace=True)
     # 2) sort by rank desc, then TASS Score desc
     df_full.sort_values(
         by=['High Consequence', 'TASS Score'],
@@ -1086,18 +1080,44 @@ def main():
     plotbuffer = dict()
     # check if all of the 'Sample Type' is Unknown only, if so then set vairbale
     isUnknownAll = df_full['body_site'].str.contains("Unknown").all()
+
+    mapped_colids = {
+        "Detected Organism": "name",
+        "Taxonomic ID #": "tax_id",
+    }
     if not isUnknownAll and args.distributions and os.path.exists(args.distributions):
         stats_dict, site_counts = import_distributions(
             args.distributions,
-            args.type,
+            mapped_colids.get(args.type, args.type),
             []
         )
+        # # for each of the entries, figure out the top 10 norm_abundance for each site and the corresponding name and tax_id from stats_dict
+        # sites_tops = {}
+        # body_sites = df_full['body_site'].unique().tolist()
+        # for entry in stats_dict:
+        #     taxid, body_site = entry
+        #     if stats_dict[entry].get('rank') != "species":
+        #         continue
+        #     if body_site not in sites_tops:
+        #         sites_tops[body_site] = []
+        #     mean_abundance = stats_dict[entry]['mean']
+        #     sites_tops[body_site].append((mean_abundance, taxid))
 
-        for index, row in df_full.iterrows():
+        # for site, top_list in sites_tops.items():
+        #     # sort top_list by mean_abundance desc
+        #     top_list_sorted = sorted(top_list, key=lambda x: x[0], reverse=True)
+        #     # take top 10
+        #     sites_tops[site] = top_list_sorted[:10]
+        # # print the top 10 for each site
+        # for site, top_list in sites_tops.items():
+        #     print(f"Top 10 organisms for site {site}:")
+        #     for mean_abundance, taxid in top_list:
+        #         print(f"  TaxID: {taxid}, Mean Abundance: {mean_abundance}")
+        # exit()
+
+        for _, row in df_full.iterrows():
             # taxid, body_site, stats, args, result_df
             # if taxid and body site not in stats dict then make it empty or 0
-            taxidsonly = [key[0] for key in stats_dict.keys()]
-            bodysites = [key[1] for key in stats_dict.keys()]
             # if (row['tax_id'], row['body_site']) in dists or row['tax_id'] not in taxidsonly or len(body_sites)== 0:
             if (row[args.type], row['body_site']) not in stats_dict:
                 stats = {
@@ -1116,17 +1136,14 @@ def main():
                 }
             else:
                 stats = stats_dict[(row[args.type], row['body_site'])]
-            rank = stats['rank']
             buffer = make_vplot(
                 row[args.type],
                 stats,
-                args.type,
+                args.type if args.type == "Detected Organism" else "tax_id",
                 df_full,
                 percentile_column="HHS Percentile"
             )
             plotbuffer[(row[args.type], row['body_site'])] = buffer
-    # convert all locations nan to "Unknown"
-    # df_full['Pathogenic Sites'] = df_full['Pathogenic Sites'].fillna("Unknown")
     df_high_cons_low_conf = pd.DataFrame()
     if args.min_conf and args.min_conf > 0:
         df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]

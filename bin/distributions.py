@@ -51,7 +51,7 @@ def import_distributions(
         stats_dict = pd.read_csv(distribution_data, sep='\t').to_dict(orient='records')
     for value in stats_dict:
         value['body_site'] = body_site_map(value['body_site'])
-    uniquesites = set([x['body_site'] for x in stats_dict])
+
     if len(body_sites) > 0:
         for value in stats_dict:
             if value['body_site'] not in site_counts:
@@ -71,31 +71,15 @@ def import_distributions(
             if 'body_site' in value and value['body_site'] in body_sites:
                 stats_dict_new[(value[column_id], value['body_site'])] = value
     else:
+        print("ELE")
         stats_dict_new = {(x[column_id], body_site_map(x['body_site'])): x for x in stats_dict}
-    i = 0
     # Sort the saved_amts list of dicts on the "number_samples" key
     saved_amts = sorted(saved_amts, key=lambda x: x['proportion total'], reverse=False)
-    # for val in saved_amts:
-    #     print(f"{val['name']}, {val['site_counts']} - {val['number_samples']} - {val['rank']} - {val['body_site']}, Found in {(100*val['proportion total']):.2f}% of samples")
 
 
-
-    # convert all abundances to a list of floats
-    def custom_stddev(row):
-        total_count = row['site_count']
-        abundances = row['abundances']
-        norm_abundance = row['norm_abundance']
-        summation = 0
-        for x in abundances:
-            summation += (x - norm_abundance)**2
-        stdev =  (summation / total_count)**0.5
-        return stdev
     for key in stats_dict_new:
         stats_dict_new[key]['abundances'] = [float(x) for x in stats_dict_new[key]['abundances'].split(",")]
         stats_dict_new[key]['norm_abundance'] = sum(stats_dict_new[key]['abundances'])/stats_dict_new[key]['site_count']
-        # print(f"Original std dev: {stats_dict_new[key]['std']}, Original Mean: {stats_dict_new[key]['mean']}")
-        # stats_dict_new[key]['std'] = custom_stddev(stats_dict_new[key])
-        # print(f"New std dev: {stats_dict_new[key]['std']} ")
     return stats_dict_new, site_counts
 
 def make_vplot(taxid, stats, column, result_df, percentile_column =None):
@@ -118,7 +102,7 @@ def make_vplot(taxid, stats, column, result_df, percentile_column =None):
             else:
                 specific_percentile = int(np.sum(np.array(filtered_data) <= specific_abundance) / len(filtered_data) * 100)
         else:
-            specific_percentile = math.floor(specific_row[percentile_column]*100)
+            specific_percentile = min(math.floor(specific_row[percentile_column]*100), 100)
         # Boxplot
         sns.boxplot(x=filtered_data, showfliers=False, ax=ax,)
 
