@@ -181,6 +181,10 @@ workflow ALIGNMENT {
             return [item1[0], item2[1]] // Adjust based on how you need the merged items
         }.set{ collected_bams }
 
+    // // // Example to view the output
+    // SAMTOOLS_DEPTH(
+    //     collected_bams
+    // )
     SAMTOOLS_INDEX(
         collected_bams
     )

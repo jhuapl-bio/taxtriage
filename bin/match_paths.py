@@ -158,9 +158,6 @@ def parse_args(argv=None):
         help="Assembly refseq file",
     )
     parser.add_argument(
-        "--compare_references", default=False,  help="Compress species to species level",  action='store_true'
-    )
-    parser.add_argument(
         "-k",  "--compress_species", default=False,  help="Compress species to species level",  action='store_true'
     )
     parser.add_argument(
@@ -348,22 +345,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
-    parser.add_argument(
-        "--report_confusion_xlsx",
-        action="store_true",
-        help="Write an XLSX report containing confusion-matrix stats and remaining false-positive reads."
-    )
-    parser.add_argument(
-        "--confusion_xlsx",
-        required=False,
-        default=None,
-        help="Output XLSX path. If not set, will write to <output_dir>/alignment_confusion_report.xlsx"
-    )
 
     return parser.parse_args(argv)
-
-
-
 
 def lorenz_curve(depths):
     """Compute the Lorenz curve for a list of depths."""
@@ -1501,8 +1484,7 @@ def main():
                 sensitive=args.sensitive,
                 cpu_count=args.cpu_count,
                 jump_threshold = args.jump_threshold,
-                gap_allowance=args.gap_allowance,
-                compare_to_reference_windows=args.compare_references
+                gap_allowance=args.gap_allowance
             )
             # import the file args.output_dir/region_comparisons.csv
         if args.failed_reads:
@@ -1781,7 +1763,7 @@ def main():
             }
 
 
-            y=0
+
             try:
 
                 # if accession isn't NC_042114.1 skip
@@ -1805,28 +1787,18 @@ def main():
                     # Ensure 'accession' is a string and matches the index type
                     accession = str(data['accession']).strip()
                     if accession in comparison_df.index:
-                        # c1 = float(comparison_df.loc[accession, col_stat])
-                        # c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
-                        # comparison_value = min(
-                        #     1,
-                        #     (c1+c2) / 2
-                        # )
-                        # # weight it so that any value less than 0.9 is even lower by getting the log value
+                        c1 = float(comparison_df.loc[accession, col_stat])
+                        c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
+                        comparison_value = min(
+                            1,
+                            (c1+c2) / 2
+                        )
+                        # weight it so that any value less than 0.9 is even lower by getting the log value
                         # if comparison_value < 0.75:
                         #     # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
                         #     comparison_value = comparison_value ** 3.3
-                        c1 = float(comparison_df.loc[accession, col_stat])
-                        d_all = float(comparison_df.loc[accession, col_stat2])
 
-                        # Center penalty around -10% with steepness k
-                        k = 0.90
-                        x0 = -10.0
-                        pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))  # in (0,1)
-
-                        # Combine: breadth * penalty (pen dominates)
-                        comparison_value = min(1.0, c1 * pen)
-
-                        data['comparison'] =  comparison_value
+                        data['comparison'] =  ( comparison_value  )
                     else:
                         data['comparison'] = 1
                 species_aggregated[top_level_key]['minhash_reductions'].append(data.get('comparison', 1))
@@ -1858,8 +1830,7 @@ def main():
                         "taxid": data['taxid'] if "taxid" in data else None,
                     })
             except Exception as e:
-                y+=1
-            #     print(f"Error in top level: {e}")
+                print(f"Error in top level: {e}")
     all_readscounts = [sum(x['numreads']) for x in species_aggregated.values()]
     def calculate_var(read_counts):
         """
@@ -1950,6 +1921,12 @@ def main():
                 normalized_disparity = 1
         # Store the normalized disparity
         aggregated_data['normalized_disparity'] = normalized_disparity
+        # print(f"Entry Top Key: {top_level_key}")
+        # print(f"\tName: {aggregated_data['name']}")
+        # print(f"\tNum Reads: {aggregated_data['numreads']}")
+        # print(f"\tK2 Reads: {aggregated_data['k2_numreads']}")
+        # print(f"\tPrev. Disparity: {aggregated_data['disparity']}")
+        # print(f"\t^Norm. Disparity: {aggregated_data['normalized_disparity']}")
     # Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
     def normalize_mapq(mapq_score, max_mapq=60, min_mapq=0):
         # Normalize the MAPQ score to be between 0 and 1

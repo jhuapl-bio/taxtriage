@@ -35,11 +35,10 @@
                     "format": "directory-path",
                     "description": "Path to database for Metaphlan"
                 },
-                "centrifuge_db": {
-                    "type": "string",
+                "centrifuge": {
+                    "type": "boolean",
                     "fa_icon": "fas fa-book",
-                    "format": "directory-path",
-                    "description": "Path to database for Centrifuge"
+                    "description": "Enable centrifuge classifier instead of kraken2. Set db with --db as always"
                 },
                 "outdir": {
                     "type": "string",
@@ -362,21 +361,6 @@
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "alpha": {
-                    "type": "number",
-                    "description": "Gini Coefficient Alpha value for TASS Score calculation. Higher values give more weight to gini coefficient in the final TASS score",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "scaled": {
-                    "type": "number",
-                    "description": "Minimap2 scaled parameter for sketching. Higher values use less RAM but are less accurate. Default is 1000",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "ani_removal": {
-                    "type": "boolean",
-                    "description": "Compare, not only the shared signatures across aligned regions, but also whole assembly sequences from the original fasta file(s). Introduces a more aggressive method of removing potential multi-mapped or false-positively mapped reads.",
-                    "fa_icon": "fas fa-file-signature"
-                },
                 "disparity_score_weight": {
                     "type": "number",
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
@@ -489,16 +473,14 @@
                     "type": "string",
                     "description": "Name of iGenomes reference.",
                     "fa_icon": "fas fa-book",
-                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details.",
-                    "hidden": true
+                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
                 },
                 "igenomes_base": {
                     "type": "string",
                     "format": "directory-path",
                     "description": "Directory / URL base for iGenomes references.",
-                    "default": "s3://ngi-igenomes/igenomes",
-                    "fa_icon": "fas fa-cloud-download-alt",
-                    "hidden": true
+                    "default": "https://ngi-igenomes.s3.eu-west-1.amazonaws.com/igenomes",
+                    "fa_icon": "fas fa-cloud-download-alt"
                 },
                 "igenomes_ignore": {
                     "type": "boolean",
@@ -620,6 +602,11 @@
                 "compress_species": {
                     "type": "boolean",
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sorttass": {
+                    "type": "boolean",
+                    "description": "Sort the tables on JUST TASS Score. If disabled, sorts on High Consequence first then TASS Score",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_potentials": {

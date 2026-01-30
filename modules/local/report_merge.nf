@@ -62,7 +62,8 @@ process ORGANISM_MERGE_REPORT {
         $show_unidentified \\
         $distribution_arg \\
         $min_conf $taxdump \\
-        $missing_arg
+        $missing_arg \\
+        $sorttass \\
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

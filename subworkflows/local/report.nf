@@ -96,13 +96,21 @@ workflow REPORT {
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
                 false,
+<<<<<<< HEAD
                 ch_taxdump_dir,
+=======
+                ch_taxdump_nodes
+>>>>>>> main
             )
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(distributions),
                 missing_samples,
+<<<<<<< HEAD
                 ch_taxdump_dir,
+=======
+                ch_taxdump_nodes
+>>>>>>> main
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)

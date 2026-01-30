@@ -75,6 +75,8 @@ def parse_args(argv=None):
                         help="Only show organisms that are in the top percentile of healthy subjects expected abu")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
+    parser.add_argument("--sorttass", action="store_true", required=False,
+                        help="Sort the tables on JUST TASS Score. If disabled, sorts on High Con. first then TASS Score")
     parser.add_argument("--show_commensals", action="store_true", required=False,
                         help="Show the commensals table")
     parser.add_argument("--show_unidentified",   action="store_true", required=False,
@@ -586,6 +588,7 @@ def split_df(df_full):
     df_opp = df_full[df_full['Microbial Category'].isin([ "Potential"])].copy()
     df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
     df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
+
     df_yes.reset_index(drop=True, inplace=True)
     df_opp.reset_index(drop=True, inplace=True)
     return df_yes, df_opp, df_comm, df_unidentified
@@ -643,19 +646,74 @@ tiny_font_style = ParagraphStyle(name='TinyFont', parent=styles['Normal'], fontS
 small_font_style = ParagraphStyle(name='SmallFont', parent=styles['Normal'], fontSize=2)
 normal_style = styles['Normal']
 
+def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
+    data = []
+    # convert k2 reads to int
+    df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
+    if not columns:
+        columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
+    if len(plot_dict.keys()) > 0:
+        if "HHS Percentile" in columns:
+            columns.remove("HHS Percentile")
+    if include_headers:
+        headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
+        if len(plot_dict.keys()) > 0:
+            headers.append(Paragraph('<b>Percentile of Healthy Subject (HHS)</b>', styles['Normal']))  # Plot column header
+            # remove HHS Percentile if present from headers
+        data.append(headers)
+    for index, row in df.iterrows():
+        row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
+        # Insert the plot image
+        if len(plot_dict.keys()) > 0:
+            plot_key = (row['Detected Organism'], row['Specimen Type'])
+            if plot_key in plot_dict:
+                plot_image = Image(plot_dict[plot_key])
+                plot_image.drawHeight = 0.5 * inch  # Height of the image
+                plot_image.drawWidth = 1* inch  # Width of the image, adjusted from your figsize
+                row_data.append(plot_image)
+
+        data.append(row_data)
+    return data
+
 def return_table_style(df=pd.DataFrame(), color_pathogen=False):
-    """
-    Basic table style: header/grid/valign. Actual body coloring is applied by the
-    table builder (prepare_three_layer_table) because it knows the exact row indices.
-    """
+    # Start with the basic style
     table_style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.gray),
+        ('BACKGROUND', (0,0), (-1,0), colors.gray), # header
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('GRID', (0,0), (-1,-1), 1, colors.black),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LEFTPADDING', (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+
     ])
+    if color_pathogen:
+        # Placeholder for cells to color (row_index, col_index) format
+        cells_to_color = []
+        colorindexcol = 1
+        # Example post-processing to mark cells
+        i=0
+        for row_idx, row in df.iterrows():
+            val = row['Microbial Category']
+            # if nan then set to empty string
+            derived = row['AnnClass']
+            # Get Sample Type value from row
+            # sampletype = row['Specimen Type']
+            if "Primary" in val and derived == "Direct":
+                color = 'lightcoral'
+            elif "Primary" in val:
+                color = '#fab462'
+            elif "Commensal" in val:
+                color = 'lightgreen'
+            elif "Opportunistic" in val:
+                color = "#ffe6a8"
+            elif "Potential" in val:
+                color = 'lightblue'
+            else:
+                color = "white"
+            # Ensure indices are within the table's dimensions
+            style_command = ('BACKGROUND', (colorindexcol, i+1), (colorindexcol, i+1), color)  # Or lightorange based on condition
+            table_style.add(*style_command)
+            i+=1
+    else:
+        table_style.add(*('BACKGROUND', (0,1), (-1,-1), colors.white))
     return table_style
 
 def build_columns_and_widths(
@@ -760,7 +818,6 @@ def create_report(
     version=None,
     missing_samples=None,
     min_conf=None,
-    names_map = {}
 ):
 
     # PDF file setup
@@ -824,6 +881,7 @@ def create_report(
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = [
+            "Specimen ID (Type)",
             "Detected Organism",
             "# Reads Aligned",
             "TASS Score",
@@ -1020,7 +1078,7 @@ def create_report(
     ##########################################################################################
     if not df_high_cons_low_conf.empty:
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = [
+        columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        'TASS Score',
                        "# Reads Aligned", "Taxonomic ID #", "Coverage",  "High ANI",
@@ -1047,6 +1105,12 @@ def create_report(
 
 
 
+        # # Add the title and subtitle
+        title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
+        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
+        elements.append(title)
+        elements.append(subtitle)
+        elements.append(Spacer(1, 12))
         # if data shape is >=1 then append, otherwise make text saying it is empty
         if df_high_cons_low_conf.shape[0] >= 1:
             table_style = return_table_style(df_high_cons_low_conf, color_pathogen=False)
@@ -1068,7 +1132,7 @@ def create_report(
     ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
-        columns_opp = ["Detected Organism",
+        columns_opp = ["Specimen ID (Type)", "Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
                     #    "Pathogenic Subsp/Strains",
@@ -1088,11 +1152,10 @@ def create_report(
             columns=columns_yes
         )
         table_style = return_table_style(df_potentials, color_pathogen=True)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table = make_table(data_pot, table_style=table_style, col_widths=col_widths)
-
-
+        table = make_table(
+            data_opp,
+            table_style=table_style
+        )
         # Add the title and subtitle
         Title = Paragraph("Low Potential Pathogens", title_style)
         elements.append(Title)
@@ -1105,7 +1168,7 @@ def create_report(
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = [
+        columns_yes = ["Specimen ID (Type)",
                        "Detected Organism",
                        "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage", "High ANI",
                         "K2 Reads"]
@@ -1116,20 +1179,12 @@ def create_report(
             columns_yes.insert(4, "MicrobeRT Probability")
         # if all of Group is Unknown, then remove it from list
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_comm, style_cmds = prepare_three_layer_table(
-            df_identified_others,
-            sample_col='Specimen ID (Type)',
-            group_col='Group',
-            plot_dict=plotbuffer,
-            names_map=names_map,
-            include_headers=True,
-            columns=columns_yes
-        )
+        data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
         table_style = return_table_style(df_identified_others, color_pathogen=False)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table = make_table(data_comm, table_style=table_style, col_widths=col_widths)
-
+        table = make_table(
+            data_yes,
+            table_style=table_style
+        )
         title = Paragraph("Commensals", title_style)
         subtitle = Paragraph(f"These were identified & were listed as a commensal directly", subtitle_style)
         elements.append(title)
@@ -1142,7 +1197,7 @@ def create_report(
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
-    #     ##########################################################################################
+        ##########################################################################################
         ### Section to Make the "Unannotated" Table
         second_title = "Unannotated Organisms"
         second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms (species only) contained within the samples that had atleast one read aligned"
@@ -1160,9 +1215,10 @@ def create_report(
             columns=columns_no
         )
         table_style = return_table_style(df_unidentified, color_pathogen=False)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table_no = make_table(data_no, table_style=table_style, col_widths=col_widths)
+        table_no = make_table(
+            data_no,
+            table_style=table_style
+        )
         elements.append(table_no)
     elements.append(Spacer(1, 12))  # Space between tables
 
@@ -1285,14 +1341,12 @@ def main():
     # Set tass score as a flaot
     # fill High Consequence with False if it is NaN
     df_full['High Consequence'].fillna(False, inplace=True)
-    df_full['Reads Aligned'] = df_full['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
-    df_full['Coverage'] = df_full['Coverage'].apply(lambda x: f"{100*x:.0f}%" if not pd.isna(x) else 0)
     # fill empty string with False for high consequence
     df_full['High Consequence'] = df_full['High Consequence'].apply(lambda x: False if x == "" else x)
     df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{100*x:.0f}" if not pd.isna(x) else 0)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_root(x, args.rank, taxdump_dict))
     # for Detected Organism, add (Group) if it is not null or not Unknown
-    # df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']}, axis=1)
+    df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']} ({x['Group']})" if x['Group'] != "Unknown" else x["Taxonomic ID #"], axis=1)
     # 1) create the rank
     # If your column is actually booleans + NaN, you can do:
     # fill all None for Group as "Unknown"
@@ -1338,12 +1392,10 @@ def main():
     # Sort on # Reads aligned
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
-        reads_aligned_formatted = f"{x['# Reads Aligned']:,}"
         if x['abundance'] == x['% Reads']:
-            # format # reads aligned to have commas
-            return f"{reads_aligned_formatted} ({x['abundance']:.2f}%)"
+            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)"
         else:
-            return f"{reads_aligned_formatted} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
+            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
     df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
     # append MicrobeRT Probability to TASS Score if it is present
     # add body site to Sample col with ()
@@ -1416,7 +1468,7 @@ def main():
     if args.min_conf and args.min_conf > 0:
         df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x}" if not pd.isna(x) else 0)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
     print(f"Size of of low confidence high consequence pathogens: {df_high_cons_low_conf.shape[0]}")
     # lambda x add the % Reads column to name column
@@ -1461,8 +1513,7 @@ def main():
         plotbuffer,
         version,
         missing_samples,
-        args.min_conf,
-        names_map=names_map
+        args.min_conf
     )
 
 

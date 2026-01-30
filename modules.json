@@ -90,6 +90,11 @@
                         "git_sha": "d2726fcf75063960f06b36d2229a4c0966614108",
                         "installed_by": ["modules"]
                     },
+                    "centrifuge/kreport": {
+                        "branch": "master",
+                        "git_sha": "41dfa3f7c0ffabb96a6a813fe321c6d1cc5b6e46",
+                        "installed_by": ["modules"]
+                    },
                     "custom/dumpsoftwareversions": {
                         "branch": "master",
                         "git_sha": "82501fe6d0d12614db67751d30af98d16e63dc59",
