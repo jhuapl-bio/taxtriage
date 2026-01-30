@@ -27,8 +27,7 @@ process ORGANISM_MERGE_REPORT {
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)
     val(missing_samples)
-    path(nodes)
-    path(names)
+    path(taxdump)
 
     output:
         path "versions.yml"           , emit: versions
@@ -53,8 +52,7 @@ process ORGANISM_MERGE_REPORT {
     def show_potentials = params.show_potentials ? " --show_potentials " : ""
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
-    def taxdump = nodes.name != "NO_FILE" ? " --taxdump $nodes " : ""
-    def names = names.name != "NO_FILE2" ? " --names $names " : ""
+    def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -64,7 +62,7 @@ process ORGANISM_MERGE_REPORT {
         $show_unidentified \\
         $distribution_arg \\
         $min_conf $taxdump \\
-        $missing_arg $names
+        $missing_arg
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

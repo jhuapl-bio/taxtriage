@@ -701,8 +701,7 @@ workflow TAXTRIAGE {
                 ch_pathogens,
                 distributions,
                 ch_assembly_txt,
-                ch_taxdump_nodes,
-                ch_taxdump_names,
+                ch_taxdump_dir,
                 all_samples
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))

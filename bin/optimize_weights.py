@@ -58,18 +58,17 @@ def calculate_scores(
         callfamclass = ""
         annClass = "None"
         refpath = pathogens.get(ref)
-        pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
         # check if the sample type is in the pathogenic sites
         direct_match = False
         high_cons = False
-        def pathogen_label(ref):
+        def pathogen_label(rft):
             is_pathogen = "Unknown"
             isPathi = False
             direct_match = False
-            callclass = ref.get('callclass', "N/A")
-            high_cons = ref.get('high_cons', False)
-            # pathogenic_sites = ref.get('pathogenic_sites', [])
-            commensal_sites = ref.get('commensal_sites', [])
+            callclass = rft.get('callclass', "N/A")
+            high_cons = rft.get('high_cons', False)
+            pathogenic_sites = rft.get('pathogenic_sites', [])
+            commensal_sites = rft.get('commensal_sites', [])
             if sample_type == "sterile":
                 direct_match = True
                 is_pathogen = callclass.capitalize() if callclass else "Primary (sterile)"
@@ -110,13 +109,30 @@ def calculate_scores(
             if ref != count.get('species_taxid'):
                 ref_spec = pathogens.get(count.get('species_taxid'), None)
                 if ref_spec:
-                    is_pathogen_spec, _,_, high_cons_spec = pathogen_label(ref_spec)
+                    is_pathogen_spec, _, dir_spec, high_cons_spec = pathogen_label(ref_spec)
                     is_pathogen = is_pathogen_spec
                     high_cons = high_cons_spec
+                    if dir_spec:
+                        annClass = "Direct"
+            # iterate through strainslist if it exists, and get pathogen label until dir_spec is true or all strains are checked
+            elif not direct_match and strainlist:
+                for strain in strainlist:
+                    strain_taxid = strain.get('taxid', None)
+
+                    if strain_taxid:
+                        ref_strain = pathogens.get(strain_taxid, None)
+
+                        if ref_strain:
+                            is_pathogen_strain, _, dir_strain, high_cons_strain = pathogen_label(ref_strain)
+                            if dir_strain:
+                                is_pathogen = is_pathogen_strain
+                                high_cons = high_cons_strain
+                                annClass = "Direct"
         listpathogensstrains = []
         fullstrains = []
-
         callclasses = set()
+        pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
+        print(formatname, ref, annClass, sample_type)
         if strainlist:
             pathogenic_reads = 0
             merged_strains = defaultdict(dict)
@@ -153,9 +169,7 @@ def calculate_scores(
                     taxx = x.get('taxid', "")
                     if pathstrain.get('callclass') not in ["commensal", "Unknown", 'unknown', '', None]:
                         callclasses.add(pathstrain.get('callclass').capitalize())
-                    # annClassN = pathstrain.get('callclass', "Unknown")
-                    # if the pathstrain is high consequence set high_cons to True
-                    # callclasses.add(annClassN.capitalize())
+
                     if pathstrain.get('high_cons', False):
                         high_cons = True
                     if sample_type in pathstrain.get('pathogenic_sites', []) or sample_type == pathstrain.get('general_classification', ''):
@@ -189,6 +203,7 @@ def calculate_scores(
         # Apply weights to the relevant scores
         # Example usage:
         breadth = count.get('breadth_total')  # your raw value between 0 and 1
+        # print the breadth and the name
         log_weight_breadth = 1-logarithmic_weight(breadth)
         # get log weight of the breadth_total
         count['log_weight_breadth'] = log_weight_breadth

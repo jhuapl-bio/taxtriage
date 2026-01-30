@@ -18,6 +18,7 @@
 #
 
 import os
+import matplotlib
 import pandas as pd
 import numpy as np
 from pandas.api.types import CategoricalDtype
@@ -28,6 +29,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, landscape
 from distributions import import_distributions, body_site_map, make_vplot
 from reportlab.graphics.shapes import Line
+matplotlib.use('Agg')   # non-interactive backend
 
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, ListFlowable, ListItem
 from reportlab.platypus.flowables import HRFlowable, Flowable
@@ -100,6 +102,13 @@ def parse_args(argv=None):
         help="Path of output file (pdf)",
     )
     parser.add_argument(
+        "--ani_matrix",
+        metavar="ANI_MATRIX",
+        required=False,
+        type=str,
+        help="Path to organism ANI matrix CSV file from Sourmash signatures. Optional",
+    )
+    parser.add_argument(
         "-u",
         "--output_txt",
         metavar="OUTPUT_TXT",
@@ -137,6 +146,151 @@ def with_alpha(color, alpha):
     Works for reportlab Color objects.
     """
     return colors.Color(color.red, color.green, color.blue, alpha=alpha)
+
+def _ensure_index_strings(df_or_series):
+    """Return a list of index values as strings (ANI matrix index/columns may be int or str)."""
+    return [str(x) for x in df_or_series.index]
+
+def subset_ani_for_group(ani_matrix, taxid_list):
+    """
+    Subset ani_matrix to rows/cols matching taxid_list (taxid_list may be ints or strings).
+    Returns (submatrix, present_taxids, missing_taxids).
+    """
+    # Make sure ani_matrix has string index/cols for robust matching
+    ani = ani_matrix.copy()
+    ani.index = ani.index.map(lambda x: str(x))
+    ani.columns = ani.columns.map(lambda x: str(x))
+
+    taxid_strs = [str(x) for x in taxid_list]
+    present = [t for t in taxid_strs if t in ani.index]
+    missing = [t for t in taxid_strs if t not in ani.index]
+    if len(present) == 0:
+        return pd.DataFrame(), [], missing
+    sub = ani.loc[present, present].copy()
+    return sub, present, missing
+
+def heatmap_bytesio(matrix, labels=None, figsize=(3,3), annot=False, cmap='viridis', vmin=None, vmax=None):
+    """
+    Create a heatmap for `matrix` (pd.DataFrame) and return BytesIO containing PNG.
+    If labels is None, matrix.index is used.
+    """
+    buf = io.BytesIO()
+    if matrix.empty:
+        # create a small blank image or return None
+        plt.figure(figsize=figsize)
+        plt.text(0.5, 0.5, 'No ANI\navailable', ha='center', va='center')
+        plt.axis('off')
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+        plt.close()
+        buf.seek(0)
+        return buf
+
+    labels = labels if labels is not None else [str(x) for x in matrix.index]
+    # set vmin/vmax if not provided to keep consistent color scaling if you want
+    if vmin is None:
+        vmin = matrix.values.min()
+    if vmax is None:
+        vmax = matrix.values.max()
+
+    fig, ax = plt.subplots(figsize=figsize)
+    # seaborn heatmap is nicer; if you don't have seaborn, replace with imshow
+    try:
+        sns.heatmap(matrix.astype(float), ax=ax, xticklabels=labels, yticklabels=labels,
+                    annot=annot, cmap=cmap, vmin=vmin, vmax=vmax, cbar=True,
+                    square=True, linewidths=0.2, linecolor='white')
+    except Exception:
+        im = ax.imshow(matrix.values.astype(float), vmin=vmin, vmax=vmax, aspect='equal')
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=90, fontsize=6)
+        ax.set_yticks(range(len(labels)))
+        ax.set_yticklabels(labels, fontsize=6)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    plt.xticks(rotation=90, fontsize=6)
+    plt.yticks(fontsize=6)
+    plt.tight_layout()
+    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+def build_group_plotbuffer_for_rows(ani_matrix, df_full, args, plotbuffer):
+    """
+    For each row in df_full, attach a BytesIO PNG of the group's ANI submatrix to plotbuffer keyed by
+    (row[args.type], row['body_site']) — which matches how your table builder looks up images.
+    - ani_matrix: pandas DataFrame loaded earlier (index_col=0)
+    - df_full: full data frame (after cleaning)
+    - args: parsed args (needed for args.type)
+    - plotbuffer: dict to be updated in-place
+    """
+    # Convert ani index/cols to strings for matching
+    ani = ani_matrix.copy()
+    ani.index = ani.index.map(lambda x: str(x))
+    ani.columns = ani.columns.map(lambda x: str(x))
+
+    # Precompute taxid lists per group
+    # We assume df_full has column "Taxonomic ID #" and "Group" as you set earlier
+    taxid_col = 'Taxonomic ID #'
+    if taxid_col not in df_full.columns:
+        # nothing to do
+        return plotbuffer
+
+    # Build group -> unique taxid list (preserve original order)
+    group_to_taxids = {}
+    for _, row in df_full.iterrows():
+        grp = row.get('Group', '')
+        taxid = row.get(taxid_col, '')
+        if pd.isna(taxid) or taxid == "":
+            continue
+        group_to_taxids.setdefault(grp, []).append(taxid)
+
+    # Deduplicate while preserving order
+    for grp, taxids in group_to_taxids.items():
+        seen = set()
+        dedup = []
+        for t in taxids:
+            if t not in seen:
+                dedup.append(t)
+                seen.add(t)
+        group_to_taxids[grp] = dedup
+
+    # Now build one image per group, and then attach to all rows that belong to that group
+    group_image_cache = {}
+    for grp, taxids in group_to_taxids.items():
+        sub, present, missing = subset_ani_for_group(ani, taxids)
+        if sub.empty:
+            # produce a small "no data" image so table cell has something
+            imgbuf = heatmap_bytesio(pd.DataFrame(), labels=None, figsize=(2.2,2.2))
+            group_image_cache[grp] = (imgbuf, present, missing)
+            continue
+
+        # if only 1 taxid present, create a small 1x1 heatmap or a label
+        if sub.shape[0] == 1:
+            # create a simple image with single value
+            imgbuf = heatmap_bytesio(sub, labels=sub.index.tolist(), figsize=(1.2,1.2), annot=True)
+            group_image_cache[grp] = (imgbuf, present, missing)
+            continue
+
+        # Otherwise create a reasonable sized heatmap; size can be scaled by number of taxa
+        n = sub.shape[0]
+        # cap figure size
+        figsize = (min(6, 0.6 * n + 1), min(6, 0.6 * n + 1))
+        imgbuf = heatmap_bytesio(sub, labels=sub.index.tolist(), figsize=figsize, annot=False, cmap='viridis')
+        group_image_cache[grp] = (imgbuf, present, missing)
+
+    # Attach to plotbuffer keyed by (Detected Organism, body_site) for each row
+    for _, row in df_full.iterrows():
+        key = (row.get(args.type), row.get('Specimen Type') or row.get('Specimen ID (Type)') or row.get('body_site'))
+        grp = row.get('Group', '')
+        if grp in group_image_cache:
+            plotbuffer[key] = group_image_cache[grp][0]
+        else:
+            # fallback: empty image
+            plotbuffer[key] = heatmap_bytesio(pd.DataFrame(), labels=None, figsize=(2.2,2.2))
+
+    return plotbuffer
 
 def import_data(inputfiles ):
     # Load your TSV data into a DataFrame
@@ -212,22 +366,10 @@ def extract_reads(value):
         return int(float(s))
     except Exception:
         return 0
-
 def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=None, include_headers=True, columns=None):
-    """
-    Build a table with three levels:
-      - Sample header (spans full width)
-      - Group header (spans full width) inside each sample
-      - Member rows (one per df row)
-
-    Ensures every table row has the same number of columns (important when some rows
-    include a plot image cell and others do not).
-    Returns: data (list of rows), style_cmds (list of TableStyle commands)
-    """
     data = []
     style_cmds = []
 
-    # Work on a copy so we don't mutate caller's df
     df_proc = df.copy()
 
     if 'K2 Reads' in df_proc.columns:
@@ -236,26 +378,26 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
     if columns is None:
         columns = [c for c in df_proc.columns.values if c not in (sample_col, group_col, 'plot')]
 
-    # Determine whether we need an explicit plot column (so all rows have same width)
+    # Accept a few possible names so your upstream code can vary.
+    ani_candidates = ["High ANI", "ANI>90", "ANI > 90", "ANI>0.9", "HighANI"]
+    ani_col_name = next((c for c in ani_candidates if c in df_proc.columns), None)
+
+    # Only treat ANI as present if:
+    #   (a) we found it in df_proc, AND
+    #   (b) it is included in the columns list for this table
     has_plot_column = len(plot_dict.keys()) > 0
-
-    # number of columns in member area: len(columns) + (1 plot col if present)
+    has_ani_col = (ani_col_name is not None) and (ani_col_name in columns)
     member_cols_count = len(columns) + (1 if has_plot_column else 0)
-    # total columns including the left "sample/group" placeholder
     num_cols = 1 + member_cols_count
-
-    # small empty Flowable to use for blank cells (avoids plain strings)
     empty_cell = Paragraph('', small_font_style)
-    empty_cell_normal = Paragraph('', styles['Normal'])  # for header-like blanks if needed
+    empty_cell_normal = Paragraph('', styles['Normal'])
 
-    # Header (column titles) - single row above everything
     if include_headers:
         header_cells = [Paragraph('', styles['Normal'])]
         for col in columns:
             header_cells.append(Paragraph(f'<b>{col}</b>', styles['Normal']))
         if has_plot_column:
             header_cells.append(Paragraph(f'<b>Plot</b>', styles['Normal']))
-        # Ensure header row length equals num_cols (use Flowables)
         while len(header_cells) < num_cols:
             header_cells.append(empty_cell)
         data.append(header_cells)
@@ -266,47 +408,34 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
     else:
         start_row = 0
 
-    # helper to find reads column
     possible_reads_cols = ['Reads Aligned', '# Reads Aligned', '# Reads Aligned to Sample', 'K2 Reads', 'Quant']
     reads_col = next((c for c in possible_reads_cols if c in df_proc.columns), None)
 
-    # Build ordered list of samples (preserve df order)
     sample_groups = []
     for sample_key, sample_df in df_proc.groupby(sample_col, sort=False):
         sample_groups.append((sample_key, sample_df))
 
     current_row = start_row
     for s_idx, (sample_key, sample_df) in enumerate(sample_groups):
-        # sample-level stats
         sample_label = sample_key if sample_key and str(sample_key).strip() != "" else "Unknown Sample"
-        if reads_col:
-            # use extract_reads helper to robustly parse numeric-like strings
-            sample_reads = int(sample_df[reads_col].apply(extract_reads).sum())
-        else:
-            sample_reads = 0
+        sample_reads = int(sample_df[reads_col].apply(extract_reads).sum()) if reads_col else 0
         sample_count = sample_df.shape[0]
 
-        # add sample header (span full width)
         sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits — {sample_reads:,} alignments"
         sample_para = Paragraph(sample_header_text, styles['Normal'])
         sample_row = [sample_para] + [empty_cell_normal] * (num_cols - 1)
-        # ensure length (all Flowables)
         while len(sample_row) < num_cols:
             sample_row.append(empty_cell_normal)
         data.append(sample_row)
         style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
-        # Neutral header background
         style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.grey))
         style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.black))
         style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'LEFT'))
         style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'TOP'))
         style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
         style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
-
-
         current_row += 1
 
-        # Build ordered list of groups for this sample
         group_list = []
         for group_key, group_df in sample_df.groupby(group_col, sort=False):
             group_list.append((group_key, group_df))
@@ -318,11 +447,7 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
             else:
                 group_label = group_taxid if group_taxid and group_taxid.lower() != "unknown" else group_taxid
 
-            # group-level stats
-            if reads_col:
-                group_reads = int(group_df[reads_col].apply(extract_reads).sum())
-            else:
-                group_reads = 0
+            group_reads = int(group_df[reads_col].apply(extract_reads).sum()) if reads_col else 0
             group_count = group_df.shape[0]
             high_con_sequence_count = group_df[group_df['High Consequence'] == True].shape[0]
 
@@ -333,42 +458,34 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
                 group_row.append(empty_cell_normal)
             data.append(group_row)
 
-            # style for group header
             style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
-            # Neutral group header (span full width) so it doesn't get mistaken for coloring the data rows
             style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.lightgrey))
             style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.black))
             style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'CENTER'))
             style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'MIDDLE'))
             style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
             style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
-
-
             current_row += 1
 
-            # add member rows under this group
             star_style = ParagraphStyle(
                 name='StarStyle',
                 parent=styles['Normal'],
-                alignment=1,          # 1 = CENTER
+                alignment=1,
                 fontSize=10,
                 leading=10
             )
-            for idx, row in group_df.iterrows():
-                # LEFT column: show a star if High Consequence else keep blank, keep it center aligned
-                if row.get('High Consequence', False) in (True, 'True', 'true', 1):
-                    left_cell = Paragraph('★', star_style)
-                else:
-                    left_cell = empty_cell
 
+            for idx, row in group_df.iterrows():
+                left_cell = Paragraph('★', star_style) if row.get('High Consequence', False) in (True, 'True', 'true', 1) else empty_cell
                 member_cells = [left_cell]
 
-                # Fill data columns as Paragraph flowables
                 for col in columns:
                     cell_val = row.get(col, "")
-                    member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
+                    if ani_col_name and col == ani_col_name:
+                        member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
+                    else:
+                        member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
 
-                # append plot image cell or empty Flowable to ensure constant width
                 if has_plot_column:
                     plot_key = (row.get('Detected Organism'), row.get('Specimen Type'))
                     if plot_key in plot_dict:
@@ -381,15 +498,13 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
                         member_cells.append(empty_cell)
                         plot_is_empty = True
                 else:
-                    plot_is_empty = False  # no plot column at all
+                    plot_is_empty = False
 
-                # Ensure member_cells length == num_cols (all Flowables)
                 while len(member_cells) < num_cols:
                     member_cells.append(empty_cell)
 
                 data.append(member_cells)
 
-                # determine color for the member data cells (based on Microbial Category / AnnClass)
                 val = row.get('Microbial Category', "")
                 derived = row.get('AnnClass', "")
 
@@ -406,10 +521,6 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
                 else:
                     color = colors.white
 
-                # Determine indices:
-                # left spacer column index = 0
-                # data columns indices = 1 .. (num_cols-1)  if no plot column
-                # if plot column exists, plot column index = num_cols-1, so data columns end at num_cols-2
                 if has_plot_column:
                     data_start_col = 1
                     data_end_col = num_cols - 2
@@ -418,52 +529,53 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
                     data_start_col = 1
                     data_end_col = num_cols - 1
                     plot_col_index = None
-                # Determine indices
-                data_start_col = 1
-                data_end_col = num_cols - 1 if plot_col_index is None else num_cols - 2
 
-
-                # Semi-transparent version for data cells
                 faded_color = with_alpha(color, 0.22)
-                # Apply background color ONLY to the data columns (not left spacer, not plot cell)
-                # if data_end_col >= data_start_col:
-                #     style_cmds.append(('BACKGROUND', (data_start_col, current_row), (data_end_col, current_row), color))
-                style_cmds.append(('BACKGROUND', (0, current_row), (0, current_row), color))  # left spacer cell colored very lightly
-                # Data cells: same color but faded
+                style_cmds.append(('BACKGROUND', (0, current_row), (0, current_row), color))
                 if data_end_col >= data_start_col:
                     style_cmds.append(('BACKGROUND', (data_start_col, current_row), (data_end_col, current_row), faded_color))
 
-                # center the star (if present) in that left cell
                 style_cmds.append(('ALIGN', (0, current_row), (0, current_row), 'CENTER'))
                 style_cmds.append(('VALIGN', (0, current_row), (0, current_row), 'MIDDLE'))
-                # If plot column exists and plot cell is empty, color just the plot cell subtly
+
                 if plot_col_index is not None and plot_is_empty:
                     style_cmds.append(('BACKGROUND', (plot_col_index, current_row), (plot_col_index, current_row), colors.HexColor("#f2f2f2b8")))
-                # Center data cells (but do NOT color them)
+
                 if data_end_col >= data_start_col:
                     style_cmds.append(('ALIGN', (data_start_col, current_row), (data_end_col, current_row), 'CENTER'))
                     style_cmds.append(('VALIGN', (data_start_col, current_row), (data_end_col, current_row), 'TOP'))
 
-                # Keep entire-row vertical alignment and subtle divider
                 style_cmds.append(('VALIGN', (0, current_row), (-1, current_row), 'TOP'))
                 style_cmds.append(('LINEBELOW', (0, current_row), (-1, current_row), 0.25, colors.lightgrey))
 
+                if has_ani_col:
+                    ani_table_col = 1 + columns.index(ani_col_name)
+                    raw = row.get(ani_col_name, "")
+                    # treat NaN/"nan"/"" as empty
+                    if pd.isna(raw):
+                        raw_str = ""
+                    else:
+                        raw_str = str(raw).strip()
+                        if raw_str.lower() == "nan":
+                            raw_str = ""
+
+                    if raw_str != "":
+                        style_cmds.append(('BACKGROUND', (ani_table_col, current_row), (ani_table_col, current_row), colors.HexColor("#9ec9ff")))
+                        style_cmds.append(('TEXTCOLOR', (ani_table_col, current_row), (ani_table_col, current_row), colors.black))
+                    else:
+                        style_cmds.append(('BACKGROUND', (ani_table_col, current_row), (ani_table_col, current_row), colors.white))
+
                 current_row += 1
 
-            # Only add a spacer after the group if it's not the last group in the sample
             if g_idx < (len(group_list) - 1):
-                spacer_cells = [empty_cell] * num_cols
-                data.append(spacer_cells)
+                data.append([empty_cell] * num_cols)
                 current_row += 1
 
-        # Only add a sample spacer if it's not the last sample overall
         if s_idx < (len(sample_groups) - 1):
-            big_spacer = [empty_cell] * num_cols
-            data.append(big_spacer)
+            data.append([empty_cell] * num_cols)
             current_row += 1
 
     return data, style_cmds
-
 
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
@@ -525,7 +637,9 @@ title_style = ParagraphStyle(
     # fontSize=14,
     spaceAfter=10,
 )
+
 styles = getSampleStyleSheet()
+tiny_font_style = ParagraphStyle(name='TinyFont', parent=styles['Normal'], fontSize=6, leading=6, alignment=1)
 small_font_style = ParagraphStyle(name='SmallFont', parent=styles['Normal'], fontSize=2)
 normal_style = styles['Normal']
 
@@ -543,6 +657,71 @@ def return_table_style(df=pd.DataFrame(), color_pathogen=False):
         ('RIGHTPADDING', (0,0), (-1,-1), 4),
     ])
     return table_style
+
+def build_columns_and_widths(
+    df: pd.DataFrame,
+    base_columns: list,
+    plotbuffer: dict,
+    *,
+    available_width: float,        # <-- pass doc.width
+    left_col_frac: float = 0.04,
+    ani_col: str = "High ANI",
+    ani_width_frac: float = 0.035,
+    microbert_col: str = "MicrobeRT Probability",
+    insert_microbert_at: int = 4,
+    k2_col: str = "K2 Reads",
+):
+    columns = list(base_columns)
+
+    # 1) Drop K2 Reads if empty
+    if k2_col in columns:
+        k2_sum = pd.to_numeric(df.get(k2_col, 0).replace("", 0), errors="coerce").fillna(0).sum()
+        if k2_sum == 0:
+            columns.remove(k2_col)
+
+    # 2) Insert MicrobeRT Probability if present
+    if microbert_col in df.columns and microbert_col not in columns:
+        pos = max(0, min(insert_microbert_at, len(columns)))
+        columns.insert(pos, microbert_col)
+
+    # 3) Drop High ANI if missing/all-empty
+    if ani_col in columns:
+        if (ani_col not in df.columns) or df[ani_col].replace("", np.nan).isna().all():
+            columns.remove(ani_col)
+
+    # 4) Widths based on actual frame width
+    left_w = left_col_frac * available_width
+    remaining = max(0, available_width - left_w)
+
+    has_plot = len(plotbuffer) > 0
+    n_data_cols = len(columns) + (1 if has_plot else 0)
+
+    widths = [left_w]
+
+    if ani_col in columns:
+        ani_w = ani_width_frac * available_width
+        remaining_for_others = max(0, remaining - ani_w)
+
+        other_count = n_data_cols - 1  # all except ANI
+        other_w = remaining_for_others / max(1, other_count)
+
+        for c in columns:
+            widths.append(ani_w if c == ani_col else other_w)
+        if has_plot:
+            widths.append(other_w)
+    else:
+        other_w = remaining / max(1, n_data_cols)
+        widths += [other_w] * len(columns)
+        if has_plot:
+            widths.append(other_w)
+
+    # Safety: scale down if we’re a hair over available_width (floating point / rounding)
+    total = sum(widths)
+    if total > available_width:
+        scale = available_width / total
+        widths = [w * scale for w in widths]
+
+    return columns, widths
 
 def draw_vertical_line(canvas, doc):
         """
@@ -562,13 +741,10 @@ def make_table(data, table_style=None, col_widths=None):
     """
     Create a ReportLab Table with optional explicit column widths.
     """
-    if col_widths:
-        table = Table(data, repeatRows=1, colWidths=col_widths)
-    else:
-        table = Table(data, repeatRows=1)
-
+    table = Table(data, repeatRows=1, colWidths=col_widths) if col_widths else Table(data, repeatRows=1)
     if table_style:
         table.setStyle(table_style)
+    table.hAlign = 'LEFT'
     return table
 
 
@@ -590,7 +766,8 @@ def create_report(
     # PDF file setup
     pdf_file = output
     doc = SimpleDocTemplate(pdf_file, pagesize=landscape(letter))
-    # Placeholder values for version and date
+    available_width = doc.width
+
     #### Section to style things up a bit
     # Set the left margin to 10% of the width of a letter size page (8.5 inches)
     # Set custom margins based on percentage of the page size
@@ -650,15 +827,27 @@ def create_report(
             "Detected Organism",
             "# Reads Aligned",
             "TASS Score",
-            "Taxonomic ID #", "Pathogenic Subsp/Strains",
+            "Taxonomic ID #",
+            # "Pathogenic Subsp/Strains",
             "Coverage",
-            "K2 Reads"
+            "High ANI",
+            "K2 Reads",
         ]
-        # check if all K2 reads column are 0 or nan
-        if df_identified_paths['K2 Reads'].sum() == 0:
-            columns_yes = columns_yes[:-1]
-        if "MicrobeRT Probability" in df_identified_paths.columns.values:
-            columns_yes.insert(4, "MicrobeRT Probability")
+        columns_yes, col_widths = build_columns_and_widths(
+            df=df_identified_paths,
+            base_columns=columns_yes,
+            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
+            available_width = doc.width
+        )
+        # # check if all K2 reads column are 0 or nan
+        # if df_identified_paths['K2 Reads'].sum() == 0:
+        #     columns_yes = columns_yes[:-1]
+        # if "MicrobeRT Probability" in df_identified_paths.columns.values:
+        #     columns_yes.insert(4, "MicrobeRT Probability")
+        # # if has_ani_col and all rows are empty then set has_ani_col as false
+        # if "High ANI" not in df_identified_paths.columns or df_identified_paths["High ANI"].replace("", np.nan).isna().all():
+        #     # remove High ANI from columns_yes
+        #     columns_yes.remove("High ANI")
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
 
         page_width, _ = landscape(letter)
@@ -689,6 +878,7 @@ def create_report(
         for cmd in style_cmds:
             table_style.add(*cmd)
         table = make_table(data_yes, table_style=table_style, col_widths=col_widths)
+
 
 
         elements.append(table)
@@ -781,7 +971,7 @@ def create_report(
         "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
         "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
-        "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
+        # "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
         "HMP Plot: What percentile the abundance falls under relative to the given sample type based on Healthy Human Subject NCBI taxonomy classification information"
     ]
@@ -833,7 +1023,7 @@ def create_report(
         columns_yes = [
                        "Detected Organism",
                        'TASS Score',
-                       "# Reads Aligned", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "Taxonomic ID #", "Coverage",  "High ANI",
                        "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -881,7 +1071,8 @@ def create_report(
         columns_opp = ["Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains", "Coverage", "K2 Reads"
+                    #    "Pathogenic Subsp/Strains",
+                       "Coverage", "High ANI", "K2 Reads"
                        ]
         if df_potentials['K2 Reads'].sum() == 0:
             columns_opp = columns_opp[:-1]
@@ -916,7 +1107,7 @@ def create_report(
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = [
                        "Detected Organism",
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage",
+                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage", "High ANI",
                         "K2 Reads"]
         # check if all K2 reads column are 0 or nan
         if df_identified_paths['K2 Reads'].sum() == 0:
@@ -958,7 +1149,7 @@ def create_report(
         elements.append(Paragraph(second_title, title_style))
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
-        columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage", "K2 Reads"]
+        columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage", "High ANI", "K2 Reads"]
         data_no, style_cmds = prepare_three_layer_table(
             df_unidentified,
             sample_col='Specimen ID (Type)',
@@ -984,11 +1175,104 @@ def create_report(
     doc.build(elements, onFirstPage=draw_vertical_line, onLaterPages=draw_vertical_line)
 
     print(f"PDF generated: {pdf_file}")
+def add_ani_column(
+    df_full: pd.DataFrame,
+    ani_matrix: pd.DataFrame,
+    threshold: float = 0.90,
+    taxid_col: str = "Taxonomic ID #",
+    name_col: str = "Detected Organism",
+    sample_col: str = "Specimen ID (Type)",
+    group_col: str = "Group",
+    out_col: str = "High ANI",
+    max_label_len: int = 16,     # keep column narrow
+    show_plus_more: bool = True, # True: "+N" beyond best; False: "/total"
+):
+    """
+    For each row, if there exists >=1 other taxid in the SAME (sample, group)
+    with ANI >= threshold, set out_col to something like:
+        ↔ Staph. aureus (96.4%) +2
+    meaning best match is 96.4% and there are 2 additional matches >= threshold.
+    """
+    if ani_matrix is None or ani_matrix.empty:
+        df_full[out_col] = ""
+        return df_full
+
+    df = df_full.copy()
+
+    ani = ani_matrix.copy()
+    ani.index = ani.index.map(str)
+    ani.columns = ani.columns.map(str)
+
+    df[taxid_col] = df[taxid_col].map(lambda x: "" if pd.isna(x) else str(x))
+    df[out_col] = ""
+
+    for (s, g), gdf in df.groupby([sample_col, group_col], sort=False):
+        taxids = [t for t in gdf[taxid_col] if t]
+        seen = set()
+        taxids = [t for t in taxids if not (t in seen or seen.add(t))]
+
+        present = [t for t in taxids if t in ani.index]
+        if len(present) < 2:
+            continue
+
+        sub = ani.loc[present, present].astype(float)
+
+        # map taxid -> detected organism name (first occurrence)
+        taxid_to_name = {}
+        for _, r in gdf.iterrows():
+            tid = r[taxid_col]
+            if tid and tid not in taxid_to_name:
+                taxid_to_name[tid] = str(r.get(name_col, tid))
+
+        for tid in present:
+            series = sub.loc[tid].drop(labels=[tid], errors="ignore")
+
+            hits = series[series >= threshold]
+            if hits.empty:
+                continue
+
+            # best hit info
+            best_other = hits.idxmax()
+            best_val = float(hits.loc[best_other])
+
+            # total number of hits >= threshold (excluding self)
+            total_hits = int(hits.shape[0])
+
+            # map best_other taxid to Detected Organism label
+            best_name = taxid_to_name.get(best_other, best_other)
+
+            # truncate label
+            best_name = str(best_name).strip()
+            if len(best_name) > max_label_len:
+                best_name = best_name[:max_label_len - 1] + "…"
+
+            best_pct = f"{best_val * 100:.1f}%"
+
+            if show_plus_more:
+                # show "+N" beyond the best match
+                more = total_hits - 1
+                suffix = f" +{more}" if more > 0 else ""
+            else:
+                # show "/total" (total includes best)
+                suffix = f" /{total_hits}"
+
+            label = f"{best_name}\r({best_pct}){suffix} others"
+
+            df.loc[
+                (df[sample_col] == s)
+                & (df[group_col] == g)
+                & (df[taxid_col] == tid),
+                out_col
+            ] = label
+
+    return df
+
 
 
 def main():
     args = parse_args()
     taxdump_dict, names_map, merged_data = {}, {}, {}
+
     if args.taxdump:
         # load the taxdump file
         if os.path.exists(f"{args.taxdump}/nodes.dmp"):
@@ -1019,8 +1303,8 @@ def main():
         ascending=[False, False],
         inplace=True
     )
-    # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
 
+    # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
     if "MicrobeRT Probability" in df_full.columns:
         # Replace empty strings with NaN
         # if all is empty strings or empty rows in total then drop it
@@ -1080,6 +1364,13 @@ def main():
     plotbuffer = dict()
     # check if all of the 'Sample Type' is Unknown only, if so then set vairbale
     isUnknownAll = df_full['body_site'].str.contains("Unknown").all()
+    if args.ani_matrix and os.path.exists(args.ani_matrix):
+        # import the matrix csv
+        ani_matrix = pd.read_csv(args.ani_matrix, index_col=0)
+        df_full = add_ani_column(df_full, ani_matrix, threshold=0.90, out_col="High ANI")
+        # if all rows for High ANI are empty strings then drop the column
+        if df_full["High ANI"].replace("", np.nan).isna().all():
+            df_full.drop(columns=["High ANI"], inplace=True)
 
     mapped_colids = {
         "Detected Organism": "name",
@@ -1091,29 +1382,6 @@ def main():
             mapped_colids.get(args.type, args.type),
             []
         )
-        # # for each of the entries, figure out the top 10 norm_abundance for each site and the corresponding name and tax_id from stats_dict
-        # sites_tops = {}
-        # body_sites = df_full['body_site'].unique().tolist()
-        # for entry in stats_dict:
-        #     taxid, body_site = entry
-        #     if stats_dict[entry].get('rank') != "species":
-        #         continue
-        #     if body_site not in sites_tops:
-        #         sites_tops[body_site] = []
-        #     mean_abundance = stats_dict[entry]['mean']
-        #     sites_tops[body_site].append((mean_abundance, taxid))
-
-        # for site, top_list in sites_tops.items():
-        #     # sort top_list by mean_abundance desc
-        #     top_list_sorted = sorted(top_list, key=lambda x: x[0], reverse=True)
-        #     # take top 10
-        #     sites_tops[site] = top_list_sorted[:10]
-        # # print the top 10 for each site
-        # for site, top_list in sites_tops.items():
-        #     print(f"Top 10 organisms for site {site}:")
-        #     for mean_abundance, taxid in top_list:
-        #         print(f"  TaxID: {taxid}, Mean Abundance: {mean_abundance}")
-        # exit()
 
         for _, row in df_full.iterrows():
             # taxid, body_site, stats, args, result_df

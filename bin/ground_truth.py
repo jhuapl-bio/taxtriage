@@ -282,9 +282,12 @@ def write_confusion_xlsx(out_xlsx_path: str, confusion_df: pd.DataFrame, fp_read
     # Sort summary so TOTAL is last
     summary_df["__is_total"] = summary_df["Reference"].eq("TOTAL")
     summary_df = summary_df.sort_values("__is_total").drop(columns="__is_total").reset_index(drop=True)
-
+    # sort on the Reference_Organism column alphabetically, keeping TOTAL last
+    summary_df = summary_df.sort_values(by=["Reference_Organism"], na_position="last").reset_index(drop=True)
+    confusion_df = confusion_df.sort_values(by=["Reference_Organism"]).reset_index(drop=True)
     # Write all sheets
     with pd.ExcelWriter(out_xlsx_path, engine="openpyxl") as writer:
+
         confusion_df.to_excel(writer, sheet_name="confusion_matrix", index=False)
         summary_df.to_excel(writer, sheet_name="confusion_summary", index=False)
         fp_reads_df.to_excel(writer, sheet_name="remaining_false_positives", index=False)

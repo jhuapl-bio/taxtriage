@@ -1,4 +1,4 @@
-import regex as re
+import re
 
 MAJOR_RANKS = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species"]
 mapping_ranks = {
@@ -84,9 +84,7 @@ def load_nodes(nodes_path):
             except Exception:
                 pass
     return parent, rank
-VALID_NAME_CLASSES = {"scientific name", "synonym", "equivalent name", "misspelling", "authority", 'basionym'}
 
-BINOMIAL_RE = re.compile(r"^([A-Z][a-z]+)\s+([a-z][a-z0-9_-]+)")
 
 def strip_before_paren(name: str) -> str:
     """'X (authorship...)' -> 'X' (unchanged if no '(')."""
@@ -94,6 +92,7 @@ def strip_before_paren(name: str) -> str:
 
 def extract_binomial(name: str) -> str | None:
     """Return 'Genus species' if name starts with a binomial, else None."""
+    BINOMIAL_RE = re.compile(r"^([A-Z][a-z]+)\s+([a-z][a-z0-9_-]+)")
     m = BINOMIAL_RE.match(name.strip())
     if not m:
         return None
@@ -181,6 +180,7 @@ def load_name_records(names_path):
     """
     records = {}          # name_lower -> record
     primary_by_taxid = {} # taxid -> primary scientific name (lowercased)
+    VALID_NAME_CLASSES = {"scientific name", "synonym", "equivalent name", "misspelling", "authority", 'basionym'}
 
     with open(names_path, "r", encoding="utf-8") as fh:
         for line in fh:
