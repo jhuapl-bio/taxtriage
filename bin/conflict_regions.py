@@ -1557,13 +1557,14 @@ def determine_conflicts(
     if output_dir is None or input_bam is None or bedfile is None:
         raise ValueError("output_dir, input_bam, and bedfile are required.")
     os.makedirs(output_dir, exist_ok=True)
+    print(f"Starting conflict detection pipeline: {time.ctime()}")
     if matchfile:
         accession_to_taxid, taxid_to_desc, taxid_to_accessions =  load_matchfile(matchfile, matchfile_accession_col, matchfile_taxid_col, matchfile_desc_col)
         org_sigs, org_stats = build_organism_signatures_from_fastas_ani(
             fasta_paths=fasta_files,
             accession_to_taxid=accession_to_taxid,
             taxid_to_desc=taxid_to_desc,
-            ksize=21,
+            ksize=51,
             scaled=8000,
         )
 
@@ -1583,16 +1584,7 @@ def determine_conflicts(
     else:
         print(f"Using {len(fasta_files)} FASTA file(s) for region sketches.")
 
-    # Parse bedgraph + merge regions
-    regions = parse_bed_file(bedfile)
-    print(f"Input intervals: {len(regions)}")
 
-    if use_variance:
-        stat_name = "variance"
-        threshold = 0.8 if jump_threshold is None else float(jump_threshold)
-    else:
-        stat_name = "jump"
-        threshold = 1.0 if jump_threshold is None else float(jump_threshold)
 
     bam_fs = pysam.AlignmentFile(input_bam, "rb")
     reflengths = {ref: bam_fs.get_reference_length(ref) for ref in bam_fs.references}
@@ -1646,12 +1638,12 @@ def determine_conflicts(
             report_shared_windows_across_fastas(
                 fasta_files=fasta_files,
                 output_csv=report_path,
-                ksize=31,
+                ksize=51,
                 scaled=8000,
-                window=10_000,
-                step=10_000,
+                window=1000_000,
+                step=1000_000,
                 jaccard_threshold=sim_ani_threshold,
-                max_hits_per_query=4,
+                max_hits_per_query=15,
                 skip_self_same_fasta=False,
             )
 
@@ -1670,6 +1662,16 @@ def determine_conflicts(
             only_primary=False,
         )
     else:
+        # Parse bedgraph + merge regions
+        regions = parse_bed_file(bedfile)
+        print(f"Input intervals: {len(regions)}")
+
+        if use_variance:
+            stat_name = "variance"
+            threshold = 0.8 if jump_threshold is None else float(jump_threshold)
+        else:
+            stat_name = "jump"
+            threshold = 1.0 if jump_threshold is None else float(jump_threshold)
         merged_regions = merge_bedgraph_regions(
             regions,
             merging_method=stat_name,
@@ -1798,6 +1800,30 @@ def determine_conflicts(
 
     try:
         out_xlsx = os.path.join(output_dir, "removal_stats.xlsx")
+        # add a "Total" row that is the sum of all the TP/FP/FN columns, empty for others
+        total_row = {
+            "Reference": "Total",
+            "TP Original": comparison_df["TP Original"].sum(),
+            "FP Original": comparison_df["FP Original"].sum(),
+            "FN Original": comparison_df["FN Original"].sum(),
+            "TP New": comparison_df["TP New"].sum(),
+            "FP New": comparison_df["FP New"].sum(),
+            "FN New": comparison_df["FN New"].sum(),
+            "Total Reads": comparison_df["Total Reads"].sum(),
+            "Pass Filtered Reads": comparison_df["Pass Filtered Reads"].sum(),
+            "Proportion Aligned": "",
+            "Precision": "",
+            "Recall": "",
+            "F1": "",
+            "Δ All": comparison_df["Δ All"].sum(),
+            "Δ All%": "",
+            "Δ^-1 Breadth": "",
+            "Breadth New": "",
+            "Breadth Original": "",
+        }
+        comparison_df = pd.concat([comparison_df, pd.DataFrame([total_row])], ignore_index=True)
+        # put Total at Top of excel sheet
+        comparison_df = pd.concat([comparison_df.tail(1), comparison_df.iloc[:-1]], ignore_index=True)
         comparison_df.to_excel(out_xlsx, index=False)
         print(f"Wrote: {out_xlsx}")
         print(

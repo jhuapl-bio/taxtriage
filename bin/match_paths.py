@@ -1479,6 +1479,8 @@ def main():
                 comparison_df = pd.read_csv(args.comparisons, sep='\t')
             else:
                 comparison_df = pd.read_excel(args.comparisons)
+            # remove the "Total" row if it exists
+            comparison_df = comparison_df[comparison_df['Reference'] != 'Total']
         else:
             print("Generating conflict regions info")
             if not args.output_dir:

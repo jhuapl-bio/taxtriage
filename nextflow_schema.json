@@ -455,6 +455,7 @@
                 },
                 "minq": {
                     "type": "number",
+                    "default": 1,
                     "description": "Minimum BaseQ Score for filtering",
                     "fa_icon": "fas fa-file-signature"
                 },
