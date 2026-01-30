@@ -1352,11 +1352,18 @@ def main():
     # fill all None for Group as "Unknown"
     df_full['Group'].fillna('Others', inplace=True)
     # 2) sort by rank desc, then TASS Score desc
-    df_full.sort_values(
-        by=['High Consequence', 'TASS Score'],
-        ascending=[False, False],
-        inplace=True
-    )
+    if not args.sorttass:
+        df_full.sort_values(
+            by=['High Consequence', 'TASS Score'],
+            ascending=[False, False],
+            inplace=True
+        )
+    else:
+        df_full.sort_values(
+            by=['TASS Score', 'High Consequence'],
+            ascending=[False, False],
+            inplace=True
+        )
 
     # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
     if "MicrobeRT Probability" in df_full.columns:
