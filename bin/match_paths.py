@@ -20,7 +20,8 @@
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
 from collections import defaultdict
 import sys
-from scipy.stats import norm
+import pandas as pd
+
 import time
 from distributions import import_distributions, body_site_map
 import argparse
@@ -28,11 +29,13 @@ import re
 import csv
 import math
 import os
-from conflict_regions import determine_conflicts
+from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 from math import log2
 import random
-from optimize_weights import calculate_scores
+from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_hmp_percentile, calculate_normalized_groups, compute_tass_score
+from map_taxid import load_taxdump, load_names
+from utils import taxid_to_rank, normalize_mapq, calculate_var
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -135,6 +138,13 @@ def parse_args(argv=None):
         help="Index of the column in mapfile (if specified) to match to the reference accession. 0 index start",
     )
     parser.add_argument(
+        "--orgcol",
+        metavar="ORGCOL",
+        type=int,
+        default=3, required =False,
+        help="Index of the organism name column, used as a fallback to match organism name if taxid is missing for merged accessions & taxid no present",
+    )
+    parser.add_argument(
         "-q",
         "--taxcol",
         metavar="TAXCOL",
@@ -152,19 +162,19 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "-j",
-        "--assembly",
-        metavar="ASSEMBLY",
+        "--taxdump",
+        metavar="TAXDUMP",
         default=None, required=False,
-        help="Assembly refseq file",
+        help="Taxdump directory containing nodes.dmp and names.dmp files",
     )
     parser.add_argument(
-        "-k",  "--compress_species", default=False,  help="Compress species to species level",  action='store_true'
+        "--compare_references", default=False,  help="Compress species to species level",  action='store_true'
+    )
+    parser.add_argument(
+        "-k",  "--rank",  help="Compress species to species level",  default=None, type=str
     )
     parser.add_argument(
         "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
-    )
-    parser.add_argument(
-        "--ignore_missing_inputs", default=False,  help="If K2 or Dimaond output is not provided, dont reduce confidence",  action='store_true'
     )
     parser.add_argument(
         "-t",
@@ -345,350 +355,20 @@ def parse_args(argv=None):
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
+    parser.add_argument(
+        "--report_confusion_xlsx",
+        action="store_true",
+        help="Write an XLSX report containing confusion-matrix stats and remaining false-positive reads."
+    )
+    parser.add_argument(
+        "--confusion_xlsx",
+        required=False,
+        default=None,
+        help="Output XLSX path. If not set, will write to <output_dir>/alignment_confusion_report.xlsx"
+    )
 
     return parser.parse_args(argv)
 
-def lorenz_curve(depths):
-    """Compute the Lorenz curve for a list of depths."""
-    sorted_depths = sorted(depths)
-    cumulative_depths = [0]
-    total = sum(sorted_depths)
-    for depth in sorted_depths:
-        cumulative_depths.append(cumulative_depths[-1] + depth)
-    lorenz_curve = [x / total if x >0 else 0 for x in cumulative_depths]
-    return lorenz_curve
-
-
-def gini_coefficient(depths):
-    """Calculate the Gini coefficient for a list of depths."""
-    lorenz = lorenz_curve(depths)
-    n = len(lorenz)
-    area_under_lorenz = sum((lorenz[i] + lorenz[i + 1]) / 2 for i in range(n - 1)) / (n - 1)
-    gini = 1 - 2 * area_under_lorenz
-
-    return gini
-
-def breadth_of_coverage(depths, genome_length):
-    """Calculate the breadth of coverage for a list of depths."""
-    non_zero_positions = len([depth for depth in depths if depth > 0])
-    return non_zero_positions / genome_length if genome_length > 0 else 0
-
-
-
-def transform_func(d):
-        return math.log10(1 + d)
-
-
-
-def read_ground_truth(gt_file):
-    """
-    Reads a ground-truth file of the form:
-        <accession> <coverage>
-    Returns a dict: { accession: float(coverage), ... }
-    """
-    coverage_dict = {}
-    with open(gt_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split()
-            acc = parts[0]
-            cov = float(parts[1])
-            coverage_dict[acc] = cov
-    return coverage_dict
-
-def build_transformed_coverage_hist(regions, genome_length):
-    """
-    Build a histogram of 'transformed' coverage for the entire genome.
-    transform_func(depth) should return the transformed coverage value.
-    """
-    from collections import defaultdict
-    coverage_hist = defaultdict(int)
-    total_covered_bases = 0
-    for (start, end, depth) in regions:
-        length = end - start
-        transformed_depth = transform_func(depth)
-        coverage_hist[transformed_depth] += length
-        total_covered_bases += length
-
-    # Add zeros (transformed) for uncovered portion
-    uncovered = genome_length - total_covered_bases
-    if uncovered > 0:
-        coverage_hist[transform_func(0)] += uncovered
-
-    return coverage_hist
-
-
-def build_coverage_hist(regions, genome_length):
-    """
-    Build a histogram of coverage depth for the entire genome.
-    coverage_hist[d] = number of bases with coverage d
-    """
-    coverage_hist = defaultdict(int)
-    total_covered_bases = 0
-
-    for (start, end, depth) in regions:
-        length = end - start    # how many bases in this interval
-        coverage_hist[depth] += length
-        total_covered_bases += length
-
-    # All remaining bases have coverage = 0
-    uncovered_bases = genome_length - total_covered_bases
-    if uncovered_bases > 0:
-        coverage_hist[0] += uncovered_bases
-
-    return coverage_hist
-
-def gini_coefficient_from_hist(coverage_hist):
-    """
-    Calculate the Gini coefficient from a histogram mapping coverage->number_of_bases.
-    """
-    if not coverage_hist:
-        return 0.0  # no data, gini is 0 by convention
-
-    # Sort coverage values in ascending order
-    coverage_values = sorted(coverage_hist.keys())
-
-    # N = total number of bases
-    N = sum(coverage_hist[c] for c in coverage_values)
-    # If somehow N is 0, return 0 to avoid division by zero
-    if N == 0:
-        return 0.0
-
-    # total coverage across all bases
-    total_coverage = sum(c * coverage_hist[c] for c in coverage_values)
-    if total_coverage == 0:
-        # All depths are zero => distribution is uniform(=0) => Gini = 0
-        return 0.0
-
-    # Build the Lorenz points (x_i, y_i)
-    # x_i = cumulative fraction of bases
-    # y_i = cumulative fraction of coverage
-    lorenz_points = []
-    pop_cum = 0
-    coverage_cum = 0
-
-    # Start from (0, 0) on the Lorenz curve
-    lorenz_points.append((0.0, 0.0))
-
-    for c in coverage_values:
-        freq = coverage_hist[c]
-        pop_cum_prev = pop_cum
-        coverage_cum_prev = coverage_cum
-
-        pop_cum += freq
-        coverage_cum += c * freq
-
-        x1 = pop_cum_prev / N
-        y1 = coverage_cum_prev / total_coverage
-        x2 = pop_cum / N
-        y2 = coverage_cum / total_coverage
-
-        # Append the new point (x2, y2)
-        lorenz_points.append((x2, y2))
-
-    # Now, approximate the area under the Lorenz curve via trapezoids
-    area_under_lorenz = 0.0
-    for i in range(len(lorenz_points) - 1):
-        x1, y1 = lorenz_points[i]
-        x2, y2 = lorenz_points[i + 1]
-        base = x2 - x1           # horizontal distance
-        avg_height = (y1 + y2) / 2
-        area_under_lorenz += base * avg_height
-
-    # Finally, Gini = 1 - 2 * area under the Lorenz curve
-    gini = 1 - 2 * area_under_lorenz
-    return gini
-
-def get_dynamic_reward_factor(genome_length, baseline=5e4, max_length=1e7, max_reward=2):
-    """
-    Computes a dynamic reward factor:
-      - Returns 1 when genome_length is at or below baseline.
-      - Returns max_reward when genome_length is at or above max_length.
-      - Otherwise, linearly interpolates between 1 and max_reward.
-    """
-    if genome_length <= baseline:
-        return 1.0
-    elif genome_length >= max_length:
-        return max_reward
-    else:
-        # Linear interpolation between 1 and max_reward
-        return 1.0 + (max_reward - 1.0) * ((genome_length - baseline) / (max_length - baseline))
-
-
-def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=5e5, max_length=1e9, reward_factor=2, beta=0.5):
-    """
-    Calculate an adjusted 'Gini-based' score for the fair distribution of coverage,
-    and then penalize (or boost) it according to the disparity in positions of the regions.
-
-    Parameters:
-      - regions: list of tuples (start, end, depth)
-      - genome_length: total genome length
-      - alpha: parameter for transforming the raw Gini
-      - baseline, max_length, reward_factor: parameters for length-based scaling
-      - beta: weight for the positional dispersion factor
-
-    The final score is a product of the (transformed) Gini measure, a scaling factor
-    based on genome length, and a term (1 + beta * dispersion) where dispersion is higher
-    when the regions are more spread out.
-    """
-    # 1) Build Histograms
-    coverage_hist = build_coverage_hist(regions, genome_length)
-    coverage_hist_transformed = build_transformed_coverage_hist(regions, genome_length)
-
-    # 2) Compute raw Gini from the transformed histogram
-    gini = gini_coefficient_from_hist(coverage_hist_transformed)
-
-    # 3) Transform the raw Gini (ensuring the result is in [0,1])
-    if 0.0 <= gini <= 1.0:
-        gini_log = alpha * math.sqrt(1 - gini)
-        gini_log = max(0.0, min(1.0, gini_log))
-    else:
-        gini_log = 0.0
-
-    # 4) Compute length-based scaling (using a log scale)
-    gl_capped = min(genome_length, max_length)
-    ratio = gl_capped / baseline
-    ratio = max(ratio, 1.0)
-    scaling_factor = 1.0 + reward_factor * math.log10(ratio)
-
-    # 5) Compute the positional dispersion factor
-    dispersion = position_dispersion_factor(regions, genome_length)
-
-    # 6) Combine the measures.
-    # The idea is to boost the score if the covered regions are spread out.
-    final_score = gini_log * scaling_factor * (1 + beta * dispersion)
-    final_score = min(1.0, final_score)
-    return final_score
-
-def position_dispersion_factor(regions, genome_length):
-    """
-    Compute a dispersion factor based on the positions of the regions.
-    We use the midpoints of each region and compute their variance.
-    For a uniformly distributed set of midpoints on [0, genome_length],
-    the maximum variance is (genome_length^2)/12.
-    We then take the square root of the normalized variance to obtain a
-    factor between 0 and 1.
-    """
-    if not regions:
-        return 0.0
-
-    # Compute midpoints for each region
-    midpoints = [(start + end) / 2.0 for (start, end, depth) in regions]
-    mean_mid = sum(midpoints) / len(midpoints)
-    variance = sum((m - mean_mid)**2 for m in midpoints) / len(midpoints)
-
-    # Maximum variance for a uniform distribution in [0, genome_length]
-    max_variance = (genome_length**2) / 12.0
-    normalized_variance = variance / max_variance  # in [0,1]
-
-    # Taking square root to keep the metric in a similar scale as a coefficient of variation
-    dispersion = math.sqrt(normalized_variance)
-    return dispersion
-
-def gini_coefficient(values):
-    """
-    Compute the Gini coefficient using a sorted approach.
-    """
-    n = len(values)
-    if n == 0:
-        return 0.0
-
-    # Sort the values in ascending order
-    sorted_values = sorted(values)
-    total = sum(sorted_values)
-
-    if total == 0:
-        return 0.0
-
-    # Compute the weighted sum: sum(i * x_i) for i=1..n (using 1-indexing)
-    weighted_sum = sum((i + 1) * x for i, x in enumerate(sorted_values))
-
-    # Apply the formula:
-    gini = (2 * weighted_sum) / (n * total) - (n + 1) / n
-    return gini
-
-
-def gini_coverage_spread(regions, genome_length):
-    """
-    Compute a spatial Gini coefficient that reflects how spread out the
-    covered regions are across the genome.
-
-    The idea:
-      1. Assume each region in 'regions' is given as a tuple (start, end, depth).
-         (For now, we ignore 'depth' and assume any region has a binary coverage = 1.)
-      2. Calculate the gaps (uncovered segments) across the genome:
-           - From position 0 to the start of the first region.
-           - Between the end of one region and the start of the next.
-           - From the end of the last region to the genome end.
-      3. Compute the Gini coefficient on these gap lengths.
-
-    A low Gini value means the gaps are fairly equal in length (i.e. the covered regions
-    are clumped together), while a high Gini value means there is great inequality among gap
-    sizes (i.e. the covered regions are very spread out).
-    """
-    # Ensure the regions are sorted by start coordinate
-    # regions = sorted(regions, key=lambda r: r[0])
-
-    gaps = []
-
-    if regions:
-        # Gap from genome start to first region start
-        first_gap = regions[0][0]  # since genome starts at 0
-        gaps.append(first_gap)
-
-        # Gaps between successive regions
-        for i in range(len(regions) - 1):
-            current_end = regions[i][1]
-            next_start = regions[i+1][0]
-            gap = next_start - current_end
-            gaps.append(gap)
-
-        # Gap from the end of the last region to the end of the genome
-        last_gap = genome_length - regions[-1][1]
-        gaps.append(last_gap)
-    else:
-        # No covered regions: one gap equals the entire genome
-        gaps.append(genome_length)
-    return gini_coefficient(gaps)
-
-
-
-def getBreadthOfCoverage(breadth, genome_length):
-    breadth = max(0.0, min(1.0, breadth))
-    if breadth > 0:
-        # log2(1 + breadth) maps [0..1] -> [0..1] but “compresses” near 1
-        breadth_log = math.log2(1 + breadth)
-        # For breadth=1 => log2(2) => 1.0
-        # For breadth=0 => log2(1) => 0.0
-    else:
-        breadth_log = 0.0
-
-    # clamp to [0..1]
-    breadth_log = max(0.0, min(1.0, breadth_log))
-    return breadth_log
-def calculate_disparity(numreads, total_reads, variance_reads, k=1000):
-        """
-        Dynamically dampens the variance effect based on the proportion of reads.
-        numreads: Total number of reads aligned to the organism (sum of reads)
-        total_reads: Total number of reads aligned in the sample
-        variance_reads: Variance of the aligned reads across all organisms
-        k: Damping factor to control the influence of the proportion on the penalty
-        """
-        if total_reads == 0:
-            return 0  # Avoid division by zero
-
-        # Calculate the proportion of aligned reads
-        proportion = numreads / total_reads
-
-        # Dynamically adjust the variance penalty based on the proportion of reads
-        dampened_variance = variance_reads / (1 + k * proportion)
-
-        # Calculate disparity based on the proportion and the dynamically dampened variance
-        disparity = proportion * (1 + dampened_variance)
-
-        return disparity
 def import_pathogens(pathogens_file):
     """Import the pathogens from the input CSV file, correctly handling commas in quoted fields."""
     pathogens_dict = {}
@@ -738,65 +418,6 @@ def import_pathogens(pathogens_file):
 
     # No need to explicitly close the file, `with` statement handles it.
     return pathogens_dict
-
-def identify_pathogens(inputfile, pathogens):
-    """Identify the pathogens in the input file"""
-    with open(inputfile, 'r') as f:
-        for line in f:
-            if line.startswith('pathogen'):
-                pathogens = line.split('\t')
-                return pathogens
-    f.close()
-    return None
-
-def calculate_entropy(values):
-    """Calculate the Shannon entropy of the given values without NumPy."""
-    total = sum(values)
-    probabilities = [value / total for value in values]
-    return -sum(p * log2(p) for p in probabilities if p > 0)
-
-# Function to calculate disparity based on the sum of numreads and k2_reads
-def calculate_disparity_siblings(numreads, k2_reads):
-    sumreads = sum(numreads)
-
-    if sumreads + k2_reads > 0:
-        # Calculate the harmonic mean
-        harmonic_mean = 2 * (sumreads * k2_reads) / (sumreads + k2_reads)
-
-        # Calculate the arithmetic mean for normalization
-        arithmetic_mean = (sumreads + k2_reads) / 2
-
-        # Normalize the harmonic mean by dividing by the arithmetic mean
-        normalized_harmonic_mean = harmonic_mean / arithmetic_mean
-    else:
-        normalized_harmonic_mean = 0  # No disparity if both reads are 0
-
-    return normalized_harmonic_mean
-
-
-
-
-# Function to calculate weighted mean
-def calculate_weighted_mean(data, numreads):
-    return sum(data) / len(data) if sum(numreads) > 0 else 0
-    # if len(numreads) > 0:
-    #     total_weight = sum(numreads)  # Sum of all weights (numreads)
-    #     weighted_sum = []
-    #     for x in range(0, len(numreads)):
-    #         if x >= len(data):
-    #             break
-    #         if numreads[x] > 0:
-    #             weighted_sum.append(data[x] * numreads[x]) # Sum of weight*value
-    #         else:
-    #             weighted_sum.append(0)
-    #     weighted_sum = sum(weighted_sum)
-    #     if total_weight > 0:
-    #         weighted_mean = weighted_sum / total_weight
-    #     else:
-    #         return 0
-    # else:
-    #     weighted_mean = 0
-    # return weighted_mean
 
 def import_k2_file(filename):
     """Import the Kraken2 output file with parent-child relationships based on name indentation"""
@@ -868,332 +489,6 @@ def import_k2_file(filename):
     # Return the mapping with parent-child relationships
     return taxids
 
-
-def detect_regions_from_runlength(ref_runs, avg_read_length):
-    """
-    ref_runs: dict { refName: [(start, end, cov), ...] }
-    Returns a dict { refName: [(region_start, region_end), ...] }
-    where each region is coverage >= 1
-    """
-
-    coverage_regions = {}
-
-    for ref, runs in ref_runs.items():
-        # We'll find contiguous runs where coverage>=1
-        covered_regions = []
-        current_start = None
-
-        for (start, end, cov) in runs:
-            if cov >= 1:
-                # This run is covered
-                if current_start is None:
-                    # start new region
-                    current_start = start
-                # else keep extending
-            else:
-                # coverage=0 => close any open region
-                if current_start is not None:
-                    covered_regions.append((current_start, start - 1))
-                    current_start = None
-
-        # if we ended with a region open
-        if current_start is not None:
-            # the last run had cov≥1, so close at that run's end
-            # but we need the 'end' from the run if we had multiple consecutive ≥1 runs
-            # so we can track that in a separate variable or just do:
-            # Actually, let's handle it properly:
-            last_run = runs[-1]
-            covered_regions.append((current_start, last_run[1]))
-            current_start = None
-
-        # Now optionally subdivide big regions by avg_read_length
-        adjusted_regions = []
-        for (rstart, rend) in covered_regions:
-            region_len = rend - rstart
-            if region_len > avg_read_length:
-                # subdivide
-                n = max(1, region_len // avg_read_length)
-                chunk_size = region_len // n
-                for i in range(n):
-                    sub_start = rstart + i*chunk_size
-                    # be careful with the last chunk
-                    sub_end = rstart + (i+1)*chunk_size - 1
-                    if i == n-1:
-                        # last chunk goes to rend
-                        sub_end = rend
-                    adjusted_regions.append((sub_start, sub_end))
-            else:
-                adjusted_regions.append((rstart, rend))
-
-        coverage_regions[ref] = adjusted_regions
-
-    return coverage_regions
-
-
-
-
-def detect_regions_from_depth(reference_coverage, depthfile, avg_read_length):
-    """
-    Detect regions based on gaps in depth and the average read length.
-
-    Args:
-    - reference_coverage (dict): Dictionary holding reference coverage information.
-    - depthfile (str): Path to the depth file.
-    - avg_read_length (int): The average read length for aligning reads.
-
-    Returns:
-    - reference_coverage (dict): Updated reference coverage with detected regions.
-    """
-
-    # Read the depth information from the depth file
-    print("Reading depth information from depth file, this can take quite some time....")
-    regions_by_chr = defaultdict(list)
-
-    last_pos = None
-    current_chrom = None
-    last_depth = None
-    current_region = []
-
-    def add_region(positions, depth):
-        """
-        Convert a list of positions and their shared depth into a (start, end, depth) tuple.
-        Skips regions where depth is 0.
-        """
-        if not positions or depth == 0:
-            return None
-        start = min(positions)
-        end = max(positions)
-        return (start, end, depth)
-
-    with open(depthfile, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue  # skip empty lines if any
-
-            splitline = line.split('\t')
-            if len(splitline) < 3:
-                continue
-            reference_name = splitline[0]
-            pos = int(splitline[1])
-            depth = int(splitline[2])
-
-            # If this is the first line or the chromosome changed:
-            if current_chrom != reference_name:
-                # If there was a region in progress for the previous chromosome, close it out.
-                if current_chrom and current_region:
-                    region_tuple = add_region(current_region, last_depth)
-                    if region_tuple:
-                        regions_by_chr[current_chrom].append(region_tuple)
-
-                # Reset for this new chromosome
-                current_chrom = reference_name
-                last_pos = pos
-                last_depth = depth
-                current_region = [pos]
-                continue
-
-            # If on the same chromosome, check continuity and depth
-            if (pos == last_pos + 1) and (depth == last_depth):
-                # Same depth and consecutive position -> extend current region
-                current_region.append(pos)
-            else:
-                # Finalize the old region first
-                region_tuple = add_region(current_region, last_depth)
-                if region_tuple:
-                    regions_by_chr[current_chrom].append(region_tuple)
-
-                # Start a new region
-                current_region = [pos]
-
-            # Update trackers
-            last_pos = pos
-            last_depth = depth
-
-        # After the loop, if there's a region that hasn't been saved yet, finalize it:
-        if current_region:
-            region_tuple = add_region(current_region, last_depth)
-            if region_tuple:
-                regions_by_chr[current_chrom].append(region_tuple)
-    return regions_by_chr
-
-def calculate_mean(diamond_list, key):
-    """
-    Calculate the weighted mean of a key, weighted by 'cds' values.
-
-    Parameters:
-    diamond_list (list of dict): List of dictionaries containing the data.
-    key (str): The key for which the weighted mean is to be calculated.
-
-    Returns:
-    float: The weighted mean of the values.
-    """
-    total_weighted_value = 0
-    total_cds = 0
-
-    # Loop through each item in the list and calculate the weighted value
-    for item in diamond_list:
-        value = float(item[key])  # Convert the key value to a float
-        cds = int(item['cds'])    # Get the cds value (as the weight)
-
-        # Add to the weighted sum
-        total_weighted_value += value * cds
-        total_cds += cds
-
-    # Return the weighted mean
-    return total_weighted_value / total_cds if total_cds != 0 else 0
-
-
-def read_depth_as_runs(depthfile, reference_lengths):
-    """
-    Reads a depth file that only has lines for depth >= 1 and
-    constructs a run-length representation for each reference.
-
-    :param depthfile: Path to the depth file.
-    :param reference_lengths: dict { refname: length_of_ref, ... }
-    :return: dict of { refname: [(start, end, depth), ...], ... }
-    """
-
-    # We'll store lines keyed by reference, each a list of (position, depth),
-    # so we can sort them and convert to runs.
-    coverage_positions = defaultdict(list)
-
-    # 1) Read file lines
-    print("Reading sparse depth file...")
-    with open(depthfile, 'r') as fh:
-        for line in fh:
-            # typical format:  refName pos depth
-            ref, p, d = line.strip().split('\t')
-            p = int(p)
-            d = int(d)
-            coverage_positions[ref].append((p, d))
-
-    # 2) Build run-length coverage for each ref
-    ref_runs = {}
-    for ref, pos_depth_list in coverage_positions.items():
-        # Sort by position
-        pos_depth_list.sort(key=lambda x: x[0])
-
-        # total length of the reference from your dictionary
-        ref_len = reference_lengths.get(ref, 0)
-        if ref_len == 0:
-            print(f"Warning: reference {ref} not in reference_lengths, skipping.")
-            continue
-
-        runs = []
-        last_pos = 0
-
-        # Go line-by-line in ascending position order
-        for (pos, depth) in pos_depth_list:
-            # If there's a gap from last_pos+1 to pos-1 => coverage=0
-            if pos > last_pos + 1:
-                runs.append((last_pos + 1, pos - 1, 0))
-
-            # This position has coverage≥1
-            runs.append((pos, pos, depth))
-            last_pos = pos
-
-        # If we still haven't covered the end of the reference, fill with 0
-        if last_pos < ref_len:
-            runs.append((last_pos + 1, ref_len, 0))
-
-        # 3) Merge consecutive runs with the same coverage
-        merged = []
-        for run in runs:
-            if not merged:
-                merged.append(run)
-            else:
-                # compare to the last run
-                last_start, last_end, last_cov = merged[-1]
-                cur_start,  cur_end,  cur_cov = run
-
-                # If coverage is the same and they are contiguous
-                if last_cov == cur_cov and last_end + 1 == cur_start:
-                    # merge
-                    merged[-1] = (last_start, cur_end, last_cov)
-                else:
-                    merged.append(run)
-
-        ref_runs[ref] = merged
-
-    # Also handle references that had no positions with coverage≥1
-    # (they won't appear in coverage_positions at all)
-    for ref, length in reference_lengths.items():
-        if ref not in ref_runs:
-            # entire ref is coverage=0
-            ref_runs[ref] = [(1, length, 0)]
-
-    return ref_runs
-
-def adjust_bedgraph_coverage(bedgraph_path, excluded_interval_trees, output_bedgraph=None):
-    """
-    Adjust bedgraph coverage by removing 1 depth value from excluded regions.
-
-    Parameters:
-    - bedgraph_path (str): Path to the input bedgraph file.
-    - excluded_interval_trees (dict): Dictionary of IntervalTrees per reference.
-    - output_bedgraph (str, optional): Path to save the adjusted bedgraph. If None, data is not saved.
-
-    Returns:
-    - list of tuples: Adjusted bedgraph entries as (chrom, start, end, adjusted_depth).
-    """
-    adjusted_bedgraph = []
-
-    with open(bedgraph_path, 'r') as bed_file:
-        reader = csv.reader(bed_file, delimiter='\t')
-        for row in reader:
-            if len(row) < 4:
-                continue  # Skip malformed lines
-            chrom, start, end, depth = row[0], int(row[1]), int(row[2]), int(row[3])
-            # Check if chrom has excluded regions
-            if chrom in excluded_interval_trees:
-                tree = excluded_interval_trees[chrom]
-                overlaps = sorted(tree.overlap(start, end))
-
-                if overlaps:
-                    # Initialize current position
-                    current_start = start
-                    for interval in sorted(overlaps, key=lambda x: x.begin):
-                        exclude_start, exclude_end = interval.begin, interval.end
-
-                        # No overlap if exclude_end <= current_start or exclude_start >= end
-                        if exclude_end <= current_start or exclude_start >= end:
-                            continue
-
-                        # Determine overlapping region
-                        overlap_start = max(current_start, exclude_start)
-                        overlap_end = min(end, exclude_end)
-
-                        # Add non-overlapping region before the excluded region
-                        if current_start < overlap_start:
-                            adjusted_bedgraph.append((chrom, current_start, overlap_start, depth))
-
-                        # Add overlapping region with depth decremented by 1
-                        adjusted_depth = max(depth - 1, 0)  # Ensure depth doesn't go below 0
-                        adjusted_bedgraph.append((chrom, overlap_start, overlap_end, adjusted_depth))
-
-                        # Update current_start
-                        current_start = overlap_end
-
-                    # Add any remaining non-overlapping region after the last excluded region
-                    if current_start < end:
-                        adjusted_bedgraph.append((chrom, current_start, end, depth))
-                else:
-                    # No overlaps; retain the original bedgraph entry
-                    adjusted_bedgraph.append((chrom, start, end, depth))
-            else:
-                # No excluded regions for this chrom; retain the original bedgraph entry
-                adjusted_bedgraph.append((chrom, start, end, depth))
-
-    # Optionally, write the adjusted bedgraph to a new file
-    if output_bedgraph:
-        with open(output_bedgraph, 'w', newline='') as outfile:
-            writer = csv.writer(outfile, delimiter='\t')
-            for entry in adjusted_bedgraph:
-                writer.writerow(entry)
-
-    return adjusted_bedgraph
-
 def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}):
     """
     Count the number of reads aligned to each reference in a BAM file.
@@ -1226,6 +521,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             reference_stats[ref] = dict(
                 length = reference_lengths.get(ref, 0),
                 depths =  defaultdict(int),
+                key = ref,
                 gini_coefficient = 0,
                 mapqs = [],
                 baseqs = [],
@@ -1243,8 +539,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 read_positions = [],
                 total_length = 0,
                 unique_read_ids = set(),
-            accession = ref,
-                isSpecies = False,
+                accession = ref,
                 covered_regions = [],  # Store regions covered by reads
             )
         # Open BAM file
@@ -1368,13 +663,6 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 del reference_stats[ref]["total_length"]
 
     print(f"Processed {total_reads} reads from {len(reference_lengths)} references in {time.time()-start_time} seconds.")
-    # for ref, stats in reference_stats.items():
-    #     print(ref)
-    #     print("\t", stats.get('meanmapq'))
-    #     print("\t", stats.get('meanbaseq'))
-    #     print("\t", stats.get('meandepth'))
-    #     print("\t", stats.get('coverage'))
-    #     print("\t", stats.get('numreads'))
     bam_file.close()
     i=0
     return reference_stats, aligned_reads, total_reads
@@ -1382,8 +670,6 @@ def main():
     args = parse_args()
     inputfile = args.input
     pathogenfile = args.pathogens
-    cfig = None
-
     # Write to file in a newline format
     weights = {
         'mapq_score': args.mapq_weight,
@@ -1396,6 +682,13 @@ def main():
         'diamond_identity': args.diamond_identity_weight,
         "k2_disparity_weight": args.k2_disparity_weight,
     }
+    total_weight = sum(weights.values())
+    if total_weight != 1:
+        for key in weights:
+            if total_weight != 0:
+                weights[key] = weights[key] / total_weight
+            else:
+                weights[key] = 0
 
     """
     # Final Score Calculation
@@ -1435,26 +728,27 @@ def main():
     Each component contributes equally (25%) to the final score.
     """
 
-    accumulated_scores = defaultdict(dict)
-    output = args.output
     matcher = args.match
     k2_mapping = dict()
-    matchdct = dict()
-    header = True
     i =0
-    capval  = args.capval
-    mincov = args.mincoverage
     if args.k2:
         print("Importing k2 file")
         k2_mapping = import_k2_file(args.k2)
-    import pandas as pd
     comparison_df =  pd.DataFrame()
     alignments_to_remove = defaultdict(set)
     if args.fasta:
         fastas = set(args.fasta)
+    if args.match and os.path.exists(matcher):
+        generate_ani_matrix(
+            fasta_files = fastas if args.fasta else [],
+            matchfile = args.match,
+            matchfile_accession_col = args.accessioncol,
+            matchfile_taxid_col = args.taxcol,
+            matchfile_desc_col = args.namecol,
+            output_dir = args.output_dir if args.output_dir else os.path.dirname(args.output),
+        )
     if args.minhash_weight > 0:
         if args.comparisons and os.path.exists(args.comparisons):
-
             # if ends with csv
             if args.comparisons.endswith('.csv'):
                 comparison_df = pd.read_csv(args.comparisons, sep=',')
@@ -1471,7 +765,6 @@ def main():
             alignments_to_remove, comparison_df = determine_conflicts(
                 output_dir = args.output_dir,
                 input_bam = args.input,
-                matchfile = args.match,
                 min_threshold = args.min_threshold,
                 fasta_files = fastas if args.fasta else [],
                 use_variance = args.use_variance,
@@ -1484,7 +777,8 @@ def main():
                 sensitive=args.sensitive,
                 cpu_count=args.cpu_count,
                 jump_threshold = args.jump_threshold,
-                gap_allowance=args.gap_allowance
+                gap_allowance=args.gap_allowance,
+                compare_to_reference_windows=args.compare_references
             )
             # import the file args.output_dir/region_comparisons.csv
         if args.failed_reads:
@@ -1541,7 +835,7 @@ def main():
                 if len(line) > 0:
                     try:
                         dmnd[line[0]] = dict(
-                            contigs= int(line[1]),
+                            contigs= line[1],
                             cds = int(line[2]),
                             identity= float(line[3])/100,
                             lengthmedian = line[4],
@@ -1556,10 +850,6 @@ def main():
         alignments_to_remove=alignments_to_remove,
     )
 
-
-
-    assembly_to_accession = defaultdict(set)
-    taxid_to_accession = defaultdict(int)
     mmbert_dict = dict()
     if args.microbert:
         # import the tsv as a dictionary
@@ -1567,506 +857,88 @@ def main():
         # set the taxid col to str
         mmbert['taxid'] = mmbert['taxid'].astype(str)
         mmbert_dict = mmbert.set_index('taxid').T.to_dict()
+
+
     if args.match and os.path.exists(matcher):
-        # open the match file and import the match file
-        header = True
-        i=0
-        with open (matcher, 'r') as f:
-            accindex = args.accessioncol
-            nameindex = args.namecol
-            taxcol = args.taxcol
+        accindex = args.accessioncol
+        nameindex = args.namecol
+        taxcol = args.taxcol
+        orgindex = args.orgcol
 
-            for line in f:
-                line = line.strip()
-                if header and i==0:
-                    header = False
+        with open(matcher, "r") as f:
+            for i, line in enumerate(f):
+                line = line.rstrip("\n")
+                if i == 0:  # header
                     continue
-                taxid=None
-                assembly = None
-                splitline = line.split('\t')
-                if len(splitline) > 0:
-                    accession = splitline[accindex]
-                else:
-                    accession = None
-                if len(splitline) > 0:
-                    assembly = splitline[1]
-                if len(splitline) > taxcol:
-                    taxid = splitline[taxcol]
-                if len(splitline) > nameindex:
-                    name = splitline[nameindex]
-                else:
-                    name = None
-                if accession in reference_hits and not reference_hits[accession].get('taxid', None):
-                    reference_hits[accession]['taxid'] = taxid
-                reference_hits[accession]['name'] = name
-                reference_hits[accession]['assembly'] = assembly
-                taxid_to_accession[accession] = taxid
-                if accession not in assembly_to_accession[assembly]:
-                    assembly_to_accession[assembly].add(accession)
-                i+=1
 
-        f.close()
-    taxid_to_parent = defaultdict(int)
-    if args.assembly:
-        i=0
-        with open(args.assembly, 'r') as f:
-            for line in f:
-                line = line.strip()
-                i+=1
-                if i<2:
+                splitline = line.split("\t")
+                if not splitline or len(splitline) <= accindex:
                     continue
-                splitline = line.split('\t')
-                if len(splitline) > 0:
-                    accession = splitline[0]
-                    taxid = splitline[5]
-                    species_taxid = splitline[6]
-                    name = splitline[7]
-                    # if not args.compress_species:
-                    strain = splitline[8].replace("strain=", "")
-                    isolate = splitline[9]
-                    isSpecies = False if species_taxid != taxid else True
-                    taxid_to_parent[taxid] = species_taxid
-                    # fine value where assembly == accession from reference_hits
-                    if accession in assembly_to_accession:
-                        for acc in assembly_to_accession[accession]:
-                            if acc in reference_hits:
 
-                                reference_hits[acc]['isSpecies'] = isSpecies
-                                if args.compress_species:
-                                    reference_hits[acc]['toplevelkey'] = species_taxid
-                                else:
-                                    reference_hits[acc]['toplevelkey'] = taxid
-                                reference_hits[acc]['species_taxid'] = species_taxid
-                                current_strain = strain  # Start with the original strain value
-                                if current_strain == "na":
-                                    current_strain = "≡"
-                                if isolate and isolate != "" and isolate != "na":
-                                    current_strain = f"{current_strain} {isolate}"
-                                reference_hits[acc]['strain'] = current_strain
-                                reference_hits[acc]['assemblyname'] = name
-                                reference_hits[acc]['name'] = name
+                accession = splitline[accindex].strip() or None
+                taxid     = splitline[taxcol].strip() if len(splitline) > taxcol else None
+                name      = splitline[nameindex].strip() if len(splitline) > nameindex else None
+                organism = splitline[orgindex].strip() if len(splitline) > orgindex else None
 
+                if not accession:
+                    continue
+
+                # Optional: only fill taxid if it exists and if this accession is already in reference_hits
+                if accession in reference_hits:
+                    if taxid and not reference_hits[accession].get("taxid"):
+                        reference_hits[accession]["taxid"] = taxid
+
+                    if organism:
+                        reference_hits[accession]["name"] = organism
+                    elif name:
+                        reference_hits[accession]["name"] = name
         f.close()
-    final_format = defaultdict(dict)
-    for k, v in reference_hits.items():
-        v['species_taxid'] = taxid_to_parent.get(v.get('taxid'), v.get('taxid'))
-        v['length'] = orgn_lengths.get(k, 0)
-        if not v.get('toplevelkey'):
-            # check if taxid is present, and if so then set it to that, and if that isnt then set it to the accession
-            if v.get('taxid', None):
-                v['toplevelkey'] = v['taxid']
+    taxdump, taxdump_names = {}, {}
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+        taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
+    # if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+    #     taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
+    # args.rank = False
+    acc_to_parent = dict()
+    if args.rank:
+        wanted_rank = args.rank  # for example:  species
+        for acc, hit in reference_hits.items():
+            taxid = hit.get("taxid")
+            if not taxid:
+                hit['key'] = acc
+                hit["toplevelkey"] = acc
+                hit["toplevelname"] = hit.get('name', acc)
+                hit['strainname'] = hit.get('name', acc)
+                continue
+            top = taxid_to_rank(taxid, taxdump, wanted_rank )
+            hit['key'] = taxid
+            acc_to_parent[acc] = top
+            hit["toplevelkey"] = top if top else taxid  # fallback to itself if rank not found
+            hit["rank"] = wanted_rank  # optional: record what you tried
+            hit['strainname'] = hit.get('name', '')
+            hit['name'] = taxdump_names.get(taxid, hit.get('name', ''))
+            hit["toplevelname"] = taxdump_names.get(top, hit.get("name", ""))
+    else:
+        for acc, hit in reference_hits.items():
+            taxid = hit.get("taxid")
+            if taxid:
+                hit["toplevelkey"] = taxid
+                acc_to_parent[acc] = taxid
+                hit['key'] = taxid
             else:
-                v['toplevelkey'] = k
-
-    # 1) Build mapping of species key -> ALL accessions belonging to it (including 0-read)
+                hit["toplevelkey"] = acc
+                acc_to_parent[acc] = acc
+                hit['key'] = acc
+            hit['strainname'] = hit.get('name', '')
+            hit["toplevelname"] = taxdump_names.get(hit['key'], hit.get("name", ""))
+    # for k, v in reference_hits.items():
+    #     print(k, v.get('name'), "|", v.get('strainname'), ">", v.get('toplevelkey'), v.get('key'))
     species_to_all_accs = defaultdict(set)
-    for acc, v in reference_hits.items():
-        top = v.get('toplevelkey') or v.get('taxid') or acc
-        species_to_all_accs[top].add(acc)
-
-    # Optional: also keep per-accession lengths if useful downstream
-    # (this makes debugging much easier)
-    def acc_len(a):
-        return int(orgn_lengths.get(a, 0) or 0)
-
-
-    if args.compress_species:
-        # Need to convert reference_hits to only species species level in a new dictionary
-        for key, value in reference_hits.items():
-            key = value.get('accession')
-            valtoplevel = value.get('toplevelkey', key)
-            valkey = key
-            if value.get('numreads', 0)> 0 and  value.get('meandepth', 0) > 0:
-                final_format[valtoplevel][valkey]= value
-    else:
-        # We don't aggregate, so do final format on the organism name only
-        for key, value in reference_hits.items():
-            valtoplevel = value.get('toplevelkey', key)
-            valkey = key
-            # if value['numreads'] > 0 and value['meandepth'] > 0:
-            final_format[valtoplevel][valkey] = value
-    # Dictionary to store aggregated species-level data
-    species_aggregated = {}
-    if args.diamond:
-        if key in dmnd:
-            dmnd[key]['maxvalereached'] = dmnd[key].get('cds', 0) > args.min_cds_found
-            species_aggregated[key]['diamond'] = dmnd[key]
-        elif species_aggregated[key].get('strainslist', None):
-            # get all taxids in strainslist
-            taxids = set([x.get('taxid', None) for x in value['strainslist']])
-            # check if any of the taxids are in diamond
-            allstrains = []
-            for taxid in taxids:
-                if taxid in dmnd:
-                    allstrains.append(dmnd[taxid])
-            if len(allstrains) > 0:
-                # aggregate all as medians
-                # Calculate medians for 'identity', 'lengthmedian', 'mismatchedmedian', and 'medianevalue'
-                mean_identity = calculate_mean(allstrains, 'identity')
-                mean_length = calculate_mean(allstrains, 'lengthmedian')
-                mean_mismatched = calculate_mean(allstrains, 'mismatchedmedian')
-                mean_evalue = calculate_mean(allstrains, 'medianevalue')
-                mean_contigs = calculate_mean(allstrains, 'contigs')
-                mean_cds = calculate_mean(allstrains, 'cds')
-                max_val_reached =  mean_cds > args.min_cds_found
-                dmnd_results = {
-                    'identity': mean_identity,
-                    'lengthmean': mean_length,
-                    'mismatchedmean': mean_mismatched,
-                    'meanevalue': mean_evalue,
-                    'contigs': mean_contigs,
-                    'cds': mean_cds,
-                    'maxvalereached': max_val_reached
-                }
-
-                species_aggregated[key]['diamond'] = dmnd_results
-        else:
-            print(f"Key {key} not found in diamond file")
-    else:
-        if args.ignore_missing_inputs:
-            weights['diamond_identity'] = 0
-    # Step 2: Define a function to calculate disparity for each organism
-    # Define a function to calculate disparity with softer variance influence
-    # Step 2: Define a function to dynamically dampen variance based on the proportion of reads
-
-    i=0
-    # Aggregate data at the species level
-    for top_level_key, entries in final_format.items():
-
-        # all_assemblies = [[x['assemblyname'], x['meanmapq'], x['numreads'], x['taxid']] for x in entries.values()]
-        for val_key, data in entries.items():
-            # get all organisms that are NOT the same assemblyname from all_assemblies
-            # filtered_assemblies = [x for x in all_assemblies if x[0] != data['assemblyname']]
-            # if len(filtered_assemblies) > 0:
-            #     print(data['assemblyname'], data['meanmapq'], data['taxid'], data['numreads'], filtered_assemblies)
-            if top_level_key not in species_aggregated:
-                species_aggregated[top_level_key] = {
-                    'key': top_level_key,
-                    'numreads': [],
-                    'species_taxid': data.get('species_taxid', None),
-                    'mapqs': [],
-                    'lengths': [],
-                    'depths': [],
-                    "taxids": [],
-                    'minhash_reductions': [],
-                    "accs": [],
-                    'assemblies': [],
-                    "coverages": [],
-                    "breadth_total": 0,
-                    "prevalence_disparity": 0,
-                    "coeffs": [],
-                    'baseqs': [],
-                    "isSpecies": True if  args.compress_species  else data.get('isSpecies', False),
-                    'strainslist': [],
-                    'covered_regions': 0,
-                    'name': data.get('name', ""),  # Assuming the species name is the same for all strains
-            }
-
-
-
-            try:
-
-                # if accession isn't NC_042114.1 skip
-                if len(data.get('covered_regions', [])) > 0 :
-                    # gini_strain2 = gini_coverage_spread(data.get('covered_regions', []),  data['length'])
-                    gini_strain = getGiniCoeff(data['covered_regions'],
-                                               data['length'], alpha=args.alpha,
-                                               reward_factor=args.reward_factor,
-                                               beta=args.dispersion_factor
-                                    )
-                    # if "Vaccinia" in data['name'] or "Monkey" in data['name']:
-                    #     print("\t",data.get('name'), gini_strain, gini_strain2)
-
-                else:
-                    gini_strain = 0
-                # get Δ All% column value if it exists, else set to 0
-                # col_stat = 'Sum Rs %'
-                col_stat2 = 'Δ All%'
-                col_stat = 'Δ^-1 Breadth'
-                if not comparison_df.empty:
-                    # Ensure 'accession' is a string and matches the index type
-                    accession = str(data['accession']).strip()
-                    if accession in comparison_df.index:
-                        c1 = float(comparison_df.loc[accession, col_stat])
-                        c2 = 1+(float(comparison_df.loc[accession, col_stat2]) / 100)
-                        comparison_value = min(
-                            1,
-                            (c1+c2) / 2
-                        )
-                        # weight it so that any value less than 0.9 is even lower by getting the log value
-                        # if comparison_value < 0.75:
-                        #     # Using an exponent of 3.3 will reduce 0.64 to roughly 0.23.
-                        #     comparison_value = comparison_value ** 3.3
-
-                        data['comparison'] =  ( comparison_value  )
-                    else:
-                        data['comparison'] = 1
-                species_aggregated[top_level_key]['minhash_reductions'].append(data.get('comparison', 1))
-                species_aggregated[top_level_key]['coeffs'].append(gini_strain)
-                species_aggregated[top_level_key]['taxids'].append(data.get('taxid', "None"))
-                species_aggregated[top_level_key]['numreads'].append(data['numreads'])
-                species_aggregated[top_level_key]['covered_regions'] += len(data['covered_regions'])
-                species_aggregated[top_level_key]['coverages'].append(data['coverage'])
-                species_aggregated[top_level_key]['baseqs'].append(data['meanbaseq'])
-                species_aggregated[top_level_key]['lengths'].append(orgn_lengths.get(data['accession'], data['length']))
-                species_aggregated[top_level_key]['accs'].append(data['accession'])
-                species_aggregated[top_level_key]['mapqs'].append(data['meanmapq'])
-                species_aggregated[top_level_key]['depths'].append(data['meandepth'])
-                name = data['name']
-                if 'strain' in data:
-                    species_aggregated[top_level_key]['strainslist'].append({
-                        "strainname": data['strain'],
-                        "fullname":data['name'],
-                        "subkey": val_key,
-                        "numreads": data['numreads'],
-                        "taxid": data['taxid'] if "taxid" in data else None,
-                    })
-                else:
-                    species_aggregated[top_level_key]['strainslist'].append({
-                        "strainname":val_key,
-                        "fullname":val_key,
-                        "subkey": val_key,
-                        "numreads": data['numreads'],
-                        "taxid": data['taxid'] if "taxid" in data else None,
-                    })
-            except Exception as e:
-                print(f"Error in top level: {e}")
-    all_readscounts = [sum(x['numreads']) for x in species_aggregated.values()]
-    def calculate_var(read_counts):
-        """
-        Manually calculate variance for a list of read counts.
-        read_counts: A list of aligned reads for each organism
-        """
-        n = len(read_counts)
-        if n == 0:
-            return 0  # Avoid division by zero if no organisms
-
-        # Step 1: Calculate the mean of the reads
-        mean_reads = sum(read_counts) / n
-
-        # Step 2: Calculate the squared differences
-        squared_diffs = [(x - mean_reads) ** 2 for x in read_counts]
-
-        # Step 3: Calculate variance
-        variance = sum(squared_diffs) / n
-        return variance
-
-    # 2) AFTER you finish building species_aggregated, fill lengths from ALL accessions
-    for top_key, agg in species_aggregated.items():
-        all_accs = species_to_all_accs.get(top_key, set())
-
-        # sum lengths across ALL contigs/accessions for that species
-        total_len = 0
-        per_acc = {}
-        for acc in all_accs:
-            L = acc_len(acc)
-            per_acc[acc] = L
-            total_len += L
-
-        agg['reference_length'] = total_len
-        agg['reference_lengths_by_acc'] = per_acc  # optional but very handy
+    all_readscounts = [x['numreads'] for x in reference_hits.values()]
+    total_reads = sum(all_readscounts)
+    print(f"Total aligned reads: {total_reads}")
     variance_reads = calculate_var(all_readscounts)
-
-    print(f"Variance of reads: {variance_reads}")
-    for top_level_key, aggregated_data in species_aggregated.items():
-        numreads = aggregated_data['numreads']
-        aggregated_data['meanmapq'] = calculate_weighted_mean(aggregated_data['mapqs'], numreads)
-        aggregated_data['meanbaseq'] = calculate_weighted_mean(aggregated_data['baseqs'],numreads)
-        aggregated_data['meandepth'] = calculate_weighted_mean(aggregated_data['depths'],numreads)
-        aggregated_data['meancoverage'] = calculate_weighted_mean(aggregated_data['coverages'],numreads)
-        aggregated_data['meangini'] = calculate_weighted_mean(aggregated_data['coeffs'],numreads)
-        aggregated_data['meanminhash_reduction'] = calculate_weighted_mean(aggregated_data['minhash_reductions'],numreads)
-        # Step 4: Calculate the disparity for this organism
-        aggregated_data['disparity'] = calculate_disparity(sum(numreads), total_reads, variance_reads)
-        # calcualte the total coverage by summing all lengths and getting covered bases
-        total_length = aggregated_data.get('reference_length', sum(aggregated_data['lengths']))
-        covered_bases = sum([float(x) * float(y) for x, y in zip(aggregated_data['lengths'], aggregated_data['coverages'])])
-        # if name contains boydii then print total_length and covered_bases
-        aggregated_data['breadth_total'] = covered_bases / total_length if total_length > 0 else 0
-        if "boydii" in aggregated_data['name'].lower():
-            print(f"Found boydii: total_length={total_length}, covered_bases={covered_bases}, breadth: {aggregated_data['breadth_total']}")
-            exit()
-        aggregated_data['total_length'] = total_length
-
-        k2_reads = 0
-        if args.k2:
-            taxid = aggregated_data.get('taxid', None)
-            name = aggregated_data.get('name', None)
-            if taxid and taxid in k2_mapping:
-                k2_reads = k2_mapping[taxid].get('clades_covered', 0)
-            elif name and name in k2_mapping:
-                k2_reads = k2_mapping[name].get('clades_covered', 0)
-            else:
-                # get all taxids from strainslist
-                taxids = [x.get('taxid', None) for x in aggregated_data['strainslist']]
-                # remove None from taxids
-                taxids = [x for x in taxids if x]
-                k2_reads = 0
-                for taxid in taxids:
-                    if taxid in k2_mapping:
-                        k2_reads += k2_mapping[taxid].get('clades_covered', 0)
-        aggregated_data['k2_numreads'] = k2_reads
-    # Step 4: Find the min and max disparity values
-    disparities = [aggregated_data['disparity'] for aggregated_data in species_aggregated.values()]
-    min_disparity = min(disparities)
-    max_disparity = max(disparities)
-    for top_level_key, aggregated_data in species_aggregated.items():
-        disparity = aggregated_data['disparity']
-        if max_disparity > min_disparity:
-            normalized_disparity = (disparity - min_disparity) / (max_disparity - min_disparity)
-        else:
-            if len(disparities) > 1:
-                normalized_disparity = 0  # If all disparities are the same, set to 0
-            else:
-                normalized_disparity = 1
-        # Store the normalized disparity
-        aggregated_data['normalized_disparity'] = normalized_disparity
-        # print(f"Entry Top Key: {top_level_key}")
-        # print(f"\tName: {aggregated_data['name']}")
-        # print(f"\tNum Reads: {aggregated_data['numreads']}")
-        # print(f"\tK2 Reads: {aggregated_data['k2_numreads']}")
-        # print(f"\tPrev. Disparity: {aggregated_data['disparity']}")
-        # print(f"\t^Norm. Disparity: {aggregated_data['normalized_disparity']}")
-    # Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
-    def normalize_mapq(mapq_score, max_mapq=60, min_mapq=0):
-        # Normalize the MAPQ score to be between 0 and 1
-        probability = 1-(10 ** (-mapq_score / 10))
-        # convert the min and max mapq
-        # Normalize the MAPQ score to be between 0 and 1 based on the min and max
-        return probability  # Ensure values stay between 0 and 1
-
-    def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_mapping_match):
-        """
-        Get all species that have the specified rank (e.g., 'S' for species) and belong to a parent with the
-        specified taxonomic rank (e.g., 'F' for family).
-
-        Parameters:
-            species_aggregated (dict): Dictionary of species.
-            parent_taxid (str): The parent taxid to match (e.g., for family 'F').
-            my_rank (str): The rank to filter species by (e.g., 'S').
-            rank_mapping_match (str): The taxonomic rank to check for the parent (e.g., 'F').
-
-        Returns:
-            List of species that match the specified rank and belong to the parent with the given taxonomic rank.
-        """
-        sibling_species = []
-
-        # Loop through all species in species_aggregated
-        for species in species_aggregated.values():
-            parents = species.get('parents', [])
-            rank = species.get('rank', '')
-
-            # Check if the species rank matches `my_rank` (e.g., 'S' for species)
-            if rank == my_rank:
-                # Look through the parents to find the one that matches the `rank_mapping_match` (e.g., 'F')
-                for parent in parents:
-                    if parent[1] == rank_mapping_match and parent[0] == parent_taxid:
-                        sibling_species.append(species)
-                        break  # Exit loop after finding the match
-
-        return sibling_species
-    all_mapqs = [x['meanmapq'] for x in species_aggregated.values()]
-    # get min, max of all mapqs
-    min_mapq = min(all_mapqs)
-    max_mapq = max(all_mapqs)
-    for key, value in species_aggregated.items():
-        ## Test: Disaprity across genus and its species
-        taxids = value.get('taxids', None)
-        if args.k2:
-            # Define the rank code you're looking for, for example "G" for Genus
-            rank_mapping_match = None
-            if args.parent_k2_match:
-                rank_mapping_match = args.parent_k2_match
-            parent_k2_reads_total  = 0
-            sibling_k2_reads_total = []
-            k2_numreads_total  = 0
-            for taxid in taxids:
-                # Step 1: Get the 'parents' list for the current key from k2_mapping
-                parents = k2_mapping.get(taxid, {}).get('parents', [])
-                my_rank = k2_mapping.get(taxid, {}).get('rank', 'U')
-                # Step 2: Find the parent taxid where the rank matches rank_mapping_match (e.g., "F" for Family)
-                parent_taxid = None
-                if rank_mapping_match:
-                    for parent in parents:
-                        if parent[1] == rank_mapping_match:
-                            parent_taxid = parent[0]
-                            break
-                else:
-                    parent_taxid = parents[0][0]  # Use the first parent if no rank_mapping_match is provided
-                # If no parent_taxid was found, skip the rest of the steps for this key
-                if not parent_taxid and parent_taxid != 0:
-                    continue
-                # Step 3: Get all species ('S') that belong to the same family ('F') using the found parent taxid
-                related_species = get_species_by_parent_rank(k2_mapping, parent_taxid, my_rank, rank_mapping_match)
-                # Step 4: Aggregate k2_numreads for all species in the same genus
-                sibling_k2_reads = [[species.get('clades_covered', 0), species.get('taxid')] for species in related_species]
-                # Save the aggregated k2 reads as 'parent_k2_reads'
-                parent_k2_reads_total += sum([species.get('clades_covered', 0) for species in related_species])
-                sibling_k2_reads_total.extend(sibling_k2_reads)
-
-                # Step 5: Run disparity calculations between the species-specific numreads and genus_k2_reads
-                # Get the numreads from k2_mapping for this key
-                k2_numreads_total += value.get('k2_numreads', 0)
-            # get index where taxid is in k2_mapping
-            # sort sibling_k2_reads_total by the taxid
-            # Ensure the list is sorted based on the second element of each tuple
-            sibling_k2_reads_total = sorted(sibling_k2_reads_total, key=lambda x: x[0], reverse=True)
-            # Get the index of the value
-            try:
-                idx = [x[1] for x in sibling_k2_reads_total].index(value['taxids'][0])
-            except (ValueError, IndexError):
-                # If value['taxids'][0] is not found, handle it appropriately
-                idx = -1
-
-            # Ensure the list has more than 1 element to avoid division by zero
-            if len(sibling_k2_reads_total) > 1 and idx >= 0:
-                value['k2_disparity'] = 1 - (idx / (len(sibling_k2_reads_total) - 1))
-            else:
-                # Default to 0 if the list is empty, has one element, or idx is invalid
-                value['k2_disparity'] = 0
-
-
-        # get all mapq scores
-        normalized_mapq = normalize_mapq(value.get('meanmapq', 0), max_mapq, min_mapq)
-        value['alignment_score'] = normalized_mapq
-
-
-    pathogens = import_pathogens(pathogenfile)
-
-
-    # for values of pathogens, klust the ones with high_cons != ''
-    # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
-    # to do this
-    if args.min_reads_align:
-        # filter the reference_hits based on the minimum number of reads aligned
-        print(f"Filtering for minimum reads aligned: {args.min_reads_align}")
-        species_aggregated = {k: v for k, v in species_aggregated.items() if ((v['covered_regions'])) >= int(args.min_reads_align)}
-        species_aggregated = {k: v for k, v in species_aggregated.items() if sum(v['numreads']) >= int(args.min_reads_align)}
-    # if sum of vals in weights isnt 1 then normalize to 1
-    total_weight = sum(weights.values())
-    if total_weight != 1:
-        for key in weights:
-            if total_weight != 0:
-                weights[key] = weights[key] / total_weight
-            else:
-                weights[key] = 0
-    if args.gt:
-        # import the gtdata and apply to a dict
-        with open(args.gt, 'r') as f:
-            gtdatareader = csv.reader(f, delimiter="\t")
-            gtdata = {}
-            for line in gtdatareader:
-                if len(line) > 0:
-                    gtdata[line[0]] = float(line[1])
-            f.close()
-        # iterate through the aggregated_stats and add missing accessions
-        for key, value in species_aggregated.items():
-            gtcov = gtdata.get(key, 0)
-            species_aggregated[key]["gtcov"]=gtcov
-    if args.readcount:
-        total_reads = float(args.readcount)
-
-    print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
+    print(f"\n\tVariance of reads: {variance_reads}")
     if args.sampletype:
         sampletype = body_site_map(args.sampletype.lower())
     else:
@@ -2076,6 +948,7 @@ def main():
         for k, v in pathogens.items():
             # if v['callclass'] == "commensal":
             v['callclass'] = "primary (sterile)"
+
     if args.hmp:
         if sampletype == "Unknown":
             body_sites = []
@@ -2086,144 +959,153 @@ def main():
             "tax_id",
             body_sites
         )
-        # for each entry in species_aggregated, get the taxid
-        for key, value in species_aggregated.items():
-            abus = []
-            for body_site in body_sites:
-                taxids = value.get('taxids', [])
-                if args.compress_species:
-                    taxids = [key]
-                for taxid in taxids:
-                    if not taxid:
-                        continue
-                    try:
-                        # get the key where it is the (taxid, body_site)
-                        if (int(taxid), body_site) in dists:
-                            abus.append(
-                                dict(
-                                    norm_abundance = dists[(int(taxid), body_site)].get('norm_abundance', 0),
-                                    std = dists[(int(taxid), body_site)].get('std', 0),
-                                    mean = dists[(int(taxid), body_site)].get('mean', 0),
-                                )
-                            )
-                    except Exception as e:
-                        print(f"Error in taxid lookup for hmp: {e}")
-            percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
-            sum_abus_expected = sum([x.get('mean',0)/100 for x in abus])
-            sum_norm_abu = sum([x.get('norm_abundance',0) for x in abus])
-            percent_total_reads_expected =  sum_abus_expected * total_reads
-            stdsum = sum([x.get('std',0) for x in abus])
-            zscore = ((percent_total_reads_observed -sum_abus_expected)/ stdsum)  if stdsum > 0 else 3
-            # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
-            value['zscore'] = zscore
-            name = value.get('name', 'Unknown')
-            percentile = norm.cdf(zscore)
-
-            value['hmp_percentile'] = percentile
-
     else:
-        for key, value in species_aggregated.items():
-            value['zscore'] = 3
-            value['hmp_percentile'] = 100
-    for k, v in species_aggregated.items():
-        species_taxid = v.get('species_taxid', None)
-        if species_taxid and (species_taxid) in mmbert_dict:
-            v['mmbert'] = mmbert_dict.get(str(species_taxid), {}).get('avg', 0)
-        else:
-            v['mmbert'] = None
-        v['mmbert_model'] = mmbert_dict.get(str(species_taxid), {}).get('model', None)
-    final_scores = calculate_scores(
-        aggregated_stats=species_aggregated,
-        pathogens=pathogens,
-        sample_name=args.samplename,
-        sample_type = sampletype,
-        total_reads = total_reads,
-        aligned_total = aligned_total,
-        weights = weights
+        dists = {}
+
+    for acc, data in reference_hits.items():
+        if not data.get('organism'):
+            # try to get organism from taxdump names
+            taxid = data.get('taxid')
+            if taxid and taxid in taxdump_names:
+                data['organism'] = taxdump_names[taxid]
+            else:
+                data['organism'] = data.get('name', acc)
+        top = data.get('key')
+        species_to_all_accs[top].add(acc)
+        data = compute_scores_per(
+            data = data,
+            reward_factor = args.reward_factor,
+            dispersion_factor = args.dispersion_factor,
+            alpha = args.alpha,
+            comparison_df = comparison_df,
+            fallback_top = top,
+        )
+
+    strain_summary = calculate_normalized_groups(
+        hits=reference_hits,
+        group_field="key",
+        reads_key="numreads",
     )
 
-    header = [
-        "Detected Organism",
-        "Specimen ID",
-        "Sample Type",
-        "% Reads",
-        "# Reads Aligned",
-        "% Aligned Reads",
-        "Coverage",
-        'HHS Percentile',
-        "IsAnnotated",
-        "AnnClass",
-        "Microbial Category",
-        'High Consequence',
-        "Taxonomic ID #",
-        "Status",
-        "Gini Coefficient",
-        "Mean BaseQ",
-        "Mean MapQ",
-        "Mean Coverage",
-        "Mean Depth",
-        "isSpecies",
-        "Pathogenic Subsp/Strains",
-        "K2 Reads",
-        "Parent K2 Reads",
-        "MapQ Score",
-        "Disparity Score",
-        "Minhash Score",
-        "Diamond Identity",
-        "K2 Disparity Score",
-        "Siblings score",
-        "Breadth Weight Score",
-        "TASS Score",
-        "MicrobeRT Probability",
-        "MicrobeRT Model"
-    ]
-    write_to_tsv(output, final_scores, "\t".join(header))
+    for k, data in strain_summary.items():
+        # try to match taxid to names_dict else name is k
+        group_reads = [
+            dict(reads=x['numreads'], key=x.get('key'))
+            for k, x in strain_summary.items()
+            if x.get('toplevelkey') == data.get('toplevelkey')
+        ]
+        calculate_aggregate_scores(
+            data = data,
+            hmp_dists = dists,
+            body_sites = [sampletype],
+            k2_mapping = k2_mapping,
+            sampletype = sampletype,
+            mmbert_dict = mmbert_dict,
+            group_reads = group_reads,
+            dmnd = dmnd,
+        )
+        data['tass_score'] = compute_tass_score(
+            data = data,
+            weights = weights,
+        )
+        print(f"{data.get('name', top)} ({data.get('key')} - {data.get('toplevelkey', 'N/A')}):")
+        print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
+            f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
+            f"\n\tBreadth: {data.get('coverage', 'N/A')},",
+            f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
+            f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
+            f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
+            f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
+            f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
+            f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
+            f"\n\tAccessions: {data.get('accessions', 0)},"
+            f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
+            f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
+            f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n"
+        )
+    # : Define a function to calculate disparity for each organism
+    i=0
+    aggregate_dict = calculate_normalized_groups(
+        hits=strain_summary,
+        group_field="toplevelkey",
+        reads_key="numreads",
+    )
 
-    if (args.optimize):
-        ref_meta = {}
-        from ground_truth import build_ref_meta_from_match_file, optimize_three_weights
-        if args.match and os.path.exists(args.match):
-            ref_meta = build_ref_meta_from_match_file(
-                matcher_path=args.match,
-                accessioncol=args.accessioncol,
-                namecol=args.namecol,
-                taxcol=args.taxcol,
-                has_header=True,
-                sep="\t",
-            )
+    print("\n________________________________\n")
+    for _, data in aggregate_dict.items():
+        # add all the strains to the strains list from strain_summary if data['toplevelkey'] matches
+        data['members'] = [
+            x for _, x in strain_summary.items()
+            if x.get('toplevelkey') == data.get('toplevelkey')
+        ]
+        data['name'] = data.get('toplevelname', None)
+        data['key'] = data.get('toplevelkey', None)
+        print(f"{data.get('toplevelname', '')} ({data.get('toplevelkey', 'N/A')}):")
+        group_reads = [
+            dict(reads=x['numreads'], key=x.get('key'))
+            for _, x in strain_summary.items()
+            if x.get('toplevelkey') == data.get('toplevelkey')
+        ]
+        calculate_aggregate_scores(
+            data = data,
+            hmp_dists = dists,
+            body_sites = [sampletype],
+            k2_mapping = k2_mapping,
+            sampletype = sampletype,
+            mmbert_dict = mmbert_dict,
+            group_reads = group_reads,
 
-        # Use the BAM path that was passed as --input (same as used earlier)
-        args.max_iterations = 300
-        best = optimize_three_weights(
-            bam_path=args.input,
-                match_tsv=args.match,
-                aggregated_stats=species_aggregated,   # keys are taxids at this point
-                pathogens=pathogens,
-                sample_name=args.samplename,
-                sample_type=sampletype,
-                total_reads=total_reads,
-                aligned_total=aligned_total,
-                initial=(args.breadth_weight, args.gini_weight, args.minhash_weight),
-                lambda_fp_max=50,
-                lambda_fp_mean=10,
-                maxiter=200,
-                verbose=True
-            )
+        )
+        data['tass_score'] = compute_tass_score(
+            data = data,
+            weights = weights,
+        )
+        print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
+            f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
+            f"\n\t#Reads: {data.get('numreads', 'N/A')},",
+            f"\n\tBreadth: {data.get('coverage', 'N/A')},",
+            f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
+            f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
+            f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
+            f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
+            f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
+            f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
+            f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
+            f"\n\tAccessions: {data.get('accessions', 0)},"
+            f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
+            f"\n\tMembers : {len(data.get('members', []))},"
+            f"\n\tFinal Score: {data.get('tass_score', 'N/A')}"
+        )
+        print("\t", [f"{x.get('name')} ({x.get('key')})" for x in data.get('members', [])])
 
-        print("Optimized three weights (from GT):")
-        for k, v in best.items():
-            if k in ['optimized_weights']:
-                for k, v in v.items():
-                    if k == "gini_weight":
-                        print(f"\tGini Weight: {v:.3f}")
-                    elif k == "minhash_weight":
-                        print(f"\tMinHash Weight: {v:.3f}")
-                    elif k == "breadth_weight":
-                        print(f"\tBreadth Weight: {v:.3f}")
-            elif k == "fp_taxids" or k=="fn_taxids" or k=="tp_taxids":
-                print(f"\t{k}: {len(v)}")
-            else:
-                print(f"\t{k}: {v}")
+    pathogens = import_pathogens(pathogenfile)
+
+    # for values of pathogens, klust the ones with high_cons != ''
+    # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
+    # to do this
+    if args.min_reads_align:
+        # filter the reference_hits based on the minimum number of reads aligned
+        print(f"Filtering for minimum reads aligned: {args.min_reads_align}")
+        aggregate_dict = {k: v for k, v in aggregate_dict.items() if (v['numreads']) >= int(args.min_reads_align)}
+    # if sum of vals in weights isnt 1 then normalize to 1
+    if args.readcount:
+        total_reads = float(args.readcount)
+
+    print(f"Total Read Count in Entire Sample pre-filter: {total_reads}")
+
+    import json
+    def write_to_json(output_path, obj):
+        with open(output_path, "w") as f:
+            json.dump(obj, f, indent=2)
+    final_json = annotate_aggregate_dict(
+        aggregate_dict=aggregate_dict,
+        pathogens=pathogens,
+        sample_type=sampletype,
+    )
+
+    write_to_json(args.output.replace(".tsv", ".json"), final_json)
+    print(json.dumps(final_json, indent=2))
+
 
 def random_tweak(weights, scale=0.2):
     """
@@ -2262,7 +1144,6 @@ def write_to_tsv(output_path, final_scores, header):
             meancoverage = entry.get('meancoverage', 0)
             meandepth = entry.get('meandepth', 0)
             annClass = entry.get('annClass', "N/A")
-            isSpecies = entry.get('isSpecies', False)
             diamond_identity = entry.get('diamond_identity', 0)
             k2_reads = entry.get('k2_reads', 0)
             k2_parent_reads = entry.get('k2_parent_reads', 0)
@@ -2273,7 +1154,7 @@ def write_to_tsv(output_path, final_scores, header):
             minhash_score = entry.get('minhash_score', 0)
             listpathogensstrains = entry.get('listpathogensstrains', [])
             countreads = entry.get('reads_aligned', 0)
-            breadth_of_coverage = entry.get('breadth_total', 0)
+            breadth_of_coverage = entry.get('coverage', 0)
             aligned_total = entry.get('total_reads', 0)
             pathogenic_reads = entry.get('pathogenic_reads', 0)
             percent_total = entry.get('percent_total', 0)
@@ -2303,7 +1184,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tDisparity Score: {entry.get('disparity_score', 0):.2f}")
                 print(f"\tK2 Disparity Score: {entry.get('k2_disparity', 0):.2f}")
                 print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
-                print(f"\tBreadth: {entry.get('breadth_total', 0):.2f}")
+                print(f"\tBreadth: {entry.get('coverage', 0):.2f}")
                 print(f"\tMinhash score: {entry.get('minhash_score', 0):.2f}")
                 print(f"\tDepth (Mean): {entry.get('meandepth', 0):.2f}")
                 print(f"\tGT Coverage: {entry.get('gtcov', 0):.2f}")
@@ -2317,11 +1198,10 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tMicrobeRT Model: {entry.get('mmbert_model', 'N/A')}")
                 print()
                 total+=1
-        # header = "Detected Organism\tSpecimen ID\tSample Type\t% Reads\t# Reads Aligned\t% Aligned Reads\tCoverage\tIsAnnotated\tPathogenic Sites\tMicrobial Category\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains\tK2 Reads\tParent K2 Reads\tMapQ Score\tDisparity Score\tMinhash Score\tDiamond Identity\tK2 Disparity Score\tSiblings score\tTASS Score\n"
             file.write(
                 f"{formatname}\t{sample_name}\t{sample_type}\t{percent_total}\t{countreads}\t{percent_aligned}\t{breadth_of_coverage:.2f}\t{hmp_percentile:.2f}\t"
                 f"{is_annotated}\t{annClass}\t{is_pathogen}\t{high_conse}\t{ref}\t{status}\t{gini_coefficient:.2f}\t"
-                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{isSpecies}\t{callfamclass}\t"
+                f"{meanbaseq:.2f}\t{meanmapq:.2f}\t{meancoverage:.2f}\t{meandepth:.2f}\t{callfamclass}\t"
                 f"{k2_reads}\t{k2_parent_reads}\t{mapq_score:.2f}\t{disparity_score:.2f}\t{minhash_score:.2f}\t"
                 f"{diamond_identity:.2f}\t{k2_disparity_score:.2f}\t{siblings_score:.2f}\t{log_breadth_weight}\t"
                 f"{tass_score:.2f}\t{mmbert_proportion}\t{mmbert_model}\n"

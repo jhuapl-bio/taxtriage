@@ -31,6 +31,7 @@ process ALIGNMENT_PER_SAMPLE {
     output:
         path "versions.yml"           , emit: versions
         tuple val(meta), path("*.txt")    , optional:false, emit: txt
+        tuple val(meta), path("search_results/organism_ani_matrix.csv")    , optional:true, emit: ani
 
     when:
     task.ext.when == null || task.ext.when
@@ -69,6 +70,8 @@ process ALIGNMENT_PER_SAMPLE {
     def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
     def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
+    def ani_removal = params.ani_removal ? " --compare_references " : " "
+
     """
 
     match_paths.py \\
@@ -84,7 +87,7 @@ process ALIGNMENT_PER_SAMPLE {
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $ignore_alignment $compress_species $mbert_report $minmapq
+        $min_reads_align $ignore_alignment $compress_species $mbert_report $minmapq $ani_removal
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

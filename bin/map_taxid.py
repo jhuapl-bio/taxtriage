@@ -280,3 +280,34 @@ def map_names_for_ranks(rank_taxids, sci_name_map):
         out[f"{rnk}_name"] = sci_name_map.get(int(tid_str), "") if tid_str else ""
     return out
 
+# Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
+def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_mapping_match):
+    """
+    Get all species that have the specified rank (e.g., 'S' for species) and belong to a parent with the
+    specified taxonomic rank (e.g., 'F' for family).
+
+    Parameters:
+        species_aggregated (dict): Dictionary of species.
+        parent_taxid (str): The parent taxid to match (e.g., for family 'F').
+        my_rank (str): The rank to filter species by (e.g., 'S').
+        rank_mapping_match (str): The taxonomic rank to check for the parent (e.g., 'F').
+
+    Returns:
+        List of species that match the specified rank and belong to the parent with the given taxonomic rank.
+    """
+    sibling_species = []
+
+    # Loop through all species in species_aggregated
+    for species in species_aggregated.values():
+        parents = species.get('parents', [])
+        rank = species.get('rank', '')
+
+        # Check if the species rank matches `my_rank` (e.g., 'S' for species)
+        if rank == my_rank:
+            # Look through the parents to find the one that matches the `rank_mapping_match` (e.g., 'F')
+            for parent in parents:
+                if parent[1] == rank_mapping_match and parent[0] == parent_taxid:
+                    sibling_species.append(species)
+                    break  # Exit loop after finding the match
+
+    return sibling_species

@@ -25,7 +25,7 @@ process ORGANISM_MERGE_REPORT {
         'jhuaplbio/reportlab-pdf:4.0.8' }"
 
     input:
-    tuple val(meta), file(files_of_pathogens), file(distributions)
+    tuple val(meta), file(files_of_pathogens), file(ani_matrix), file(distributions)
     val(missing_samples)
     path(taxdump)
 
@@ -53,6 +53,9 @@ process ORGANISM_MERGE_REPORT {
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
     def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
+    def sorttass = params.sorttass ? " --sorttass " : ""
+    def ani_matrix = ani_matrix.name != "NO_FILE3" ? " --ani_matrix $ani_matrix " : ""
+    def rank = params.report_rank ? " --rank $params.report_rank " : ""
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -64,6 +67,8 @@ process ORGANISM_MERGE_REPORT {
         $min_conf $taxdump \\
         $missing_arg \\
         $sorttass \\
+        $ani_matrix \\
+        $rank \\
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

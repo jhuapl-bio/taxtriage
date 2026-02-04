@@ -1,20 +1,89 @@
 import math
 import os
 from collections import defaultdict
+import csv
+
+
+def normalize_mapq(mapq_score, max_mapq=60, min_mapq=0):
+        # Normalize the MAPQ score to be between 0 and 1
+        probability = 1-(10 ** (-mapq_score / 10))
+        # convert the min and max mapq
+        # Normalize the MAPQ score to be between 0 and 1 based on the min and max
+        return probability  # Ensure values stay between 0 and 1
+
+
+def taxid_to_rank(tid: str, taxdump_dict: dict, target_rank: str = "species", max_hops: int = 2000):
+    """
+    Walk up taxonomy until we hit target_rank. Returns normalized taxid string or None.
+    """
+    if tid is None:
+        return None
+    tid = str(tid).strip()
+    if not tid or tid == "0":
+        return None
+
+    cur = tid
+    for _ in range(max_hops):
+        node = taxdump_dict.get(cur)
+        if not node:
+            return cur  # best effort: return what we have
+        if node.get("rank") == target_rank:
+            return cur
+        parent = node.get("parent") or node.get("parent_taxid") or node.get("parent_id")
+        if not parent or str(parent) == cur or str(parent) == "0":
+            return cur
+        cur = str(parent)
+    return cur
+
+def calculate_var(read_counts):
+    """
+    Manually calculate variance for a list of read counts.
+    read_counts: A list of aligned reads for each organism
+    """
+    n = len(read_counts)
+    if n == 0:
+        return 0  # Avoid division by zero if no organisms
+
+    # Calculate the mean of the reads
+    mean_reads = sum(read_counts) / n
+
+    # the squared differences
+    squared_diffs = [(x - mean_reads) ** 2 for x in read_counts]
+
+    # variance
+    variance = sum(squared_diffs) / n
+    return variance
+
 
 def load_matchfile(mapfile_path: str,
-                   accession_col: str = "Accession",
-                   taxid_col: str = "TaxID",
-                   desc_col: str = "Description"):
+                   accession_col: int = 0,
+                   taxid_col: int = 4,
+                   desc_col: int = 2,
+                   has_header: bool = True):
     """
-    Load tab/CSV mapfile with columns like Accession, TaxID, Description.
-    Returns:
-      accession_to_taxid: dict accession -> taxid (str)
-      taxid_to_desc: dict taxid -> description (str)
-      taxid_to_accessions: dict taxid -> set(accession)
-    If file missing or empty, returns empty dicts.
+    Load tab/CSV mapfile using column *indexes* (0-based).
+
+    Parameters
+    ----------
+    accession_col : int
+        Column index for accession (e.g. NC_XXXX)
+    taxid_col : int
+        Column index for taxid
+    desc_col : int
+        Column index for description / organism name
+    has_header : bool
+        Skip first row if True
+
+    Returns
+    -------
+    accession_to_taxid : dict
+        accession -> taxid (str)
+    taxid_to_desc : dict
+        taxid -> description (str)
+    taxid_to_accessions : dict
+        taxid -> set(accession)
     """
-    import csv
+
     accession_to_taxid = {}
     taxid_to_desc = {}
     taxid_to_accessions = defaultdict(set)
@@ -22,36 +91,33 @@ def load_matchfile(mapfile_path: str,
     if not mapfile_path or not os.path.exists(mapfile_path):
         return accession_to_taxid, taxid_to_desc, taxid_to_accessions
 
-    # try to autodetect delimiter (tab or csv)
+    # autodetect delimiter
     with open(mapfile_path, newline='') as fh:
         sample = fh.read(8192)
         fh.seek(0)
-        # choose delimiter
         delim = '\t' if '\t' in sample and sample.count('\t') >= sample.count(',') else ','
-        reader = csv.DictReader(fh, delimiter=delim)
-        # allow alternative column names (case-insensitive)
-        header_map = {h.lower(): h for h in reader.fieldnames} if reader.fieldnames else {}
+        reader = csv.reader(fh, delimiter=delim)
 
-        # find actual columns to use
-        acc_col = header_map.get(accession_col.lower(), accession_col) if header_map else accession_col
-        tax_col = header_map.get(taxid_col.lower(), taxid_col) if header_map else taxid_col
-        desc_col_use = header_map.get(desc_col.lower(), desc_col) if header_map else desc_col
+        if has_header:
+            next(reader, None)
 
         for row in reader:
-            acc = row.get(acc_col) or row.get(accession_col) or None
-            tax = row.get(tax_col) or row.get(taxid_col) or None
-            desc = row.get(desc_col_use) or row.get(desc_col) or ""
-            if not acc or not tax:
-                # skip incomplete lines
+            # guard against short rows
+            if len(row) <= max(accession_col, taxid_col, desc_col):
                 continue
-            acc = acc.strip()
-            tax = str(tax).strip()
+
+            acc = row[accession_col].strip()
+            tax = str(row[taxid_col]).strip()
+            desc = row[desc_col].strip() if desc_col is not None else ""
+
+            if not acc or not tax:
+                continue
+
             accession_to_taxid[acc] = tax
             taxid_to_desc.setdefault(tax, desc)
             taxid_to_accessions[tax].add(acc)
 
     return accession_to_taxid, taxid_to_desc, taxid_to_accessions
-
 # Function to apply weights and format the result (assuming `format_non_zero_decimals` is defined)
 def apply_weight(value, weight):
     try:

@@ -1154,11 +1154,9 @@ def build_organism_signatures_from_fastas_ani(
     for fp in fasta_paths:
         fa = pysam.FastaFile(fp)
         fasta_label = os.path.basename(fp)
-
         for rec_name in fa.references:
             acc = _normalize_accession(rec_name)
             taxid = accession_to_taxid.get(acc)
-
             if taxid is None:
                 if not allow_missing_accessions:
                     stats["_UNMAPPED_"]["n_records_unmapped"] += 1
@@ -1189,7 +1187,6 @@ def build_organism_signatures_from_fastas_ani(
 
             stats[taxid_str]["n_records_added"] += 1
             stats[taxid_str]["n_bases_added"] += len(seq)
-
         fa.close()
 
     org_siglist: List[Tuple[str, SourmashSignature]] = []
@@ -1525,8 +1522,29 @@ def fetch_reads_in_region(reads_map, refname, start, end):
             results.append((read['id'], refname))
     return results
 
-
-
+def generate_ani_matrix(
+    fasta_files: List[str],
+    output_dir: str,
+    matchfile: Optional[str] = None,
+    matchfile_accession_col: int = 0,
+    matchfile_taxid_col: int = 4,
+    matchfile_desc_col: int = 2,
+):
+    os.makedirs(output_dir, exist_ok=True)
+    if matchfile:
+        accession_to_taxid, taxid_to_desc, _ =  load_matchfile(matchfile, matchfile_accession_col, matchfile_taxid_col, matchfile_desc_col)
+        org_sigs, _ = build_organism_signatures_from_fastas_ani(
+            fasta_paths=fasta_files,
+            accession_to_taxid=accession_to_taxid,
+            taxid_to_desc=taxid_to_desc,
+            ksize=31,
+            scaled=200,
+        )
+        ani_df = organism_ani_matrix_from_sigs(org_sigs, symmetrize="mean")
+        ani_df.to_csv(os.path.join(output_dir, "organism_ani_matrix.csv"))
+    else:
+        print("No matchfile provided; skipping ANI matrix generation.")
+    return
 # -----------------------------
 # Main pipeline
 # -----------------------------
@@ -1550,27 +1568,12 @@ def determine_conflicts(
     sim_ani_threshold: float = 0.8,
     compare_to_reference_windows: bool = False,
     find_optimal_windows: bool = False,
-    matchfile: Optional[str] = None,  # unused in this cleaned version
-    matchfile_accession_col: str = "Accession",
-    matchfile_taxid_col: str = "TaxID",
-    matchfile_desc_col: str = "Description",
 ):
     if output_dir is None or input_bam is None or bedfile is None:
         raise ValueError("output_dir, input_bam, and bedfile are required.")
     os.makedirs(output_dir, exist_ok=True)
     print(f"Starting conflict detection pipeline: {time.ctime()}")
-    if matchfile:
-        accession_to_taxid, taxid_to_desc, taxid_to_accessions =  load_matchfile(matchfile, matchfile_accession_col, matchfile_taxid_col, matchfile_desc_col)
-        org_sigs, org_stats = build_organism_signatures_from_fastas_ani(
-            fasta_paths=fasta_files,
-            accession_to_taxid=accession_to_taxid,
-            taxid_to_desc=taxid_to_desc,
-            ksize=51,
-            scaled=8000,
-        )
 
-        ani_df = organism_ani_matrix_from_sigs(org_sigs, symmetrize="mean")
-        ani_df.to_csv(os.path.join(output_dir, "organism_ani_matrix.csv"))
 
     fasta_files = fasta_files or []
 

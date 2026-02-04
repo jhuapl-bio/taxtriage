@@ -1,12 +1,835 @@
 from collections import defaultdict
-from utils import format_non_zero_decimals, logarithmic_weight, apply_weight
+import math
+from utils import format_non_zero_decimals, logarithmic_weight, apply_weight, normalize_mapq
+import numpy as np
+from scipy.stats import norm
+from typing import Dict, Any, List, Iterable
 
-def compute_tass_score(count, weights):
+import pandas as pd
+CATEGORY_PRIORITY = {
+    "Primary": 5,
+    "Potential": 4,
+    "Opportunistic": 3,
+    "Commensal": 2,
+    "Unknown": 1,
+}
+
+def normalize_category(label: str) -> str:
+    """
+    Normalize any input label/callclass into one of:
+    Primary, Potential, Opportunistic, Commensal, Unknown
+    """
+    s = (label or "").strip().lower()
+    if s in ("primary", "primary (sterile)"):
+        return "Primary"
+    if s in ("potential",):
+        return "Potential"
+    if s in ("opportunistic",):
+        return "Opportunistic"
+    if s in ("commensal",):
+        return "Commensal"
+    return "Unknown"
+
+def transform_func(d):
+    return math.log10(1 + d)
+def build_transformed_coverage_hist(regions, genome_length):
+    """
+    Build a histogram of 'transformed' coverage for the entire genome.
+    transform_func(depth) should return the transformed coverage value.
+    """
+    from collections import defaultdict
+    coverage_hist = defaultdict(int)
+    total_covered_bases = 0
+    for (start, end, depth) in regions:
+        length = end - start
+        transformed_depth = transform_func(depth)
+        coverage_hist[transformed_depth] += length
+        total_covered_bases += length
+
+    # Add zeros (transformed) for uncovered portion
+    uncovered = genome_length - total_covered_bases
+    if uncovered > 0:
+        coverage_hist[transform_func(0)] += uncovered
+
+    return coverage_hist
+
+
+def gini_coefficient_from_hist(coverage_hist):
+    """
+    Calculate the Gini coefficient from a histogram mapping coverage->number_of_bases.
+    """
+    if not coverage_hist:
+        return 0.0  # no data, gini is 0 by convention
+
+    # Sort coverage values in ascending order
+    coverage_values = sorted(coverage_hist.keys())
+
+    # N = total number of bases
+    N = sum(coverage_hist[c] for c in coverage_values)
+    # If somehow N is 0, return 0 to avoid division by zero
+    if N == 0:
+        return 0.0
+
+    # total coverage across all bases
+    total_coverage = sum(c * coverage_hist[c] for c in coverage_values)
+    if total_coverage == 0:
+        # All depths are zero => distribution is uniform(=0) => Gini = 0
+        return 0.0
+
+    # Build the Lorenz points (x_i, y_i)
+    # x_i = cumulative fraction of bases
+    # y_i = cumulative fraction of coverage
+    lorenz_points = []
+    pop_cum = 0
+    coverage_cum = 0
+
+    # Start from (0, 0) on the Lorenz curve
+    lorenz_points.append((0.0, 0.0))
+
+    for c in coverage_values:
+        freq = coverage_hist[c]
+        pop_cum_prev = pop_cum
+        coverage_cum_prev = coverage_cum
+
+        pop_cum += freq
+        coverage_cum += c * freq
+
+        x1 = pop_cum_prev / N
+        y1 = coverage_cum_prev / total_coverage
+        x2 = pop_cum / N
+        y2 = coverage_cum / total_coverage
+
+        # Append the new point (x2, y2)
+        lorenz_points.append((x2, y2))
+
+    # Now, approximate the area under the Lorenz curve via trapezoids
+    area_under_lorenz = 0.0
+    for i in range(len(lorenz_points) - 1):
+        x1, y1 = lorenz_points[i]
+        x2, y2 = lorenz_points[i + 1]
+        base = x2 - x1           # horizontal distance
+        avg_height = (y1 + y2) / 2
+        area_under_lorenz += base * avg_height
+
+    # Finally, Gini = 1 - 2 * area under the Lorenz curve
+    gini = 1 - 2 * area_under_lorenz
+    return gini
+
+def get_dynamic_reward_factor(genome_length, baseline=5e4, max_length=1e7, max_reward=2):
+    """
+    Computes a dynamic reward factor:
+      - Returns 1 when genome_length is at or below baseline.
+      - Returns max_reward when genome_length is at or above max_length.
+      - Otherwise, linearly interpolates between 1 and max_reward.
+    """
+    if genome_length <= baseline:
+        return 1.0
+    elif genome_length >= max_length:
+        return max_reward
+    else:
+        # Linear interpolation between 1 and max_reward
+        return 1.0 + (max_reward - 1.0) * ((genome_length - baseline) / (max_length - baseline))
+
+
+def getGiniCoeff(regions, genome_length, alpha=1.8, baseline=5e5, max_length=1e9, reward_factor=2, beta=0.5):
+    """
+    Calculate an adjusted 'Gini-based' score for the fair distribution of coverage,
+    and then penalize (or boost) it according to the disparity in positions of the regions.
+
+    Parameters:
+      - regions: list of tuples (start, end, depth)
+      - genome_length: total genome length
+      - alpha: parameter for transforming the raw Gini
+      - baseline, max_length, reward_factor: parameters for length-based scaling
+      - beta: weight for the positional dispersion factor
+
+    The final score is a product of the (transformed) Gini measure, a scaling factor
+    based on genome length, and a term (1 + beta * dispersion) where dispersion is higher
+    when the regions are more spread out.
+    """
+    # 1) Build Histograms
+    coverage_hist_transformed = build_transformed_coverage_hist(regions, genome_length)
+
+    # 2) Compute raw Gini from the transformed histogram
+    gini = gini_coefficient_from_hist(coverage_hist_transformed)
+
+    # 3) Transform the raw Gini (ensuring the result is in [0,1])
+    if 0.0 <= gini <= 1.0:
+        gini_log = alpha * math.sqrt(1 - gini)
+        gini_log = max(0.0, min(1.0, gini_log))
+    else:
+        gini_log = 0.0
+
+    # 4) Compute length-based scaling (using a log scale)
+    gl_capped = min(genome_length, max_length)
+    ratio = gl_capped / baseline
+    ratio = max(ratio, 1.0)
+    scaling_factor = 1.0 + reward_factor * math.log10(ratio)
+
+    # 5) Compute the positional dispersion factor
+    dispersion = position_dispersion_factor(regions, genome_length)
+
+    # 6) Combine the measures.
+    # The idea is to boost the score if the covered regions are spread out.
+    final_score = gini_log * scaling_factor * (1 + beta * dispersion)
+    final_score = min(1.0, final_score)
+    return final_score
+
+def position_dispersion_factor(regions, genome_length):
+    """
+    Compute a dispersion factor based on the positions of the regions.
+    We use the midpoints of each region and compute their variance.
+    For a uniformly distributed set of midpoints on [0, genome_length],
+    the maximum variance is (genome_length^2)/12.
+    We then take the square root of the normalized variance to obtain a
+    factor between 0 and 1.
+    """
+    if not regions:
+        return 0.0
+
+    # Compute midpoints for each region
+    midpoints = [(start + end) / 2.0 for (start, end, depth) in regions]
+    mean_mid = sum(midpoints) / len(midpoints)
+    variance = sum((m - mean_mid)**2 for m in midpoints) / len(midpoints)
+
+    # Maximum variance for a uniform distribution in [0, genome_length]
+    max_variance = (genome_length**2) / 12.0
+    normalized_variance = variance / max_variance  # in [0,1]
+
+    # Taking square root to keep the metric in a similar scale as a coefficient of variation
+    dispersion = math.sqrt(normalized_variance)
+    return dispersion
+
+def gini_coefficient(values):
+    """
+    Compute the Gini coefficient using a sorted approach.
+    """
+    n = len(values)
+    if n == 0:
+        return 0.0
+
+    # Sort the values in ascending order
+    sorted_values = sorted(values)
+    total = sum(sorted_values)
+
+    if total == 0:
+        return 0.0
+
+    # Compute the weighted sum: sum(i * x_i) for i=1..n (using 1-indexing)
+    weighted_sum = sum((i + 1) * x for i, x in enumerate(sorted_values))
+
+    # Apply the formula:
+    gini = (2 * weighted_sum) / (n * total) - (n + 1) / n
+    return gini
+
+def calculate_k2_reads_disparity(
+    data = {},
+    k2_mapping = {}
+):
+    taxid = data.get('key', None)
+    # Define the rank code you're looking for, for example "G" for Genus
+    dispari_k2 = calculate_k2_disparity_score(
+        taxid = taxid,
+        k2_mapping=k2_mapping,
+        parent_rank_match = "G",
+    )
+    return dispari_k2.get('disparity', 0.0) if dispari_k2 else 0.0
+
+def calculate_disparity(numreads, total_reads, variance_reads, k=1000):
+        """
+        Dynamically dampens the variance effect based on the proportion of reads.
+        numreads: Total number of reads aligned to the organism (sum of reads)
+        total_reads: Total number of reads aligned in the sample
+        variance_reads: Variance of the aligned reads across all organisms
+        k: Damping factor to control the influence of the proportion on the penalty
+        """
+        if total_reads == 0:
+            return 0  # Avoid division by zero
+
+        # Calculate the proportion of aligned reads
+        proportion = numreads / total_reads
+
+        # Dynamically adjust the variance penalty based on the proportion of reads
+        dampened_variance = variance_reads / (1 + k * proportion)
+
+        # Calculate disparity based on the proportion and the dynamically dampened variance
+        disparity = proportion * (1 + dampened_variance)
+
+        return disparity
+def calculate_k2_disparity_score(
+    taxid,
+    k2_mapping,
+    sibling_rank=None,
+    parent_rank_match="F",
+    value_field="clades_covered",
+):
+    """
+    Compute disparity and proportion of `taxid` among siblings of `sibling_rank`
+    that share the same ancestor at `parent_rank_match`.
+
+    Returns a dict with keys:
+      - taxid, my_rank, parent_taxid, parent_rank_match,
+      - siblings_count, sibling_reads (sorted list of (value, taxid)),
+      - index (0-based position of taxid in sorted sibling_reads),
+      - disparity (1 - idx/(n-1) if n>1 else 0),
+      - proportion (own_value / total_value, 0 if total_value == 0),
+      - own_value, total_value
+
+    If taxid not found or parent not found, returns None.
+    """
+    # normalize taxid to string for dict lookup
+    taxid = str(taxid)
+
+    if taxid not in k2_mapping:
+        return None
+    node = k2_mapping[taxid]
+    my_rank = node.get("rank", None)
+
+    # decide which rank we want to compare among; default to the node's rank
+    if sibling_rank is None:
+        sibling_rank = my_rank
+
+    # find the parent taxid at the requested parent_rank_match in this node's parents
+    parent_taxid = None
+    for p in node.get("parents", []):
+        # p is like ['314293', 'O2'] in your sample
+        if len(p) >= 2 and p[1] == parent_rank_match:
+            parent_taxid = str(p[0])
+            break
+
+    if parent_taxid is None:
+        # couldn't find an ancestor at that rank for this taxid
+        return None
+    # gather siblings: entries that:
+    #  - have rank == sibling_rank
+    #  - have the parent_taxid (with the matching rank) present in their parents list
+    siblings = []
+    for candidate_taxid, candidate in k2_mapping.items():
+        cand_rank = candidate.get("rank", None)
+        if cand_rank != sibling_rank:
+            continue
+        # check ancestry
+        candidate_parents = candidate.get("parents", [])
+        found_parent = False
+        for pp in candidate_parents:
+            if len(pp) >= 2 and str(pp[0]) == parent_taxid and pp[1] == parent_rank_match:
+                found_parent = True
+                break
+        if found_parent:
+            val = candidate.get(value_field, 0) or 0
+            # normalize numeric types to float
+            try:
+                val = float(val)
+            except Exception:
+                val = 0.0
+            siblings.append((val, str(candidate.get("taxid", candidate_taxid))))
+
+    if not siblings:
+        # no siblings found (maybe because ranks mismatch)
+        return {
+            "taxid": taxid,
+            "my_rank": my_rank,
+            "parent_taxid": parent_taxid,
+            "parent_rank_match": parent_rank_match,
+            "siblings_count": 0,
+            "sibling_reads": [],
+            "index": -1,
+            "disparity": 0.0,
+            "proportion": 0.0,
+            "own_value": 0.0,
+            "total_value": 0.0,
+        }
+
+    # sort descending by value
+    siblings_sorted = sorted(siblings, key=lambda x: x[0], reverse=True)
+
+    # total reads among siblings
+    total_value = sum(v for v, _ in siblings_sorted)
+
+    # find our taxid position
+    taxid_list = [t for _, t in siblings_sorted]
+    try:
+        idx = taxid_list.index(taxid)
+    except ValueError:
+        # maybe taxid stored as int in mapping; try loose match
+        try:
+            idx = taxid_list.index(str(int(taxid)))
+        except Exception:
+            idx = -1
+
+    own_value = 0.0
+    for v, t in siblings_sorted:
+        if t == taxid:
+            own_value = v
+            break
+
+    # disparity: if n==1 -> 0. otherwise 1 - (index / (n-1)), so top (index=0) -> 1.0, bottom -> 0.0
+    n = len(siblings_sorted)
+    if n <= 1 or idx < 0:
+        disparity = 0.0
+    else:
+        disparity = 1.0 - (idx / (n - 1))
+
+    proportion = (own_value / total_value) if total_value > 0 else 0.0
+
+    return {
+        "taxid": taxid,
+        "my_rank": my_rank,
+        "parent_taxid": parent_taxid,
+        "parent_rank_match": parent_rank_match,
+        "siblings_count": n,
+        "sibling_reads": siblings_sorted,
+        "index": idx,
+        "disparity": disparity,
+        "proportion": proportion,
+        "own_value": own_value,
+        "total_value": total_value,
+    }
+
+def calculate_normalized_groups(
+    hits: Dict[str, Dict[str, Any]],
+    group_field: str,
+    reads_key: str = "numreads",
+    sum_columns: Iterable[str] = (),
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Aggregate `hits` into group-level summaries keyed by `group_field`.
+
+    Parameters
+    ----------
+    hits : dict
+        dict[id] -> record dict
+    group_field : str
+        field to group by, e.g. "key" or "toplevelkey"
+    reads_key : str
+        weight for weighted means (default numreads)
+    sum_columns : iterable[str]
+        extra numeric columns to sum
+
+    Returns
+    -------
+    dict[group_value] -> aggregated_record
+    """
+
+    # sums
+    SUM_FIELDS = {"numreads", "covered_bases", "length", "k2_reads"}
+    SUM_FIELDS |= set(sum_columns or [])
+
+    # weighted means (weights = numreads)
+    WAVG_FIELDS = {
+        "meandepth", "meanmapq", "meanbaseq",
+        "minhash_score", "k2_disparity_score", "hmp_percentile",
+        "breadth_log_score", "minhash_reduction", "gini_coefficient", "diamond_identity",
+        "mapq_score",
+        # do NOT include tass_score here unless you intentionally want
+        # a reads-weighted mean of lower-level tass_score. Usually better to recompute later.
+    }
+
+    def _to_float(x) -> float:
+        try:
+            if x is None:
+                return 0.0
+            return float(x)
+        except Exception:
+            return 0.0
+
+    def _mean_list(v) -> float:
+        if isinstance(v, (list, tuple)):
+            if len(v) == 0:
+                return 0.0
+            return sum(_to_float(xx) for xx in v) / float(len(v))
+        return _to_float(v)
+
+    def _weighted_mean(entries: List[Dict[str, Any]], field: str, wkey: str) -> float:
+        num = 0.0
+        den = 0.0
+        for e in entries:
+            w = _to_float(e.get(wkey, 0))
+            if w <= 0:
+                continue
+            v = _mean_list(e.get(field, 0))
+            num += v * w
+            den += w
+        return (num / den) if den > 0 else 0.0
+
+    # 1) bucket entries by group_field
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    for _id, rec in hits.items():
+        g = rec.get(group_field)
+        if g in (None, ""):
+            # fall back to id to avoid losing it
+            g = _id
+        buckets.setdefault(str(g), []).append(rec)
+
+    # 2) aggregate each bucket
+    out: Dict[str, Dict[str, Any]] = {}
+
+    for gval, entries in buckets.items():
+        if not entries:
+            continue
+
+        agg: Dict[str, Any] = {group_field: gval}
+
+        # preserve a representative name if present
+        agg["name"] = entries[0].get("name") or entries[0].get("organism") or gval
+
+        # ---------- TOPLEVEL KEY + NAME ----------
+        if group_field == "toplevelkey":
+            agg["toplevelkey"] = gval
+            # NEW: carry toplevelname from entries if present
+            agg["toplevelname"] = (
+                entries[0].get("toplevelname")
+                or entries[0].get("name")
+                or gval
+            )
+        else:
+            # pick first non-empty toplevelkey / toplevelname
+            tk = None
+            tn = None
+            for e in entries:
+                if tk is None:
+                    tk = e.get("toplevelkey")
+                if tn is None:
+                    tn = e.get("toplevelname")
+                if tk and tn:
+                    break
+
+            agg["toplevelkey"] = tk
+            agg["toplevelname"] = tn
+
+        # sums
+        sums = {f: 0.0 for f in SUM_FIELDS}
+        for e in entries:
+            for f in SUM_FIELDS:
+                sums[f] += _to_float(e.get(f, 0))
+
+        agg["numreads"] = sums.get("numreads", 0.0)
+        agg["length"] = sums.get("length", 0.0)
+        agg["covered_bases"] = sums.get("covered_bases", 0.0)
+        agg["k2_reads"] = sums.get("k2_reads", 0.0)
+
+        # counts
+        agg["accessions"] = len(entries)
+
+        # derived coverage = covered_bases_sum / length_sum
+        total_length = agg["length"]
+        agg["coverage"] = (agg["covered_bases"] / total_length) if total_length > 0 else 0.0
+
+        # weighted means
+        for f in WAVG_FIELDS:
+            agg[f] = _weighted_mean(entries, f, reads_key)
+
+        out[gval] = agg
+
+    return out
+def sibling_disparity_from_group_reads(
+    group_reads,
+    target_key,
+    reads_field="reads",
+    key_field="key",
+):
+    """
+    Compute sibling disparity metrics for `target_key` within `group_reads`.
+
+    group_reads: list[dict], each like {"reads": <num>, "key": <id>}  (includes itself)
+    target_key: the key to score (matched against dict[key_field])
+
+    Returns dict:
+      - n
+      - total_reads
+      - own_reads
+      - proportion              = own_reads / total_reads
+      - rank_index              = 0 is top
+      - rank_disparity          = 1 - idx/(n-1)  (top=1, bottom=0; 0 if n<=1)
+      - top_reads
+      - top_ratio               = own_reads / top_reads
+      - sorted                  = list of (reads, key) sorted desc
+    """
+    # normalize / coerce reads and keys
+    items = []
+    for d in group_reads:
+        if key_field not in d:
+            continue
+        k = d[key_field]
+        r = d.get(reads_field, 0) or 0
+        try:
+            r = float(r)
+        except Exception:
+            r = 0.0
+        items.append((r, k))
+
+    if not items:
+        return {
+            "n": 0, "total_reads": 0.0, "own_reads": 0.0,
+            "proportion": 0.0, "rank_index": -1, "rank_disparity": 0.0,
+            "top_reads": 0.0, "top_ratio": 0.0, "sorted": []
+        }
+
+    # sort descending by reads
+    items_sorted = sorted(items, key=lambda x: x[0], reverse=True)
+    n = len(items_sorted)
+    total = sum(r for r, _ in items_sorted)
+    top_reads = items_sorted[0][0] if n else 0.0
+
+    # find target position + reads
+    rank_index = -1
+    own_reads = 0.0
+    for i, (r, k) in enumerate(items_sorted):
+        if k == target_key:
+            rank_index = i
+            own_reads = r
+            break
+
+    # disparity (rank-based)
+    if n <= 1 or rank_index < 0:
+        rank_disparity = 0.0
+    else:
+        rank_disparity = 1.0 - (rank_index / (n - 1))
+
+    proportion = (own_reads / total) if total > 0 else 0.0
+    top_ratio = (own_reads / top_reads) if top_reads > 0 else 0.0
+
+    return {
+        "n": n,
+        "total_reads": total,
+        "own_reads": own_reads,
+        "proportion": proportion,
+        "rank_index": rank_index,
+        "rank_disparity": rank_disparity,
+        "top_reads": top_reads,
+        "top_ratio": top_ratio,
+        "sorted": items_sorted,
+    }
+
+
+def compute_scores_per(
+    data = {},
+    reward_factor = 2,
+    dispersion_factor = 0.9,
+    alpha = 1,
+    comparison_df = pd.DataFrame(),
+    fallback_top = "Unknown",
+):
+    if len(data.get('covered_regions', [])) > 0 :
+        # gini_strain2 = gini_coverage_spread(data.get('covered_regions', []),  data['length'])
+        gini_strain = getGiniCoeff(data['covered_regions'],
+            data['length'], alpha=alpha,
+            reward_factor=reward_factor,
+            beta=dispersion_factor
+        )
+    else:
+        gini_strain = 0
+    # get Δ All% column value if it exists, else set to 0
+    col_stat2 = 'Δ All%'
+    col_stat = 'Δ^-1 Breadth'
+    if not comparison_df.empty:
+        # Ensure 'accession' is a string and matches the index type
+        accession = str(data['accession']).strip()
+        if accession in comparison_df.index:
+
+            c1 = float(comparison_df.loc[accession, col_stat])
+            d_all = float(comparison_df.loc[accession, col_stat2])
+
+            # Center penalty around -10% with steepness k
+            k = 0.90
+            x0 = -10.0
+            pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))  # in (0,1)
+
+            # Combine: breadth * penalty (pen dominates)
+            comparison_value = min(1.0, c1 * pen)
+
+            data['minhash_score'] =  comparison_value
+        else:
+            data['minhash_score'] = 1
+    data['strainname'] = data.get('strainname', fallback_top)
+    data['gini_coefficient'] = gini_strain
+    # get the coveraged bases and length
+    data['covered_bases'] = sum([region[1] - region[0] + 1 for region in data.get('covered_regions', [])])
+    mapq = data.get('meanmapq', 0)
+    data['mapq_score'] = normalize_mapq(mapq)
+    coverage = data.get('coverage')
+    data['breadth_log_score'] = 1 - logarithmic_weight(coverage)
+    data['minhash_reduction'] = data.get('minhash_score', 1)
+    # data['tass_score'] = compute_tass_score(data, weights)
+
+
+    return data
+def calculate_mmbert_prob(
+    mmbert_dict = {},
+    taxid = None
+):
+    if taxid in mmbert_dict:
+        avg = mmbert_dict[taxid].get('avg')
+        model = mmbert_dict[taxid].get('model')
+
+        if avg is not None:
+            mmbert_avgs = avg
+        if model is not None:
+            mmbert_models = model
+        # print(f"MicrobeRT results for {taxid}: Avg Probability: {mmbert_avgs}, Models: {(mmbert_models) if mmbert_models else 'N/A'}")
+        return mmbert_avgs, mmbert_models
+    return None, None
+
+def calculate_mean(diamond_list, key):
+    """
+    Calculate the weighted mean of a key, weighted by 'cds' values.
+
+    Parameters:
+    diamond_list (list of dict): List of dictionaries containing the data.
+    key (str): The key for which the weighted mean is to be calculated.
+
+    Returns:
+    float: The weighted mean of the values.
+    """
+    total_weighted_value = 0
+    total_cds = 0
+
+    # Loop through each item in the list and calculate the weighted value
+    for item in diamond_list:
+        value = float(item[key])  # Convert the key value to a float
+        cds = int(item['cds'])    # Get the cds value (as the weight)
+
+        # Add to the weighted sum
+        total_weighted_value += value * cds
+        total_cds += cds
+
+    # Return the weighted mean
+    return total_weighted_value / total_cds if total_cds != 0 else 0
+
+def calculate_aggregate_scores(
+    data = {},
+    hmp_dists = {},
+    body_sites = [],
+    sampletype = "Sterile",
+    k2_mapping = {},
+    group_reads = defaultdict(int),
+    mmbert_dict = {},
+    dmnd = [],
+    min_cds_found = 5,
+
+):
+    zscore, hmp_percentile = calculate_hmp_percentile(
+        value = data,
+        dists = hmp_dists,
+        body_sites = body_sites,
+        sampletype= sampletype,
+    )
+    data['mmbert'], data['mmbert_model'] = calculate_mmbert_prob(
+        mmbert_dict = mmbert_dict,
+        taxid = data.get('key', None)
+    )
+    data['zscore'] = zscore
+    data['hmp_percentile'] = hmp_percentile
+    data['k2_reads'] = k2_mapping.get(data.get('toplevelkey', None), {}).get('clades_covered', 0)
+    data['k2_disparity_score'] = calculate_k2_reads_disparity(
+        data = data,
+        k2_mapping = k2_mapping
+    )
+    # get the k2 reads using the taxid
+    metrics = sibling_disparity_from_group_reads(group_reads, target_key=data.get('key', None))
+    data['disparity'] = metrics.get('rank_disparity', 0.0)
+    key = data.get('key', None)
+    if data['key'] in dmnd:
+        dmnd[key]['maxvalereached'] = dmnd[key].get('cds', 0) > min_cds_found
+        dmnd_results = dmnd[key]
+        mean_identity = calculate_mean(dmnd_results, 'identity')
+        mean_length = calculate_mean(dmnd_results, 'lengthmedian')
+        mean_mismatched = calculate_mean(dmnd_results, 'mismatchedmedian')
+        mean_evalue = calculate_mean(dmnd_results, 'medianevalue')
+        mean_contigs = calculate_mean(dmnd_results, 'contigs')
+        mean_cds = calculate_mean(dmnd_results, 'cds')
+        max_val_reached =  mean_cds > min_cds_found
+        dmnd_results = {
+            'identity': mean_identity,
+            'lengthmean': mean_length,
+            'mismatchedmean': mean_mismatched,
+            'meanevalue': mean_evalue,
+            'contigs': mean_contigs,
+            'cds': mean_cds,
+            'maxvalereached': max_val_reached
+        }
+        data['diamond'] = dmnd_results
+        data['diamond_identity'] = mean_identity
+    return data
+
+
+
+def calculate_siblings_score (
+    data: dict,
+    group_key: str = "toplevelkey",
+    reads_key: str = "numreads",
+    out_prefix: str = "siblings_",
+    include_unknown: bool = False,
+    unknown_label: str = "Unknown",
+):
+    """
+    Mutates and returns `data` by adding sibling-based metrics computed from `reads_key`,
+    comparing entries within the same `group_key`.
+
+    Assumes:
+      data[id] = { ..., "group": <group>, "numreads": <number>, ... }
+
+    Adds (per entry):
+      - {prefix}n
+      - {prefix}total_reads
+      - {prefix}proportion
+      - {prefix}rank_disparity
+      - {prefix}top_ratio
+      - {prefix}rank_index
+    """
+
+    # 1) Build groups -> list of (id, reads)
+    groups = defaultdict(list)
+    for key, rec in data.items():
+        grp = rec.get(group_key, unknown_label)
+        if (not include_unknown) and (grp == unknown_label or grp is None or grp == ""):
+            continue
+
+        val = rec.get(reads_key, 0) or 0
+        try:
+            val = float(val)
+        except Exception:
+            val = 0.0
+
+        groups[grp].append((key, val))
+
+    # 2) For each group, compute sibling metrics
+    for grp, items in groups.items():
+        # items: list of (id, reads)
+        # sort descending by reads
+        items_sorted = sorted(items, key=lambda x: x[1], reverse=True)
+        n = len(items_sorted)
+        total = sum(v for _, v in items_sorted)
+        top = items_sorted[0][1] if n else 0.0
+
+        # map id -> rank index
+        rank_index = {k: i for i, (k, _) in enumerate(items_sorted)}
+
+        for k, own in items_sorted:
+            # rank disparity: top=1, bottom=0
+            if n <= 1:
+                disparity = 0.0
+            else:
+                idx = rank_index[k]
+                disparity = 1.0 - (idx / (n - 1))
+
+            proportion = (own / total) if total > 0 else 0.0
+            top_ratio = (own / top) if top > 0 else 0.0
+
+            data[k][f"{out_prefix}n"] = n
+            data[k][f"{out_prefix}total_reads"] = total
+            data[k][f"{out_prefix}proportion"] = proportion
+            data[k][f"{out_prefix}rank_disparity"] = disparity
+            data[k][f"{out_prefix}top_ratio"] = top_ratio
+            data[k][f"{out_prefix}rank_index"] = rank_index[k]
+
+    return data
+def compute_tass_score(data = {}, weights={}):
     """
     count is a dictionary that might look like:
     {
       'normalized_disparity': <some_value>,
-      'alignment_score': <some_value>,
+      'mapq_score': <some_value>,
       'meangini': <some_value>,
       ...
     }
@@ -18,402 +841,211 @@ def compute_tass_score(count, weights):
     # Summation of each sub-score * weight
 
 
-
     tass_score = sum([
-        apply_weight(count.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
-        apply_weight(count.get('alignment_score', 0),       weights.get('mapq_score', 0)),
-        apply_weight(count.get('meanminhash_reduction', 0),       weights.get('minhash_weight', 0)),
-        apply_weight(count.get('meangini', 0),             weights.get('gini_coefficient', 0)),
-        apply_weight(count.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
-        apply_weight(count.get('log_weight_breadth', 0),             weights.get('breadth_weight', 0)),
-        apply_weight(count.get('k2_disparity', 0),         weights.get('k2_disparity_weight', 0)),
-        apply_weight(count.get('diamond', {}).get('identity', 0),
+        apply_weight(data.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
+        apply_weight(data.get('mapq_score', 0),       weights.get('mapq_score', 0)),
+        apply_weight(data.get('minhash_reduction', 0),       weights.get('minhash_weight', 0)),
+        apply_weight(data.get('gini_coefficient', 0),             weights.get('gini_coefficient', 0)),
+        apply_weight(data.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
+        apply_weight(data.get('breadth_log_score', 0),             weights.get('breadth_weight', 0)),
+        apply_weight(data.get('k2_disparity_score', 0),         weights.get('k2_disparity_score_weight', 0)),
+        apply_weight(data.get('diamond', {}).get('identity', 0),
                      weights.get('diamond_identity', 0))  ])
 
     return tass_score
 
-def calculate_scores(
-        aggregated_stats,
-        pathogens,
-        sample_name="No_Name",
-        sample_type="Unknown",
-        total_reads=0,
-        aligned_total = 0,
-        weights={}
-    ):
+def calculate_hmp_percentile(
+        value = {},
+        dists = {},
+        sampletype = "Sterile",
+        body_sites = [],
+        total_reads = 0
+):
+    abus = []
+    taxid = value.get('taxid', None)
+    for body_site in body_sites:
+        if not taxid:
+            continue
+        try:
+            # get the key where it is the (taxid, body_site)
+            if (int(taxid), body_site) in dists:
+                abus.append(
+                    dict(
+                        norm_abundance = dists[(int(taxid), body_site)].get('norm_abundance', 0),
+                        std = dists[(int(taxid), body_site)].get('std', 0),
+                        mean = dists[(int(taxid), body_site)].get('mean', 0),
+                    )
+                )
+        except Exception as e:
+            print(f"Error in taxid lookup for hmp: {e}")
+    percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
+    sum_abus_expected = sum([x.get('mean',0)/100 for x in abus])
+    stdsum = sum([x.get('std',0) for x in abus])
+    zscore = ((percent_total_reads_observed -sum_abus_expected)/ stdsum)  if stdsum > 0 else 3
+    # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
+    percentile = norm.cdf(zscore)
+
+    return zscore, percentile
+
+def json_safe(x):
+    """Convert numpy/pandas/scalars/containers into JSON-serializable Python types."""
+    if x is None:
+        return None
+    if isinstance(x, (np.integer,)):
+        return int(x)
+    if isinstance(x, (np.floating,)):
+        return float(x)
+    if isinstance(x, (np.bool_,)):
+        return bool(x)
+    if isinstance(x, (pd.Timestamp,)):
+        return x.isoformat()
+    if isinstance(x, dict):
+        return {str(k): json_safe(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple, set)):
+        return [json_safe(v) for v in x]
+    return x
+
+def _weighted_mean(values, weights):
+    values = list(values)
+    weights = list(weights)
+    wsum = sum(weights)
+    if wsum <= 0:
+        # fallback to simple mean if weights are all zero
+        vals = [v for v in values if v is not None]
+        return float(sum(vals) / len(vals)) if vals else 0.0
+    return float(sum(v * w for v, w in zip(values, weights)) / wsum)
+from collections import defaultdict
+def annotate_aggregate_dict(
+    aggregate_dict,
+    pathogens,
+    sample_type="Unknown",
+):
     """
-    Write reference hits and pathogen information to a TSV file.
+    Add pathogen annotations to each aggregate entry without recomputing metrics.
 
-    Args:
-    reference_hits (dict): Dictionary with reference names as keys and counts as values.
-    pathogens (dict): Dictionary with reference names as keys and dictionaries of additional attributes as values.
-    output_file_path (str): Path to the output TSV file.
+    Adds:
+      - high_cons
+      - is_pathogen
+      - microbial_category
+      - annClass
+      - is_annotated
+      - status
+
+    Returns: list of annotated dicts (each is the original aggregate entry plus the fields above)
     """
-    final_scores = []
 
-    # Write the header row
-    for ref, count in aggregated_stats.items():
-        strainlist = count.get('strainslist', [])
-        is_pathogen = "Unknown"
-        callfamclass = ""
-        annClass = "None"
-        refpath = pathogens.get(ref)
-        # check if the sample type is in the pathogenic sites
-        direct_match = False
-        high_cons = False
-        def pathogen_label(rft):
-            is_pathogen = "Unknown"
-            isPathi = False
-            direct_match = False
-            callclass = rft.get('callclass', "N/A")
-            high_cons = rft.get('high_cons', False)
-            pathogenic_sites = rft.get('pathogenic_sites', [])
-            commensal_sites = rft.get('commensal_sites', [])
-            if sample_type == "sterile":
-                direct_match = True
-                is_pathogen = callclass.capitalize() if callclass else "Primary (sterile)"
-                isPathi = True
-            elif sample_type in pathogenic_sites:
-                if callclass != "commensal":
-                    is_pathogen = callclass.capitalize()
-                    isPathi = True
-                else:
-                    is_pathogen = "Potential"
-                direct_match = True
-            elif sample_type in commensal_sites:
-                is_pathogen = "Commensal"
-                direct_match = True
-            elif callclass and callclass != "":
-                is_pathogen = callclass.capitalize() if callclass else "Unknown"
-                isPathi = True
-            return is_pathogen, isPathi, direct_match, high_cons
+    out = []
 
-        formatname = count.get('name', "N/A")
+    for ref, rec in aggregate_dict.items():
+        # choose identifier for pathogen lookup
+        taxid = (
+            rec.get("toplevelkey")
+            or rec.get("key")
+            or rec.get("taxid")
+            or ref
+        )
+
+        refpath = pathogens.get(str(taxid)) if taxid is not None else None
 
         if refpath:
-            is_pathogen, isPathi, direct_match, high_cons = pathogen_label(refpath)
+            cat, _, direct, hc = pathogen_label(refpath, sample_type)
+            st_cat = normalize_category(cat)
+            st_ann = "Direct" if direct else "Derived"
+            st_hc = bool(hc) or bool(refpath.get("high_cons", False))
             is_annotated = "Yes"
-            status = refpath.get('status', "N/A")
-            formatname = refpath.get('name', formatname)
-            if is_pathogen == "Commensal":
-                callfamclass = "Commensal Listing"
+            status = refpath.get("status", "N/A")
         else:
+            st_cat = "Unknown"
+            st_ann = "Direct"   # you can also set "Unknown" if you prefer
+            st_hc = False
             is_annotated = "No"
-            taxid = count.get(ref, "")
             status = ""
-        if direct_match:
-            annClass = "Direct"
-        else:
-            annClass = "Derived"
-            # take the species_taxid and see if it is a pathogen
-            if ref != count.get('species_taxid'):
-                ref_spec = pathogens.get(count.get('species_taxid'), None)
-                if ref_spec:
-                    is_pathogen_spec, _, dir_spec, high_cons_spec = pathogen_label(ref_spec)
-                    is_pathogen = is_pathogen_spec
-                    high_cons = high_cons_spec
-                    if dir_spec:
-                        annClass = "Direct"
-            # iterate through strainslist if it exists, and get pathogen label until dir_spec is true or all strains are checked
-            elif not direct_match and strainlist:
-                for strain in strainlist:
-                    strain_taxid = strain.get('taxid', None)
 
-                    if strain_taxid:
-                        ref_strain = pathogens.get(strain_taxid, None)
+        # make a shallow copy so we don't mutate your aggregate_dict unless you want that
+        new_item = dict(rec)
 
-                        if ref_strain:
-                            is_pathogen_strain, _, dir_strain, high_cons_strain = pathogen_label(ref_strain)
-                            if dir_strain:
-                                is_pathogen = is_pathogen_strain
-                                high_cons = high_cons_strain
-                                annClass = "Direct"
-        listpathogensstrains = []
-        fullstrains = []
-        callclasses = set()
-        pathogenic_sites = refpath.get('pathogenic_sites', []) if refpath else []
-        print(formatname, ref, annClass, sample_type)
-        if strainlist:
-            pathogenic_reads = 0
-            merged_strains = defaultdict(dict)
+        # add ONLY the requested annotation fields
+        new_item.update({
+            "high_cons": st_hc,
+            "is_pathogen": st_cat,
+            "microbial_category": st_cat,
+            "annClass": st_ann,
+            "is_annotated": is_annotated,
+            "status": status,
+        })
 
-            for x in strainlist:
-                strainname = x.get('strainname', None)
-                taxid = x.get('taxid', None)
-                if taxid:
-                    keyx = taxid
-                elif not taxid and strainname:
-                    keyx = strainname
-                else:
-                    keyx = None
-                if keyx in merged_strains:
-                    merged_strains[keyx]['numreads'] += x.get('numreads', 0)
-                    merged_strains[keyx]['subkeys'].append(x.get('subkey', ""))
-                else:
-                    merged_strains[keyx] = x
-                    merged_strains[keyx]['numreads'] = x.get('numreads', 0)
-                    merged_strains[keyx]['subkeys'] = [x.get('subkey', "")]
+        # keep a stable ref field too (optional but handy)
+        new_item["ref"] = str(taxid)
 
-            for xref, x in merged_strains.items():
-                pathstrain = None
-                if x.get('taxid'):
-                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('taxid', '')}: {x.get('numreads', 0)} reads)")
-                else:
-                    fullstrains.append(f"{x.get('strainname', 'N/A')} ({x.get('numreads', 0)} reads)")
+        out.append(new_item)
 
-                if x.get('taxid') in pathogens:
-                    pathstrain = pathogens.get(x.get('taxid'))
-                elif x.get('fullname') in pathogens:
-                    pathstrain = pathogens.get(x.get('fullname'))
-                if pathstrain:
-                    taxx = x.get('taxid', "")
-                    if pathstrain.get('callclass') not in ["commensal", "Unknown", 'unknown', '', None]:
-                        callclasses.add(pathstrain.get('callclass').capitalize())
-
-                    if pathstrain.get('high_cons', False):
-                        high_cons = True
-                    if sample_type in pathstrain.get('pathogenic_sites', []) or sample_type == pathstrain.get('general_classification', ''):
-                        pathogenic_reads += x.get('numreads', 0)
-                        percentreads = f"{x.get('numreads', 0)*100/aligned_total:.1f}" if aligned_total > 0 and x.get('numreads', 0) > 0 else "0"
-                        listpathogensstrains.append(f"{x.get('strainname', 'N/A')} ({percentreads}%)")
-
-            if callfamclass == "" or len(listpathogensstrains) > 0:
-                callfamclass = f"{', '.join(listpathogensstrains)}" if listpathogensstrains else ""
-        if len(callclasses) > 0:
-            # if Primary set is_pathogen to primary, if opposite set to opportunistic if potential set to potential
-            if "Primary" in callclasses:
-                is_pathogen = "Primary"
-            elif "Opportunistic" in callclasses:
-                is_pathogen = "Opportunistic"
-            elif "Potential" in callclasses:
-                is_pathogen = "Potential"
-        breadth_total = count.get('breadth_total', 0)
-        countreads = sum(count['numreads'])
-        if aligned_total == 0:
-            percent_aligned = 0
-        else:
-            percent_aligned = format_non_zero_decimals(100*countreads / aligned_total)
-        if total_reads == 0:
-            percent_total = 0
-        else:
-            percent_total = format_non_zero_decimals(100*countreads / total_reads)
-        if len(pathogenic_sites) == 0:
-            pathogenic_sites = ""
-
-        # Apply weights to the relevant scores
-        # Example usage:
-        breadth = count.get('breadth_total')  # your raw value between 0 and 1
-        # print the breadth and the name
-        log_weight_breadth = 1-logarithmic_weight(breadth)
-        # get log weight of the breadth_total
-        count['log_weight_breadth'] = log_weight_breadth
-        tass_score = compute_tass_score(
-            count,
-            weights,
-        )
-        final_scores.append(
-            dict(
-                tass_score=tass_score,
-                formatname=formatname,
-                sample_name=sample_name,
-                sample_type=sample_type,
-                fullstrains=fullstrains,
-                listpathogensstrains=listpathogensstrains,
-                percent_total=percent_total,
-                percent_aligned=percent_aligned,
-                callfamclass=callfamclass,
-                log_breadth_weight = count.get('log_weight_breadth', 0),
-                total_reads=sum(count['numreads']),
-                reads_aligned=countreads,
-                hmp_percentile = count.get('hmp_percentile', 0),
-                zscore= count.get('zscore', 0),
-                meancoverage=count.get('meancoverage', 0),
-                breadth_total = breadth_total,
-                total_length = count.get('total_length', 0),
-                is_annotated=is_annotated,
-                is_pathogen=is_pathogen,
-                ref=ref,
-                status=status,
-                annClass=annClass,
-                high_cons = high_cons,
-                mmbert = count.get('mmbert', None),
-                mmbert_model = count.get('mmbert_model', None),
-                pathogenic_reads = pathogenic_reads,
-                gini_coefficient=count.get('meangini', 0),
-                meanbaseq=count.get('meanbaseq', 0),
-                meanmapq=count.get('meanmapq', 0),
-                alignment_score=count.get('alignment_score', 0),
-                disparity_score=count.get('normalized_disparity', 0),
-                covered_regions=count.get('covered_regions', 0),
-                siblings_score=count.get('raw_disparity', 0),
-                k2_reads=count.get('k2_numreads', 0),
-                k2_disparity=count.get('k2_disparity', 0),
-                gtcov=count.get('gtcov', 0),
-                minhash_score=count.get('meanminhash_reduction', 0),
-
-            )
-        )
-    return final_scores
-def compute_cost(
-    aggregated_stats,
-    pathogens,
-    sample_name,
-    sample_type,
-    total_reads,
-    aligned_total,
-    weights
-):
+    return out
+def choose_aggregate_category_from_strains(strains):
     """
-    Runs calculate_scores(...), then sums up penalties based on meancoverage & tass_score.
+    strains: list of dicts that already contain:
+      - microbial_category
+      - tass_score
+    Rule:
+      - If only one category exists => annClass = Direct; choose it
+      - If multiple:
+          pick category with highest max tass_score;
+          annClass = Mixed
+    Returns: (category, annClass)
     """
-    total_weight = sum(weights.values())
-    if total_weight != 1:
-        for key in weights:
-            if total_weight != 0:
-                weights[key] = weights[key] / total_weight
-            else:
-                weights[key] = 0
-    # First, get final_scores from your existing pipeline:
-    final_scores = calculate_scores(
-        aggregated_stats=aggregated_stats,
-        pathogens=pathogens,
-        sample_name=sample_name,
-        sample_type=sample_type,
-        total_reads=total_reads,
-        aligned_total=aligned_total,
-        weights=weights,
+    cats = []
+    for s in strains:
+        cat = normalize_category(s.get("microbial_category") or s.get("is_pathogen") or "Unknown")
+        try:
+            tass = float(s.get("tass_score", 0) or 0)
+        except Exception:
+            tass = 0.0
+        cats.append((cat, tass))
+
+    if not cats:
+        return "Unknown", "Direct"
+
+    unique_cats = sorted({c for c, _ in cats})
+    if len(unique_cats) == 1:
+        return unique_cats[0], "Direct"
+
+    # Multiple categories: choose by highest max tass, break ties by severity priority
+    best_by_cat = {}
+    for cat, tass in cats:
+        best_by_cat[cat] = max(best_by_cat.get(cat, 0.0), tass)
+
+    # sort: highest max tass, then highest priority
+    ranked = sorted(
+        best_by_cat.items(),
+        key=lambda kv: (kv[1], CATEGORY_PRIORITY.get(kv[0], 0)),
+        reverse=True
     )
+    chosen = ranked[0][0]
+    return chosen, "Mixed"
 
-    cost = 0.0
-    # print("__________")
-    perrefcost = {}
-    for rec in final_scores:
-        ref = rec.get('ref')
-        tass_score = rec['tass_score']
-        actual_coverage = rec.get('meancoverage', 0.0)
-
-        # The "ground-truth" coverage for this ref (already placed in aggregated_stats)
-        # e.g. aggregated_stats[ref]['gtcov'] may be 0 or >0
-        coverage = aggregated_stats.get(ref, {}).get('gtcov', 0.0)
-        # CASE 1: coverage == 0 => we want TASS ~ 0,
-        #         also penalize if actual_coverage is large (contradiction).
-        if coverage <= 0:
-            # The bigger the TASS (wrongly claiming positivity),
-            # or the bigger the actual coverage (contradiction),
-            # the larger this penalty.
-            cost += (1.0 + actual_coverage) * (tass_score ** 2)
-            perrefcost[ref] = (1.0 + actual_coverage) * (tass_score ** 2)
+def pathogen_label(rft, sample_type):
+    is_pathogen = "Unknown"
+    isPathi = False
+    direct_match = False
+    callclass = rft.get('callclass', "N/A")
+    high_cons = rft.get('high_cons', False)
+    pathogenic_sites = rft.get('pathogenic_sites', [])
+    commensal_sites = rft.get('commensal_sites', [])
+    if sample_type == "sterile":
+        direct_match = True
+        is_pathogen = callclass.capitalize() if callclass else "Primary (sterile)"
+        isPathi = True
+    elif sample_type in pathogenic_sites:
+        if callclass != "commensal":
+            is_pathogen = callclass.capitalize()
+            isPathi = True
         else:
-            # CASE 2: coverage > 0 => we want TASS near 1 for big coverage.
-            #  (A) penalize if TASS is low => cost ~ coverage * (1 - TASS)^2
-            #  (B) penalize if TASS is high but actual coverage is too small
-            #      => e.g. coverage_short = (coverage - actual_coverage)
-            #             cost2 = (tass_score^2) * coverage_short
-            #      meaning if ground-truth coverage is large but the pipeline
-            #      found less, it’s contradictory to have TASS=high.
-            cost1 = coverage * ((1.0 - tass_score) ** 2)
+            is_pathogen = "Potential"
+        direct_match = True
+    elif sample_type in commensal_sites:
+        is_pathogen = "Commensal"
+        direct_match = True
+    elif callclass and callclass != "":
+        is_pathogen = callclass.capitalize() if callclass else "Unknown"
+        isPathi = True
+    return is_pathogen, isPathi, direct_match, high_cons
 
-            coverage_short = max(0.0, coverage - actual_coverage)
-            cost2 = (tass_score ** 2) * coverage_short
-
-            cost += (cost1 + cost2)
-            perrefcost[ref] =  (cost1 + cost2)
-        # print("\t",ref, actual_coverage, coverage, tass_score, rec['gini_coefficient'])
-    return cost, perrefcost
-
-
-def optimize_three_weights(
-    aggregated_stats,
-    pathogens,
-    sample_name="No_Name",
-    sample_type="Unknown",
-    aligned_total=0,
-    total_reads=0,
-    initial_weights=None,
-    max_iterations=500
-):
-    """
-    Optimize only the three weights:
-      - 'breadth_weight'
-      - 'gini_coefficient'
-      - 'minhash_weight'
-
-    The function returns a dict mapping the three weight names to optimized values
-    that sum to 1 (compute_cost normalizes weights if necessary).
-    """
-
-    # default initial weights (equal)
-    if initial_weights is None:
-        initial_weights = [1.0, 1.0, 1.0]
-
-    # Ensure we have three elements
-    if len(initial_weights) != 3:
-        raise ValueError("initial_weights must be a list/tuple of length 3")
-
-    # bounds: each weight in [0,1]
-    bounds = [(0.0, 1.0), (0.0, 1.0), (0.0, 1.0)]
-
-    # constraint: sum(weights) == 1
-    constraints = {'type': 'eq', 'fun': lambda w: w[0] + w[1] + w[2] - 1.0}
-
-    # objective: use compute_cost; we negate because minimize() minimizes the objective.
-    # The previous optimize_weights used -cost to try to maximize the metric used internally.
-    def objective(w):
-        # Build a weights dictionary compatible with compute_cost / calculate_scores.
-        # Put the three weights in the canonical names used by the pipeline.
-        weight_dict = {
-            'breadth_weight': float(w[0]),
-            'gini_coefficient': float(w[1]),
-            'minhash_weight': float(w[2]),
-            # leave other weights absent (calculate_scores / compute_cost use .get(..., 0))
-        }
-        cost, _ = compute_cost(
-            aggregated_stats=aggregated_stats,
-            pathogens=pathogens,
-            sample_name=sample_name,
-            sample_type=sample_type,
-            total_reads=total_reads,
-            aligned_total=aligned_total,
-            weights=weight_dict
-        )
-        # Negate to match earlier pattern (if you want to maximize cost); change sign if you want to minimize.
-        return -cost
-
-    # use SLSQP like your other optimizer
-    from scipy.optimize import minimize
-    result = minimize(
-        objective,
-        x0=initial_weights,
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints,
-        options={'maxiter': max_iterations, 'disp': True}
-    )
-
-    if not result.success:
-        raise RuntimeError(f"3-weight optimization failed: {result.message}")
-
-    optimized = {
-        'breadth_weight': float(result.x[0]),
-        'gini_coefficient': float(result.x[1]),
-        'minhash_weight': float(result.x[2]),
-    }
-
-    # compute final cost (optional) and print summary
-    final_cost, perref = compute_cost(
-        aggregated_stats=aggregated_stats,
-        pathogens=pathogens,
-        sample_name=sample_name,
-        sample_type=sample_type,
-        total_reads=total_reads,
-        aligned_total=aligned_total,
-        weights=optimized
-    )
-
-    print("Optimized 3 weights (breadth, gini, minhash):")
-    print(f"\t breadth_weight  = {optimized['breadth_weight']:.4f}")
-    print(f"\t gini_coefficient = {optimized['gini_coefficient']:.4f}")
-    print(f"\t minhash_weight  = {optimized['minhash_weight']:.4f}")
-    print(f"\t final cost = {final_cost:.6f}")
-
-    return optimized

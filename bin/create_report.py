@@ -18,6 +18,8 @@
 #
 
 import os
+import ast
+
 import matplotlib
 import pandas as pd
 import numpy as np
@@ -35,12 +37,17 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.platypus.flowables import HRFlowable, Flowable
 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
+
 from reportlab.lib.units import inch
 
 from datetime import datetime
 from io import StringIO
 from reportlab.lib.colors import Color
 from map_taxid import load_taxdump, load_names, load_merged, get_root
+import json
+from statistics import mean
+
 
 import argparse
 def parse_args(argv=None):
@@ -56,7 +63,7 @@ def parse_args(argv=None):
         required=True,
         nargs="+",
         default=[],
-        help="Base pathogen discovery table file(s), TSV format only. Can specify more than one",
+        help="Base pathogen discovery table file(s), JSON format only. Can specify more than one",
     )
     parser.add_argument(
         "-d",
@@ -75,8 +82,8 @@ def parse_args(argv=None):
                         help="Only show organisms that are in the top percentile of healthy subjects expected abu")
     parser.add_argument("-v", "--version", metavar="VERSION", required=False, default='Local Build',
                         help="What version of TaxTriage is in use")
-    parser.add_argument("--sorttass", action="store_true", required=False,
-                        help="Sort the tables on JUST TASS Score. If disabled, sorts on High Con. first then TASS Score")
+    parser.add_argument('--sorttass', action="store_true", required=False,
+                        help="Sort by TASS score if available")
     parser.add_argument("--show_commensals", action="store_true", required=False,
                         help="Show the commensals table")
     parser.add_argument("--show_unidentified",   action="store_true", required=False,
@@ -87,6 +94,8 @@ def parse_args(argv=None):
                         help="Missing samples if any", nargs="+")
     parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',
                         help="Name of site column, default is body_site")
+    parser.add_argument("--ani_threshold", metavar="ANI_THRESHOLD", required=False, type=float, default=0.90,
+                        help="Threshold for ANI to consider 'High ANI' in the report")
     parser.add_argument("-t", "--type", metavar="TYPE", required=False, default='Detected Organism',
                         help="What type of data is being processed. Options: 'Taxonomic ID #' or 'Detected Organism'.",
                         choices=['Taxonomic ID #', 'Detected Organism'])
@@ -108,6 +117,7 @@ def parse_args(argv=None):
         metavar="ANI_MATRIX",
         required=False,
         type=str,
+        nargs="+",
         help="Path to organism ANI matrix CSV file from Sourmash signatures. Optional",
     )
     parser.add_argument(
@@ -171,128 +181,44 @@ def subset_ani_for_group(ani_matrix, taxid_list):
     sub = ani.loc[present, present].copy()
     return sub, present, missing
 
-def heatmap_bytesio(matrix, labels=None, figsize=(3,3), annot=False, cmap='viridis', vmin=None, vmax=None):
+def load_scores_json(path):
     """
-    Create a heatmap for `matrix` (pd.DataFrame) and return BytesIO containing PNG.
-    If labels is None, matrix.index is used.
+    Returns a mapping: aggregate_ref_str -> {
+        'aggregate': <agg_entry>,
+        'strains': [<strain dicts>]
+    }
     """
-    buf = io.BytesIO()
-    if matrix.empty:
-        # create a small blank image or return None
-        plt.figure(figsize=figsize)
-        plt.text(0.5, 0.5, 'No ANI\navailable', ha='center', va='center')
-        plt.axis('off')
-        plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-        plt.close()
-        buf.seek(0)
-        return buf
+    if not path or not os.path.exists(path):
+        return {}
+    with open(path, "r") as fh:
+        j = json.load(fh)
 
-    labels = labels if labels is not None else [str(x) for x in matrix.index]
-    # set vmin/vmax if not provided to keep consistent color scaling if you want
-    if vmin is None:
-        vmin = matrix.values.min()
-    if vmax is None:
-        vmax = matrix.values.max()
+    # If the JSON uses top-level 'organisms' list like calculate_scores_json does:
+    organisms = j.get("organisms", None)
+    # Or maybe the file is a list already:
+    if organisms is None and isinstance(j, list):
+        organisms = j
+    if organisms is None and isinstance(j, dict) and "sample_name" in j and "organisms" in j:
+        organisms = j["organisms"]
 
-    fig, ax = plt.subplots(figsize=figsize)
-    # seaborn heatmap is nicer; if you don't have seaborn, replace with imshow
-    try:
-        sns.heatmap(matrix.astype(float), ax=ax, xticklabels=labels, yticklabels=labels,
-                    annot=annot, cmap=cmap, vmin=vmin, vmax=vmax, cbar=True,
-                    square=True, linewidths=0.2, linecolor='white')
-    except Exception:
-        im = ax.imshow(matrix.values.astype(float), vmin=vmin, vmax=vmax, aspect='equal')
-        ax.set_xticks(range(len(labels)))
-        ax.set_xticklabels(labels, rotation=90, fontsize=6)
-        ax.set_yticks(range(len(labels)))
-        ax.set_yticklabels(labels, fontsize=6)
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    out = {}
+    if not organisms:
+        return out
 
-    ax.set_xlabel('')
-    ax.set_ylabel('')
-    plt.xticks(rotation=90, fontsize=6)
-    plt.yticks(fontsize=6)
-    plt.tight_layout()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    buf.seek(0)
-    return buf
+    for og in organisms:
+        ref = str(og.get("ref", "")).strip()
+        if not ref:
+            # try using taxid inside aggregate_stats
+            agg = og.get("aggregate_stats", {})
+            ref = str(agg.get("taxid", "") or agg.get("species_taxid", "") or "")
+        out[ref] = {
+            "aggregate": og,
+            "strains": og.get("strains", []) or []
+        }
+    return out
 
-def build_group_plotbuffer_for_rows(ani_matrix, df_full, args, plotbuffer):
-    """
-    For each row in df_full, attach a BytesIO PNG of the group's ANI submatrix to plotbuffer keyed by
-    (row[args.type], row['body_site']) — which matches how your table builder looks up images.
-    - ani_matrix: pandas DataFrame loaded earlier (index_col=0)
-    - df_full: full data frame (after cleaning)
-    - args: parsed args (needed for args.type)
-    - plotbuffer: dict to be updated in-place
-    """
-    # Convert ani index/cols to strings for matching
-    ani = ani_matrix.copy()
-    ani.index = ani.index.map(lambda x: str(x))
-    ani.columns = ani.columns.map(lambda x: str(x))
 
-    # Precompute taxid lists per group
-    # We assume df_full has column "Taxonomic ID #" and "Group" as you set earlier
-    taxid_col = 'Taxonomic ID #'
-    if taxid_col not in df_full.columns:
-        # nothing to do
-        return plotbuffer
 
-    # Build group -> unique taxid list (preserve original order)
-    group_to_taxids = {}
-    for _, row in df_full.iterrows():
-        grp = row.get('Group', '')
-        taxid = row.get(taxid_col, '')
-        if pd.isna(taxid) or taxid == "":
-            continue
-        group_to_taxids.setdefault(grp, []).append(taxid)
-
-    # Deduplicate while preserving order
-    for grp, taxids in group_to_taxids.items():
-        seen = set()
-        dedup = []
-        for t in taxids:
-            if t not in seen:
-                dedup.append(t)
-                seen.add(t)
-        group_to_taxids[grp] = dedup
-
-    # Now build one image per group, and then attach to all rows that belong to that group
-    group_image_cache = {}
-    for grp, taxids in group_to_taxids.items():
-        sub, present, missing = subset_ani_for_group(ani, taxids)
-        if sub.empty:
-            # produce a small "no data" image so table cell has something
-            imgbuf = heatmap_bytesio(pd.DataFrame(), labels=None, figsize=(2.2,2.2))
-            group_image_cache[grp] = (imgbuf, present, missing)
-            continue
-
-        # if only 1 taxid present, create a small 1x1 heatmap or a label
-        if sub.shape[0] == 1:
-            # create a simple image with single value
-            imgbuf = heatmap_bytesio(sub, labels=sub.index.tolist(), figsize=(1.2,1.2), annot=True)
-            group_image_cache[grp] = (imgbuf, present, missing)
-            continue
-
-        # Otherwise create a reasonable sized heatmap; size can be scaled by number of taxa
-        n = sub.shape[0]
-        # cap figure size
-        figsize = (min(6, 0.6 * n + 1), min(6, 0.6 * n + 1))
-        imgbuf = heatmap_bytesio(sub, labels=sub.index.tolist(), figsize=figsize, annot=False, cmap='viridis')
-        group_image_cache[grp] = (imgbuf, present, missing)
-
-    # Attach to plotbuffer keyed by (Detected Organism, body_site) for each row
-    for _, row in df_full.iterrows():
-        key = (row.get(args.type), row.get('Specimen Type') or row.get('Specimen ID (Type)') or row.get('body_site'))
-        grp = row.get('Group', '')
-        if grp in group_image_cache:
-            plotbuffer[key] = group_image_cache[grp][0]
-        else:
-            # fallback: empty image
-            plotbuffer[key] = heatmap_bytesio(pd.DataFrame(), labels=None, figsize=(2.2,2.2))
-
-    return plotbuffer
 
 def import_data(inputfiles ):
     # Load your TSV data into a DataFrame
@@ -368,6 +294,7 @@ def extract_reads(value):
         return int(float(s))
     except Exception:
         return 0
+
 def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=None, include_headers=True, columns=None):
     data = []
     style_cmds = []
@@ -379,6 +306,8 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
 
     if columns is None:
         columns = [c for c in df_proc.columns.values if c not in (sample_col, group_col, 'plot')]
+    # make sure that only the columns in df are in columns
+    columns = [c for c in columns if c in df_proc.columns]
 
     # Accept a few possible names so your upstream code can vary.
     ani_candidates = ["High ANI", "ANI>90", "ANI > 90", "ANI>0.9", "HighANI"]
@@ -418,12 +347,13 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
         sample_groups.append((sample_key, sample_df))
 
     current_row = start_row
+
     for s_idx, (sample_key, sample_df) in enumerate(sample_groups):
         sample_label = sample_key if sample_key and str(sample_key).strip() != "" else "Unknown Sample"
         sample_reads = int(sample_df[reads_col].apply(extract_reads).sum()) if reads_col else 0
         sample_count = sample_df.shape[0]
 
-        sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits — {sample_reads:,} alignments"
+        sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits —  / {sample_reads:,} alignments"
         sample_para = Paragraph(sample_header_text, styles['Normal'])
         sample_row = [sample_para] + [empty_cell_normal] * (num_cols - 1)
         while len(sample_row) < num_cols:
@@ -483,10 +413,17 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
 
                 for col in columns:
                     cell_val = row.get(col, "")
-                    if ani_col_name and col == ani_col_name:
+
+                    if col == "Pathogenic Subsp/Strains":
+                        txt = format_pathogenic_list(cell_val)
+                        member_cells.append(
+                            Paragraph(txt, pathogen_list_style) if txt else empty_cell
+                        )
+                    elif ani_col_name and col == ani_col_name:
                         member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
                     else:
                         member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
+
 
                 if has_plot_column:
                     plot_key = (row.get('Detected Organism'), row.get('Specimen Type'))
@@ -579,6 +516,39 @@ def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=No
 
     return data, style_cmds
 
+PATH_COL = "Pathogenic Subsp/Strains"
+
+def format_pathogenic_list(cell_val) -> str:
+    """
+    Turns a list of strain strings into a line-by-line string for ReportLab Paragraph.
+    Returns "" for empty/None/NaN.
+    """
+    if cell_val is None or (isinstance(cell_val, float) and pd.isna(cell_val)) or cell_val == "":
+        return ""
+
+    # If it's already a list/tuple/set
+    if isinstance(cell_val, (list, tuple, set)):
+        items = [str(x).strip() for x in cell_val if str(x).strip()]
+        return "<br/>".join(items)
+
+    # If it's a string that might represent a list, try to parse
+    if isinstance(cell_val, str):
+        s = cell_val.strip()
+        if not s:
+            return ""
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple, set)):
+                items = [str(x).strip() for x in parsed if str(x).strip()]
+                return "<br/>".join(items)
+        except Exception:
+            pass
+        # Fallback: treat as a single string (no list)
+        return s
+
+    # Fallback for other types
+    return str(cell_val).strip()
+
 def split_df(df_full):
     # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
     # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
@@ -588,9 +558,8 @@ def split_df(df_full):
     df_opp = df_full[df_full['Microbial Category'].isin([ "Potential"])].copy()
     df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
     df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
-
-    df_yes.reset_index(drop=True, inplace=True)
-    df_opp.reset_index(drop=True, inplace=True)
+    df_yes = df_yes.reset_index(drop=True)
+    df_opp = df_opp.reset_index(drop=True)
     return df_yes, df_opp, df_comm, df_unidentified
 
 
@@ -645,75 +614,49 @@ styles = getSampleStyleSheet()
 tiny_font_style = ParagraphStyle(name='TinyFont', parent=styles['Normal'], fontSize=6, leading=6, alignment=1)
 small_font_style = ParagraphStyle(name='SmallFont', parent=styles['Normal'], fontSize=2)
 normal_style = styles['Normal']
+pathogen_list_style = ParagraphStyle(
+    name="PathogenList",
+    parent=styles["Normal"],
+    fontSize=8.5,      # <-- key change (try 8.5–9.5)
+    leading=10.5,      # line spacing (must be > fontSize)
+    alignment=TA_LEFT,
+    spaceBefore=1,
+    spaceAfter=1
+)
 
-def prepare_data_with_headers(df, plot_dict, include_headers=True, columns=None):
-    data = []
-    # convert k2 reads to int
-    df['K2 Reads'] = df['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) else 0)
-    if not columns:
-        columns = df.columns.values[:-1]  # Assuming last column is for plots which should not be included in text headers
-    if len(plot_dict.keys()) > 0:
-        if "HHS Percentile" in columns:
-            columns.remove("HHS Percentile")
-    if include_headers:
-        headers = [Paragraph('<b>{}</b>'.format(col), styles['Normal']) for col in columns]
-        if len(plot_dict.keys()) > 0:
-            headers.append(Paragraph('<b>Percentile of Healthy Subject (HHS)</b>', styles['Normal']))  # Plot column header
-            # remove HHS Percentile if present from headers
-        data.append(headers)
-    for index, row in df.iterrows():
-        row_data = [Paragraph(format_cell_content(str(cell)), small_font_style ) for cell in row[columns][:]]  # Exclude plot data
-        # Insert the plot image
-        if len(plot_dict.keys()) > 0:
-            plot_key = (row['Detected Organism'], row['Specimen Type'])
-            if plot_key in plot_dict:
-                plot_image = Image(plot_dict[plot_key])
-                plot_image.drawHeight = 0.5 * inch  # Height of the image
-                plot_image.drawWidth = 1* inch  # Width of the image, adjusted from your figsize
-                row_data.append(plot_image)
+def read_ani_matrix(path: str) -> pd.DataFrame:
+    # try tab first
+    try:
+        df = pd.read_csv(path, sep="\t", index_col=0)
+        if df.shape[1] > 0:
+            return df
+    except Exception:
+        pass
 
-        data.append(row_data)
-    return data
+    # try comma
+    try:
+        df = pd.read_csv(path, sep=",", index_col=0)
+        if df.shape[1] > 0:
+            return df
+    except Exception:
+        pass
 
+    # try arbitrary whitespace (space-separated)
+    df = pd.read_csv(path, sep=r"\s+", engine="python", index_col=0)
+    return df
 def return_table_style(df=pd.DataFrame(), color_pathogen=False):
-    # Start with the basic style
+    """
+    Basic table style: header/grid/valign. Actual body coloring is applied by the
+    table builder (prepare_three_layer_table) because it knows the exact row indices.
+    """
     table_style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.gray), # header
+        ('BACKGROUND', (0,0), (-1,0), colors.gray),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('GRID', (0,0), (-1,-1), 1, colors.black),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-
+        ('LEFTPADDING', (0,0), (-1,-1), 4),
+        ('RIGHTPADDING', (0,0), (-1,-1), 4),
     ])
-    if color_pathogen:
-        # Placeholder for cells to color (row_index, col_index) format
-        cells_to_color = []
-        colorindexcol = 1
-        # Example post-processing to mark cells
-        i=0
-        for row_idx, row in df.iterrows():
-            val = row['Microbial Category']
-            # if nan then set to empty string
-            derived = row['AnnClass']
-            # Get Sample Type value from row
-            # sampletype = row['Specimen Type']
-            if "Primary" in val and derived == "Direct":
-                color = 'lightcoral'
-            elif "Primary" in val:
-                color = '#fab462'
-            elif "Commensal" in val:
-                color = 'lightgreen'
-            elif "Opportunistic" in val:
-                color = "#ffe6a8"
-            elif "Potential" in val:
-                color = 'lightblue'
-            else:
-                color = "white"
-            # Ensure indices are within the table's dimensions
-            style_command = ('BACKGROUND', (colorindexcol, i+1), (colorindexcol, i+1), color)  # Or lightorange based on condition
-            table_style.add(*style_command)
-            i+=1
-    else:
-        table_style.add(*('BACKGROUND', (0,1), (-1,-1), colors.white))
     return table_style
 
 def build_columns_and_widths(
@@ -721,10 +664,11 @@ def build_columns_and_widths(
     base_columns: list,
     plotbuffer: dict,
     *,
-    available_width: float,        # <-- pass doc.width
+    available_width: float,
     left_col_frac: float = 0.04,
     ani_col: str = "High ANI",
-    ani_width_frac: float = 0.035,
+    ani_width_frac: float = 0.15,
+    ani_min_width: float = 65,
     microbert_col: str = "MicrobeRT Probability",
     insert_microbert_at: int = 4,
     k2_col: str = "K2 Reads",
@@ -757,7 +701,8 @@ def build_columns_and_widths(
     widths = [left_w]
 
     if ani_col in columns:
-        ani_w = ani_width_frac * available_width
+        # Allocate ANI a sensible width, but never let it collapse
+        ani_w = max(ani_width_frac * available_width, ani_min_width)
         remaining_for_others = max(0, remaining - ani_w)
 
         other_count = n_data_cols - 1  # all except ANI
@@ -773,7 +718,7 @@ def build_columns_and_widths(
         if has_plot:
             widths.append(other_w)
 
-    # Safety: scale down if we’re a hair over available_width (floating point / rounding)
+    # Safety scaling
     total = sum(widths)
     if total > available_width:
         scale = available_width / total
@@ -808,34 +753,62 @@ def make_table(data, table_style=None, col_widths=None):
 
 
 def create_report(
-    output,
-    df_identified,
-    df_potentials,
-    df_unidentified,
-    df_commensals,
-    df_high_cons_low_conf,
-    plotbuffer,
+    output = None,
+    df_full = None,
+    show_potentials = False,
+    show_unidentified = False,
+    show_commensals = False,
+    plotbuffer = {},
     version=None,
     missing_samples=None,
     min_conf=None,
+    names_map = {},
 ):
+    df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
+    remap_headers = {
+        "name": "Detected Organism",
+        'taxid': "Taxonomic ID #",
+        "# Reads Aligned": "# Reads Aligned to Sample",
+        "body_site": "Specimen Type",
+        "abundance": "% of Aligned",
+        # "Pathogenic Sites": "Locations",
+        "% Reads": "% Reads of Organism",
+        "Microbial Category": "Microbial Category",
+        'Quant': "# Reads Aligned",
+        "Gini Coefficient": "Gini Coeff",
+    }
+    df_identified= df_identified.rename(columns=remap_headers)
+    df_high_cons_low_conf = pd.DataFrame()
+    if min_conf and min_conf > 0:
+        df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < min_conf)]
+        df_full = df_full[df_full['TASS Score'].astype(float) >= min_conf]
+    if show_unidentified:
+        df_unidentified= df_unidentified.rename(columns=remap_headers)
+    else:
+        df_unidentified = pd.DataFrame()
 
+    if show_commensals:
+        df_commensal = df_commensal.rename(columns=remap_headers)
+    else:
+        df_commensal = pd.DataFrame()
+
+    if show_potentials:
+        df_potentials = df_potentials.rename(columns=remap_headers)
+    else:
+        df_potentials = pd.DataFrame()
+    exit()
     # PDF file setup
     pdf_file = output
-    doc = SimpleDocTemplate(pdf_file, pagesize=landscape(letter))
-    available_width = doc.width
+    page_width, page_height = landscape(letter)
 
-    #### Section to style things up a bit
-    # Set the left margin to 10% of the width of a letter size page (8.5 inches)
-    # Set custom margins based on percentage of the page size
-    left_margin = 0.1 * letter[0]  # 10% of the width of a letter page (landscape width)
-    right_margin = left_margin / 5  # 1/5th of the left margin for right margin
-    top_margin = bottom_margin = 0.1 * letter[1]  # 10% of the height of a letter page
+    left_margin   = 0.07 * page_width
+    right_margin  = left_margin / 2
+    top_margin    = 0.10 * page_height
+    bottom_margin = 0.10 * page_height
 
-    # Modify the doc setup to include custom margins and landscape mode
     doc = SimpleDocTemplate(
         pdf_file,
-        pagesize=landscape(letter),  # Ensure the document is landscape
+        pagesize=landscape(letter),
         leftMargin=left_margin,
         rightMargin=right_margin,
         topMargin=top_margin,
@@ -881,47 +854,23 @@ def create_report(
         columns_yes = df_identified_paths.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
         columns_yes = [
-            "Specimen ID (Type)",
             "Detected Organism",
             "# Reads Aligned",
             "TASS Score",
             "Taxonomic ID #",
-            # "Pathogenic Subsp/Strains",
+            "Pathogenic Subsp/Strains",
             "Coverage",
             "High ANI",
             "K2 Reads",
         ]
+
+        plotbuffer = {}
         columns_yes, col_widths = build_columns_and_widths(
             df=df_identified_paths,
             base_columns=columns_yes,
             plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
             available_width = doc.width
         )
-        # # check if all K2 reads column are 0 or nan
-        # if df_identified_paths['K2 Reads'].sum() == 0:
-        #     columns_yes = columns_yes[:-1]
-        # if "MicrobeRT Probability" in df_identified_paths.columns.values:
-        #     columns_yes.insert(4, "MicrobeRT Probability")
-        # # if has_ani_col and all rows are empty then set has_ani_col as false
-        # if "High ANI" not in df_identified_paths.columns or df_identified_paths["High ANI"].replace("", np.nan).isna().all():
-        #     # remove High ANI from columns_yes
-        #     columns_yes.remove("High ANI")
-        # Now, call prepare_data_with_headers for both tables without manually preparing headers
-
-        page_width, _ = landscape(letter)
-
-        # total usable width (match your document margins)
-        usable_width = page_width * 0.88  # ~matches your left/right margins
-
-        # Make left spacer column narrow
-        left_col_width = 0.04 * usable_width   # ~4% of table width
-
-        # Remaining width split across real data columns
-        num_data_cols = len(columns_yes) + (1 if len(plotbuffer) > 0 else 0)
-        remaining_width = usable_width - left_col_width
-        data_col_width = remaining_width / num_data_cols
-
-        col_widths = [left_col_width] + [data_col_width] * num_data_cols
 
         data_yes, style_cmds = prepare_three_layer_table(
             df_identified_paths,
@@ -1029,7 +978,7 @@ def create_report(
         "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
         "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
         "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
-        # "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
+        "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
         "HMP Plot: What percentile the abundance falls under relative to the given sample type based on Healthy Human Subject NCBI taxonomy classification information"
     ]
@@ -1078,16 +1027,18 @@ def create_report(
     ##########################################################################################
     if not df_high_cons_low_conf.empty:
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Specimen ID (Type)",
+        columns_yes = [
                        "Detected Organism",
+                       "# Reads Aligned",
                        'TASS Score',
-                       "# Reads Aligned", "Taxonomic ID #", "Coverage",  "High ANI",
+                       "Taxonomic ID #", "Coverage", "Pathogenic Subsp/Strains", "High ANI",
                        "K2 Reads"]
-        # check if all K2 reads column are 0 or nan
-        if df_identified_paths['K2 Reads'].sum() == 0:
-            columns_yes = columns_yes[:-1]
-        if "MicrobeRT Probability" in df_high_cons_low_conf.columns.values:
-            columns_yes.insert(4, "MicrobeRT Probability")
+        columns_yes, col_widths = build_columns_and_widths(
+            df=df_high_cons_low_conf,
+            base_columns=columns_yes,
+            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
+            available_width = doc.width
+        )
         # if all of Group is Unknown, then remove it from list
 
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
@@ -1102,15 +1053,6 @@ def create_report(
             columns=columns_yes
         )
 
-
-
-
-        # # Add the title and subtitle
-        title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
-        subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
-        elements.append(title)
-        elements.append(subtitle)
-        elements.append(Spacer(1, 12))
         # if data shape is >=1 then append, otherwise make text saying it is empty
         if df_high_cons_low_conf.shape[0] >= 1:
             table_style = return_table_style(df_high_cons_low_conf, color_pathogen=False)
@@ -1132,16 +1074,18 @@ def create_report(
     ##########################################################################################
     #### Table on opportunistic pathogens
     if not df_potentials.empty:
-        columns_opp = ["Specimen ID (Type)", "Detected Organism",
+        columns_opp = ["Detected Organism",
                        "# Reads Aligned",
                        "TASS Score", "Taxonomic ID #",
-                    #    "Pathogenic Subsp/Strains",
+                       "Pathogenic Subsp/Strains",
                        "Coverage", "High ANI", "K2 Reads"
                        ]
-        if df_potentials['K2 Reads'].sum() == 0:
-            columns_opp = columns_opp[:-1]
-        if "MicrobeRT Probability" in df_potentials.columns.values:
-            columns_opp.insert(4, "MicrobeRT Probability")
+        columns_opp, col_widths = build_columns_and_widths(
+            df=df_potentials,
+            base_columns=columns_opp,
+            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
+            available_width = doc.width
+        )
         data_pot, style_cmds = prepare_three_layer_table(
             df_potentials,
             sample_col='Specimen ID (Type)',
@@ -1149,13 +1093,14 @@ def create_report(
             plot_dict=plotbuffer,  # if you don't want plots here
             names_map=names_map,
             include_headers=True,
-            columns=columns_yes
+            columns=columns_opp
         )
         table_style = return_table_style(df_potentials, color_pathogen=True)
-        table = make_table(
-            data_opp,
-            table_style=table_style
-        )
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table = make_table(data_pot, table_style=table_style, col_widths=col_widths)
+
+
         # Add the title and subtitle
         Title = Paragraph("Low Potential Pathogens", title_style)
         elements.append(Title)
@@ -1168,23 +1113,32 @@ def create_report(
     if not df_identified_others.empty:
         columns_yes = df_identified_others.columns.values
         # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = ["Specimen ID (Type)",
+        columns_yes = [
                        "Detected Organism",
                        "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage", "High ANI",
                         "K2 Reads"]
-        # check if all K2 reads column are 0 or nan
-        if df_identified_paths['K2 Reads'].sum() == 0:
-            columns_yes = columns_yes[:-1]
-        if "MicrobeRT Probability" in df_identified_others.columns.values:
-            columns_yes.insert(4, "MicrobeRT Probability")
+        columns_yes, col_widths = build_columns_and_widths(
+            df=df_identified_others,
+            base_columns=columns_yes,
+            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
+            available_width = doc.width
+        )
         # if all of Group is Unknown, then remove it from list
         # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_yes = prepare_data_with_headers(df_identified_others, plotbuffer, include_headers=True, columns=columns_yes)
-        table_style = return_table_style(df_identified_others, color_pathogen=False)
-        table = make_table(
-            data_yes,
-            table_style=table_style
+        data_comm, style_cmds = prepare_three_layer_table(
+            df_identified_others,
+            sample_col='Specimen ID (Type)',
+            group_col='Group',
+            plot_dict=plotbuffer,
+            names_map=names_map,
+            include_headers=True,
+            columns=columns_yes
         )
+        table_style = return_table_style(df_identified_others, color_pathogen=False)
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table = make_table(data_comm, table_style=table_style, col_widths=col_widths)
+
         title = Paragraph("Commensals", title_style)
         subtitle = Paragraph(f"These were identified & were listed as a commensal directly", subtitle_style)
         elements.append(title)
@@ -1197,7 +1151,7 @@ def create_report(
 
     elements.append(Spacer(1, 12))
     if not df_unidentified.empty:
-        ##########################################################################################
+    #     ##########################################################################################
         ### Section to Make the "Unannotated" Table
         second_title = "Unannotated Organisms"
         second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms (species only) contained within the samples that had atleast one read aligned"
@@ -1205,6 +1159,12 @@ def create_report(
         elements.append(Paragraph(second_subtitle, subtitle_style))
 
         columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage", "High ANI", "K2 Reads"]
+        columns_no, col_widths = build_columns_and_widths(
+            df=df_unidentified,
+            base_columns=columns_no,
+            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
+            available_width = doc.width
+        )
         data_no, style_cmds = prepare_three_layer_table(
             df_unidentified,
             sample_col='Specimen ID (Type)',
@@ -1215,10 +1175,9 @@ def create_report(
             columns=columns_no
         )
         table_style = return_table_style(df_unidentified, color_pathogen=False)
-        table_no = make_table(
-            data_no,
-            table_style=table_style
-        )
+        for cmd in style_cmds:
+            table_style.add(*cmd)
+        table_no = make_table(data_no, table_style=table_style, col_widths=col_widths)
         elements.append(table_no)
     elements.append(Spacer(1, 12))  # Space between tables
 
@@ -1231,6 +1190,69 @@ def create_report(
     doc.build(elements, onFirstPage=draw_vertical_line, onLaterPages=draw_vertical_line)
 
     print(f"PDF generated: {pdf_file}")
+
+def collapse_ani_matrix_to_rank(
+    ani_matrix: pd.DataFrame,
+    taxdump_dict: dict,
+    target_rank: str = "species",
+    agg: str = "mean",
+    set_diag: float | None = 1.0,
+) -> pd.DataFrame:
+    """
+    Collapse ANI matrix whose index/cols are (possibly) strain/subspecies taxids into a
+    matrix keyed by target_rank taxids (species by default).
+
+    Each (speciesA, speciesB) cell is aggregated (mean by default) over all underlying
+    pairs (strain_i in A, strain_j in B).
+    """
+    if ani_matrix is None or ani_matrix.empty:
+        return ani_matrix
+
+    ani = ani_matrix.copy()
+
+    # Normalize labels
+    ani.index = ani.index.map(_norm_taxid)
+    ani.columns = ani.columns.map(_norm_taxid)
+
+    # Ensure numeric
+    ani = ani.apply(pd.to_numeric, errors="coerce")
+
+    # Build mapping: strain_taxid -> species_taxid
+    idx_species = [get_ancestor_at_rank(t, target_rank, taxdump_dict) for t in ani.index]
+    col_species = [get_ancestor_at_rank(t, target_rank, taxdump_dict) for t in ani.columns]
+
+    # If matrix is supposed to be symmetric and same labels, this will usually match,
+    # but we handle it generally.
+    ani.index = idx_species
+    ani.columns = col_species
+
+    # Collapse rows by species
+    if agg == "mean":
+        collapsed_rows = ani.groupby(level=0, sort=False).mean(numeric_only=True)
+    elif agg == "median":
+        collapsed_rows = ani.groupby(level=0, sort=False).median(numeric_only=True)
+    elif agg == "max":
+        collapsed_rows = ani.groupby(level=0, sort=False).max(numeric_only=True)
+    else:
+        raise ValueError(f"Unsupported agg='{agg}' (use mean/median/max)")
+
+    # Collapse cols by species
+    if agg == "mean":
+        collapsed = collapsed_rows.groupby(axis=1, level=0, sort=False).mean(numeric_only=True)
+    elif agg == "median":
+        collapsed = collapsed_rows.groupby(axis=1, level=0, sort=False).median(numeric_only=True)
+    elif agg == "max":
+        collapsed = collapsed_rows.groupby(axis=1, level=0, sort=False).max(numeric_only=True)
+
+    # Make sure it's square-ish by reindexing union (optional but nice)
+    all_taxa = sorted(set(collapsed.index).union(set(collapsed.columns)))
+    collapsed = collapsed.reindex(index=all_taxa, columns=all_taxa)
+
+    # Diagonal handling
+    if set_diag is not None:
+        np.fill_diagonal(collapsed.values, float(set_diag))
+
+    return collapsed
 def add_ani_column(
     df_full: pd.DataFrame,
     ani_matrix: pd.DataFrame,
@@ -1240,40 +1262,49 @@ def add_ani_column(
     sample_col: str = "Specimen ID (Type)",
     group_col: str = "Group",
     out_col: str = "High ANI",
-    max_label_len: int = 16,     # keep column narrow
-    show_plus_more: bool = True, # True: "+N" beyond best; False: "/total"
+    max_label_len: int = 16,
+    show_plus_more: bool = True,
 ):
-    """
-    For each row, if there exists >=1 other taxid in the SAME (sample, group)
-    with ANI >= threshold, set out_col to something like:
-        ↔ Staph. aureus (96.4%) +2
-    meaning best match is 96.4% and there are 2 additional matches >= threshold.
-    """
     if ani_matrix is None or ani_matrix.empty:
         df_full[out_col] = ""
         return df_full
 
     df = df_full.copy()
 
-    ani = ani_matrix.copy()
-    ani.index = ani.index.map(str)
-    ani.columns = ani.columns.map(str)
+    # Normalize df taxids
+    df[taxid_col] = df[taxid_col].map(_norm_taxid)
 
-    df[taxid_col] = df[taxid_col].map(lambda x: "" if pd.isna(x) else str(x))
+    # Start with empty strings (NOT pd.NA) so you don't end up with NaN
     df[out_col] = ""
 
+    # Normalize ANI matrix index/cols
+    ani = ani_matrix.copy()
+    ani.index = ani.index.map(_norm_taxid)
+    ani.columns = ani.columns.map(_norm_taxid)
+
+    # Coerce values to numeric (handles strings, blanks, etc.)
+    ani = ani.apply(pd.to_numeric, errors="coerce")
+
+    # Optional: ensure diagonal doesn't accidentally count (not strictly needed)
+    # np.fill_diagonal(ani.values, np.nan)
+
     for (s, g), gdf in df.groupby([sample_col, group_col], sort=False):
-        taxids = [t for t in gdf[taxid_col] if t]
+        # unique taxids in this (sample, group)
+        taxids = [t for t in gdf[taxid_col].tolist() if t]
+        if len(taxids) < 2:
+            continue
+
+        # keep order, unique
         seen = set()
         taxids = [t for t in taxids if not (t in seen or seen.add(t))]
 
-        present = [t for t in taxids if t in ani.index]
+        present = [t for t in taxids if t in ani.index and t in ani.columns]
         if len(present) < 2:
             continue
 
-        sub = ani.loc[present, present].astype(float)
+        sub = ani.loc[present, present]
 
-        # map taxid -> detected organism name (first occurrence)
+        # taxid -> name (first occurrence)
         taxid_to_name = {}
         for _, r in gdf.iterrows():
             tid = r[taxid_col]
@@ -1282,37 +1313,28 @@ def add_ani_column(
 
         for tid in present:
             series = sub.loc[tid].drop(labels=[tid], errors="ignore")
-
-            hits = series[series >= threshold]
+            hits = series[series >= float(threshold)]
             if hits.empty:
                 continue
 
-            # best hit info
             best_other = hits.idxmax()
             best_val = float(hits.loc[best_other])
-
-            # total number of hits >= threshold (excluding self)
             total_hits = int(hits.shape[0])
 
-            # map best_other taxid to Detected Organism label
-            best_name = taxid_to_name.get(best_other, best_other)
-
-            # truncate label
-            best_name = str(best_name).strip()
+            best_name = str(taxid_to_name.get(best_other, best_other)).strip()
             if len(best_name) > max_label_len:
-                best_name = best_name[:max_label_len - 1] + "…"
+                best_name = best_name[: max_label_len - 1] + "…"
 
             best_pct = f"{best_val * 100:.1f}%"
 
             if show_plus_more:
-                # show "+N" beyond the best match
                 more = total_hits - 1
                 suffix = f" +{more}" if more > 0 else ""
             else:
-                # show "/total" (total includes best)
                 suffix = f" /{total_hits}"
 
-            label = f"{best_name}\r({best_pct}){suffix} others"
+            # Note: removed '\r' (can behave weirdly in ReportLab tables)
+            label = f"{best_name} ({best_pct}){suffix}"
 
             df.loc[
                 (df[sample_col] == s)
@@ -1323,12 +1345,72 @@ def add_ani_column(
 
     return df
 
+def _norm_taxid(x) -> str:
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+    if s == "" or s.lower() == "nan":
+        return ""
+    if s.endswith(".0") and s[:-2].isdigit():
+        s = s[:-2]
+    return s
 
+def get_ancestor_at_rank(taxid: str, target_rank: str, taxdump_dict: dict, *, max_hops: int = 200) -> str:
+    """
+    taxdump_dict: mapping like taxid -> {"parent": parent_taxid, "rank": rank, ...}
+    Returns the ancestor taxid at target_rank. If not found, returns original taxid.
+    """
+    tid = _norm_taxid(taxid)
+    if not tid or tid not in taxdump_dict:
+        return tid
+
+    hops = 0
+    cur = tid
+    while hops < max_hops and cur in taxdump_dict:
+        node = taxdump_dict[cur]
+        if node.get("rank") == target_rank:
+            return cur
+        parent = _norm_taxid(node.get("parent", ""))
+        if not parent or parent == cur:
+            break
+        cur = parent
+        hops += 1
+
+    # fallback: return original if we never hit that rank
+    return tid
+
+from functools import reduce
+
+def merge_ani_matrices(matrices):
+    """
+    Merge multiple ANI matrices.
+    If the same (i,j) appears in multiple matrices, take the mean.
+    """
+    def merge_two(a, b):
+        all_idx = sorted(set(a.index) | set(b.index))
+        all_col = sorted(set(a.columns) | set(b.columns))
+
+        a = a.reindex(index=all_idx, columns=all_col)
+        b = b.reindex(index=all_idx, columns=all_col)
+
+        return pd.concat([a, b]).groupby(level=0).mean()
+
+    return reduce(merge_two, matrices)
+
+
+def load_merged_json(input_json_paths):
+    merged_data = []
+    for inputjson in input_json_paths:
+        if not os.path.exists(inputjson):
+            raise FileNotFoundError(f"Input JSON file {inputjson} does not exist.")
+        with open(inputjson, "r") as f:
+            data = json.load(f)
+            merged_data.extend(data)
+    return merged_data
 
 def main():
     args = parse_args()
     taxdump_dict, names_map, merged_data = {}, {}, {}
-
     if args.taxdump:
         # load the taxdump file
         if os.path.exists(f"{args.taxdump}/nodes.dmp"):
@@ -1337,42 +1419,53 @@ def main():
             names_map = load_names(f"{args.taxdump}/names.dmp")
         if os.path.exists(f"{args.taxdump}/merged.dmp"):
             merged_data = load_merged(f"{args.taxdump}/merged.dmp")
+    # load in all of the json information one by one,
+    merged_data = load_merged_json(args.input)
+    for sample in merged_data:
+        for key, agg in sample.items():
+            agg['meancoverage'] = f"{100*agg['meancoverage']:.0f}%" if 'meancoverage' in agg and not pd.isna(agg['meancoverage']) else 0
+
+    exit()
     df_full = import_data(args.input)
     # Set tass score as a flaot
     # fill High Consequence with False if it is NaN
-    df_full['High Consequence'].fillna(False, inplace=True)
+    df_full['Coverage'] = df_full['Coverage'].apply(lambda x: f"{100*x:.0f}%" if not pd.isna(x) else 0)
     # fill empty string with False for high consequence
     df_full['High Consequence'] = df_full['High Consequence'].apply(lambda x: False if x == "" else x)
     df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{100*x:.0f}" if not pd.isna(x) else 0)
     df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_root(x, args.rank, taxdump_dict))
     # for Detected Organism, add (Group) if it is not null or not Unknown
-    df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']} ({x['Group']})" if x['Group'] != "Unknown" else x["Taxonomic ID #"], axis=1)
+    # df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']}, axis=1)
     # 1) create the rank
     # If your column is actually booleans + NaN, you can do:
     # fill all None for Group as "Unknown"
-    df_full['Group'].fillna('Others', inplace=True)
+    df_full['Group'] = df_full['Group'].fillna('Others')
     # 2) sort by rank desc, then TASS Score desc
     if not args.sorttass:
-        df_full.sort_values(
+        df_full = df_full.sort_values(
             by=['High Consequence', 'TASS Score'],
             ascending=[False, False],
-            inplace=True
         )
     else:
-        df_full.sort_values(
+        df_full=df_full.sort_values(
             by=['TASS Score', 'High Consequence'],
             ascending=[False, False],
-            inplace=True
         )
 
     # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
     if "MicrobeRT Probability" in df_full.columns:
         # Replace empty strings with NaN
         # if all is empty strings or empty rows in total then drop it
-        if df_full["MicrobeRT Probability"].replace("", np.nan).isna().all():
-            df_full.drop(columns=["MicrobeRT Probability"], inplace=True)
+        s = df_full["MicrobeRT Probability"]
+
+        prob = pd.to_numeric(
+            s.mask(s.astype(str).str.strip().eq(""), np.nan),
+            errors="coerce",
+        )
+        if prob.isna().all():
+            df_full = df_full.drop(columns=["MicrobeRT Probability"])
         else:
-            df_full["MicrobeRT Probability"].replace("", np.nan, inplace=True)
+            df_full["MicrobeRT Probability"] = df_full["MicrobeRT Probability"].replace("", np.nan)
 
             # Convert to float where possible
             df_full["MicrobeRT Probability"] = pd.to_numeric(df_full["MicrobeRT Probability"], errors="coerce")
@@ -1399,11 +1492,14 @@ def main():
     # Sort on # Reads aligned
     # make new column that is # of reads aligned to sample (% reads in sample) string format
     def quantval(x):
+        reads_aligned_formatted = f"{x['# Reads Aligned']:,}"
         if x['abundance'] == x['% Reads']:
-            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}%)"
+            # format # reads aligned to have commas
+            return f"{reads_aligned_formatted} ({x['abundance']:.2f}%)"
         else:
-            return f"{x['# Reads Aligned']} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
+            return f"{reads_aligned_formatted} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
     df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
+    df_full['# Reads Aligned'] = df_full['# Reads Aligned'].apply(lambda x: f"{x:,}")
     # append MicrobeRT Probability to TASS Score if it is present
     # add body site to Sample col with ()
     if args.percentile:
@@ -1423,13 +1519,34 @@ def main():
     plotbuffer = dict()
     # check if all of the 'Sample Type' is Unknown only, if so then set vairbale
     isUnknownAll = df_full['body_site'].str.contains("Unknown").all()
-    if args.ani_matrix and os.path.exists(args.ani_matrix):
-        # import the matrix csv
-        ani_matrix = pd.read_csv(args.ani_matrix, index_col=0)
-        df_full = add_ani_column(df_full, ani_matrix, threshold=0.90, out_col="High ANI")
-        # if all rows for High ANI are empty strings then drop the column
-        if df_full["High ANI"].replace("", np.nan).isna().all():
-            df_full.drop(columns=["High ANI"], inplace=True)
+    args.ani_threshold = 0.2
+    if args.ani_matrix:
+        matrices = []
+        for matrix in args.ani_matrix:
+            if os.path.exists(matrix):
+                mtrx = read_ani_matrix(matrix)
+
+                # normalize taxids
+                mtrx.index = mtrx.index.map(str)
+                mtrx.columns = mtrx.columns.map(str)
+
+                matrices.append(mtrx)
+                print(f"Loaded ANI matrix from {matrix}")
+        ani_matrix = merge_ani_matrices(matrices)
+        ani_species = collapse_ani_matrix_to_rank(
+            ani_matrix,
+            taxdump_dict=taxdump_dict,
+            target_rank="species",
+            agg="mean",
+            set_diag=1.0
+        )
+        df_full = add_ani_column(
+            df_full,
+            ani_matrix,
+            threshold=float(args.ani_threshold),
+            out_col="High ANI"
+        )
+        print(df_full[['Detected Organism', 'Taxonomic ID #', 'High ANI']])
 
     mapped_colids = {
         "Detected Organism": "name",
@@ -1472,55 +1589,27 @@ def main():
             )
             plotbuffer[(row[args.type], row['body_site'])] = buffer
     df_high_cons_low_conf = pd.DataFrame()
+
     if args.min_conf and args.min_conf > 0:
         df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]
         df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x:.2f}" if not pd.isna(x) else 0)
+    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x}" if not pd.isna(x) else 0)
     print(f"Size of of full list of organisms: {df_full.shape[0]}")
-    print(f"Size of of low confidence high consequence pathogens: {df_high_cons_low_conf.shape[0]}")
     # lambda x add the % Reads column to name column
-    df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
-    remap_headers = {
-        "name": "Detected Organism",
-        'taxid': "Taxonomic ID #",
-        "# Reads Aligned": "# Reads Aligned to Sample",
-        "body_site": "Specimen Type",
-        "abundance": "% of Aligned",
-        # "Pathogenic Sites": "Locations",
-        "% Reads": "% Reads of Organism",
-        "Microbial Category": "Microbial Category",
-        'Quant': "# Reads Aligned",
-        "Gini Coefficient": "Gini Coeff",
-    }
-    df_identified= df_identified.rename(columns=remap_headers)
 
-    if args.show_unidentified:
-        df_unidentified= df_unidentified.rename(columns=remap_headers)
-    else:
-        df_unidentified = pd.DataFrame()
-
-    if args.show_commensals:
-        df_commensal = df_commensal.rename(columns=remap_headers)
-    else:
-        df_commensal = pd.DataFrame()
-
-    if args.show_potentials:
-        df_potentials = df_potentials.rename(columns=remap_headers)
-    else:
-        df_potentials = pd.DataFrame()
     version = args.version
     missing_samples = args.missing_samples
     create_report(
         args.output,
-        df_identified,
-        df_potentials,
-        df_unidentified,
-        df_commensal,
-        df_high_cons_low_conf,
+        df_full,
+        args.show_potentials,
+        args.show_unidentified,
+        args.show_commensals,
         plotbuffer,
         version,
         missing_samples,
-        args.min_conf
+        args.min_conf,
+        names_map=names_map,
     )
 
 

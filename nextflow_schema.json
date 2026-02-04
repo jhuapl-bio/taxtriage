@@ -604,6 +604,11 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "ani_removal": {
+                    "type": "boolean",
+                    "description": "Build signatures from TASS Minhash score step using windowed regions of the reference gneomes. Default (disabled-false) is to only compare similar reads/regions from the aligned reads from the BAM file(s)",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "sorttass": {
                     "type": "boolean",
                     "description": "Sort the tables on JUST TASS Score. If disabled, sorts on High Consequence first then TASS Score",

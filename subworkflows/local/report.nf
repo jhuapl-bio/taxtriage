@@ -40,6 +40,7 @@ workflow REPORT {
         ch_pathognes_list = Channel.empty()
         // make the ch_report_microbert an empty path channel
         ch_report_microbert = Channel.empty()
+        ch_empty_file3 = Channel.fromPath("$projectDir/assets/NO_FILE3", checkIfExists: true)
 
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
@@ -92,25 +93,18 @@ workflow REPORT {
             ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
+            // merge
 
             SINGLE_REPORT(
-                ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
+                ALIGNMENT_PER_SAMPLE.out.txt.join(ALIGNMENT_PER_SAMPLE.out.ani).combine(distributions),
                 false,
-<<<<<<< HEAD
                 ch_taxdump_dir,
-=======
-                ch_taxdump_nodes
->>>>>>> main
             )
 
             ORGANISM_MERGE_REPORT(
-                full_list_pathogen_files.combine(distributions),
+                full_list_pathogen_files.combine(ch_empty_file3).combine(distributions),
                 missing_samples,
-<<<<<<< HEAD
                 ch_taxdump_dir,
-=======
-                ch_taxdump_nodes
->>>>>>> main
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)
