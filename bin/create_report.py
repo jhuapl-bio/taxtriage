@@ -236,13 +236,14 @@ def sanitize_bookmark_name(name):
     return sanitized
 
 
-def collect_all_bookmarks(samples_dict):
+def collect_all_bookmarks(samples_dict, low_confidence_strains):
     """
     Collect all bookmark names that will be created in the PDF.
     This is used to validate links before creating them.
 
     Args:
         samples_dict: Dictionary organized by sample name
+        low_confidence_strains: List of low confidence strains
 
     Returns:
         set: Set of all bookmark names that will exist
@@ -252,7 +253,11 @@ def collect_all_bookmarks(samples_dict):
     # Add reference section bookmarks
     bookmarks.add('color_key')
     bookmarks.add('column_explanations')
-    bookmarks.add('low_confidence')
+
+    # Only add low_confidence bookmark if there are low confidence strains
+    if low_confidence_strains:
+        bookmarks.add('low_confidence')
+
     bookmarks.add('additional_info')
 
     # Add sample and species bookmarks
@@ -380,7 +385,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         ani_data: ANI matrix dictionary
         args: Command line arguments
     """
-    # Create the PDF document with narrow margins (2.5% on left/right)
+    # Create the PDF document with narrow margins (1% on left/right)
     page_width, page_height = letter
     left_margin = page_width * 0.01
     right_margin = page_width * 0.01
@@ -400,12 +405,6 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
 
     # Build taxid to bookmark mapping for ANI links
     taxid_to_bookmark = build_taxid_to_bookmark_map(samples_dict)
-
-    # Collect all valid bookmarks that will be created
-    valid_bookmarks = collect_all_bookmarks(samples_dict)
-
-    # Add taxid bookmarks to valid set
-    valid_bookmarks.update(taxid_to_bookmark.values())
 
     # Custom styles
     legend_text_style = ParagraphStyle(
@@ -442,7 +441,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     small_style = ParagraphStyle(
         'SmallText',
         parent=styles['Normal'],
-        fontSize=8,
+        fontSize=10,
         leading=10
     )
 
@@ -467,6 +466,28 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     print(f"  Show Unidentified: {args.show_unidentified}")
     print(f"  Sorting mode: {'Alphabetical' if args.sort_alphabetical else 'TASS Score (descending)'}")
     print(f"  Max members per group: {args.max_members if args.max_members else 'Unlimited'}")
+
+    # Collect low confidence strains across all samples for later display
+    low_confidence_strains = []
+
+    # First pass: collect low confidence strains
+    for sample_name, species_groups in samples_dict.items():
+        for species_group in species_groups:
+            for strain in species_group.get('members', []):
+                if should_include_strain(strain, args):
+                    if not passes_confidence_threshold(strain, args.min_conf):
+                        if strain.get("high_cons"):
+                            low_confidence_strains.append({
+                                'strain': strain,
+                                'sample_name': sample_name,
+                                'species_group': species_group
+                            })
+
+    # Collect all valid bookmarks that will be created (AFTER determining low_confidence_strains)
+    valid_bookmarks = collect_all_bookmarks(samples_dict, low_confidence_strains)
+
+    # Add taxid bookmarks to valid set
+    valid_bookmarks.update(taxid_to_bookmark.values())
 
     # Title
     story.append(Paragraph("Organism Discovery Report", title_style))
@@ -495,11 +516,6 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     )
     story.append(Paragraph(toc_explanation, small_style))
     story.append(Spacer(1, 0.05*inch))
-    sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
-
-    if sample_total_reads <= 0:
-        sample_total_reads = 0
-
 
     # Sort samples alphabetically
     for sample_name in sorted(samples_dict.keys()):
@@ -572,19 +588,20 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         '• ' + create_safe_link('Column Explanations', 'column_explanations', valid_bookmarks),
         styles['Normal']
     ))
-    story.append(Paragraph(
-        '• ' + create_safe_link('Low Confidence, High Consequence Detections', 'low_confidence', valid_bookmarks),
-        styles['Normal']
-    ))
+
+    # Only add link to low confidence section if it exists
+    if low_confidence_strains:
+        story.append(Paragraph(
+            '• ' + create_safe_link('Low Confidence, High Consequence Detections', 'low_confidence', valid_bookmarks),
+            styles['Normal']
+        ))
+
     story.append(Paragraph(
         '• ' + create_safe_link('Additional Information', 'additional_info', valid_bookmarks),
         styles['Normal']
     ))
 
     story.append(Spacer(1, 0.00*inch))
-
-    # Collect low confidence strains across all samples for later display
-    low_confidence_strains = []
 
     # Generate content for each sample - tables appear right after TOC
     for sample_name in sorted(samples_dict.keys()):
@@ -598,6 +615,11 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         # NO spacer here - table appears immediately after header
 
         species_groups = samples_dict[sample_name]
+
+        # Calculate sample total reads
+        sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
+        if sample_total_reads <= 0:
+            sample_total_reads = 0
 
         # Sort species groups by TASS score (descending) or alphabetically
         if args.sort_alphabetical:
@@ -633,14 +655,6 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
                     if passes_confidence_threshold(strain, args.min_conf):
                         group_strains.append(strain)
                         species_group_map[id(strain)] = species_group
-                    else:
-                        # Collect low confidence strains for later
-                        if strain.get("high_cons"):
-                            low_confidence_strains.append({
-                                'strain': strain,
-                                'sample_name': sample_name,
-                                'species_group': species_group
-                            })
 
             # Sort strains within this group by TASS score (descending)
             group_strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
@@ -658,7 +672,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
                 args.ani_threshold, show_ani_column, show_k2_column,
                 taxid_to_bookmark, valid_bookmarks,
                 sample_total_reads=sample_total_reads,
-                sample_name=sample_name
+                sample_name=sample_name,
+                available_width=available_width
             )
             story.append(combined_table)
         else:
@@ -742,12 +757,10 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
 
     story.append(Spacer(1, 0.1*inch))
 
-    # Add anchor and table for Low Confidence Detections
+    # Add anchor and table for Low Confidence Detections (only if there are low confidence strains)
     if low_confidence_strains:
         story.append(Paragraph('<a name="low_confidence"/>', anchor_style))
         story.append(Paragraph("<b>Low Confidence, High Consequence Detections:</b>", heading_style))
-        story.append(Spacer(1, 0.03*inch))
-
         explanation_text = (
             f"The following strains were detected but fell below the confidence threshold "
             f"of {args.min_conf} and are listed here for reference."
@@ -755,9 +768,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         story.append(Paragraph(explanation_text, metadata_style))
         story.append(Spacer(1, 0.05*inch))
 
-        # Create low confidence table
         low_conf_table = create_low_confidence_table(
-            low_confidence_strains, small_style, show_k2_column
+            low_confidence_strains, small_style, show_k2_column, available_width
         )
         story.append(low_conf_table)
         story.append(Spacer(1, 0.1*inch))
@@ -822,7 +834,7 @@ def get_category_color(microbial_category, ann_class, alpha=1.0):
     return base_color
 
 
-def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data, ani_threshold, show_ani_column, show_k2_column, taxid_to_bookmark, valid_bookmarks, sample_total_reads=0, sample_name=None):
+def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data, ani_threshold, show_ani_column, show_k2_column, taxid_to_bookmark, valid_bookmarks, sample_total_reads=0, sample_name=None, available_width=None):
     """
     Create a single table combining all strains from all species groups.
     Each species group's strains appear consecutively with group info on the left.
@@ -837,6 +849,9 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         show_k2_column: Whether to include the K2 Reads column
         taxid_to_bookmark: Mapping of taxid to bookmark names for internal links
         valid_bookmarks: Set of valid bookmark names for link validation
+        sample_total_reads: Total reads for the sample
+        sample_name: Name of the sample
+        available_width: Available width for the table
 
     Returns:
         Table: Formatted ReportLab table object
@@ -845,16 +860,14 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     strain_name_style = ParagraphStyle(
         'StrainName',
         parent=small_style,
-        fontSize=8,
+        fontSize=10,
         leading=10
     )
-
-
 
     data_style = ParagraphStyle(
         'DataStyle',
         parent=small_style,
-        fontSize=7,
+        fontSize=8,
         leading=9
     )
 
@@ -987,24 +1000,60 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     if current_species_group is not None:
         span_info.append((group_start_row, row_idx - 1))
 
-    # Create table with dynamic column widths - optimized to prevent overflow
-    # Calculate available width (letter size minus margins)
-    page_width = 50.5 * inch
+    # Create table with ADAPTIVE column widths based on available_width
+    if available_width is None:
+        # Fallback to letter size calculation
+        available_width = 8.5*inch - 0.02*8.5*inch  # letter width minus 1% margins on each side
 
-    margins = page_width * 0.09  # 2.5% on each side
-
+    # Calculate proportional widths based on available space
     if show_k2_column and show_ani_column:
-        # All columns: need to fit 8 columns
-        col_widths = [1.0*inch, 0.2*inch, 2.3*inch, 0.6*inch, 0.6*inch, 0.5*inch, 0.6*inch, 1.2*inch]
+        # All columns: 8 columns total
+        # Proportions: Group(16%), Star(3%), Name(36%), Reads(11%), Coverage(9%), TASS(8%), K2(9%), ANI(18%)
+        col_widths = [
+            available_width * 0.16,  # Group Info
+            available_width * 0.03,  # Star
+            available_width * 0.32,  # Strain Name
+            available_width * 0.11,  # Reads
+            available_width * 0.09,  # Coverage
+            available_width * 0.08,  # TASS
+            available_width * 0.09,  # K2 Reads
+            available_width * 0.12   # High ANI
+        ]
     elif show_k2_column:
         # 7 columns: no ANI
-        col_widths = [1.1*inch, 0.2*inch, 2.8*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.7*inch]
+        # Proportions: Group(18%), Star(3%), Name(42%), Reads(12%), Coverage(10%), TASS(9%), K2(11%)
+        col_widths = [
+            available_width * 0.18,  # Group Info
+            available_width * 0.03,  # Star
+            available_width * 0.38,  # Strain Name
+            available_width * 0.12,  # Reads
+            available_width * 0.10,  # Coverage
+            available_width * 0.09,  # TASS
+            available_width * 0.10   # K2 Reads
+        ]
     elif show_ani_column:
         # 7 columns: no K2
-        col_widths = [1.1*inch, 0.2*inch, 2.5*inch, 0.7*inch, 0.7*inch, 0.5*inch, 1.3*inch]
+        # Proportions: Group(18%), Star(3%), Name(38%), Reads(12%), Coverage(10%), TASS(9%), ANI(15%)
+        col_widths = [
+            available_width * 0.18,  # Group Info
+            available_width * 0.03,  # Star
+            available_width * 0.34,  # Strain Name
+            available_width * 0.12,  # Reads
+            available_width * 0.10,  # Coverage
+            available_width * 0.09,  # TASS
+            available_width * 0.14   # High ANI
+        ]
     else:
         # 6 columns: base case
-        col_widths = [1.2*inch, 0.2*inch, 3.2*inch, 0.8*inch, 0.8*inch, 0.6*inch]
+        # Proportions: Group(20%), Star(3%), Name(45%), Reads(13%), Coverage(11%), TASS(10%)
+        col_widths = [
+            available_width * 0.20,  # Group Info
+            available_width * 0.03,  # Star
+            available_width * 0.43,  # Strain Name
+            available_width * 0.13,  # Reads
+            available_width * 0.11,  # Coverage
+            available_width * 0.10   # TASS
+        ]
 
     table = Table(table_data, repeatRows=1, colWidths=col_widths)
 
@@ -1072,7 +1121,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     return table
 
 
-def create_low_confidence_table(low_confidence_strains, small_style, show_k2_column):
+def create_low_confidence_table(low_confidence_strains, small_style, show_k2_column, available_width=None):
     """
     Create a simple table for low confidence detections.
 
@@ -1080,6 +1129,7 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
         low_confidence_strains: List of dicts with strain, sample_name, species_group
         small_style: ParagraphStyle for small text
         show_k2_column: Whether to include K2 Reads column
+        available_width: Available width for the table
 
     Returns:
         Table: Formatted ReportLab table object
@@ -1143,11 +1193,28 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
 
         table_data.append(row)
 
-    # Create table with dynamic column widths
+    # Create table with ADAPTIVE column widths based on available_width
+    if available_width is None:
+        # Fallback to letter size calculation
+        available_width = 8.5*inch - 0.02*8.5*inch  # letter width minus 1% margins on each side
+
     if show_k2_column:
-        col_widths = [1.2*inch, 3.8*inch, 0.8*inch, 0.7*inch, 0.6*inch]
+        # 5 columns: Sample(20%), Name(50%), Reads(12%), K2(10%), TASS(10%)
+        col_widths = [
+            available_width * 0.18,  # Sample
+            available_width * 0.50,  # Strain Name
+            available_width * 0.12,  # Reads
+            available_width * 0.10,  # K2 Reads
+            available_width * 0.10   # TASS
+        ]
     else:
-        col_widths = [1.3*inch, 4.2*inch, 0.9*inch, 0.7*inch]
+        # 4 columns: Sample(22%), Name(56%), Reads(13%), TASS(11%)
+        col_widths = [
+            available_width * 0.20,  # Sample
+            available_width * 0.56,  # Strain Name
+            available_width * 0.13,  # Reads
+            available_width * 0.11   # TASS
+        ]
 
     table = Table(table_data, repeatRows=1, colWidths=col_widths)
 
