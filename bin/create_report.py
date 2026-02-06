@@ -11,8 +11,6 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from datetime import datetime
-
-# Import from your existing modules
 from map_taxid import load_taxdump, load_names, load_merged
 
 
@@ -195,7 +193,6 @@ def organize_data_by_sample(sample_data):
     """
     Organize the loaded JSON data by sample name.
 
-    In your terminology:
     - "species_groups" = top-level organisms (first level of dict)
     - "strains" = members within each species group (where tables are made)
 
@@ -498,7 +495,6 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     )
     story.append(Paragraph(toc_explanation, small_style))
     story.append(Spacer(1, 0.05*inch))
-    # Total reads in this sample (use your group-level numreads, since you use it in TOC stats too)
     sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
 
     if sample_total_reads <= 0:

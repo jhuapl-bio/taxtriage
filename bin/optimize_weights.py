@@ -277,7 +277,6 @@ def calculate_k2_disparity_score(
     # find the parent taxid at the requested parent_rank_match in this node's parents
     parent_taxid = None
     for p in node.get("parents", []):
-        # p is like ['314293', 'O2'] in your sample
         if len(p) >= 2 and p[1] == parent_rank_match:
             parent_taxid = str(p[0])
             break
@@ -406,8 +405,6 @@ def calculate_normalized_groups(
         "minhash_score", "k2_disparity_score", "hmp_percentile",
         "breadth_log_score", "minhash_reduction", "gini_coefficient", "diamond_identity",
         "mapq_score",
-        # do NOT include tass_score here unless you intentionally want
-        # a reads-weighted mean of lower-level tass_score. Usually better to recompute later.
     }
 
     def _to_float(x) -> float:
