@@ -1632,7 +1632,7 @@ def determine_conflicts(
                     window=10_000,
                     step=10_000,
                     jaccard_threshold=sim_ani_threshold,
-                    max_hits_per_query=4,
+                    max_hits_per_query=5,
                     skip_self_same_fasta=False,
                 )
         else:
@@ -1642,10 +1642,10 @@ def determine_conflicts(
                 output_csv=report_path,
                 ksize=51,
                 scaled=8000,
-                window=100_000,
-                step=100_000,
+                window=200_000,
+                step=200_000,
                 jaccard_threshold=sim_ani_threshold,
-                max_hits_per_query=1,
+                max_hits_per_query=5,
                 skip_self_same_fasta=False,
             )
 
