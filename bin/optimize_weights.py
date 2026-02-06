@@ -1,9 +1,11 @@
 from collections import defaultdict
 import math
-from utils import format_non_zero_decimals, logarithmic_weight, apply_weight, normalize_mapq
+from utils import logarithmic_weight, apply_weight, normalize_mapq
+from map_taxid import get_lineage
 import numpy as np
 from scipy.stats import norm
 from typing import Dict, Any, List, Iterable
+from body_site_normalization import normalize_body_site, get_pathogen_classification
 
 import pandas as pd
 CATEGORY_PRIORITY = {
@@ -14,22 +16,6 @@ CATEGORY_PRIORITY = {
     "Unknown": 1,
 }
 
-def normalize_category(label: str) -> str:
-    """
-    Normalize any input label/callclass into one of:
-    Primary, Potential, Opportunistic, Commensal, Unknown
-    """
-    s = (label or "").strip().lower()
-    if s in ("primary", "primary (sterile)"):
-        return "Primary"
-    if s in ("potential",):
-        return "Potential"
-    if s in ("opportunistic",):
-        return "Opportunistic"
-    if s in ("commensal",):
-        return "Commensal"
-    return "Unknown"
-
 def transform_func(d):
     return math.log10(1 + d)
 def build_transformed_coverage_hist(regions, genome_length):
@@ -37,7 +23,6 @@ def build_transformed_coverage_hist(regions, genome_length):
     Build a histogram of 'transformed' coverage for the entire genome.
     transform_func(depth) should return the transformed coverage value.
     """
-    from collections import defaultdict
     coverage_hist = defaultdict(int)
     total_covered_bases = 0
     for (start, end, depth) in regions:
@@ -683,16 +668,23 @@ def calculate_mean(diamond_list, key):
     """
     total_weighted_value = 0
     total_cds = 0
-
     # Loop through each item in the list and calculate the weighted value
-    for item in diamond_list:
-        value = float(item[key])  # Convert the key value to a float
-        cds = int(item['cds'])    # Get the cds value (as the weight)
+    # if diamond_list is a list:
+    if isinstance(diamond_list, list):
+        for item in diamond_list:
+            value = float(item.get(key, 0))  # Convert the key value to a float
+            cds = int(item.get('cds', 0))    # Get the cds value (as the weight)
+
+            # Add to the weighted sum
+            total_weighted_value += value * cds
+            total_cds += cds
+    else:
+        value = float(diamond_list.get(key, 0))  # Convert the key value to a float
+        cds = int(diamond_list.get('cds', 0))    # Get the cds value (as the weight)
 
         # Add to the weighted sum
         total_weighted_value += value * cds
         total_cds += cds
-
     # Return the weighted mean
     return total_weighted_value / total_cds if total_cds != 0 else 0
 
@@ -720,7 +712,7 @@ def calculate_aggregate_scores(
     )
     data['zscore'] = zscore
     data['hmp_percentile'] = hmp_percentile
-    data['k2_reads'] = k2_mapping.get(data.get('toplevelkey', None), {}).get('clades_covered', 0)
+    data['k2_reads'] = k2_mapping.get(data.get('key', None), {}).get('clades_covered', 0)
     data['k2_disparity_score'] = calculate_k2_reads_disparity(
         data = data,
         k2_mapping = k2_mapping
@@ -736,7 +728,7 @@ def calculate_aggregate_scores(
         mean_length = calculate_mean(dmnd_results, 'lengthmedian')
         mean_mismatched = calculate_mean(dmnd_results, 'mismatchedmedian')
         mean_evalue = calculate_mean(dmnd_results, 'medianevalue')
-        mean_contigs = calculate_mean(dmnd_results, 'contigs')
+        # mean_contigs = calculate_mean(dmnd_results, 'contigs')
         mean_cds = calculate_mean(dmnd_results, 'cds')
         max_val_reached =  mean_cds > min_cds_found
         dmnd_results = {
@@ -744,7 +736,7 @@ def calculate_aggregate_scores(
             'lengthmean': mean_length,
             'mismatchedmean': mean_mismatched,
             'meanevalue': mean_evalue,
-            'contigs': mean_contigs,
+            # 'contigs': mean_contigs,
             'cds': mean_cds,
             'maxvalereached': max_val_reached
         }
@@ -905,34 +897,203 @@ def json_safe(x):
         return [json_safe(v) for v in x]
     return x
 
-def _weighted_mean(values, weights):
-    values = list(values)
-    weights = list(weights)
-    wsum = sum(weights)
-    if wsum <= 0:
-        # fallback to simple mean if weights are all zero
-        vals = [v for v in values if v is not None]
-        return float(sum(vals) / len(vals)) if vals else 0.0
-    return float(sum(v * w for v, w in zip(values, weights)) / wsum)
-from collections import defaultdict
+
+def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
+    """
+    Calculate pathogen classification for a single record (aggregate or strain).
+    Now includes taxonomic lineage traversal - if a taxid isn't found in pathogens dict,
+    walks up the lineage tree (species → genus → family → ...) until a match is found.
+
+    Args:
+        rec: The record dictionary (aggregate or strain data)
+        ref: The reference identifier (fallback for lookups)
+        pathogens: Dictionary of pathogen information keyed by taxid
+        sample_type: Sample type/body site (e.g., "blood", "stool", "nasal")
+                    Will be normalized automatically
+        taxdump: Optional taxonomy data from load_taxdump(). If provided, enables
+                lineage traversal for pathogen lookup.
+
+    Returns:
+        dict: A new dictionary with the record data plus classification fields:
+            - high_cons: bool
+            - is_pathogen: str (category)
+            - microbial_category: str (category)
+            - annClass: str (Direct/Derived/Mixed)
+            - is_annotated: str (Yes/No)
+            - status: str
+            - ref: str (the reference identifier used)
+            - matched_taxid: str (the taxid that matched in pathogens, may be parent)
+            - matched_rank: str (the rank of the matched taxid, if lineage used)
+            - normalized_sample_site: str (the normalized body site)
+    """
+
+    CATEGORY_PRIORITY = {
+        "Primary": 5,
+        "Opportunistic": 4,
+        "Potential": 3,
+        "Commensal": 2,
+        "Unknown": 1,
+    }
+
+    # Normalize the sample type/body site
+    normalized_sample_type = normalize_body_site(sample_type)
+
+    # choose identifier for pathogen lookup
+    taxid = ref
+
+    def find_pathogen_in_lineage(target_taxid):
+        """
+        Search for pathogen info in the lineage, starting with the taxid itself.
+
+        This function:
+        1. First checks if target_taxid is directly in pathogens dict
+        2. If not found and taxdump is provided, gets the lineage
+        3. Walks up the lineage (species → genus → family → ...)
+        4. Returns the first match found
+
+        Returns:
+            tuple: (refpath, matched_taxid, matched_rank) or (None, None, None)
+        """
+        # First, try the taxid directly
+        refpath = pathogens.get(str(target_taxid))
+        if refpath:
+            return refpath, str(target_taxid), "direct"
+
+        # If not found and we have taxdump, walk up the lineage
+        if taxdump and str(target_taxid) in taxdump:
+            lineage = get_lineage(str(target_taxid), taxdump)
+
+            # lineage is [(taxid, rank), ...] from specific to general
+            # e.g., [('198214', 'species'), ('28211', 'genus'), ('267890', 'family'), ...]
+            for lin_taxid, lin_rank in lineage:
+                refpath = pathogens.get(str(lin_taxid))
+                if refpath:
+                    return refpath, str(lin_taxid), lin_rank
+
+        # Not found in lineage either
+        return None, None, None
+
+    # if members is an attribute, and not empty then iterate through all of them
+    if "members" in rec and rec["members"]:
+        member_categories = []
+        member_high_cons = []
+        member_annotations = []
+        member_statuses = []
+        member_matched_info = []  # Store (matched_taxid, matched_rank) for each member
+
+        for member in rec["members"]:
+            member_taxid = (
+                member.get("taxid")
+                or member.get("key")
+                or ref
+            )
+
+            # Try to find pathogen info in lineage FOR EACH MEMBER
+            # This searches: member_taxid → genus → family → ... until match found
+            refpath, matched_taxid, matched_rank = find_pathogen_in_lineage(member_taxid)
+
+            if refpath:
+                # Use the new context-aware classification
+                cat, direct = get_pathogen_classification(refpath, normalized_sample_type)
+                st_cat = normalize_category(cat)
+                st_ann = "Direct" if direct else "Derived"
+                st_hc = bool(refpath.get('high_cons', False) or refpath.get("high_consequence", False))
+                is_annotated = "Yes"
+                status = refpath.get("status", "N/A")
+                member_matched_info.append((matched_taxid, matched_rank))
+            else:
+                st_cat = "Unknown"
+                st_ann = "Direct"
+                st_hc = False
+                is_annotated = "No"
+                status = ""
+                member_matched_info.append((None, None))
+
+            member_categories.append(st_cat)
+            member_high_cons.append(st_hc)
+            member_annotations.append((st_ann, is_annotated))
+            member_statuses.append(status)
+
+        # Determine aggregate values based on priority
+        # High cons: True if ANY member is high_cons
+        st_hc = any(member_high_cons)
+
+        # Category: highest priority among all members
+        if member_categories:
+            st_cat = max(member_categories, key=lambda cat: CATEGORY_PRIORITY.get(cat, 0))
+        else:
+            st_cat = "Unknown"
+
+        # AnnClass: Mixed if multiple categories, else Direct/Derived from members
+        unique_categories = set(member_categories)
+        if len(unique_categories) > 1:
+            st_ann = "Mixed"
+        else:
+            # Use the annotation class from the first annotated member
+            st_ann = member_annotations[0][0] if member_annotations else "Direct"
+
+        # Is annotated: Yes if ANY member is annotated
+        is_annotated = "Yes" if any(ann[1] == "Yes" for ann in member_annotations) else "No"
+
+        # Status: collect unique non-empty statuses
+        unique_statuses = [s for s in set(member_statuses) if s and s != "N/A"]
+        status = ", ".join(unique_statuses) if unique_statuses else "N/A"
+
+        # For aggregate, use the first matched taxid/rank info
+        matched_taxid = None
+        matched_rank = None
+        for m_taxid, m_rank in member_matched_info:
+            if m_taxid:
+                matched_taxid = m_taxid
+                matched_rank = m_rank
+                break
+
+    else:
+        # No members, use the aggregate taxid directly
+        # Search: taxid → genus → family → ... until match found
+        refpath, matched_taxid, matched_rank = find_pathogen_in_lineage(taxid)
+
+        if refpath:
+            # Use the new context-aware classification
+            cat, direct = get_pathogen_classification(refpath, normalized_sample_type)
+            st_cat = normalize_category(cat)
+            st_ann = "Direct" if direct else "Derived"
+            st_hc = bool(refpath.get('high_cons', False) or refpath.get("high_consequence", False))
+            is_annotated = "Yes"
+            status = refpath.get("status", "N/A")
+        else:
+            st_cat = "Unknown"
+            st_ann = "Direct"
+            st_hc = False
+            is_annotated = "No"
+            status = ""
+            matched_taxid = None
+            matched_rank = None
+
+    # make a shallow copy so we don't mutate the input record
+    new_item = dict(rec)
+
+    # add ONLY the requested annotation fields
+    new_item.update({
+        "high_cons": st_hc,
+        "is_pathogen": st_cat,
+        "microbial_category": st_cat,
+        "annClass": st_ann,
+        "is_annotated": is_annotated,
+        "status": status,
+        "ref": str(taxid),
+        "matched_taxid": matched_taxid,  # Which taxid in lineage matched
+        "matched_rank": matched_rank,    # At what rank the match occurred
+        "normalized_sample_site": normalized_sample_type,
+    })
+
+    return new_item
 def annotate_aggregate_dict(
     aggregate_dict,
     pathogens,
     sample_type="Unknown",
+    taxdump = {}
 ):
-    """
-    Add pathogen annotations to each aggregate entry without recomputing metrics.
-
-    Adds:
-      - high_cons
-      - is_pathogen
-      - microbial_category
-      - annClass
-      - is_annotated
-      - status
-
-    Returns: list of annotated dicts (each is the original aggregate entry plus the fields above)
-    """
 
     out = []
 
@@ -944,42 +1105,47 @@ def annotate_aggregate_dict(
             or rec.get("taxid")
             or ref
         )
-
-        refpath = pathogens.get(str(taxid)) if taxid is not None else None
-
-        if refpath:
-            cat, _, direct, hc = pathogen_label(refpath, sample_type)
-            st_cat = normalize_category(cat)
-            st_ann = "Direct" if direct else "Derived"
-            st_hc = bool(hc) or bool(refpath.get("high_cons", False))
-            is_annotated = "Yes"
-            status = refpath.get("status", "N/A")
-        else:
-            st_cat = "Unknown"
-            st_ann = "Direct"   # you can also set "Unknown" if you prefer
-            st_hc = False
-            is_annotated = "No"
-            status = ""
-
-        # make a shallow copy so we don't mutate your aggregate_dict unless you want that
-        new_item = dict(rec)
-
-        # add ONLY the requested annotation fields
-        new_item.update({
-            "high_cons": st_hc,
-            "is_pathogen": st_cat,
-            "microbial_category": st_cat,
-            "annClass": st_ann,
-            "is_annotated": is_annotated,
-            "status": status,
-        })
-
-        # keep a stable ref field too (optional but handy)
-        new_item["ref"] = str(taxid)
-
-        out.append(new_item)
+        result = calculate_classes(
+            rec=rec,
+            ref=taxid,
+            pathogens=pathogens,
+            sample_type=sample_type,
+            taxdump = taxdump
+        )
+        out.append(result)
 
     return out
+
+
+
+def normalize_category(label):
+    """
+    Normalize category labels to standard format.
+
+    Args:
+        label (str): Category label (e.g., "primary", "opportunistic")
+
+    Returns:
+        str: Capitalized standard category
+    """
+    if not label:
+        return "Unknown"
+
+    s = str(label).strip().lower()
+
+    if s in ("primary", "primary (sterile)"):
+        return "Primary"
+    if s in ("opportunistic",):
+        return "Opportunistic"
+    if s in ("potential",):
+        return "Potential"
+    if s in ("commensal",):
+        return "Commensal"
+
+    return "Unknown"
+
+
+
 def choose_aggregate_category_from_strains(strains):
     """
     strains: list of dicts that already contain:

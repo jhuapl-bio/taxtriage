@@ -86,6 +86,7 @@ workflow REPORT {
                 alignments.combine(pathogens_list),
                 assemblyfile,
                 params.minmapq,
+                ch_taxdump_dir,
             )
 
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
@@ -98,13 +99,11 @@ workflow REPORT {
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.join(ALIGNMENT_PER_SAMPLE.out.ani).combine(distributions),
                 false,
-                ch_taxdump_dir,
             )
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(ch_empty_file3).combine(distributions),
                 missing_samples,
-                ch_taxdump_dir,
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)

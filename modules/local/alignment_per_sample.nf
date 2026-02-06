@@ -27,6 +27,7 @@ process ALIGNMENT_PER_SAMPLE {
     tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list)
     file assembly
     val minmapq
+    path(taxdump)
 
     output:
         path "versions.yml"           , emit: versions
@@ -46,15 +47,12 @@ process ALIGNMENT_PER_SAMPLE {
     def assemblyi = assembly ? " -j ${assembly} " : " "
     def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
     def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
-    // if k2_report exists and is not null add --k2 flag
-    // if k2_report != NO_FILE, add --k2 flag
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
     def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
     def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
-    def ignore_alignment = params.ignore_missing ? " --ignore_missing_inputs " : " "
     def output_dir = "search_results"
-    def compress_species = params.compress_species ? " --compress_species " : " "
+    def compress_species = params.rank ? " --rank ${params.rank} " : " "
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
@@ -71,6 +69,7 @@ process ALIGNMENT_PER_SAMPLE {
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
     def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
     def ani_removal = params.ani_removal ? " --compare_references " : " "
+    def taxonomy  = taxdump ? " --taxdump ${taxdump} " : " "
 
     """
 
@@ -87,7 +86,7 @@ process ALIGNMENT_PER_SAMPLE {
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $ignore_alignment $compress_species $mbert_report $minmapq $ani_removal
+        $min_reads_align $compress_species $mbert_report $minmapq $ani_removal $taxonomy
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

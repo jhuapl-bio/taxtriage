@@ -280,7 +280,6 @@ def map_names_for_ranks(rank_taxids, sci_name_map):
         out[f"{rnk}_name"] = sci_name_map.get(int(tid_str), "") if tid_str else ""
     return out
 
-# Function to normalize the MAPQ score to 0-1 based on a maximum MAPQ value
 def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_mapping_match):
     """
     Get all species that have the specified rank (e.g., 'S' for species) and belong to a parent with the
@@ -311,3 +310,172 @@ def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_m
                     break  # Exit loop after finding the match
 
     return sibling_species
+
+def get_lineage(taxid, taxdump, include_root=False):
+    """
+    Get the complete taxonomic lineage for a given taxid.
+
+    Args:
+        taxid (str or int): The taxonomic ID to get lineage for
+        taxdump (dict): The taxonomy data from load_taxdump()
+        include_root (bool): Whether to include root node (taxid=1) in lineage
+
+    Returns:
+        list of tuples: [(taxid, rank), ...] from most specific to most general
+                       Returns empty list if taxid not found
+
+    Example:
+        >>> lineage = get_lineage("198214", taxdump)
+        >>> # Returns: [('198214', 'species'), ('28211', 'genus'), ...]
+    """
+    taxid = str(taxid)
+
+    if taxid not in taxdump:
+        return []
+
+    lineage = []
+    current_taxid = taxid
+    seen = set()  # Prevent infinite loops
+
+    while current_taxid in taxdump:
+        # Prevent infinite loops
+        if current_taxid in seen:
+            break
+        seen.add(current_taxid)
+
+        node = taxdump[current_taxid]
+        rank = node['rank']
+
+        # Add current node to lineage
+        lineage.append((current_taxid, rank))
+
+        # Move to parent
+        parent_taxid = node['parent_taxid']
+
+        # Stop at root (taxid = 1, or when parent = self)
+        if parent_taxid == current_taxid or parent_taxid == '1':
+            if include_root and parent_taxid == '1' and current_taxid != '1':
+                # Add root node if requested and not already added
+                if '1' in taxdump:
+                    lineage.append(('1', taxdump['1']['rank']))
+            break
+
+        current_taxid = parent_taxid
+
+    return lineage
+
+
+def get_lineage_with_names(taxid, taxdump, names_dict):
+    """
+    Get the complete taxonomic lineage with names for a given taxid.
+
+    Args:
+        taxid (str or int): The taxonomic ID to get lineage for
+        taxdump (dict): The taxonomy data from load_taxdump()
+        names_dict (dict): The names data from load_names()
+
+    Returns:
+        list of tuples: [(taxid, rank, name), ...] from specific to general
+
+    Example:
+        >>> lineage = get_lineage_with_names("198214", taxdump, names)
+        >>> # [('198214', 'species', 'Shewanella baltica'),
+        >>> #  ('28211', 'genus', 'Shewanella'), ...]
+    """
+    basic_lineage = get_lineage(taxid, taxdump)
+
+    lineage_with_names = []
+    for tid, rank in basic_lineage:
+        name = names_dict.get(tid, f"Unknown ({tid})")
+        lineage_with_names.append((tid, rank, name))
+
+    return lineage_with_names
+
+
+def get_lineage_dict(taxid, taxdump, names_dict=None):
+    """
+    Get lineage as a dictionary keyed by rank.
+
+    Args:
+        taxid (str or int): The taxonomic ID
+        taxdump (dict): The taxonomy data
+        names_dict (dict, optional): The names data
+
+    Returns:
+        dict: {rank: {'taxid': taxid, 'name': name (if available)}}
+
+    Example:
+        >>> lineage = get_lineage_dict("198214", taxdump, names)
+        >>> lineage['genus']
+        {'taxid': '28211', 'name': 'Shewanella'}
+        >>> lineage['species']
+        {'taxid': '198214', 'name': 'Shewanella baltica'}
+    """
+    if names_dict:
+        lineage = get_lineage_with_names(taxid, taxdump, names_dict)
+    else:
+        lineage = get_lineage(taxid, taxdump)
+
+    lineage_dict = {}
+
+    for item in lineage:
+        if len(item) == 3:
+            tid, rank, name = item
+            lineage_dict[rank] = {'taxid': tid, 'name': name}
+        else:
+            tid, rank = item
+            lineage_dict[rank] = {'taxid': tid}
+
+    return lineage_dict
+
+
+def get_rank_taxid(taxid, target_rank, taxdump):
+    """
+    Get the taxid at a specific rank in the lineage.
+
+    Args:
+        taxid (str or int): The starting taxonomic ID
+        target_rank (str): The rank to find (e.g., 'genus', 'family', 'species')
+        taxdump (dict): The taxonomy data
+
+    Returns:
+        str or None: The taxid at the target rank, or None if not found
+
+    Example:
+        >>> get_rank_taxid("198214", "genus", taxdump)
+        '28211'  # Genus Shewanella
+    """
+    lineage = get_lineage(taxid, taxdump)
+
+    for tid, rank in lineage:
+        if rank.lower() == target_rank.lower():
+            return tid
+
+    return None
+
+
+def print_lineage(taxid, taxdump, names_dict=None, indent="  "):
+    """
+    Pretty print the taxonomic lineage.
+
+    Args:
+        taxid (str or int): The taxonomic ID
+        taxdump (dict): The taxonomy data
+        names_dict (dict, optional): The names data
+        indent (str): Indentation string for each level
+    """
+    if names_dict:
+        lineage = get_lineage_with_names(taxid, taxdump, names_dict)
+    else:
+        lineage = get_lineage(taxid, taxdump)
+
+    print(f"Lineage for taxid {taxid}:")
+    print("-" * 60)
+
+    for i, item in enumerate(lineage):
+        if len(item) == 3:
+            tid, rank, name = item
+            print(f"{indent * i}{rank:20s} {tid:10s} {name}")
+        else:
+            tid, rank = item
+            print(f"{indent * i}{rank:20s} {tid:10s}")

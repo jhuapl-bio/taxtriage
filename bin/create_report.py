@@ -1,60 +1,1204 @@
 #!/usr/bin/env python3
 
-##############################################################################################
-# Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
-# All rights reserved.
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this
-# software and associated documentation files (the "Software"), to deal in the Software
-# without restriction, including without limitation the rights to use, copy, modify,
-# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
-# permit persons to whom the Software is furnished to do so.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
-# OR OTHER DEALINGS IN THE SOFTWARE.
-#
-
-import os
-import ast
-
-import matplotlib
-import pandas as pd
-import numpy as np
-from pandas.api.types import CategoricalDtype
-
-import matplotlib.pyplot as plt
-from reportlab.lib import colors
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, landscape
-from distributions import import_distributions, body_site_map, make_vplot
-from reportlab.graphics.shapes import Line
-matplotlib.use('Agg')   # non-interactive backend
-
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, ListFlowable, ListItem
-from reportlab.platypus.flowables import HRFlowable, Flowable
-
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT
-
-from reportlab.lib.units import inch
-
-from datetime import datetime
-from io import StringIO
-from reportlab.lib.colors import Color
-from map_taxid import load_taxdump, load_names, load_merged, get_root
 import json
-from statistics import mean
-
-
 import argparse
-def parse_args(argv=None):
-    """Define and immediately parse command line arguments."""
+import os
+import pandas as pd
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from datetime import datetime
+
+# Import from your existing modules
+from map_taxid import load_taxdump, load_names, load_merged
+
+
+def load_ani_matrix(ani_matrix_files):
+    """
+    Load ANI matrix files and return a dictionary for quick lookups.
+
+    Args:
+        ani_matrix_files: List of CSV file paths containing ANI data
+
+    Returns:
+        dict: {taxid1: {taxid2: ani_value, ...}, ...}
+    """
+    import pandas as pd
+
+    if not ani_matrix_files:
+        return {}
+
+    ani_data = {}
+
+    for ani_file in ani_matrix_files:
+        if not os.path.exists(ani_file):
+            print(f"Warning: ANI matrix file not found: {ani_file}")
+            continue
+
+        # Read the CSV file
+        df = pd.read_csv(ani_file, index_col=0)
+        print(f"Loaded ANI matrix from {ani_file}: {df.shape[0]} x {df.shape[1]}")
+
+        # Convert to dictionary format for easy lookup
+        for taxid1 in df.index:
+            if str(taxid1) not in ani_data:
+                ani_data[str(taxid1)] = {}
+
+            for taxid2 in df.columns:
+                ani_value = df.loc[taxid1, taxid2]
+                if pd.notna(ani_value):
+                    ani_data[str(taxid1)][str(taxid2)] = float(ani_value)
+
+    return ani_data
+
+
+def get_high_ani_matches(strain_key, ani_data, ani_threshold, all_strain_keys):
+    """
+    Find all strains with ANI >= threshold for a given strain.
+
+    Args:
+        strain_key: The taxid/key for the strain to check
+        ani_data: ANI dictionary from load_ani_matrix
+        ani_threshold: Minimum ANI value to report
+        all_strain_keys: Set of all strain keys in the dataset
+
+    Returns:
+        list: List of (taxid, ani_value) tuples for matches
+    """
+    matches = []
+    strain_key_str = str(strain_key)
+
+    if strain_key_str not in ani_data:
+        return matches
+
+    for other_key, ani_value in ani_data[strain_key_str].items():
+        # Don't report self-matches
+        if other_key == strain_key_str:
+            continue
+
+        # Only report if >= threshold
+        if ani_value >= ani_threshold:
+            matches.append((other_key, ani_value))
+
+    # Sort by ANI value (highest first)
+    matches.sort(key=lambda x: x[1], reverse=True)
+
+    return matches
+
+
+def check_if_any_high_ani_in_dataset(strains, ani_data, ani_threshold):
+    """
+    Check if ANY strain in the dataset has high ANI matches.
+
+    Args:
+        strains: List of all strains across all species groups
+        ani_data: ANI dictionary
+        ani_threshold: Minimum ANI value
+
+    Returns:
+        bool: True if at least one strain has high ANI matches
+    """
+    for strain in strains:
+        strain_key = strain.get('key', '')
+        matches = get_high_ani_matches(strain_key, ani_data, ani_threshold, set())
+        if matches:
+            return True
+
+    return False
+
+
+def check_if_k2_reads_present(strains):
+    """
+    Check if any strain has k2_reads data.
+
+    Args:
+        strains: List of all strains
+
+    Returns:
+        bool: True if at least one strain has k2_reads
+    """
+    for strain in strains:
+        if strain.get('k2_reads') is not None and strain.get('k2_reads', 0) > 0:
+            return True
+    return False
+
+
+def should_include_strain(strain, args):
+    """
+    Determine if a strain should be included based on its microbial category.
+
+    Args:
+        strain: Strain dictionary
+        args: Command line arguments
+
+    Returns:
+        bool: True if strain should be included
+    """
+    category = str(strain.get('microbial_category', 'Unknown'))
+
+    # Always include Primary Pathogens and Opportunistic
+    if 'Primary' in category or 'Opportunistic' in category:
+        return True
+
+    # Include based on flags
+    if 'Potential' in category and args.show_potentials:
+        return True
+    if 'Commensal' in category and args.show_commensals:
+        return True
+    if category == 'Unknown' and args.show_unidentified:
+        return True
+
+    return False
+
+
+def passes_confidence_threshold(strain, threshold):
+    """
+    Check if a strain passes the confidence threshold.
+
+    Args:
+        strain: Strain dictionary
+        threshold: Minimum confidence value (0-100 scale)
+
+    Returns:
+        bool: True if strain passes threshold
+    """
+    # Convert threshold to 0-1 scale if needed
+    if threshold > 1.0:
+        threshold = threshold / 100.0
+
+    tass_score = strain.get('tass_score', 0)
+    return tass_score >= threshold
+
+
+def load_json_samples(input_files):
+    """
+    Load and merge multiple JSON files containing sample data.
+
+    Args:
+        input_files: List of JSON file paths
+
+    Returns:
+        list: All sample data from all JSON files
+    """
+    all_sample_data = []
+    for input_file in input_files:
+        with open(input_file, 'r') as f:
+            data = json.load(f)
+            all_sample_data.extend(data)
+    return all_sample_data
+
+
+def organize_data_by_sample(sample_data):
+    """
+    Organize the loaded JSON data by sample name.
+
+    In your terminology:
+    - "species_groups" = top-level organisms (first level of dict)
+    - "strains" = members within each species group (where tables are made)
+
+    Args:
+        sample_data: List of dictionaries from JSON
+
+    Returns:
+        dict: {sample_name: [list of species_groups]}
+    """
+    samples_dict = {}
+
+    for species_group in sample_data:
+        # Get sample name
+        sample_name = species_group.get('sample_name', 'Unknown Sample')
+
+        if sample_name not in samples_dict:
+            samples_dict[sample_name] = []
+
+        samples_dict[sample_name].append(species_group)
+
+    return samples_dict
+
+
+def sanitize_bookmark_name(name):
+    """
+    Sanitize a string to be used as a bookmark/anchor name.
+
+    Args:
+        name: String to sanitize
+
+    Returns:
+        str: Sanitized bookmark name
+    """
+    # Replace spaces and special characters with underscores
+    import re
+    sanitized = re.sub(r'[^\w\-]', '_', str(name))
+    # Remove consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized)
+    # Remove leading/trailing underscores
+    sanitized = sanitized.strip('_')
+    return sanitized
+
+
+def collect_all_bookmarks(samples_dict):
+    """
+    Collect all bookmark names that will be created in the PDF.
+    This is used to validate links before creating them.
+
+    Args:
+        samples_dict: Dictionary organized by sample name
+
+    Returns:
+        set: Set of all bookmark names that will exist
+    """
+    bookmarks = set()
+
+    # Add reference section bookmarks
+    bookmarks.add('color_key')
+    bookmarks.add('column_explanations')
+    bookmarks.add('low_confidence')
+    bookmarks.add('additional_info')
+
+    # Add sample and species bookmarks
+    for sample_name, species_groups in samples_dict.items():
+        sample_bookmark = f"sample_{sanitize_bookmark_name(sample_name)}"
+        bookmarks.add(sample_bookmark)
+
+        for species_group in species_groups:
+            species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
+            species_bookmark = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
+            bookmarks.add(species_bookmark)
+
+    return bookmarks
+
+
+def create_safe_link(text, bookmark, valid_bookmarks, color="blue"):
+    """
+    Create a safe link that only links if the bookmark exists.
+
+    Args:
+        text: Display text
+        bookmark: Bookmark name to link to
+        valid_bookmarks: Set of valid bookmark names
+        color: Link color
+
+    Returns:
+        str: HTML string with link if bookmark exists, plain text otherwise
+    """
+    if bookmark in valid_bookmarks:
+        return f'<link href="#{bookmark}" color="{color}">{text}</link>'
+    else:
+        # Return plain text if bookmark doesn't exist
+        print(f"Warning: Bookmark '{bookmark}' does not exist, skipping link")
+        return text
+
+
+def build_taxid_to_bookmark_map(samples_dict):
+    """
+    Build a mapping of taxid (key) to bookmark names for internal linking.
+
+    Args:
+        samples_dict: Dictionary organized by sample name
+
+    Returns:
+        dict: {taxid: bookmark_name}
+    """
+    taxid_map = {}
+
+    for sample_name, species_groups in samples_dict.items():
+        sample_bookmark_part = sanitize_bookmark_name(sample_name)
+
+        for species_group in species_groups:
+            species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
+
+            # Create bookmark for this species group
+            species_bookmark = f"species_{sample_bookmark_part}_{species_key}"
+
+            # Map the top-level key
+            taxid_map[str(species_key)] = species_bookmark
+
+            # Also map all member strain keys to the same bookmark (they're in the same table)
+            for strain in species_group.get('members', []):
+                strain_key = str(strain.get('key', ''))
+                if strain_key:
+                    taxid_map[strain_key] = species_bookmark
+
+    return taxid_map
+
+
+def get_sample_stats(species_groups):
+    """
+    Calculate total alignments and primary pathogen count for a sample.
+
+    Args:
+        species_groups: List of species groups for a sample
+
+    Returns:
+        tuple: (total_alignments, primary_pathogen_count)
+    """
+    total_alignments = sum(sg.get('numreads', 0) for sg in species_groups)
+
+    primary_pathogen_count = 0
+    for sg in species_groups:
+        for member in sg.get('members', []):
+            if 'Primary' in str(member.get('microbial_category', '')):
+                primary_pathogen_count += 1
+
+    return total_alignments, primary_pathogen_count
+
+
+def get_species_group_stats(species_group):
+    """
+    Calculate stats for a species group.
+
+    Args:
+        species_group: Species group dictionary
+
+    Returns:
+        tuple: (group_tass_score, primary_pathogen_count, max_member_tass_score)
+    """
+    members = species_group.get('members', [])
+
+    primary_count = sum(1 for m in members if 'Primary' in str(m.get('microbial_category', '')))
+
+    # Get the group's own TASS score
+    group_tass = species_group.get('tass_score', 0)
+
+    # Get max TASS score from members for reference
+    tass_scores = [m.get('tass_score', 0) for m in members]
+    max_member_tass = max(tass_scores) if tass_scores else group_tass
+
+    return group_tass, primary_count, max_member_tass
+
+
+def create_pdf_template(output_path, samples_dict, ani_data, args):
+    """
+    Create a PDF report with:
+    - Table of contents with clickable sample names and species groups
+    - Tables for each strain within each species group
+    - Optional High ANI column if any matches exist
+
+    Args:
+        output_path: Path to save PDF
+        samples_dict: Dictionary organized by sample name
+        ani_data: ANI matrix dictionary
+        args: Command line arguments
+    """
+    # Create the PDF document with narrow margins (2.5% on left/right)
+    page_width, page_height = letter
+    left_margin = page_width * 0.01
+    right_margin = page_width * 0.01
+
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=letter,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=0.5*inch,
+        bottomMargin=0.5*inch
+    )
+    available_width = doc.width
+
+    story = []
+    styles = getSampleStyleSheet()
+
+    # Build taxid to bookmark mapping for ANI links
+    taxid_to_bookmark = build_taxid_to_bookmark_map(samples_dict)
+
+    # Collect all valid bookmarks that will be created
+    valid_bookmarks = collect_all_bookmarks(samples_dict)
+
+    # Add taxid bookmarks to valid set
+    valid_bookmarks.update(taxid_to_bookmark.values())
+
+    # Custom styles
+    legend_text_style = ParagraphStyle(
+        'LegendText',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+    )
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#2C3E50'),
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+    anchor_style = ParagraphStyle(
+        "Anchor",
+        parent=styles["Normal"],
+        fontSize=1,
+        leading=1,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        textColor=colors.HexColor('#34495E'),
+        spaceAfter=8
+    )
+
+    small_style = ParagraphStyle(
+        'SmallText',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10
+    )
+
+    # Collect all strains across all samples to check for ANY high ANI matches
+    all_strains = []
+    for sample_name, species_groups in samples_dict.items():
+        for species_group in species_groups:
+            all_strains.extend(species_group.get('members', []))
+
+    # Check if we should show the High ANI column
+    show_ani_column = check_if_any_high_ani_in_dataset(all_strains, ani_data, args.ani_threshold)
+    print(f"\nHigh ANI column will be {'SHOWN' if show_ani_column else 'HIDDEN'} (threshold: {args.ani_threshold})")
+
+    # Check if we should show K2 Reads column
+    show_k2_column = check_if_k2_reads_present(all_strains)
+    print(f"K2 Reads column will be {'SHOWN' if show_k2_column else 'HIDDEN'}")
+
+    # Filter strains based on category flags
+    print(f"\nFiltering settings:")
+    print(f"  Show Potentials: {args.show_potentials}")
+    print(f"  Show Commensals: {args.show_commensals}")
+    print(f"  Show Unidentified: {args.show_unidentified}")
+    print(f"  Sorting mode: {'Alphabetical' if args.sort_alphabetical else 'TASS Score (descending)'}")
+    print(f"  Max members per group: {args.max_members if args.max_members else 'Unlimited'}")
+
+    # Title
+    story.append(Paragraph("Organism Discovery Report", title_style))
+    story.append(Spacer(1, 0.05*inch))
+
+    # Report generation info
+    metadata_style = styles['Normal']
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generation_text = (f"This report was generated using <link href=\"https://github.com/jhuapl-bio/taxtriage\" color=\"blue\">TaxTriage</link> <b>{args.version}</b> on <b>{current_time}</b> and is derived from "
+                      f"an in <link href=\"https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv\" color=\"blue\">development spreadsheet of human-host pathogens</link>. Samples with confidence score below "
+                      f"{args.min_conf} were filtered out.")
+    story.append(Paragraph(generation_text, metadata_style))
+    story.append(Spacer(1, 0.02*inch))
+
+    story.append(Paragraph("<b>★</b> = High Consequence Pathogen", small_style))
+    story.append(Spacer(1, 0.02*inch))
+
+    # Table of Contents with clickable links
+    story.append(Paragraph("Table of Contents", heading_style))
+    story.append(Spacer(1, 0.03*inch))
+
+    # Add explanation for TOC format
+    toc_explanation = (
+        "<i>Format: Sample Name (Total Alignments # - # Primary Pathogens) → "
+        "Category Label ■ (# Primary Strains, Max TASS%)</i>"
+    )
+    story.append(Paragraph(toc_explanation, small_style))
+    story.append(Spacer(1, 0.05*inch))
+    # Total reads in this sample (use your group-level numreads, since you use it in TOC stats too)
+    sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
+
+    if sample_total_reads <= 0:
+        sample_total_reads = 0
+
+
+    # Sort samples alphabetically
+    for sample_name in sorted(samples_dict.keys()):
+        # Create a bookmark/anchor name for this sample
+        bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
+
+        # Calculate sample stats
+        species_groups = samples_dict[sample_name]
+        total_alignments, primary_count = get_sample_stats(species_groups)
+
+        # Create clickable link to the sample section with stats
+        link_text = create_safe_link(
+            f'{sample_name} ({total_alignments:,}# - {primary_count}*)',
+            bookmark_name,
+            valid_bookmarks
+        )
+        story.append(Paragraph(f"• {link_text}", styles['Normal']))
+
+        # Sort species groups by TASS score (descending) or alphabetically
+        if args.sort_alphabetical:
+            sorted_groups = sorted(
+                species_groups,
+                key=lambda sg: sg.get('toplevelname', 'Unknown')
+            )
+        else:
+            # Sort by group TASS score (descending)
+            sorted_groups = sorted(
+                species_groups,
+                key=lambda sg: get_species_group_stats(sg)[0],  # group_tass
+                reverse=True
+            )
+
+        species_links = []
+        for species_group in sorted_groups:
+            species_name = species_group.get('toplevelname', 'Unknown')
+            species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
+            species_bookmark = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
+
+            # Get species group stats and color
+            group_tass, primary_count_sg, max_member_tass = get_species_group_stats(species_group)
+            group_category = species_group.get('microbial_category', 'Unknown')
+            group_ann_class = species_group.get('annClass', '')
+
+            # Get color for the square
+            category_color = get_category_color(group_category, group_ann_class, alpha=1.0)
+            color_hex = '#{:02x}{:02x}{:02x}'.format(
+                int(category_color.red * 255),
+                int(category_color.green * 255),
+                int(category_color.blue * 255)
+            )
+
+            species_link = (
+                f'{create_safe_link(species_name, species_bookmark, valid_bookmarks)} '
+                f'<font color="{color_hex}">■</font> '
+                f'({primary_count_sg}, {group_tass*100:.1f}%)'
+            )
+            species_links.append(species_link)
+
+        species_list = ", ".join(species_links)
+        story.append(Paragraph(f"  → {species_list}", small_style))
+        story.append(Spacer(1, 0.02*inch))
+
+    # Add links to reference sections at bottom of TOC
+    story.append(Spacer(1, 0.05*inch))
+    story.append(Paragraph(
+        '• ' + create_safe_link('Color Key', 'color_key', valid_bookmarks),
+        styles['Normal']
+    ))
+    story.append(Paragraph(
+        '• ' + create_safe_link('Column Explanations', 'column_explanations', valid_bookmarks),
+        styles['Normal']
+    ))
+    story.append(Paragraph(
+        '• ' + create_safe_link('Low Confidence, High Consequence Detections', 'low_confidence', valid_bookmarks),
+        styles['Normal']
+    ))
+    story.append(Paragraph(
+        '• ' + create_safe_link('Additional Information', 'additional_info', valid_bookmarks),
+        styles['Normal']
+    ))
+
+    story.append(Spacer(1, 0.00*inch))
+
+    # Collect low confidence strains across all samples for later display
+    low_confidence_strains = []
+
+    # Generate content for each sample - tables appear right after TOC
+    for sample_name in sorted(samples_dict.keys()):
+        bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
+
+        # Add bookmark/anchor for this sample
+        story.append(Paragraph(f'<a name="{bookmark_name}"/>', anchor_style))
+
+        # Sample header (smaller, appears right above its table)
+        story.append(Paragraph(f"Sample: {sample_name}", heading_style))
+        # NO spacer here - table appears immediately after header
+
+        species_groups = samples_dict[sample_name]
+
+        # Sort species groups by TASS score (descending) or alphabetically
+        if args.sort_alphabetical:
+            sorted_groups = sorted(
+                species_groups,
+                key=lambda sg: sg.get('toplevelname', 'Unknown')
+            )
+        else:
+            # Sort by group TASS score (descending)
+            sorted_groups = sorted(
+                species_groups,
+                key=lambda sg: get_species_group_stats(sg)[0],  # group_tass
+                reverse=True
+            )
+
+        # Add bookmarks for each species group (for TOC links to work)
+        for species_group in sorted_groups:
+            species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
+            species_bookmark = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
+            story.append(Paragraph(f'<a name="{species_bookmark}"/>', anchor_style))
+
+        # Collect all strains from all species groups for this sample
+        all_sample_strains = []
+        species_group_map = {}  # Map each strain to its species group
+
+        for species_group in sorted_groups:
+            # Get strains for this group
+            group_strains = []
+            for strain in species_group.get('members', []):
+                # Check category filter first
+                if should_include_strain(strain, args):
+                    # Then check confidence threshold
+                    if passes_confidence_threshold(strain, args.min_conf):
+                        group_strains.append(strain)
+                        species_group_map[id(strain)] = species_group
+                    else:
+                        # Collect low confidence strains for later
+                        if strain.get("high_cons"):
+                            low_confidence_strains.append({
+                                'strain': strain,
+                                'sample_name': sample_name,
+                                'species_group': species_group
+                            })
+
+            # Sort strains within this group by TASS score (descending)
+            group_strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
+            # Apply max_members filter if specified
+            if args.max_members is not None and args.max_members > 0:
+                group_strains = group_strains[:args.max_members]
+
+            # Add sorted strains to the overall list
+            all_sample_strains.extend(group_strains)
+
+        if all_sample_strains:
+            # Create one combined table for all strains in this sample
+            combined_table = create_combined_sample_table(
+                all_sample_strains, species_group_map, small_style, ani_data,
+                args.ani_threshold, show_ani_column, show_k2_column,
+                taxid_to_bookmark, valid_bookmarks,
+                sample_total_reads=sample_total_reads,
+                sample_name=sample_name
+            )
+            story.append(combined_table)
+        else:
+            story.append(Paragraph("<i>No data available for this sample above confidence threshold</i>", styles['Italic']))
+        if args.max_members is not None and args.max_members > 0:
+            story.append(Paragraph(f"<i>Showing top {args.max_members} strains per group by TASS score</i>", small_style))
+        story.append(Spacer(1, 0.1*inch))
+
+    # Add footer documentation section
+    story.append(Spacer(1, 0.15*inch))
+
+    # Add anchor for Color Key
+    story.append(Paragraph('<a name="color_key"/>', anchor_style))
+    story.append(Paragraph("<b>Color Key:</b>", heading_style))
+    url = 'https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv'
+
+    # Create color legend table
+    legend_data = [
+        ['', Paragraph('Category', legend_text_style), Paragraph('Description', legend_text_style)],
+        ['', Paragraph('Primary Pathogen (Direct)', legend_text_style),
+        Paragraph(f'The organism is directly detected according to <link href="{url}" color="blue">taxonomic id</link> or assembly name and is listed as being of importance in your sample type.', legend_text_style)],
+        ['', Paragraph('Primary Pathogen', legend_text_style),
+        Paragraph('It is directly detected according to taxonomic id or assembly name and is listed as being of importance in a different sample type.', legend_text_style)],
+        ['', Paragraph('Commensal', legend_text_style),
+        Paragraph('Normal flora / non-pathogenic', legend_text_style)],
+        ['', Paragraph('Opportunistic', legend_text_style),
+        Paragraph('May cause disease in certain conditions', legend_text_style)],
+        ['', Paragraph('Potential', legend_text_style),
+        Paragraph('Potential pathogen requiring further investigation', legend_text_style)],
+        ['', Paragraph('Unknown', legend_text_style),
+        Paragraph('Classified organism with unknown significance', legend_text_style)],
+    ]
+
+
+    legend_table = Table(legend_data, colWidths=[0.3*inch, 1.6*inch, 3.3*inch])
+    legend_table.setStyle(TableStyle([
+        # Header
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+
+        # Color indicators
+        ('BACKGROUND', (0, 1), (0, 1), colors.lightcoral),
+        ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#fab462')),
+        ('BACKGROUND', (0, 3), (0, 3), colors.lightgreen),
+        ('BACKGROUND', (0, 4), (0, 4), colors.HexColor('#ffe6a8')),
+        ('BACKGROUND', (0, 5), (0, 5), colors.lightblue),
+        ('BACKGROUND', (0, 6), (0, 6), colors.white),
+        # Grid and alignment
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (1, 1), (-1, -1), 8),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (1, 1), (-1, -1), 6),
+    ]))
+
+    story.append(legend_table)
+    story.append(Spacer(1, 0.02*inch))
+
+    # Add anchor for Column Explanations
+    story.append(Paragraph('<a name="column_explanations"/>', anchor_style))
+    story.append(Paragraph("<b>Column Explanations:</b>", heading_style))
+    story.append(Spacer(1, 0.03*inch))
+
+    column_explanations = [
+        "• <b>Specimen ID (Type):</b> The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
+        "• <b>Detected Organism:</b> The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
+        "• <b>Microbial Category:</b> The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
+        "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
+        "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest confidence.",
+        "• <b>Taxonomic ID #:</b> The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
+        "• <b>Pathogenic Subsp/Strains:</b> Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
+        "• <b>K2 Reads:</b> The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data.",
+        # "• <b>HMP Percentile:</b> What percentile the abundance falls under relative to the given sample type based on HMP NCBI taxonomy classification information."
+    ]
+
+    for explanation in column_explanations:
+        story.append(Paragraph(explanation, metadata_style))
+        story.append(Spacer(1, 0.02*inch))
+
+    story.append(Spacer(1, 0.1*inch))
+
+    # Add anchor and table for Low Confidence Detections
+    if low_confidence_strains:
+        story.append(Paragraph('<a name="low_confidence"/>', anchor_style))
+        story.append(Paragraph("<b>Low Confidence, High Consequence Detections:</b>", heading_style))
+        story.append(Spacer(1, 0.03*inch))
+
+        explanation_text = (
+            f"The following strains were detected but fell below the confidence threshold "
+            f"of {args.min_conf} and are listed here for reference."
+        )
+        story.append(Paragraph(explanation_text, metadata_style))
+        story.append(Spacer(1, 0.05*inch))
+
+        # Create low confidence table
+        low_conf_table = create_low_confidence_table(
+            low_confidence_strains, small_style, show_k2_column
+        )
+        story.append(low_conf_table)
+        story.append(Spacer(1, 0.1*inch))
+
+    # Add anchor for Additional Information
+    story.append(Paragraph('<a name="additional_info"/>', anchor_style))
+    story.append(Paragraph("<b>Additional Information:</b>", heading_style))
+    story.append(Spacer(1, 0.01*inch))
+
+    url = "https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring"
+    text_with_url = f'Please visit our <a href="{url}"><b><font color="blue">DOCUMENTATION PAGE</font></b></a> for more information on how confidence is calculated.'
+    story.append(Paragraph(text_with_url, metadata_style))
+    story.append(Spacer(1, 0.01*inch))
+
+    story.append(Paragraph("The following information highlights the description for the color combinations for each organism class in the annotated table(s).", metadata_style))
+    story.append(Spacer(1, 0.01*inch))
+
+    story.append(Paragraph("Please see the relevant Discovery Analysis txt file for low confidence, high consequence annotations that were not present in the pdf.", metadata_style))
+    story.append(Spacer(1, 0.01*inch))
+
+    story.append(Paragraph("Read amounts are represented as the <b>total number of aligned reads</b> of sufficient mapping quality <b>(% aligned for all reads in sample)</b>.", metadata_style))
+    story.append(Spacer(1, 0.01*inch))
+    story.append(Paragraph("If there are questions or issues with your report, please open an issue on GitHub as a discussion <link href=\"https://github.com/jhuapl-bio/taxtriage/discussions\" color=\"blue\">here</link>. Issues should be tracked/submitted at <link href=\"https://github.com/jhuapl-bio/taxtriage/issues\" color=\"blue\">this link</link>.", metadata_style))
+    # Build the PDF
+    doc.build(story)
+    print(f"\nPDF created successfully: {output_path}")
+
+
+def get_category_color(microbial_category, ann_class, alpha=1.0):
+    """
+    Get the color for a row based on microbial category and annotation class.
+
+    Args:
+        microbial_category: String like "Primary Pathogen", "Commensal", etc.
+        ann_class: String like "Direct" or other classification
+        alpha: Transparency level (0.0 to 1.0)
+
+    Returns:
+        Color: ReportLab color object with specified alpha
+    """
+    val = str(microbial_category)
+    derived = str(ann_class)
+
+    if "Primary" in val and derived == "Direct":
+        base_color = colors.lightcoral
+    elif "Primary" in val:
+        base_color = colors.HexColor('#fab462')
+    elif "Commensal" in val:
+        base_color = colors.lightgreen
+    elif "Opportunistic" in val:
+        base_color = colors.HexColor('#ffe6a8')
+    elif "Potential" in val:
+        base_color = colors.lightblue
+    else:
+        base_color = colors.white
+
+    # Apply alpha if not fully opaque
+    if alpha < 1.0:
+        # Create a new color with alpha
+        return colors.Color(base_color.red, base_color.green, base_color.blue, alpha=alpha)
+
+    return base_color
+
+
+def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data, ani_threshold, show_ani_column, show_k2_column, taxid_to_bookmark, valid_bookmarks, sample_total_reads=0, sample_name=None):
+    """
+    Create a single table combining all strains from all species groups.
+    Each species group's strains appear consecutively with group info on the left.
+
+    Args:
+        all_strains: List of all strain dictionaries from all species groups
+        species_group_map: Map of strain id() to its parent species group
+        small_style: ParagraphStyle for small text
+        ani_data: ANI matrix dictionary
+        ani_threshold: Minimum ANI value to report
+        show_ani_column: Whether to include the High ANI column
+        show_k2_column: Whether to include the K2 Reads column
+        taxid_to_bookmark: Mapping of taxid to bookmark names for internal links
+        valid_bookmarks: Set of valid bookmark names for link validation
+
+    Returns:
+        Table: Formatted ReportLab table object
+    """
+    # Create styles
+    strain_name_style = ParagraphStyle(
+        'StrainName',
+        parent=small_style,
+        fontSize=8,
+        leading=10
+    )
+
+
+
+    data_style = ParagraphStyle(
+        'DataStyle',
+        parent=small_style,
+        fontSize=7,
+        leading=9
+    )
+
+    ani_style = ParagraphStyle(
+        'ANIStyle',
+        parent=small_style,
+        fontSize=6,
+        leading=8
+    )
+
+    # Table headers - build dynamically based on what columns to show
+    headers = ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS', 'K2 Reads', 'High ANI'] if show_k2_column and show_ani_column else (
+        ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS', 'K2 Reads'] if show_k2_column else (
+            ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS', 'High ANI'] if show_ani_column else
+            ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS']
+        )
+    )
+
+    table_data = [headers]
+
+    # Track which species groups we've seen and their row spans
+    current_species_group = None
+    group_start_row = None
+    span_info = []  # List of (start_row, end_row, group_summary)
+
+    row_idx = 1  # Start after header
+
+    for strain in all_strains:
+        species_group = species_group_map[id(strain)]
+        species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
+
+        # Check if we're starting a new species group
+        if current_species_group != species_key:
+            # Save span info for previous group
+            if current_species_group is not None:
+                span_info.append((group_start_row, row_idx - 1))
+
+            # Start new group
+            current_species_group = species_key
+            group_start_row = row_idx
+
+            # Create group summary with colored square
+            group_name = species_group.get('toplevelname', 'Unknown')
+            group_tass = species_group.get('tass_score', 0)
+            group_reads = species_group.get('numreads', 0)
+            group_category = species_group.get('microbial_category', 'Unknown')
+            group_ann_class = species_group.get('annClass', '')
+
+            # Get color for the square
+            category_color = get_category_color(group_category, group_ann_class, alpha=1.0)
+            color_hex = '#{:02x}{:02x}{:02x}'.format(
+                int(category_color.red * 255),
+                int(category_color.green * 255),
+                int(category_color.blue * 255)
+            )
+
+            group_summary = Paragraph(
+                f"<link color=\"blue\"  href=\"https://www.ncbi.nlm.nih.gov/taxonomy/?term=Escherichia\">{group_name}</link> "
+                f'<font color="{color_hex}">■</font><br/>'
+                f"TASS: {group_tass*100:.1f}%<br/>"
+                f"# Alignments: {group_reads:,.0f}",
+                small_style
+            )
+        else:
+            group_summary = ''  # Will be spanned from above
+
+        # Build strain data
+        microbial_category = strain.get('microbial_category', 'Unknown')
+        ann_class = strain.get('annClass', '')
+        is_high_consequence = strain.get('high_cons', False)
+
+        strain_name_text = strain.get('name', 'Unknown')
+        strain_key = strain.get('key', '')
+
+        strain_name_text = (
+                f'{strain_name_text} '
+                f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
+                f'color="blue">{strain_key}</link>)'
+            )# Add star if high consequence
+
+        strain_name = Paragraph(strain_name_text, strain_name_style)
+        indicator_text = '★' if is_high_consequence else ''
+
+        # Get High ANI matches if showing column
+        high_ani_text = ''
+        if show_ani_column:
+            matches = get_high_ani_matches(strain_key, ani_data, ani_threshold, set())
+            if matches:
+                ani_links = []
+                for taxid, ani_value in matches[:3]:
+                    ani_percent = ani_value * 100
+                    if taxid in taxid_to_bookmark:
+                        bookmark = taxid_to_bookmark[taxid]
+                        # Use safe link that checks if bookmark exists
+                        if bookmark in valid_bookmarks:
+                            link = f'<link href="#{bookmark}" color="blue">{taxid} ({ani_percent:.1f}%)</link>'
+                        else:
+                            # Bookmark doesn't exist, just show text
+                            link = f"{taxid} ({ani_percent:.1f}%)"
+                        ani_links.append(link)
+                    else:
+                        ani_links.append(f"{taxid} ({ani_percent:.1f}%)")
+                high_ani_text = Paragraph(", ".join(ani_links), ani_style)
+            else:
+                high_ani_text = Paragraph("-", ani_style)
+        strain_reads = float(strain.get('numreads', 0) or 0)
+        pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
+        reads_text = f"{strain_reads:,.0f} ({pct:.1f}%)"
+        reads_paragraph = Paragraph(reads_text, data_style)
+        # Build row - add columns conditionally
+        row = [
+            group_summary,
+            indicator_text,
+            strain_name,
+            reads_paragraph,
+            Paragraph(f"{min(100,strain.get('coverage', 0)*100):.1f}%", data_style),
+            Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style),
+        ]
+
+        if show_k2_column:
+            row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))
+
+        if show_ani_column:
+            row.append(high_ani_text)
+
+        table_data.append(row)
+        row_idx += 1
+
+    # Save final group span
+    if current_species_group is not None:
+        span_info.append((group_start_row, row_idx - 1))
+
+    # Create table with dynamic column widths - optimized to prevent overflow
+    # Calculate available width (letter size minus margins)
+    page_width = 50.5 * inch
+
+    margins = page_width * 0.09  # 2.5% on each side
+
+    if show_k2_column and show_ani_column:
+        # All columns: need to fit 8 columns
+        col_widths = [1.0*inch, 0.2*inch, 2.3*inch, 0.6*inch, 0.6*inch, 0.5*inch, 0.6*inch, 1.2*inch]
+    elif show_k2_column:
+        # 7 columns: no ANI
+        col_widths = [1.1*inch, 0.2*inch, 2.8*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.7*inch]
+    elif show_ani_column:
+        # 7 columns: no K2
+        col_widths = [1.1*inch, 0.2*inch, 2.5*inch, 0.7*inch, 0.7*inch, 0.5*inch, 1.3*inch]
+    else:
+        # 6 columns: base case
+        col_widths = [1.2*inch, 0.2*inch, 3.2*inch, 0.8*inch, 0.8*inch, 0.6*inch]
+
+    table = Table(table_data, repeatRows=1, colWidths=col_widths)
+
+    # Build table style
+    table_styles = [
+        # Header styling
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+
+        # Group info column styling
+        ('VALIGN', (0, 1), (0, -1), 'TOP'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('FONTSIZE', (0, 1), (0, -1), 8),
+        ('LEFTPADDING', (0, 1), (0, -1), 6),
+        ('RIGHTPADDING', (0, 1), (0, -1), 6),
+
+        # Indicator column styling (star column)
+        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+        ('VALIGN', (1, 1), (1, -1), 'MIDDLE'),
+        ('FONTSIZE', (1, 1), (1, -1), 14),
+
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (2, 1), (2, -1), 'MIDDLE'),
+        ('VALIGN', (3, 1), (-1, -1), 'MIDDLE'),
+
+        # General body styling
+        ('ALIGN', (3, 1), (-1, -1), 'CENTER'),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+
+        # Padding for strain name column
+        ('LEFTPADDING', (2, 1), (2, -1), 6),
+        ('RIGHTPADDING', (2, 1), (2, -1), 6),
+        ('TOPPADDING', (2, 1), (2, -1), 6),
+        ('BOTTOMPADDING', (2, 1), (2, -1), 6),
+    ]
+
+    # Add spans for each species group
+    for start_row, end_row in span_info:
+        if start_row <= end_row:
+            table_styles.append(('SPAN', (0, start_row), (0, end_row)))
+
+    # Add row-specific colors
+    row_idx = 1
+    for strain in all_strains:
+        microbial_category = strain.get('microbial_category', 'Unknown')
+        ann_class = strain.get('annClass', '')
+
+        # Debug output
+        print(f"  Row {row_idx}: {strain.get('name', 'Unknown')[:40]} - Category: {microbial_category}, Class: {ann_class}")
+
+        indicator_color = get_category_color(microbial_category, ann_class, alpha=1.0)
+        table_styles.append(('BACKGROUND', (1, row_idx), (1, row_idx), indicator_color))
+
+        row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
+        table_styles.append(('BACKGROUND', (2, row_idx), (-1, row_idx), row_color))
+
+        row_idx += 1
+
+    table.setStyle(TableStyle(table_styles))
+    return table
+
+
+def create_low_confidence_table(low_confidence_strains, small_style, show_k2_column):
+    """
+    Create a simple table for low confidence detections.
+
+    Args:
+        low_confidence_strains: List of dicts with strain, sample_name, species_group
+        small_style: ParagraphStyle for small text
+        show_k2_column: Whether to include K2 Reads column
+
+    Returns:
+        Table: Formatted ReportLab table object
+    """
+    # Create styles
+    strain_name_style = ParagraphStyle(
+        'StrainName',
+        parent=small_style,
+        fontSize=8,
+        leading=10
+    )
+
+    data_style = ParagraphStyle(
+        'DataStyle',
+        parent=small_style,
+        fontSize=7,
+        leading=9
+    )
+
+    # Table headers - build dynamically based on what columns to show
+    headers = ['Sample', 'Strain Name', 'Reads', 'TASS']
+    if show_k2_column:
+        headers.insert(3, 'K2 Reads')
+
+    table_data = [headers]
+
+    # Add strain rows
+    for item in low_confidence_strains:
+        strain = item['strain']
+        sample_name = item['sample_name']
+
+        microbial_category = strain.get('microbial_category', 'Unknown')
+        ann_class = strain.get('annClass', '')
+        is_high_consequence = strain.get('high_cons', False)
+
+        strain_name_text = strain.get('name', 'Unknown')
+        strain_key = strain.get('key', '')
+        if strain_key:
+            strain_name_text = (
+                f'{strain_name_text} '
+                f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
+                f'color="blue">{strain_key}</link>)'
+            )
+        # Add star if high consequence
+        if is_high_consequence:
+            strain_name_text = f"★ {strain_name_text}"
+
+        strain_name = Paragraph(strain_name_text, strain_name_style)
+
+        # Build row - add columns conditionally
+        row = [
+            Paragraph(sample_name, strain_name_style),
+            strain_name,
+            Paragraph(f"{strain.get('numreads', 0):,.0f}", data_style),
+        ]
+
+        if show_k2_column:
+            row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))
+
+        row.append(Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style))
+
+        table_data.append(row)
+
+    # Create table with dynamic column widths
+    if show_k2_column:
+        col_widths = [1.2*inch, 3.8*inch, 0.8*inch, 0.7*inch, 0.6*inch]
+    else:
+        col_widths = [1.3*inch, 4.2*inch, 0.9*inch, 0.7*inch]
+
+    table = Table(table_data, repeatRows=1, colWidths=col_widths)
+
+    # Build table style
+    table_styles = [
+        # Header styling
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+
+        # General body styling
+        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),  # Numbers centered
+        ('ALIGN', (0, 1), (1, -1), 'LEFT'),  # Names left-aligned
+
+        # Padding
+        ('LEFTPADDING', (0, 1), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 1), (-1, -1), 6),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+    ]
+
+    # Add row-specific colors
+    for idx, item in enumerate(low_confidence_strains):
+        row_idx = idx + 1
+        strain = item['strain']
+        microbial_category = strain.get('microbial_category', 'Unknown')
+        ann_class = strain.get('annClass', '')
+
+        row_color = get_category_color(microbial_category, ann_class, alpha=0.25)
+        table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), row_color))
+
+    table.setStyle(TableStyle(table_styles))
+    return table
+
+
+def parse_args():
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Validate and transform a tabular samplesheet.",
-        epilog="Example: python check_samplesheet.py samplesheet.csv samplesheet.valid.csv",
+        description="Generate PDF report from pathogen discovery data",
+        epilog="Example: python create_report.py -i confidences.json -o report.pdf",
     )
     parser.add_argument(
         "-i",
@@ -84,11 +1228,15 @@ def parse_args(argv=None):
                         help="What version of TaxTriage is in use")
     parser.add_argument('--sorttass', action="store_true", required=False,
                         help="Sort by TASS score if available")
+    parser.add_argument('--sort_alphabetical', action="store_true", required=False,
+                        help="Sort groups alphabetically instead of by TASS score")
+    parser.add_argument("--max_members", metavar="MAX_MEMBERS", required=False, type=int, default=None,
+                        help="Maximum number of top strains (by TASS) to show per group. Default: show all")
     parser.add_argument("--show_commensals", action="store_true", required=False,
                         help="Show the commensals table")
-    parser.add_argument("--show_unidentified",   action="store_true", required=False,
+    parser.add_argument("--show_unidentified", action="store_true", required=False,
                         help="Show the all organisms now listed as commensal or pathogen")
-    parser.add_argument("--show_potentials",  action="store_true", required=False,
+    parser.add_argument("--show_potentials", action="store_true", required=False,
                         help="Show the potentials table")
     parser.add_argument("-m", "--missing_samples", metavar="MISSING", required=False, default=None,
                         help="Missing samples if any", nargs="+")
@@ -103,7 +1251,6 @@ def parse_args(argv=None):
                         help="Merge the entries on a specific rank args.rank, importing files from nodes.dmp, names.dmp and potentially merged.dmp")
     parser.add_argument("--rank", metavar="TAXDUMP", required=False, default="genus",
                         help='IF merging with taxdump, what rank to merge on')
-
     parser.add_argument(
         "-o",
         "--output",
@@ -129,1493 +1276,63 @@ def parse_args(argv=None):
         help="Path of output file (txt)",
     )
 
-    return parser.parse_args(argv)
+    return parser.parse_args()
 
-
-
-
-# Function to adjust font size based on text length
-def adjust_font_size(text, max_length=10, default_font_size=10, min_font_size=6):
-    if len(text) > max_length:
-        # Calculate new font size (simple linear reduction, could be improved)
-        new_size = max(default_font_size - (len(text) - max_length) // 5, min_font_size)
-        return f'<font size={new_size}>{text}</font>'
-    else:
-        return f'<font size={default_font_size}>{text}</font>'
-
-# Ensure cell content that is empty is displayed as a blank space in the PDF
-def format_cell_content(cell):
-    # Convert NaN or None to an empty string
-    if pd.isna(cell):
-        return ""
-    else:
-        # Adjust font size based on content length
-        return adjust_font_size(str(cell))
-
-def with_alpha(color, alpha):
-    """
-    Return a new Color with the same RGB as `color` but different alpha.
-    Works for reportlab Color objects.
-    """
-    return colors.Color(color.red, color.green, color.blue, alpha=alpha)
-
-def _ensure_index_strings(df_or_series):
-    """Return a list of index values as strings (ANI matrix index/columns may be int or str)."""
-    return [str(x) for x in df_or_series.index]
-
-def subset_ani_for_group(ani_matrix, taxid_list):
-    """
-    Subset ani_matrix to rows/cols matching taxid_list (taxid_list may be ints or strings).
-    Returns (submatrix, present_taxids, missing_taxids).
-    """
-    # Make sure ani_matrix has string index/cols for robust matching
-    ani = ani_matrix.copy()
-    ani.index = ani.index.map(lambda x: str(x))
-    ani.columns = ani.columns.map(lambda x: str(x))
-
-    taxid_strs = [str(x) for x in taxid_list]
-    present = [t for t in taxid_strs if t in ani.index]
-    missing = [t for t in taxid_strs if t not in ani.index]
-    if len(present) == 0:
-        return pd.DataFrame(), [], missing
-    sub = ani.loc[present, present].copy()
-    return sub, present, missing
-
-def load_scores_json(path):
-    """
-    Returns a mapping: aggregate_ref_str -> {
-        'aggregate': <agg_entry>,
-        'strains': [<strain dicts>]
-    }
-    """
-    if not path or not os.path.exists(path):
-        return {}
-    with open(path, "r") as fh:
-        j = json.load(fh)
-
-    # If the JSON uses top-level 'organisms' list like calculate_scores_json does:
-    organisms = j.get("organisms", None)
-    # Or maybe the file is a list already:
-    if organisms is None and isinstance(j, list):
-        organisms = j
-    if organisms is None and isinstance(j, dict) and "sample_name" in j and "organisms" in j:
-        organisms = j["organisms"]
-
-    out = {}
-    if not organisms:
-        return out
-
-    for og in organisms:
-        ref = str(og.get("ref", "")).strip()
-        if not ref:
-            # try using taxid inside aggregate_stats
-            agg = og.get("aggregate_stats", {})
-            ref = str(agg.get("taxid", "") or agg.get("species_taxid", "") or "")
-        out[ref] = {
-            "aggregate": og,
-            "strains": og.get("strains", []) or []
-        }
-    return out
-
-
-
-
-def import_data(inputfiles ):
-    # Load your TSV data into a DataFrame
-    # tsv_data = """
-    # Name\Specimen ID\tSpecimen Type\t% Reads\t% Aligned Reads\t# Reads Aligned\tIsAnnotated\tPathogenic Sites\tType\tTaxonomic ID #\tStatus\tGini Coefficient\tMean BaseQ\tMean MapQ\tMean Coverage\tMean Depth\tAnnClass\tisSpecies\tPathogenic Subsp/Strains
-    # Escherichia coli\tNasal Swab\tnasal\t100.0\t1.28\t22\tYes\tblood, urine\tCommensal\t562\testablished\t0.054\t14.0\t26.0\t2.59\t0.028\tDirect\tFalse\tCommensal Listing
-    # Salmonella enterica\tNasal Swab\tnasal\t24.13\t0.49\t7\tYes\tstool\tPrimary\t28901\testablished\t0.061\t14.0\t16.3\t1.63\t0.016\tDirect\tFalse\t
-    # Staphylococcus aureus\tNasal Swab\tnasal\t96.86\t52.39\t896\tYes\tblood\tCommensal\t1280\testablished\t0.63\t14.0\t59.0\t57.66\t0.85\tDirect\tFalse\tCommensal Listing
-    # Pseudomonas aeruginosa\tNasal Swab\tnasal\t0.32\t0.21\t3\tYes\tabscess, blood, urine\tPrimary\t287\testablished\t0.024\t14.0\t59.7\t1.86\t0.018\tDirect\tFalse\t
-    # Listeria monocytogenes\tNasal Swab\tnasal\t17.44\t11.52\t197\tYes\tblood, gut\tPrimary\t1639\testablished\t.87\t14.0\t52.4\t29.28\t0.35\tDirect\tFalse\t
-    # Bacillus subtilis\tNasal Swab\tnasal\t2.75\t1.87\t32\tYes\t\tCommensal\t1423\testablished\t0.055\t14.0\t18.1\t1.75\t0.021\tDirect\tFalse\tCommensal Listing
-    # Limosilactobacillus fermentum\tNasal Swab\tnasal\t15.88\t12.74\t218\tNo\t\tUnknown\t1613\t\t0.65\t14.0\t59.72\t66.56\t9.37\tNone\tTrue\t
-    # Enterococcus faecalis\tNasal Swab\tnasal\t6.44\t5.55\t95\tYes\tblood, urine\tOpportunistic\t1351\testablished\t0.53\t14.0\t60.0\t53.42\t2.19\tDirect\tFalse\t
-    # Saccharomyces cerevisiae\tNasal Swab\tnasal\t13.81\t13.81\t236\tNo\t\tPotential\t4932\t0.17\t13.97\t59.42\t13.099\t0.14\tDerived\tFalse\tS288C (0.1%)
-    # Staphylococcus aureus\tStool\tgut\t100.0\t63.62\t1427\tYes\tblood\tCommensal\t1280\testablished\t0.083\t40.0\t15.33\t4.57\t0.047\tDirect\tFalse\tCommensal Listing
-    # Neisseria gonorrhoeae\tStool\tgut\t36.15\t36.023\t808\tYes\tblood, urine\tPrimary\t485\testablished\t0.775\t40.0\t41.4\t4.55\t0.046\tDirect\tTrue\tTUM19854 (0.4%)
-    # Metabacillus litoralis\tStool\tgut\t0.35\t0.35\t8\tNo\t\tUnknown\t152268\t\t0.0078\t40.0\t17.87\t0.61\t0.0061\tNone\tTrue\t
-    # """.strip()
-    # df = pd.read_csv(StringIO(tsv_data), sep='\t')
-
-    # # # Simulating additional data
-    # np.random.seed(42)
-    # df['Gini Coefficient'] = np.random.uniform(0, 1, df.shape[0])
-    # df['MeanBaseQ'] = np.random.uniform(20, 40, df.shape[0])
-    # df['MeanMapQ'] = np.random.uniform(30, 60, df.shape[0])
-    # df['Breadth of Coverage'] = np.random.uniform(50, 100, df.shape[0])
-    # df['Depth of Coverage'] = np.random.uniform(10, 100, df.shape[0])
-    if len(inputfiles) ==0:
-        raise ValueError("No input files given")
-    dfs = []
-    for inputfile in inputfiles:
-        df = pd.read_csv(inputfile, sep='\t')
-        dfs.append(df)
-    df = pd.concat(dfs)
-
-    df['% Reads'] = df['% Reads'].apply(lambda x: float(x) if not pd.isna(x) else 0)
-    # set # Reads Aligned as int
-    df['# Reads Aligned'] = df['# Reads Aligned'].apply(lambda x: int(x) if not pd.isna(x) else 0)
-    # set TASS Score as a float
-    # sort the dataframe by the Sample THEN the # Reads
-    # df = df.sort_values(by=["Specimen ID",  "TASS Score", "Microbial Category"], ascending=[True, False, True])
-    # trim all of NAme column  of whitespace either side
-    df["Detected Organism"] = df["Detected Organism"].str.strip()
-    dictnames = {
-        11250: "human respiratory syncytial virus B",
-        12814: "human respiratory syncytial virus A",
-    }
-    # df['Organism'] = df["Detected Organism"]
-    # set if putative to it with *  in Detected organism using lambda x
-    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}*' if x['Status'] == 'putative' else x["Detected Organism"], axis=1)
-    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}°' if x['AnnClass'] == 'Derived' else x["Detected Organism"], axis=1)
-    df['Detected Organism'] = df.apply(lambda x: f'{x["Detected Organism"]}' if x['High Consequence'] == True else x["Detected Organism"], axis=1)
-    df["Detected Organism"] = df[["Detected Organism", 'Taxonomic ID #']].apply(lambda x: dictnames[x['Taxonomic ID #']] if x['Taxonomic ID #'] in dictnames else x["Detected Organism"], axis=1)
-    # replace all NaN with ""
-    df = df.fillna("")
-    return df
-def extract_reads(value):
-    """
-    Extract leading integer read count from strings like:
-    '142 (63.62%)' or '8 (0.35% - 0.12%)'
-    """
-    if pd.isna(value):
-        return 0
-    s = str(value).strip()
-    if s == "":
-        return 0
-    try:
-        # take everything before first space or '('
-        for sep in [' ', '(']:
-            if sep in s:
-                s = s.split(sep)[0]
-                break
-        return int(float(s))
-    except Exception:
-        return 0
-
-def prepare_three_layer_table(df, sample_col, group_col, plot_dict, names_map=None, include_headers=True, columns=None):
-    data = []
-    style_cmds = []
-
-    df_proc = df.copy()
-
-    if 'K2 Reads' in df_proc.columns:
-        df_proc['K2 Reads'] = df_proc['K2 Reads'].apply(lambda x: int(x) if not pd.isna(x) and x != "" else 0)
-
-    if columns is None:
-        columns = [c for c in df_proc.columns.values if c not in (sample_col, group_col, 'plot')]
-    # make sure that only the columns in df are in columns
-    columns = [c for c in columns if c in df_proc.columns]
-
-    # Accept a few possible names so your upstream code can vary.
-    ani_candidates = ["High ANI", "ANI>90", "ANI > 90", "ANI>0.9", "HighANI"]
-    ani_col_name = next((c for c in ani_candidates if c in df_proc.columns), None)
-
-    # Only treat ANI as present if:
-    #   (a) we found it in df_proc, AND
-    #   (b) it is included in the columns list for this table
-    has_plot_column = len(plot_dict.keys()) > 0
-    has_ani_col = (ani_col_name is not None) and (ani_col_name in columns)
-    member_cols_count = len(columns) + (1 if has_plot_column else 0)
-    num_cols = 1 + member_cols_count
-    empty_cell = Paragraph('', small_font_style)
-    empty_cell_normal = Paragraph('', styles['Normal'])
-
-    if include_headers:
-        header_cells = [Paragraph('', styles['Normal'])]
-        for col in columns:
-            header_cells.append(Paragraph(f'<b>{col}</b>', styles['Normal']))
-        if has_plot_column:
-            header_cells.append(Paragraph(f'<b>Plot</b>', styles['Normal']))
-        while len(header_cells) < num_cols:
-            header_cells.append(empty_cell)
-        data.append(header_cells)
-        style_cmds.append(('BACKGROUND', (0,0), (-1,0), colors.slategray))
-        style_cmds.append(('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke))
-        style_cmds.append(('ALIGN', (0,0), (-1,0), 'CENTER'))
-        start_row = 1
-    else:
-        start_row = 0
-
-    possible_reads_cols = ['Reads Aligned', '# Reads Aligned', '# Reads Aligned to Sample', 'K2 Reads', 'Quant']
-    reads_col = next((c for c in possible_reads_cols if c in df_proc.columns), None)
-
-    sample_groups = []
-    for sample_key, sample_df in df_proc.groupby(sample_col, sort=False):
-        sample_groups.append((sample_key, sample_df))
-
-    current_row = start_row
-
-    for s_idx, (sample_key, sample_df) in enumerate(sample_groups):
-        sample_label = sample_key if sample_key and str(sample_key).strip() != "" else "Unknown Sample"
-        sample_reads = int(sample_df[reads_col].apply(extract_reads).sum()) if reads_col else 0
-        sample_count = sample_df.shape[0]
-
-        sample_header_text = f"<b>{sample_label}</b><br/>{sample_count} hits —  / {sample_reads:,} alignments"
-        sample_para = Paragraph(sample_header_text, styles['Normal'])
-        sample_row = [sample_para] + [empty_cell_normal] * (num_cols - 1)
-        while len(sample_row) < num_cols:
-            sample_row.append(empty_cell_normal)
-        data.append(sample_row)
-        style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
-        style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.grey))
-        style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.black))
-        style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'LEFT'))
-        style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'TOP'))
-        style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
-        style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
-        current_row += 1
-
-        group_list = []
-        for group_key, group_df in sample_df.groupby(group_col, sort=False):
-            group_list.append((group_key, group_df))
-
-        for g_idx, (group_key, group_df) in enumerate(group_list):
-            group_taxid = str(group_key) if group_key is not None else ""
-            if names_map and group_taxid in names_map:
-                group_label = f"{names_map[group_taxid]} ({group_taxid})"
-            else:
-                group_label = group_taxid if group_taxid and group_taxid.lower() != "unknown" else group_taxid
-
-            group_reads = int(group_df[reads_col].apply(extract_reads).sum()) if reads_col else 0
-            group_count = group_df.shape[0]
-            high_con_sequence_count = group_df[group_df['High Consequence'] == True].shape[0]
-
-            group_header_text = f"<b>{group_label}</b><br/>{group_count} hits ({high_con_sequence_count} High Consequence) — {group_reads:,} alignments"
-            group_para = Paragraph(group_header_text, styles['Normal'])
-            group_row = [group_para] + [empty_cell_normal] * (num_cols - 1)
-            while len(group_row) < num_cols:
-                group_row.append(empty_cell_normal)
-            data.append(group_row)
-
-            style_cmds.append(('SPAN', (0, current_row), (num_cols-1, current_row)))
-            style_cmds.append(('BACKGROUND', (0, current_row), (num_cols-1, current_row), colors.lightgrey))
-            style_cmds.append(('TEXTCOLOR', (0, current_row), (num_cols-1, current_row), colors.black))
-            style_cmds.append(('ALIGN', (0, current_row), (num_cols-1, current_row), 'CENTER'))
-            style_cmds.append(('VALIGN', (0, current_row), (num_cols-1, current_row), 'MIDDLE'))
-            style_cmds.append(('LEFTPADDING', (0, current_row), (num_cols-1, current_row), 6))
-            style_cmds.append(('RIGHTPADDING', (0, current_row), (num_cols-1, current_row), 6))
-            current_row += 1
-
-            star_style = ParagraphStyle(
-                name='StarStyle',
-                parent=styles['Normal'],
-                alignment=1,
-                fontSize=10,
-                leading=10
-            )
-
-            for idx, row in group_df.iterrows():
-                left_cell = Paragraph('★', star_style) if row.get('High Consequence', False) in (True, 'True', 'true', 1) else empty_cell
-                member_cells = [left_cell]
-
-                for col in columns:
-                    cell_val = row.get(col, "")
-
-                    if col == "Pathogenic Subsp/Strains":
-                        txt = format_pathogenic_list(cell_val)
-                        member_cells.append(
-                            Paragraph(txt, pathogen_list_style) if txt else empty_cell
-                        )
-                    elif ani_col_name and col == ani_col_name:
-                        member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
-                    else:
-                        member_cells.append(Paragraph(format_cell_content(cell_val), small_font_style))
-
-
-                if has_plot_column:
-                    plot_key = (row.get('Detected Organism'), row.get('Specimen Type'))
-                    if plot_key in plot_dict:
-                        plot_image = Image(plot_dict[plot_key])
-                        plot_image.drawHeight = 0.4 * inch
-                        plot_image.drawWidth = 0.9 * inch
-                        member_cells.append(plot_image)
-                        plot_is_empty = False
-                    else:
-                        member_cells.append(empty_cell)
-                        plot_is_empty = True
-                else:
-                    plot_is_empty = False
-
-                while len(member_cells) < num_cols:
-                    member_cells.append(empty_cell)
-
-                data.append(member_cells)
-
-                val = row.get('Microbial Category', "")
-                derived = row.get('AnnClass', "")
-
-                if "Primary" in str(val) and derived == "Direct":
-                    color = colors.lightcoral
-                elif "Primary" in str(val):
-                    color = colors.HexColor('#fab462')
-                elif "Commensal" in str(val):
-                    color = colors.lightgreen
-                elif "Opportunistic" in str(val):
-                    color = colors.HexColor('#ffe6a8')
-                elif "Potential" in str(val):
-                    color = colors.lightblue
-                else:
-                    color = colors.white
-
-                if has_plot_column:
-                    data_start_col = 1
-                    data_end_col = num_cols - 2
-                    plot_col_index = num_cols - 1
-                else:
-                    data_start_col = 1
-                    data_end_col = num_cols - 1
-                    plot_col_index = None
-
-                faded_color = with_alpha(color, 0.22)
-                style_cmds.append(('BACKGROUND', (0, current_row), (0, current_row), color))
-                if data_end_col >= data_start_col:
-                    style_cmds.append(('BACKGROUND', (data_start_col, current_row), (data_end_col, current_row), faded_color))
-
-                style_cmds.append(('ALIGN', (0, current_row), (0, current_row), 'CENTER'))
-                style_cmds.append(('VALIGN', (0, current_row), (0, current_row), 'MIDDLE'))
-
-                if plot_col_index is not None and plot_is_empty:
-                    style_cmds.append(('BACKGROUND', (plot_col_index, current_row), (plot_col_index, current_row), colors.HexColor("#f2f2f2b8")))
-
-                if data_end_col >= data_start_col:
-                    style_cmds.append(('ALIGN', (data_start_col, current_row), (data_end_col, current_row), 'CENTER'))
-                    style_cmds.append(('VALIGN', (data_start_col, current_row), (data_end_col, current_row), 'TOP'))
-
-                style_cmds.append(('VALIGN', (0, current_row), (-1, current_row), 'TOP'))
-                style_cmds.append(('LINEBELOW', (0, current_row), (-1, current_row), 0.25, colors.lightgrey))
-
-                if has_ani_col:
-                    ani_table_col = 1 + columns.index(ani_col_name)
-                    raw = row.get(ani_col_name, "")
-                    # treat NaN/"nan"/"" as empty
-                    if pd.isna(raw):
-                        raw_str = ""
-                    else:
-                        raw_str = str(raw).strip()
-                        if raw_str.lower() == "nan":
-                            raw_str = ""
-
-                    if raw_str != "":
-                        style_cmds.append(('BACKGROUND', (ani_table_col, current_row), (ani_table_col, current_row), colors.HexColor("#9ec9ff")))
-                        style_cmds.append(('TEXTCOLOR', (ani_table_col, current_row), (ani_table_col, current_row), colors.black))
-                    else:
-                        style_cmds.append(('BACKGROUND', (ani_table_col, current_row), (ani_table_col, current_row), colors.white))
-
-                current_row += 1
-
-            if g_idx < (len(group_list) - 1):
-                data.append([empty_cell] * num_cols)
-                current_row += 1
-
-        if s_idx < (len(sample_groups) - 1):
-            data.append([empty_cell] * num_cols)
-            current_row += 1
-
-    return data, style_cmds
-
-PATH_COL = "Pathogenic Subsp/Strains"
-
-def format_pathogenic_list(cell_val) -> str:
-    """
-    Turns a list of strain strings into a line-by-line string for ReportLab Paragraph.
-    Returns "" for empty/None/NaN.
-    """
-    if cell_val is None or (isinstance(cell_val, float) and pd.isna(cell_val)) or cell_val == "":
-        return ""
-
-    # If it's already a list/tuple/set
-    if isinstance(cell_val, (list, tuple, set)):
-        items = [str(x).strip() for x in cell_val if str(x).strip()]
-        return "<br/>".join(items)
-
-    # If it's a string that might represent a list, try to parse
-    if isinstance(cell_val, str):
-        s = cell_val.strip()
-        if not s:
-            return ""
-        try:
-            parsed = ast.literal_eval(s)
-            if isinstance(parsed, (list, tuple, set)):
-                items = [str(x).strip() for x in parsed if str(x).strip()]
-                return "<br/>".join(items)
-        except Exception:
-            pass
-        # Fallback: treat as a single string (no list)
-        return s
-
-    # Fallback for other types
-    return str(cell_val).strip()
-
-def split_df(df_full):
-    # Filter DataFrame for IsAnnotated == 'Yes' and 'No'
-    # df_ = df_full[df_full['IsAnnotated'] == 'Yes'].copy()
-    # append (taxid) from taxid column to Detected Organism
-
-    df_yes = df_full[~df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, "Commensal", "Potential" ] ) ].copy()
-    df_opp = df_full[df_full['Microbial Category'].isin([ "Potential"])].copy()
-    df_comm = df_full[df_full['Microbial Category'].isin(['Commensal'])].copy()
-    df_unidentified = df_full[(df_full['Microbial Category'].isin([ 'Unknown', 'N/A', np.nan, ""] ))].copy()
-    df_yes = df_yes.reset_index(drop=True)
-    df_opp = df_opp.reset_index(drop=True)
-    return df_yes, df_opp, df_comm, df_unidentified
-
-
-def safe_get(row, column_name):
-    """
-    Safely access a value from a Pandas row (Series) and handle missing or empty values.
-
-    Parameters:
-    - row: Pandas Series representing a row.
-    - column_name: The column name to access.
-
-    Returns:
-    - The value if present, stripped of leading/trailing spaces if it's a string.
-    - None if the column is missing or the value is empty.
-    """
-    # Check if the column exists in the row
-    if column_name in row.index:
-        val = row[column_name]
-        # Handle string values by stripping spaces
-        if isinstance(val, str):
-            val = val.strip()
-            return val if val else None  # Return None if the string is empty after stripping
-        return val  # Return the value directly if it's not a string
-    return None  # Return None if the column is not present
-
-
-# Custom styles for title and subtitle with right alignment
-left_align_style = ParagraphStyle(
-    name='leftAlign',
-    parent=getSampleStyleSheet()['Normal'],
-    alignment=0,  # 2 is for right alignment
-    # fontSize=12,
-    spaceAfter=10,
-)
-subtitle_style = ParagraphStyle(
-    name='leftAlignSubtitle',
-    parent=getSampleStyleSheet()['Normal'],
-    alignment=0,  # Right align
-    # fontSize=12,
-    spaceAfter=10,
-)
-
-title_style = ParagraphStyle(
-    name='leftAlignTitle',
-    parent=getSampleStyleSheet()['Title'],
-    alignment=0,  # Right align
-    # fontSize=14,
-    spaceAfter=10,
-)
-
-styles = getSampleStyleSheet()
-tiny_font_style = ParagraphStyle(name='TinyFont', parent=styles['Normal'], fontSize=6, leading=6, alignment=1)
-small_font_style = ParagraphStyle(name='SmallFont', parent=styles['Normal'], fontSize=2)
-normal_style = styles['Normal']
-pathogen_list_style = ParagraphStyle(
-    name="PathogenList",
-    parent=styles["Normal"],
-    fontSize=8.5,      # <-- key change (try 8.5–9.5)
-    leading=10.5,      # line spacing (must be > fontSize)
-    alignment=TA_LEFT,
-    spaceBefore=1,
-    spaceAfter=1
-)
-
-def read_ani_matrix(path: str) -> pd.DataFrame:
-    # try tab first
-    try:
-        df = pd.read_csv(path, sep="\t", index_col=0)
-        if df.shape[1] > 0:
-            return df
-    except Exception:
-        pass
-
-    # try comma
-    try:
-        df = pd.read_csv(path, sep=",", index_col=0)
-        if df.shape[1] > 0:
-            return df
-    except Exception:
-        pass
-
-    # try arbitrary whitespace (space-separated)
-    df = pd.read_csv(path, sep=r"\s+", engine="python", index_col=0)
-    return df
-def return_table_style(df=pd.DataFrame(), color_pathogen=False):
-    """
-    Basic table style: header/grid/valign. Actual body coloring is applied by the
-    table builder (prepare_three_layer_table) because it knows the exact row indices.
-    """
-    table_style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.gray),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('GRID', (0,0), (-1,-1), 1, colors.black),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LEFTPADDING', (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
-    ])
-    return table_style
-
-def build_columns_and_widths(
-    df: pd.DataFrame,
-    base_columns: list,
-    plotbuffer: dict,
-    *,
-    available_width: float,
-    left_col_frac: float = 0.04,
-    ani_col: str = "High ANI",
-    ani_width_frac: float = 0.15,
-    ani_min_width: float = 65,
-    microbert_col: str = "MicrobeRT Probability",
-    insert_microbert_at: int = 4,
-    k2_col: str = "K2 Reads",
-):
-    columns = list(base_columns)
-
-    # 1) Drop K2 Reads if empty
-    if k2_col in columns:
-        k2_sum = pd.to_numeric(df.get(k2_col, 0).replace("", 0), errors="coerce").fillna(0).sum()
-        if k2_sum == 0:
-            columns.remove(k2_col)
-
-    # 2) Insert MicrobeRT Probability if present
-    if microbert_col in df.columns and microbert_col not in columns:
-        pos = max(0, min(insert_microbert_at, len(columns)))
-        columns.insert(pos, microbert_col)
-
-    # 3) Drop High ANI if missing/all-empty
-    if ani_col in columns:
-        if (ani_col not in df.columns) or df[ani_col].replace("", np.nan).isna().all():
-            columns.remove(ani_col)
-
-    # 4) Widths based on actual frame width
-    left_w = left_col_frac * available_width
-    remaining = max(0, available_width - left_w)
-
-    has_plot = len(plotbuffer) > 0
-    n_data_cols = len(columns) + (1 if has_plot else 0)
-
-    widths = [left_w]
-
-    if ani_col in columns:
-        # Allocate ANI a sensible width, but never let it collapse
-        ani_w = max(ani_width_frac * available_width, ani_min_width)
-        remaining_for_others = max(0, remaining - ani_w)
-
-        other_count = n_data_cols - 1  # all except ANI
-        other_w = remaining_for_others / max(1, other_count)
-
-        for c in columns:
-            widths.append(ani_w if c == ani_col else other_w)
-        if has_plot:
-            widths.append(other_w)
-    else:
-        other_w = remaining / max(1, n_data_cols)
-        widths += [other_w] * len(columns)
-        if has_plot:
-            widths.append(other_w)
-
-    # Safety scaling
-    total = sum(widths)
-    if total > available_width:
-        scale = available_width / total
-        widths = [w * scale for w in widths]
-
-    return columns, widths
-
-def draw_vertical_line(canvas, doc):
-        """
-        Draw a vertical line 5% from the left of the page, starting 10% down from the top
-        and ending 10% up from the bottom.
-        """
-        page_width, page_height = letter
-        line_x = 0.05 * page_width
-        start_y = 0.1 * page_height
-        end_y = page_height - (0.1 * page_height)
-        canvas.saveState()
-        canvas.setStrokeColor(colors.black)
-        canvas.setLineWidth(1)
-        canvas.line(line_x, start_y, line_x, end_y)
-        canvas.restoreState()
-def make_table(data, table_style=None, col_widths=None):
-    """
-    Create a ReportLab Table with optional explicit column widths.
-    """
-    table = Table(data, repeatRows=1, colWidths=col_widths) if col_widths else Table(data, repeatRows=1)
-    if table_style:
-        table.setStyle(table_style)
-    table.hAlign = 'LEFT'
-    return table
-
-
-
-def create_report(
-    output = None,
-    df_full = None,
-    show_potentials = False,
-    show_unidentified = False,
-    show_commensals = False,
-    plotbuffer = {},
-    version=None,
-    missing_samples=None,
-    min_conf=None,
-    names_map = {},
-):
-    df_identified, df_potentials, df_commensal, df_unidentified= split_df(df_full)
-    remap_headers = {
-        "name": "Detected Organism",
-        'taxid': "Taxonomic ID #",
-        "# Reads Aligned": "# Reads Aligned to Sample",
-        "body_site": "Specimen Type",
-        "abundance": "% of Aligned",
-        # "Pathogenic Sites": "Locations",
-        "% Reads": "% Reads of Organism",
-        "Microbial Category": "Microbial Category",
-        'Quant': "# Reads Aligned",
-        "Gini Coefficient": "Gini Coeff",
-    }
-    df_identified= df_identified.rename(columns=remap_headers)
-    df_high_cons_low_conf = pd.DataFrame()
-    if min_conf and min_conf > 0:
-        df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < min_conf)]
-        df_full = df_full[df_full['TASS Score'].astype(float) >= min_conf]
-    if show_unidentified:
-        df_unidentified= df_unidentified.rename(columns=remap_headers)
-    else:
-        df_unidentified = pd.DataFrame()
-
-    if show_commensals:
-        df_commensal = df_commensal.rename(columns=remap_headers)
-    else:
-        df_commensal = pd.DataFrame()
-
-    if show_potentials:
-        df_potentials = df_potentials.rename(columns=remap_headers)
-    else:
-        df_potentials = pd.DataFrame()
-    exit()
-    # PDF file setup
-    pdf_file = output
-    page_width, page_height = landscape(letter)
-
-    left_margin   = 0.07 * page_width
-    right_margin  = left_margin / 2
-    top_margin    = 0.10 * page_height
-    bottom_margin = 0.10 * page_height
-
-    doc = SimpleDocTemplate(
-        pdf_file,
-        pagesize=landscape(letter),
-        leftMargin=left_margin,
-        rightMargin=right_margin,
-        topMargin=top_margin,
-        bottomMargin=bottom_margin
-    )
-    # version = "1.3.2"  # Example version
-    if not version:
-        version = "Local Build"
-    # get datetime of year-mont-day hour:min
-    date = datetime.now().strftime("%Y-%m-%d %H:%M")  # Current date
-    # sort df_identified by TASS Score
-    # filter out so only Class is PAthogen
-    # df_identified = df_identified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, True])
-    # df_potentials = df_potentials.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
-    df_identified_paths = df_identified
-    df_identified_others = df_commensals
-    # df_identified_others = df_identified[df_identified['Class'] != 'Pathogen']
-    # df_unidentified = df_unidentified.sort_values(by=['Specimen ID', '# Reads Aligned'], ascending=[False, False])
-    elements = []
-
-    ##########################################################################################
-    ##### Section to make the Top Table - all annotated commensal or otherwise
-    title = Paragraph("Organism Discovery Report", title_style)
-    # Add the title and subtitle
-    if missing_samples:
-        samples_missing = f"Missing Samples due to filtering, failed step(s), or non-presence of organisms: <b>{', '.join(missing_samples)}</b><br></br> "
-    else:
-        samples_missing = ""
-    subtitle = Paragraph(f"This report was generated using TaxTriage \
-        <b>{version}</b> on <b>{date}</b> and is derived from an in development spreadsheet of \
-        human-host pathogens.<br></br><br></br> \
-        {samples_missing}\
-        Samples with confidence score below <b>{str(min_conf)}</b> were filtered out. \
-        ",
-        subtitle_style
-    )
-    elements.append(title)
-    elements.append(subtitle)
-    extra_text = Paragraph(f"★ denotes high consequence pathogens")
-    elements.append(extra_text)
-    elements.append(Spacer(1, 12))
-    if not df_identified_paths.empty:
-        columns_yes = df_identified_paths.columns.values
-        # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = [
-            "Detected Organism",
-            "# Reads Aligned",
-            "TASS Score",
-            "Taxonomic ID #",
-            "Pathogenic Subsp/Strains",
-            "Coverage",
-            "High ANI",
-            "K2 Reads",
-        ]
-
-        plotbuffer = {}
-        columns_yes, col_widths = build_columns_and_widths(
-            df=df_identified_paths,
-            base_columns=columns_yes,
-            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
-            available_width = doc.width
-        )
-
-        data_yes, style_cmds = prepare_three_layer_table(
-            df_identified_paths,
-            sample_col='Specimen ID (Type)',
-            group_col='Group',
-            plot_dict=plotbuffer,
-            names_map=names_map,
-            include_headers=True,
-            columns=columns_yes
-        )
-        table_style = return_table_style(df_identified_paths, color_pathogen=False)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table = make_table(data_yes, table_style=table_style, col_widths=col_widths)
-
-
-
-        elements.append(table)
-        elements.append(Spacer(1, 12))  # Space between tables
-    else:
-        # Make a large message saying that no pathogen was found above min confidence
-        title = Paragraph("No Primary Pathogens Found Above TASS Score Threshold", title_style)
-        subtitle = Paragraph(f"No pathogens were found above the minimum confidence score of <b>{str(min_conf)}</b> in the given samples. <br></br>Consider lowering the confidence score OR looking at the <b>all.organisms.report.txt</b> file or <b>MultiQC</b> report HTML file for more information.", subtitle_style)
-        elements.append(title)
-        elements.append(subtitle)
-
-    ##########################################################################################
-
-    if min_conf:
-        subtitle = Paragraph(f"See the <b>`report/all.organisms.report.txt`</b> file for a full list of everything identified", subtitle_style)
-        elements.append(subtitle)
-
-    # Adding regular text
-
-    styles = getSampleStyleSheet()
-    # Adding subtext (you can adjust the style to make it look like subtext)
-    subtext_style = styles["BodyText"]
-    subtext_style.fontSize = 10  # Smaller font size for subtext
-    subtext_style.leading = 12
-    subtext_para = Paragraph("Organisms marked with * are putative and have relatively lower references listing their annotations as a pathogen in the given sample types. Classifications of pathogens are described as:", subtext_style)
-    elements.append(subtext_para)
-    elements.append(Spacer(1, 12))  # Space between tables
-    bullet_list_items = [
-        "This is an unannotated organism or commensal organism for the given site.",
-        "Primary Pathogen annotated in sample type(s) listed.",
-        "Primary Pathogen annotated in sample type(s) other than your listed one.",
-        "Opportunistic Pathogen",
-        "Potential Pathogen",
-    ]
-
-    # Create a list of bullet items with specified colors
-    bullet_colors = [colors.lightgreen,   colors.coral, '#fab462' , '#ffe6a8', colors.lightblue  ]
-    style = styles['Normal']
-
-    # Create custom ListItems with colored bullets
-    custom_list_items = [
-        ListItem(Paragraph(item, style), bulletBorder=colors.black,  bulletColor=bullet_colors[idx], bulletFontSize=9 )
-        for idx, item in enumerate(bullet_list_items)
-    ]
-
-    # Create the ListFlowable
-    bullet_list = ListFlowable(
-        custom_list_items,
-        start="square",
-
-        bulletType='bullet'  # '1' for numbered list
-    )
-    # add horizontal line in reportlab
-    elements.append(bullet_list)
-    elements.append(Spacer(1, 12))  # Space between tables
-    # Generate the explanation paragraph and append it to the elements
-    # After adding your table to the elements
-    subtext_style = styles['Normal']
-
-    # Create an HRFlowable for the horizontal line
-    horizontal_line = HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=12, spaceAfter=12)
-
-    # Create explanatory bullets with better formatting
-    bullet_list_items = [
-        "Primary: Exposure to the agent generally results in a diseased state in both immunocompromised and immunocompetent individuals.",
-        "Opportunistic: Exposure to the agent causes a diseased state under certain conditions, including immunocompromised status, wound infections, and nosocomial infections.",
-        "Commensal: Organisms typically found in the human microbiota.",
-        "Potential: Organisms that have been associated with disease states but are not extensively studied.",
-        "°: Indicates a pathogenic subspecies/serotype/strain/etc with the same name as the species listed, just different taxids."
-    ]
-
-    bullet_list = ListFlowable(
-        [ListItem(Paragraph(item, subtext_style)) for item in bullet_list_items],
-        bulletType='bullet',
-        start='circle',
-        # size of bullet
-        bulletFontSize=9
-    )
-    elements.append(bullet_list)
-
-    elements.append(horizontal_line)
-
-    elements.append(Spacer(1, 12))
-
-    # Define the column explanations
-    column_explanations = [
-        "Specimen ID (Type): The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
-        "Detected Organism: The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
-        "Microbial Category: The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
-        "# Reads Aligned: The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
-        "TASS Score: A metric between 0 and 1 that reflects the confidence of the organism's detection, with 1 being the highest confidence.",
-        "Taxonomic ID #: The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
-        "Pathogenic Subsp/Strains: Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
-        "K2 Reads: The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data."
-        "HMP Plot: What percentile the abundance falls under relative to the given sample type based on Healthy Human Subject NCBI taxonomy classification information"
-    ]
-
-    # Create bullet points for each column explanation
-    bullet_list_items = [
-        Paragraph(item, subtext_style) for item in column_explanations
-    ]
-
-    # Create the bullet list
-    bullet_list = ListFlowable(
-        [ListItem(item) for item in bullet_list_items],
-        bulletType='bullet',
-        start='circle',
-        bulletFontSize=9
-    )
-
-    # Append the bullet list to the elements
-    elements.append(bullet_list)
-
-    # Add the horizontal line to the elements
-    elements.append(horizontal_line)
-
-    paragraph_style = styles['Normal']
-
-    # Create a paragraph with a clickable URL
-    url = "https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring"
-    text_with_url = f'Please visit our <a href="{url}"><b><font color="blue">DOCUMENTATION PAGE</font></b></a> for more information on how confidence is calculated.'
-
-    # Add the paragraph with the URL
-    elements.append(Paragraph(text_with_url, paragraph_style))
-
-
-
-    subtext_para = Paragraph("The following information highlights the description for the color combinations for each organism class in the annotated table(s)", subtext_style)
-    elements.append(subtext_para)
-    elements.append(Spacer(1, 12))
-    subtext_para = Paragraph("Please see the relevant Discovery Analysis txt file for low confidence annotations that were not present in the pdf", subtext_style)
-    elements.append(subtext_para)
-    elements.append(Spacer(1, 12))
-
-    subtext_para = Paragraph("Read amounts are represented as the <b>total number of aligned reads</b> of sufficient mapping quality <b>(% aligned for all reads in sample)</b>", subtext_style)
-    elements.append(subtext_para)
-
-    elements.append(horizontal_line)
-    ##########################################################################################
-    if not df_high_cons_low_conf.empty:
-        # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = [
-                       "Detected Organism",
-                       "# Reads Aligned",
-                       'TASS Score',
-                       "Taxonomic ID #", "Coverage", "Pathogenic Subsp/Strains", "High ANI",
-                       "K2 Reads"]
-        columns_yes, col_widths = build_columns_and_widths(
-            df=df_high_cons_low_conf,
-            base_columns=columns_yes,
-            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
-            available_width = doc.width
-        )
-        # if all of Group is Unknown, then remove it from list
-
-        # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        # call new grouped builder — pass names_map (received into create_report)
-        data_hc, style_cmds = prepare_three_layer_table(
-            df_high_cons_low_conf,
-            sample_col='Specimen ID (Type)',
-            group_col='Group',
-            plot_dict={},
-            names_map=names_map,
-            include_headers=True,
-            columns=columns_yes
-        )
-
-        # if data shape is >=1 then append, otherwise make text saying it is empty
-        if df_high_cons_low_conf.shape[0] >= 1:
-            table_style = return_table_style(df_high_cons_low_conf, color_pathogen=False)
-            for cmd in style_cmds:
-                table_style.add(*cmd)
-            table = make_table(data_hc, table_style=table_style, col_widths=col_widths)
-            # # Add the title and subtitle
-            title = Paragraph("SUPPLEMENTARY: High Consequence Low Confidence", title_style)
-            subtitle = Paragraph(f"These were identified as high consequence pathogens but with low confidence. The below list of microorganisms represent pathogens of heightened concern, to which reads mapped.  The confidence metrics did not meet criteria set forth to be included in the above table; however, the potential presence of these organisms should be considered for biosafety, follow-up diagnostic testing (if clinical presentation warrants), and situational awareness purposes.", subtitle_style)
-            elements.append(title)
-            elements.append(subtitle)
-            elements.append(Spacer(1, 12))
-            elements.append(table)
-        else:
-            elements.append(Paragraph("No High Consequence Low Confidence Organisms", subtext_style))
-
-        elements.append(Spacer(1, 12))
-
-    ##########################################################################################
-    #### Table on opportunistic pathogens
-    if not df_potentials.empty:
-        columns_opp = ["Detected Organism",
-                       "# Reads Aligned",
-                       "TASS Score", "Taxonomic ID #",
-                       "Pathogenic Subsp/Strains",
-                       "Coverage", "High ANI", "K2 Reads"
-                       ]
-        columns_opp, col_widths = build_columns_and_widths(
-            df=df_potentials,
-            base_columns=columns_opp,
-            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
-            available_width = doc.width
-        )
-        data_pot, style_cmds = prepare_three_layer_table(
-            df_potentials,
-            sample_col='Specimen ID (Type)',
-            group_col='Group',
-            plot_dict=plotbuffer,  # if you don't want plots here
-            names_map=names_map,
-            include_headers=True,
-            columns=columns_opp
-        )
-        table_style = return_table_style(df_potentials, color_pathogen=True)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table = make_table(data_pot, table_style=table_style, col_widths=col_widths)
-
-
-        # Add the title and subtitle
-        Title = Paragraph("Low Potential Pathogens", title_style)
-        elements.append(Title)
-        elements.append(Spacer(1, 12))
-        elements.append(table)
-        elements.append(Spacer(1, 12))  # Space between tables
-
-    # ################################################################################################
-    ### Table on commensals
-    if not df_identified_others.empty:
-        columns_yes = df_identified_others.columns.values
-        # print only rows in df_identified with Gini Coeff above 0.2
-        columns_yes = [
-                       "Detected Organism",
-                       "# Reads Aligned", "TASS Score", "Taxonomic ID #", "Coverage", "High ANI",
-                        "K2 Reads"]
-        columns_yes, col_widths = build_columns_and_widths(
-            df=df_identified_others,
-            base_columns=columns_yes,
-            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
-            available_width = doc.width
-        )
-        # if all of Group is Unknown, then remove it from list
-        # Now, call prepare_data_with_headers for both tables without manually preparing headers
-        data_comm, style_cmds = prepare_three_layer_table(
-            df_identified_others,
-            sample_col='Specimen ID (Type)',
-            group_col='Group',
-            plot_dict=plotbuffer,
-            names_map=names_map,
-            include_headers=True,
-            columns=columns_yes
-        )
-        table_style = return_table_style(df_identified_others, color_pathogen=False)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table = make_table(data_comm, table_style=table_style, col_widths=col_widths)
-
-        title = Paragraph("Commensals", title_style)
-        subtitle = Paragraph(f"These were identified & were listed as a commensal directly", subtitle_style)
-        elements.append(title)
-        elements.append(subtitle)
-        elements.append(Spacer(1, 12))  # Space between tables
-
-        elements.append(table)
-        elements.append(Spacer(1, 12))  # Space between tables
-
-
-    elements.append(Spacer(1, 12))
-    if not df_unidentified.empty:
-    #     ##########################################################################################
-        ### Section to Make the "Unannotated" Table
-        second_title = "Unannotated Organisms"
-        second_subtitle = "The following table displays the unannotated organisms and their alignment statistics. Be aware that this is the exhaustive list of all organisms (species only) contained within the samples that had atleast one read aligned"
-        elements.append(Paragraph(second_title, title_style))
-        elements.append(Paragraph(second_subtitle, subtitle_style))
-
-        columns_no = ['Detected Organism','# Reads Aligned', "TASS Score", "Coverage", "High ANI", "K2 Reads"]
-        columns_no, col_widths = build_columns_and_widths(
-            df=df_unidentified,
-            base_columns=columns_no,
-            plotbuffer=plotbuffer,  # same dict you're passing to prepare_three_layer_table
-            available_width = doc.width
-        )
-        data_no, style_cmds = prepare_three_layer_table(
-            df_unidentified,
-            sample_col='Specimen ID (Type)',
-            group_col='Group',
-            plot_dict=plotbuffer,
-            names_map=names_map,
-            include_headers=True,
-            columns=columns_no
-        )
-        table_style = return_table_style(df_unidentified, color_pathogen=False)
-        for cmd in style_cmds:
-            table_style.add(*cmd)
-        table_no = make_table(data_no, table_style=table_style, col_widths=col_widths)
-        elements.append(table_no)
-    elements.append(Spacer(1, 12))  # Space between tables
-
-    ##########################################################################################
-    ##### Add equations HERE - Work in progress ##################################################
-
-    ##########################################################################################
-    #####  Build the PDF
-    # Adjust the build method to include the draw_vertical_line function
-    doc.build(elements, onFirstPage=draw_vertical_line, onLaterPages=draw_vertical_line)
-
-    print(f"PDF generated: {pdf_file}")
-
-def collapse_ani_matrix_to_rank(
-    ani_matrix: pd.DataFrame,
-    taxdump_dict: dict,
-    target_rank: str = "species",
-    agg: str = "mean",
-    set_diag: float | None = 1.0,
-) -> pd.DataFrame:
-    """
-    Collapse ANI matrix whose index/cols are (possibly) strain/subspecies taxids into a
-    matrix keyed by target_rank taxids (species by default).
-
-    Each (speciesA, speciesB) cell is aggregated (mean by default) over all underlying
-    pairs (strain_i in A, strain_j in B).
-    """
-    if ani_matrix is None or ani_matrix.empty:
-        return ani_matrix
-
-    ani = ani_matrix.copy()
-
-    # Normalize labels
-    ani.index = ani.index.map(_norm_taxid)
-    ani.columns = ani.columns.map(_norm_taxid)
-
-    # Ensure numeric
-    ani = ani.apply(pd.to_numeric, errors="coerce")
-
-    # Build mapping: strain_taxid -> species_taxid
-    idx_species = [get_ancestor_at_rank(t, target_rank, taxdump_dict) for t in ani.index]
-    col_species = [get_ancestor_at_rank(t, target_rank, taxdump_dict) for t in ani.columns]
-
-    # If matrix is supposed to be symmetric and same labels, this will usually match,
-    # but we handle it generally.
-    ani.index = idx_species
-    ani.columns = col_species
-
-    # Collapse rows by species
-    if agg == "mean":
-        collapsed_rows = ani.groupby(level=0, sort=False).mean(numeric_only=True)
-    elif agg == "median":
-        collapsed_rows = ani.groupby(level=0, sort=False).median(numeric_only=True)
-    elif agg == "max":
-        collapsed_rows = ani.groupby(level=0, sort=False).max(numeric_only=True)
-    else:
-        raise ValueError(f"Unsupported agg='{agg}' (use mean/median/max)")
-
-    # Collapse cols by species
-    if agg == "mean":
-        collapsed = collapsed_rows.groupby(axis=1, level=0, sort=False).mean(numeric_only=True)
-    elif agg == "median":
-        collapsed = collapsed_rows.groupby(axis=1, level=0, sort=False).median(numeric_only=True)
-    elif agg == "max":
-        collapsed = collapsed_rows.groupby(axis=1, level=0, sort=False).max(numeric_only=True)
-
-    # Make sure it's square-ish by reindexing union (optional but nice)
-    all_taxa = sorted(set(collapsed.index).union(set(collapsed.columns)))
-    collapsed = collapsed.reindex(index=all_taxa, columns=all_taxa)
-
-    # Diagonal handling
-    if set_diag is not None:
-        np.fill_diagonal(collapsed.values, float(set_diag))
-
-    return collapsed
-def add_ani_column(
-    df_full: pd.DataFrame,
-    ani_matrix: pd.DataFrame,
-    threshold: float = 0.90,
-    taxid_col: str = "Taxonomic ID #",
-    name_col: str = "Detected Organism",
-    sample_col: str = "Specimen ID (Type)",
-    group_col: str = "Group",
-    out_col: str = "High ANI",
-    max_label_len: int = 16,
-    show_plus_more: bool = True,
-):
-    if ani_matrix is None or ani_matrix.empty:
-        df_full[out_col] = ""
-        return df_full
-
-    df = df_full.copy()
-
-    # Normalize df taxids
-    df[taxid_col] = df[taxid_col].map(_norm_taxid)
-
-    # Start with empty strings (NOT pd.NA) so you don't end up with NaN
-    df[out_col] = ""
-
-    # Normalize ANI matrix index/cols
-    ani = ani_matrix.copy()
-    ani.index = ani.index.map(_norm_taxid)
-    ani.columns = ani.columns.map(_norm_taxid)
-
-    # Coerce values to numeric (handles strings, blanks, etc.)
-    ani = ani.apply(pd.to_numeric, errors="coerce")
-
-    # Optional: ensure diagonal doesn't accidentally count (not strictly needed)
-    # np.fill_diagonal(ani.values, np.nan)
-
-    for (s, g), gdf in df.groupby([sample_col, group_col], sort=False):
-        # unique taxids in this (sample, group)
-        taxids = [t for t in gdf[taxid_col].tolist() if t]
-        if len(taxids) < 2:
-            continue
-
-        # keep order, unique
-        seen = set()
-        taxids = [t for t in taxids if not (t in seen or seen.add(t))]
-
-        present = [t for t in taxids if t in ani.index and t in ani.columns]
-        if len(present) < 2:
-            continue
-
-        sub = ani.loc[present, present]
-
-        # taxid -> name (first occurrence)
-        taxid_to_name = {}
-        for _, r in gdf.iterrows():
-            tid = r[taxid_col]
-            if tid and tid not in taxid_to_name:
-                taxid_to_name[tid] = str(r.get(name_col, tid))
-
-        for tid in present:
-            series = sub.loc[tid].drop(labels=[tid], errors="ignore")
-            hits = series[series >= float(threshold)]
-            if hits.empty:
-                continue
-
-            best_other = hits.idxmax()
-            best_val = float(hits.loc[best_other])
-            total_hits = int(hits.shape[0])
-
-            best_name = str(taxid_to_name.get(best_other, best_other)).strip()
-            if len(best_name) > max_label_len:
-                best_name = best_name[: max_label_len - 1] + "…"
-
-            best_pct = f"{best_val * 100:.1f}%"
-
-            if show_plus_more:
-                more = total_hits - 1
-                suffix = f" +{more}" if more > 0 else ""
-            else:
-                suffix = f" /{total_hits}"
-
-            # Note: removed '\r' (can behave weirdly in ReportLab tables)
-            label = f"{best_name} ({best_pct}){suffix}"
-
-            df.loc[
-                (df[sample_col] == s)
-                & (df[group_col] == g)
-                & (df[taxid_col] == tid),
-                out_col
-            ] = label
-
-    return df
-
-def _norm_taxid(x) -> str:
-    if pd.isna(x):
-        return ""
-    s = str(x).strip()
-    if s == "" or s.lower() == "nan":
-        return ""
-    if s.endswith(".0") and s[:-2].isdigit():
-        s = s[:-2]
-    return s
-
-def get_ancestor_at_rank(taxid: str, target_rank: str, taxdump_dict: dict, *, max_hops: int = 200) -> str:
-    """
-    taxdump_dict: mapping like taxid -> {"parent": parent_taxid, "rank": rank, ...}
-    Returns the ancestor taxid at target_rank. If not found, returns original taxid.
-    """
-    tid = _norm_taxid(taxid)
-    if not tid or tid not in taxdump_dict:
-        return tid
-
-    hops = 0
-    cur = tid
-    while hops < max_hops and cur in taxdump_dict:
-        node = taxdump_dict[cur]
-        if node.get("rank") == target_rank:
-            return cur
-        parent = _norm_taxid(node.get("parent", ""))
-        if not parent or parent == cur:
-            break
-        cur = parent
-        hops += 1
-
-    # fallback: return original if we never hit that rank
-    return tid
-
-from functools import reduce
-
-def merge_ani_matrices(matrices):
-    """
-    Merge multiple ANI matrices.
-    If the same (i,j) appears in multiple matrices, take the mean.
-    """
-    def merge_two(a, b):
-        all_idx = sorted(set(a.index) | set(b.index))
-        all_col = sorted(set(a.columns) | set(b.columns))
-
-        a = a.reindex(index=all_idx, columns=all_col)
-        b = b.reindex(index=all_idx, columns=all_col)
-
-        return pd.concat([a, b]).groupby(level=0).mean()
-
-    return reduce(merge_two, matrices)
-
-
-def load_merged_json(input_json_paths):
-    merged_data = []
-    for inputjson in input_json_paths:
-        if not os.path.exists(inputjson):
-            raise FileNotFoundError(f"Input JSON file {inputjson} does not exist.")
-        with open(inputjson, "r") as f:
-            data = json.load(f)
-            merged_data.extend(data)
-    return merged_data
 
 def main():
     args = parse_args()
-    taxdump_dict, names_map, merged_data = {}, {}, {}
+
+    # Initialize empty dictionaries for taxonomy data
+    taxdump_dict = {}
+    names_map = {}
+    merged_tax_data = {}
+
+    # Load taxdump files if provided
     if args.taxdump:
-        # load the taxdump file
         if os.path.exists(f"{args.taxdump}/nodes.dmp"):
             taxdump_dict = load_taxdump(f"{args.taxdump}/nodes.dmp")
+            print(f"Loaded nodes.dmp: {len(taxdump_dict)} entries")
+
         if os.path.exists(f"{args.taxdump}/names.dmp"):
             names_map = load_names(f"{args.taxdump}/names.dmp")
+            print(f"Loaded names.dmp: {len(names_map)} entries")
+
         if os.path.exists(f"{args.taxdump}/merged.dmp"):
-            merged_data = load_merged(f"{args.taxdump}/merged.dmp")
-    # load in all of the json information one by one,
-    merged_data = load_merged_json(args.input)
-    for sample in merged_data:
-        for key, agg in sample.items():
-            agg['meancoverage'] = f"{100*agg['meancoverage']:.0f}%" if 'meancoverage' in agg and not pd.isna(agg['meancoverage']) else 0
+            merged_tax_data = load_merged(f"{args.taxdump}/merged.dmp")
+            print(f"Loaded merged.dmp: {len(merged_tax_data)} entries")
 
-    exit()
-    df_full = import_data(args.input)
-    # Set tass score as a flaot
-    # fill High Consequence with False if it is NaN
-    df_full['Coverage'] = df_full['Coverage'].apply(lambda x: f"{100*x:.0f}%" if not pd.isna(x) else 0)
-    # fill empty string with False for high consequence
-    df_full['High Consequence'] = df_full['High Consequence'].apply(lambda x: False if x == "" else x)
-    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{100*x:.0f}" if not pd.isna(x) else 0)
-    df_full["Group"] = df_full["Taxonomic ID #"].apply(lambda x: get_root(x, args.rank, taxdump_dict))
-    # for Detected Organism, add (Group) if it is not null or not Unknown
-    # df_full["Taxonomic ID #"] = df_full.apply(lambda x: f"{x['Taxonomic ID #']}, axis=1)
-    # 1) create the rank
-    # If your column is actually booleans + NaN, you can do:
-    # fill all None for Group as "Unknown"
-    df_full['Group'] = df_full['Group'].fillna('Others')
-    # 2) sort by rank desc, then TASS Score desc
-    if not args.sorttass:
-        df_full = df_full.sort_values(
-            by=['High Consequence', 'TASS Score'],
-            ascending=[False, False],
-        )
-    else:
-        df_full=df_full.sort_values(
-            by=['TASS Score', 'High Consequence'],
-            ascending=[False, False],
-        )
-
-    # if MicrobeRT Probability is in df_full columns then set to float and 2 decimals
-    if "MicrobeRT Probability" in df_full.columns:
-        # Replace empty strings with NaN
-        # if all is empty strings or empty rows in total then drop it
-        s = df_full["MicrobeRT Probability"]
-
-        prob = pd.to_numeric(
-            s.mask(s.astype(str).str.strip().eq(""), np.nan),
-            errors="coerce",
-        )
-        if prob.isna().all():
-            df_full = df_full.drop(columns=["MicrobeRT Probability"])
-        else:
-            df_full["MicrobeRT Probability"] = df_full["MicrobeRT Probability"].replace("", np.nan)
-
-            # Convert to float where possible
-            df_full["MicrobeRT Probability"] = pd.to_numeric(df_full["MicrobeRT Probability"], errors="coerce")
-
-            # Format to 2 decimals, keep NaN as is
-            df_full["MicrobeRT Probability"] = df_full["MicrobeRT Probability"].apply(
-                lambda x: f"{x:.2f}" if not pd.isna(x) else np.nan
-            )
-            # reformat nan to empty string
-            df_full["MicrobeRT Probability"] = df_full["MicrobeRT Probability"].replace(np.nan, "")
-    if args.output_txt:
-        # write out the data to a txt file
-        # sort df_full on "TASS Score"
-        df_full = df_full.reset_index(drop=False)
-        df_full.to_csv(args.output_txt, sep="\t", index=True, index_label="Index")
-    # change column "id" in avbundance_data to "tax_id" if args.type is "Detected Organism"
-    # df_full = df_full.rename(columns={args.id_col: args.type})
-    df_full = df_full.rename(columns={args.sitecol: 'body_site'})
-    df_full = df_full.rename(columns={args.abundance_col: 'abundance'})
-    df_full = df_full.dropna(subset=[args.type])
-    # df_identified = df_identified[[args.type, 'body_site', 'abundance']]
-    # convert all body_site with map
-    df_full['body_site'] = df_full['body_site'].map(lambda x: body_site_map(x) )
-    # Sort on # Reads aligned
-    # make new column that is # of reads aligned to sample (% reads in sample) string format
-    def quantval(x):
-        reads_aligned_formatted = f"{x['# Reads Aligned']:,}"
-        if x['abundance'] == x['% Reads']:
-            # format # reads aligned to have commas
-            return f"{reads_aligned_formatted} ({x['abundance']:.2f}%)"
-        else:
-            return f"{reads_aligned_formatted} ({x['abundance']:.2f}% - {x['% Reads']:.2f}%)"
-    df_full['Quant'] = df_full.apply(lambda x: quantval(x), axis=1)
-    df_full['# Reads Aligned'] = df_full['# Reads Aligned'].apply(lambda x: f"{x:,}")
-    # append MicrobeRT Probability to TASS Score if it is present
-    # add body site to Sample col with ()
-    if args.percentile:
-        # filter where value is above percentile only
-        df_full = df_full[df_full['HHS Percentile'] >= args.percentile]
-    def make_sample(x):
-        if not x['body_site']:
-            return ""
-        else:
-            return f"{x['Specimen ID']} ({x['body_site']})"
-    df_full['Specimen ID (Type)'] = df_full.apply(lambda x: make_sample(x), axis=1)
-    # remove anything in name where "phage" is in it
-    df_full = df_full[~df_full[args.type].str.contains("phage")]
-    # group on sampletype and get sum of abundance col
-    # get the sum of abundance for each sample
-
-    plotbuffer = dict()
-    # check if all of the 'Sample Type' is Unknown only, if so then set vairbale
-    isUnknownAll = df_full['body_site'].str.contains("Unknown").all()
-    args.ani_threshold = 0.2
+    # Load ANI matrix if provided
+    ani_data = {}
     if args.ani_matrix:
-        matrices = []
-        for matrix in args.ani_matrix:
-            if os.path.exists(matrix):
-                mtrx = read_ani_matrix(matrix)
+        ani_data = load_ani_matrix(args.ani_matrix)
+        print(f"Loaded ANI data for {len(ani_data)} taxa")
 
-                # normalize taxids
-                mtrx.index = mtrx.index.map(str)
-                mtrx.columns = mtrx.columns.map(str)
+    # Load JSON sample data
+    sample_data = load_json_samples(args.input)
+    print(f"Loaded {len(sample_data)} species groups from JSON file(s)")
 
-                matrices.append(mtrx)
-                print(f"Loaded ANI matrix from {matrix}")
-        ani_matrix = merge_ani_matrices(matrices)
-        ani_species = collapse_ani_matrix_to_rank(
-            ani_matrix,
-            taxdump_dict=taxdump_dict,
-            target_rank="species",
-            agg="mean",
-            set_diag=1.0
-        )
-        df_full = add_ani_column(
-            df_full,
-            ani_matrix,
-            threshold=float(args.ani_threshold),
-            out_col="High ANI"
-        )
-        print(df_full[['Detected Organism', 'Taxonomic ID #', 'High ANI']])
+    # Organize data by sample
+    samples_dict = organize_data_by_sample(sample_data)
+    print(f"Found {len(samples_dict)} unique sample(s)")
 
-    mapped_colids = {
-        "Detected Organism": "name",
-        "Taxonomic ID #": "tax_id",
-    }
-    if not isUnknownAll and args.distributions and os.path.exists(args.distributions):
-        stats_dict, site_counts = import_distributions(
-            args.distributions,
-            mapped_colids.get(args.type, args.type),
-            []
-        )
+    # Show configuration
+    print(f"\nConfiguration:")
+    print(f"  Output PDF: {args.output}")
+    if args.output_txt:
+        print(f"  Output TXT: {args.output_txt}")
+    if args.ani_matrix:
+        print(f"  ANI Matrix: {args.ani_matrix}")
+        print(f"  ANI Threshold: {args.ani_threshold}")
+    print(f"  Min Confidence: {args.min_conf}")
+    print(f"  Show Potentials: {args.show_potentials}")
+    print(f"  Show Unidentified: {args.show_unidentified}")
+    print(f"  Show Commensals: {args.show_commensals}")
 
-        for _, row in df_full.iterrows():
-            # taxid, body_site, stats, args, result_df
-            # if taxid and body site not in stats dict then make it empty or 0
-            # if (row['tax_id'], row['body_site']) in dists or row['tax_id'] not in taxidsonly or len(body_sites)== 0:
-            if (row[args.type], row['body_site']) not in stats_dict:
-                stats = {
-                    'mean': 0,
-                    'std': 0,
-                    "min_abundance":0,
-                    "max_abundance": 0,
-                    "variance": 0,
-                    "body_site": "Unknown",
-                    "tax_id": "Unknown",
-                    "Detected Organism": "Unknown",
-                    "rank": "Unknown",
-                    "abundances": [],
-                    "TASS Score": 0,
-                    "gini_coefficient": 0,
-                }
-            else:
-                stats = stats_dict[(row[args.type], row['body_site'])]
-            buffer = make_vplot(
-                row[args.type],
-                stats,
-                args.type if args.type == "Detected Organism" else "tax_id",
-                df_full,
-                percentile_column="HHS Percentile"
-            )
-            plotbuffer[(row[args.type], row['body_site'])] = buffer
-    df_high_cons_low_conf = pd.DataFrame()
+    # Create the PDF report
+    create_pdf_template(args.output, samples_dict, ani_data, args)
 
-    if args.min_conf and args.min_conf > 0:
-        df_high_cons_low_conf = df_full[(df_full['High Consequence'] == True) & (df_full['TASS Score'].astype(float) < args.min_conf)]
-        df_full = df_full[df_full['TASS Score'].astype(float) >= args.min_conf]
-    df_full['TASS Score'] = df_full['TASS Score'].apply(lambda x: f"{x}" if not pd.isna(x) else 0)
-    print(f"Size of of full list of organisms: {df_full.shape[0]}")
-    # lambda x add the % Reads column to name column
-
-    version = args.version
-    missing_samples = args.missing_samples
-    create_report(
-        args.output,
-        df_full,
-        args.show_potentials,
-        args.show_unidentified,
-        args.show_commensals,
-        plotbuffer,
-        version,
-        missing_samples,
-        args.min_conf,
-        names_map=names_map,
-    )
-
-
-
-
+    return taxdump_dict, names_map, merged_tax_data, sample_data
 
 
 if __name__ == "__main__":
-    main()
+    taxdump_dict, names_map, merged_tax_data, sample_data = main()

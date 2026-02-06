@@ -27,7 +27,6 @@ process ORGANISM_MERGE_REPORT {
     input:
     tuple val(meta), file(files_of_pathogens), file(ani_matrix), file(distributions)
     val(missing_samples)
-    path(taxdump)
 
     output:
         path "versions.yml"           , emit: versions
@@ -52,8 +51,8 @@ process ORGANISM_MERGE_REPORT {
     def show_potentials = params.show_potentials ? " --show_potentials " : ""
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
-    def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
-    def sorttass = params.sorttass ? " --sorttass " : ""
+    // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
+    def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
     def ani_matrix = ani_matrix.name != "NO_FILE3" ? " --ani_matrix $ani_matrix " : ""
     def rank = params.report_rank ? " --rank $params.report_rank " : ""
     """
@@ -64,9 +63,9 @@ process ORGANISM_MERGE_REPORT {
         $show_commensals \\
         $show_unidentified \\
         $distribution_arg \\
-        $min_conf $taxdump \\
+        $min_conf \\
         $missing_arg \\
-        $sorttass \\
+        $sort_alphabetical \\
         $ani_matrix \\
         $rank \\
 

@@ -33,8 +33,8 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 from math import log2
 import random
-from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_hmp_percentile, calculate_normalized_groups, compute_tass_score
-from map_taxid import load_taxdump, load_names
+from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category
+from map_taxid import load_taxdump, load_names, get_lineage
 from utils import taxid_to_rank, normalize_mapq, calculate_var
 
 def parse_args(argv=None):
@@ -858,6 +858,7 @@ def main():
         mmbert['taxid'] = mmbert['taxid'].astype(str)
         mmbert_dict = mmbert.set_index('taxid').T.to_dict()
 
+    pathogens = import_pathogens(pathogenfile)
 
     if args.match and os.path.exists(matcher):
         accindex = args.accessioncol
@@ -896,9 +897,10 @@ def main():
     taxdump, taxdump_names = {}, {}
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
-    # if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
-    #     taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+        taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
     # args.rank = False
+    # get the ranks for taxid: 198214
     acc_to_parent = dict()
     if args.rank:
         wanted_rank = args.rank  # for example:  species
@@ -931,8 +933,6 @@ def main():
                 hit['key'] = acc
             hit['strainname'] = hit.get('name', '')
             hit["toplevelname"] = taxdump_names.get(hit['key'], hit.get("name", ""))
-    # for k, v in reference_hits.items():
-    #     print(k, v.get('name'), "|", v.get('strainname'), ">", v.get('toplevelkey'), v.get('key'))
     species_to_all_accs = defaultdict(set)
     all_readscounts = [x['numreads'] for x in reference_hits.values()]
     total_reads = sum(all_readscounts)
@@ -987,11 +987,24 @@ def main():
         reads_key="numreads",
     )
 
+    # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
+        data['sample_name'] = args.samplename
+
+        # Annotate strain with pathogen info
+        taxid = data.get('key') or data.get('taxid') or k
+        rest = calculate_classes(
+            rec = data,
+            ref = taxid,
+            pathogens =pathogens,
+            sample_type = sampletype,
+            taxdump = taxdump,
+        )
+        data.update(rest)
         # try to match taxid to names_dict else name is k
         group_reads = [
             dict(reads=x['numreads'], key=x.get('key'))
-            for k, x in strain_summary.items()
+            for _, x in strain_summary.items()
             if x.get('toplevelkey') == data.get('toplevelkey')
         ]
         calculate_aggregate_scores(
@@ -1008,38 +1021,33 @@ def main():
             data = data,
             weights = weights,
         )
-        print(f"{data.get('name', top)} ({data.get('key')} - {data.get('toplevelkey', 'N/A')}):")
-        print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
-            f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
-            f"\n\tBreadth: {data.get('coverage', 'N/A')},",
-            f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
-            f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
-            f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
-            f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
-            f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
-            f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
-            f"\n\tAccessions: {data.get('accessions', 0)},"
-            f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
-            f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
-            f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n"
-        )
     # : Define a function to calculate disparity for each organism
     i=0
+    # for k, v in strain_summary.items():
+    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{v.get('toplevelkey', '')}\t{v.get('k2_reads', '')}\t{v.get('microbial_category', 0)}\t{v.get('annClass')}")
+    #     i+=1
+    # exit()
     aggregate_dict = calculate_normalized_groups(
         hits=strain_summary,
         group_field="toplevelkey",
         reads_key="numreads",
     )
-
-    print("\n________________________________\n")
+    # for k, v in strain_summary.items():
+    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{v.get('toplevelkey', '')}\t{v.get('toplevelname', '')}\t{v.get('microbial_category', 0)}")
+    # print("\n________________________________\n")
+    # exit()
     for _, data in aggregate_dict.items():
         # add all the strains to the strains list from strain_summary if data['toplevelkey'] matches
         data['members'] = [
             x for _, x in strain_summary.items()
             if x.get('toplevelkey') == data.get('toplevelkey')
         ]
+
+
         data['name'] = data.get('toplevelname', None)
         data['key'] = data.get('toplevelkey', None)
+        data['sample_name'] = args.samplename
+
         print(f"{data.get('toplevelname', '')} ({data.get('toplevelkey', 'N/A')}):")
         group_reads = [
             dict(reads=x['numreads'], key=x.get('key'))
@@ -1054,31 +1062,12 @@ def main():
             sampletype = sampletype,
             mmbert_dict = mmbert_dict,
             group_reads = group_reads,
-
         )
         data['tass_score'] = compute_tass_score(
             data = data,
             weights = weights,
         )
-        print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
-            f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
-            f"\n\t#Reads: {data.get('numreads', 'N/A')},",
-            f"\n\tBreadth: {data.get('coverage', 'N/A')},",
-            f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
-            f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
-            f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
-            f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
-            f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
-            f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
-            f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
-            f"\n\tAccessions: {data.get('accessions', 0)},"
-            f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
-            f"\n\tMembers : {len(data.get('members', []))},"
-            f"\n\tFinal Score: {data.get('tass_score', 'N/A')}"
-        )
         print("\t", [f"{x.get('name')} ({x.get('key')})" for x in data.get('members', [])])
-
-    pathogens = import_pathogens(pathogenfile)
 
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
@@ -1101,10 +1090,32 @@ def main():
         aggregate_dict=aggregate_dict,
         pathogens=pathogens,
         sample_type=sampletype,
+        taxdump = taxdump,
     )
-
+    for data in final_json:
+        print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
+        print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
+            f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
+            f"\n\t# Reads: {data.get('numreads', 'N/A')},",
+            f"\n\tBreadth: {data.get('coverage', 'N/A')},",
+            f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
+            f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
+            f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
+            f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
+            f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
+            f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
+            f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
+            f"\n\tAccessions: {data.get('accessions', 0)},"
+            f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
+            f"\n\tMembers : {len(data.get('members', []))},"
+            f"\n\tHigh Cons: {data.get('high_cons', False)},"
+            f"\n\tPathogenic Strains: {[x.get('name') for x in data.get('members', []) if x.get('is_pathogen') in ['Primary', 'Potential', 'Opportunistic']]},"
+            f"\n\tIs Pathogen: {data.get('is_pathogen', 'N/A')},"
+            f"\n\tAnnotation Class: {data.get('annClass', 'N/A')},"
+            f"\n\tMicrobial Category: {data.get('microbial_category', 'N/A')},"
+            f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
+        )
     write_to_json(args.output.replace(".tsv", ".json"), final_json)
-    print(json.dumps(final_json, indent=2))
 
 
 def random_tweak(weights, scale=0.2):
