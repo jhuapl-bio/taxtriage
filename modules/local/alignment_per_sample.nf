@@ -31,7 +31,7 @@ process ALIGNMENT_PER_SAMPLE {
 
     output:
         path "versions.yml"           , emit: versions
-        tuple val(meta), path("*.txt")    , optional:false, emit: txt
+        tuple val(meta), path("*.json")    , optional:false, emit: txt
         tuple val(meta), path("search_results/organism_ani_matrix.csv")    , optional:true, emit: ani
 
     when:
@@ -39,7 +39,7 @@ process ALIGNMENT_PER_SAMPLE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output = "${meta.id}.paths.txt"
+    def output = "${meta.id}.paths.json"
     def id = meta.id
     def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "

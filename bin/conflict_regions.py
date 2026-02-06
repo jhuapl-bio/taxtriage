@@ -925,14 +925,13 @@ def calculate_breadth_coverage_from_bam(
         cov[ref] = (100.0 * total_covered / L) if L > 0 else 0.0
 
     return cov
-
 def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int]) -> pd.DataFrame:
     rows = []
     for ref, st in sorted(per_ref_stats.items()):
         total_reads = st.get("total_reads", 0)
         pass_reads = st.get("pass_filtered_reads", 0)
-        delta_reads = pass_reads - total_reads
-        delta_pct = (100.0 * delta_reads / total_reads) if total_reads else 0.0
+        removed_reads = total_reads - pass_reads  # 👈 CHANGED: Calculate reads removed
+        delta_pct = (100.0 * removed_reads / total_reads) if total_reads else 0.0  # 👈 CHANGED: % removed
 
         b0 = st.get("breadth_old", 0.0)
         b1 = st.get("breadth", 0.0)
@@ -942,7 +941,7 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int]) 
         rows.append(
             {
                 "Reference": ref,
-                "Reference Length": ref_len,   # 👈 NEW COLUMN
+                "Reference Length": ref_len,
                 "TP Original": st.get("TP Original", 0),
                 "FP Original": st.get("FP Original", 0),
                 "FN Original": st.get("FN Original", 0),
@@ -955,7 +954,7 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int]) 
                 "Precision": st.get("precision", 0.0),
                 "Recall": st.get("recall", 0.0),
                 "F1": st.get("f1", 0.0),
-                "Δ All": delta_reads,
+                "Δ All": removed_reads,
                 "Δ All%": delta_pct,
                 "Breadth Original": b0,
                 "Breadth New": b1,
@@ -965,7 +964,6 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int]) 
         )
 
     return pd.DataFrame(rows)
-
 # -----------------------------
 # Optional: shared-window parameter tuner (kept because determine_conflicts references it)
 # -----------------------------
@@ -1071,7 +1069,7 @@ def tune_shared_window_params(
             removed_read_ids = build_removed_ids_best_alignment(
                 bam_path=bam_path,
                 shared_idx=shared_idx,
-                penalize_weight=1.0,
+                penalize_weight=23.0,
                 as_weight=0.0,
                 drop_contigs=set(),
                 drop_if_ambiguous=True,
@@ -1565,7 +1563,7 @@ def determine_conflicts(
     cpu_count: Optional[int] = None,
     jump_threshold: Optional[float] = None,
     gap_allowance: float = 0.1,
-    sim_ani_threshold: float = 0.8,
+    sim_ani_threshold: float = 1,
     compare_to_reference_windows: bool = False,
     find_optimal_windows: bool = False,
 ):
@@ -1644,10 +1642,10 @@ def determine_conflicts(
                 output_csv=report_path,
                 ksize=51,
                 scaled=8000,
-                window=1000_000,
-                step=1000_000,
+                window=100_000,
+                step=100_000,
                 jaccard_threshold=sim_ani_threshold,
-                max_hits_per_query=15,
+                max_hits_per_query=1,
                 skip_self_same_fasta=False,
             )
 
