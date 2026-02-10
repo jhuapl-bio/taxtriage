@@ -7,6 +7,43 @@ from scipy.stats import norm
 from typing import Dict, Any, List, Iterable
 from body_site_normalization import normalize_body_site, get_pathogen_classification
 
+
+def _truth_accession_from_qname(qname: str) -> str:
+    """
+    Ground truth rule you described:
+      NC_003310.1_3323_4  -> NC_003310.1
+    """
+    return qname.split("_", 1)[0]
+
+
+def compute_tp_fp_counts_by_reference(bam_path: str) -> dict[str, tuple[int, int]]:
+    """
+    Returns: { reference_accession: (tp_reads, fp_reads) }
+    TP if RNAME == truth_accession_from_qname(QNAME), else FP.
+    """
+    import pysam  # import here so normal runs don't require pysam unless BAM is used
+
+    counts = defaultdict(lambda: [0, 0])  # ref -> [tp, fp]
+    with pysam.AlignmentFile(bam_path, "rb") as bam:
+        for aln in bam.fetch(until_eof=True):
+            if aln.is_unmapped:
+                continue
+            # Skip non-primary to avoid double counting unless your pipeline expects otherwise
+            if aln.is_secondary or aln.is_supplementary:
+                continue
+
+            ref = bam.get_reference_name(aln.reference_id)
+            truth = _truth_accession_from_qname(aln.query_name)
+
+            if ref == truth:
+                counts[ref][0] += 1
+            else:
+                counts[ref][1] += 1
+
+    return {k: (v[0], v[1]) for k, v in counts.items()}
+
+
+
 import pandas as pd
 CATEGORY_PRIORITY = {
     "Primary": 5,
@@ -18,6 +55,8 @@ CATEGORY_PRIORITY = {
 
 def transform_func(d):
     return math.log10(1 + d)
+
+
 def build_transformed_coverage_hist(regions, genome_length):
     """
     Build a histogram of 'transformed' coverage for the entire genome.
@@ -369,7 +408,6 @@ def calculate_k2_disparity_score(
         "own_value": own_value,
         "total_value": total_value,
     }
-
 def calculate_normalized_groups(
     hits: Dict[str, Dict[str, Any]],
     group_field: str,
@@ -378,21 +416,6 @@ def calculate_normalized_groups(
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
-
-    Parameters
-    ----------
-    hits : dict
-        dict[id] -> record dict
-    group_field : str
-        field to group by, e.g. "key" or "toplevelkey"
-    reads_key : str
-        weight for weighted means (default numreads)
-    sum_columns : iterable[str]
-        extra numeric columns to sum
-
-    Returns
-    -------
-    dict[group_value] -> aggregated_record
     """
 
     # sums
@@ -403,7 +426,8 @@ def calculate_normalized_groups(
     WAVG_FIELDS = {
         "meandepth", "meanmapq", "meanbaseq",
         "minhash_score", "k2_disparity_score", "hmp_percentile",
-        "breadth_log_score", "minhash_reduction", "gini_coefficient", "diamond_identity",
+        # REMOVED: "breadth_log_score",  # will recalculate from aggregated coverage
+        "minhash_reduction", "gini_coefficient", "diamond_identity",
         "mapq_score",
     }
 
@@ -439,7 +463,6 @@ def calculate_normalized_groups(
     for _id, rec in hits.items():
         g = rec.get(group_field)
         if g in (None, ""):
-            # fall back to id to avoid losing it
             g = _id
         buckets.setdefault(str(g), []).append(rec)
 
@@ -458,14 +481,12 @@ def calculate_normalized_groups(
         # ---------- TOPLEVEL KEY + NAME ----------
         if group_field == "toplevelkey":
             agg["toplevelkey"] = gval
-            # NEW: carry toplevelname from entries if present
             agg["toplevelname"] = (
                 entries[0].get("toplevelname")
                 or entries[0].get("name")
                 or gval
             )
         else:
-            # pick first non-empty toplevelkey / toplevelname
             tk = None
             tn = None
             for e in entries:
@@ -491,7 +512,9 @@ def calculate_normalized_groups(
         agg["k2_reads"] = sums.get("k2_reads", 0.0)
 
         # counts
-        agg["accessions"] = len(entries)
+        agg["accessions"] = [x.get("accession") for x in entries if x.get("accession")]
+
+
 
         # derived coverage = covered_bases_sum / length_sum
         total_length = agg["length"]
@@ -501,9 +524,19 @@ def calculate_normalized_groups(
         for f in WAVG_FIELDS:
             agg[f] = _weighted_mean(entries, f, reads_key)
 
+        # ========== RECALCULATE breadth_log_score from aggregated coverage ==========
+        # This ensures plasmids don't skew the score
+        # agg["breadth_log_score"] = agg["coverage"] ** 2  # or use your preferred formula
+        agg['breadth_log_score'] = breadth_score_sigmoid(agg["coverage"])
+        # Examples:
+        # agg["breadth_log_score"] = agg["coverage"] ** 3  # more aggressive
+        # agg["breadth_log_score"] = breadth_score_sigmoid(agg["coverage"])  # threshold-based
+
         out[gval] = agg
 
     return out
+
+
 def sibling_disparity_from_group_reads(
     group_reads,
     target_key,
@@ -630,12 +663,17 @@ def compute_scores_per(
     mapq = data.get('meanmapq', 0)
     data['mapq_score'] = normalize_mapq(mapq)
     coverage = data.get('coverage')
-    data['breadth_log_score'] = 1 - logarithmic_weight(coverage)
+    # data['breadth_log_score'] = 1 - logarithmic_weight(coverage)
+    # data['breadth_log_score'] = (coverage ** 2)  # or ** 3 for more aggressive
+
+    data['breadth_log_score'] = breadth_score_sigmoid(coverage)
     data['minhash_reduction'] = data.get('minhash_score', 1)
     # data['tass_score'] = compute_tass_score(data, weights)
 
 
     return data
+def breadth_score_sigmoid(coverage, midpoint=0.15, steepness=20):
+        return 1.0 / (1.0 + math.exp(-steepness * (coverage - midpoint)))
 def calculate_mmbert_prob(
     mmbert_dict = {},
     taxid = None
@@ -813,6 +851,17 @@ def calculate_siblings_score (
             data[k][f"{out_prefix}rank_index"] = rank_index[k]
 
     return data
+
+def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w, alpha=1.0):
+
+    b = metrics_df["breadth_log_score"].to_numpy(float)
+    m = metrics_df["minhash_reduction"].to_numpy(float)
+    g = metrics_df["gini_coefficient"].to_numpy(float)
+
+    score = breadth_w * b + minhash_w * m + gini_w * g
+    score = alpha * score
+    return np.clip(score, 0.0, 1.0)
+
 def compute_tass_score(data = {}, weights={}):
     """
     count is a dictionary that might look like:
@@ -829,18 +878,16 @@ def compute_tass_score(data = {}, weights={}):
 
     # Summation of each sub-score * weight
 
-
     tass_score = sum([
-        apply_weight(data.get('normalized_disparity', 0), weights.get('disparity_score', 0)),
-        apply_weight(data.get('mapq_score', 0),       weights.get('mapq_score', 0)),
+        apply_weight(data.get('disparity', 0), weights.get('disparity_weight', 0)),
         apply_weight(data.get('minhash_reduction', 0),       weights.get('minhash_weight', 0)),
         apply_weight(data.get('gini_coefficient', 0),             weights.get('gini_coefficient', 0)),
-        apply_weight(data.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
         apply_weight(data.get('breadth_log_score', 0),             weights.get('breadth_weight', 0)),
+        apply_weight(data.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
+        apply_weight(data.get('mapq_score', 0),       weights.get('mapq_score', 0)),
         apply_weight(data.get('k2_disparity_score', 0),         weights.get('k2_disparity_score_weight', 0)),
         apply_weight(data.get('diamond', {}).get('identity', 0),
                      weights.get('diamond_identity', 0))  ])
-
     return tass_score
 
 def calculate_hmp_percentile(

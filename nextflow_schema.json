@@ -376,6 +376,12 @@
                     "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "alpha": {
+                    "type": "number",
+                    "description": "TASS Score Alpha. This is the measure of how much weight to put on the breadth vs depth of coverage for a given alignment to an organism. The higher the alpha, the more weight put on breadth rather than depth.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 1
+                },
                 "reward_factor": {
                     "type": "number",
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
@@ -633,6 +639,12 @@
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "rank": {
+                    "type": "string",
+                    "description": "What rank to bin hits in the report in the final report. Default is genus, but you can choose from [species, genus, family, order, class, phylum]",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": "genus"
                 }
             }
         },

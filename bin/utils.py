@@ -144,9 +144,8 @@ def logarithmic_weight(breadth, min_breadth=1e-3):
 
     # Normalize the log value
     normalized = (math.log(breadth) - math.log(min_breadth)) / (0 - math.log(min_breadth))
-    weight = 1 - normalized
+    weight = 1 - normalized ** 4
     return weight
-
 
 def format_non_zero_decimals(number):
     # Convert number from the scientific notation to the tenth digit

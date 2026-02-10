@@ -31,11 +31,11 @@ import math
 import os
 from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
-from math import log2
 import random
+from ground_truth import build_ground_truth_metrics_df, optimize_weights
 from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category
-from map_taxid import load_taxdump, load_names, get_lineage
-from utils import taxid_to_rank, normalize_mapq, calculate_var
+from map_taxid import load_taxdump, load_names
+from utils import taxid_to_rank, calculate_var
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -208,14 +208,14 @@ def parse_args(argv=None):
         "--disparity_score_weight",
         metavar="DISPARITYSCOREWEIGHT",
         type=float,
-        default=0.05,
+        default=0.0,
         help="value of weight for disparity reads vs other organisms in final TASS Score",
     )
     parser.add_argument(
         "--alpha",
         metavar="MAPQWEIGHT",
         type=float,
-        default=1.2,
+        default=1,
         help="alpha value for lorenz curve with gini calculation",
     )
     parser.add_argument(
@@ -254,28 +254,34 @@ def parse_args(argv=None):
         default=None,
         help="You want to provide a gt file to see how well you fare with the detections",
     )
-    parser.add_argument(
-        "--optimize",
-        default=False,
-        help="Optimize the gt file to get the best possible score",  action='store_true'
-    )
-    parser.add_argument("--max_iterations",
-        type=int,
-        default=20,
-        help="Maximum number of random tweaks to explore if you provide a gt file and want to optimize"
-    )
+    parser.add_argument("--optimize", action="store_true",
+                        help="Optimize breadth/minhash/disparity/gini weights using BAM-derived TP/FP labels.")
+    parser.add_argument("--optimize_maxiter", type=int, default=80,
+                        help="Max iterations for the global stage (differential evolution).")
+    parser.add_argument("--optimize_local_maxiter", type=int, default=200,
+                        help="Max iterations for the local refinement stage (SLSQP).")
+    parser.add_argument("--optimize_seed", type=int, default=1,
+                        help="RNG seed for optimizer reproducibility.")
+    parser.add_argument("--optimize_pos_weight", type=float, default=0.5,
+                        help="Relative weight of true-positive term in the objective.")
+    parser.add_argument("--optimize_neg_weight", type=float, default=0.5,
+                        help="Relative weight of false-positive term in the objective.")
+    parser.add_argument("--optimize_reg", type=float, default=0.01,
+                        help="L2 regularization strength to keep weights near the starting values.")
+    parser.add_argument("--optimize_report", type=str, default=None,
+                        help="Optional path to write a TSV report of TP/FP counts and scores for the best weights.")
     parser.add_argument(
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.1,
+        default=0.45,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.5,
+        default=0.05,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
@@ -285,6 +291,8 @@ def parse_args(argv=None):
         default=0.0,
         help="value of weight for disparity of k2 and alignment in final TASS Score",
     )
+    parser.add_argument("--disparity_weight", type=float, default=0.0,
+        help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
         metavar="DISPARITYSCOREWEIGHT",
@@ -304,7 +312,7 @@ def parse_args(argv=None):
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.50,
+        default=0.55,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -500,16 +508,10 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     dict: A dictionary with reference names as keys and counts of aligned reads as values.
     """
     # Initialize a dictionary to hold the count of reads per reference
-    reference_counts = {}
-    reference_coverage = defaultdict(lambda: defaultdict(dict))
     reference_lengths = {}
-    notseen = set()
     unaligned = 0
     aligned_reads = 0
     total_reads = 0
-    amount_pre_read = dict()
-    # Open the BAM file for reading
-
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
@@ -543,16 +545,9 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 covered_regions = [],  # Store regions covered by reads
             )
         # Open BAM file
-        unique_read_ids = set()  # To track unique read IDs
-        total_length = 0
         total_reads = 0
-        readlengths = []
-        removed_reads = defaultdict(dict )
-        read_stats = defaultdict(list)
-        excluded_regions = defaultdict(list)
         # check if the alignment was paired end or single end
         start_time = time.time()
-        seenpairs = set()
         for read in bam_file.fetch():
 
             if read.is_unmapped:
@@ -664,7 +659,6 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
 
     print(f"Processed {total_reads} reads from {len(reference_lengths)} references in {time.time()-start_time} seconds.")
     bam_file.close()
-    i=0
     return reference_stats, aligned_reads, total_reads
 def main():
     args = parse_args()
@@ -689,7 +683,6 @@ def main():
                 weights[key] = weights[key] / total_weight
             else:
                 weights[key] = 0
-
     """
     # Final Score Calculation
 
@@ -734,19 +727,25 @@ def main():
     if args.k2:
         print("Importing k2 file")
         k2_mapping = import_k2_file(args.k2)
+        print("K2 mapping imported")
     comparison_df =  pd.DataFrame()
     alignments_to_remove = defaultdict(set)
     if args.fasta:
         fastas = set(args.fasta)
     if args.match and os.path.exists(matcher):
-        generate_ani_matrix(
-            fasta_files = fastas if args.fasta else [],
-            matchfile = args.match,
-            matchfile_accession_col = args.accessioncol,
-            matchfile_taxid_col = args.taxcol,
-            matchfile_desc_col = args.namecol,
-            output_dir = args.output_dir if args.output_dir else os.path.dirname(args.output),
-        )
+        # if args.output_dir/organism_ani_matrix.csv doesnt exist then perform it:
+        if not args.matrix or not os.path.exists(args.matrix):
+            print("generating ani matrix")
+            generate_ani_matrix(
+                fasta_files = fastas if args.fasta else [],
+                matchfile = args.match,
+                matchfile_accession_col = args.accessioncol,
+                matchfile_taxid_col = args.taxcol,
+                matchfile_desc_col = args.namecol,
+                output_dir = args.output_dir if args.output_dir else os.path.dirname(args.output),
+            )
+        else:
+            print("Ani matrix already exists across references")
     if args.minhash_weight > 0:
         if args.comparisons and os.path.exists(args.comparisons):
             # if ends with csv
@@ -986,7 +985,29 @@ def main():
         group_field="key",
         reads_key="numreads",
     )
-
+    if args.optimize:
+        report_weights = optimize_weights(
+            input_bam = args.input,
+            final_json = strain_summary,
+            accession_to_taxid = acc_to_parent,
+            breadth_weight = args.breadth_weight,
+            minhash_weight = args.minhash_weight,
+            gini_weight = args.gini_weight,
+            # disparity_weight = args.disparity_score_weight,
+            alpha = args.alpha,
+            optimize_pos_weight = args.optimize_pos_weight,
+            optimize_neg_weight = args.optimize_neg_weight,
+            optimize_reg = args.optimize_reg,
+            optimize_seed = args.optimize_seed,
+            optimize_maxiter = args.optimize_maxiter,
+            optimize_local_maxiter = args.optimize_local_maxiter,
+            optimize_report = args.optimize_report,
+        )
+        weights = report_weights.get("best_weights", weights)
+        print("Optimized weights changed: ")
+        for k, v in weights.items():
+            print(f"\t{k}: {v}")
+    # exit()
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename
@@ -1023,17 +1044,19 @@ def main():
         )
     # : Define a function to calculate disparity for each organism
     i=0
-    # for k, v in strain_summary.items():
-    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{v.get('toplevelkey', '')}\t{v.get('k2_reads', '')}\t{v.get('microbial_category', 0)}\t{v.get('annClass')}")
-    #     i+=1
-    # exit()
+
     aggregate_dict = calculate_normalized_groups(
         hits=strain_summary,
         group_field="toplevelkey",
         reads_key="numreads",
     )
+    # iterate through aggregate_dict, make the accession_to_key dict
+    for k, v in aggregate_dict.items():
+        for acc in species_to_all_accs.get(k, []):
+            acc_to_parent[acc] = k
+
     # for k, v in strain_summary.items():
-    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{v.get('toplevelkey', '')}\t{v.get('toplevelname', '')}\t{v.get('microbial_category', 0)}")
+    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{100*v.get('tass_score')}")
     # print("\n________________________________\n")
     # exit()
     for _, data in aggregate_dict.items():
@@ -1048,7 +1071,6 @@ def main():
         data['key'] = data.get('toplevelkey', None)
         data['sample_name'] = args.samplename
 
-        print(f"{data.get('toplevelname', '')} ({data.get('toplevelkey', 'N/A')}):")
         group_reads = [
             dict(reads=x['numreads'], key=x.get('key'))
             for _, x in strain_summary.items()
@@ -1067,8 +1089,9 @@ def main():
             data = data,
             weights = weights,
         )
-        print("\t", [f"{x.get('name')} ({x.get('key')})" for x in data.get('members', [])])
-
+    # for k, v in aggregate_dict.items():
+    #     print(f"{k}\t{v.get('name', '')}\t{v.get('key', '')}\t{v.get('toplevelkey', '')}\t{v.get('toplevelname', '')}\t{v.get('microbial_category', 0)}\t{v.get('accessions')}\t{v.get('tass_score', 0)}")
+    # exit()
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -1092,29 +1115,32 @@ def main():
         sample_type=sampletype,
         taxdump = taxdump,
     )
-    for data in final_json:
-        print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
-        print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
-            f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
-            f"\n\t# Reads: {data.get('numreads', 'N/A')},",
-            f"\n\tBreadth: {data.get('coverage', 'N/A')},",
-            f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
-            f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
-            f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
-            f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
-            f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
-            f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
-            f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
-            f"\n\tAccessions: {data.get('accessions', 0)},"
-            f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
-            f"\n\tMembers : {len(data.get('members', []))},"
-            f"\n\tHigh Cons: {data.get('high_cons', False)},"
-            f"\n\tPathogenic Strains: {[x.get('name') for x in data.get('members', []) if x.get('is_pathogen') in ['Primary', 'Potential', 'Opportunistic']]},"
-            f"\n\tIs Pathogen: {data.get('is_pathogen', 'N/A')},"
-            f"\n\tAnnotation Class: {data.get('annClass', 'N/A')},"
-            f"\n\tMicrobial Category: {data.get('microbial_category', 'N/A')},"
-            f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
-        )
+    for v in final_json:
+        v['sampletype'] = sampletype
+        v['total_reads'] = total_reads
+    # for data in final_json:
+    #     print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
+    #     print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
+    #         f"\n\tMAPQ Score: {data.get('meanmapq', 'N/A')},",
+    #         f"\n\t# Reads: {data.get('numreads', 'N/A')},",
+    #         f"\n\tBreadth: {data.get('coverage', 'N/A')},",
+    #         f"\n\tMinHash Reduction: {data.get('minhash_reduction', 'N/A')},",
+    #         f"\n\tBreadth Score: {data.get('breadth_log_score', 'N/A')},",
+    #         f"\n\tReads K2: {data.get('k2_reads', 'N/A')},",
+    #         f"\n\tK2 Disparity Score: {data.get('k2_disparity_score', 'N/A')},"
+    #         f"\n\tDiamond Identity: {data.get('diamond_identity', 'N/A')},"
+    #         f"\n\tDisparity Score: {data.get('disparity', 'N/A')},"
+    #         f"\n\tHMP Percentile: {data.get('hmp_percentile', 'N/A')},"
+    #         f"\n\tAccessions: {data.get('accessions', 0)},"
+    #         f"\n\tMicrobert Prob: {data.get('mmbert', 'N/A')},"
+    #         f"\n\tMembers : {len(data.get('members', []))},"
+    #         f"\n\tHigh Cons: {data.get('high_cons', False)},"
+    #         f"\n\tPathogenic Strains: {[x.get('name') for x in data.get('members', []) if x.get('is_pathogen') in ['Primary', 'Potential', 'Opportunistic']]},"
+    #         f"\n\tIs Pathogen: {data.get('is_pathogen', 'N/A')},"
+    #         f"\n\tAnnotation Class: {data.get('annClass', 'N/A')},"
+    #         f"\n\tMicrobial Category: {data.get('microbial_category', 'N/A')},"
+    #         f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
+    #     )
     write_to_json(args.output.replace(".tsv", ".json"), final_json)
 
 

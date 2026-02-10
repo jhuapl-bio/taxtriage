@@ -70,6 +70,7 @@ process ALIGNMENT_PER_SAMPLE {
     def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
     def ani_removal = params.ani_removal ? " --compare_references " : " "
     def taxonomy  = taxdump ? " --taxdump ${taxdump} " : " "
+    def alpha = params.alpha ? " --alpha ${params.alpha} " : " --alpha 1.0 "
 
     """
 
@@ -80,7 +81,7 @@ process ALIGNMENT_PER_SAMPLE {
         $type $read_count \\
         --output_dir $output_dir $fastas $cpu_count \\
         --scaled 8000 \\
-        --alpha 1.5 \\
+        $alpha \\
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping $k2 $sensitive $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 \\

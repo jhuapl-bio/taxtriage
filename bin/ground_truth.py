@@ -20,12 +20,14 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import numpy as np
+import json
+
 from collections import defaultdict
 from typing import Dict, Iterable, Optional, Set, Tuple
-from optimize_weights import calculate_scores
 import pandas as pd
 import pysam
-import math
+from optimize_weights import compute_tass_score_from_metrics
 
 
 # regex to extract truth accession from read_id like "NC_003310.1_1133_6"
@@ -362,296 +364,335 @@ def compute_global_confusion(read_to_refs: Dict[str, Set[str]], all_reads: Set[s
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
 
     return {"TP": tp, "FP": fp, "FN": fn, "TN": tn, "Precision": precision, "Recall": recall, "F1": f1}
-def optimize_three_weights(
-    bam_path: str,
-    match_tsv: str,
-    aggregated_stats: dict,
-    pathogens: dict,
-    sample_name: str,
-    sample_type: str,
-    total_reads: float,
-    aligned_total: int,
-    initial=(0.33, 0.33, 0.34),
-    lambda_fp_max: float = 50.0,
-    lambda_fp_mean: float = 10.0,
-    lambda_tp: float = 1.0,
-    maxiter: int = 200,
-    verbose: bool = True,
+
+def optimize_weights(
+    input_bam=None,
+    final_json=None,
+    accession_to_taxid=None,
+    breadth_weight=1/3,
+    minhash_weight=1/3,
+    gini_weight=1/3,
+    alpha=1.0,
+    optimize_pos_weight=1.0,
+    optimize_neg_weight=1.0,
+    optimize_reg=0.0,
+    optimize_seed=42,
+    optimize_maxiter=100,
+    optimize_local_maxiter=50,
+    optimize_mode="taxids", # taxids | reads | hybrid
+    hybrid_lambda=0.5,
+    optimize_report="optimization_report.json",
 ):
-    """
-    Optimize ONLY 3 weights (breadth_weight, gini_weight, minhash_weight) at TAXID level.
-
-    Goal:
-      - True-positive taxids should have TASS close to 1
-      - False-positive taxids should have TASS as close to 0 as possible (HARSHLY)
-        (even if only 1 FP read exists)
-
-    This uses the BAM to derive:
-      - truth_taxid per read (from read_id -> truth accession -> accession->taxid)
-      - predicted taxids per read (aligned ref accessions -> accession->taxid)
-      - TP_taxids: truth taxid that is hit by at least one aligned ref with same taxid
-      - FP_taxids: any predicted taxid != truth taxid for any read
-
-    Requires your existing functions in scope:
-      - collect_read_alignments(bam_path, alignments_to_remove=None)
-      - ground_truth_from_read_id(read_id)
-      - calculate_scores(aggregated_stats, pathogens, sample_name, sample_type, total_reads, aligned_total, weights)
-    """
-
-    import os
-    import math
+    import json
     import numpy as np
-    from collections import defaultdict
-    from scipy.optimize import minimize
 
-    # -------- helpers --------
-    def _strip_version(acc: str) -> str:
-        acc = (acc or "").strip()
-        return acc.split(".", 1)[0] if "." in acc else acc
+    tp_fp_counts = compute_tp_fp_counts_by_taxid(
+        input_bam,
+        accession_to_taxid=accession_to_taxid,
+        debug_n=10,
+    )
 
-    def _build_acc_to_taxid(match_path: str, accessioncol=0, taxcol=4, has_header=True, sep="\t"):
-        """
-        Build accession -> taxid mapping.
-        Stores BOTH versioned and no-version keys.
-        """
-        acc_to_taxid = {}
-        if not match_path or not os.path.exists(match_path):
-            return acc_to_taxid
+    metrics_df = build_metrics_df_from_final_json(final_json, tp_fp_counts)
+    accession_col = "taxid"
 
-        with open(match_path, "r") as fh:
-            for i, line in enumerate(fh):
-                line = line.rstrip("\n")
-                if not line:
-                    continue
-                if has_header and i == 0:
-                    continue
-                parts = line.split(sep)
-                if len(parts) <= max(accessioncol, taxcol):
-                    continue
-                acc = (parts[accessioncol] or "").strip()
-                taxid = (parts[taxcol] or "").strip()
-                if not acc or taxid in ["", "None", None]:
-                    continue
-                taxid = str(taxid)
-                acc_to_taxid[acc] = taxid
-                acc_to_taxid[_strip_version(acc)] = taxid
-        return acc_to_taxid
+    start_w = dict(
+        breadth_weight=float(breadth_weight),
+        minhash_weight=float(minhash_weight),
+        gini_weight=float(gini_weight),
+    )
 
-    def _derive_tp_fp_taxids(bam_path: str, acc_to_taxid: dict):
-        """
-        Returns:
-          tp_taxids: set
-          fp_taxids: set
-          stats dict with counts for debugging
-        """
-        read_to_refs, _, all_reads = collect_read_alignments(bam_path, alignments_to_remove=None)
+    opt = optimize_weights_for_tp_fp(
+        metrics_df=metrics_df,
+        tp_fp_counts=tp_fp_counts,
+        accession_col=accession_col,
+        start_weights=start_w,
+        alpha=float(alpha),
+        pos_weight=float(optimize_pos_weight),
+        neg_weight=float(optimize_neg_weight),
+        reg_lambda=float(optimize_reg),
+        seed=int(optimize_seed),
+        maxiter_global=int(optimize_maxiter),
+        maxiter_local=int(optimize_local_maxiter),
+        optimize_mode=optimize_mode,
+        hybrid_lambda=float(hybrid_lambda),
+    )
 
-        tp_taxids = set()
-        fp_taxids = set()
+    print("[optimize] status:", opt["status"])
+    print("[optimize] mode:", opt.get("optimize_mode"), "hybrid_lambda:", opt.get("hybrid_lambda"))
+    print("[optimize] TP reads:", opt.get("tp_total_reads"), "FP reads:", opt.get("fp_total_reads"))
+    print("[optimize] TP taxids:", opt.get("tp_total_taxa"), "FP taxids:", opt.get("fp_total_taxa"))
 
-        n_reads_total = 0
-        n_reads_mapped_truth = 0
-        n_reads_skipped_no_truth_taxid = 0
-        n_alignments_total = 0
-        n_alignments_skipped_no_pred_taxid = 0
-
-        for rid in all_reads:
-            n_reads_total += 1
-
-            truth_acc = ground_truth_from_read_id(rid)
-            truth_taxid = acc_to_taxid.get(truth_acc) or acc_to_taxid.get(_strip_version(truth_acc))
-            if not truth_taxid:
-                n_reads_skipped_no_truth_taxid += 1
-                continue
-            truth_taxid = str(truth_taxid)
-            n_reads_mapped_truth += 1
-
-            aligned_refs = read_to_refs.get(rid, set())
-
-            # determine if read is TP at taxid-level (any aligned ref has same taxid)
-            is_tp_read = False
-            for ref_acc in aligned_refs:
-                n_alignments_total += 1
-                pred_taxid = acc_to_taxid.get(ref_acc) or acc_to_taxid.get(_strip_version(ref_acc))
-                if not pred_taxid:
-                    n_alignments_skipped_no_pred_taxid += 1
-                    continue
-                pred_taxid = str(pred_taxid)
-
-                if pred_taxid == truth_taxid:
-                    is_tp_read = True
-                else:
-                    fp_taxids.add(pred_taxid)
-
-            if is_tp_read:
-                tp_taxids.add(truth_taxid)
-
-        dbg = dict(
-            n_reads_total=n_reads_total,
-            n_reads_mapped_truth=n_reads_mapped_truth,
-            n_reads_skipped_no_truth_taxid=n_reads_skipped_no_truth_taxid,
-            n_alignments_total=n_alignments_total,
-            n_alignments_skipped_no_pred_taxid=n_alignments_skipped_no_pred_taxid,
-            n_tp_taxids=len(tp_taxids),
-            n_fp_taxids=len(fp_taxids),
-        )
-        return tp_taxids, fp_taxids, dbg
-
-    def _score_by_taxid(weights3):
-        """
-        weights3: (breadth, gini, minhash) -> dict taxid->tass_score
-        """
-        bw, gw, mw = weights3
-        # enforce sum=1 (robustness)
-        s = bw + gw + mw
-        if s <= 0:
-            bw, gw, mw = 1/3, 1/3, 1/3
-        else:
-            bw, gw, mw = bw/s, gw/s, mw/s
-
-        weights = {
-            # only 3 active
-            "breadth_weight": float(bw),
-            "gini_coefficient": float(gw),
-            "minhash_weight": float(mw),
-
-            # everything else OFF
-            "mapq_score": 0.0,
-            "disparity_score": 0.0,
-            "hmp_weight": 0.0,
-            "siblings_score": 0.0,
-            "diamond_identity": 0.0,
-            "k2_disparity_weight": 0.0,
+    if opt["status"] != "ok":
+        report_obj = {
+            "status": opt["status"],
+            "config": {
+                "alpha": float(alpha),
+                "pos_weight": float(optimize_pos_weight),
+                "neg_weight": float(optimize_neg_weight),
+                "reg_lambda": float(optimize_reg),
+                "seed": int(optimize_seed),
+                "maxiter_global": int(optimize_maxiter),
+                "maxiter_local": int(optimize_local_maxiter),
+                "optimize_mode": optimize_mode,
+                "hybrid_lambda": float(hybrid_lambda),
+                "start_weights": start_w,
+            },
+            "optimizer": opt,
+            "best_weights": start_w,
+            "report": [],
         }
+        with open(optimize_report, "w") as f:
+            json.dump(report_obj, f, indent=2)
+        return report_obj
 
-        final_scores = calculate_scores(
-            aggregated_stats=aggregated_stats,
-            pathogens=pathogens,
-            sample_name=sample_name,
-            sample_type=sample_type,
-            total_reads=total_reads,
-            aligned_total=aligned_total,
-            weights=weights,
-        )
+    best_w = opt["weights"]
+    breadth_weight = best_w["breadth_weight"]
+    minhash_weight = best_w["minhash_weight"]
+    gini_weight = best_w["gini_weight"]
 
-        out = {}
-        for rec in final_scores:
-            # IMPORTANT: here 'ref' must be TAXID key (string)
-            t = rec.get("ref")
-            if t is None:
-                continue
-            out[str(t)] = float(rec.get("tass_score", 0.0))
-        return out
+    scores = compute_tass_score_from_metrics(
+        metrics_df,
+        breadth_w=float(breadth_weight),
+        minhash_w=float(minhash_weight),
+        gini_w=float(gini_weight),
+        alpha=float(alpha),
+    )
+    scores = np.asarray(scores, dtype=float)
 
-    def _loss(weights3, tp_taxids, fp_taxids):
-        """
-        Loss that:
-          - punishes any FP taxid with high TASS, extremely (max-based)
-          - also penalizes average FP TASS
-          - also encourages TP taxids to have TASS near 1
-        """
-        scores = _score_by_taxid(weights3)
+    tp = metrics_df["tp_reads"].to_numpy(dtype=int)
+    fp = metrics_df["fp_reads"].to_numpy(dtype=int)
+    total = tp + fp
 
-        tp_scores = [scores.get(t, 0.0) for t in tp_taxids]
-        fp_scores = [scores.get(t, 0.0) for t in fp_taxids]
+    report_rows = []
+    for i in range(len(metrics_df)):
+        report_rows.append({
+            "taxid": str(metrics_df.iloc[i]["taxid"]),
+            "name": str(metrics_df.iloc[i].get("name", "")),
+            "tp_reads": int(tp[i]),
+            "fp_reads": int(fp[i]),
+            "total_reads": int(total[i]),
+            "fp_fraction": float(fp[i] / total[i]) if total[i] else 0.0,
+            "tass_score": float(scores[i]),
+            "features": {
+                "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
+                "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
+                "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
+            }
+        })
 
-        # If sets are empty, keep stable behavior but don't make loss constant-zero silently.
-        if len(tp_scores) == 0:
-            tp_term = 1.0  # strong penalty: "we can't reward TP if none map"
-        else:
-            tp_term = float(np.mean([(1.0 - s) ** 2 for s in tp_scores]))
+    report_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
 
-        if len(fp_scores) == 0:
-            fp_max_term = 0.0
-            fp_mean_term = 0.0
-        else:
-            fp_max = float(np.max(fp_scores))
-            fp_max_term = fp_max ** 2
-            fp_mean_term = float(np.mean([s ** 2 for s in fp_scores]))
+    report_obj = {
+        "status": "ok",
+        "config": {
+            "alpha": float(alpha),
+            "pos_weight": float(optimize_pos_weight),
+            "neg_weight": float(optimize_neg_weight),
+            "reg_lambda": float(optimize_reg),
+            "seed": int(optimize_seed),
+            "maxiter_global": int(optimize_maxiter),
+            "maxiter_local": int(optimize_local_maxiter),
+            "optimize_mode": optimize_mode,
+            "hybrid_lambda": float(hybrid_lambda),
+            "start_weights": start_w,
+        },
+        "best_weights": {
+            "breadth_weight": float(breadth_weight),
+            "minhash_weight": float(minhash_weight),
+            "gini_weight": float(gini_weight),
+        },
+        "optimizer": opt,
+        "report": report_rows,
+    }
 
-        # Total loss (minimize)
-        return (lambda_tp * tp_term) + (lambda_fp_max * fp_max_term) + (lambda_fp_mean * fp_mean_term)
+    with open(optimize_report, "w") as f:
+        json.dump(report_obj, f, indent=2)
 
-    # -------- build GT taxid sets from BAM --------
-    acc_to_taxid = _build_acc_to_taxid(match_tsv, accessioncol=0, taxcol=1, has_header=True, sep="\t")
-    if not acc_to_taxid:
-        raise ValueError(f"Could not build acc->taxid mapping from match file: {match_tsv}")
+    return report_obj
 
-    tp_taxids, fp_taxids, dbg = _derive_tp_fp_taxids(bam_path, acc_to_taxid)
 
-    if verbose:
-        print("=== TAXID GT sets derived from BAM ===")
-        for k, v in dbg.items():
-            print(f"{k}: {v}")
-        # sanity: show a few
-        print("TP taxids sample:", list(sorted(tp_taxids))[:10])
-        print("FP taxids sample:", list(sorted(fp_taxids))[:10])
 
-    # -------- optimize with SLSQP --------
-    x0 = np.array(initial, dtype=float)
-    if np.any(x0 < 0):
-        x0 = np.clip(x0, 0, None)
-    if x0.sum() <= 0:
-        x0 = np.array([1/3, 1/3, 1/3], dtype=float)
+def _clip01(x: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+    return np.clip(x, eps, 1.0 - eps)
+def optimize_weights_for_tp_fp(
+    metrics_df,
+    tp_fp_counts: dict[str, tuple[int, int]],
+    *,
+    accession_col: str,
+    start_weights: dict,
+    alpha: float,
+    pos_weight: float,
+    neg_weight: float,
+    reg_lambda: float,
+    seed: int,
+    maxiter_global: int,
+    maxiter_local: int,
+    optimize_mode: str = "taxids",   # "reads" | "taxids" | "hybrid"
+    hybrid_lambda: float = 0.5,
+):
+    from scipy.optimize import differential_evolution, minimize
+    import numpy as np
+
+    accessions = metrics_df[accession_col].astype(str).tolist()
+    tp = np.array([tp_fp_counts.get(a, (0, 0))[0] for a in accessions], dtype=float)
+    fp = np.array([tp_fp_counts.get(a, (0, 0))[1] for a in accessions], dtype=float)
+
+    y_pos = (tp > 0).astype(float)
+    y_neg = (fp > 0).astype(float)
+
+    tp_total_reads = float(tp.sum())
+    fp_total_reads = float(fp.sum())
+    tp_total_taxa = float(y_pos.sum())
+    fp_total_taxa = float(y_neg.sum())
+
+    # mode feasibility checks
+    if optimize_mode == "reads":
+        if tp_total_reads <= 0 or fp_total_reads <= 0:
+            return {"weights": start_weights, "status": "skipped (need both TP and FP reads)"}
+    elif optimize_mode == "taxids":
+        if tp_total_taxa <= 0 or fp_total_taxa <= 0:
+            return {"weights": start_weights, "status": "skipped (need both TP and FP taxids)"}
+    elif optimize_mode == "hybrid":
+        if (tp_total_reads <= 0 and tp_total_taxa <= 0) or (fp_total_reads <= 0 and fp_total_taxa <= 0):
+            return {"weights": start_weights, "status": "skipped (need TP/FP signal)"}
     else:
-        x0 = x0 / x0.sum()
+        raise ValueError(f"Unknown optimize_mode: {optimize_mode}")
 
-    bounds = [(0.0, 1.0), (0.0, 1.0), (0.0, 1.0)]
-    cons = [{"type": "eq", "fun": lambda w: float(w[0] + w[1] + w[2] - 1.0)}]
+    # normalize class weights
+    s = pos_weight + neg_weight
+    pos_w = pos_weight / s
+    neg_w = neg_weight / s
 
-    # baseline
-    baseline_loss = _loss(x0, tp_taxids, fp_taxids)
+    w0 = np.array([
+        start_weights["breadth_weight"],
+        start_weights["minhash_weight"],
+        start_weights["gini_weight"],
+    ], dtype=float)
 
-    def obj(w):
-        # minimize loss
-        return _loss(w, tp_taxids, fp_taxids)
+    w0 = np.clip(w0, 0.0, 1.0)
+    w0 = (w0 / w0.sum()) if w0.sum() > 0 else np.array([1/3, 1/3, 1/3], dtype=float)
 
-    res = minimize(
-        obj,
-        x0,
-        method="SLSQP",
+    def loss_for_w(w: np.ndarray) -> float:
+        # simplex constraints (soft)
+        if np.any(w < 0) or np.any(w > 1) or abs(w.sum() - 1.0) > 1e-6:
+            return 1e6 + 1e6 * (w.sum() - 1.0) ** 2
+
+        scores = compute_tass_score_from_metrics(
+            metrics_df,
+            breadth_w=float(w[0]),
+            minhash_w=float(w[1]),
+            gini_w=float(w[2]),
+            alpha=alpha,
+        )
+        p = _clip01(np.asarray(scores, dtype=float))
+
+        # read-weighted terms
+        read_pos_term = (-np.sum(tp * np.log(p)) / tp_total_reads) if tp_total_reads > 0 else 0.0
+        read_neg_term = (-np.sum(fp * np.log(1.0 - p)) / fp_total_reads) if fp_total_reads > 0 else 0.0
+
+        # taxid-level terms
+        tax_pos_term = (-np.sum(y_pos * np.log(p)) / tp_total_taxa) if tp_total_taxa > 0 else 0.0
+        tax_neg_term = (-np.sum(y_neg * np.log(1.0 - p)) / fp_total_taxa) if fp_total_taxa > 0 else 0.0
+
+        if optimize_mode == "reads":
+            pos_term, neg_term = read_pos_term, read_neg_term
+        elif optimize_mode == "taxids":
+            pos_term, neg_term = tax_pos_term, tax_neg_term
+        else:
+            lam = max(0.0, min(1.0, float(hybrid_lambda)))
+            pos_term = lam * tax_pos_term + (1.0 - lam) * read_pos_term
+            neg_term = lam * tax_neg_term + (1.0 - lam) * read_neg_term
+
+        reg = reg_lambda * float(np.sum((w - w0) ** 2))
+        return pos_w * pos_term + neg_w * neg_term + reg
+
+    # --- Global stage (DE) over 2 vars, 3rd implied by sum=1 ---
+    # x = [w_breadth, w_minhash], w_gini = 1 - sum(x)
+    def unpack_x(x: np.ndarray) -> np.ndarray:
+        wb, wm = float(x[0]), float(x[1])
+        wg = 1.0 - (wb + wm)
+        return np.array([wb, wm, wg], dtype=float)
+
+    def loss_for_x(x: np.ndarray) -> float:
+        w = unpack_x(x)
+        if np.any(w < 0.0) or np.any(w > 1.0):
+            return 1e6 + 1e6 * max(0.0, -w.min())
+        return loss_for_w(w)
+
+    bounds = [(0.0, 1.0), (0.0, 1.0)]
+    rng = np.random.RandomState(seed)
+
+    de_res = differential_evolution(
+        loss_for_x,
         bounds=bounds,
+        maxiter=maxiter_global,
+        seed=rng,
+        polish=False,
+        updating="deferred",
+        workers=1,
+    )
+
+    w_de = unpack_x(de_res.x)
+    if np.any(w_de < 0) or abs(w_de.sum() - 1.0) > 1e-6:
+        w_de = w0.copy()
+    else:
+        w_de = np.clip(w_de, 0.0, 1.0)
+        w_de = w_de / w_de.sum()
+
+    # --- Local refinement (SLSQP) on 3 vars ---
+    cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+    bnds = [(0.0, 1.0)] * 3
+
+    local_res = minimize(
+        loss_for_w,
+        x0=w_de,
+        method="SLSQP",
+        bounds=bnds,
         constraints=cons,
-        options={"maxiter": int(maxiter), "disp": bool(verbose)},
+        options={"maxiter": maxiter_local, "ftol": 1e-9},
     )
 
-    wopt = res.x
-    wopt = np.clip(wopt, 0, 1)
-    wopt = wopt / wopt.sum() if wopt.sum() > 0 else np.array([1/3, 1/3, 1/3], dtype=float)
+    w_best = np.clip(local_res.x, 0.0, 1.0)
+    w_best = w_best / w_best.sum()
 
-    opt_loss = _loss(wopt, tp_taxids, fp_taxids)
-
-    # compute post scores for reporting
-    scores_opt = _score_by_taxid(wopt)
-    tp_scores_opt = [scores_opt.get(t, 0.0) for t in tp_taxids]
-    fp_scores_opt = [scores_opt.get(t, 0.0) for t in fp_taxids]
-
-    report = dict(
-        success=bool(res.success),
-        message=str(res.message),
-        n_iter=int(getattr(res, "nit", -1)),
-        baseline_loss=float(baseline_loss),
-        optimized_loss=float(opt_loss),
-        initial_weights=dict(breadth_weight=float(x0[0]), gini_weight=float(x0[1]), minhash_weight=float(x0[2])),
-        optimized_weights=dict(breadth_weight=float(wopt[0]), gini_weight=float(wopt[1]), minhash_weight=float(wopt[2])),
-        tp_taxids=tp_taxids,
-        fp_taxids=fp_taxids,
-        tp_mean_score=float(np.mean(tp_scores_opt)) if tp_scores_opt else 0.0,
-        fp_mean_score=float(np.mean(fp_scores_opt)) if fp_scores_opt else 0.0,
-        fp_max_score=float(np.max(fp_scores_opt)) if fp_scores_opt else 0.0,
+    # summaries (both read and taxid views)
+    scores_best = compute_tass_score_from_metrics(
+        metrics_df,
+        breadth_w=float(w_best[0]),
+        minhash_w=float(w_best[1]),
+        gini_w=float(w_best[2]),
+        alpha=alpha,
     )
+    scores_best = np.asarray(scores_best, dtype=float)
 
-    if verbose:
-        print("\n=== 3-weight TAXID optimization summary ===")
-        print("Initial weights:", report["initial_weights"])
-        print(f"Baseline loss: {report['baseline_loss']:.6f}")
-        print("Optimized weights:", report["optimized_weights"])
-        print(f"Optimized loss: {report['optimized_loss']:.6f}")
-        print(f"TP mean TASS: {report['tp_mean_score']:.4f}")
-        print(f"FP mean TASS: {report['fp_mean_score']:.4f}")
-        print(f"FP max  TASS: {report['fp_max_score']:.4f}")
+    tp_mean_reads = float(np.sum(tp * scores_best) / tp_total_reads) if tp_total_reads > 0 else None
+    fp_mean_reads = float(np.sum(fp * scores_best) / fp_total_reads) if fp_total_reads > 0 else None
+    tp_mean_taxa = float(np.sum(y_pos * scores_best) / tp_total_taxa) if tp_total_taxa > 0 else None
+    fp_mean_taxa = float(np.sum(y_neg * scores_best) / fp_total_taxa) if fp_total_taxa > 0 else None
 
-    return report
+    return {
+        "weights": {
+            "breadth_weight": float(w_best[0]),
+            "minhash_weight": float(w_best[1]),
+            "gini_weight": float(w_best[2]),
+        },
+        "status": "ok",
+        "optimize_mode": optimize_mode,
+        "hybrid_lambda": float(hybrid_lambda),
+        "tp_total_reads": int(tp_total_reads),
+        "fp_total_reads": int(fp_total_reads),
+        "tp_total_taxa": int(tp_total_taxa),
+        "fp_total_taxa": int(fp_total_taxa),
+        "tp_mean_score_reads": tp_mean_reads,
+        "fp_mean_score_reads": fp_mean_reads,
+        "tp_mean_score_taxa": tp_mean_taxa,
+        "fp_mean_score_taxa": fp_mean_taxa,
+        "loss": float(loss_for_w(w_best)),
+        "global_fun": float(de_res.fun),
+        "local_success": bool(local_res.success),
+        "local_message": str(local_res.message),
+    }
+
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="Build confusion metrics and per-read remaining false positives.")
@@ -666,6 +707,360 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
+_ACCESSION_RE = re.compile(r"([A-Z]{1,4}_[A-Z0-9]{3,}\.\d+|[A-Z]{1,4}[0-9]{5,}\.\d+)")
+
+def canonical_accession(s: str) -> Optional[str]:
+    """
+    Extract canonical accession from read ids / BAM reference names.
+
+    Examples:
+      "@NC_003310.1_3323_4" -> "NC_003310.1"
+      "NC_003310.1|Monkeypox virus" -> "NC_003310.1"
+      "NC_003310.1 some desc" -> "NC_003310.1"
+    """
+    if not s:
+        return None
+    s = s.strip()
+    if s.startswith("@"):
+        s = s[1:]
+
+    m = _ACCESSION_RE.search(s)
+    if m:
+        return m.group(1)
+
+    # fallback to your original rule
+    return s.split("_", 1)[0]
+
+
+def compute_tp_fp_counts_by_taxid(
+    bam_path: str,
+    accession_to_taxid: dict,
+    *,
+    skip_secondary: bool = True,
+    skip_supplementary: bool = True,
+    debug_n: int = 10,
+):
+    """
+    Count TP/FP reads per *aligned taxid*.
+
+    For each alignment:
+      truth_acc = canonical_accession(QNAME)
+      aligned_acc = canonical_accession(RNAME)
+      truth_taxid = accession_to_taxid.get(truth_acc)
+      aligned_taxid = accession_to_taxid.get(aligned_acc)
+
+    If aligned_taxid is missing -> skip (can't attribute)
+    If truth_taxid is missing -> count as FP against aligned_taxid (conservative), OR skip if you prefer.
+
+    TP if truth_taxid == aligned_taxid else FP
+
+    Returns:
+      dict[taxid_str] = (tp_reads, fp_reads)
+    """
+    counts = defaultdict(lambda: [0, 0])
+    debug = []
+
+    with pysam.AlignmentFile(bam_path, "rb") as bam:
+        for aln in bam.fetch(until_eof=True):
+            if aln.is_unmapped:
+                continue
+            if skip_secondary and aln.is_secondary:
+                continue
+            if skip_supplementary and aln.is_supplementary:
+                continue
+
+            raw_ref = bam.get_reference_name(aln.reference_id)
+
+            aligned_acc = canonical_accession(raw_ref)
+            truth_acc = canonical_accession(aln.query_name)
+
+            if not aligned_acc or not truth_acc:
+                continue
+
+            aligned_taxid = accession_to_taxid.get(aligned_acc)
+            truth_taxid = accession_to_taxid.get(truth_acc)
+
+            # if we can't map aligned ref -> taxid, we can't assign this alignment
+            if aligned_taxid is None:
+                continue
+
+            aligned_taxid = str(aligned_taxid)
+            truth_taxid = str(truth_taxid) if truth_taxid is not None else None
+
+            if truth_taxid is not None and truth_taxid == aligned_taxid:
+                counts[aligned_taxid][0] += 1
+            else:
+                counts[aligned_taxid][1] += 1
+                if len(debug) < debug_n:
+                    debug.append((truth_acc, truth_taxid, aligned_acc, aligned_taxid))
+
+    if debug:
+        print("[debug] first mismatches (truth_acc, truth_taxid -> aligned_acc, aligned_taxid):")
+        for tacc, ttx, aacc, atx in debug:
+            print(f"  {tacc} ({ttx})  ->  {aacc} ({atx})")
+
+    return {k: (v[0], v[1]) for k, v in counts.items()}
+
+
+def build_metrics_df_from_final_json(
+    final_json: dict,  # <-- CHANGED: now dict[taxid] -> stats dict
+    tp_fp_by_taxid: dict[str, tuple[int, int]],
+):
+    """
+    Build per-taxid metrics_df from a 1D dict final_json and merge TP/FP counts.
+
+    final_json format (new):
+      {
+        "28871": {"name": "...", "breadth_log_score": ..., "minhash_reduction": ..., ...},
+        "2200830": {...},
+        ...
+      }
+
+    Returns DataFrame with:
+      taxid, name, accessions, breadth_log_score, minhash_reduction, disparity_score, gini_coefficient,
+      tp_reads, fp_reads, total_reads, fp_fraction
+    """
+    rows = []
+
+    for taxid_key, stats in (final_json or {}).items():
+        if stats is None:
+            continue
+
+        taxid = str(taxid_key).strip()
+        if not taxid:
+            continue
+
+        # Accessions may be present but often empty in your new structure
+        accs = stats.get("accessions") or []
+        accs = sorted({canonical_accession(a) for a in accs if canonical_accession(a)})
+
+        # Features (match your optimizer targets)
+        breadth = float(stats.get("breadth_log_score", 0.0))
+        minhash = float(stats.get("minhash_reduction", stats.get("minhash_score", 0.0)))
+
+        # Prefer k2_disparity_score; fall back to disparity if present
+        disparity = float(stats.get("k2_disparity_score", stats.get("disparity", 0.0)))
+
+        gini = float(stats.get("gini_coefficient", 0.0))
+
+        tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
+        total = tp + fp
+
+        rows.append({
+            "taxid": taxid,
+            "name": stats.get("name", ""),
+            "accessions": accs,
+            "breadth_log_score": breadth,
+            "minhash_reduction": minhash,
+            "disparity_score": disparity,
+            "gini_coefficient": gini,
+            "tp_reads": int(tp),
+            "fp_reads": int(fp),
+            "total_reads": int(total),
+            "fp_fraction": (fp / total) if total else 0.0,
+        })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    # Defensive: if taxid somehow duplicated, consolidate
+    def union_lists(series):
+        s = set()
+        for lst in series:
+            s.update(lst or [])
+        return sorted(s)
+
+    agg = {
+        "name": "first",
+        "accessions": union_lists,
+        "breadth_log_score": "max",
+        "minhash_reduction": "max",
+        "disparity_score": "max",
+        "gini_coefficient": "max",
+        "tp_reads": "sum",
+        "fp_reads": "sum",
+        "total_reads": "sum",
+    }
+
+    df = df.groupby("taxid", as_index=False).agg(agg)
+    df["fp_fraction"] = df.apply(
+        lambda r: (r["fp_reads"] / r["total_reads"]) if r["total_reads"] else 0.0,
+        axis=1
+    )
+
+    # Helpful ordering for debugging
+    df = df.sort_values(["fp_reads", "tp_reads"], ascending=[False, False]).reset_index(drop=True)
+    return df
+
+def build_ground_truth_metrics_df(
+    bam_path: str,
+    *,
+    skip_secondary: bool = True,
+    skip_supplementary: bool = True,
+    debug_n: int = 10,
+) -> pd.DataFrame:
+    """
+    Build per-aligned-reference TP/FP counts using BAM-derived ground truth.
+
+    Truth accession is extracted from QNAME (first accession-looking token).
+    Aligned accession is extracted from RNAME (reference name in BAM).
+      TP if aligned_accession == truth_accession else FP
+
+    Returns DataFrame:
+      accession | tp_reads | fp_reads | total_reads | fp_fraction
+    """
+
+    counts = defaultdict(lambda: [0, 0])  # aligned_acc -> [tp, fp]
+    debug_examples: list[Tuple[str, str]] = []  # (truth, aligned)
+
+    with pysam.AlignmentFile(bam_path, "rb") as bam:
+        for aln in bam.fetch(until_eof=True):
+            if aln.is_unmapped:
+                continue
+            if skip_secondary and aln.is_secondary:
+                continue
+            if skip_supplementary and aln.is_supplementary:
+                continue
+
+            # aligned ref name from BAM header
+            raw_ref = bam.get_reference_name(aln.reference_id)
+            aligned_acc = _canonical_accession(raw_ref)
+
+            # truth accession from read id
+            truth_acc = _canonical_accession(aln.query_name)
+
+            # If we can't canonicalize, skip (or you could count separately)
+            if not aligned_acc or not truth_acc:
+                continue
+
+            if aligned_acc == truth_acc:
+                counts[aligned_acc][0] += 1
+            else:
+                counts[aligned_acc][1] += 1
+                if len(debug_examples) < debug_n:
+                    debug_examples.append((truth_acc, aligned_acc))
+
+    if debug_examples:
+        print("[debug] first mismatches (truth -> aligned):")
+        for t, a in debug_examples:
+            print(f"  {t}  ->  {a}")
+
+    rows = []
+    for accession, (tp, fp) in counts.items():
+        total = tp + fp
+        rows.append({
+            "accession": accession,
+            "tp_reads": tp,
+            "fp_reads": fp,
+            "total_reads": total,
+            "fp_fraction": (fp / total) if total else 0.0,
+        })
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["fp_reads", "tp_reads"], ascending=[False, False]).reset_index(drop=True)
+
+    return df
+
+# A reasonably broad accession matcher (NC_, NZ_, CP, etc.), with version if present
+_ACCESSION_RE = re.compile(r"([A-Z]{1,4}_[A-Z0-9]{3,}\.\d+|[A-Z]{1,4}[0-9]{5,}\.\d+)")
+
+
+def _canonical_accession(s: str) -> Optional[str]:
+    """
+    Extract a canonical accession from a string.
+
+    Examples it should handle:
+      - "NC_003310.1_3323_4" -> "NC_003310.1"
+      - "@NC_003310.1_3323_4" -> "NC_003310.1"
+      - "NC_003310.1|foo bar" -> "NC_003310.1"
+      - "NC_003310.1 some desc" -> "NC_003310.1"
+    """
+    if not s:
+        return None
+
+    s = s.strip()
+    if s.startswith("@"):
+        s = s[1:]
+
+    m = _ACCESSION_RE.search(s)
+    if m:
+        return m.group(1)
+
+    # fallback: your original rule (left of first underscore)
+    return s.split("_", 1)[0]
+
+
+def build_ground_truth_metrics_df(
+    bam_path: str,
+    *,
+    skip_secondary: bool = True,
+    skip_supplementary: bool = True,
+    debug_n: int = 10,
+) -> pd.DataFrame:
+    """
+    Build per-aligned-reference TP/FP counts using BAM-derived ground truth.
+
+    Truth accession is extracted from QNAME (first accession-looking token).
+    Aligned accession is extracted from RNAME (reference name in BAM).
+      TP if aligned_accession == truth_accession else FP
+
+    Returns DataFrame:
+      accession | tp_reads | fp_reads | total_reads | fp_fraction
+    """
+
+    counts = defaultdict(lambda: [0, 0])  # aligned_acc -> [tp, fp]
+    debug_examples: list[Tuple[str, str]] = []  # (truth, aligned)
+
+    with pysam.AlignmentFile(bam_path, "rb") as bam:
+        for aln in bam.fetch(until_eof=True):
+            if aln.is_unmapped:
+                continue
+            if skip_secondary and aln.is_secondary:
+                continue
+            if skip_supplementary and aln.is_supplementary:
+                continue
+
+            # aligned ref name from BAM header
+            raw_ref = bam.get_reference_name(aln.reference_id)
+            aligned_acc = _canonical_accession(raw_ref)
+
+            # truth accession from read id
+            truth_acc = _canonical_accession(aln.query_name)
+
+            # If we can't canonicalize, skip (or you could count separately)
+            if not aligned_acc or not truth_acc:
+                continue
+
+            if aligned_acc == truth_acc:
+                counts[aligned_acc][0] += 1
+            else:
+                counts[aligned_acc][1] += 1
+                if len(debug_examples) < debug_n:
+                    debug_examples.append((truth_acc, aligned_acc))
+
+    if debug_examples:
+        print("[debug] first mismatches (truth -> aligned):")
+        for t, a in debug_examples:
+            print(f"  {t}  ->  {a}")
+
+    rows = []
+    for accession, (tp, fp) in counts.items():
+        total = tp + fp
+        rows.append({
+            "accession": accession,
+            "tp_reads": tp,
+            "fp_reads": fp,
+            "total_reads": total,
+            "fp_fraction": (fp / total) if total else 0.0,
+        })
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["fp_reads", "tp_reads"], ascending=[False, False]).reset_index(drop=True)
+
+    return df
 def main(argv=None):
     args = parse_args(argv)
 

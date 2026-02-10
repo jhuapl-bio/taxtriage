@@ -54,7 +54,7 @@ process ORGANISM_MERGE_REPORT {
     // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
     def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
     def ani_matrix = ani_matrix.name != "NO_FILE3" ? " --ani_matrix $ani_matrix " : ""
-    def rank = params.report_rank ? " --rank $params.report_rank " : ""
+    def rank = params.rank ? " --rank $params.rank " : ""
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
