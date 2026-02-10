@@ -786,6 +786,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         "• <b>Detected Organism:</b> The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "• <b>Microbial Category:</b> The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
         "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
+        "• <b>RPKM (RPM):</b> Reads Per Kilobase per Million mapped reads (RPKM) and Reads Per Million (RPM). These normalized metrics allow for comparison of abundance across samples and organisms of different sizes.",
         "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest confidence.",
         "• <b>Taxonomic ID #:</b> The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
         "• <b>Pathogenic Subsp/Strains:</b> Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
@@ -990,10 +991,12 @@ def get_category_color(microbial_category, ann_class, alpha=1.0):
     return base_color
 
 
+
+
 def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data, ani_threshold, show_ani_column, show_k2_column, taxid_to_bookmark, valid_bookmarks, sample_total_reads=0, sample_name=None, available_width=None):
     """
     Create a single table combining all strains from all species groups.
-    Each species group's strains appear consecutively with group info on the left.
+    Each species group gets its own header row, followed by its strains.
 
     Args:
         all_strains: List of all strain dictionaries from all species groups
@@ -1034,20 +1037,28 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         leading=8
     )
 
+    group_header_style = ParagraphStyle(
+        'GroupHeader',
+        parent=small_style,
+        fontSize=10,
+        leading=11,
+        fontName='Helvetica-Bold'
+    )
+
     # Table headers - build dynamically based on what columns to show
-    headers = ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS', 'K2 Reads', 'High ANI'] if show_k2_column and show_ani_column else (
-        ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS', 'K2 Reads'] if show_k2_column else (
-            ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS', 'High ANI'] if show_ani_column else
-            ['Group Info', '', 'Strain Name', 'Reads', 'Coverage', 'TASS']
+    # Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
+    headers = ['', 'Strain Name', 'TASS', 'K2 Reads', 'Reads', 'RPKM (RPM)', 'Coverage', 'High ANI'] if show_k2_column and show_ani_column else (
+        ['', 'Strain Name', 'TASS', 'K2 Reads', 'Reads', 'RPKM (RPM)', 'Coverage'] if show_k2_column else (
+            ['', 'Strain Name', 'TASS', 'Reads', 'RPKM (RPM)', 'Coverage', 'High ANI'] if show_ani_column else
+            ['', 'Strain Name', 'TASS', 'Reads', 'RPKM (RPM)', 'Coverage']
         )
     )
 
     table_data = [headers]
 
-    # Track which species groups we've seen and their row spans
+    # Track which species groups we've seen
     current_species_group = None
-    group_start_row = None
-    span_info = []  # List of (start_row, end_row, group_summary)
+    group_row_indices = []  # Track row indices that are group headers
 
     row_idx = 1  # Start after header
 
@@ -1057,38 +1068,45 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
 
         # Check if we're starting a new species group
         if current_species_group != species_key:
-            # Save span info for previous group
-            if current_species_group is not None:
-                span_info.append((group_start_row, row_idx - 1))
-
-            # Start new group
+            # Start new group - add group header row
             current_species_group = species_key
-            group_start_row = row_idx
 
-            # Create group summary with colored square
             group_name = species_group.get('toplevelname', 'Unknown')
-            group_tass = species_group.get('tass_score', 0)
             group_reads = species_group.get('numreads', 0)
+            group_k2_reads = species_group.get('k2_reads', 0)
             group_category = species_group.get('microbial_category', 'Unknown')
             group_ann_class = species_group.get('annClass', '')
 
-            # Get color for the square
+            # Get color for the group row background
             category_color = get_category_color(group_category, group_ann_class, alpha=1.0)
-            color_hex = '#{:02x}{:02x}{:02x}'.format(
-                int(category_color.red * 255),
-                int(category_color.green * 255),
-                int(category_color.blue * 255)
+
+            # Create group name with link
+            group_name_para = Paragraph(
+                f'<b><link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" color="blue">{group_name}</link></b>',
+                group_header_style
             )
 
-            group_summary = Paragraph(
-                f"<link color=\"blue\"  href=\"https://www.ncbi.nlm.nih.gov/taxonomy/?term=Escherichia\">{group_name}</link> "
-                f'<font color="{color_hex}">■</font><br/>'
-                f"TASS: {group_tass*100:.1f}<br/>"
-                f"# Alignments: {group_reads:,.0f}",
-                small_style
-            )
-        else:
-            group_summary = ''  # Will be spanned from above
+            # Build group header row
+            # Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
+            group_row = [
+                '',  # Star column - empty
+                group_name_para,  # Group name
+                '',  # TASS - blank for groups
+            ]
+
+            if show_k2_column:
+                group_row.append(Paragraph(f'<b>{group_k2_reads:,.0f}</b>', group_header_style))  # K2 Reads
+
+            group_row.append(Paragraph(f'<b>{group_reads:,.0f}</b>', group_header_style))  # Reads aligned
+            group_row.append('')  # RPKM/RPM - blank for groups
+            group_row.append('')  # Coverage - blank
+
+            if show_ani_column:
+                group_row.append('')  # High ANI - blank
+
+            table_data.append(group_row)
+            group_row_indices.append(row_idx)
+            row_idx += 1
 
         # Build strain data
         microbial_category = strain.get('microbial_category', 'Unknown')
@@ -1099,10 +1117,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         strain_key = strain.get('key', '')
 
         strain_name_text = (
-                f'{strain_name_text} '
-                f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
-                f'color="blue">{strain_key}</link>)'
-            )# Add star if high consequence
+            f'{strain_name_text} '
+            f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
+            f'color="blue">{strain_key}</link>)'
+        )
 
         strain_name = Paragraph(strain_name_text, strain_name_style)
         indicator_text = '★' if is_high_consequence else ''
@@ -1129,32 +1147,37 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
                 high_ani_text = Paragraph(", ".join(ani_links), ani_style)
             else:
                 high_ani_text = Paragraph("-", ani_style)
+
         strain_reads = float(strain.get('numreads', 0) or 0)
         pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
         reads_text = f"{strain_reads:,.0f} ({pct:.1f}%)"
         reads_paragraph = Paragraph(reads_text, data_style)
-        # Build row - add columns conditionally
+
+        # Get RPKM and RPM values
+        rpkm = strain.get('rpkm', 0) or 0
+        rpm = strain.get('rpm', 0) or 0
+        rpkm_rpm_text = f"{rpkm:,.2f} ({rpm:,.2f})"
+        rpkm_rpm_paragraph = Paragraph(rpkm_rpm_text, data_style)
+
+        # Build row - Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
         row = [
-            group_summary,
             indicator_text,
             strain_name,
-            reads_paragraph,
-            Paragraph(f"{min(100,strain.get('coverage', 0)*100):.1f}%", data_style),
-            Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style),
+            Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style),  # TASS
         ]
 
         if show_k2_column:
-            row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))
+            row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))  # K2 Reads
+
+        row.append(reads_paragraph)  # Reads
+        row.append(rpkm_rpm_paragraph)  # RPKM (RPM)
+        row.append(Paragraph(f"{min(100,strain.get('coverage', 0)*100):.1f}%", data_style))  # Coverage
 
         if show_ani_column:
-            row.append(high_ani_text)
+            row.append(high_ani_text)  # High ANI
 
         table_data.append(row)
         row_idx += 1
-
-    # Save final group span
-    if current_species_group is not None:
-        span_info.append((group_start_row, row_idx - 1))
 
     # Create table with ADAPTIVE column widths based on available_width
     if available_width is None:
@@ -1162,53 +1185,54 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         available_width = 8.5*inch - 0.02*8.5*inch  # letter width minus 1% margins on each side
 
     # Calculate proportional widths based on available space
+    # Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
     if show_k2_column and show_ani_column:
         # All columns: 8 columns total
-        # Proportions: Group(16%), Star(3%), Name(36%), Reads(11%), Coverage(9%), TASS(8%), K2(9%), ANI(18%)
+        # Proportions: Star(3%), Name(30%), TASS(8%), K2(10%), Reads(11%), RPKM(10%), Coverage(9%), ANI(19%)
         col_widths = [
-            available_width * 0.16,  # Group Info
             available_width * 0.03,  # Star
-            available_width * 0.32,  # Strain Name
-            available_width * 0.11,  # Reads
-            available_width * 0.09,  # Coverage
+            available_width * 0.30,  # Strain Name
             available_width * 0.08,  # TASS
-            available_width * 0.09,  # K2 Reads
-            available_width * 0.12   # High ANI
+            available_width * 0.10,  # K2 Reads
+            available_width * 0.11,  # Reads
+            available_width * 0.10,  # RPKM (RPM)
+            available_width * 0.09,  # Coverage
+            available_width * 0.19   # High ANI
         ]
     elif show_k2_column:
         # 7 columns: no ANI
-        # Proportions: Group(18%), Star(3%), Name(42%), Reads(12%), Coverage(10%), TASS(9%), K2(11%)
+        # Proportions: Star(3%), Name(36%), TASS(9%), K2(13%), Reads(13%), RPKM(12%), Coverage(14%)
         col_widths = [
-            available_width * 0.18,  # Group Info
             available_width * 0.03,  # Star
-            available_width * 0.38,  # Strain Name
-            available_width * 0.12,  # Reads
-            available_width * 0.10,  # Coverage
+            available_width * 0.36,  # Strain Name
             available_width * 0.09,  # TASS
-            available_width * 0.10   # K2 Reads
+            available_width * 0.13,  # K2 Reads
+            available_width * 0.13,  # Reads
+            available_width * 0.12,  # RPKM (RPM)
+            available_width * 0.14   # Coverage
         ]
     elif show_ani_column:
         # 7 columns: no K2
-        # Proportions: Group(18%), Star(3%), Name(38%), Reads(12%), Coverage(10%), TASS(9%), ANI(15%)
+        # Proportions: Star(3%), Name(34%), TASS(9%), Reads(13%), RPKM(11%), Coverage(10%), ANI(20%)
         col_widths = [
-            available_width * 0.18,  # Group Info
             available_width * 0.03,  # Star
             available_width * 0.34,  # Strain Name
-            available_width * 0.12,  # Reads
-            available_width * 0.10,  # Coverage
             available_width * 0.09,  # TASS
-            available_width * 0.14   # High ANI
+            available_width * 0.13,  # Reads
+            available_width * 0.11,  # RPKM (RPM)
+            available_width * 0.10,  # Coverage
+            available_width * 0.20   # High ANI
         ]
     else:
         # 6 columns: base case
-        # Proportions: Group(20%), Star(3%), Name(45%), Reads(13%), Coverage(11%), TASS(10%)
+        # Proportions: Star(3%), Name(43%), TASS(10%), Reads(15%), RPKM(13%), Coverage(16%)
         col_widths = [
-            available_width * 0.20,  # Group Info
             available_width * 0.03,  # Star
             available_width * 0.43,  # Strain Name
-            available_width * 0.13,  # Reads
-            available_width * 0.11,  # Coverage
-            available_width * 0.10   # TASS
+            available_width * 0.10,  # TASS
+            available_width * 0.15,  # Reads
+            available_width * 0.13,  # RPKM (RPM)
+            available_width * 0.16   # Coverage
         ]
 
     table = Table(table_data, repeatRows=1, colWidths=col_widths)
@@ -1223,45 +1247,52 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         ('FONTSIZE', (0, 0), (-1, 0), 9),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
 
-        # Group info column styling
-        ('VALIGN', (0, 1), (0, -1), 'TOP'),
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-        ('FONTSIZE', (0, 1), (0, -1), 8),
-        ('LEFTPADDING', (0, 1), (0, -1), 6),
-        ('RIGHTPADDING', (0, 1), (0, -1), 6),
-
         # Indicator column styling (star column)
-        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
-        ('VALIGN', (1, 1), (1, -1), 'MIDDLE'),
-        ('FONTSIZE', (1, 1), (1, -1), 14),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+        ('VALIGN', (0, 1), (0, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 1), (0, -1), 14),
 
         # Grid
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('VALIGN', (2, 1), (2, -1), 'MIDDLE'),
-        ('VALIGN', (3, 1), (-1, -1), 'MIDDLE'),
+        ('VALIGN', (1, 1), (1, -1), 'MIDDLE'),
+        ('VALIGN', (2, 1), (-1, -1), 'MIDDLE'),
 
         # General body styling
-        ('ALIGN', (3, 1), (-1, -1), 'CENTER'),
-        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),  # All data columns centered
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Strain name left-aligned
 
         # Padding for strain name column
-        ('LEFTPADDING', (2, 1), (2, -1), 6),
-        ('RIGHTPADDING', (2, 1), (2, -1), 6),
-        ('TOPPADDING', (2, 1), (2, -1), 6),
-        ('BOTTOMPADDING', (2, 1), (2, -1), 6),
+        ('LEFTPADDING', (1, 1), (1, -1), 6),
+        ('RIGHTPADDING', (1, 1), (1, -1), 6),
+        ('TOPPADDING', (1, 1), (1, -1), 6),
+        ('BOTTOMPADDING', (1, 1), (1, -1), 6),
     ]
 
-    # Fake merged look for Group Info col without SPAN (allows page splitting)
-    for start_row, end_row in span_info:
-        if start_row < end_row:
-            # remove internal horizontal lines only in column 0
-            table_styles.append(('LINEBELOW', (0, start_row), (0, end_row-1), 0, colors.white))
-            table_styles.append(('LINEABOVE', (0, start_row+1), (0, end_row), 0, colors.white))
+    # Add group header row styling
+    for group_row_idx in group_row_indices:
+        # Get the species group for this row to determine color
+        # We need to find which group this row belongs to
+        # For now, we'll apply a light hue - we'll calculate the proper color below
 
+        # Light gray/black background for group rows
+        table_styles.append(('BACKGROUND', (0, group_row_idx), (-1, group_row_idx), colors.HexColor('#E8E8E8')))
+        # Make text slightly larger and bold (already handled in Paragraph style)
+        table_styles.append(('ALIGN', (1, group_row_idx), (1, group_row_idx), 'LEFT'))
+        table_styles.append(('ALIGN', (2, group_row_idx), (-1, group_row_idx), 'CENTER'))
+        # Add some padding
+        table_styles.append(('TOPPADDING', (0, group_row_idx), (-1, group_row_idx), 8))
+        table_styles.append(('BOTTOMPADDING', (0, group_row_idx), (-1, group_row_idx), 8))
 
-    # Add row-specific colors
+    # Add row-specific colors for strain rows (skip group header rows)
     row_idx = 1
     for strain in all_strains:
+        species_group = species_group_map[id(strain)]
+        species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
+
+        # Skip to next row if this is the start of a new group (group header row)
+        if row_idx in group_row_indices:
+            row_idx += 1
+
         microbial_category = strain.get('microbial_category', 'Unknown')
         ann_class = strain.get('annClass', '')
 
@@ -1269,10 +1300,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         print(f"  Row {row_idx}: {strain.get('name', 'Unknown')[:40]} - Category: {microbial_category}, Class: {ann_class}")
 
         indicator_color = get_category_color(microbial_category, ann_class, alpha=1.0)
-        table_styles.append(('BACKGROUND', (1, row_idx), (1, row_idx), indicator_color))
+        table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), indicator_color))
 
         row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
-        table_styles.append(('BACKGROUND', (2, row_idx), (-1, row_idx), row_color))
+        table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
 
         row_idx += 1
 
@@ -1309,9 +1340,8 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
     )
 
     # Table headers - build dynamically based on what columns to show
-    headers = ['Sample', 'Strain Name', 'Reads', 'TASS']
-    if show_k2_column:
-        headers.insert(3, 'K2 Reads')
+    # Order: Sample, Strain Name, TASS, K2 Reads (if shown), Reads
+    headers = ['Sample', 'Strain Name', 'TASS', 'K2 Reads', 'Reads'] if show_k2_column else ['Sample', 'Strain Name', 'TASS', 'Reads']
 
     table_data = [headers]
 
@@ -1338,17 +1368,17 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
 
         strain_name = Paragraph(strain_name_text, strain_name_style)
 
-        # Build row - add columns conditionally
+        # Build row - Order: Sample, Strain Name, TASS, K2 Reads (if shown), Reads
         row = [
             Paragraph(sample_name, strain_name_style),
             strain_name,
-            Paragraph(f"{strain.get('numreads', 0):,.0f}", data_style),
+            Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style),  # TASS
         ]
 
         if show_k2_column:
-            row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))
+            row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))  # K2 Reads
 
-        row.append(Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style))
+        row.append(Paragraph(f"{strain.get('numreads', 0):,.0f}", data_style))  # Reads
 
         table_data.append(row)
 
@@ -1358,21 +1388,23 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
         available_width = 8.5*inch - 0.02*8.5*inch  # letter width minus 1% margins on each side
 
     if show_k2_column:
-        # 5 columns: Sample(20%), Name(50%), Reads(12%), K2(10%), TASS(10%)
+        # 5 columns: Sample, Strain Name, TASS, K2 Reads, Reads
+        # Proportions: Sample(18%), Name(50%), TASS(10%), K2(10%), Reads(12%)
         col_widths = [
             available_width * 0.18,  # Sample
             available_width * 0.50,  # Strain Name
-            available_width * 0.12,  # Reads
+            available_width * 0.10,  # TASS
             available_width * 0.10,  # K2 Reads
-            available_width * 0.10   # TASS
+            available_width * 0.12   # Reads
         ]
     else:
-        # 4 columns: Sample(22%), Name(56%), Reads(13%), TASS(11%)
+        # 4 columns: Sample, Strain Name, TASS, Reads
+        # Proportions: Sample(20%), Name(56%), TASS(11%), Reads(13%)
         col_widths = [
             available_width * 0.20,  # Sample
             available_width * 0.56,  # Strain Name
-            available_width * 0.13,  # Reads
-            available_width * 0.11   # TASS
+            available_width * 0.11,  # TASS
+            available_width * 0.13   # Reads
         ]
 
     table = Table(table_data, repeatRows=1, colWidths=col_widths)
@@ -1392,8 +1424,8 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
 
         # General body styling
-        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),  # Numbers centered
-        ('ALIGN', (0, 1), (1, -1), 'LEFT'),  # Names left-aligned
+        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),  # TASS, K2 Reads (if shown), Reads - all centered
+        ('ALIGN', (0, 1), (1, -1), 'LEFT'),  # Sample and Strain Name left-aligned
 
         # Padding
         ('LEFTPADDING', (0, 1), (-1, -1), 6),
@@ -1454,6 +1486,8 @@ def create_tabular_output(output_path, samples_dict, args):
         'isSpecies',
         'Pathogenic Subsp/Strains',
         'K2 Reads',
+        'RPKM',
+        'RPM',
         'Parent K2 Reads',
         'MapQ Score',
         'Disparity Score',
@@ -1535,6 +1569,8 @@ def create_tabular_output(output_path, samples_dict, args):
                     'True' if strain.get('isSpecies', False) else 'False',  # isSpecies
                     '',  # Pathogenic Subsp/Strains (leave blank for now as requested)
                     int(strain.get('k2_reads', 0) or 0),  # K2 Reads
+                    strain.get("rpkm", 0) or 0,  # RPKM (added for output file, not in PDF)
+                    strain.get("rpm", 0) or 0,  # RPM (added for output file, not in PDF)
                     int(strain.get('parent_k2_reads', 0) or 0),  # Parent K2 Reads
                     f"{(strain.get('mapq_score', 0) or 0):.2f}",  # MapQ Score
                     f"{(strain.get('disparity', 0) or 0):.2f}",  # Disparity Score (fixed mapping)
@@ -1555,7 +1591,6 @@ def create_tabular_output(output_path, samples_dict, args):
 
     # Create DataFrame
     df = pd.DataFrame(all_rows, columns=headers)
-
     # Save based on file extension
     if file_ext in ['.csv']:
         df.to_csv(output_path, index=False)

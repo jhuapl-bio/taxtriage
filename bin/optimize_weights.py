@@ -427,7 +427,7 @@ def calculate_normalized_groups(
         "meandepth", "meanmapq", "meanbaseq",
         "minhash_score", "k2_disparity_score", "hmp_percentile",
         # REMOVED: "breadth_log_score",  # will recalculate from aggregated coverage
-        "minhash_reduction", "gini_coefficient", "diamond_identity",
+        "minhash_reduction", "gini_coefficient", "diamond_identity", "rpkm", "rpm",
         "mapq_score",
     }
 
@@ -616,7 +616,6 @@ def sibling_disparity_from_group_reads(
         "sorted": items_sorted,
     }
 
-
 def compute_scores_per(
     data = {},
     reward_factor = 2,
@@ -624,54 +623,79 @@ def compute_scores_per(
     alpha = 1,
     comparison_df = pd.DataFrame(),
     fallback_top = "Unknown",
+    total_reads = 0
 ):
-    if len(data.get('covered_regions', [])) > 0 :
-        # gini_strain2 = gini_coverage_spread(data.get('covered_regions', []),  data['length'])
-        gini_strain = getGiniCoeff(data['covered_regions'],
-            data['length'], alpha=alpha,
+    if len(data.get('covered_regions', [])) > 0:
+        gini_strain = getGiniCoeff(
+            data['covered_regions'],
+            data['length'],
+            alpha=alpha,
             reward_factor=reward_factor,
             beta=dispersion_factor
         )
     else:
         gini_strain = 0
-    # get Δ All% column value if it exists, else set to 0
+
     col_stat2 = 'Δ All%'
     col_stat = 'Δ^-1 Breadth'
+
     if not comparison_df.empty:
-        # Ensure 'accession' is a string and matches the index type
         accession = str(data['accession']).strip()
         if accession in comparison_df.index:
-
             c1 = float(comparison_df.loc[accession, col_stat])
             d_all = float(comparison_df.loc[accession, col_stat2])
 
-            # Center penalty around -10% with steepness k
             k = 0.90
             x0 = -10.0
-            pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))  # in (0,1)
+            pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))
 
-            # Combine: breadth * penalty (pen dominates)
             comparison_value = min(1.0, c1 * pen)
-
-            data['minhash_score'] =  comparison_value
+            data['minhash_score'] = comparison_value
         else:
             data['minhash_score'] = 1
+
     data['strainname'] = data.get('strainname', fallback_top)
     data['gini_coefficient'] = gini_strain
-    # get the coveraged bases and length
-    data['covered_bases'] = sum([region[1] - region[0] + 1 for region in data.get('covered_regions', [])])
+
+    # Covered bases
+    data['covered_bases'] = sum(
+        region[1] - region[0] + 1 for region in data.get('covered_regions', [])
+    )
+
+    # MAPQ
     mapq = data.get('meanmapq', 0)
     data['mapq_score'] = normalize_mapq(mapq)
-    coverage = data.get('coverage')
-    # data['breadth_log_score'] = 1 - logarithmic_weight(coverage)
-    # data['breadth_log_score'] = (coverage ** 2)  # or ** 3 for more aggressive
 
+    # Breadth
+    coverage = data.get('coverage', 0)
     data['breadth_log_score'] = breadth_score_sigmoid(coverage)
-    data['minhash_reduction'] = data.get('minhash_score', 1)
-    # data['tass_score'] = compute_tass_score(data, weights)
 
+    data['minhash_reduction'] = data.get('minhash_score', 1)
+
+    # -------------------------
+    # RPM / RPKM (TPKM) metrics
+    # -------------------------
+
+    reads_mapped = data.get('numreads', 0)
+    ref_length_bp = data.get('length', 0)
+    total_reads_millions = total_reads / 1e6 if total_reads > 0 else 0
+    ref_length_kb = ref_length_bp / 1e3 if ref_length_bp > 0 else 0
+
+    # RPM: reads per million mapped reads
+    if total_reads_millions > 0:
+        data['rpm'] = reads_mapped / total_reads_millions
+    else:
+        data['rpm'] = 0
+
+    # RPKM / TPKM
+    if total_reads_millions > 0 and ref_length_kb > 0:
+        data['rpkm'] = reads_mapped / (total_reads_millions * ref_length_kb)
+    else:
+        data['rpkm'] = 0
 
     return data
+
+
 def breadth_score_sigmoid(coverage, midpoint=0.15, steepness=20):
         return 1.0 / (1.0 + math.exp(-steepness * (coverage - midpoint)))
 def calculate_mmbert_prob(
@@ -881,7 +905,7 @@ def compute_tass_score(data = {}, weights={}):
     tass_score = sum([
         apply_weight(data.get('disparity', 0), weights.get('disparity_weight', 0)),
         apply_weight(data.get('minhash_reduction', 0),       weights.get('minhash_weight', 0)),
-        apply_weight(data.get('gini_coefficient', 0),             weights.get('gini_coefficient', 0)),
+        apply_weight(data.get('gini_coefficient', 0),             weights.get('gini_weight', 0)),
         apply_weight(data.get('breadth_log_score', 0),             weights.get('breadth_weight', 0)),
         apply_weight(data.get('hmp_percentile', 0),             weights.get('hmp_weight', 0)),
         apply_weight(data.get('mapq_score', 0),       weights.get('mapq_score', 0)),

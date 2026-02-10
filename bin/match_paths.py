@@ -669,7 +669,7 @@ def main():
         'mapq_score': args.mapq_weight,
         'disparity_score': args.disparity_score_weight,
         'hmp_weight': args.hmp_weight,
-        'gini_coefficient': args.gini_weight,
+        'gini_weight': args.gini_weight,
         "breadth_weight": args.breadth_weight,
         "minhash_weight": args.minhash_weight,
         'siblings_score': 0,
@@ -978,8 +978,8 @@ def main():
             alpha = args.alpha,
             comparison_df = comparison_df,
             fallback_top = top,
+            total_reads = total_reads,
         )
-
     strain_summary = calculate_normalized_groups(
         hits=reference_hits,
         group_field="key",
