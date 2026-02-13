@@ -342,6 +342,8 @@ workflow TAXTRIAGE {
     ch_taxdump_dir = Channel.empty()
     ch_taxdump_nodes = Channel.empty()
     ch_taxdump_names = Channel.empty()
+    ch_taxdump_nodes = ch_empty_file
+    ch_taxdump_dir = ch_empty_file.parent
 
     if (!params.taxdump && (params.download_taxdump || (!params.taxdump && params.metaphlan) ) ){
         println "No taxdump provided, downloading the latest taxdump from NCBI"
@@ -353,10 +355,6 @@ workflow TAXTRIAGE {
         // set ch_taxdump_nodes BUT add nodes.dmp to end as a file
         ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
         ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
-    } else {
-        // set to empty_file
-        ch_taxdump_nodes = ch_empty_file
-        ch_taxdump_dir = ch_empty_file.parent
     }
 
     // if the download_db params is called AND the --db is not existient as a path
