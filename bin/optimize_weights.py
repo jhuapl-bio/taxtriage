@@ -526,7 +526,7 @@ def calculate_normalized_groups(
 
         # ========== RECALCULATE breadth_log_score from aggregated coverage ==========
         # This ensures plasmids don't skew the score
-        # agg["breadth_log_score"] = agg["coverage"] ** 2  # or use your preferred formula
+        # agg["breadth_log_score"] = agg["coverage"] ** 2  # preferred formula
         agg['breadth_log_score'] = breadth_score_sigmoid(agg["coverage"])
         # Examples:
         # agg["breadth_log_score"] = agg["coverage"] ** 3  # more aggressive
@@ -635,43 +635,6 @@ def compute_scores_per(
         )
     else:
         gini_strain = 0
-
-    col_stat2 = 'Δ All%'
-    col_stat = 'Δ^-1 Breadth'
-
-    if not comparison_df.empty:
-        accession = str(data['accession']).strip()
-        if accession in comparison_df.index:
-            c1 = float(comparison_df.loc[accession, col_stat])
-            d_all = float(comparison_df.loc[accession, col_stat2])
-
-            k = 0.90
-            x0 = -10.0
-            pen = 1.0 / (1.0 + math.exp(-k * (d_all - x0)))
-
-            comparison_value = min(1.0, c1 * pen)
-            data['minhash_score'] = comparison_value
-        else:
-            data['minhash_score'] = 1
-
-    data['strainname'] = data.get('strainname', fallback_top)
-    data['gini_coefficient'] = gini_strain
-
-    # Covered bases
-    data['covered_bases'] = sum(
-        region[1] - region[0] + 1 for region in data.get('covered_regions', [])
-    )
-
-    # MAPQ
-    mapq = data.get('meanmapq', 0)
-    data['mapq_score'] = normalize_mapq(mapq)
-
-    # Breadth
-    coverage = data.get('coverage', 0)
-    data['breadth_log_score'] = breadth_score_sigmoid(coverage)
-
-    data['minhash_reduction'] = data.get('minhash_score', 1)
-
     # -------------------------
     # RPM / RPKM (TPKM) metrics
     # -------------------------
@@ -693,10 +656,66 @@ def compute_scores_per(
     else:
         data['rpkm'] = 0
 
+    col_stat2 = 'Δ All%'
+    col_stat = 'Δ^-1 Breadth'
+    # -------------------------
+    # Minhash block (now rpm is available)
+    # -------------------------
+    reads_mapped = data.get('numreads', 0)
+
+    # Fraction of total reads hitting this reference
+    read_fraction = reads_mapped / total_reads if total_reads > 0 else 0
+    data['read_fraction'] = read_fraction
+
+    rpm_weight = rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001)
+
+    if not comparison_df.empty:
+        accession = str(data['accession']).strip()
+        if accession in comparison_df.index:
+            c1 = float(comparison_df.loc[accession, col_stat])
+            d_all = float(comparison_df.loc[accession, col_stat2])
+
+            k_sig = 0.90
+            x0 = -10.0
+            pen = 1.0 / (1.0 + math.exp(-k_sig * (d_all - x0)))
+
+            comparison_value = min(1.0, c1 * pen)
+            data['minhash_score'] = comparison_value * rpm_weight  # <-- apply weight
+        else:
+            data['minhash_score'] = rpm_weight  # <-- was hardcoded 1, now rpm-scaled
+    data['strainname'] = data.get('strainname', fallback_top)
+    data['gini_coefficient'] = gini_strain
+
+    # Covered bases
+    data['covered_bases'] = sum(
+        region[1] - region[0] + 1 for region in data.get('covered_regions', [])
+    )
+
+    # MAPQ
+    mapq = data.get('meanmapq', 0)
+    data['mapq_score'] = normalize_mapq(mapq)
+
+    # Breadth
+    coverage = data.get('coverage', 0)
+    data['breadth_log_score'] = breadth_score_sigmoid(coverage)
+
+    data['minhash_reduction'] = data.get('minhash_score', 1)
+
+
+
     return data
 
+def rpm_confidence_weight(read_fraction, k=50000, midpoint=0.0001):
+    """
+    read_fraction = reads_mapped / total_reads  (value between 0 and 1)
+    midpoint: fraction at which confidence = 0.5
+              0.0001 = 0.01% of total reads (tune to your typical noise floor)
+    k: steepness — needs to be large since fractions are tiny
+    """
+    return 1.0 / (1.0 + math.exp(-k * (read_fraction - midpoint)))
 
-def breadth_score_sigmoid(coverage, midpoint=0.15, steepness=20):
+
+def breadth_score_sigmoid(coverage, midpoint=0.09, steepness=20):
         return 1.0 / (1.0 + math.exp(-steepness * (coverage - midpoint)))
 def calculate_mmbert_prob(
     mmbert_dict = {},
@@ -1040,7 +1059,6 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
 
         # Not found in lineage either
         return None, None, None
-
     # if members is an attribute, and not empty then iterate through all of them
     if "members" in rec and rec["members"]:
         member_categories = []
@@ -1062,6 +1080,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
 
             if refpath:
                 # Use the new context-aware classification
+
                 cat, direct = get_pathogen_classification(refpath, normalized_sample_type)
                 st_cat = normalize_category(cat)
                 st_ann = "Direct" if direct else "Derived"

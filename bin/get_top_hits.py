@@ -108,6 +108,12 @@ def parse_args(argv=None):
         help="What body site to loook at distributions for. If empty and listed distributions enabled, this is assumed as Unknown",
     )
     parser.add_argument(
+        "--include_taxids",
+        metavar="INCLUDE_TAXIDS",
+        type=int, nargs="+", default=[],
+        help="OPTIONAL: List of taxids to include in the top hits regardless of rank or distribution",
+    )
+    parser.add_argument(
         "-l",
         "--log-level",
         help="The desired log level (default WARNING).",
@@ -185,19 +191,26 @@ def top_hit(mapping, specific_limits, top_per_rank, dist_orgs = []):
     newdata_seen = dict()
     countranks = dict()
     newdata = dict()
+    # build index once
+    by_taxid = {row['taxid']: row for row in mapping}
+
     for org in dist_orgs:
-        if not org in newdata:
-            # find the index and get value of the org in mapping
-            row = None
-            for row in mapping:
-                rank = row['rank']
-                if row['taxid'] == org:
-                    newdata[row['taxid']] = row
-                    break
-                if not rank in countranks:
-                    countranks[rank] = 1
-                else:
-                    countranks[rank] += 1
+        row = by_taxid.get(org)
+        if row is not None:
+            newdata[row['taxid']] = row
+    # for org in dist_orgs:
+    #     if not org in newdata:
+    #         # find the index and get value of the org in mapping
+    #         row = None
+    #         for row in mapping:
+    #             rank = row['rank']
+    #             if row['taxid'] == org:
+    #                 newdata[row['taxid']] = row
+    #                 break
+    #             if not rank in countranks:
+    #                 countranks[rank] = 1
+    #             else:
+    #                 countranks[rank] += 1
     for specifics, value in specific_limits.items():
         rank = value['rank']
         limit = value['limit']
@@ -283,6 +296,11 @@ def main(argv=None):
     dist_orgs = None
     pathogen_orgs = []
     extra_orgs = []
+    # Always include these taxids if they are present in the Kraken report
+    if args.include_taxids:
+        for tid in args.include_taxids:
+            if tid in seentaxids:
+                extra_orgs.append(tid)
     if args.body_site == "Unknown" or not args.body_site:
         body_sites = []
     else:

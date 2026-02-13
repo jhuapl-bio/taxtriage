@@ -912,8 +912,8 @@ def main():
                 hit['strainname'] = hit.get('name', acc)
                 continue
             top = taxid_to_rank(taxid, taxdump, wanted_rank )
+            acc_to_parent[acc] = taxid
             hit['key'] = taxid
-            acc_to_parent[acc] = top
             hit["toplevelkey"] = top if top else taxid  # fallback to itself if rank not found
             hit["rank"] = wanted_rank  # optional: record what you tried
             hit['strainname'] = hit.get('name', '')
@@ -985,6 +985,7 @@ def main():
         group_field="key",
         reads_key="numreads",
     )
+
     if args.optimize:
         report_weights = optimize_weights(
             input_bam = args.input,
@@ -995,6 +996,7 @@ def main():
             gini_weight = args.gini_weight,
             # disparity_weight = args.disparity_score_weight,
             alpha = args.alpha,
+            sampletype = sampletype,
             optimize_pos_weight = args.optimize_pos_weight,
             optimize_neg_weight = args.optimize_neg_weight,
             optimize_reg = args.optimize_reg,
@@ -1007,7 +1009,6 @@ def main():
         print("Optimized weights changed: ")
         for k, v in weights.items():
             print(f"\t{k}: {v}")
-    # exit()
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename

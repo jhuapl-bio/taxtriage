@@ -382,6 +382,7 @@ def optimize_weights(
     optimize_mode="taxids", # taxids | reads | hybrid
     hybrid_lambda=0.5,
     optimize_report="optimization_report.json",
+    sampletype="sterile",
 ):
     import json
     import numpy as np
@@ -391,7 +392,6 @@ def optimize_weights(
         accession_to_taxid=accession_to_taxid,
         debug_n=10,
     )
-
     metrics_df = build_metrics_df_from_final_json(final_json, tp_fp_counts)
     accession_col = "taxid"
 
@@ -427,6 +427,7 @@ def optimize_weights(
             "status": opt["status"],
             "config": {
                 "alpha": float(alpha),
+                "sampletype": sampletype,
                 "pos_weight": float(optimize_pos_weight),
                 "neg_weight": float(optimize_neg_weight),
                 "reg_lambda": float(optimize_reg),
@@ -486,6 +487,7 @@ def optimize_weights(
         "status": "ok",
         "config": {
             "alpha": float(alpha),
+            "sampletype": sampletype,
             "pos_weight": float(optimize_pos_weight),
             "neg_weight": float(optimize_neg_weight),
             "reg_lambda": float(optimize_reg),
@@ -759,7 +761,6 @@ def compute_tp_fp_counts_by_taxid(
     """
     counts = defaultdict(lambda: [0, 0])
     debug = []
-
     with pysam.AlignmentFile(bam_path, "rb") as bam:
         for aln in bam.fetch(until_eof=True):
             if aln.is_unmapped:
@@ -803,7 +804,7 @@ def compute_tp_fp_counts_by_taxid(
 
 
 def build_metrics_df_from_final_json(
-    final_json: dict,  # <-- CHANGED: now dict[taxid] -> stats dict
+    final_json: dict,
     tp_fp_by_taxid: dict[str, tuple[int, int]],
 ):
     """
@@ -821,7 +822,6 @@ def build_metrics_df_from_final_json(
       tp_reads, fp_reads, total_reads, fp_fraction
     """
     rows = []
-
     for taxid_key, stats in (final_json or {}).items():
         if stats is None:
             continue

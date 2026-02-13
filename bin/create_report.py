@@ -6,6 +6,7 @@ import os
 import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus.flowables import AnchorFlowable  # FIX: proper named destinations
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.lib import colors
@@ -422,16 +423,10 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         spaceAfter=20,
         alignment=TA_CENTER
     )
-    anchor_style = ParagraphStyle(
-        "Anchor",
-        parent=styles["Normal"],
-        fontSize=0.1,   # make font almost zero
-        leading=0.1,    # line height ~ font size
-        spaceBefore=0,
-        spaceAfter=0,
-        leftIndent=0,
-        rightIndent=0,
-    )
+
+    # NOTE: anchor_style removed — we now use AnchorFlowable() instead of
+    # Paragraph('<a name="..."/>', anchor_style). AnchorFlowable creates proper
+    # PDF named destinations that <link href="#..."> can target correctly.
 
     heading_style = ParagraphStyle(
         'CustomHeading',
@@ -440,6 +435,13 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         textColor=colors.HexColor('#34495E'),
         spaceAfter=0,
         spaceBefore=12
+    )
+    indent_style = ParagraphStyle(
+        'SmallText',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=10,
+        leftIndent=20,
     )
 
     small_style = ParagraphStyle(
@@ -520,7 +522,9 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         "Category Label ■ (# Primary Strains, Max TASS)</i>"
     )
     story.append(Paragraph(toc_explanation, small_style))
-    story.append(Spacer(1, 0.05*inch))
+    expl = "Click on sample names or species groups to jump to their sections. Only samples/groups with visible strains are shown here"
+    story.append(Spacer(1, 0.15*inch))
+    story.append(Paragraph(expl, small_style))
 
     # Sort samples alphabetically
     for sample_name in sorted(samples_dict.keys()):
@@ -564,11 +568,12 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
 
         # Create clickable link to the sample section with stats
         link_text = create_safe_link(
-            f'{sample_name} ({total_alignments:,}# - {primary_count}*)',
+            f'{sample_name} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
             bookmark_name,
             valid_bookmarks
         )
-        story.append(Paragraph(f"• {link_text}", styles['Normal']))
+        story.append(Paragraph(f"{link_text}", heading_style))
+        story.append(Spacer(1, 0.04*inch))
 
         # Apply max_toc limit to visible groups in TOC
         toc_display_groups = visible_groups[:args.max_toc]
@@ -613,7 +618,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
             species_links.append(more_link)
 
         species_list = ", ".join(species_links)
-        story.append(Paragraph(f"  → {species_list}", small_style))
+        story.append(Paragraph(f"→ {species_list}", indent_style))
         story.append(Spacer(1, 0.02*inch))
 
     # Add links to reference sections at bottom of TOC
@@ -645,8 +650,10 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     for sample_name in sorted(samples_dict.keys()):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
 
-        # Add bookmark/anchor for this sample
-        story.append(Paragraph(f'<a name="{bookmark_name}"/>', anchor_style))
+        # FIX: Use AnchorFlowable instead of Paragraph with <a name> tag.
+        # AnchorFlowable creates a proper PDF named destination at the correct
+        # page position, enabling <link href="#bookmark"> to navigate accurately.
+        story.append(AnchorFlowable(bookmark_name))
 
         # Sample header (smaller, appears right above its table)
         # get the sampletype
@@ -655,7 +662,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         else:
             sampletype = 'Unspecified Type'
         story.append(Paragraph(f"Sample: {sample_name} ({sampletype})", heading_style))
-
+        # add spacer
+        story.append(Spacer(1, 0.1*inch))
         species_groups = samples_dict[sample_name]
 
         # Calculate sample total reads
@@ -677,11 +685,13 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
                 reverse=True
             )
 
-        # Add bookmarks for each species group (for TOC links to work)
+        # FIX: Add AnchorFlowable for each species group BEFORE the combined table.
+        # Previously these anchors were scattered before the table was built; now we
+        # place them sequentially so each gets the correct page/position.
         for species_group in sorted_groups:
             species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
             species_bookmark = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
-            story.append(Paragraph(f'<a name="{species_bookmark}"/>', anchor_style))
+            story.append(AnchorFlowable(species_bookmark))
 
         # Collect all strains from all species groups for this sample
         all_sample_strains = []
@@ -727,8 +737,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     # Add footer documentation section
     story.append(Spacer(1, 0.15*inch))
 
-    # Add anchor for Color Key
-    story.append(Paragraph('<a name="color_key"/>', anchor_style))
+    # FIX: AnchorFlowable for Color Key section
+    story.append(AnchorFlowable('color_key'))
     story.append(Paragraph("<b>Color Key:</b>", heading_style))
     url = 'https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv'
 
@@ -776,8 +786,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     story.append(legend_table)
     story.append(Spacer(1, 0.02*inch))
 
-    # Add anchor for Column Explanations
-    story.append(Paragraph('<a name="column_explanations"/>', anchor_style))
+    # FIX: AnchorFlowable for Column Explanations section
+    story.append(AnchorFlowable('column_explanations'))
     story.append(Paragraph("<b>Column Explanations:</b>", heading_style))
     story.append(Spacer(1, 0.03*inch))
 
@@ -786,12 +796,11 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         "• <b>Detected Organism:</b> The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "• <b>Microbial Category:</b> The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
         "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome, indicating its presence. (%) refers to all alignments (more than 1 alignment per read can take place) for that species across the entire sample. The format is (total % of aligned reads in sample).",
-        "• <b>RPKM (RPM):</b> Reads Per Kilobase per Million mapped reads (RPKM) and Reads Per Million (RPM). These normalized metrics allow for comparison of abundance across samples and organisms of different sizes.",
-        "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest confidence.",
+        "• <b>RPM:</b> Reads Per Million (RPM). This normalized metric allows for comparison of abundance across samples and organisms of different sizes.",
+        "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest value.",
         "• <b>Taxonomic ID #:</b> The taxid for the organism according to NCBI Taxonomy, which provides a unique identifier for each species. The parenthesis (if present) is the group it belongs to, usually the genus.",
         "• <b>Pathogenic Subsp/Strains:</b> Indicates specific pathogenic subspecies, serotypes, or strains, if detected in the sample. (%) indicates the percent of all aligned reads belonging to that strain.",
         "• <b>K2 Reads:</b> The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data.",
-        # "• <b>HMP Percentile:</b> What percentile the abundance falls under relative to the given sample type based on HMP NCBI taxonomy classification information."
     ]
 
     for explanation in column_explanations:
@@ -800,9 +809,9 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
 
     story.append(Spacer(1, 0.1*inch))
 
-    # Add anchor and table for Low Confidence Detections (only if there are low confidence strains)
+    # FIX: AnchorFlowable for Low Confidence section (only if it exists)
     if low_confidence_strains:
-        story.append(Paragraph('<a name="low_confidence"/>', anchor_style))
+        story.append(AnchorFlowable('low_confidence'))
         story.append(Paragraph("<b>Low Confidence, High Consequence Detections:</b>", heading_style))
         explanation_text = (
             f"The following strains were detected but fell below the confidence threshold "
@@ -817,8 +826,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         story.append(low_conf_table)
         story.append(Spacer(1, 0.1*inch))
 
-    # Add anchor for Additional Information
-    story.append(Paragraph('<a name="additional_info"/>', anchor_style))
+    # FIX: AnchorFlowable for Additional Information section
+    story.append(AnchorFlowable('additional_info'))
     story.append(Paragraph("<b>Additional Information:</b>", heading_style))
     story.append(Spacer(1, 0.01*inch))
 
@@ -837,122 +846,13 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     story.append(Spacer(1, 0.01*inch))
     story.append(Paragraph("If there are questions or issues with your report, please open an issue on GitHub as a discussion <link href=\"https://github.com/jhuapl-bio/taxtriage/discussions\" color=\"blue\">here</link>. Issues should be tracked/submitted at <link href=\"https://github.com/jhuapl-bio/taxtriage/issues\" color=\"blue\">this link</link>.", metadata_style))
 
-    # Build the PDF with proper bookmarks
-    from reportlab.pdfgen.canvas import Canvas
-
-    # Store bookmark information for later use
-    doc.bookmark_data = []
-
-    # Add reference bookmarks
-    doc.bookmark_data.append(('Color Key', 'color_key', 0))
-    doc.bookmark_data.append(('Column Explanations', 'column_explanations', 0))
-    if low_confidence_strains:
-        doc.bookmark_data.append(('Low Confidence Detections', 'low_confidence', 0))
-    doc.bookmark_data.append(('Additional Information', 'additional_info', 0))
-
-    # Add sample and species group bookmarks
-    for sample_name in sorted(samples_dict.keys()):
-        sample_bookmark = f"sample_{sanitize_bookmark_name(sample_name)}"
-        doc.bookmark_data.append((f'Sample: {sample_name}', sample_bookmark, 0))
-
-        # Get visible groups for this sample
-        species_groups = samples_dict[sample_name]
-        if args.sort_alphabetical:
-            sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
-        else:
-            sorted_groups = sorted(species_groups, key=lambda sg: get_species_group_stats(sg)[0], reverse=True)
-
-        # Filter to visible groups
-        visible_groups = []
-        for species_group in sorted_groups:
-            has_visible_members = False
-            for strain in species_group.get('members', []):
-                if should_include_strain(strain, args) and passes_confidence_threshold(strain, args.min_conf):
-                    has_visible_members = True
-                    break
-            if has_visible_members:
-                visible_groups.append(species_group)
-
-        # Add bookmarks for each species group (indented under sample)
-        for species_group in visible_groups:
-            species_name = species_group.get('toplevelname', 'Unknown')
-            species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
-            species_bookmark = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
-            doc.bookmark_data.append((species_name, species_bookmark, 1))
-
-    # Build the PDF
+    # FIX: Build the PDF directly — no PyPDF2 post-processing needed.
+    # The AnchorFlowable calls above embed proper named destinations in the PDF
+    # during doc.build(), so all <link href="#..."> internal links work correctly.
+    # The old PyPDF2 block was broken because it hardcoded all bookmarks to page 0.
     doc.build(story)
 
-    # Add PDF outline/bookmarks using PyPDF2
-    try:
-        import PyPDF2
-
-        # Read the generated PDF
-        with open(output_path, 'rb') as f:
-            pdf_reader = PyPDF2.PdfReader(f)
-            pdf_writer = PyPDF2.PdfWriter()
-
-            # Copy all pages
-            for page in pdf_reader.pages:
-                pdf_writer.add_page(page)
-
-            # Build bookmarks - hierarchical structure
-            # Note: This is a simplified version that puts all bookmarks on page 0
-            # For production, you'd need to track actual page numbers during build
-
-            # Add reference section bookmarks (top level)
-            color_key_bm = pdf_writer.add_outline_item('Color Key', 0)
-            col_exp_bm = pdf_writer.add_outline_item('Column Explanations', 0)
-            if low_confidence_strains:
-                low_conf_bm = pdf_writer.add_outline_item('Low Confidence Detections', 0)
-            add_info_bm = pdf_writer.add_outline_item('Additional Information', 0)
-
-            # Add sample bookmarks with species groups as children
-            for sample_name in sorted(samples_dict.keys()):
-                species_groups = samples_dict[sample_name]
-
-                # Sort and filter groups
-                if args.sort_alphabetical:
-                    sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
-                else:
-                    sorted_groups = sorted(species_groups, key=lambda sg: get_species_group_stats(sg)[0], reverse=True)
-
-                visible_groups = []
-                for species_group in sorted_groups:
-                    has_visible_members = False
-                    for strain in species_group.get('members', []):
-                        if should_include_strain(strain, args) and passes_confidence_threshold(strain, args.min_conf):
-                            has_visible_members = True
-                            break
-                    if has_visible_members:
-                        visible_groups.append(species_group)
-
-                if not visible_groups:
-                    continue
-
-                # Add sample bookmark (top level)
-                sample_bm = pdf_writer.add_outline_item(f'Sample: {sample_name}', 0)
-
-                # Add species group bookmarks (children of sample)
-                for species_group in visible_groups:
-                    species_name = species_group.get('toplevelname', 'Unknown')
-                    pdf_writer.add_outline_item(species_name, 0, parent=sample_bm)
-
-            # Write the PDF with bookmarks
-            with open(output_path, 'wb') as output_file:
-                pdf_writer.write(output_file)
-
-        print("PDF bookmarks/outline added successfully")
-    except ImportError:
-        print("Note: PyPDF2 not installed - PDF created without bookmarks")
-        print("      Install with: pip install PyPDF2")
-    except Exception as e:
-        print(f"Warning: Could not add PDF bookmarks: {e}")
-        print("         PDF was still created successfully without bookmarks")
-
     print(f"\nPDF created successfully: {output_path}")
-
-
 
 
 def get_category_color(microbial_category, ann_class, alpha=1.0):
@@ -989,8 +889,6 @@ def get_category_color(microbial_category, ann_class, alpha=1.0):
         return colors.Color(base_color.red, base_color.green, base_color.blue, alpha=alpha)
 
     return base_color
-
-
 
 
 def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data, ani_threshold, show_ani_column, show_k2_column, taxid_to_bookmark, valid_bookmarks, sample_total_reads=0, sample_name=None, available_width=None):
@@ -1047,10 +945,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
 
     # Table headers - build dynamically based on what columns to show
     # Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
-    headers = ['', 'Strain Name', 'TASS', 'K2 Reads', 'Reads', 'RPKM (RPM)', 'Coverage', 'High ANI'] if show_k2_column and show_ani_column else (
-        ['', 'Strain Name', 'TASS', 'K2 Reads', 'Reads', 'RPKM (RPM)', 'Coverage'] if show_k2_column else (
-            ['', 'Strain Name', 'TASS', 'Reads', 'RPKM (RPM)', 'Coverage', 'High ANI'] if show_ani_column else
-            ['', 'Strain Name', 'TASS', 'Reads', 'RPKM (RPM)', 'Coverage']
+    headers = ['', 'Strain Name', 'TASS', 'K2 Reads', 'Reads', 'RPM', 'Coverage', 'High ANI'] if show_k2_column and show_ani_column else (
+        ['', 'Strain Name', 'TASS', 'K2 Reads', 'Reads', 'RPM', 'Coverage'] if show_k2_column else (
+            ['', 'Strain Name', 'TASS', 'Reads', 'RPM', 'Coverage', 'High ANI'] if show_ani_column else
+            ['', 'Strain Name', 'TASS', 'Reads', 'RPM', 'Coverage']
         )
     )
 
@@ -1156,7 +1054,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         # Get RPKM and RPM values
         rpkm = strain.get('rpkm', 0) or 0
         rpm = strain.get('rpm', 0) or 0
-        rpkm_rpm_text = f"{rpkm:,.2f} ({rpm:,.2f})"
+        rpkm_rpm_text = f"{rpm:,.0f}"
         rpkm_rpm_paragraph = Paragraph(rpkm_rpm_text, data_style)
 
         # Build row - Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
@@ -1187,8 +1085,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     # Calculate proportional widths based on available space
     # Order: Star, Strain Name, TASS, K2 Reads (if shown), Reads, RPKM/RPM, Coverage, High ANI (if shown)
     if show_k2_column and show_ani_column:
-        # All columns: 8 columns total
-        # Proportions: Star(3%), Name(30%), TASS(8%), K2(10%), Reads(11%), RPKM(10%), Coverage(9%), ANI(19%)
         col_widths = [
             available_width * 0.03,  # Star
             available_width * 0.30,  # Strain Name
@@ -1200,8 +1096,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             available_width * 0.19   # High ANI
         ]
     elif show_k2_column:
-        # 7 columns: no ANI
-        # Proportions: Star(3%), Name(36%), TASS(9%), K2(13%), Reads(13%), RPKM(12%), Coverage(14%)
         col_widths = [
             available_width * 0.03,  # Star
             available_width * 0.36,  # Strain Name
@@ -1212,8 +1106,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             available_width * 0.14   # Coverage
         ]
     elif show_ani_column:
-        # 7 columns: no K2
-        # Proportions: Star(3%), Name(34%), TASS(9%), Reads(13%), RPKM(11%), Coverage(10%), ANI(20%)
         col_widths = [
             available_width * 0.03,  # Star
             available_width * 0.34,  # Strain Name
@@ -1224,8 +1116,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             available_width * 0.20   # High ANI
         ]
     else:
-        # 6 columns: base case
-        # Proportions: Star(3%), Name(43%), TASS(10%), Reads(15%), RPKM(13%), Coverage(16%)
         col_widths = [
             available_width * 0.03,  # Star
             available_width * 0.43,  # Strain Name
@@ -1270,16 +1160,9 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
 
     # Add group header row styling
     for group_row_idx in group_row_indices:
-        # Get the species group for this row to determine color
-        # We need to find which group this row belongs to
-        # For now, we'll apply a light hue - we'll calculate the proper color below
-
-        # Light gray/black background for group rows
         table_styles.append(('BACKGROUND', (0, group_row_idx), (-1, group_row_idx), colors.HexColor('#E8E8E8')))
-        # Make text slightly larger and bold (already handled in Paragraph style)
         table_styles.append(('ALIGN', (1, group_row_idx), (1, group_row_idx), 'LEFT'))
         table_styles.append(('ALIGN', (2, group_row_idx), (-1, group_row_idx), 'CENTER'))
-        # Add some padding
         table_styles.append(('TOPPADDING', (0, group_row_idx), (-1, group_row_idx), 8))
         table_styles.append(('BOTTOMPADDING', (0, group_row_idx), (-1, group_row_idx), 8))
 
@@ -1287,7 +1170,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     row_idx = 1
     for strain in all_strains:
         species_group = species_group_map[id(strain)]
-        species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
 
         # Skip to next row if this is the start of a new group (group header row)
         if row_idx in group_row_indices:
@@ -1384,12 +1266,9 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
 
     # Create table with ADAPTIVE column widths based on available_width
     if available_width is None:
-        # Fallback to letter size calculation
-        available_width = 8.5*inch - 0.02*8.5*inch  # letter width minus 1% margins on each side
+        available_width = 8.5*inch - 0.02*8.5*inch
 
     if show_k2_column:
-        # 5 columns: Sample, Strain Name, TASS, K2 Reads, Reads
-        # Proportions: Sample(18%), Name(50%), TASS(10%), K2(10%), Reads(12%)
         col_widths = [
             available_width * 0.18,  # Sample
             available_width * 0.50,  # Strain Name
@@ -1398,8 +1277,6 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
             available_width * 0.12   # Reads
         ]
     else:
-        # 4 columns: Sample, Strain Name, TASS, Reads
-        # Proportions: Sample(20%), Name(56%), TASS(11%), Reads(13%)
         col_widths = [
             available_width * 0.20,  # Sample
             available_width * 0.56,  # Strain Name
@@ -1424,8 +1301,8 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
 
         # General body styling
-        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),  # TASS, K2 Reads (if shown), Reads - all centered
-        ('ALIGN', (0, 1), (1, -1), 'LEFT'),  # Sample and Strain Name left-aligned
+        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (1, -1), 'LEFT'),
 
         # Padding
         ('LEFTPADDING', (0, 1), (-1, -1), 6),
@@ -1530,10 +1407,7 @@ def create_tabular_output(output_path, samples_dict, args):
             # Sort by TASS score
             strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
 
-            # NOTE: No max_members limit here - output file gets ALL strains
-            # NOTE: No category filtering here - output file gets ALL strains
-
-            # Get top-level sample_type from species_group (you said you'll add this)
+            # Get top-level sample_type from species_group
             sample_type = species_group.get('sampletype', 'unknown')
 
             # Create row for each strain
@@ -1550,11 +1424,11 @@ def create_tabular_output(output_path, samples_dict, args):
                     local_idx,  # index (within group)
                     organism_name,  # Detected Organism
                     sample_name,  # Specimen ID
-                    sample_type,  # Sample Type (from top-level sampletype)
+                    sample_type,  # Sample Type
                     f"{pct_reads:.4f}",  # % Reads
                     int(strain_reads),  # # Reads Aligned
                     f"{pct_reads:.4f}",  # % Aligned Reads
-                    f"{(min(1, strain.get('coverage', 0)) or 0)*100:.0f}%",  # Coverage ( mapping)
+                    f"{(min(1, strain.get('coverage', 0)) or 0)*100:.0f}%",  # Coverage
                     '100.0',  # HHS Percentile (placeholder)
                     'Yes' if strain.get('isAnnotated', True) else 'No',  # IsAnnotated
                     strain.get('annClass', ''),  # AnnClass
@@ -1562,27 +1436,27 @@ def create_tabular_output(output_path, samples_dict, args):
                     'True' if strain.get('high_cons', False) else 'False',  # High Consequence
                     strain.get('key', ''),  # Taxonomic ID #
                     strain.get('status', ''),  # Status
-                    f"{(strain.get('gini_coefficient', 0) or 0):.2f}",  # Gini Coefficient (fixed mapping)
-                    f"{(strain.get('meanbaseq', 0) or 0):.2f}",  # Mean BaseQ (fixed mapping)
+                    f"{(strain.get('gini_coefficient', 0) or 0):.2f}",  # Gini Coefficient
+                    f"{(strain.get('meanbaseq', 0) or 0):.2f}",  # Mean BaseQ
                     f"{(strain.get('meanmapq', 0) or 0):.2f}",  # Mean MapQ
-                    f"{(strain.get('meandepth', 0) or 0):.1f}",  # Mean Depth (fixed mapping)
+                    f"{(strain.get('meandepth', 0) or 0):.1f}",  # Mean Depth
                     'True' if strain.get('isSpecies', False) else 'False',  # isSpecies
-                    '',  # Pathogenic Subsp/Strains (leave blank for now as requested)
+                    '',  # Pathogenic Subsp/Strains
                     int(strain.get('k2_reads', 0) or 0),  # K2 Reads
-                    strain.get("rpkm", 0) or 0,  # RPKM (added for output file, not in PDF)
-                    strain.get("rpm", 0) or 0,  # RPM (added for output file, not in PDF)
+                    strain.get("rpkm", 0) or 0,  # RPKM
+                    strain.get("rpm", 0) or 0,  # RPM
                     int(strain.get('parent_k2_reads', 0) or 0),  # Parent K2 Reads
                     f"{(strain.get('mapq_score', 0) or 0):.2f}",  # MapQ Score
-                    f"{(strain.get('disparity', 0) or 0):.2f}",  # Disparity Score (fixed mapping)
-                    f"{(strain.get('minhash_reduction', 0) or 0):.2f}",  # Minhash Score (fixed mapping)
-                    f"{(strain.get('diamond_identity', 0) or 0):.1f}",  # Diamond Identity (fixed mapping)
+                    f"{(strain.get('disparity', 0) or 0):.2f}",  # Disparity Score
+                    f"{(strain.get('minhash_reduction', 0) or 0):.2f}",  # Minhash Score
+                    f"{(strain.get('diamond_identity', 0) or 0):.1f}",  # Diamond Identity
                     f"{(strain.get('k2_disparity_score', 0) or 0):.1f}",  # K2 Disparity Score
                     f"{(strain.get('siblings_score', 0) or 0):.1f}",  # Siblings score
                     f"{(strain.get('breadth_log_score', 0) or 0):.2f}",  # Breadth Weight Score
                     int((strain.get('tass_score', 0) or 0) * 100),  # TASS Score (as integer 0-100)
-                    f"{(strain.get('mmbert', 0) or 0):.4f}",  # MicrobeRT Probability (new field)
-                    strain.get('mmbert_model', '') or '',  # MicrobeRT Model (new field)
-                    int(strain_reads),  # Reads Aligned (duplicate of # Reads Aligned)
+                    f"{(strain.get('mmbert', 0) or 0):.4f}",  # MicrobeRT Probability
+                    strain.get('mmbert_model', '') or '',  # MicrobeRT Model
+                    int(strain_reads),  # Reads Aligned
                     group_key  # Group
                 ]
 

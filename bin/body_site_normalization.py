@@ -168,7 +168,6 @@ def get_pathogen_classification(pathogen_info, sample_site):
 
     # Normalize the sample site
     normalized_site = normalize_body_site(sample_site)
-
     # Get pathogen data
     callclass = (pathogen_info.get('callclass') or pathogen_info.get('general_classification') or '').lower().strip()
     pathogenic_sites = pathogen_info.get('pathogenic_sites', [])
@@ -187,12 +186,11 @@ def get_pathogen_classification(pathogen_info, sample_site):
     if normalized_site == 'sterile':
         # Everything is pathogenic in sterile sites
         return callclass or 'primary', True
-
     # Check if sample site is in pathogenic sites
     # Also check if the normalized site matches any normalized pathogenic site
     if normalized_site in pathogenic_sites:
         # Use the general classification
-        return callclass or 'primary', True
+        return 'primary', True
 
     # Check if sample site is in commensal sites
     # Also check if the normalized site matches any normalized commensal site

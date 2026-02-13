@@ -1563,7 +1563,7 @@ def determine_conflicts(
     cpu_count: Optional[int] = None,
     jump_threshold: Optional[float] = None,
     gap_allowance: float = 0.1,
-    sim_ani_threshold: float = 1,
+    sim_ani_threshold: float = 0.99,
     compare_to_reference_windows: bool = False,
     find_optimal_windows: bool = False,
 ):
@@ -1637,15 +1637,16 @@ def determine_conflicts(
                 )
         else:
             print("Creating shared FASTA report from scratch")
+            sim_ani_threshold=0.9
             report_shared_windows_across_fastas(
                 fasta_files=fasta_files,
                 output_csv=report_path,
                 ksize=51,
-                scaled=8000,
-                window=200_000,
-                step=200_000,
+                scaled=6000,
+                window=100_000,
+                step=100_000,
                 jaccard_threshold=sim_ani_threshold,
-                max_hits_per_query=5,
+                max_hits_per_query=120,
                 skip_self_same_fasta=False,
             )
 
