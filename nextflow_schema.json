@@ -329,7 +329,7 @@
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
-                "sensitive": {
+                "conf_sens": {
                     "type": "boolean",
                     "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
                     "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
@@ -375,6 +375,12 @@
                     "type": "number",
                     "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "alpha": {
+                    "type": "number",
+                    "description": "TASS Score Alpha. This is the measure of how much weight to put on the breadth vs depth of coverage for a given alignment to an organism. The higher the alpha, the more weight put on breadth rather than depth.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 1
                 },
                 "reward_factor": {
                     "type": "number",
@@ -439,6 +445,7 @@
                 },
                 "minq": {
                     "type": "number",
+                    "default": 1,
                     "description": "Minimum BaseQ Score for filtering",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -603,9 +610,19 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "sorttass": {
+                "sensitive": {
                     "type": "boolean",
-                    "description": "Sort the tables on JUST TASS Score. If disabled, sorts on High Consequence first then TASS Score",
+                    "description": "Build signatures from TASS Minhash score step using windowed regions of the reference gneomes. Default (disabled-false) is to only compare similar reads/regions from the aligned reads from the BAM file(s)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_matrix": {
+                    "type": "boolean",
+                    "description": "Skip the generation of the final report matrix for high ANI similarity. The column will be missing in the report if so.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sort_alphabetical": {
+                    "type": "boolean",
+                    "description": "Sort the tables on alphabetical order rather than TASS. If disabled, it sorts on TASS score descending",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_potentials": {
@@ -627,6 +644,12 @@
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "rank": {
+                    "type": "string",
+                    "description": "What rank to bin hits in the report in the final report. Default is genus, but you can choose from [species, genus, family, order, class, phylum]",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": "genus"
                 }
             }
         },
