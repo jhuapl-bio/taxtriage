@@ -38,7 +38,16 @@ process ALIGNMENT_PER_SAMPLE {
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-
+    // if params.sensitive is true then set breadth_weight to 0.3, gini_weight to 0.26 and minhash_weight to 0.44
+    def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " --minhash_weight 0.05 "
+    def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " --gini_weight 0.70 "
+    def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
+    if (params.sensitive) {
+        // change params.breadth_weight to 0.3, params.gini_weight to 0.26 and params.minhash_weight to 0.44
+        breadth_weight = " --breadth_weight 0.3 "
+        gini_weight = " --gini_weight 0.26 "
+        minhash_weight = " --minhash_weight 0.44 "
+    }
     def output = "${meta.id}.paths.json"
     def id = meta.id
     def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
@@ -56,12 +65,9 @@ process ALIGNMENT_PER_SAMPLE {
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
-    def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " --minhash_weight 0.05 "
     def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " --mapq_weight 0.0 "
     def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " --hmp_weight 0.0 "
-    def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " --gini_weight 0.70 "
     def disparity_score_weight = params.disparity_score_weight ? " --disparity_score_weight ${params.disparity_score_weight} " : " "
-    def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
     def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
     def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
     def sensitive = params.sensitive ? " --compare_references " : " "

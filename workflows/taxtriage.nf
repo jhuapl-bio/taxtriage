@@ -337,19 +337,14 @@ workflow TAXTRIAGE {
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
 
-    // if params.sensitive is true then set breadth_weight to 0.3, gini_weight to 0.26 and minhash_weight to 0.44
-    if (params.sensitive) {
-        params.breadth_weight = 0.3
-        params.gini_weight = 0.26
-        params.minhash_weight = 0.44
-        println "Sensitive mode enabled: Setting breadth_weight to 0.3, gini_weight to 0.26 and minhash_weight to 0.44 as a default"
-    }
+
 
     ch_taxdump_dir = Channel.empty()
     ch_taxdump_nodes = Channel.empty()
     ch_taxdump_names = Channel.empty()
 
-    if (params.download_taxdump || (!params.taxdump && params.metaphlan)){
+    if (!params.taxdump && (params.download_taxdump || (!params.taxdump && params.metaphlan) ) ){
+        println "No taxdump provided, downloading the latest taxdump from NCBI"
         DOWNLOAD_TAXDUMP()
         ch_taxdump_nodes = DOWNLOAD_TAXDUMP.out.nodes
         ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent

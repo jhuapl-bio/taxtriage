@@ -141,7 +141,7 @@ def parse_args(argv=None):
         "--orgcol",
         metavar="ORGCOL",
         type=int,
-        default=3, required =False,
+        default=2, required =False,
         help="Index of the organism name column, used as a fallback to match organism name if taxid is missing for merged accessions & taxid no present",
     )
     parser.add_argument(
@@ -155,7 +155,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "-n",
         "--namecol",
-        default=2,
+        default=3,
         type=int,
         metavar="NAMECOL",
         help="Index of the column in mapfile (if specified) to match to the name. 0 index start",
