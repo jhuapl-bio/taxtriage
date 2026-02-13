@@ -597,7 +597,7 @@ def sibling_disparity_from_group_reads(
 
     # disparity (rank-based)
     if n <= 1 or rank_index < 0:
-        rank_disparity = 0.0
+        rank_disparity = 1.0
     else:
         rank_disparity = 1.0 - (rank_index / (n - 1))
 
@@ -668,21 +668,7 @@ def compute_scores_per(
     data['read_fraction'] = read_fraction
 
     rpm_weight = rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001)
-
-    if not comparison_df.empty:
-        accession = str(data['accession']).strip()
-        if accession in comparison_df.index:
-            c1 = float(comparison_df.loc[accession, col_stat])
-            d_all = float(comparison_df.loc[accession, col_stat2])
-
-            k_sig = 0.90
-            x0 = -10.0
-            pen = 1.0 / (1.0 + math.exp(-k_sig * (d_all - x0)))
-
-            comparison_value = min(1.0, c1 * pen)
-            data['minhash_score'] = comparison_value * rpm_weight  # <-- apply weight
-        else:
-            data['minhash_score'] = rpm_weight  # <-- was hardcoded 1, now rpm-scaled
+    data['rpm_confidence_weight'] = rpm_weight
     data['strainname'] = data.get('strainname', fallback_top)
     data['gini_coefficient'] = gini_strain
 
@@ -698,7 +684,20 @@ def compute_scores_per(
     # Breadth
     coverage = data.get('coverage', 0)
     data['breadth_log_score'] = breadth_score_sigmoid(coverage)
+    if not comparison_df.empty:
+        accession = str(data['accession']).strip()
+        if accession in comparison_df.index:
+            c1 = float(comparison_df.loc[accession, col_stat])
+            d_all = float(comparison_df.loc[accession, col_stat2])
 
+            k_sig = 0.90
+            x0 = -10.0
+            pen = 1.0 / (1.0 + math.exp(-k_sig * (d_all - x0)))
+
+            comparison_value = min(1.0, c1 * pen)
+            data['minhash_score'] = comparison_value
+        else:
+            data['minhash_score'] = rpm_weight * 0.5  # default to a moderate score if no comparison available
     data['minhash_reduction'] = data.get('minhash_score', 1)
 
 
@@ -797,7 +796,7 @@ def calculate_aggregate_scores(
     )
     # get the k2 reads using the taxid
     metrics = sibling_disparity_from_group_reads(group_reads, target_key=data.get('key', None))
-    data['disparity'] = metrics.get('rank_disparity', 0.0)
+    data['disparity'] = metrics.get('rank_disparity', 1.0)
     key = data.get('key', None)
     if data['key'] in dmnd:
         dmnd[key]['maxvalereached'] = dmnd[key].get('cds', 0) > min_cds_found
@@ -878,7 +877,7 @@ def calculate_siblings_score (
         for k, own in items_sorted:
             # rank disparity: top=1, bottom=0
             if n <= 1:
-                disparity = 0.0
+                disparity = 1.0
             else:
                 idx = rank_index[k]
                 disparity = 1.0 - (idx / (n - 1))

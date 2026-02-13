@@ -32,7 +32,7 @@ import os
 from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
-from ground_truth import build_ground_truth_metrics_df, optimize_weights
+from ground_truth import optimize_weights
 from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var
@@ -345,6 +345,7 @@ def parse_args(argv=None):
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
     parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
+    parser.add_argument("--skip_matrix", required=False, action='store_true', help="Skip loading the ANI matrix file")
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")
     parser.add_argument("--failed_reads", required=False, help="Load a 2 col tsv of reference   read_id that is to be the passed reads. Remove all others and update bedgraph and cov file(s)")
     parser.add_argument("--scaled", type=int, default=2000, help="scaled factor for MinHash.")
@@ -359,7 +360,7 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
-    parser.add_argument('--minmapq', required=False, type=int, default=0, help="Minimum mapping quality")
+    parser.add_argument('--minmapq', required=False, type=int, default=5, help="Minimum mapping quality")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -732,7 +733,7 @@ def main():
     alignments_to_remove = defaultdict(set)
     if args.fasta:
         fastas = set(args.fasta)
-    if args.match and os.path.exists(matcher):
+    if args.match and os.path.exists(matcher) and not args.skip_matrix:
         # if args.output_dir/organism_ani_matrix.csv doesnt exist then perform it:
         if not args.matrix or not os.path.exists(args.matrix):
             print("generating ani matrix")

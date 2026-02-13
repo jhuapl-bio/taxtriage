@@ -64,13 +64,14 @@ process ALIGNMENT_PER_SAMPLE {
     def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.25 "
     def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
     def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
-    def sensitive = params.sensitive ? " --sensitive " : " "
+    def sensitive = params.sensitive ? " --compare_references " : " "
     def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
     def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
-    def ani_removal = params.ani_removal ? " --compare_references " : " "
     def taxonomy  = taxdump ? " --taxdump ${taxdump} " : " "
     def alpha = params.alpha ? " --alpha ${params.alpha} " : " --alpha 1.0 "
+    def conf_sens = params.conf_sens ? " --sensitive " : " "
+    def skip_matrix = params.skip_matrix ? " --skip_matrix " : " "
 
     """
 
@@ -83,11 +84,11 @@ process ALIGNMENT_PER_SAMPLE {
         --scaled 8000 \\
         $alpha \\
         --min_threshold 0.002 \\
-        -p $pathogens_list  $mapping $k2 $sensitive $gap_allowance $jump_threshold \\
+        -p $pathogens_list  $mapping $k2 $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $compress_species $mbert_report $minmapq $ani_removal $taxonomy
+        $min_reads_align $compress_species $mbert_report $minmapq $sensitive $taxonomy $conf_sens $skip_matrix
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

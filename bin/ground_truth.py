@@ -393,6 +393,7 @@ def optimize_weights(
         debug_n=10,
     )
     metrics_df = build_metrics_df_from_final_json(final_json, tp_fp_counts)
+    print(metrics_df,"<")
     accession_col = "taxid"
 
     start_w = dict(
@@ -400,7 +401,6 @@ def optimize_weights(
         minhash_weight=float(minhash_weight),
         gini_weight=float(gini_weight),
     )
-
     opt = optimize_weights_for_tp_fp(
         metrics_df=metrics_df,
         tp_fp_counts=tp_fp_counts,
@@ -837,7 +837,7 @@ def build_metrics_df_from_final_json(
         # Features (match your optimizer targets)
         breadth = float(stats.get("breadth_log_score", 0.0))
         minhash = float(stats.get("minhash_reduction", stats.get("minhash_score", 0.0)))
-
+        categorical = stats.get("microbial_category", "unknown")
         # Prefer k2_disparity_score; fall back to disparity if present
         disparity = float(stats.get("k2_disparity_score", stats.get("disparity", 0.0)))
 
@@ -850,6 +850,7 @@ def build_metrics_df_from_final_json(
             "taxid": taxid,
             "name": stats.get("name", ""),
             "accessions": accs,
+            "category": categorical,
             "breadth_log_score": breadth,
             "minhash_reduction": minhash,
             "disparity_score": disparity,
@@ -874,6 +875,7 @@ def build_metrics_df_from_final_json(
     agg = {
         "name": "first",
         "accessions": union_lists,
+        "category": "first",
         "breadth_log_score": "max",
         "minhash_reduction": "max",
         "disparity_score": "max",

@@ -139,9 +139,10 @@ def should_include_strain(strain, args):
     category = str(strain.get('microbial_category', 'Unknown'))
 
     # Always include Primary Pathogens and Opportunistic
-    if 'Primary' in category or 'Opportunistic' in category:
+    if 'Primary' in category:
         return True
-
+    if "Opportunistic" in category and args.show_opportunistic:
+        return True
     # Include based on flags
     if 'Potential' in category and args.show_potentials:
         return True
@@ -187,6 +188,7 @@ def load_json_samples(input_files):
         with open(input_file, 'r') as f:
             data = json.load(f)
             all_sample_data.extend(data)
+
     return all_sample_data
 
 
@@ -347,7 +349,16 @@ def get_sample_stats(species_groups):
                 primary_pathogen_count += 1
 
     return total_alignments, primary_pathogen_count
-
+def has_min_reads(strain, min_reads=1):
+    """
+    Return True if the strain has at least min_reads aligned reads.
+    Treat missing/None as 0.
+    """
+    try:
+        reads = float(strain.get("numreads", 0) or 0)
+    except Exception:
+        reads = 0
+    return reads >= min_reads
 
 def get_species_group_stats(species_group):
     """
@@ -469,6 +480,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     print(f"\nFiltering settings:")
     print(f"  Show Potentials: {args.show_potentials}")
     print(f"  Show Commensals: {args.show_commensals}")
+    print(f"  Show Opportunistic: {args.show_opportunistic}")
     print(f"  Show Unidentified: {args.show_unidentified}")
     print(f"  Sorting mode: {'Alphabetical' if args.sort_alphabetical else 'TASS Score (descending)'}")
     print(f"  Max members per group: {args.max_members if args.max_members else 'Unlimited'}")
@@ -481,7 +493,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     for sample_name, species_groups in samples_dict.items():
         for species_group in species_groups:
             for strain in species_group.get('members', []):
-                if should_include_strain(strain, args):
+                if should_include_strain(strain, args) and has_min_reads(strain, args.min_reads):
                     if not passes_confidence_threshold(strain, args.min_conf):
                         if strain.get("high_cons"):
                             low_confidence_strains.append({
@@ -555,7 +567,9 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
             # Check if this group has any members that would be shown
             has_visible_members = False
             for strain in species_group.get('members', []):
-                if should_include_strain(strain, args) and passes_confidence_threshold(strain, args.min_conf):
+                if (should_include_strain(strain, args)
+                        and has_min_reads(strain, 1)
+                        and passes_confidence_threshold(strain, args.min_conf)):
                     has_visible_members = True
                     break
 
@@ -702,8 +716,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
             group_strains = []
             for strain in species_group.get('members', []):
                 # Check category filter first
-                if should_include_strain(strain, args):
-                    # Then check confidence threshold
+                if should_include_strain(strain, args) and has_min_reads(strain, 1):
                     if passes_confidence_threshold(strain, args.min_conf):
                         group_strains.append(strain)
                         species_group_map[id(strain)] = species_group
@@ -1412,6 +1425,8 @@ def create_tabular_output(output_path, samples_dict, args):
 
             # Create row for each strain
             for local_idx, strain in enumerate(strains):
+                if not has_min_reads(strain, 1):
+                    continue
                 strain_reads = float(strain.get('numreads', 0) or 0)
                 pct_reads = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
 
@@ -1508,6 +1523,8 @@ def parse_args():
     )
     parser.add_argument("-a", "--abundance_col", metavar="ABU", required=False, default='% Aligned Reads',
                         help="Name of abundance column, default is abundance")
+    parser.add_argument("-r", "--min_reads", metavar="READS", required=False, default=1, type=int,
+                        help="Minimum number of reads required to consider an organism for reporting. Default is 'Min Reads' column in input file.")
     parser.add_argument("-c", "--min_conf", metavar="MINCONF", required=False, default=0.3, type=float,
                         help="Value that must be met for a table to report an organism due to confidence column.")
     parser.add_argument("-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
@@ -1530,6 +1547,8 @@ def parse_args():
                         help="Show the all organisms now listed as commensal or pathogen")
     parser.add_argument("--show_potentials", action="store_true", required=False,
                         help="Show the potentials table")
+    parser.add_argument("--show_opportunistic", action="store_true", required=False,
+                        help="Show the opportunistic table")
     parser.add_argument("-m", "--missing_samples", metavar="MISSING", required=False, default=None,
                         help="Missing samples if any", nargs="+")
     parser.add_argument("-s", "--sitecol", metavar="SCOL", required=False, default='Sample Type',

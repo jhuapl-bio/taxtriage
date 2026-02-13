@@ -329,7 +329,7 @@
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
-                "sensitive": {
+                "conf_sens": {
                     "type": "boolean",
                     "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
                     "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
@@ -610,9 +610,14 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "ani_removal": {
+                "sensitive": {
                     "type": "boolean",
                     "description": "Build signatures from TASS Minhash score step using windowed regions of the reference gneomes. Default (disabled-false) is to only compare similar reads/regions from the aligned reads from the BAM file(s)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "skip_matrix": {
+                    "type": "boolean",
+                    "description": "Skip the generation of the final report matrix for high ANI similarity. The column will be missing in the report if so.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "sort_alphabetical": {
