@@ -171,7 +171,10 @@ def parse_args(argv=None):
         "--compare_references", default=False,  help="Compress species to species level",  action='store_true'
     )
     parser.add_argument(
-        "-k",  "--rank",  help="Compress species to species level",  default=None, type=str
+        "-k",  "--rank",  help="Specify the taxonomic rank to group all entries on (e.g., species, genus, family)",  default=None, type=str
+    )
+    parser.add_argument(
+        "--subrank",  help="Specify the taxonomic sub-rank to group all entries on. Default is species. Entries in the final report will have 1 species per row. If set to None or a non-standard ranking, then ignored. If the subrank and rank are equal, subrank is ignore as well.", choices=["phylum", "order", "class", "genus", "species", "strain", "none"], default="species", type=str
     )
     parser.add_argument(
         "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
@@ -899,7 +902,12 @@ def main():
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
         taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
-    # args.rank = False
+
+    subrank = args.subrank
+
+    if not subrank or subrank.lower() == "none" or subrank.lower() == "strain":
+        subrank = None
+
     # get the ranks for taxid: 198214
     acc_to_parent = dict()
     if args.rank:
@@ -913,7 +921,10 @@ def main():
                 hit['strainname'] = hit.get('name', acc)
                 continue
             top = taxid_to_rank(taxid, taxdump, wanted_rank )
+            subrank_value = taxid_to_rank(taxid, taxdump, subrank) if subrank else taxid
             acc_to_parent[acc] = taxid
+            hit['subkey'] = subrank_value
+            hit['subkeyname'] =taxdump_names.get(subrank_value, hit.get('name', ''))
             hit['key'] = taxid
             hit["toplevelkey"] = top if top else taxid  # fallback to itself if rank not found
             hit["rank"] = wanted_rank  # optional: record what you tried
@@ -927,10 +938,14 @@ def main():
                 hit["toplevelkey"] = taxid
                 acc_to_parent[acc] = taxid
                 hit['key'] = taxid
+                hit['subkey'] = taxid
+                hit['subkeyname'] = hit.get('name', '')
             else:
                 hit["toplevelkey"] = acc
                 acc_to_parent[acc] = acc
                 hit['key'] = acc
+                hit['subkey'] = acc
+                hit['subkeyname'] = hit.get('name', '')
             hit['strainname'] = hit.get('name', '')
             hit["toplevelname"] = taxdump_names.get(hit['key'], hit.get("name", ""))
     species_to_all_accs = defaultdict(set)

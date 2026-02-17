@@ -477,6 +477,9 @@ def calculate_normalized_groups(
 
         # preserve a representative name if present
         agg["name"] = entries[0].get("name") or entries[0].get("organism") or gval
+        if "subkey" not in agg and "subkey" in entries[0]:
+            agg["subkey"] = entries[0].get("subkey")
+            agg["subkeyname"] = entries[0].get("subkeyname", agg["name"])
 
         # ---------- TOPLEVEL KEY + NAME ----------
         if group_field == "toplevelkey":
