@@ -428,7 +428,7 @@ def calculate_normalized_groups(
         "minhash_score", "k2_disparity_score", "hmp_percentile",
         # REMOVED: "breadth_log_score",  # will recalculate from aggregated coverage
         "minhash_reduction", "gini_coefficient", "diamond_identity", "rpkm", "rpm",
-        "mapq_score",
+        "mapq_score", "rpm_confidence_weight", "read_fraction",
     }
 
     def _to_float(x) -> float:
@@ -536,6 +536,88 @@ def calculate_normalized_groups(
         # agg["breadth_log_score"] = breadth_score_sigmoid(agg["coverage"])  # threshold-based
 
         out[gval] = agg
+
+    # ========== RPM-NORMALIZED MINHASH REDUCTION ==========
+    # Within each parent group (toplevelkey), normalize minhash_reduction
+    # by RPM share so that high-abundance organisms are boosted and
+    # low-abundance siblings are dampened.
+    #
+    # Example: monkeypox (20 reads, RPM=X) vs 4 other orthopox (4 reads each)
+    #   monkeypox rpm_share ≈ 0.56 → minhash_reduction boosted
+    #   each other  rpm_share ≈ 0.11 → minhash_reduction dampened
+    #
+    # Formula:  minhash_reduction *= (floor + (1 - floor) * rpm_share)
+    #   floor=0.3 ensures low-RPM organisms aren't zeroed out entirely
+
+    _rpm_norm_floor = 0.3  # minimum scaling factor for lowest-RPM member
+
+    # 1) Bucket the output entries by their parent group
+    parent_buckets: Dict[str, List[str]] = {}
+    for gval, agg in out.items():
+        parent = agg.get("toplevelkey") or gval
+        parent_buckets.setdefault(str(parent), []).append(gval)
+
+    # 2) For each parent group, compute RPM shares and adjust minhash_reduction
+    _solo_boost_strength = 0.9  # max boost toward 1.0 for a solo organism
+
+    for parent, member_keys in parent_buckets.items():
+        if len(member_keys) <= 1:
+            # ----------------------------------------------------------
+            # SOLO EXCLUSIVITY BOOST
+            # ----------------------------------------------------------
+            # Being the only organism in a group means no siblings are
+            # competing for these reads — that's a positive signal.
+            # Boost minhash_reduction toward 1.0, scaled by rpm_confidence_weight
+            # (sigmoid on read_fraction) so the boost is proportional to how
+            # confident we are the reads are real.
+            #
+            # Formula:
+            #   gap       = 1.0 - raw_minhash        (room to grow)
+            #   boost     = gap * strength * conf     (how much to fill that gap)
+            #   final     = raw + boost
+            #
+            # At 5 reads / 200k total (read_fraction=2.5e-5, conf≈0.71):
+            #   raw=0.5 → final = 0.5 + 0.5*0.4*0.71 = 0.642
+            # At 5 reads / 10M total  (read_fraction=5e-7,  conf≈0.01):
+            #   raw=0.5 → final = 0.5 + 0.5*0.4*0.01 = 0.502  (barely moves)
+            # ----------------------------------------------------------
+            mk = member_keys[0]
+            raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
+            conf = _to_float(out[mk].get("rpm_confidence_weight", 0))
+
+            gap = 1.0 - raw_minhash
+            boost = gap * _solo_boost_strength * conf
+            adjusted = raw_minhash + boost
+
+            out[mk]["minhash_reduction_raw"] = raw_minhash
+            out[mk]["minhash_reduction"] = min(1.0, adjusted)
+            out[mk]["rpm_share_in_group"] = 1.0
+            out[mk]["rpm_norm_scale"] = 1.0
+            out[mk]["solo_exclusivity_boost"] = boost
+            continue
+
+        # ----------------------------------------------------------
+        # MULTI-MEMBER: RPM-share normalization (as before)
+        # ----------------------------------------------------------
+        # Gather RPM values for each member in this group
+        rpms = []
+        for mk in member_keys:
+            r = _to_float(out[mk].get("rpm", 0))
+            rpms.append((mk, r))
+
+        total_rpm = sum(r for _, r in rpms)
+        if total_rpm <= 0:
+            continue
+
+        for mk, r in rpms:
+            rpm_share = r / total_rpm
+            # Scale: floor at _rpm_norm_floor, ceiling at 1.0
+            scale = _rpm_norm_floor + (1.0 - _rpm_norm_floor) * rpm_share
+            raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
+            out[mk]["minhash_reduction_raw"] = raw_minhash
+            out[mk]["minhash_reduction"] = raw_minhash * scale
+            out[mk]["rpm_share_in_group"] = rpm_share
+            out[mk]["rpm_norm_scale"] = scale
 
     return out
 
@@ -717,7 +799,7 @@ def rpm_confidence_weight(read_fraction, k=50000, midpoint=0.0001):
     return 1.0 / (1.0 + math.exp(-k * (read_fraction - midpoint)))
 
 
-def breadth_score_sigmoid(coverage, midpoint=0.09, steepness=20):
+def breadth_score_sigmoid(coverage, midpoint=0.02, steepness=20):
         return 1.0 / (1.0 + math.exp(-steepness * (coverage - midpoint)))
 def calculate_mmbert_prob(
     mmbert_dict = {},

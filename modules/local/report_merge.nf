@@ -54,6 +54,8 @@ process ORGANISM_MERGE_REPORT {
     // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
     def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
     def ani_matrix = ani_matrix.name != "NO_FILE3" ? " --ani_matrix $ani_matrix " : ""
+    def integrate_strain_table = params.integrate_strain_table ? " --integrate_strain_table " : ""
+    def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
     """
 
@@ -66,7 +68,8 @@ process ORGANISM_MERGE_REPORT {
         $min_conf \\
         $missing_arg \\
         $sort_alphabetical \\
-        $ani_matrix \\
+        $ani_matrix $ani_threshold \\
+        $integrate_strain_table \\
         $rank \\
 
     cat <<-END_VERSIONS > versions.yml

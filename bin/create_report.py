@@ -8,7 +8,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.platypus.flowables import AnchorFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from datetime import datetime
@@ -122,13 +122,19 @@ def collect_all_bookmarks(samples_dict, low_confidence_strains):
     if low_confidence_strains:
         bookmarks.add('low_confidence')
     bookmarks.add('additional_info')
+    # Strain-detail appendix anchors (always registered so links validate)
+    bookmarks.add('strain_detail_table')
     for sample_name, species_groups in samples_dict.items():
         sample_bookmark = f"sample_{sanitize_bookmark_name(sample_name)}"
         bookmarks.add(sample_bookmark)
+        strain_sample_bm = f"strain_sample_{sanitize_bookmark_name(sample_name)}"
+        bookmarks.add(strain_sample_bm)
         for species_group in species_groups:
             species_key = species_group.get('toplevelkey', species_group.get('key', 'unknown'))
             species_bookmark = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
             bookmarks.add(species_bookmark)
+            strain_row_bm = f"strain_row_{sanitize_bookmark_name(sample_name)}_{species_key}"
+            bookmarks.add(strain_row_bm)
     return bookmarks
 
 
@@ -216,12 +222,44 @@ def get_category_color(microbial_category, ann_class, alpha=1.0):
         return colors.Color(base_color.red, base_color.green, base_color.blue, alpha=alpha)
     return base_color
 
+def _valid_num(x):
+    try:
+        if x is None:
+            return None
+        v = float(x)
+        if v == 0:
+            return None
+        return v
+    except Exception:
+        return None
+
+
+def strip_species_prefix(strain_name, species_name):
+    """
+    Remove the leading species name from a strain name so only the
+    distinguishing part is shown.
+    E.g. strip_species_prefix("Escherichia coli ETEC", "Escherichia coli")
+         -> "ETEC"
+    Returns the original name if the result would be empty or the prefix
+    does not match.
+    """
+    import re
+    if not species_name or not strain_name:
+        return strain_name
+    # Escape special regex chars in the species name and allow variable whitespace
+    pattern = r'^\s*' + re.escape(species_name) + r'\s*'
+    result = re.sub(pattern, '', strain_name, count=1, flags=re.IGNORECASE).strip()
+    # Strip leading punctuation/separators left behind (e.g. "-", "_", "/")
+    result = re.sub(r'^[\-_/,;:\s]+', '', result).strip()
+    return result if result else strain_name
+
 
 def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data,
                                   ani_threshold, show_ani_column, show_k2_column,
                                   taxid_to_bookmark, valid_bookmarks,
                                   sample_total_reads=0, sample_name=None,
-                                  available_width=None, use_subkey=True):
+                                  available_width=None, use_subkey=True,
+                                  show_strains_table=True):
     """
     Create a single table combining all strains from all species groups.
 
@@ -236,55 +274,144 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     """
     # ── Styles ────────────────────────────────────────────────────────────────
     strain_name_style = ParagraphStyle(
-        'StrainName', parent=small_style, fontSize=10, leading=10)
+        'StrainName', parent=small_style, fontSize=10, leading=10,
+        wordWrap='CJK')
     data_style = ParagraphStyle(
-        'DataStyle', parent=small_style, fontSize=8, leading=9)
+        'DataStyle', parent=small_style, fontSize=8, leading=9,
+        wordWrap='CJK')
     ani_style = ParagraphStyle(
-        'ANIStyle', parent=small_style, fontSize=6, leading=8)
+        'ANIStyle', parent=small_style, fontSize=6, leading=8,
+        wordWrap='CJK')
     group_header_style = ParagraphStyle(
         'GroupHeader', parent=small_style, fontSize=10, leading=11,
-        fontName='Helvetica-Bold')
+        fontName='Helvetica-Bold', wordWrap='CJK')
+    group_strain_summary_style = ParagraphStyle(
+        'GroupStrainSummary', parent=small_style, fontSize=7, leading=9,
+        alignment=TA_RIGHT, fontName='Helvetica-Oblique', wordWrap='CJK')
     mini_style = ParagraphStyle(
-        'MiniStyle', parent=small_style, fontSize=7, leading=9)
+        'MiniStyle', parent=small_style, fontSize=7, leading=9,
+        wordWrap='CJK')
     mini_header_style = ParagraphStyle(
         'MiniHeaderStyle', parent=small_style, fontSize=7, leading=9,
-        fontName='Helvetica-Bold')
+        fontName='Helvetica-Bold', wordWrap='CJK')
 
     if available_width is None:
         available_width = 8.5 * inch - 0.02 * 8.5 * inch
 
     # ── Headers ──────────────────────────────────────────────────────────────
-    base_headers = ['', 'Organism', 'TASS']
+    header_style = ParagraphStyle(
+        'HeaderStyle', parent=small_style, fontSize=8, leading=9,
+        fontName='Helvetica-Bold', textColor=colors.whitesmoke,
+        alignment=TA_CENTER, wordWrap='CJK')
+    base_headers = ['', Paragraph('Organism', header_style), Paragraph('TASS', header_style)]
     if show_k2_column:
-        base_headers.append('K2 Reads')
-    base_headers += ['Reads', 'RPM', 'Coverage']
+        base_headers.append(Paragraph('K2<br/>Reads', header_style))
+    base_headers += [
+        Paragraph('Reads', header_style),
+        Paragraph('RPM', header_style),
+        Paragraph('Cov.', header_style),
+    ]
     if show_ani_column:
-        base_headers.append('High ANI')
+        base_headers.append(Paragraph('High<br/>ANI', header_style))
     n_base = len(base_headers)
 
-    # Strain detail column in subkey mode (single column holding a nested mini-table)
-    if use_subkey:
+    # Strain detail column in subkey mode (single column holding a nested mini-table).
+    # In compact/appendix mode the arrow is embedded inline in the name cell,
+    # so no extra column is needed.
+    if use_subkey and show_strains_table:
         headers = base_headers + ['']
     else:
         headers = base_headers
     n_total = len(headers)
 
     # ── Column widths ─────────────────────────────────────────────────────────
+    #   Columns: [indicator, Organism, TASS, (K2 Reads), Reads, RPM, Coverage, (High ANI)]
     def _base_col_widths(w):
         if show_k2_column and show_ani_column:
-            return [w*0.03, w*0.28, w*0.08, w*0.10, w*0.12, w*0.10, w*0.09, w*0.20]
+            return [w*0.03, w*0.24, w*0.08, w*0.11, w*0.14, w*0.10, w*0.10, w*0.20]
         elif show_k2_column:
-            return [w*0.03, w*0.33, w*0.09, w*0.13, w*0.14, w*0.12, w*0.16]
+            return [w*0.03, w*0.30, w*0.09, w*0.13, w*0.15, w*0.13, w*0.17]
         elif show_ani_column:
-            return [w*0.03, w*0.32, w*0.09, w*0.14, w*0.11, w*0.11, w*0.20]
+            return [w*0.03, w*0.28, w*0.09, w*0.15, w*0.12, w*0.12, w*0.21]
         else:
-            return [w*0.03, w*0.42, w*0.10, w*0.17, w*0.13, w*0.15]
+            return [w*0.03, w*0.40, w*0.10, w*0.17, w*0.14, w*0.16]
 
-    if use_subkey:
-        left_w = available_width * 0.60
-        right_w = available_width * 0.40
+    def build_metrics_mini_table(max_cds, max_mmbert, max_width=None):
+        """
+        Create a proper table showing CDS and/or mmbert with column headers.
+        Returns None if neither metric is present.
+        Hides columns when data isn't available.
+        max_width constrains the total table width to fit within a container.
+        """
+        cds_v = _valid_num(max_cds)
+        mm_v = _valid_num(max_mmbert)
+
+        # If neither metric is present, return None
+        if cds_v is None and mm_v is None:
+            return None
+
+        # Build header and data rows based on what's available
+        rows = []
+
+        # Determine which columns to include
+        has_cds = cds_v is not None
+        has_mmbert = mm_v is not None
+
+        # Build header
+        header_row = []
+        if has_cds:
+            header_row.append(Paragraph(f"<b>CDS</b>", mini_header_style))
+        if has_mmbert:
+            header_row.append(Paragraph(f"<b>mmbert %</b>", mini_header_style))
+        rows.append(header_row)
+
+        # Build data row
+        data_row = []
+        if has_cds:
+            data_row.append(Paragraph(f"{cds_v:.0f}", mini_style))
+        if has_mmbert:
+            mmbert_pct = mm_v * 100  # Convert to percentage
+            data_row.append(Paragraph(f"{mmbert_pct:.2f}%", mini_style))
+        rows.append(data_row)
+
+        # Calculate column widths, respecting max_width if provided
+        desired_cds_w = 0.5 * inch
+        desired_mm_w = 0.65 * inch
+        col_widths_metrics = []
+        if has_cds:
+            col_widths_metrics.append(desired_cds_w)
+        if has_mmbert:
+            col_widths_metrics.append(desired_mm_w)
+
+        # Scale down if total exceeds max_width
+        if max_width is not None:
+            total_desired = sum(col_widths_metrics)
+            if total_desired > max_width:
+                scale = max_width / total_desired
+                col_widths_metrics = [w * scale for w in col_widths_metrics]
+
+        # Create table with only the necessary columns
+        t = Table(rows, colWidths=col_widths_metrics)
+        t.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#D5E8FF')),  # Header background
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ]))
+        return t
+    if use_subkey and show_strains_table:
+        left_w = available_width * 0.62
+        right_w = available_width * 0.38
         col_widths = _base_col_widths(left_w) + [right_w]
     else:
+        # Compact/appendix mode: no separate right column — arrow is inline in name cell
+        right_w = available_width * 0.38  # kept for metrics_max_w calc but not added as column
         col_widths = _base_col_widths(available_width)
 
     # ── Table data ────────────────────────────────────────────────────────────
@@ -296,6 +423,33 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     row_idx = 1  # row 0 is the header
     emitted_subkeys_per_group = {}  # {species_key: set of already-emitted subkeys}
 
+    # Pre-compute strain names per species group for group header summaries
+    strains_per_group = {}
+    for s in all_strains:
+        sg = species_group_map[id(s)]
+        gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+        strains_per_group.setdefault(gk, []).append(s.get('name', 'Unknown'))
+    group_mmbert_max = {}
+    group_dmnd_cds_max = {}
+    for s in all_strains:
+        sg = species_group_map[id(s)]
+        gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+
+        # Use only the GROUP-level mmbert, not member-level
+        group_mm = _valid_num(sg.get('mmbert', None))
+        if group_mm is not None:
+            group_mmbert_max[gk] = group_mm
+
+        best_dmnd = None
+        for c in [
+            (sg.get('diamond') or {}).get('cds', None),
+            (s.get('diamond') or {}).get('cds', None)
+        ]:
+            c_v = _valid_num(c)
+            if c_v is not None:
+                best_dmnd = c_v if best_dmnd is None else max(best_dmnd, c_v)
+        if best_dmnd is not None:
+            group_dmnd_cds_max[gk] = best_dmnd
     i = 0
     while i < len(all_strains):
         strain = all_strains[i]
@@ -311,31 +465,82 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             group_reads = species_group.get('numreads', 0)
             group_k2_reads = species_group.get('k2_reads', 0)
 
+            group_strain_names = strains_per_group.get(species_key, [])
+            n_strains = len(group_strain_names)
+
             group_name_para = Paragraph(
                 f'<b><link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" '
                 f'color="blue">{group_name}</link></b>',
                 group_header_style
             )
 
-            group_row = ['', group_name_para, '']
+            # Group-level metrics: CDS/mmbert (group-level only)
+            gm = group_mmbert_max.get(species_key, None)
+            dmd_cds = group_dmnd_cds_max.get(species_key, None)
+            # Pass right column content width (minus outer cell padding) to cap mini-table
+            metrics_max_w = (right_w - 6) if use_subkey else None
+            group_metrics_tbl = build_metrics_mini_table(dmd_cds, gm, max_width=metrics_max_w)
+
+            # The group name cell spans columns 1+2
+            spanned_name_width = col_widths[1] + col_widths[2]
+
+            # Name cell contains ONLY the name paragraph (metrics moved to right column)
+            # Subtract outer cell padding (LEFT=4 + RIGHT=4) so text wraps within bounds
+            name_cell_w = spanned_name_width - 8
+            group_name_cell = Table(
+                [[group_name_para]],
+                colWidths=[name_cell_w]
+            )
+            group_name_cell.setStyle(TableStyle([
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+
+            group_row = ['', group_name_cell, '']
             if show_k2_column:
-                group_row.append(Paragraph(f'<b>{group_k2_reads:,.0f}</b>', group_header_style))
-            group_row.append(Paragraph(f'<b>{group_reads:,.0f}</b>', group_header_style))
+                group_row.append(Paragraph(f'<b>{group_k2_reads:,.0f}</b>', mini_style))
+            group_row.append(Paragraph(f'<b>{group_reads:,.0f}</b>', mini_style))
             group_row += ['', '']
             if show_ani_column:
                 group_row.append('')
-            if use_subkey:
-                group_row += ['']
+
+            # Right-side detail column (inline mode only — compact mode has no extra column)
+            if use_subkey and show_strains_table:
+                # Full inline mode: show CDS/mmbert metrics + organism count summary
+                summary_text = f'<i>{n_strains} detected organism{"s" if n_strains != 1 else ""}</i>'
+                summary_para = Paragraph(summary_text, group_strain_summary_style)
+                right_cell_rows = []
+                if group_metrics_tbl is not None:
+                    right_cell_rows.append([group_metrics_tbl])
+                    right_cell_rows.append([Spacer(1, 4)])
+                right_cell_rows.append([summary_para])
+                right_cell = Table(right_cell_rows, colWidths=[right_w - 6])
+                right_cell.setStyle(TableStyle([
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                    ('TOPPADDING', (0, 0), (-1, -1), 0),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+                ]))
+                group_row.append(right_cell)
 
             table_data.append(group_row)
             group_row_indices.append(row_idx)
 
             # Span group name across Organism + TASS columns only
             table_styles.append(('SPAN', (1, row_idx), (2, row_idx)))
-            # Span the empty trailing columns (RPM onward) together
+            # Span trailing columns (always up to n_total - 1, which is n_base - 1 in compact mode)
             rpm_col_idx = 5 if show_k2_column else 4
             if rpm_col_idx < n_total:
                 table_styles.append(('SPAN', (rpm_col_idx, row_idx), (n_total - 1, row_idx)))
+            if use_subkey and not show_strains_table:
+                # Compact mode: place organism count summary in the RPM slot (which now spans to end)
+                summary_text = f'<i>{n_strains} detected organism{"s" if n_strains != 1 else ""}</i>'
+                group_row[rpm_col_idx] = Paragraph(summary_text, group_strain_summary_style)
             table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#E8E8E8')))
             table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'LEFT'))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 8))
@@ -370,18 +575,70 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             indicator_text = '★' if is_hc else ''
 
             best_key = best.get('key', '')
-            # In subkey mode, show the species-level subkeyname when key != subkey
-            if str(best.get('subkey', best_key)) != str(best_key):
+
+            # Count total visible members in this species group to decide
+            # whether the strain mini-table will be shown or suppressed.
+            total_group_members = [
+                s for s in all_strains
+                if species_group_map[id(s)].get(
+                    'toplevelkey', species_group_map[id(s)].get('key', 'unknown')
+                ) == species_key
+            ]
+            single_strain_in_group = len(total_group_members) == 1
+
+            # When there is only one strain (strain table removed), show
+            # the member's own name/key instead of the subkey-level name
+            # so the row reads e.g. "SARS_CoV-2" rather than the species
+            # subkey name which duplicates the group header.
+            if single_strain_in_group:
+                display_name = best.get('name', 'Unknown')
+                display_key = best_key
+            elif str(best.get('subkey', best_key)) != str(best_key):
+                # In subkey mode, show the species-level subkeyname when key != subkey
                 display_name = best.get('subkeyname', best.get('name', 'Unknown'))
                 display_key = str(best.get('subkey', best_key))
             else:
                 display_name = best.get('name', 'Unknown')
                 display_key = best_key
-            name_html = (
+            # Base name HTML (arrow suffix added below once we know if one is needed)
+            name_html_base = (
                 f'{display_name} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={display_key}" '
                 f'color="blue">{display_key}</link>)'
             )
+
+            # ── Determine whether sub-level strains exist ──────────────────────
+            # Must be done before building the row so we can embed the arrow in
+            # the name cell (compact mode) or build the inline mini-table.
+            has_multiple_members = len(subkey_members) > 1
+            # Compare each member's key to sk (the subkey), NOT to best.get('key').
+            # This correctly detects members that are genuine sub-level strains
+            # (key != subkey), including the single-member case where the main
+            # table does a name-switch (single_strain_in_group).
+            has_different_keys = any(
+                str(m.get('key', '')) != str(sk) for m in subkey_members
+            )
+            subkey_members = [m for m in subkey_members if str(m.get('key', '')) != str(sk)]
+
+            # When the group has exactly one visible strain AND key != subkey,
+            # the main table has already switched the display to show the strain
+            # directly (name-switch).  There is nothing additional to show in
+            # the appendix, and no arrow should be rendered.
+            is_name_switch = single_strain_in_group and has_different_keys
+
+            has_appendix_entry = (
+                (has_multiple_members or has_different_keys)
+                and subkey_members
+                and not is_name_switch
+            )
+
+            # ── Build name cell with optional inline ↓ arrow (compact mode) ───
+            if not show_strains_table and has_appendix_entry:
+                strain_row_bm = f"strain_row_{sanitize_bookmark_name(sample_name)}_{species_key}"
+                arrow_link = create_safe_link('\u2193', strain_row_bm, valid_bookmarks, color='blue')
+                name_html = f'{name_html_base} {arrow_link}'
+            else:
+                name_html = name_html_base
 
             strain_reads = float(best.get('numreads', 0) or 0)
             pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
@@ -420,42 +677,48 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             if show_ani_column:
                 row.append(high_ani_text)
 
-            # Right side: always render a nested mini-table for all subkey members
-            mini_rows = [[
-                Paragraph('<b>Strain</b>', mini_header_style),
-                Paragraph('<b>TASS</b>', mini_header_style),
-                Paragraph('<b>Reads</b>', mini_header_style),
-            ]]
-            for m in subkey_members:
-                m_reads = float(m.get('numreads', 0) or 0)
-                m_pct = (m_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
-                m_key = m.get('key', '')
-                m_star = '★ ' if m.get('high_cons', False) else ''
-                mini_rows.append([
-                    Paragraph(
-                        f'{m_star}<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={m_key}" '
-                        f'color="blue">{m.get("name", "Unknown")}</link>',
-                        mini_style
-                    ),
-                    Paragraph(f"{m.get('tass_score', 0)*100:.1f}", mini_style),
-                    Paragraph(f"{m_reads:,.0f} ({m_pct:.1f}%)", mini_style),
-                ])
-
-            mini_tbl = Table(mini_rows)
-            mini_tbl.setStyle(TableStyle([
-                ('FONTSIZE', (0, 0), (-1, -1), 7),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#D5E8FF')),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('LEFTPADDING', (0, 0), (-1, -1), 3),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ALIGN', (1, 0), (2, -1), 'CENTER'),
-            ]))
-
-            row.append(mini_tbl)
+            # ── Right detail column (inline mini-table, show_strains_table only) ─
+            if show_strains_table:
+                if has_appendix_entry:
+                    mini_rows = [[
+                        Paragraph('<b>Additional Strain/Subsp.</b>', mini_header_style),
+                        Paragraph('<b>TASS</b>', mini_header_style),
+                        Paragraph('<b>Reads Aligned</b>', mini_header_style),
+                    ]]
+                    for m in subkey_members:
+                        m_reads = float(m.get('numreads', 0) or 0)
+                        m_pct = (m_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
+                        m_key = m.get('key', '')
+                        m_name = m.get('name', 'Unknown')
+                        m_star = '★ ' if m.get('high_cons', False) else ''
+                        mini_rows.append([
+                            Paragraph(
+                                f'{m_star}<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={m_key}" '
+                                f'color="blue">{m_name}</link>',
+                                mini_style
+                            ),
+                            Paragraph(f"{m.get('tass_score', 0)*100:.1f}", mini_style),
+                            Paragraph(f"{m_reads:,.0f} ({m_pct:.1f}%)", mini_style),
+                        ])
+                    mini_avail = right_w - 6
+                    mini_col_widths = [mini_avail * 0.50, mini_avail * 0.20, mini_avail * 0.30]
+                    mini_tbl = Table(mini_rows, colWidths=mini_col_widths)
+                    mini_tbl.setStyle(TableStyle([
+                        ('FONTSIZE', (0, 0), (-1, -1), 7),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#D5E8FF')),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('TOPPADDING', (0, 0), (-1, -1), 2),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (1, 0), (2, -1), 'CENTER'),
+                    ]))
+                    row.append(mini_tbl)
+                else:
+                    row.append('')
+            # Compact mode: no extra column — arrow already embedded in name_html above
 
             table_data.append(row)
 
@@ -547,7 +810,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('LEFTPADDING', (0, 0), (-1, 0), 3),
+        ('RIGHTPADDING', (0, 0), (-1, 0), 3),
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
         ('VALIGN', (0, 1), (0, -1), 'MIDDLE'),
         ('FONTSIZE', (0, 1), (0, -1), 14),
@@ -556,23 +822,30 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         ('VALIGN', (2, 1), (-1, -1), 'MIDDLE'),
         ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-        ('LEFTPADDING', (1, 1), (1, -1), 6),
-        ('RIGHTPADDING', (1, 1), (1, -1), 6),
+        # Organism column (col 1): keep comfortable padding
+        ('LEFTPADDING', (1, 1), (1, -1), 4),
+        ('RIGHTPADDING', (1, 1), (1, -1), 4),
         ('TOPPADDING', (1, 1), (1, -1), 6),
         ('BOTTOMPADDING', (1, 1), (1, -1), 6),
+        # Data columns (col 2 onwards): tight padding to prevent overflow
+        ('LEFTPADDING', (2, 1), (n_base - 1, -1), 2),
+        ('RIGHTPADDING', (2, 1), (n_base - 1, -1), 2),
+        ('TOPPADDING', (2, 1), (n_base - 1, -1), 4),
+        ('BOTTOMPADDING', (2, 1), (n_base - 1, -1), 4),
     ]
 
-    if use_subkey:
-        base_ts += [
+    if use_subkey and show_strains_table:
+        # Right detail column styles + vertical delimiter (inline mode only)
+        right_col_ts = [
             ('ALIGN', (n_base, 1), (n_total - 1, -1), 'LEFT'),
             ('VALIGN', (n_base, 1), (n_total - 1, -1), 'TOP'),
             ('LEFTPADDING', (n_base, 1), (n_total - 1, -1), 4),
             ('TOPPADDING', (n_base, 1), (n_total - 1, -1), 2),
             ('RIGHTPADDING', (n_base, 1), (n_total - 1, -1), 2),
             ('BOTTOMPADDING', (n_base, 1), (n_total - 1, -1), 2),
-            # Vertical delimiter between species columns and strain detail columns
             ('LINEAFTER', (n_base - 1, 0), (n_base - 1, -1), 2, colors.HexColor('#3498DB')),
         ]
+        base_ts += right_col_ts
 
     table = Table(table_data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle(base_ts + table_styles))
@@ -653,6 +926,253 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
     return table
 
 
+def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
+                                small_style, show_k2_column, valid_bookmarks,
+                                args, available_width):
+    """
+    Build the strain-detail appendix story elements.
+
+    Returns a list of ReportLab flowables to be appended to the main story.
+    One flat table per sample; each row is a single strain member.
+    Rows are compact (small font, tight padding) to save space.
+    Each species-group block in the table is preceded by an AnchorFlowable
+    so that links from the main table can jump directly to it.
+    """
+    story_items = []
+
+    # ── Section heading ───────────────────────────────────────────────────────
+    heading_style = ParagraphStyle(
+        'StrainDetailHeading', parent=small_style, fontSize=14,
+        textColor=colors.HexColor('#34495E'), spaceBefore=10, spaceAfter=4,
+        fontName='Helvetica-Bold')
+    note_style = ParagraphStyle(
+        'StrainDetailNote', parent=small_style, fontSize=8, leading=10,
+        textColor=colors.HexColor('#555555'))
+    sample_heading_style = ParagraphStyle(
+        'StrainSampleHeading', parent=small_style, fontSize=11,
+        fontName='Helvetica-Bold', textColor=colors.HexColor('#2C3E50'),
+        spaceBefore=8, spaceAfter=2)
+    cell_style = ParagraphStyle(
+        'StrainCell', parent=small_style, fontSize=7, leading=8, wordWrap='CJK')
+    header_cell_style = ParagraphStyle(
+        'StrainHeaderCell', parent=small_style, fontSize=7, leading=8,
+        fontName='Helvetica-Bold', textColor=colors.whitesmoke,
+        alignment=TA_CENTER, wordWrap='CJK')
+
+    story_items.append(AnchorFlowable('strain_detail_table'))
+    story_items.append(Paragraph('<b>Additional Lower-Level Strain Detail</b>', heading_style))
+    story_items.append(Paragraph(
+        'This appendix lists additional lower-level strains, subspecies, and assemblies '
+        'detected beneath each species-level entry in the main table above. '
+        'Only species groups with more than one distinct strain-level member are shown here. '
+        'Click the \u2191 icon next to an organism name to jump back to its '
+        'corresponding species row in the main table.',
+        note_style))
+    story_items.append(Spacer(1, 0.06 * inch))
+
+    for sample_name, sorted_groups in sorted_groups_by_sample:
+        # Pre-scan: does this sample have any strains with CDS or mmbert?
+        sample_has_cds = False
+        sample_has_mmbert = False
+        sample_strain_rows = []  # list of (sg, strain) pairs to render
+
+        for sg in sorted_groups:
+            species_key = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            qualifying = [
+                m for m in sg.get('members', [])
+                if (should_include_strain(m, args)
+                    and has_min_reads(m, args.min_reads)
+                    and passes_confidence_threshold(m, args.min_conf))
+            ]
+            # Mirror the main table's right-column visibility logic exactly.
+            # A group belongs in the appendix only when it has genuinely
+            # additional lower-level strains beyond what is already shown in
+            # the main table row.
+            #
+            # Two cases to exclude:
+            #   1. Every member's key == its own subkey — nothing sub-level.
+            #   2. Single-strain name-switch: exactly one qualifying member
+            #      whose key != subkey.  In this case the main table row has
+            #      already switched its display name to that strain, so there
+            #      is nothing extra to list in the appendix.
+            has_sublevel_members = any(
+                str(m.get('key', '')) != str(m.get('subkey', m.get('key', '')))
+                for m in qualifying
+            )
+            if not has_sublevel_members:
+                continue
+            # Detect single-strain name-switch (mirrors single_strain_in_group
+            # logic from create_combined_sample_table): only one visible member
+            # in the entire species group and its key differs from its subkey.
+            if len(qualifying) == 1 and str(qualifying[0].get('key', '')) != str(qualifying[0].get('subkey', qualifying[0].get('key', ''))):
+                continue
+            # Only append members that are genuine sub-level strains (key != subkey).
+            # Members where key == subkey are already shown as their own species row
+            # in the main table and must not appear again in the appendix.
+            sublevel = [
+                m for m in qualifying
+                if str(m.get('key', '')) != str(m.get('subkey', m.get('key', '')))
+            ]
+            for strain in sublevel:
+                sample_strain_rows.append((sg, strain))
+                cds_v = _valid_num((strain.get('diamond') or {}).get('cds', None))
+                mm_v = _valid_num(strain.get('mmbert', None))
+                if cds_v is not None:
+                    sample_has_cds = True
+                if mm_v is not None:
+                    sample_has_mmbert = True
+
+        if not sample_strain_rows:
+            continue
+
+        # ── Sample heading with back-link ─────────────────────────────────────
+        strain_sample_bm = f"strain_sample_{sanitize_bookmark_name(sample_name)}"
+        main_sample_bm = f"sample_{sanitize_bookmark_name(sample_name)}"
+        back_link = create_safe_link('\u2191', main_sample_bm, valid_bookmarks, color='blue')
+        story_items.append(AnchorFlowable(strain_sample_bm))
+        story_items.append(Paragraph(
+            f'<b>{sample_name}</b> {back_link}', sample_heading_style))
+
+        # ── Column headers ────────────────────────────────────────────────────
+        col_headers = [
+            '',  # indicator
+            Paragraph('Organism', header_cell_style),
+            Paragraph('TASS', header_cell_style),
+        ]
+        if show_k2_column:
+            col_headers.append(Paragraph('K2<br/>Reads', header_cell_style))
+        col_headers += [
+            Paragraph('Reads', header_cell_style),
+            Paragraph('Cov.', header_cell_style),
+        ]
+        if sample_has_cds:
+            col_headers.append(Paragraph('CDS', header_cell_style))
+        if sample_has_mmbert:
+            col_headers.append(Paragraph('mmbert%', header_cell_style))
+
+        # ── Column widths ─────────────────────────────────────────────────────
+        n_extra = (1 if sample_has_cds else 0) + (1 if sample_has_mmbert else 0)
+        n_k2 = 1 if show_k2_column else 0
+        # Distribute: indicator(2%), organism(rest), TASS(7%), K2(8%), Reads(12%), Cov(7%), CDS(7%), mmbert(8%)
+        fixed_pcts = 0.02 + 0.07 + n_k2 * 0.08 + 0.12 + 0.07 + n_extra * 0.075
+        org_pct = max(0.25, 1.0 - fixed_pcts)
+
+        w = available_width
+        cw = [w * 0.02, w * org_pct, w * 0.07]
+        if show_k2_column:
+            cw.append(w * 0.08)
+        cw += [w * 0.12, w * 0.07]
+        if sample_has_cds:
+            cw.append(w * 0.075)
+        if sample_has_mmbert:
+            cw.append(w * 0.075)
+
+        # ── Build table data ──────────────────────────────────────────────────
+        table_data = [col_headers]
+        table_styles_det = []
+        row_idx = 1
+
+        emitted_species = set()
+
+        for sg, strain in sample_strain_rows:
+            species_key = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            species_name = sg.get('toplevelname', '')
+
+            # Place per-species anchor before the first strain row for that group
+            if species_key not in emitted_species:
+                emitted_species.add(species_key)
+                strain_row_bm = f"strain_row_{sanitize_bookmark_name(sample_name)}_{species_key}"
+                story_items.append(AnchorFlowable(strain_row_bm))
+
+            microbial_category = strain.get('microbial_category', 'Unknown')
+            ann_class = strain.get('annClass', '')
+            is_hc = strain.get('high_cons', False)
+            indicator = '★' if is_hc else ''
+
+            strain_key = strain.get('key', '')
+            strain_name = strain.get('name', 'Unknown')
+
+            # Back-link ↑ to the species row in the main table
+            species_bm = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
+            up_link = create_safe_link('\u2191', species_bm, valid_bookmarks, color='blue')
+
+            name_html = (
+                f'<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
+                f'color="blue">{strain_name}</link> {up_link}'
+            )
+
+            strain_reads = float(strain.get('numreads', 0) or 0)
+            sample_total = max(1, sum(
+                sg2.get('numreads', 0)
+                for sg2 in samples_dict.get(sample_name, [])
+            ))
+            pct = strain_reads / sample_total * 100.0
+
+            tass_val = strain.get('tass_score', 0) * 100
+
+            row = [
+                indicator,
+                Paragraph(name_html, cell_style),
+                Paragraph(f'{tass_val:.1f}', cell_style),
+            ]
+            if show_k2_column:
+                row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", cell_style))
+            row += [
+                Paragraph(f'{strain_reads:,.0f} ({pct:.1f}%)', cell_style),
+                Paragraph(f'{min(100, strain.get("coverage", 0) * 100):.1f}%', cell_style),
+            ]
+            if sample_has_cds:
+                cds_v = _valid_num((strain.get('diamond') or {}).get('cds', None))
+                row.append(Paragraph(f'{cds_v:.0f}' if cds_v is not None else '—', cell_style))
+            if sample_has_mmbert:
+                mm_v = _valid_num(strain.get('mmbert', None))
+                row.append(Paragraph(
+                    f'{mm_v * 100:.2f}%' if mm_v is not None else '—', cell_style))
+
+            table_data.append(row)
+
+            # Row styling
+            ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
+            row_color = get_category_color(microbial_category, ann_class, alpha=0.12)
+            table_styles_det.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
+            table_styles_det.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
+            table_styles_det.append(('LINEBELOW', (0, row_idx), (-1, row_idx),
+                                     0.5, colors.HexColor('#DDDDDD')))
+            table_styles_det.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 2))
+            table_styles_det.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 2))
+            row_idx += 1
+
+        # ── Base table style ──────────────────────────────────────────────────
+        base_ts = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 7),
+            ('TOPPADDING', (0, 0), (-1, 0), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
+            ('LEFTPADDING', (0, 0), (-1, 0), 2),
+            ('RIGHTPADDING', (0, 0), (-1, 0), 2),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#AAAAAA')),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+            ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
+            ('LEFTPADDING', (1, 1), (1, -1), 3),
+            ('RIGHTPADDING', (1, 1), (1, -1), 3),
+            ('LEFTPADDING', (2, 1), (-1, -1), 2),
+            ('RIGHTPADDING', (2, 1), (-1, -1), 2),
+            ('FONTSIZE', (0, 1), (0, -1), 11),  # indicator column larger for ★
+        ]
+
+        det_table = Table(table_data, repeatRows=1, colWidths=cw)
+        det_table.setStyle(TableStyle(base_ts + table_styles_det))
+        story_items.append(det_table)
+        story_items.append(Spacer(1, 0.08 * inch))
+
+    return story_items
+
+
 def create_pdf_template(output_path, samples_dict, ani_data, args):
     """
     Create the full PDF report.
@@ -707,9 +1227,12 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
             use_subkey = False
             print("Auto-disabled subkey grouping: all subkeys match their keys")
 
+    show_strains_table = getattr(args, 'show_strains_table', False)
+
     print(f"\nHigh ANI column: {'SHOWN' if show_ani_column else 'HIDDEN'} (threshold: {args.ani_threshold})")
     print(f"K2 Reads column: {'SHOWN' if show_k2_column else 'HIDDEN'}")
     print(f"Subkey grouping: {'ENABLED' if use_subkey else 'DISABLED'}")
+    print(f"Strain detail table: {'INLINE' if show_strains_table else 'APPENDIX'}")
     print(f"\nFiltering settings:")
     print(f"  Show Potentials: {args.show_potentials}")
     print(f"  Show Commensals: {args.show_commensals}")
@@ -764,6 +1287,10 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     story.append(Paragraph(
         "Click on sample names or species groups to jump to their sections. "
         "Only samples/groups with visible strains are shown here", small_style))
+    story.append(Paragraph(
+        "The table is organized by samples first, then in order of TASS Score by default or alphabetical if selected. "
+        "Each row below a group is attributed to the highest-TASS strain in that group, and the number of strains shown per group is limited in the TOC for readability (see settings).",
+        small_style))
 
     for sample_name in sorted(samples_dict.keys()):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
@@ -832,10 +1359,17 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         story.append(Paragraph(
             '• ' + create_safe_link('Low Confidence, High Consequence Detections', 'low_confidence', valid_bookmarks),
             styles['Normal']))
+    if not show_strains_table:
+        story.append(Paragraph(
+            '• ' + create_safe_link('Additional Lower-Level Strain Detail', 'strain_detail_table', valid_bookmarks),
+            styles['Normal']))
     story.append(Paragraph('• ' + create_safe_link('Additional Information', 'additional_info', valid_bookmarks), styles['Normal']))
     story.append(Spacer(1, 0.00*inch))
 
     # ── Per-sample content ────────────────────────────────────────────────────
+    # Also build sorted_groups_by_sample for the strain appendix.
+    sorted_groups_by_sample = []  # list of (sample_name, sorted_groups)
+
     for sample_name in sorted(samples_dict.keys()):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
         story.append(AnchorFlowable(bookmark_name))
@@ -852,6 +1386,9 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
             sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
         else:
             sorted_groups = sorted(species_groups, key=lambda sg: get_species_group_stats(sg)[0], reverse=True)
+
+        # Record for appendix
+        sorted_groups_by_sample.append((sample_name, sorted_groups))
 
         for sg in sorted_groups:
             sp_key = sg.get('toplevelkey', sg.get('key', 'unknown'))
@@ -881,7 +1418,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
                 sample_total_reads=sample_total_reads,
                 sample_name=sample_name,
                 available_width=available_width,
-                use_subkey=use_subkey
+                use_subkey=use_subkey,
+                show_strains_table=show_strains_table,
             )
             story.append(combined_table)
         else:
@@ -937,15 +1475,15 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     story.append(Paragraph("<b>Column Explanations:</b>", heading_style))
     story.append(Spacer(1, 0.03*inch))
     explanations = [
-        "• <b>Specimen ID (Type):</b> The unique identifier for the sample, including the type of specimen (e.g., blood, tissue).",
+        "• <b>Specimen ID (Taxonomic ID #):</b> The unique identifier for the sample including its name and taxonomic ID. The taxonomic ID is a link to the NCBI Taxonomy Browser for that organism.",
         "• <b>Detected Organism:</b> The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
-        "• <b>Microbial Category:</b> The classification of the organism, indicating whether it is primary, opportunistic, commensal, or potential.",
+        "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest value.",
+        "• <b>K2 Reads:</b> The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data.",
         "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome. (%) refers to all alignments for that species across the entire sample.",
         "• <b>RPM:</b> Reads Per Million (RPM). This normalized metric allows for comparison of abundance across samples and organisms of different sizes.",
-        "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest value.",
-        "• <b>Taxonomic ID #:</b> The taxid for the organism according to NCBI Taxonomy. The parenthesis (if present) is the group it belongs to, usually the genus.",
-        "• <b>K2 Reads:</b> The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data.",
+        "• <b>Cov.:</b> The coverage of the organism's genome by aligned reads, expressed as a percentage.",
         "• <b>Strain Detail Columns (subkey mode):</b> When subkey grouping is enabled (default), the rightmost section shows each individual strain within the subkey group — its name, TASS score, and read count. The main row values are taken from the highest-confidence (best-TASS) member of that subkey group. Pass <b>--no_subkey</b> to disable this and revert to one row per strain.",
+        "• <b>High ANI Matches:</b> When the High ANI column is shown, this column lists any strains in the dataset that have an Average Nucleotide Identity (ANI) above the specified threshold with the given strain. Each match includes a link to its section in the report if it is present, or just the taxonomic ID and ANI percentage if not present.",
     ]
     for e in explanations:
         story.append(Paragraph(e, metadata_style))
@@ -963,6 +1501,15 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         story.append(create_low_confidence_table(
             low_confidence_strains, small_style, show_k2_column, available_width))
         story.append(Spacer(1, 0.1*inch))
+
+    # ── Strain Detail Appendix (when inline table is off) ────────────────────
+    if not show_strains_table:
+        appendix_items = create_strain_detail_tables(
+            samples_dict, sorted_groups_by_sample,
+            small_style, show_k2_column, valid_bookmarks,
+            args, available_width,
+        )
+        story.extend(appendix_items)
 
     # ── Footer: Additional Information ───────────────────────────────────────
     story.append(AnchorFlowable('additional_info'))
@@ -1165,7 +1712,7 @@ def parse_args():
         help="Name of site column, default is body_site",
     )
     parser.add_argument(
-        "--ani_threshold", metavar="ANI_THRESHOLD", required=False, type=float, default=0.90,
+        "--ani_threshold", metavar="ANI_THRESHOLD", required=False, type=float, default=0.95,
         help="Threshold for ANI to consider 'High ANI' in the report",
     )
     parser.add_argument(
@@ -1206,6 +1753,18 @@ def parse_args():
             "nested mini-table listing every individual strain with its name, TASS score, "
             "and read count. Pass --no_subkey to revert to the original flat "
             "one-row-per-strain layout."
+        ),
+    )
+    # ── Strain detail table toggle ────────────────────────────────────────────
+    parser.add_argument(
+        "--show_strains_table",
+        action="store_true",
+        default=False,
+        help=(
+            "Show the full strain detail mini-table inline in the right column of the "
+            "main report table (default: off). When off (default), strain details are "
+            "moved to a separate appendix table placed after the Low Confidence section, "
+            "and the main table right column shows a compact strain-count link instead."
         ),
     )
 

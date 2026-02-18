@@ -640,6 +640,18 @@
                     "description": "Show all non or non-identification organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "ani_threshold": {
+                    "type": "number",
+                    "description": "ANI threshold for reporting potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.95
+                },
+                "integrate_strain_table": {
+                    "type": "boolean",
+                    "description": "Integrate the strain level table into the main table rather than as a separate table. This is the table that has all the strains that are above the ANI threshold for potential organisms. This is disabled by default because it can be very large and unwieldy if there are a lot of potential organisms.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_multiqc": {
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",
