@@ -979,13 +979,16 @@ def calculate_siblings_score (
 
     return data
 
-def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w, alpha=1.0):
+def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
+                                    disparity_w=0.0, hmp_w=0.0, alpha=1.0):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
     g = metrics_df["gini_coefficient"].to_numpy(float)
+    d = metrics_df["disparity_score"].to_numpy(float) if "disparity_score" in metrics_df else 0.0
+    h = metrics_df["hmp_percentile"].to_numpy(float) if "hmp_percentile" in metrics_df else 0.0
 
-    score = breadth_w * b + minhash_w * m + gini_w * g
+    score = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
     score = alpha * score
     return np.clip(score, 0.0, 1.0)
 
@@ -1025,20 +1028,33 @@ def calculate_hmp_percentile(
         total_reads = 0
 ):
     abus = []
-    taxid = value.get('taxid', None)
+    taxid = (
+        value.get('taxid')
+        or value.get('key')
+        or value.get('toplevelkey')
+        or value.get('ref')
+    )
     for body_site in body_sites:
         if not taxid:
             continue
         try:
             # get the key where it is the (taxid, body_site)
-            if (int(taxid), body_site) in dists:
-                abus.append(
-                    dict(
-                        norm_abundance = dists[(int(taxid), body_site)].get('norm_abundance', 0),
-                        std = dists[(int(taxid), body_site)].get('std', 0),
-                        mean = dists[(int(taxid), body_site)].get('mean', 0),
+            taxid_int = int(float(taxid))
+            keys = [
+                (taxid_int, body_site),
+                (str(taxid_int), body_site),
+                (str(taxid), body_site),
+            ]
+            for k in keys:
+                if k in dists:
+                    abus.append(
+                        dict(
+                            norm_abundance = dists[k].get('norm_abundance', 0),
+                            std = dists[k].get('std', 0),
+                            mean = dists[k].get('mean', 0),
+                        )
                     )
-                )
+                    break
         except Exception as e:
             print(f"Error in taxid lookup for hmp: {e}")
     percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
@@ -1046,9 +1062,20 @@ def calculate_hmp_percentile(
     stdsum = sum([x.get('std',0) for x in abus])
     zscore = ((percent_total_reads_observed -sum_abus_expected)/ stdsum)  if stdsum > 0 else 3
     # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
-    percentile = norm.cdf(zscore)
+    base_percentile = norm.cdf(zscore)
 
-    return zscore, percentile
+    # Penalize below-typical values, keep neutral near the center,
+    # and boost unusually high values.
+    if zscore < -1.0:
+        adjusted_percentile = base_percentile ** 2
+    elif zscore <= 1.0:
+        adjusted_percentile = base_percentile
+    elif zscore <= 2.0:
+        adjusted_percentile = 1.0 - (1.0 - base_percentile) ** 1.5
+    else:
+        adjusted_percentile = 1.0 - (1.0 - base_percentile) ** 2
+
+    return zscore, adjusted_percentile
 
 def json_safe(x):
     """Convert numpy/pandas/scalars/containers into JSON-serializable Python types."""

@@ -620,6 +620,11 @@
                     "description": "Enable the generation of the final report matrix for high ANI similarity. The column will be included in the report if so.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "no_subkey": {
+                    "type": "boolean",
+                    "description": "Dont use the subkey odr, puts each row as a strain rather than grouping them into a parent taxid. This can be useful for looking at strain level differences, but can be very unwieldy if there are a lot of strains that are above the ANI threshold for potential organisms.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "sort_alphabetical": {
                     "type": "boolean",
                     "description": "Sort the tables on alphabetical order rather than TASS. If disabled, it sorts on TASS score descending",

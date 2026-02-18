@@ -372,6 +372,8 @@ def optimize_weights(
     breadth_weight=1/3,
     minhash_weight=1/3,
     gini_weight=1/3,
+    disparity_weight=0.0,
+    hmp_weight=0.0,
     alpha=1.0,
     optimize_pos_weight=1.0,
     optimize_neg_weight=1.0,
@@ -400,6 +402,8 @@ def optimize_weights(
         breadth_weight=float(breadth_weight),
         minhash_weight=float(minhash_weight),
         gini_weight=float(gini_weight),
+        disparity_weight=float(disparity_weight),
+        hmp_weight=float(hmp_weight),
     )
     opt = optimize_weights_for_tp_fp(
         metrics_df=metrics_df,
@@ -450,12 +454,16 @@ def optimize_weights(
     breadth_weight = best_w["breadth_weight"]
     minhash_weight = best_w["minhash_weight"]
     gini_weight = best_w["gini_weight"]
+    disparity_weight = best_w.get("disparity_weight", 0.0)
+    hmp_weight = best_w.get("hmp_weight", 0.0)
 
     scores = compute_tass_score_from_metrics(
         metrics_df,
         breadth_w=float(breadth_weight),
         minhash_w=float(minhash_weight),
         gini_w=float(gini_weight),
+        disparity_w=float(disparity_weight),
+        hmp_w=float(hmp_weight),
         alpha=float(alpha),
     )
     scores = np.asarray(scores, dtype=float)
@@ -477,6 +485,8 @@ def optimize_weights(
             "features": {
                 "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
                 "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
+                    "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
+                    "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
                 "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
             }
         })
@@ -502,6 +512,8 @@ def optimize_weights(
             "breadth_weight": float(breadth_weight),
             "minhash_weight": float(minhash_weight),
             "gini_weight": float(gini_weight),
+            "disparity_weight": float(disparity_weight),
+            "hmp_weight": float(hmp_weight),
         },
         "optimizer": opt,
         "report": report_rows,
@@ -569,10 +581,12 @@ def optimize_weights_for_tp_fp(
         start_weights["breadth_weight"],
         start_weights["minhash_weight"],
         start_weights["gini_weight"],
+        start_weights.get("disparity_weight", 0.0),
+        start_weights.get("hmp_weight", 0.0),
     ], dtype=float)
 
     w0 = np.clip(w0, 0.0, 1.0)
-    w0 = (w0 / w0.sum()) if w0.sum() > 0 else np.array([1/3, 1/3, 1/3], dtype=float)
+    w0 = (w0 / w0.sum()) if w0.sum() > 0 else np.array([1/5, 1/5, 1/5, 1/5, 1/5], dtype=float)
 
     def loss_for_w(w: np.ndarray) -> float:
         # simplex constraints (soft)
@@ -584,6 +598,8 @@ def optimize_weights_for_tp_fp(
             breadth_w=float(w[0]),
             minhash_w=float(w[1]),
             gini_w=float(w[2]),
+            disparity_w=float(w[3]),
+            hmp_w=float(w[4]),
             alpha=alpha,
         )
         p = _clip01(np.asarray(scores, dtype=float))
@@ -608,12 +624,12 @@ def optimize_weights_for_tp_fp(
         reg = reg_lambda * float(np.sum((w - w0) ** 2))
         return pos_w * pos_term + neg_w * neg_term + reg
 
-    # --- Global stage (DE) over 2 vars, 3rd implied by sum=1 ---
-    # x = [w_breadth, w_minhash], w_gini = 1 - sum(x)
+    # --- Global stage (DE) over 4 vars, 5th implied by sum=1 ---
+    # x = [w_breadth, w_minhash, w_gini, w_disparity], w_hmp = 1 - sum(x)
     def unpack_x(x: np.ndarray) -> np.ndarray:
-        wb, wm = float(x[0]), float(x[1])
-        wg = 1.0 - (wb + wm)
-        return np.array([wb, wm, wg], dtype=float)
+        wb, wm, wg, wd = float(x[0]), float(x[1]), float(x[2]), float(x[3])
+        wh = 1.0 - (wb + wm + wg + wd)
+        return np.array([wb, wm, wg, wd, wh], dtype=float)
 
     def loss_for_x(x: np.ndarray) -> float:
         w = unpack_x(x)
@@ -621,7 +637,7 @@ def optimize_weights_for_tp_fp(
             return 1e6 + 1e6 * max(0.0, -w.min())
         return loss_for_w(w)
 
-    bounds = [(0.0, 1.0), (0.0, 1.0)]
+    bounds = [(0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0)]
     rng = np.random.RandomState(seed)
 
     de_res = differential_evolution(
@@ -641,9 +657,9 @@ def optimize_weights_for_tp_fp(
         w_de = np.clip(w_de, 0.0, 1.0)
         w_de = w_de / w_de.sum()
 
-    # --- Local refinement (SLSQP) on 3 vars ---
+    # --- Local refinement (SLSQP) on 5 vars ---
     cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bnds = [(0.0, 1.0)] * 3
+    bnds = [(0.0, 1.0)] * 5
 
     local_res = minimize(
         loss_for_w,
@@ -663,6 +679,8 @@ def optimize_weights_for_tp_fp(
         breadth_w=float(w_best[0]),
         minhash_w=float(w_best[1]),
         gini_w=float(w_best[2]),
+        disparity_w=float(w_best[3]),
+        hmp_w=float(w_best[4]),
         alpha=alpha,
     )
     scores_best = np.asarray(scores_best, dtype=float)
@@ -677,6 +695,8 @@ def optimize_weights_for_tp_fp(
             "breadth_weight": float(w_best[0]),
             "minhash_weight": float(w_best[1]),
             "gini_weight": float(w_best[2]),
+            "disparity_weight": float(w_best[3]),
+            "hmp_weight": float(w_best[4]),
         },
         "status": "ok",
         "optimize_mode": optimize_mode,
@@ -842,6 +862,7 @@ def build_metrics_df_from_final_json(
         disparity = float(stats.get("k2_disparity_score", stats.get("disparity", 0.0)))
 
         gini = float(stats.get("gini_coefficient", 0.0))
+        hmp = float(stats.get("hmp_percentile", 0.0))
 
         tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
         total = tp + fp
@@ -855,6 +876,7 @@ def build_metrics_df_from_final_json(
             "minhash_reduction": minhash,
             "disparity_score": disparity,
             "gini_coefficient": gini,
+            "hmp_percentile": hmp,
             "tp_reads": int(tp),
             "fp_reads": int(fp),
             "total_reads": int(total),
@@ -880,6 +902,7 @@ def build_metrics_df_from_final_json(
         "minhash_reduction": "max",
         "disparity_score": "max",
         "gini_coefficient": "max",
+        "hmp_percentile": "max",
         "tp_reads": "sum",
         "fp_reads": "sum",
         "total_reads": "sum",

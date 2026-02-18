@@ -676,16 +676,20 @@ def main():
     inputfile = args.input
     pathogenfile = args.pathogens
     # Write to file in a newline format
+    if args.disparity_weight not in (None, 0.0):
+        disparity_w = args.disparity_weight
+    else:
+        disparity_w = args.disparity_score_weight
     weights = {
         'mapq_score': args.mapq_weight,
-        'disparity_score': args.disparity_score_weight,
+        'disparity_weight': disparity_w,
         'hmp_weight': args.hmp_weight,
         'gini_weight': args.gini_weight,
         "breadth_weight": args.breadth_weight,
         "minhash_weight": args.minhash_weight,
         'siblings_score': 0,
         'diamond_identity': args.diamond_identity_weight,
-        "k2_disparity_weight": args.k2_disparity_weight,
+        "k2_disparity_score_weight": args.k2_disparity_weight,
     }
     total_weight = sum(weights.values())
     if total_weight != 1:
@@ -1048,6 +1052,8 @@ def main():
             breadth_weight = args.breadth_weight,
             minhash_weight = args.minhash_weight,
             gini_weight = args.gini_weight,
+            disparity_weight = disparity_w,
+            hmp_weight = args.hmp_weight,
             # disparity_weight = args.disparity_score_weight,
             alpha = args.alpha,
             sampletype = sampletype,
@@ -1059,7 +1065,8 @@ def main():
             optimize_local_maxiter = args.optimize_local_maxiter,
             optimize_report = args.optimize_report,
         )
-        weights = report_weights.get("best_weights", weights)
+        best_weights = report_weights.get("best_weights") or {}
+        weights.update(best_weights)
         print("Optimized weights changed: ")
         for k, v in weights.items():
             print(f"\t{k}: {v}")
