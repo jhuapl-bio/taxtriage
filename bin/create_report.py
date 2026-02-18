@@ -15,46 +15,24 @@ from datetime import datetime
 from map_taxid import load_taxdump, load_names, load_merged
 
 
-def load_ani_matrix(ani_matrix_files):
-    import pandas as pd
-    if not ani_matrix_files:
-        return {}
-    ani_data = {}
-    for ani_file in ani_matrix_files:
-        if not os.path.exists(ani_file):
-            print(f"Warning: ANI matrix file not found: {ani_file}")
-            continue
-        df = pd.read_csv(ani_file, index_col=0)
-        print(f"Loaded ANI matrix from {ani_file}: {df.shape[0]} x {df.shape[1]}")
-        for taxid1 in df.index:
-            if str(taxid1) not in ani_data:
-                ani_data[str(taxid1)] = {}
-            for taxid2 in df.columns:
-                ani_value = df.loc[taxid1, taxid2]
-                if pd.notna(ani_value):
-                    ani_data[str(taxid1)][str(taxid2)] = float(ani_value)
-    return ani_data
+def get_high_ani_matches(member):
+    """Return the pre-computed high-ANI match list embedded in the member dict.
+
+    match_paths.py populates each member's ``high_ani_matches`` field as a list
+    of dicts::
+
+        [{"key": "<taxid>", "ani_pct": <float 0-100>}, ...]
+
+    sorted descending by ani_pct.  Returns an empty list when the field is
+    absent (e.g. ANI matrix was not enabled during match_paths run).
+    """
+    return member.get('high_ani_matches') or []
 
 
-def get_high_ani_matches(strain_key, ani_data, ani_threshold, all_strain_keys):
-    matches = []
-    strain_key_str = str(strain_key)
-    if strain_key_str not in ani_data:
-        return matches
-    for other_key, ani_value in ani_data[strain_key_str].items():
-        if other_key == strain_key_str:
-            continue
-        if ani_value >= ani_threshold:
-            matches.append((other_key, ani_value))
-    matches.sort(key=lambda x: x[1], reverse=True)
-    return matches
-
-
-def check_if_any_high_ani_in_dataset(strains, ani_data, ani_threshold):
+def check_if_any_high_ani_in_dataset(strains):
+    """Return True if any strain in the dataset has at least one high-ANI match."""
     for strain in strains:
-        strain_key = strain.get('key', '')
-        matches = get_high_ani_matches(strain_key, ani_data, ani_threshold, set())
-        if matches:
+        if get_high_ani_matches(strain):
             return True
     return False
 
@@ -254,8 +232,8 @@ def strip_species_prefix(strain_name, species_name):
     return result if result else strain_name
 
 
-def create_combined_sample_table(all_strains, species_group_map, small_style, ani_data,
-                                  ani_threshold, show_ani_column, show_k2_column,
+def create_combined_sample_table(all_strains, species_group_map, small_style,
+                                  show_ani_column, show_k2_column,
                                   taxid_to_bookmark, valid_bookmarks,
                                   sample_total_reads=0, sample_name=None,
                                   available_width=None, use_subkey=True,
@@ -298,6 +276,38 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     if available_width is None:
         available_width = 8.5 * inch - 0.02 * 8.5 * inch
 
+    def _has_any_inline_strain_tables():
+        if not (use_subkey and show_strains_table):
+            return False
+        strains_by_group = {}
+        for s in all_strains:
+            sg = species_group_map[id(s)]
+            gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            strains_by_group.setdefault(gk, []).append(s)
+        for gk, group_strains in strains_by_group.items():
+            if not group_strains:
+                continue
+            total_group_members = len(group_strains)
+            subkey_groups = {}
+            for s in group_strains:
+                sk = str(s.get('subkey', s.get('key', 'unknown')))
+                subkey_groups.setdefault(sk, []).append(s)
+            for sk, members in subkey_groups.items():
+                has_multiple_members = len(members) > 1
+                has_different_keys = any(str(m.get('key', '')) != str(sk) for m in members)
+                sublevel_members = [m for m in members if str(m.get('key', '')) != str(sk)]
+                is_name_switch = total_group_members == 1 and has_different_keys
+                has_appendix_entry = (
+                    (has_multiple_members or has_different_keys)
+                    and sublevel_members
+                    and not is_name_switch
+                )
+                if has_appendix_entry:
+                    return True
+        return False
+
+    show_inline_table = use_subkey and show_strains_table and _has_any_inline_strain_tables()
+
     # ── Headers ──────────────────────────────────────────────────────────────
     header_style = ParagraphStyle(
         'HeaderStyle', parent=small_style, fontSize=8, leading=9,
@@ -318,7 +328,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
     # Strain detail column in subkey mode (single column holding a nested mini-table).
     # In compact/appendix mode the arrow is embedded inline in the name cell,
     # so no extra column is needed.
-    if use_subkey and show_strains_table:
+    if show_inline_table:
         headers = base_headers + ['']
     else:
         headers = base_headers
@@ -405,7 +415,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
         return t
-    if use_subkey and show_strains_table:
+    if show_inline_table:
         left_w = available_width * 0.62
         right_w = available_width * 0.38
         col_widths = _base_col_widths(left_w) + [right_w]
@@ -508,39 +518,36 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
                 group_row.append('')
 
             # Right-side detail column (inline mode only — compact mode has no extra column)
-            if use_subkey and show_strains_table:
-                # Full inline mode: show CDS/mmbert metrics + organism count summary
-                summary_text = f'<i>{n_strains} detected organism{"s" if n_strains != 1 else ""}</i>'
-                summary_para = Paragraph(summary_text, group_strain_summary_style)
-                right_cell_rows = []
+            if show_inline_table:
+                # Full inline mode: show CDS/mmbert metrics (organism count is now in the spanned area)
                 if group_metrics_tbl is not None:
-                    right_cell_rows.append([group_metrics_tbl])
-                    right_cell_rows.append([Spacer(1, 4)])
-                right_cell_rows.append([summary_para])
-                right_cell = Table(right_cell_rows, colWidths=[right_w - 6])
-                right_cell.setStyle(TableStyle([
-                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                    ('TOPPADDING', (0, 0), (-1, -1), 0),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-                ]))
-                group_row.append(right_cell)
+                    right_cell_rows = [[group_metrics_tbl]]
+                    right_cell = Table(right_cell_rows, colWidths=[right_w - 6])
+                    right_cell.setStyle(TableStyle([
+                        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                        ('TOPPADDING', (0, 0), (-1, -1), 0),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+                    ]))
+                    group_row.append(right_cell)
+                else:
+                    group_row.append('')
 
             table_data.append(group_row)
             group_row_indices.append(row_idx)
 
             # Span group name across Organism + TASS columns only
             table_styles.append(('SPAN', (1, row_idx), (2, row_idx)))
-            # Span trailing columns (always up to n_total - 1, which is n_base - 1 in compact mode)
+            # Span trailing columns: stop before the right detail column when it exists
             rpm_col_idx = 5 if show_k2_column else 4
-            if rpm_col_idx < n_total:
-                table_styles.append(('SPAN', (rpm_col_idx, row_idx), (n_total - 1, row_idx)))
-            if use_subkey and not show_strains_table:
-                # Compact mode: place organism count summary in the RPM slot (which now spans to end)
-                summary_text = f'<i>{n_strains} detected organism{"s" if n_strains != 1 else ""}</i>'
-                group_row[rpm_col_idx] = Paragraph(summary_text, group_strain_summary_style)
+            span_end = (n_base - 1) if show_inline_table else (n_total - 1)
+            if rpm_col_idx <= span_end:
+                table_styles.append(('SPAN', (rpm_col_idx, row_idx), (span_end, row_idx)))
+            # Always place organism count summary in the RPM slot (first cell of trailing span)
+            summary_text = f'<i>{n_strains} detected organism{"s" if n_strains != 1 else ""}</i>'
+            group_row[rpm_col_idx] = Paragraph(summary_text, group_strain_summary_style)
             table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#E8E8E8')))
             table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'LEFT'))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 8))
@@ -633,9 +640,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
             )
 
             # ── Build name cell with optional inline ↓ arrow (compact mode) ───
-            if not show_strains_table and has_appendix_entry:
+            if not show_inline_table and has_appendix_entry:
                 strain_row_bm = f"strain_row_{sanitize_bookmark_name(sample_name)}_{species_key}"
-                arrow_link = create_safe_link('\u2193', strain_row_bm, valid_bookmarks, color='blue')
+                arrow_link = create_safe_link('Pathogenic strain detail \u2193', strain_row_bm,
+                                              valid_bookmarks, color='blue')
                 name_html = f'{name_html_base} {arrow_link}'
             else:
                 name_html = name_html_base
@@ -646,11 +654,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
 
             high_ani_text = ''
             if show_ani_column:
-                matches = get_high_ani_matches(best_key, ani_data, ani_threshold, set())
+                # Use the pre-computed matches embedded by match_paths.py
+                matches = get_high_ani_matches(best)
                 if matches:
                     ani_links = []
-                    for taxid, ani_value in matches[:3]:
-                        ani_pct = ani_value * 100
+                    for m in matches[:3]:
+                        taxid = str(m.get('key', ''))
+                        ani_pct = float(m.get('ani_pct', 0))
                         if taxid in taxid_to_bookmark:
                             bm = taxid_to_bookmark[taxid]
                             if bm in valid_bookmarks:
@@ -678,7 +688,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
                 row.append(high_ani_text)
 
             # ── Right detail column (inline mini-table, show_strains_table only) ─
-            if show_strains_table:
+            if show_inline_table:
                 if has_appendix_entry:
                     mini_rows = [[
                         Paragraph('<b>Additional Strain/Subsp.</b>', mini_header_style),
@@ -752,11 +762,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
 
             high_ani_text = ''
             if show_ani_column:
-                matches = get_high_ani_matches(strain_key, ani_data, ani_threshold, set())
+                # Use the pre-computed matches embedded by match_paths.py
+                matches = get_high_ani_matches(strain)
                 if matches:
                     ani_links = []
-                    for taxid, ani_value in matches[:3]:
-                        ani_pct = ani_value * 100
+                    for m in matches[:3]:
+                        taxid = str(m.get('key', ''))
+                        ani_pct = float(m.get('ani_pct', 0))
                         if taxid in taxid_to_bookmark:
                             bm = taxid_to_bookmark[taxid]
                             if bm in valid_bookmarks:
@@ -834,7 +846,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style, an
         ('BOTTOMPADDING', (2, 1), (n_base - 1, -1), 4),
     ]
 
-    if use_subkey and show_strains_table:
+    if show_inline_table:
         # Right detail column styles + vertical delimiter (inline mode only)
         right_col_ts = [
             ('ALIGN', (n_base, 1), (n_total - 1, -1), 'LEFT'),
@@ -965,8 +977,8 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
         'This appendix lists additional lower-level strains, subspecies, and assemblies '
         'detected beneath each species-level entry in the main table above. '
         'Only species groups with more than one distinct strain-level member are shown here. '
-        'Click the \u2191 icon next to an organism name to jump back to its '
-        'corresponding species row in the main table.',
+        'Links labeled "Pathogenic strain detail" jump between the main table and this '
+        'appendix when pathogenic strain-level entries are present.',
         note_style))
     story_items.append(Spacer(1, 0.06 * inch))
 
@@ -1094,7 +1106,8 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
 
             # Back-link ↑ to the species row in the main table
             species_bm = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
-            up_link = create_safe_link('\u2191', species_bm, valid_bookmarks, color='blue')
+            up_link = create_safe_link('Pathogenic strain detail \u2191', species_bm,
+                                       valid_bookmarks, color='blue')
 
             name_html = (
                 f'<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
@@ -1173,7 +1186,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
     return story_items
 
 
-def create_pdf_template(output_path, samples_dict, ani_data, args):
+def create_pdf_template(output_path, samples_dict, args):
     """
     Create the full PDF report.
     """
@@ -1212,7 +1225,10 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
         for species_group in species_groups:
             all_strains.extend(species_group.get('members', []))
 
-    show_ani_column = check_if_any_high_ani_in_dataset(all_strains, ani_data, args.ani_threshold)
+    if not args.enable_matrix:
+        show_ani_column = False
+    else:
+        show_ani_column = check_if_any_high_ani_in_dataset(all_strains)
     show_k2_column = check_if_k2_reads_present(all_strains)
     use_subkey = not args.no_subkey
     if use_subkey:
@@ -1229,7 +1245,7 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
 
     show_strains_table = getattr(args, 'show_strains_table', False)
 
-    print(f"\nHigh ANI column: {'SHOWN' if show_ani_column else 'HIDDEN'} (threshold: {args.ani_threshold})")
+    print(f"\nHigh ANI column: {'SHOWN' if show_ani_column else 'HIDDEN'} (pre-computed from match_paths.py)")
     print(f"K2 Reads column: {'SHOWN' if show_k2_column else 'HIDDEN'}")
     print(f"Subkey grouping: {'ENABLED' if use_subkey else 'DISABLED'}")
     print(f"Strain detail table: {'INLINE' if show_strains_table else 'APPENDIX'}")
@@ -1241,7 +1257,6 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
     print(f"  Sorting mode: {'Alphabetical' if args.sort_alphabetical else 'TASS Score (descending)'}")
     print(f"  Max members per group: {args.max_members if args.max_members else 'Unlimited'}")
     print(f"  Max TOC groups per sample: {args.max_toc}")
-
     # Collect low confidence strains
     low_confidence_strains = []
     for sample_name, species_groups in samples_dict.items():
@@ -1412,8 +1427,8 @@ def create_pdf_template(output_path, samples_dict, ani_data, args):
 
         if all_sample_strains:
             combined_table = create_combined_sample_table(
-                all_sample_strains, species_group_map, small_style, ani_data,
-                args.ani_threshold, show_ani_column, show_k2_column,
+                all_sample_strains, species_group_map, small_style,
+                show_ani_column, show_k2_column,
                 taxid_to_bookmark, valid_bookmarks,
                 sample_total_reads=sample_total_reads,
                 sample_name=sample_name,
@@ -1687,6 +1702,8 @@ def parse_args():
                         help="Sort by TASS score if available")
     parser.add_argument('--sort_alphabetical', action="store_true", required=False,
                         help="Sort groups alphabetically instead of by TASS score")
+    parser.add_argument('--enable_matrix', action="store_true", required=False,
+                        help="Enable matrix view if available")
     parser.add_argument(
         "--max_members", metavar="MAX_MEMBERS", required=False, type=int, default=None,
         help="Maximum number of top strains (by TASS) to show per group. Default: show all",
@@ -1712,10 +1729,6 @@ def parse_args():
         help="Name of site column, default is body_site",
     )
     parser.add_argument(
-        "--ani_threshold", metavar="ANI_THRESHOLD", required=False, type=float, default=0.95,
-        help="Threshold for ANI to consider 'High ANI' in the report",
-    )
-    parser.add_argument(
         "-t", "--type", metavar="TYPE", required=False, default='Detected Organism',
         help="What type of data is being processed. Options: 'Taxonomic ID #' or 'Detected Organism'.",
         choices=['Taxonomic ID #', 'Detected Organism'],
@@ -1731,10 +1744,6 @@ def parse_args():
     parser.add_argument(
         "-o", "--output", metavar="OUTPUT", required=True, type=str,
         help="Path of output file (pdf)",
-    )
-    parser.add_argument(
-        "--ani_matrix", metavar="ANI_MATRIX", required=False, type=str, nargs="+",
-        help="Path to organism ANI matrix CSV file from Sourmash signatures. Optional",
     )
     parser.add_argument(
         "-u", "--output_txt", metavar="OUTPUT_TXT", required=False, type=str,
@@ -1789,11 +1798,6 @@ def main():
             merged_tax_data = load_merged(f"{args.taxdump}/merged.dmp")
             print(f"Loaded merged.dmp: {len(merged_tax_data)} entries")
 
-    ani_data = {}
-    if args.ani_matrix:
-        ani_data = load_ani_matrix(args.ani_matrix)
-        print(f"Loaded ANI data for {len(ani_data)} taxa")
-
     sample_data = load_json_samples(args.input)
     print(f"Loaded {len(sample_data)} species groups from JSON file(s)")
 
@@ -1804,16 +1808,14 @@ def main():
     print(f"  Output PDF: {args.output}")
     if args.output_txt:
         print(f"  Output TXT: {args.output_txt}")
-    if args.ani_matrix:
-        print(f"  ANI Matrix: {args.ani_matrix}")
-        print(f"  ANI Threshold: {args.ani_threshold}")
     print(f"  Min Confidence: {args.min_conf}")
     print(f"  Show Potentials: {args.show_potentials}")
     print(f"  Show Unidentified: {args.show_unidentified}")
     print(f"  Show Commensals: {args.show_commensals}")
     print(f"  Subkey grouping: {'DISABLED' if args.no_subkey else 'ENABLED'}")
+    print(f"  High ANI matches: read from 'high_ani_matches' field in JSON (set by match_paths.py)")
 
-    create_pdf_template(args.output, samples_dict, ani_data, args)
+    create_pdf_template(args.output, samples_dict, args)
 
     if args.output_txt:
         create_tabular_output(args.output_txt, samples_dict, args)

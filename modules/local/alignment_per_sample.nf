@@ -77,7 +77,8 @@ process ALIGNMENT_PER_SAMPLE {
     def taxonomy  = taxdump ? " --taxdump ${taxdump} " : " "
     def alpha = params.alpha ? " --alpha ${params.alpha} " : " --alpha 1.0 "
     def conf_sens = params.conf_sens ? " --sensitive " : " "
-    def skip_matrix = params.skip_matrix ? " --skip_matrix " : " "
+    def enable_matrix = params.enable_matrix ? " --enable_matrix " : " "
+    def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
 
     """
 
@@ -94,7 +95,7 @@ process ALIGNMENT_PER_SAMPLE {
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $compress_species $mbert_report $minmapq $sensitive $taxonomy $conf_sens $skip_matrix
+        $min_reads_align $compress_species $mbert_report $minmapq $sensitive $taxonomy $conf_sens $enable_matrix $ani_threshold
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

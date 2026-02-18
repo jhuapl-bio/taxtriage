@@ -615,9 +615,9 @@
                     "description": "Build signatures from TASS Minhash score step using windowed regions of the reference gneomes. Default (disabled-false) is to only compare similar reads/regions from the aligned reads from the BAM file(s)",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "skip_matrix": {
+                "enable_matrix": {
                     "type": "boolean",
-                    "description": "Skip the generation of the final report matrix for high ANI similarity. The column will be missing in the report if so.",
+                    "description": "Enable the generation of the final report matrix for high ANI similarity. The column will be included in the report if so.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "sort_alphabetical": {

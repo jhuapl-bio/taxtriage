@@ -95,14 +95,13 @@ workflow REPORT {
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
             // merge
-
             SINGLE_REPORT(
-                ALIGNMENT_PER_SAMPLE.out.txt.join(ALIGNMENT_PER_SAMPLE.out.ani).combine(distributions),
+                ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
                 false,
             )
 
             ORGANISM_MERGE_REPORT(
-                full_list_pathogen_files.combine(ch_empty_file3).combine(distributions),
+                full_list_pathogen_files.combine(distributions),
                 missing_samples,
             )
 

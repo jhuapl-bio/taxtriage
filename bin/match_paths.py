@@ -348,7 +348,14 @@ def parse_args(argv=None):
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
     parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
-    parser.add_argument("--skip_matrix", required=False, action='store_true', help="Skip loading the ANI matrix file")
+    parser.add_argument("--enable_matrix", required=False, action='store_true', help="Enable loading the ANI matrix file")
+    parser.add_argument(
+        "--ani_threshold",
+        type=float,
+        default=0.95,
+        help="ANI threshold above which two organisms are considered highly similar (default: 0.95). "
+             "Used to annotate each member in the output JSON with a 'high_ani_matches' list.",
+    )
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")
     parser.add_argument("--failed_reads", required=False, help="Load a 2 col tsv of reference   read_id that is to be the passed reads. Remove all others and update bedgraph and cov file(s)")
     parser.add_argument("--scaled", type=int, default=2000, help="scaled factor for MinHash.")
@@ -736,20 +743,51 @@ def main():
     alignments_to_remove = defaultdict(set)
     if args.fasta:
         fastas = set(args.fasta)
-    if args.match and os.path.exists(matcher) and not args.skip_matrix:
-        # if args.output_dir/organism_ani_matrix.csv doesnt exist then perform it:
-        if not args.matrix or not os.path.exists(args.matrix):
-            print("generating ani matrix")
-            generate_ani_matrix(
-                fasta_files = fastas if args.fasta else [],
-                matchfile = args.match,
-                matchfile_accession_col = args.accessioncol,
-                matchfile_taxid_col = args.taxcol,
-                matchfile_desc_col = args.namecol,
-                output_dir = args.output_dir if args.output_dir else os.path.dirname(args.output),
-            )
+    # ani_df holds the taxid-level ANI DataFrame (index & cols are taxid strings).
+    # It is populated either by generating the matrix from FASTA signatures or by
+    # loading a pre-existing CSV.  ani_data is the nested dict form used for lookup.
+    ani_df = None
+    ani_data = {}  # ani_data[taxid1][taxid2] = float ANI value (0..1)
+
+    if args.match and os.path.exists(matcher) and args.enable_matrix:
+        # Determine where the default auto-generated matrix would be saved
+        default_matrix_path = os.path.join(
+            args.output_dir if args.output_dir else os.path.dirname(args.output),
+            "organism_ani_matrix.csv",
+        )
+        matrix_path = args.matrix or default_matrix_path
+
+        if args.matrix and os.path.exists(args.matrix):
+            # Use the explicitly-provided pre-computed matrix CSV
+            print(f"Loading pre-computed ANI matrix from {args.matrix}")
+            ani_df = pd.read_csv(args.matrix, index_col=0)
+        elif os.path.exists(default_matrix_path):
+            # Auto-generated matrix from a previous run
+            print(f"Loading cached ANI matrix from {default_matrix_path}")
+            ani_df = pd.read_csv(default_matrix_path, index_col=0)
         else:
-            print("Ani matrix already exists across references")
+            print("Generating ANI matrix from FASTA signatures…")
+            ani_df = generate_ani_matrix(
+                fasta_files=fastas if args.fasta else [],
+                matchfile=args.match,
+                matchfile_accession_col=args.accessioncol,
+                matchfile_taxid_col=args.taxcol,
+                matchfile_desc_col=args.namecol,
+                output_dir=args.output_dir if args.output_dir else os.path.dirname(args.output),
+            )
+
+        # Convert DataFrame to nested dict for O(1) lookup
+        if ani_df is not None:
+            for taxid1 in ani_df.index:
+                t1 = str(taxid1)
+                if t1 not in ani_data:
+                    ani_data[t1] = {}
+                for taxid2 in ani_df.columns:
+                    val = ani_df.loc[taxid1, taxid2]
+                    if pd.notna(val):
+                        ani_data[t1][str(taxid2)] = float(val)
+            print(f"ANI data loaded for {len(ani_data)} taxa (threshold {args.ani_threshold})")
+
     if args.minhash_weight > 0:
         if args.comparisons and os.path.exists(args.comparisons):
             # if ends with csv
@@ -1135,6 +1173,29 @@ def main():
     for v in final_json:
         v['sampletype'] = sampletype
         v['total_reads'] = total_reads
+
+    # ── ANI annotation ────────────────────────────────────────────────────────
+    # For each member in every species group, attach a 'high_ani_matches' list
+    # containing dicts {key, name, ani_pct} for all other taxa whose ANI with
+    # this member exceeds args.ani_threshold.  create_report.py reads this list
+    # directly so it does not need to load or parse the ANI matrix itself.
+    if ani_data:
+        for group in final_json:
+            for member in group.get('members', []):
+                member_key = str(member.get('key', ''))
+                matches = []
+                if member_key in ani_data:
+                    for other_key, ani_val in ani_data[member_key].items():
+                        if other_key == member_key:
+                            continue
+                        if ani_val >= args.ani_threshold:
+                            matches.append({
+                                'key': other_key,
+                                'ani_pct': round(float(ani_val) * 100, 2),
+                            })
+                    matches.sort(key=lambda x: x['ani_pct'], reverse=True)
+                member['high_ani_matches'] = matches
+
     # for data in final_json:
     #     print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
     #     print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
