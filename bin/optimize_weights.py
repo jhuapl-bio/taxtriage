@@ -428,7 +428,7 @@ def calculate_normalized_groups(
         "minhash_score", "k2_disparity_score", "hmp_percentile",
         # REMOVED: "breadth_log_score",  # will recalculate from aggregated coverage
         "minhash_reduction", "gini_coefficient", "diamond_identity", "rpkm", "rpm",
-        "mapq_score",
+        "mapq_score", "rpm_confidence_weight", "read_fraction",
     }
 
     def _to_float(x) -> float:
@@ -477,6 +477,9 @@ def calculate_normalized_groups(
 
         # preserve a representative name if present
         agg["name"] = entries[0].get("name") or entries[0].get("organism") or gval
+        if "subkey" not in agg and "subkey" in entries[0]:
+            agg["subkey"] = entries[0].get("subkey")
+            agg["subkeyname"] = entries[0].get("subkeyname", agg["name"])
 
         # ---------- TOPLEVEL KEY + NAME ----------
         if group_field == "toplevelkey":
@@ -533,6 +536,88 @@ def calculate_normalized_groups(
         # agg["breadth_log_score"] = breadth_score_sigmoid(agg["coverage"])  # threshold-based
 
         out[gval] = agg
+
+    # ========== RPM-NORMALIZED MINHASH REDUCTION ==========
+    # Within each parent group (toplevelkey), normalize minhash_reduction
+    # by RPM share so that high-abundance organisms are boosted and
+    # low-abundance siblings are dampened.
+    #
+    # Example: monkeypox (20 reads, RPM=X) vs 4 other orthopox (4 reads each)
+    #   monkeypox rpm_share ≈ 0.56 → minhash_reduction boosted
+    #   each other  rpm_share ≈ 0.11 → minhash_reduction dampened
+    #
+    # Formula:  minhash_reduction *= (floor + (1 - floor) * rpm_share)
+    #   floor=0.3 ensures low-RPM organisms aren't zeroed out entirely
+
+    _rpm_norm_floor = 0.3  # minimum scaling factor for lowest-RPM member
+
+    # 1) Bucket the output entries by their parent group
+    parent_buckets: Dict[str, List[str]] = {}
+    for gval, agg in out.items():
+        parent = agg.get("toplevelkey") or gval
+        parent_buckets.setdefault(str(parent), []).append(gval)
+
+    # 2) For each parent group, compute RPM shares and adjust minhash_reduction
+    _solo_boost_strength = 0.9  # max boost toward 1.0 for a solo organism
+
+    for parent, member_keys in parent_buckets.items():
+        if len(member_keys) <= 1:
+            # ----------------------------------------------------------
+            # SOLO EXCLUSIVITY BOOST
+            # ----------------------------------------------------------
+            # Being the only organism in a group means no siblings are
+            # competing for these reads — that's a positive signal.
+            # Boost minhash_reduction toward 1.0, scaled by rpm_confidence_weight
+            # (sigmoid on read_fraction) so the boost is proportional to how
+            # confident we are the reads are real.
+            #
+            # Formula:
+            #   gap       = 1.0 - raw_minhash        (room to grow)
+            #   boost     = gap * strength * conf     (how much to fill that gap)
+            #   final     = raw + boost
+            #
+            # At 5 reads / 200k total (read_fraction=2.5e-5, conf≈0.71):
+            #   raw=0.5 → final = 0.5 + 0.5*0.4*0.71 = 0.642
+            # At 5 reads / 10M total  (read_fraction=5e-7,  conf≈0.01):
+            #   raw=0.5 → final = 0.5 + 0.5*0.4*0.01 = 0.502  (barely moves)
+            # ----------------------------------------------------------
+            mk = member_keys[0]
+            raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
+            conf = _to_float(out[mk].get("rpm_confidence_weight", 0))
+
+            gap = 1.0 - raw_minhash
+            boost = gap * _solo_boost_strength * conf
+            adjusted = raw_minhash + boost
+
+            out[mk]["minhash_reduction_raw"] = raw_minhash
+            out[mk]["minhash_reduction"] = min(1.0, adjusted)
+            out[mk]["rpm_share_in_group"] = 1.0
+            out[mk]["rpm_norm_scale"] = 1.0
+            out[mk]["solo_exclusivity_boost"] = boost
+            continue
+
+        # ----------------------------------------------------------
+        # MULTI-MEMBER: RPM-share normalization (as before)
+        # ----------------------------------------------------------
+        # Gather RPM values for each member in this group
+        rpms = []
+        for mk in member_keys:
+            r = _to_float(out[mk].get("rpm", 0))
+            rpms.append((mk, r))
+
+        total_rpm = sum(r for _, r in rpms)
+        if total_rpm <= 0:
+            continue
+
+        for mk, r in rpms:
+            rpm_share = r / total_rpm
+            # Scale: floor at _rpm_norm_floor, ceiling at 1.0
+            scale = _rpm_norm_floor + (1.0 - _rpm_norm_floor) * rpm_share
+            raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
+            out[mk]["minhash_reduction_raw"] = raw_minhash
+            out[mk]["minhash_reduction"] = raw_minhash * scale
+            out[mk]["rpm_share_in_group"] = rpm_share
+            out[mk]["rpm_norm_scale"] = scale
 
     return out
 
@@ -714,7 +799,7 @@ def rpm_confidence_weight(read_fraction, k=50000, midpoint=0.0001):
     return 1.0 / (1.0 + math.exp(-k * (read_fraction - midpoint)))
 
 
-def breadth_score_sigmoid(coverage, midpoint=0.09, steepness=20):
+def breadth_score_sigmoid(coverage, midpoint=0.02, steepness=20):
         return 1.0 / (1.0 + math.exp(-steepness * (coverage - midpoint)))
 def calculate_mmbert_prob(
     mmbert_dict = {},
@@ -894,13 +979,16 @@ def calculate_siblings_score (
 
     return data
 
-def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w, alpha=1.0):
+def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
+                                    disparity_w=0.0, hmp_w=0.0, alpha=1.0):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
     g = metrics_df["gini_coefficient"].to_numpy(float)
+    d = metrics_df["disparity_score"].to_numpy(float) if "disparity_score" in metrics_df else 0.0
+    h = metrics_df["hmp_percentile"].to_numpy(float) if "hmp_percentile" in metrics_df else 0.0
 
-    score = breadth_w * b + minhash_w * m + gini_w * g
+    score = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
     score = alpha * score
     return np.clip(score, 0.0, 1.0)
 
@@ -940,20 +1028,33 @@ def calculate_hmp_percentile(
         total_reads = 0
 ):
     abus = []
-    taxid = value.get('taxid', None)
+    taxid = (
+        value.get('taxid')
+        or value.get('key')
+        or value.get('toplevelkey')
+        or value.get('ref')
+    )
     for body_site in body_sites:
         if not taxid:
             continue
         try:
             # get the key where it is the (taxid, body_site)
-            if (int(taxid), body_site) in dists:
-                abus.append(
-                    dict(
-                        norm_abundance = dists[(int(taxid), body_site)].get('norm_abundance', 0),
-                        std = dists[(int(taxid), body_site)].get('std', 0),
-                        mean = dists[(int(taxid), body_site)].get('mean', 0),
+            taxid_int = int(float(taxid))
+            keys = [
+                (taxid_int, body_site),
+                (str(taxid_int), body_site),
+                (str(taxid), body_site),
+            ]
+            for k in keys:
+                if k in dists:
+                    abus.append(
+                        dict(
+                            norm_abundance = dists[k].get('norm_abundance', 0),
+                            std = dists[k].get('std', 0),
+                            mean = dists[k].get('mean', 0),
+                        )
                     )
-                )
+                    break
         except Exception as e:
             print(f"Error in taxid lookup for hmp: {e}")
     percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
@@ -961,9 +1062,20 @@ def calculate_hmp_percentile(
     stdsum = sum([x.get('std',0) for x in abus])
     zscore = ((percent_total_reads_observed -sum_abus_expected)/ stdsum)  if stdsum > 0 else 3
     # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
-    percentile = norm.cdf(zscore)
+    base_percentile = norm.cdf(zscore)
 
-    return zscore, percentile
+    # Penalize below-typical values, keep neutral near the center,
+    # and boost unusually high values.
+    if zscore < -1.0:
+        adjusted_percentile = base_percentile ** 2
+    elif zscore <= 1.0:
+        adjusted_percentile = base_percentile
+    elif zscore <= 2.0:
+        adjusted_percentile = 1.0 - (1.0 - base_percentile) ** 1.5
+    else:
+        adjusted_percentile = 1.0 - (1.0 - base_percentile) ** 2
+
+    return zscore, adjusted_percentile
 
 def json_safe(x):
     """Convert numpy/pandas/scalars/containers into JSON-serializable Python types."""

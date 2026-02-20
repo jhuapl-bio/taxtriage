@@ -1528,9 +1528,19 @@ def generate_ani_matrix(
     matchfile_taxid_col: int = 4,
     matchfile_desc_col: int = 2,
 ):
+    """Generate a taxid-level ANI matrix from FASTA signatures.
+
+    Returns the ANI DataFrame (index and columns are taxid strings) so callers
+    can use it directly without re-reading the CSV, or None if generation was
+    skipped.  The matrix is also written to
+    ``<output_dir>/organism_ani_matrix.csv`` for caching.
+    """
+    import pandas as pd
     os.makedirs(output_dir, exist_ok=True)
     if matchfile:
-        accession_to_taxid, taxid_to_desc, _ =  load_matchfile(matchfile, matchfile_accession_col, matchfile_taxid_col, matchfile_desc_col)
+        accession_to_taxid, taxid_to_desc, _ = load_matchfile(
+            matchfile, matchfile_accession_col, matchfile_taxid_col, matchfile_desc_col
+        )
         org_sigs, _ = build_organism_signatures_from_fastas_ani(
             fasta_paths=fasta_files,
             accession_to_taxid=accession_to_taxid,
@@ -1539,10 +1549,13 @@ def generate_ani_matrix(
             scaled=200,
         )
         ani_df = organism_ani_matrix_from_sigs(org_sigs, symmetrize="mean")
-        ani_df.to_csv(os.path.join(output_dir, "organism_ani_matrix.csv"))
+        csv_path = os.path.join(output_dir, "organism_ani_matrix.csv")
+        ani_df.to_csv(csv_path)
+        print(f"ANI matrix written to {csv_path}")
+        return ani_df
     else:
         print("No matchfile provided; skipping ANI matrix generation.")
-    return
+        return None
 # -----------------------------
 # Main pipeline
 # -----------------------------

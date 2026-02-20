@@ -25,7 +25,7 @@ process ORGANISM_MERGE_REPORT {
         'jhuaplbio/reportlab-pdf:4.0.8' }"
 
     input:
-    tuple val(meta), file(files_of_pathogens), file(ani_matrix), file(distributions)
+    tuple val(meta), file(files_of_pathogens), file(distributions)
     val(missing_samples)
 
     output:
@@ -43,7 +43,7 @@ process ORGANISM_MERGE_REPORT {
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     distribution_arg = ""
     def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""
-
+    def no_subkey = params.no_subkey ? " --no_subkey " : ""
     def missing_arg = ''
     if (missing_samples) {
         missing_arg = "-m \"${missing_samples.join(' ')}\""
@@ -51,10 +51,12 @@ process ORGANISM_MERGE_REPORT {
     def show_potentials = params.show_potentials ? " --show_potentials " : ""
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
+
     // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
     def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
-    def ani_matrix = ani_matrix.name != "NO_FILE3" ? " --ani_matrix $ani_matrix " : ""
+    def integrate_strain_table = params.integrate_strain_table ? " --integrate_strain_table " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
+
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -66,8 +68,8 @@ process ORGANISM_MERGE_REPORT {
         $min_conf \\
         $missing_arg \\
         $sort_alphabetical \\
-        $ani_matrix \\
-        $rank \\
+        $integrate_strain_table \\
+        $rank --show_opportunistic \\
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

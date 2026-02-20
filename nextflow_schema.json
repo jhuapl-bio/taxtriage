@@ -610,14 +610,19 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "sensitive": {
+                "loose": {
                     "type": "boolean",
-                    "description": "Build signatures from TASS Minhash score step using windowed regions of the reference gneomes. Default (disabled-false) is to only compare similar reads/regions from the aligned reads from the BAM file(s)",
+                    "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "skip_matrix": {
+                "enable_matrix": {
                     "type": "boolean",
-                    "description": "Skip the generation of the final report matrix for high ANI similarity. The column will be missing in the report if so.",
+                    "description": "Enable the generation of the final report matrix for high ANI similarity. The column will be included in the report if so.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "no_subkey": {
+                    "type": "boolean",
+                    "description": "Dont use the subkey odr, puts each row as a strain rather than grouping them into a parent taxid. This can be useful for looking at strain level differences, but can be very unwieldy if there are a lot of strains that are above the ANI threshold for potential organisms.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "sort_alphabetical": {
@@ -639,6 +644,18 @@
                     "type": "boolean",
                     "description": "Show all non or non-identification organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "ani_threshold": {
+                    "type": "number",
+                    "description": "ANI threshold for reporting potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.95
+                },
+                "integrate_strain_table": {
+                    "type": "boolean",
+                    "description": "Integrate the strain level table into the main table rather than as a separate table. This is the table that has all the strains that are above the ANI threshold for potential organisms. This is disabled by default because it can be very large and unwieldy if there are a lot of potential organisms.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
                 },
                 "skip_multiqc": {
                     "type": "boolean",

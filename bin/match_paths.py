@@ -24,7 +24,9 @@ import pandas as pd
 
 import time
 from distributions import import_distributions, body_site_map
+from body_site_normalization import normalize_body_site
 import argparse
+import json as _json
 import re
 import csv
 import math
@@ -32,7 +34,7 @@ import os
 from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
-from ground_truth import optimize_weights
+from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
 from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var
@@ -171,7 +173,10 @@ def parse_args(argv=None):
         "--compare_references", default=False,  help="Compress species to species level",  action='store_true'
     )
     parser.add_argument(
-        "-k",  "--rank",  help="Compress species to species level",  default=None, type=str
+        "-k",  "--rank",  help="Specify the taxonomic rank to group all entries on (e.g., species, genus, family)",  default=None, type=str
+    )
+    parser.add_argument(
+        "--subrank",  help="Specify the taxonomic sub-rank to group all entries on. Default is species. Entries in the final report will have 1 species per row. If set to None or a non-standard ranking, then ignored. If the subrank and rank are equal, subrank is ignore as well.", choices=["phylum", "order", "class", "genus", "species", "strain", "none"], default="species", type=str
     )
     parser.add_argument(
         "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
@@ -244,7 +249,7 @@ def parse_args(argv=None):
         "--mapq_weight",
         metavar="MAPQWEIGHT",
         type=float,
-        default=0.05,
+        default=0.00,
         help="value of weight for disparity ofmapq in final TASS Score",
     )
     parser.add_argument(
@@ -268,20 +273,55 @@ def parse_args(argv=None):
                         help="Relative weight of false-positive term in the objective.")
     parser.add_argument("--optimize_reg", type=float, default=0.01,
                         help="L2 regularization strength to keep weights near the starting values.")
+    parser.add_argument("--optimize_entropy", type=float, default=0.1,
+                        help="Entropy regularization strength to prevent a single weight from dominating. "
+                             "Higher values produce more balanced weights. 0 = disabled. Recommended: 0.05-0.3.")
+    parser.add_argument("--optimize_min_weight", type=float, default=0.00,
+                        help="Minimum weight floor for each scoring component during optimization. "
+                             "Prevents any weight from going to 0. Range: 0.0-0.15. Default: 0.05.")
+    parser.add_argument("--optimize_tp_target", type=float, default=None,
+                    help="Optional target for TP mean score (0-1). If set, adds a penalty when TP mean is below target.")
+    parser.add_argument("--optimize_tp_target_weight", type=float, default=0.0,
+                    help="Penalty weight for TP target shortfall. Higher values push TP mean upward.")
+    parser.add_argument("--optimize_tp_target_scope", type=str, default="taxa",
+                    choices=["taxa", "reads", "hybrid"],
+                    help="Which TP mean to target: taxa, reads, or hybrid.")
+    parser.add_argument("--optimize_youden_weight", type=float, default=0.0,
+                    help="Penalty weight to maximize Youden J (TP retention - FP retention). Higher values push FP down." )
+    parser.add_argument("--optimize_fp_cutoff", type=float, default=None,
+                    help="Optional TASS cutoff to penalize FP retention at/above this threshold (0-1).")
+    parser.add_argument("--optimize_fp_cutoff_weight", type=float, default=0.0,
+                    help="Penalty weight for FP retention at the fixed cutoff.")
+    parser.add_argument("--optimize_curve_scope", type=str, default="taxa",
+                    choices=["taxa", "reads", "hybrid"],
+                    help="Which retention curves to use for Youden/cutoff penalties.")
+    parser.add_argument("--optimize_tp_floor", type=float, default=0.7,
+                    help="TP score floor: all TP organisms should score above this. Default: 0.7")
+    parser.add_argument("--optimize_tp_floor_weight", type=float, default=0.0,
+                    help="Penalty weight for TP score floor hinge loss. Pushes individual TP organisms "
+                         "above the floor. Recommended: 1.0-5.0. 0 = disabled.")
+    parser.add_argument("--optimize_fp_ceiling", type=float, default=0.15,
+                    help="FP score ceiling: all FP organisms should score below this. Default: 0.15")
+    parser.add_argument("--optimize_fp_ceiling_weight", type=float, default=0.0,
+                    help="Penalty weight for FP score ceiling hinge loss. Pushes individual FP organisms "
+                         "below the ceiling. Recommended: 1.0-5.0. 0 = disabled.")
+    parser.add_argument("--optimize_separation_weight", type=float, default=0.0,
+                    help="Multi-threshold retention shape penalty. Penalizes TP dropout and FP leakage "
+                         "across thresholds [0.1, 0.2, 0.3, 0.5, 0.7]. Recommended: 0.5-2.0. 0 = disabled.")
     parser.add_argument("--optimize_report", type=str, default=None,
                         help="Optional path to write a TSV report of TP/FP counts and scores for the best weights.")
     parser.add_argument(
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.45,
+        default=0.05,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.05,
+        default=0.53,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
@@ -291,7 +331,7 @@ def parse_args(argv=None):
         default=0.0,
         help="value of weight for disparity of k2 and alignment in final TASS Score",
     )
-    parser.add_argument("--disparity_weight", type=float, default=0.0,
+    parser.add_argument("--disparity_weight", type=float, default=0.01,
         help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
@@ -304,7 +344,7 @@ def parse_args(argv=None):
         "--hmp_weight",
         metavar="HMPWEIGHT",
         type=float,
-        default=0.0,
+        default=0.01,
         help="value of weight for hmp abundance in final TASS Score",
     )
 
@@ -312,7 +352,7 @@ def parse_args(argv=None):
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.55,
+        default=0.4,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -345,7 +385,14 @@ def parse_args(argv=None):
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
     parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
-    parser.add_argument("--skip_matrix", required=False, action='store_true', help="Skip loading the ANI matrix file")
+    parser.add_argument("--enable_matrix", required=False, action='store_true', help="Enable loading the ANI matrix file")
+    parser.add_argument(
+        "--ani_threshold",
+        type=float,
+        default=0.95,
+        help="ANI threshold above which two organisms are considered highly similar (default: 0.95). "
+             "Used to annotate each member in the output JSON with a 'high_ani_matches' list.",
+    )
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")
     parser.add_argument("--failed_reads", required=False, help="Load a 2 col tsv of reference   read_id that is to be the passed reads. Remove all others and update bedgraph and cov file(s)")
     parser.add_argument("--scaled", type=int, default=2000, help="scaled factor for MinHash.")
@@ -363,6 +410,23 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=5, help="Minimum mapping quality")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
+    )
+    parser.add_argument(
+        "--report_metrics",
+        action="store_true",
+        help="Compute and output TP/FP metrics per organism using ground-truth read IDs. "
+             "Produces a JSON file and stdout table with per-organism TASS scores, TP/FP status, "
+             "overall F1/precision/recall, and threshold-based percentile analysis showing "
+             "what %% of TPs and FPs pass at each TASS cutoff.",
+    )
+    parser.add_argument(
+        "--thresholds_json",
+        type=str,
+        default=None,
+        help="Path to a JSON file containing per-sample-type best weights and thresholds. "
+             "If provided, the weights (breadth_weight, gini_weight, minhash_weight, hmp_weight, "
+             "disparity_weight) are automatically set based on the normalized sample type. "
+             "Falls back to the 'all' category if the sample type is not found in the JSON.",
     )
     parser.add_argument(
         "--report_confusion_xlsx",
@@ -666,16 +730,55 @@ def main():
     inputfile = args.input
     pathogenfile = args.pathogens
     # Write to file in a newline format
+    if args.disparity_weight not in (None, 0.0):
+        disparity_w = args.disparity_weight
+    else:
+        disparity_w = args.disparity_score_weight
+
+    # ── Load per-sample-type thresholds JSON if provided ─────────────────────
+    thresholds_config = None
+    if args.thresholds_json:
+        with open(args.thresholds_json, 'r') as _tf:
+            thresholds_config = _json.load(_tf)
+        # Determine the normalized sample type to look up in the JSON.
+        # Sterile sites use "blood" thresholds (closest profile available).
+        # Unknown or unmatched types fall back to "all".
+        _norm_st = normalize_body_site(args.sampletype.lower()) if args.sampletype else "unknown"
+        if _norm_st == "sterile":
+            _norm_st = "blood"
+        if _norm_st in thresholds_config:
+            _st_key = _norm_st
+        else:
+            _st_key = "all"
+        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' normalized to "
+              f"'{_norm_st}', using thresholds key: '{_st_key}'")
+        _best_w = thresholds_config[_st_key].get("best_weights", {})
+        # Override CLI weight defaults with JSON best weights
+        if "breadth_weight" in _best_w:
+            args.breadth_weight = _best_w["breadth_weight"]
+        if "gini_weight" in _best_w:
+            args.gini_weight = _best_w["gini_weight"]
+        if "minhash_weight" in _best_w:
+            args.minhash_weight = _best_w["minhash_weight"]
+        if "hmp_weight" in _best_w:
+            args.hmp_weight = _best_w["hmp_weight"]
+        if "disparity_weight" in _best_w:
+            disparity_w = _best_w["disparity_weight"]
+            args.disparity_weight = disparity_w
+        print(f"  Applied weights from JSON: breadth={args.breadth_weight:.6g}, "
+              f"gini={args.gini_weight:.6g}, minhash={args.minhash_weight:.6g}, "
+              f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}")
+
     weights = {
         'mapq_score': args.mapq_weight,
-        'disparity_score': args.disparity_score_weight,
+        'disparity_weight': disparity_w,
         'hmp_weight': args.hmp_weight,
         'gini_weight': args.gini_weight,
         "breadth_weight": args.breadth_weight,
         "minhash_weight": args.minhash_weight,
         'siblings_score': 0,
         'diamond_identity': args.diamond_identity_weight,
-        "k2_disparity_weight": args.k2_disparity_weight,
+        "k2_disparity_score_weight": args.k2_disparity_weight,
     }
     total_weight = sum(weights.values())
     if total_weight != 1:
@@ -733,20 +836,51 @@ def main():
     alignments_to_remove = defaultdict(set)
     if args.fasta:
         fastas = set(args.fasta)
-    if args.match and os.path.exists(matcher) and not args.skip_matrix:
-        # if args.output_dir/organism_ani_matrix.csv doesnt exist then perform it:
-        if not args.matrix or not os.path.exists(args.matrix):
-            print("generating ani matrix")
-            generate_ani_matrix(
-                fasta_files = fastas if args.fasta else [],
-                matchfile = args.match,
-                matchfile_accession_col = args.accessioncol,
-                matchfile_taxid_col = args.taxcol,
-                matchfile_desc_col = args.namecol,
-                output_dir = args.output_dir if args.output_dir else os.path.dirname(args.output),
-            )
+    # ani_df holds the taxid-level ANI DataFrame (index & cols are taxid strings).
+    # It is populated either by generating the matrix from FASTA signatures or by
+    # loading a pre-existing CSV.  ani_data is the nested dict form used for lookup.
+    ani_df = None
+    ani_data = {}  # ani_data[taxid1][taxid2] = float ANI value (0..1)
+
+    if args.match and os.path.exists(matcher) and args.enable_matrix:
+        # Determine where the default auto-generated matrix would be saved
+        default_matrix_path = os.path.join(
+            args.output_dir if args.output_dir else os.path.dirname(args.output),
+            "organism_ani_matrix.csv",
+        )
+        matrix_path = args.matrix or default_matrix_path
+
+        if args.matrix and os.path.exists(args.matrix):
+            # Use the explicitly-provided pre-computed matrix CSV
+            print(f"Loading pre-computed ANI matrix from {args.matrix}")
+            ani_df = pd.read_csv(args.matrix, index_col=0)
+        elif os.path.exists(default_matrix_path):
+            # Auto-generated matrix from a previous run
+            print(f"Loading cached ANI matrix from {default_matrix_path}")
+            ani_df = pd.read_csv(default_matrix_path, index_col=0)
         else:
-            print("Ani matrix already exists across references")
+            print("Generating ANI matrix from FASTA signatures…")
+            ani_df = generate_ani_matrix(
+                fasta_files=fastas if args.fasta else [],
+                matchfile=args.match,
+                matchfile_accession_col=args.accessioncol,
+                matchfile_taxid_col=args.taxcol,
+                matchfile_desc_col=args.namecol,
+                output_dir=args.output_dir if args.output_dir else os.path.dirname(args.output),
+            )
+
+        # Convert DataFrame to nested dict for O(1) lookup
+        if ani_df is not None:
+            for taxid1 in ani_df.index:
+                t1 = str(taxid1)
+                if t1 not in ani_data:
+                    ani_data[t1] = {}
+                for taxid2 in ani_df.columns:
+                    val = ani_df.loc[taxid1, taxid2]
+                    if pd.notna(val):
+                        ani_data[t1][str(taxid2)] = float(val)
+            print(f"ANI data loaded for {len(ani_data)} taxa (threshold {args.ani_threshold})")
+
     if args.minhash_weight > 0:
         if args.comparisons and os.path.exists(args.comparisons):
             # if ends with csv
@@ -899,7 +1033,12 @@ def main():
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
         taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
-    # args.rank = False
+
+    subrank = args.subrank
+
+    if not subrank or subrank.lower() == "none" or subrank.lower() == "strain":
+        subrank = None
+
     # get the ranks for taxid: 198214
     acc_to_parent = dict()
     if args.rank:
@@ -913,7 +1052,10 @@ def main():
                 hit['strainname'] = hit.get('name', acc)
                 continue
             top = taxid_to_rank(taxid, taxdump, wanted_rank )
+            subrank_value = taxid_to_rank(taxid, taxdump, subrank) if subrank else taxid
             acc_to_parent[acc] = taxid
+            hit['subkey'] = subrank_value
+            hit['subkeyname'] =taxdump_names.get(subrank_value, hit.get('name', ''))
             hit['key'] = taxid
             hit["toplevelkey"] = top if top else taxid  # fallback to itself if rank not found
             hit["rank"] = wanted_rank  # optional: record what you tried
@@ -927,12 +1069,25 @@ def main():
                 hit["toplevelkey"] = taxid
                 acc_to_parent[acc] = taxid
                 hit['key'] = taxid
+                hit['subkey'] = taxid
+                hit['subkeyname'] = hit.get('name', '')
             else:
                 hit["toplevelkey"] = acc
                 acc_to_parent[acc] = acc
                 hit['key'] = acc
+                hit['subkey'] = acc
+                hit['subkeyname'] = hit.get('name', '')
             hit['strainname'] = hit.get('name', '')
             hit["toplevelname"] = taxdump_names.get(hit['key'], hit.get("name", ""))
+
+    # Build per-accession mappings for optimization and metrics at different granularities.
+    acc_to_key = {}
+    acc_to_subkey = {}
+    acc_to_toplevelkey = {}
+    for acc, hit in reference_hits.items():
+        acc_to_key[acc] = str(hit.get("key", acc))
+        acc_to_subkey[acc] = str(hit.get("subkey", acc))
+        acc_to_toplevelkey[acc] = str(hit.get("toplevelkey", acc))
     species_to_all_accs = defaultdict(set)
     all_readscounts = [x['numreads'] for x in reference_hits.values()]
     total_reads = sum(all_readscounts)
@@ -941,6 +1096,11 @@ def main():
     print(f"\n\tVariance of reads: {variance_reads}")
     if args.sampletype:
         sampletype = body_site_map(args.sampletype.lower())
+        # Also check via body_site_normalization for richer sterile detection
+        normalized_sampletype = normalize_body_site(args.sampletype.lower())
+        if normalized_sampletype == "sterile" and sampletype != "sterile":
+            sampletype = "sterile"
+            print(f"  Body site normalization detected sterile site from '{args.sampletype}'")
     else:
         sampletype = "Unknown"
     if sampletype == "sterile":
@@ -987,15 +1147,32 @@ def main():
         reads_key="numreads",
     )
 
+    # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
+    # This ensures optimize_weights() / build_metrics_df_from_final_json() can
+    # read microbial_category for the debug JSON output.
+    for k, data in strain_summary.items():
+        taxid = data.get('key') or data.get('taxid') or k
+        pre_ann = calculate_classes(
+            rec=data,
+            ref=taxid,
+            pathogens=pathogens,
+            sample_type=sampletype,
+            taxdump=taxdump,
+        )
+        data.update(pre_ann)
+
     if args.optimize:
         report_weights = optimize_weights(
             input_bam = args.input,
             final_json = strain_summary,
-            accession_to_taxid = acc_to_parent,
+            accession_to_taxid = acc_to_key,
+            accession_to_subkey = acc_to_subkey,
+            accession_to_toplevelkey = acc_to_toplevelkey,
             breadth_weight = args.breadth_weight,
             minhash_weight = args.minhash_weight,
             gini_weight = args.gini_weight,
-            # disparity_weight = args.disparity_score_weight,
+            disparity_weight = disparity_w,
+            hmp_weight = args.hmp_weight,
             alpha = args.alpha,
             sampletype = sampletype,
             optimize_pos_weight = args.optimize_pos_weight,
@@ -1005,8 +1182,23 @@ def main():
             optimize_maxiter = args.optimize_maxiter,
             optimize_local_maxiter = args.optimize_local_maxiter,
             optimize_report = args.optimize_report,
+            entropy_lambda = args.optimize_entropy,
+            min_weight = args.optimize_min_weight,
+            optimize_tp_target = args.optimize_tp_target,
+            optimize_tp_target_weight = args.optimize_tp_target_weight,
+            optimize_tp_target_scope = args.optimize_tp_target_scope,
+            optimize_youden_weight = args.optimize_youden_weight,
+            optimize_fp_cutoff = args.optimize_fp_cutoff,
+            optimize_fp_cutoff_weight = args.optimize_fp_cutoff_weight,
+            optimize_curve_scope = args.optimize_curve_scope,
+            tp_score_floor = args.optimize_tp_floor,
+            tp_floor_weight = args.optimize_tp_floor_weight,
+            fp_score_ceiling = args.optimize_fp_ceiling,
+            fp_ceiling_weight = args.optimize_fp_ceiling_weight,
+            separation_weight = args.optimize_separation_weight,
         )
-        weights = report_weights.get("best_weights", weights)
+        best_weights = report_weights.get("best_weights") or {}
+        weights.update(best_weights)
         print("Optimized weights changed: ")
         for k, v in weights.items():
             print(f"\t{k}: {v}")
@@ -1120,6 +1312,32 @@ def main():
     for v in final_json:
         v['sampletype'] = sampletype
         v['total_reads'] = total_reads
+    # print final weights used:
+    print("Final weights used for scoring: ")
+    for k, v in weights.items():
+        print(f"\t{k}: {v}")
+    # ── ANI annotation ────────────────────────────────────────────────────────
+    # For each member in every species group, attach a 'high_ani_matches' list
+    # containing dicts {key, name, ani_pct} for all other taxa whose ANI with
+    # this member exceeds args.ani_threshold.  create_report.py reads this list
+    # directly so it does not need to load or parse the ANI matrix itself.
+    if ani_data:
+        for group in final_json:
+            for member in group.get('members', []):
+                member_key = str(member.get('key', ''))
+                matches = []
+                if member_key in ani_data:
+                    for other_key, ani_val in ani_data[member_key].items():
+                        if other_key == member_key:
+                            continue
+                        if ani_val >= args.ani_threshold:
+                            matches.append({
+                                'key': other_key,
+                                'ani_pct': round(float(ani_val) * 100, 2),
+                            })
+                    matches.sort(key=lambda x: x['ani_pct'], reverse=True)
+                member['high_ani_matches'] = matches
+
     # for data in final_json:
     #     print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
     #     print(f"\tGini Coefficient: {data.get('gini_coefficient', 'N/A')},"
@@ -1144,6 +1362,197 @@ def main():
     #         f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
     #     )
     write_to_json(args.output.replace(".tsv", ".json"), final_json)
+
+    # ── Report Metrics (TP/FP analysis with threshold percentiles) ───────────
+    if args.report_metrics:
+        print("\n" + "=" * 80)
+        print("REPORT METRICS: Computing TP/FP metrics from ground-truth read IDs")
+        print("=" * 80)
+
+        tp_fp_counts = compute_tp_fp_counts_by_taxid(
+            inputfile,
+            accession_to_taxid=acc_to_key,
+            debug_n=10,
+        )
+
+        # Build per-organism table from strain_summary
+        organism_rows = []
+        for k, data in strain_summary.items():
+            taxid_str = str(data.get('key', k))
+            tp_reads, fp_reads = tp_fp_counts.get(taxid_str, (0, 0))
+            total_rd = tp_reads + fp_reads
+            is_tp = tp_reads > 0
+            organism_rows.append({
+                "name": data.get('name', ''),
+                "key": data.get('key', k),
+                "subkey": data.get('subkey', ''),
+                "subkeyname": data.get('subkeyname', ''),
+                "tass_score": round(float(data.get('tass_score', 0)), 6),
+                "tp_reads": int(tp_reads),
+                "fp_reads": int(fp_reads),
+                "total_reads": int(total_rd),
+                "classification": "TP" if is_tp else "FP",
+                "microbial_category": data.get('microbial_category', 'Unknown'),
+            })
+
+        organism_rows.sort(key=lambda r: r['tass_score'], reverse=True)
+
+        # Compute overall metrics at taxid level
+        tp_taxa = [r for r in organism_rows if r['classification'] == 'TP']
+        fp_taxa = [r for r in organism_rows if r['classification'] == 'FP']
+        n_tp = len(tp_taxa)
+        n_fp = len(fp_taxa)
+        # FN: taxids that have ground-truth reads but aren't in strain_summary
+        strain_taxids = {str(data.get('key', k)) for k, data in strain_summary.items()}
+        fn_taxids = [t for t, (tp, fp) in tp_fp_counts.items() if tp > 0 and t not in strain_taxids]
+        n_fn = len(fn_taxids)
+
+        precision = n_tp / (n_tp + n_fp) if (n_tp + n_fp) > 0 else 0.0
+        recall = n_tp / (n_tp + n_fn) if (n_tp + n_fn) > 0 else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+        # Threshold-based percentile analysis
+        # At each TASS cutoff, what % of TPs pass and what % of FPs pass
+        import numpy as np
+        thresholds = sorted(set(
+            [round(x * 0.01, 2) for x in range(1, 100)] +
+            [round(x * 0.1, 1) for x in range(1, 10)]
+        ))
+        threshold_analysis = []
+        for thresh in thresholds:
+            tp_pass = sum(1 for r in tp_taxa if r['tass_score'] >= thresh)
+            fp_pass = sum(1 for r in fp_taxa if r['tass_score'] >= thresh)
+            tp_pct = (tp_pass / n_tp * 100) if n_tp > 0 else 0.0
+            fp_pct = (fp_pass / n_fp * 100) if n_fp > 0 else 0.0
+            threshold_analysis.append({
+                "tass_cutoff": thresh,
+                "tp_passing": tp_pass,
+                "tp_total": n_tp,
+                "tp_percent": round(tp_pct, 2),
+                "fp_passing": fp_pass,
+                "fp_total": n_fp,
+                "fp_percent": round(fp_pct, 2),
+            })
+
+        def _build_group_metrics(group_field, acc_map, label):
+            counts = compute_tp_fp_counts_by_taxid(
+                inputfile,
+                accession_to_taxid=acc_map,
+                debug_n=10,
+            )
+            groups = defaultdict(list)
+            for _, data in strain_summary.items():
+                gval = str(data.get(group_field, data.get("key", "")))
+                groups[gval].append(data)
+
+            rows = []
+            for gval, members in groups.items():
+                tp_reads, fp_reads = counts.get(gval, (0, 0))
+                total_rd = tp_reads + fp_reads
+                tass_score = max(float(m.get("tass_score", 0)) for m in members) if members else 0.0
+                rows.append({
+                    "group": gval,
+                    "tass_score": round(tass_score, 6),
+                    "tp_reads": int(tp_reads),
+                    "fp_reads": int(fp_reads),
+                    "total_reads": int(total_rd),
+                    "classification": "TP" if tp_reads > 0 else "FP",
+                    "member_count": len(members),
+                })
+
+            rows.sort(key=lambda r: r["tass_score"], reverse=True)
+            tp_groups = [r for r in rows if r["classification"] == "TP"]
+            fp_groups = [r for r in rows if r["classification"] == "FP"]
+            n_tp_g = len(tp_groups)
+            n_fp_g = len(fp_groups)
+
+            present_groups = set(groups.keys())
+            fn_groups = [g for g, (tp, _) in counts.items() if tp > 0 and g not in present_groups]
+            n_fn_g = len(fn_groups)
+
+            precision_g = n_tp_g / (n_tp_g + n_fp_g) if (n_tp_g + n_fp_g) > 0 else 0.0
+            recall_g = n_tp_g / (n_tp_g + n_fn_g) if (n_tp_g + n_fn_g) > 0 else 0.0
+            f1_g = (2 * precision_g * recall_g / (precision_g + recall_g)) if (precision_g + recall_g) > 0 else 0.0
+
+            print(f"\n{label.upper()} METRICS: Precision={precision_g:.4f}  Recall={recall_g:.4f}  F1={f1_g:.4f}")
+            print(f"         TP groups={n_tp_g}  FP groups={n_fp_g}  FN groups={n_fn_g}")
+            print(f"\n{'GROUP':<28s} {'TASS':>8s} {'CLASS':>5s} {'TP_RD':>8s} {'FP_RD':>8s} {'MEMBERS':>8s}")
+            print("-" * 70)
+            for r in rows:
+                print(f"{r['group'][:27]:<28s} {r['tass_score']:>8.4f} {r['classification']:>5s} "
+                      f"{r['tp_reads']:>8d} {r['fp_reads']:>8d} {r['member_count']:>8d}")
+
+            return {
+                "summary": {
+                    "total_groups": len(rows),
+                    "true_positives": n_tp_g,
+                    "false_positives": n_fp_g,
+                    "false_negatives": n_fn_g,
+                    "precision": round(precision_g, 6),
+                    "recall": round(recall_g, 6),
+                    "f1_score": round(f1_g, 6),
+                    "tp_total_reads": sum(r['tp_reads'] for r in rows),
+                    "fp_total_reads": sum(r['fp_reads'] for r in rows),
+                },
+                "groups": rows,
+            }
+
+        metrics_report = {
+            "summary": {
+                "total_organisms": len(organism_rows),
+                "true_positives": n_tp,
+                "false_positives": n_fp,
+                "false_negatives": n_fn,
+                "precision": round(precision, 6),
+                "recall": round(recall, 6),
+                "f1_score": round(f1, 6),
+                "tp_total_reads": sum(r['tp_reads'] for r in organism_rows),
+                "fp_total_reads": sum(r['fp_reads'] for r in organism_rows),
+            },
+            "organisms": organism_rows,
+            "threshold_analysis": threshold_analysis,
+            "subkey_metrics": _build_group_metrics("subkey", acc_to_subkey, "subkey"),
+            "toplevelkey_metrics": _build_group_metrics("toplevelkey", acc_to_toplevelkey, "toplevelkey"),
+            "weights_used": {k: round(v, 6) for k, v in weights.items()},
+        }
+
+        # Write JSON
+        metrics_json_path = args.output.replace(".tsv", ".metrics.json")
+        write_to_json(metrics_json_path, metrics_report)
+        print(f"\nMetrics JSON written to: {metrics_json_path}")
+
+        # Print to stdout
+        print(f"\n{'─' * 80}")
+        print(f"SUMMARY: Precision={precision:.4f}  Recall={recall:.4f}  F1={f1:.4f}")
+        print(f"         TP taxa={n_tp}  FP taxa={n_fp}  FN taxa={n_fn}")
+        print(f"         TP reads={metrics_report['summary']['tp_total_reads']}  "
+              f"FP reads={metrics_report['summary']['fp_total_reads']}")
+        print(f"{'─' * 80}")
+
+        # Organism table
+        print(f"\n{'NAME':<40s} {'KEY':<12s} {'SUBKEY':<12s} {'TASS':>8s} {'CLASS':>5s} "
+              f"{'TP_RD':>8s} {'FP_RD':>8s} {'CATEGORY':<20s}")
+        print("─" * 125)
+        for r in organism_rows:
+            print(f"{r['name'][:39]:<40s} {str(r['key']):<12s} {str(r['subkey']):<12s} "
+                  f"{r['tass_score']:>8.4f} {r['classification']:>5s} "
+                  f"{r['tp_reads']:>8d} {r['fp_reads']:>8d} {r['microbial_category']:<20s}")
+
+        # Threshold table
+        print(f"\n{'─' * 80}")
+        print(f"THRESHOLD ANALYSIS: %% of TP/FP taxa passing at each TASS cutoff")
+        print(f"{'─' * 80}")
+        print(f"{'TASS_CUTOFF':>12s} {'TP_PASS':>8s} {'TP_%':>8s} {'FP_PASS':>8s} {'FP_%':>8s}")
+        print("─" * 50)
+        # Print at 0.05 increments for readability on stdout
+        for t in threshold_analysis:
+            cutoff = t['tass_cutoff']
+            if cutoff * 100 % 5 == 0 or cutoff in (0.01, 0.99):
+                print(f"{cutoff:>12.2f} {t['tp_passing']:>8d} {t['tp_percent']:>7.1f}% "
+                      f"{t['fp_passing']:>8d} {t['fp_percent']:>7.1f}%")
+
+        print(f"\n(Full per-0.01 breakdown available in {metrics_json_path})")
+        print("=" * 80)
 
 
 def random_tweak(weights, scale=0.2):

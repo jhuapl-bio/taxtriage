@@ -121,7 +121,7 @@ def normalize_body_site(site):
 
         # Sterile Sites (normally sterile body sites)
         'sterile': ['sterile', 'normally sterile', 'sterile site', 'sterile fluid',
-                    'peritoneal', 'peritoneum', 'ascites', 'pleural fluid',
+                    'clean', 'peritoneal', 'peritoneum', 'ascites', 'pleural fluid',
                     'pericardial', 'pericardium', 'synovial fluid'],
     }
 
