@@ -336,33 +336,33 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "min_conf": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Minimum Confidence for reporting.",
                     "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "gini_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "breadth_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Minimum Log-based breadth weight for TASS Score calculation",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "minhash_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Weight for minhash filtering. It is the combination of % of reads removed + % of breadth new  / 2 ",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mapq_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "disparity_score_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
                     "fa_icon": "fas fa-file-signature"
                 },
