@@ -249,7 +249,7 @@ def parse_args(argv=None):
         "--mapq_weight",
         metavar="MAPQWEIGHT",
         type=float,
-        default=0.05,
+        default=0.00,
         help="value of weight for disparity ofmapq in final TASS Score",
     )
     parser.add_argument(
@@ -314,14 +314,14 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.45,
+        default=0.05,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.05,
+        default=0.53,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
@@ -331,7 +331,7 @@ def parse_args(argv=None):
         default=0.0,
         help="value of weight for disparity of k2 and alignment in final TASS Score",
     )
-    parser.add_argument("--disparity_weight", type=float, default=0.0,
+    parser.add_argument("--disparity_weight", type=float, default=0.01,
         help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
@@ -344,7 +344,7 @@ def parse_args(argv=None):
         "--hmp_weight",
         metavar="HMPWEIGHT",
         type=float,
-        default=0.0,
+        default=0.01,
         help="value of weight for hmp abundance in final TASS Score",
     )
 
@@ -352,7 +352,7 @@ def parse_args(argv=None):
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.55,
+        default=0.4,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -1312,7 +1312,10 @@ def main():
     for v in final_json:
         v['sampletype'] = sampletype
         v['total_reads'] = total_reads
-
+    # print final weights used:
+    print("Final weights used for scoring: ")
+    for k, v in weights.items():
+        print(f"\t{k}: {v}")
     # ── ANI annotation ────────────────────────────────────────────────────────
     # For each member in every species group, attach a 'high_ani_matches' list
     # containing dicts {key, name, ani_pct} for all other taxa whose ANI with
