@@ -108,7 +108,7 @@
                     "default": "9606"
                 },
                 "subsample": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Pull a random number of reads from the reads to be analyzed. Useful for testing only. ",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -208,18 +208,18 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "top_hits_count": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "default": 5,
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_confidence": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_minimum_hit_groups": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
                 },
