@@ -329,7 +329,7 @@
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
-                "sensitive": {
+                "conf_sens": {
                     "type": "boolean",
                     "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
                     "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
@@ -375,6 +375,12 @@
                     "type": "number",
                     "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "alpha": {
+                    "type": "number",
+                    "description": "TASS Score Alpha. This is the measure of how much weight to put on the breadth vs depth of coverage for a given alignment to an organism. The higher the alpha, the more weight put on breadth rather than depth.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 1
                 },
                 "reward_factor": {
                     "type": "number",
@@ -439,6 +445,7 @@
                 },
                 "minq": {
                     "type": "number",
+                    "default": 1,
                     "description": "Minimum BaseQ Score for filtering",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -603,9 +610,24 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "sorttass": {
+                "loose": {
                     "type": "boolean",
-                    "description": "Sort the tables on JUST TASS Score. If disabled, sorts on High Consequence first then TASS Score",
+                    "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "enable_matrix": {
+                    "type": "boolean",
+                    "description": "Enable the generation of the final report matrix for high ANI similarity. The column will be included in the report if so.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "no_subkey": {
+                    "type": "boolean",
+                    "description": "Dont use the subkey odr, puts each row as a strain rather than grouping them into a parent taxid. This can be useful for looking at strain level differences, but can be very unwieldy if there are a lot of strains that are above the ANI threshold for potential organisms.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sort_alphabetical": {
+                    "type": "boolean",
+                    "description": "Sort the tables on alphabetical order rather than TASS. If disabled, it sorts on TASS score descending",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_potentials": {
@@ -623,10 +645,28 @@
                     "description": "Show all non or non-identification organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "ani_threshold": {
+                    "type": "number",
+                    "description": "ANI threshold for reporting potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.95
+                },
+                "integrate_strain_table": {
+                    "type": "boolean",
+                    "description": "Integrate the strain level table into the main table rather than as a separate table. This is the table that has all the strains that are above the ANI threshold for potential organisms. This is disabled by default because it can be very large and unwieldy if there are a lot of potential organisms.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_multiqc": {
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "rank": {
+                    "type": "string",
+                    "description": "What rank to bin hits in the report in the final report. Default is genus, but you can choose from [species, genus, family, order, class, phylum]",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": "genus"
                 }
             }
         },

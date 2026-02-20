@@ -1,0 +1,481 @@
+import re
+
+MAJOR_RANKS = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species"]
+mapping_ranks = {
+    "acellular root": "superkingdom",
+    "domain": "superkingdom"
+}
+forced_taxid_to_names = {
+    "mycoplasma arthritidis str. 158p10p9": 243272,
+    "clostridium sordelli": 1505,
+    "rhodococcoides fascians": 1828
+}
+
+def get_root(taxid, desired_rank, taxdump_dict):
+    """
+    Walk up the taxonomy tree until desired_rank is found.
+
+    Parameters
+    ----------
+    taxid : int or str
+        Starting taxid
+    desired_rank : str
+        Rank to stop at (e.g. 'genus', 'family')
+    taxdump_dict : dict
+        Taxonomy dictionary keyed by taxid
+
+    Returns
+    -------
+    str or None
+        Taxid at the desired rank, or None if not found
+    """
+    taxid = str(taxid)
+
+    while taxid in taxdump_dict:
+        node = taxdump_dict[taxid]
+
+        if node.get("rank") == desired_rank:
+            return taxid
+
+        parent = node.get("parent_taxid")
+
+        # Stop if no parent or self-loop
+        if not parent or parent == taxid:
+            break
+
+        taxid = parent
+
+    return None
+
+
+
+def _split_dmp_line(line):
+    parts = [p.strip() for p in line.rstrip().split("|")]
+    return [p for p in parts if p != ""]
+
+def load_merged(merged_path):
+    m = {}
+    with open(merged_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            p = _split_dmp_line(line)
+            try:
+                m[int(p[0])] = int(p[1])
+            except Exception:
+                pass
+    return m
+
+def load_nodes(nodes_path):
+    parent = {}
+    rank = {}
+    with open(nodes_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            p = _split_dmp_line(line)
+            try:
+                tid  = int(p[0])
+                ptid = int(p[1])
+                rnk  = p[2]
+                rnk_norm = mapping_ranks.get(rnk.lower(), rnk)
+                parent[tid] = ptid
+                rank[tid]   = rnk_norm
+            except Exception:
+                pass
+    return parent, rank
+
+
+def strip_before_paren(name: str) -> str:
+    """'X (authorship...)' -> 'X' (unchanged if no '(')."""
+    return re.split(r"\s*\(", name, maxsplit=1)[0].strip()
+
+def extract_binomial(name: str) -> str | None:
+    """Return 'Genus species' if name starts with a binomial, else None."""
+    BINOMIAL_RE = re.compile(r"^([A-Z][a-z]+)\s+([a-z][a-z0-9_-]+)")
+    m = BINOMIAL_RE.match(name.strip())
+    if not m:
+        return None
+    return f"{m.group(1)} {m.group(2)}"
+
+def synonym_aliases(name_txt: str) -> set[str]:
+    """
+    Produce a set of alias strings to also store for synonyms:
+      - before '('
+      - binomial
+    """
+    aliases = set()
+
+    # Method 1: strip parenthetical authorship
+    a1 = strip_before_paren(name_txt)
+    if a1:
+        aliases.add(a1)
+
+    # Method 2: extract binomial (works with or without parentheses)
+    a2 = extract_binomial(name_txt)
+    if a2:
+        aliases.add(a2)
+
+    # Optional: drop exact original (we already store full synonym separately)
+    aliases.discard(name_txt.strip())
+
+    return aliases
+
+
+def load_taxdump(taxdump):
+    taxdump_dict = {}
+    with open(taxdump) as f:
+        for line in f:
+            # Assuming the file is tab-delimited and the columns are ordered as:
+            # taxid, parent_taxid, rank, name
+            try:
+                parts = line.strip().split("\t")
+                taxid = parts[0]
+                parent_taxid = parts[2]
+                rank = parts[4]
+                taxdump_dict[taxid] = {
+                    'parent_taxid': parent_taxid,
+                    'rank': rank
+                }
+            except Exception as ex:
+                print(f"Error parsing line: {line}, {ex}")
+    f.close()
+    return taxdump_dict
+
+def load_names(names_dmp_path):
+    """
+    Parse names.dmp (NCBI) and return a dict mapping taxid -> scientific name.
+    Only keeps the 'scientific name' class.
+    """
+    names_map = {}
+    with open(names_dmp_path, 'r') as fh:
+        for line in fh:
+            # Typical format: "<taxid>\t|\t<name>\t|\t<unique name>\t|\t<name class>\t|"
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) < 4:
+                continue
+            taxid = parts[0]
+            name = parts[1]
+            name_class = parts[3]
+            if name_class == "scientific name":
+                names_map[taxid] = name
+    return names_map
+
+def load_name_records(names_path):
+    """
+    Return a single dict:
+      records[name_lower] = {
+          "taxid": int,
+          "primary": bool,          # True iff scientific name
+          "name_class": str,        # from names.dmp
+          "name": str               # canonical/primary scientific name (filled in pass 2)
+      }
+
+    Pass 1:
+      - store all names (limited to VALID_NAME_CLASSES)
+      - store primary scientific name per taxid
+    Pass 2:
+      - for non-primary entries, set records[name_lower]["name"] to the primary scientific name for that taxid
+      - if no primary found, leave "name" as the raw name (fallback)
+    """
+    records = {}          # name_lower -> record
+    primary_by_taxid = {} # taxid -> primary scientific name (lowercased)
+    VALID_NAME_CLASSES = {"scientific name", "synonym", "equivalent name", "misspelling", "authority", 'basionym'}
+
+    with open(names_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            p = _split_dmp_line(line)
+            try:
+                tid = int(p[0])
+                name_txt = p[1].strip()
+                name_class = p[-1].strip()
+            except Exception:
+                continue
+
+            if name_class not in VALID_NAME_CLASSES:
+                continue
+
+            key = name_txt.lower()
+            is_primary = (name_class == "scientific name")
+
+            # Store the full name
+            if key not in records:
+                records[key] = {
+                    "taxid": tid,
+                    "primary": is_primary,
+                    "name_class": name_class,
+                    "name": key
+                }
+
+            # If this is a synonym, also store the stripped base name
+            if name_class in ['authority', "synonym", "basionym"]:
+                for alias in synonym_aliases(name_txt):
+                    alias_key = alias.lower()
+                    if alias_key not in records:
+                        records[alias_key] = {
+                            "taxid": tid,
+                            "primary": False,
+                            "name_class": "synonym",
+                            "name": alias_key,  # pass 2 will rewrite to primary scientific name
+                        }
+
+            # Track the primary scientific name for this taxid (first wins)
+            if is_primary and tid not in primary_by_taxid:
+                primary_by_taxid[tid] = key
+
+    # Pass 2: assign canonical primary scientific name to each alt name
+    for key, rec in records.items():
+        tid = rec["taxid"]
+        primary_name = primary_by_taxid.get(tid)
+
+        if primary_name:
+            # For primary entries, this is just itself; for alts it becomes the canonical name
+            rec["name"] = primary_name
+        else:
+            # Fallback: no scientific name seen for this taxid in the file (rare)
+            # keep whatever we already had
+            rec["name"] = rec["name"]
+
+    return records
+
+def strip_authorship(name):
+    """
+    Extract base taxon name by removing authorship info.
+    Example:
+      'Clostridium difficile (Hall and O'Toole 1935) Prevot 1938'
+      -> 'Clostridium difficile'
+    """
+    return re.split(r"\s*\(", name, maxsplit=1)[0].strip()
+
+def resolve_current_taxid(tid, merged_map):
+    seen = set(); cur = tid
+    while cur in merged_map and cur not in seen:
+        seen.add(cur); cur = merged_map[cur]
+    return cur
+
+def climb_lineage(tid, parent_map, rank_map):
+    out = []; cur = tid; seen = set()
+    while cur in parent_map and cur not in seen:
+        seen.add(cur)
+        out.append((cur, rank_map.get(cur, "no rank")))
+        p = parent_map[cur]
+        if p == cur:
+            break
+        cur = p
+    return out
+
+def extract_major_ranks(lineage_pairs):
+    res = {r: "" for r in MAJOR_RANKS}
+    for tid, rnk in lineage_pairs:
+        r = mapping_ranks.get(rnk.lower() if isinstance(rnk, str) else rnk, rnk)
+        if r in res and res[r] == "":
+            res[r] = str(tid)
+    return res
+
+def map_names_for_ranks(rank_taxids, sci_name_map):
+    out = {}
+    for rnk, tid_str in rank_taxids.items():
+        out[f"{rnk}_name"] = sci_name_map.get(int(tid_str), "") if tid_str else ""
+    return out
+
+def get_species_by_parent_rank(species_aggregated, parent_taxid, my_rank, rank_mapping_match):
+    """
+    Get all species that have the specified rank (e.g., 'S' for species) and belong to a parent with the
+    specified taxonomic rank (e.g., 'F' for family).
+
+    Parameters:
+        species_aggregated (dict): Dictionary of species.
+        parent_taxid (str): The parent taxid to match (e.g., for family 'F').
+        my_rank (str): The rank to filter species by (e.g., 'S').
+        rank_mapping_match (str): The taxonomic rank to check for the parent (e.g., 'F').
+
+    Returns:
+        List of species that match the specified rank and belong to the parent with the given taxonomic rank.
+    """
+    sibling_species = []
+
+    # Loop through all species in species_aggregated
+    for species in species_aggregated.values():
+        parents = species.get('parents', [])
+        rank = species.get('rank', '')
+
+        # Check if the species rank matches `my_rank` (e.g., 'S' for species)
+        if rank == my_rank:
+            # Look through the parents to find the one that matches the `rank_mapping_match` (e.g., 'F')
+            for parent in parents:
+                if parent[1] == rank_mapping_match and parent[0] == parent_taxid:
+                    sibling_species.append(species)
+                    break  # Exit loop after finding the match
+
+    return sibling_species
+
+def get_lineage(taxid, taxdump, include_root=False):
+    """
+    Get the complete taxonomic lineage for a given taxid.
+
+    Args:
+        taxid (str or int): The taxonomic ID to get lineage for
+        taxdump (dict): The taxonomy data from load_taxdump()
+        include_root (bool): Whether to include root node (taxid=1) in lineage
+
+    Returns:
+        list of tuples: [(taxid, rank), ...] from most specific to most general
+                       Returns empty list if taxid not found
+
+    Example:
+        >>> lineage = get_lineage("198214", taxdump)
+        >>> # Returns: [('198214', 'species'), ('28211', 'genus'), ...]
+    """
+    taxid = str(taxid)
+
+    if taxid not in taxdump:
+        return []
+
+    lineage = []
+    current_taxid = taxid
+    seen = set()  # Prevent infinite loops
+
+    while current_taxid in taxdump:
+        # Prevent infinite loops
+        if current_taxid in seen:
+            break
+        seen.add(current_taxid)
+
+        node = taxdump[current_taxid]
+        rank = node['rank']
+
+        # Add current node to lineage
+        lineage.append((current_taxid, rank))
+
+        # Move to parent
+        parent_taxid = node['parent_taxid']
+
+        # Stop at root (taxid = 1, or when parent = self)
+        if parent_taxid == current_taxid or parent_taxid == '1':
+            if include_root and parent_taxid == '1' and current_taxid != '1':
+                # Add root node if requested and not already added
+                if '1' in taxdump:
+                    lineage.append(('1', taxdump['1']['rank']))
+            break
+
+        current_taxid = parent_taxid
+
+    return lineage
+
+
+def get_lineage_with_names(taxid, taxdump, names_dict):
+    """
+    Get the complete taxonomic lineage with names for a given taxid.
+
+    Args:
+        taxid (str or int): The taxonomic ID to get lineage for
+        taxdump (dict): The taxonomy data from load_taxdump()
+        names_dict (dict): The names data from load_names()
+
+    Returns:
+        list of tuples: [(taxid, rank, name), ...] from specific to general
+
+    Example:
+        >>> lineage = get_lineage_with_names("198214", taxdump, names)
+        >>> # [('198214', 'species', 'Shewanella baltica'),
+        >>> #  ('28211', 'genus', 'Shewanella'), ...]
+    """
+    basic_lineage = get_lineage(taxid, taxdump)
+
+    lineage_with_names = []
+    for tid, rank in basic_lineage:
+        name = names_dict.get(tid, f"Unknown ({tid})")
+        lineage_with_names.append((tid, rank, name))
+
+    return lineage_with_names
+
+
+def get_lineage_dict(taxid, taxdump, names_dict=None):
+    """
+    Get lineage as a dictionary keyed by rank.
+
+    Args:
+        taxid (str or int): The taxonomic ID
+        taxdump (dict): The taxonomy data
+        names_dict (dict, optional): The names data
+
+    Returns:
+        dict: {rank: {'taxid': taxid, 'name': name (if available)}}
+
+    Example:
+        >>> lineage = get_lineage_dict("198214", taxdump, names)
+        >>> lineage['genus']
+        {'taxid': '28211', 'name': 'Shewanella'}
+        >>> lineage['species']
+        {'taxid': '198214', 'name': 'Shewanella baltica'}
+    """
+    if names_dict:
+        lineage = get_lineage_with_names(taxid, taxdump, names_dict)
+    else:
+        lineage = get_lineage(taxid, taxdump)
+
+    lineage_dict = {}
+
+    for item in lineage:
+        if len(item) == 3:
+            tid, rank, name = item
+            lineage_dict[rank] = {'taxid': tid, 'name': name}
+        else:
+            tid, rank = item
+            lineage_dict[rank] = {'taxid': tid}
+
+    return lineage_dict
+
+
+def get_rank_taxid(taxid, target_rank, taxdump):
+    """
+    Get the taxid at a specific rank in the lineage.
+
+    Args:
+        taxid (str or int): The starting taxonomic ID
+        target_rank (str): The rank to find (e.g., 'genus', 'family', 'species')
+        taxdump (dict): The taxonomy data
+
+    Returns:
+        str or None: The taxid at the target rank, or None if not found
+
+    Example:
+        >>> get_rank_taxid("198214", "genus", taxdump)
+        '28211'  # Genus Shewanella
+    """
+    lineage = get_lineage(taxid, taxdump)
+
+    for tid, rank in lineage:
+        if rank.lower() == target_rank.lower():
+            return tid
+
+    return None
+
+
+def print_lineage(taxid, taxdump, names_dict=None, indent="  "):
+    """
+    Pretty print the taxonomic lineage.
+
+    Args:
+        taxid (str or int): The taxonomic ID
+        taxdump (dict): The taxonomy data
+        names_dict (dict, optional): The names data
+        indent (str): Indentation string for each level
+    """
+    if names_dict:
+        lineage = get_lineage_with_names(taxid, taxdump, names_dict)
+    else:
+        lineage = get_lineage(taxid, taxdump)
+
+    print(f"Lineage for taxid {taxid}:")
+    print("-" * 60)
+
+    for i, item in enumerate(lineage):
+        if len(item) == 3:
+            tid, rank, name = item
+            print(f"{indent * i}{rank:20s} {tid:10s} {name}")
+        else:
+            tid, rank = item
+            print(f"{indent * i}{rank:20s} {tid:10s}")

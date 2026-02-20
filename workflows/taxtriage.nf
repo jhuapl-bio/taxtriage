@@ -336,11 +336,17 @@ workflow TAXTRIAGE {
         DOWNLOAD_PATHOGENS()
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
+
+
+
     ch_taxdump_dir = Channel.empty()
     ch_taxdump_nodes = Channel.empty()
     ch_taxdump_names = Channel.empty()
+    ch_taxdump_nodes = ch_empty_file
+    ch_taxdump_dir = ch_empty_file.parent
 
-    if (params.download_taxdump || (!params.taxdump && params.metaphlan)){
+    if (!params.taxdump && (params.download_taxdump || (!params.taxdump && params.metaphlan) ) ){
+        println "No taxdump provided, downloading the latest taxdump from NCBI"
         DOWNLOAD_TAXDUMP()
         ch_taxdump_nodes = DOWNLOAD_TAXDUMP.out.nodes
         ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
@@ -349,10 +355,6 @@ workflow TAXTRIAGE {
         // set ch_taxdump_nodes BUT add nodes.dmp to end as a file
         ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
         ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
-    } else {
-        // set to empty_file
-        ch_taxdump_nodes = ch_empty_file
-        ch_taxdump_dir = ch_empty_file.parent
     }
 
     // if the download_db params is called AND the --db is not existient as a path
@@ -698,7 +700,7 @@ workflow TAXTRIAGE {
                 ch_pathogens,
                 distributions,
                 ch_assembly_txt,
-                ch_taxdump_nodes,
+                ch_taxdump_dir,
                 all_samples
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
