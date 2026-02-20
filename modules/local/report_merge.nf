@@ -54,7 +54,7 @@ process ORGANISM_MERGE_REPORT {
 
     // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
     def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
-    def integrate_strain_table = params.integrate_strain_table ? " --integrate_strain_table " : ""
+    def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
 
     """
