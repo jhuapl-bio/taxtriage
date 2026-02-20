@@ -367,28 +367,28 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "hmp_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score weight for HMP percentile, recommend disabling if sample is unknown",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "dispersion_factor": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "alpha": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score Alpha. This is the measure of how much weight to put on the breadth vs depth of coverage for a given alignment to an organism. The higher the alpha, the more weight put on breadth rather than depth.",
                     "fa_icon": "fas fa-file-signature",
                     "default": 1
                 },
                 "reward_factor": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "jump_threshold": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Jump Threshold",
                     "hint": "Set a manual jump threshold for a region definition. If the change in depth is greater or less than the current for the upcoming region, then define the new region.",
                     "fa_icon": "fas fa-file-signature"
