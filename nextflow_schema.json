@@ -164,7 +164,7 @@
                     "default": null
                 },
                 "microbert_maxlen": {
-                    "type": "integer",
+                    "type": ["integer", "null"],
                     "description": "What max length you would like to use for microbert clustering. Default is 2000. We do not recommend going above 5k bp",
                     "fa_icon": "fas fa-file-signature",
                     "default": null
