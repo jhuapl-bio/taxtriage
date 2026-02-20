@@ -39,12 +39,12 @@ process ALIGNMENT_PER_SAMPLE {
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     // if params.sensitive is true then set breadth_weight to 0.3, gini_weight to 0.26 and minhash_weight to 0.44
-    def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " --minhash_weight 0.53 "
-    def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " --gini_weight 0.4 "
-    def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " --breadth_weight 0.05 "
-    def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " --mapq_weight 0.0 "
-    def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " --hmp_weight 0.01 "
-    def disparity_score_weight = params.disparity_score_weight ? " --disparity_weight ${params.disparity_score_weight} " : " --disparity_weight 0.01 "
+    def minhash_weight = params.minhash_weight ? " --minhash_weight ${params.minhash_weight} " : " "
+    def gini_weight = params.gini_weight ? " --gini_weight ${params.gini_weight} " : " "
+    def breadth_weight = params.breadth_weight ? " --breadth_weight ${params.breadth_weight} " : " "
+    def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " "
+    def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " "
+    def disparity_score_weight = params.disparity_score_weight ? " --disparity_weight ${params.disparity_score_weight} " : " "
 
     def output = "${meta.id}.paths.json"
     def id = meta.id
@@ -73,7 +73,6 @@ process ALIGNMENT_PER_SAMPLE {
     def alpha = params.alpha ? " --alpha ${params.alpha} " : " --alpha 1.0 "
     def enable_matrix = params.enable_matrix ? " --enable_matrix " : " "
     def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
-
     """
 
     match_paths.py \\

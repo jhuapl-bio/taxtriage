@@ -198,6 +198,33 @@ def passes_confidence_threshold(strain, threshold):
     return tass_score >= threshold
 
 
+# ── Per-sample-type confidence defaults ──────────────────────────────────────
+_SAMPLETYPE_CONF_MAP = {
+    'sterile': 0.3,
+    'blood':   0.3,
+    'csf':     0.3,
+    'stool':   0.65,
+    'nasal':   0.60,
+    'skin':    0.5,
+    'wound':   0.5,
+}
+_DEFAULT_CONF = 0.5
+
+
+def get_sample_min_conf(sample_name, species_groups, explicit_conf):
+    """Return the effective min_conf for a sample.
+
+    If the user explicitly set ``--min_conf``, that value is used for every
+    sample.  Otherwise the threshold is derived from the sample's body-site
+    type via ``normalize_body_site``.
+    """
+    if explicit_conf is not None:
+        return explicit_conf
+    raw_st = (species_groups[0].get('sampletype', '') if species_groups else '').strip()
+    norm_st = normalize_body_site(raw_st.lower()) if raw_st else 'unknown'
+    return _SAMPLETYPE_CONF_MAP.get(norm_st, _DEFAULT_CONF)
+
+
 def load_json_samples(input_files):
     all_sample_data = []
     for input_file in input_files:
@@ -1135,6 +1162,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
         sample_has_cds = False
         sample_has_mmbert = False
         sample_strain_rows = []  # list of (sg, strain) pairs to render
+        _mc = args._sample_min_conf.get(sample_name, _DEFAULT_CONF)
 
         for sg in sorted_groups:
             species_key = sg.get('toplevelkey', sg.get('key', 'unknown'))
@@ -1142,7 +1170,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
                 m for m in sg.get('members', [])
                 if (should_include_strain(m, args)
                     and has_min_reads(m, args.min_reads)
-                    and passes_confidence_threshold(m, args.min_conf))
+                    and passes_confidence_threshold(m, _mc))
             ]
             # Mirror the main table's right-column visibility logic exactly.
             # A group belongs in the appendix only when it has genuinely
@@ -1406,13 +1434,15 @@ def create_pdf_template(output_path, samples_dict, args):
     print(f"  Sorting mode: {'Alphabetical' if args.sort_alphabetical else 'TASS Score (descending)'}")
     print(f"  Max members per group: {args.max_members if args.max_members else 'Unlimited'}")
     print(f"  Max TOC groups per sample: {args.max_toc}")
-    # Collect low confidence strains
+    # Collect low confidence strains (per-sample threshold)
+    sample_min_conf = args._sample_min_conf
     low_confidence_strains = []
     for sample_name, species_groups in samples_dict.items():
+        _mc = sample_min_conf.get(sample_name, _DEFAULT_CONF)
         for species_group in species_groups:
             for strain in species_group.get('members', []):
                 if should_include_strain(strain, args) and has_min_reads(strain, args.min_reads):
-                    if not passes_confidence_threshold(strain, args.min_conf):
+                    if not passes_confidence_threshold(strain, _mc):
                         if strain.get("high_cons"):
                             low_confidence_strains.append({
                                 'strain': strain,
@@ -1434,8 +1464,7 @@ def create_pdf_template(output_path, samples_dict, args):
         f"<link href=\"https://github.com/jhuapl-bio/taxtriage\" color=\"blue\">TaxTriage</link> "
         f"<b>{args.version}</b> on <b>{current_time}</b> and is derived from "
         f"an in <link href=\"https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv\" "
-        f"color=\"blue\">development spreadsheet of human-host pathogens</link>. "
-        f"Samples with confidence score below {args.min_conf} were filtered out."
+        f"color=\"blue\">development spreadsheet of human-host pathogens</link>."
     )
     story.append(Paragraph(generation_text, metadata_style))
     story.append(Spacer(1, 0.02*inch))
@@ -1462,6 +1491,7 @@ def create_pdf_template(output_path, samples_dict, args):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
         species_groups = samples_dict[sample_name]
         total_alignments, primary_count = get_sample_stats(species_groups)
+        _mc = sample_min_conf.get(sample_name, _DEFAULT_CONF)
 
         if args.sort_alphabetical:
             sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
@@ -1473,7 +1503,7 @@ def create_pdf_template(output_path, samples_dict, args):
             has_visible = any(
                 should_include_strain(s, args)
                 and has_min_reads(s, 1)
-                and passes_confidence_threshold(s, args.min_conf)
+                and passes_confidence_threshold(s, _mc)
                 for s in sg.get('members', [])
             )
             if has_visible:
@@ -1542,13 +1572,16 @@ def create_pdf_template(output_path, samples_dict, args):
 
         sampletype = (samples_dict[sample_name][0].get('sampletype', 'Unspecified Type')
                       if samples_dict[sample_name] else 'Unspecified Type')
+        _mc = sample_min_conf.get(sample_name, _DEFAULT_CONF)
         # PDF outline: sample as top-level entry (collapsed by default)
         outline_sample_key = f"outline_{bookmark_name}"
         story.append(OutlineDest(outline_sample_key,
                                  f'Sample: {sample_name}', level=0, closed=True,
                                  collector=outline_collector))
         story.append(Paragraph(f"Sample: {sample_name} ({sampletype})", heading_style))
-        story.append(Spacer(1, 0.1*inch))
+        story.append(Paragraph(
+            f"<i>TASS confidence cutoff: {_mc}</i>", small_style))
+        story.append(Spacer(1, 0.08*inch))
 
         species_groups = samples_dict[sample_name]
         sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
@@ -1572,7 +1605,7 @@ def create_pdf_template(output_path, samples_dict, args):
             group_strains = []
             for strain in sg.get('members', []):
                 if should_include_strain(strain, args) and has_min_reads(strain, 1):
-                    if passes_confidence_threshold(strain, args.min_conf):
+                    if passes_confidence_threshold(strain, _mc):
                         group_strains.append(strain)
                         species_group_map[id(strain)] = sg
             group_strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
@@ -1674,9 +1707,15 @@ def create_pdf_template(output_path, samples_dict, args):
                                  'Low Confidence Detections', level=0, closed=True,
                                  collector=outline_collector))
         story.append(Paragraph("<b>Low Confidence, High Consequence Detections:</b>", heading_style))
+        # Build a summary of per-sample thresholds for the description
+        _unique_confs = sorted(set(sample_min_conf.values()))
+        if len(_unique_confs) == 1:
+            _conf_desc = f"the confidence threshold of {_unique_confs[0]}"
+        else:
+            _conf_desc = "their sample-specific confidence thresholds"
         story.append(Paragraph(
-            f"The following strains were detected but fell below the confidence threshold "
-            f"of {args.min_conf} and are listed here for reference.", metadata_style))
+            f"The following strains were detected but fell below {_conf_desc} "
+            f"and are listed here for reference.", metadata_style))
         story.append(Spacer(1, 0.05*inch))
         story.append(create_low_confidence_table(
             low_confidence_strains, small_style, show_k2_column, available_width))
@@ -1852,8 +1891,9 @@ def parse_args():
         help="Minimum number of reads required to consider an organism for reporting. Default is 1.",
     )
     parser.add_argument(
-        "-c", "--min_conf", metavar="MINCONF", required=False, default=0.6, type=float,
-        help="Value that must be met for a table to report an organism due to confidence column.",
+        "-c", "--min_conf", metavar="MINCONF", required=False, default=None, type=float,
+        help="TASS confidence threshold. If not set, auto-selects based on sample type: "
+             "sterile/blood/csf=0.3, stool=0.65, nasal=0.60, skin/wound=0.5, default=0.5.",
     )
     parser.add_argument(
         "-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
@@ -1973,11 +2013,22 @@ def main():
     samples_dict = organize_data_by_sample(sample_data)
     print(f"Found {len(samples_dict)} unique sample(s)")
 
+    # ── Per-sample min_conf ──────────────────────────────────────────────────
+    # Build a dict of per-sample thresholds so each sample can have its own
+    # cutoff based on body-site type. If the user explicitly set --min_conf,
+    # that value is applied uniformly to all samples.
+    sample_min_conf = {}
+    for sname, sgroups in samples_dict.items():
+        sample_min_conf[sname] = get_sample_min_conf(sname, sgroups, args.min_conf)
+        print(f"  Sample '{sname}' min_conf = {sample_min_conf[sname]}")
+    # Store on args so downstream functions can access it
+    args._sample_min_conf = sample_min_conf
+
     print(f"\nConfiguration:")
     print(f"  Output PDF: {args.output}")
     if args.output_txt:
         print(f"  Output TXT: {args.output_txt}")
-    print(f"  Min Confidence: {args.min_conf}")
+    print(f"  Min Confidence: {args.min_conf if args.min_conf is not None else 'auto (per-sample)'}")
     print(f"  Show Potentials: {args.show_potentials}")
     print(f"  Show Unidentified: {args.show_unidentified}")
     print(f"  Show Commensals: {args.show_commensals}")
