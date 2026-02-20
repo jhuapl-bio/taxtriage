@@ -369,6 +369,9 @@ def optimize_weights(
     input_bam=None,
     final_json=None,
     accession_to_taxid=None,
+    accession_to_key=None,
+    accession_to_subkey=None,
+    accession_to_toplevelkey=None,
     breadth_weight=1/3,
     minhash_weight=1/3,
     gini_weight=1/3,
@@ -385,6 +388,21 @@ def optimize_weights(
     hybrid_lambda=0.5,
     optimize_report="optimization_report.json",
     sampletype="sterile",
+    entropy_lambda=0.0,
+    min_weight=0.0,
+    threshold_pref_lambda=0.05,
+    optimize_tp_target=None,
+    optimize_tp_target_weight=0.0,
+    optimize_tp_target_scope="taxa",
+    optimize_youden_weight=0.0,
+    optimize_fp_cutoff=None,
+    optimize_fp_cutoff_weight=0.0,
+    optimize_curve_scope="taxa",
+    tp_score_floor=0.7,
+    tp_floor_weight=0.0,
+    fp_score_ceiling=0.15,
+    fp_ceiling_weight=0.0,
+    separation_weight=0.0,
 ):
     import json
     import numpy as np
@@ -398,6 +416,26 @@ def optimize_weights(
     print(metrics_df,"<")
     accession_col = "taxid"
 
+    gran_tp_fp_counts = {"key": tp_fp_counts}
+    if accession_to_key and accession_to_key is not accession_to_taxid:
+        gran_tp_fp_counts["key"] = compute_tp_fp_counts_by_taxid(
+            input_bam,
+            accession_to_taxid=accession_to_key,
+            debug_n=10,
+        )
+    if accession_to_subkey:
+        gran_tp_fp_counts["subkey"] = compute_tp_fp_counts_by_taxid(
+            input_bam,
+            accession_to_taxid=accession_to_subkey,
+            debug_n=10,
+        )
+    if accession_to_toplevelkey:
+        gran_tp_fp_counts["toplevelkey"] = compute_tp_fp_counts_by_taxid(
+            input_bam,
+            accession_to_taxid=accession_to_toplevelkey,
+            debug_n=10,
+        )
+
     start_w = dict(
         breadth_weight=float(breadth_weight),
         minhash_weight=float(minhash_weight),
@@ -405,36 +443,183 @@ def optimize_weights(
         disparity_weight=float(disparity_weight),
         hmp_weight=float(hmp_weight),
     )
-    opt = optimize_weights_for_tp_fp(
-        metrics_df=metrics_df,
-        tp_fp_counts=tp_fp_counts,
-        accession_col=accession_col,
-        start_weights=start_w,
-        alpha=float(alpha),
-        pos_weight=float(optimize_pos_weight),
-        neg_weight=float(optimize_neg_weight),
-        reg_lambda=float(optimize_reg),
-        seed=int(optimize_seed),
-        maxiter_global=int(optimize_maxiter),
-        maxiter_local=int(optimize_local_maxiter),
-        optimize_mode=optimize_mode,
-        hybrid_lambda=float(hybrid_lambda),
-    )
 
-    print("[optimize] status:", opt["status"])
-    print("[optimize] mode:", opt.get("optimize_mode"), "hybrid_lambda:", opt.get("hybrid_lambda"))
-    print("[optimize] TP reads:", opt.get("tp_total_reads"), "FP reads:", opt.get("fp_total_reads"))
-    print("[optimize] TP taxids:", opt.get("tp_total_taxa"), "FP taxids:", opt.get("fp_total_taxa"))
+    # ── Helper: run optimizer at a given granularity ─────────────────────────
+    def _run_optimize(df, counts, col_name, label):
+        """Run optimize_weights_for_tp_fp on a given metrics_df & counts dict."""
+        res = optimize_weights_for_tp_fp(
+            metrics_df=df,
+            tp_fp_counts=counts,
+            accession_col=col_name,
+            start_weights=start_w,
+            alpha=float(alpha),
+            pos_weight=float(optimize_pos_weight),
+            neg_weight=float(optimize_neg_weight),
+            reg_lambda=float(optimize_reg),
+            seed=int(optimize_seed),
+            maxiter_global=int(optimize_maxiter),
+            maxiter_local=int(optimize_local_maxiter),
+            optimize_mode=optimize_mode,
+            hybrid_lambda=float(hybrid_lambda),
+            entropy_lambda=float(entropy_lambda),
+            min_weight=float(min_weight),
+            threshold_pref_lambda=float(threshold_pref_lambda),
+            tp_target=optimize_tp_target,
+            tp_target_weight=float(optimize_tp_target_weight),
+            tp_target_scope=str(optimize_tp_target_scope or "taxa"),
+            youden_weight=float(optimize_youden_weight),
+            fp_cutoff=optimize_fp_cutoff,
+            fp_cutoff_weight=float(optimize_fp_cutoff_weight),
+            curve_scope=str(optimize_curve_scope or "taxa"),
+            tp_score_floor=float(tp_score_floor),
+            tp_floor_weight=float(tp_floor_weight),
+            fp_score_ceiling=float(fp_score_ceiling),
+            fp_ceiling_weight=float(fp_ceiling_weight),
+            separation_weight=float(separation_weight),
+        )
+        print(f"[optimize:{label}] status: {res['status']}")
+        if res["status"] == "ok":
+            print(f"[optimize:{label}] TP reads: {res.get('tp_total_reads')}, "
+                  f"FP reads: {res.get('fp_total_reads')}")
+            print(f"[optimize:{label}] TP taxa: {res.get('tp_total_taxa')}, "
+                  f"FP taxa: {res.get('fp_total_taxa')}")
+            print(f"[optimize:{label}] weights: {res['weights']}")
+        return res
 
-    if opt["status"] != "ok":
+    # ── Primary optimization at taxid level (existing behaviour) ─────────────
+    opt = _run_optimize(metrics_df, tp_fp_counts, accession_col, "taxid")
+
+    # ── Multi-granularity optimization (key, subkey, toplevelkey) ─────────────
+    granularity_results = {}
+    granularity_reports = {}
+    for gran_field in ("key", "subkey", "toplevelkey"):
+        if gran_field not in metrics_df.columns:
+            continue
+        # Build a grouped df: aggregate features by gran_field, merge TP/FP
+        gran_df = metrics_df.copy()
+        gran_df[gran_field] = gran_df[gran_field].astype(str)
+
+        # Aggregate: take max of features (consistent with build_metrics_df logic)
+        agg_spec = {
+            "name": "first",
+            "category": "first",
+            "key": "first",
+            "subkey": "first",
+            "toplevelkey": "first",
+            "breadth_log_score": "max",
+            "minhash_reduction": "max",
+            "disparity_score": "max",
+            "gini_coefficient": "max",
+            "hmp_percentile": "max",
+            "tp_reads": "sum",
+            "fp_reads": "sum",
+            "total_reads": "sum",
+        }
+        # Only include columns that exist
+        agg_spec = {k: v for k, v in agg_spec.items() if k in gran_df.columns}
+        grouped = gran_df.groupby(gran_field, as_index=False).agg(agg_spec)
+        grouped["fp_fraction"] = grouped.apply(
+            lambda r: (r["fp_reads"] / r["total_reads"]) if r["total_reads"] else 0.0, axis=1
+        )
+
+        # Build tp_fp_counts keyed by gran_field value
+        gran_counts = {}
+        if gran_field in gran_tp_fp_counts:
+            src_counts = gran_tp_fp_counts[gran_field]
+            for gval in grouped[gran_field].astype(str).tolist():
+                gran_counts[gval] = src_counts.get(gval, (0, 0))
+            grouped["tp_reads"] = grouped[gran_field].map(lambda v: gran_counts.get(str(v), (0, 0))[0]).astype(int)
+            grouped["fp_reads"] = grouped[gran_field].map(lambda v: gran_counts.get(str(v), (0, 0))[1]).astype(int)
+            grouped["total_reads"] = grouped["tp_reads"] + grouped["fp_reads"]
+            grouped["fp_fraction"] = grouped.apply(
+                lambda r: (r["fp_reads"] / r["total_reads"]) if r["total_reads"] else 0.0, axis=1
+            )
+        else:
+            for _, row in grouped.iterrows():
+                gval = str(row[gran_field])
+                gran_counts[gval] = (int(row["tp_reads"]), int(row["fp_reads"]))
+
+        gran_opt = _run_optimize(grouped, gran_counts, gran_field, gran_field)
+        granularity_results[gran_field] = gran_opt
+
+        if gran_opt.get("status") == "ok":
+            g_weights = gran_opt.get("weights") or {}
+            g_scores = compute_tass_score_from_metrics(
+                grouped,
+                breadth_w=float(g_weights.get("breadth_weight", breadth_weight)),
+                minhash_w=float(g_weights.get("minhash_weight", minhash_weight)),
+                gini_w=float(g_weights.get("gini_weight", gini_weight)),
+                disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
+                hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
+                alpha=float(alpha),
+            )
+            g_scores = np.asarray(g_scores, dtype=float)
+
+            gran_rows = []
+            for i in range(len(grouped)):
+                gran_rows.append({
+                    "group": str(grouped.iloc[i][gran_field]),
+                    "name": str(grouped.iloc[i].get("name", "")),
+                    "key": str(grouped.iloc[i].get("key", "")),
+                    "subkey": str(grouped.iloc[i].get("subkey", "")),
+                    "toplevelkey": str(grouped.iloc[i].get("toplevelkey", "")),
+                    "microbial_category": str(grouped.iloc[i].get("category", "")),
+                    "tp_reads": int(grouped.iloc[i]["tp_reads"]),
+                    "fp_reads": int(grouped.iloc[i]["fp_reads"]),
+                    "total_reads": int(grouped.iloc[i]["total_reads"]),
+                    "fp_fraction": float(grouped.iloc[i]["fp_reads"] / grouped.iloc[i]["total_reads"]) if grouped.iloc[i]["total_reads"] else 0.0,
+                    "tass_score": float(g_scores[i]),
+                    "features": {
+                        "breadth_log_score": float(grouped.iloc[i].get("breadth_log_score", 0.0)),
+                        "minhash_reduction": float(grouped.iloc[i].get("minhash_reduction", 0.0)),
+                        "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
+                        "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
+                        "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
+                    },
+                })
+            gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
+            granularity_reports[gran_field] = gran_rows
+
+    # ── Select best overall result ───────────────────────────────────────────
+    # Compare primary (taxid) with granularity results, pick lowest loss
+    all_opts = {"taxid": opt}
+    all_opts.update(granularity_results)
+
+    best_label = "taxid"
+    best_opt = opt
+    for label, result in all_opts.items():
+        if result.get("status") != "ok":
+            continue
+        if best_opt.get("status") != "ok":
+            best_label = label
+            best_opt = result
+            continue
+        # Lower loss = better
+        if result.get("loss", float("inf")) < best_opt.get("loss", float("inf")):
+            best_label = label
+            best_opt = result
+
+    print(f"\n[optimize] Best granularity: {best_label} (loss={best_opt.get('loss', 'N/A')})")
+
+    if best_opt.get("status") != "ok":
         report_obj = {
-            "status": opt["status"],
+            "status": best_opt.get("status", "failed"),
             "config": {
                 "alpha": float(alpha),
                 "sampletype": sampletype,
                 "pos_weight": float(optimize_pos_weight),
                 "neg_weight": float(optimize_neg_weight),
                 "reg_lambda": float(optimize_reg),
+                "entropy_lambda": float(entropy_lambda),
+                "min_weight": float(min_weight),
+                "threshold_pref_lambda": float(threshold_pref_lambda),
+                "tp_target": None if optimize_tp_target is None else float(optimize_tp_target),
+                "tp_target_weight": float(optimize_tp_target_weight),
+                "tp_target_scope": str(optimize_tp_target_scope or "taxa"),
+                "youden_weight": float(optimize_youden_weight),
+                "fp_cutoff": None if optimize_fp_cutoff is None else float(optimize_fp_cutoff),
+                "fp_cutoff_weight": float(optimize_fp_cutoff_weight),
+                "curve_scope": str(optimize_curve_scope or "taxa"),
                 "seed": int(optimize_seed),
                 "maxiter_global": int(optimize_maxiter),
                 "maxiter_local": int(optimize_local_maxiter),
@@ -442,15 +627,22 @@ def optimize_weights(
                 "hybrid_lambda": float(hybrid_lambda),
                 "start_weights": start_w,
             },
-            "optimizer": opt,
+            "optimizer": best_opt,
             "best_weights": start_w,
+            "best_granularity": best_label,
+            "granularity_results": {
+                k: {"status": v.get("status"), "weights": v.get("weights"), "loss": v.get("loss")}
+                for k, v in all_opts.items()
+            },
+            "granularity_reports": granularity_reports,
             "report": [],
         }
-        with open(optimize_report, "w") as f:
-            json.dump(report_obj, f, indent=2)
+        if optimize_report:
+            with open(optimize_report, "w") as f:
+                json.dump(report_obj, f, indent=2)
         return report_obj
 
-    best_w = opt["weights"]
+    best_w = best_opt["weights"]
     breadth_weight = best_w["breadth_weight"]
     minhash_weight = best_w["minhash_weight"]
     gini_weight = best_w["gini_weight"]
@@ -477,6 +669,10 @@ def optimize_weights(
         report_rows.append({
             "taxid": str(metrics_df.iloc[i]["taxid"]),
             "name": str(metrics_df.iloc[i].get("name", "")),
+            "microbial_category": str(metrics_df.iloc[i].get("category", "")),
+            "key": metrics_df.iloc[i].get("key"),
+            "subkey": metrics_df.iloc[i].get("subkey"),
+            "toplevelkey": metrics_df.iloc[i].get("toplevelkey"),
             "tp_reads": int(tp[i]),
             "fp_reads": int(fp[i]),
             "total_reads": int(total[i]),
@@ -485,8 +681,8 @@ def optimize_weights(
             "features": {
                 "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
                 "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
-                    "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
-                    "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
+                "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
+                "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
                 "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
             }
         })
@@ -501,6 +697,16 @@ def optimize_weights(
             "pos_weight": float(optimize_pos_weight),
             "neg_weight": float(optimize_neg_weight),
             "reg_lambda": float(optimize_reg),
+            "entropy_lambda": float(entropy_lambda),
+            "min_weight": float(min_weight),
+            "threshold_pref_lambda": float(threshold_pref_lambda),
+            "tp_target": None if optimize_tp_target is None else float(optimize_tp_target),
+            "tp_target_weight": float(optimize_tp_target_weight),
+            "tp_target_scope": str(optimize_tp_target_scope or "taxa"),
+            "youden_weight": float(optimize_youden_weight),
+            "fp_cutoff": None if optimize_fp_cutoff is None else float(optimize_fp_cutoff),
+            "fp_cutoff_weight": float(optimize_fp_cutoff_weight),
+            "curve_scope": str(optimize_curve_scope or "taxa"),
             "seed": int(optimize_seed),
             "maxiter_global": int(optimize_maxiter),
             "maxiter_local": int(optimize_local_maxiter),
@@ -515,12 +721,19 @@ def optimize_weights(
             "disparity_weight": float(disparity_weight),
             "hmp_weight": float(hmp_weight),
         },
-        "optimizer": opt,
+        "best_granularity": best_label,
+        "granularity_results": {
+            k: {"status": v.get("status"), "weights": v.get("weights"), "loss": v.get("loss")}
+            for k, v in all_opts.items()
+        },
+        "granularity_reports": granularity_reports,
+        "optimizer": best_opt,
         "report": report_rows,
     }
 
-    with open(optimize_report, "w") as f:
-        json.dump(report_obj, f, indent=2)
+    if optimize_report:
+        with open(optimize_report, "w") as f:
+            json.dump(report_obj, f, indent=2)
 
     return report_obj
 
@@ -528,6 +741,12 @@ def optimize_weights(
 
 def _clip01(x: np.ndarray, eps: float = 1e-6) -> np.ndarray:
     return np.clip(x, eps, 1.0 - eps)
+
+def _entropy(w, eps=1e-8):
+    """Shannon entropy of weight vector (higher = more balanced)."""
+    w_safe = np.clip(w, eps, 1.0)
+    return -float(np.sum(w_safe * np.log(w_safe)))
+
 def optimize_weights_for_tp_fp(
     metrics_df,
     tp_fp_counts: dict[str, tuple[int, int]],
@@ -543,6 +762,21 @@ def optimize_weights_for_tp_fp(
     maxiter_local: int,
     optimize_mode: str = "taxids",   # "reads" | "taxids" | "hybrid"
     hybrid_lambda: float = 0.5,
+    entropy_lambda: float = 0.0,
+    min_weight: float = 0.0,
+    threshold_pref_lambda: float = 0.0,
+    tp_target: float | None = None,
+    tp_target_weight: float = 0.0,
+    tp_target_scope: str = "taxa",
+    youden_weight: float = 0.0,
+    fp_cutoff: float | None = None,
+    fp_cutoff_weight: float = 0.0,
+    curve_scope: str = "taxa",
+    tp_score_floor: float = 0.7,
+    tp_floor_weight: float = 0.0,
+    fp_score_ceiling: float = 0.15,
+    fp_ceiling_weight: float = 0.0,
+    separation_weight: float = 0.0,
 ):
     from scipy.optimize import differential_evolution, minimize
     import numpy as np
@@ -551,8 +785,9 @@ def optimize_weights_for_tp_fp(
     tp = np.array([tp_fp_counts.get(a, (0, 0))[0] for a in accessions], dtype=float)
     fp = np.array([tp_fp_counts.get(a, (0, 0))[1] for a in accessions], dtype=float)
 
+    # Taxid-level labels: TP if any TP reads exist, else negative.
     y_pos = (tp > 0).astype(float)
-    y_neg = (fp > 0).astype(float)
+    y_neg = (tp == 0).astype(float)
 
     tp_total_reads = float(tp.sum())
     fp_total_reads = float(fp.sum())
@@ -585,13 +820,108 @@ def optimize_weights_for_tp_fp(
         start_weights.get("hmp_weight", 0.0),
     ], dtype=float)
 
-    w0 = np.clip(w0, 0.0, 1.0)
-    w0 = (w0 / w0.sum()) if w0.sum() > 0 else np.array([1/5, 1/5, 1/5, 1/5, 1/5], dtype=float)
+    # Apply min-weight floor to w0 and bounds
+    _mw = max(0.0, min(0.15, float(min_weight)))  # cap at 15% per weight
+    n_weights = 5
+
+    w0 = np.clip(w0, _mw, 1.0)
+    w0 = (w0 / w0.sum()) if w0.sum() > 0 else np.full(n_weights, 1.0 / n_weights)
+
+    # Max entropy for reference (uniform distribution)
+    _max_entropy = _entropy(np.full(n_weights, 1.0 / n_weights))
+
+    def _threshold_pref_penalty(scores: np.ndarray) -> float:
+        if threshold_pref_lambda <= 0:
+            return 0.0
+
+        # Prefer taxid-level retention when available; fall back to reads.
+        if tp_total_taxa > 0 and fp_total_taxa > 0:
+            tp_w = y_pos
+            fp_w = y_neg
+            total_tp = tp_total_taxa
+            total_fp = fp_total_taxa
+        elif tp_total_reads > 0 and fp_total_reads > 0:
+            tp_w = tp
+            fp_w = fp
+            total_tp = tp_total_reads
+            total_fp = fp_total_reads
+        else:
+            return 0.0
+
+        order = np.argsort(scores)[::-1]
+        scores_sorted = scores[order]
+        tp_sorted = tp_w[order]
+        fp_sorted = fp_w[order]
+
+        tp_ret = np.cumsum(tp_sorted) / (total_tp + 1e-12)
+        fp_ret = np.cumsum(fp_sorted) / (total_fp + 1e-12)
+        J = tp_ret - fp_ret
+
+        best_idx = int(np.nanargmax(J))
+        t_min = float(scores_sorted.min())
+        t_max = float(scores_sorted.max())
+        norm_t = (float(scores_sorted[best_idx]) - t_min) / (t_max - t_min + 1e-12)
+
+        # Penalize lower best-thresholds so the optimizer favors higher cutoffs.
+        return float(threshold_pref_lambda) * (1.0 - norm_t)
+
+    def _retention_curves(scores: np.ndarray, scope: str):
+        scope = (scope or "taxa").lower().strip()
+
+        def _curves(tp_w, fp_w, total_tp, total_fp):
+            if total_tp <= 0 or total_fp <= 0:
+                return None, None, None
+            order = np.argsort(scores)[::-1]
+            s_sorted = scores[order]
+            tp_sorted = tp_w[order]
+            fp_sorted = fp_w[order]
+            tp_ret = np.cumsum(tp_sorted) / (total_tp + 1e-12)
+            fp_ret = np.cumsum(fp_sorted) / (total_fp + 1e-12)
+            return tp_ret, fp_ret, s_sorted
+
+        if scope == "reads":
+            return _curves(tp, fp, tp_total_reads, fp_total_reads)
+        if scope == "hybrid":
+            tp_ret_taxa, fp_ret_taxa, s_sorted = _curves(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
+            tp_ret_reads, fp_ret_reads, _ = _curves(tp, fp, tp_total_reads, fp_total_reads)
+            if tp_ret_taxa is None or tp_ret_reads is None:
+                return None, None, None
+            lam = max(0.0, min(1.0, float(hybrid_lambda)))
+            tp_ret = lam * tp_ret_taxa + (1.0 - lam) * tp_ret_reads
+            fp_ret = lam * fp_ret_taxa + (1.0 - lam) * fp_ret_reads
+            return tp_ret, fp_ret, s_sorted
+
+        return _curves(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
+
+    def _retention_at_cutoff(scores: np.ndarray, scope: str, cutoff: float):
+        scope = (scope or "taxa").lower().strip()
+
+        def _at(tp_w, fp_w, total_tp, total_fp):
+            if total_tp <= 0 or total_fp <= 0:
+                return None, None
+            mask = scores >= cutoff
+            tp_ret = float(tp_w[mask].sum() / (total_tp + 1e-12))
+            fp_ret = float(fp_w[mask].sum() / (total_fp + 1e-12))
+            return tp_ret, fp_ret
+
+        if scope == "reads":
+            return _at(tp, fp, tp_total_reads, fp_total_reads)
+        if scope == "hybrid":
+            tp_tax, fp_tax = _at(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
+            tp_rd, fp_rd = _at(tp, fp, tp_total_reads, fp_total_reads)
+            if tp_tax is None or tp_rd is None:
+                return None, None
+            lam = max(0.0, min(1.0, float(hybrid_lambda)))
+            return (lam * tp_tax + (1.0 - lam) * tp_rd, lam * fp_tax + (1.0 - lam) * fp_rd)
+
+        return _at(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
 
     def loss_for_w(w: np.ndarray) -> float:
-        # simplex constraints (soft)
+        # simplex + min-weight constraints (soft)
         if np.any(w < 0) or np.any(w > 1) or abs(w.sum() - 1.0) > 1e-6:
             return 1e6 + 1e6 * (w.sum() - 1.0) ** 2
+        if _mw > 0 and np.any(w < _mw - 1e-8):
+            return 1e6 + 1e6 * float(np.sum(np.maximum(0, _mw - w)))
 
         scores = compute_tass_score_from_metrics(
             metrics_df,
@@ -622,14 +952,126 @@ def optimize_weights_for_tp_fp(
             neg_term = lam * tax_neg_term + (1.0 - lam) * read_neg_term
 
         reg = reg_lambda * float(np.sum((w - w0) ** 2))
-        return pos_w * pos_term + neg_w * neg_term + reg
+
+        # Entropy regularization: penalize weight concentration
+        # Low entropy = one weight dominates → add penalty
+        # We negate entropy (since we minimize loss) and scale by _max_entropy
+        ent_penalty = 0.0
+        if entropy_lambda > 0:
+            ent = _entropy(w)
+            # Penalty = entropy_lambda * (1 - entropy / max_entropy)
+            # = 0 when weights are uniform, = entropy_lambda when one weight = 1
+            ent_penalty = entropy_lambda * (1.0 - ent / _max_entropy) if _max_entropy > 0 else 0.0
+
+        thresh_penalty = _threshold_pref_penalty(p)
+
+        tp_target_penalty = 0.0
+        if tp_target is not None and tp_target_weight > 0:
+            scope = (tp_target_scope or "taxa").lower().strip()
+            tp_mean_taxa = (float(np.sum(y_pos * p) / tp_total_taxa) if tp_total_taxa > 0 else None)
+            tp_mean_reads = (float(np.sum(tp * p) / tp_total_reads) if tp_total_reads > 0 else None)
+
+            if scope == "reads":
+                tp_mean = tp_mean_reads
+            elif scope == "hybrid":
+                lam = max(0.0, min(1.0, float(hybrid_lambda)))
+                if tp_mean_taxa is None and tp_mean_reads is None:
+                    tp_mean = None
+                elif tp_mean_taxa is None:
+                    tp_mean = tp_mean_reads
+                elif tp_mean_reads is None:
+                    tp_mean = tp_mean_taxa
+                else:
+                    tp_mean = lam * tp_mean_taxa + (1.0 - lam) * tp_mean_reads
+            else:
+                tp_mean = tp_mean_taxa
+
+            if tp_mean is not None:
+                gap = max(0.0, float(tp_target) - tp_mean)
+                tp_target_penalty = float(tp_target_weight) * (gap ** 2)
+
+        youden_penalty = 0.0
+        if youden_weight > 0:
+            tp_ret, fp_ret, _ = _retention_curves(p, curve_scope)
+            if tp_ret is not None:
+                best_j = float(np.nanmax(tp_ret - fp_ret))
+                youden_penalty = float(youden_weight) * (1.0 - best_j)
+
+        fp_cutoff_penalty = 0.0
+        if fp_cutoff is not None and fp_cutoff_weight > 0:
+            _, fp_ret = _retention_at_cutoff(p, curve_scope, float(fp_cutoff))
+            if fp_ret is not None:
+                fp_cutoff_penalty = float(fp_cutoff_weight) * float(fp_ret)
+
+        # ── TP Score Floor Hinge Loss ──────────────────────────────────
+        # Per-organism quadratic penalty for any TP scoring below tp_score_floor.
+        # Pushes ALL individual TP organisms above the floor (e.g. 0.7).
+        tp_floor_penalty = 0.0
+        if tp_floor_weight > 0 and tp_score_floor is not None:
+            tp_mask = y_pos > 0
+            if tp_mask.any():
+                tp_scores = p[tp_mask]
+                shortfalls = np.maximum(0.0, tp_score_floor - tp_scores)
+                tp_floor_penalty = float(tp_floor_weight) * float(np.mean(shortfalls ** 2))
+
+        # ── FP Score Ceiling Hinge Loss ────────────────────────────────
+        # Per-organism quadratic penalty for any FP scoring above fp_score_ceiling.
+        # Pushes ALL individual FP organisms below the ceiling (e.g. 0.15).
+        fp_ceiling_penalty = 0.0
+        if fp_ceiling_weight > 0 and fp_score_ceiling is not None:
+            fp_mask = y_neg > 0
+            if fp_mask.any():
+                fp_scores = p[fp_mask]
+                overshoots = np.maximum(0.0, fp_scores - fp_score_ceiling)
+                fp_ceiling_penalty = float(fp_ceiling_weight) * float(np.mean(overshoots ** 2))
+
+        # ── Multi-Threshold Retention Shape Penalty ────────────────────
+        # Evaluates the retention curve at multiple thresholds and penalizes
+        # deviations from the ideal step-function shape:
+        #   - TP retention should stay ≥ 0.95 at all thresholds up to 0.7
+        #   - FP retention should drop to ≤ 0.05 at thresholds ≥ 0.15
+        separation_penalty = 0.0
+        if separation_weight > 0:
+            _check_thresholds = [0.1, 0.2, 0.3, 0.5, 0.7]
+            shape_loss = 0.0
+            for _t in _check_thresholds:
+                _tp_ret_t, _fp_ret_t = _retention_at_cutoff(p, curve_scope, float(_t))
+                if _tp_ret_t is not None and _fp_ret_t is not None:
+                    # TP should be retained at ~1.0 across all thresholds
+                    tp_drop = max(0.0, 0.95 - _tp_ret_t)
+                    shape_loss += tp_drop ** 2
+                    # FP should be ~0.0 at thresholds >= 0.15
+                    if _t >= 0.15:
+                        fp_excess = max(0.0, _fp_ret_t - 0.05)
+                        shape_loss += fp_excess ** 2
+            separation_penalty = float(separation_weight) * shape_loss
+
+        return (
+            pos_w * pos_term
+            + neg_w * neg_term
+            + reg
+            + ent_penalty
+            + thresh_penalty
+            + tp_target_penalty
+            + youden_penalty
+            + fp_cutoff_penalty
+            + tp_floor_penalty
+            + fp_ceiling_penalty
+            + separation_penalty
+        )
 
     # --- Global stage (DE) over 4 vars, 5th implied by sum=1 ---
     # x = [w_breadth, w_minhash, w_gini, w_disparity], w_hmp = 1 - sum(x)
+    _upper = 1.0 - (n_weights - 1) * _mw  # max any single weight can be
+
     def unpack_x(x: np.ndarray) -> np.ndarray:
         wb, wm, wg, wd = float(x[0]), float(x[1]), float(x[2]), float(x[3])
         wh = 1.0 - (wb + wm + wg + wd)
-        return np.array([wb, wm, wg, wd, wh], dtype=float)
+        w = np.array([wb, wm, wg, wd, wh], dtype=float)
+        if _mw > 0:
+            w = np.clip(w, _mw, _upper)
+            w = w / w.sum()  # re-normalize after clipping
+        return w
 
     def loss_for_x(x: np.ndarray) -> float:
         w = unpack_x(x)
@@ -637,7 +1079,7 @@ def optimize_weights_for_tp_fp(
             return 1e6 + 1e6 * max(0.0, -w.min())
         return loss_for_w(w)
 
-    bounds = [(0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0)]
+    bounds = [(_mw, _upper), (_mw, _upper), (_mw, _upper), (_mw, _upper)]
     rng = np.random.RandomState(seed)
 
     de_res = differential_evolution(
@@ -654,12 +1096,12 @@ def optimize_weights_for_tp_fp(
     if np.any(w_de < 0) or abs(w_de.sum() - 1.0) > 1e-6:
         w_de = w0.copy()
     else:
-        w_de = np.clip(w_de, 0.0, 1.0)
+        w_de = np.clip(w_de, _mw, _upper)
         w_de = w_de / w_de.sum()
 
     # --- Local refinement (SLSQP) on 5 vars ---
     cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bnds = [(0.0, 1.0)] * 5
+    bnds = [(_mw, _upper)] * n_weights
 
     local_res = minimize(
         loss_for_w,
@@ -670,7 +1112,7 @@ def optimize_weights_for_tp_fp(
         options={"maxiter": maxiter_local, "ftol": 1e-9},
     )
 
-    w_best = np.clip(local_res.x, 0.0, 1.0)
+    w_best = np.clip(local_res.x, _mw, _upper)
     w_best = w_best / w_best.sum()
 
     # summaries (both read and taxid views)
@@ -701,6 +1143,14 @@ def optimize_weights_for_tp_fp(
         "status": "ok",
         "optimize_mode": optimize_mode,
         "hybrid_lambda": float(hybrid_lambda),
+        "threshold_pref_lambda": float(threshold_pref_lambda),
+        "tp_target": None if tp_target is None else float(tp_target),
+        "tp_target_weight": float(tp_target_weight),
+        "tp_target_scope": str(tp_target_scope or "taxa"),
+        "youden_weight": float(youden_weight),
+        "fp_cutoff": None if fp_cutoff is None else float(fp_cutoff),
+        "fp_cutoff_weight": float(fp_cutoff_weight),
+        "curve_scope": str(curve_scope or "taxa"),
         "tp_total_reads": int(tp_total_reads),
         "fp_total_reads": int(fp_total_reads),
         "tp_total_taxa": int(tp_total_taxa),
@@ -870,6 +1320,9 @@ def build_metrics_df_from_final_json(
         rows.append({
             "taxid": taxid,
             "name": stats.get("name", ""),
+            "key": stats.get("key"),
+            "subkey": stats.get("subkey"),
+            "toplevelkey": stats.get("toplevelkey"),
             "accessions": accs,
             "category": categorical,
             "breadth_log_score": breadth,
@@ -896,6 +1349,9 @@ def build_metrics_df_from_final_json(
 
     agg = {
         "name": "first",
+        "key": "first",
+        "subkey": "first",
+        "toplevelkey": "first",
         "accessions": union_lists,
         "category": "first",
         "breadth_log_score": "max",

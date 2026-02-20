@@ -610,9 +610,9 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "sensitive": {
+                "loose": {
                     "type": "boolean",
-                    "description": "Build signatures from TASS Minhash score step using windowed regions of the reference gneomes. Default (disabled-false) is to only compare similar reads/regions from the aligned reads from the BAM file(s)",
+                    "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "enable_matrix": {

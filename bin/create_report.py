@@ -6,13 +6,135 @@ import os
 import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-from reportlab.platypus.flowables import AnchorFlowable
+from reportlab.platypus.flowables import AnchorFlowable, Flowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from datetime import datetime
 from map_taxid import load_taxdump, load_names, load_merged
+from body_site_normalization import normalize_body_site
+
+
+class _OutlineCollector:
+    """Accumulates PDF outline entries and flushes them in sorted order.
+
+    Entries are collected during the ReportLab build phase (as each
+    ``OutlineDest`` flowable is drawn) and flushed once at the very end by
+    ``FinalizeOutlines``.  Flushing sorts level-0 entries alphabetically and
+    sorts level-1 children alphabetically within each parent group, so the
+    PDF sidebar bookmark panel is alphabetically ordered.
+    """
+
+    def __init__(self):
+        self.entries = []  # [(sort_key, dest_key, title, level, closed)]
+
+    def add(self, dest_key, title, level=0, closed=True, sort_key=None):
+        if sort_key is None:
+            sort_key = title.lower()
+        self.entries.append((sort_key, dest_key, title, level, closed))
+
+    def flush_sorted(self, canv):
+        """Sort entries respecting hierarchy and add to the canvas outline."""
+        # Group level-1+ entries under their preceding level-0 entry
+        groups = []  # [(level0_entry, [child_entries])]
+        current_group = None
+        for entry in self.entries:
+            _sort_key, _dest_key, _title, level, _closed = entry
+            if level == 0:
+                current_group = (entry, [])
+                groups.append(current_group)
+            elif current_group is not None:
+                current_group[1].append(entry)
+
+        # Sort level-0 groups alphabetically
+        groups.sort(key=lambda g: g[0][0])
+
+        # Sort children within each group alphabetically
+        for _parent, children in groups:
+            children.sort(key=lambda e: e[0])
+
+        # Flatten and add to the PDF outline
+        for parent, children in groups:
+            _, dest_key, title, level, closed = parent
+            canv.addOutlineEntry(title, dest_key, level=level, closed=closed)
+            for child in children:
+                _, dest_key, title, level, closed = child
+                canv.addOutlineEntry(title, dest_key, level=level, closed=closed)
+
+        self.entries.clear()
+
+
+class OutlineDest(Flowable):
+    """Zero-size flowable that bookmarks the current Y position and registers
+    an outline entry with the collector.
+
+    Unlike the previous ``OutlineEntry``, this flowable uses
+    ``bookmarkHorizontalAbsolute`` so the PDF viewer jumps to the *exact
+    vertical position* on the page (not just the page top).  The actual
+    ``addOutlineEntry`` call is deferred to ``FinalizeOutlines`` so all
+    entries can be emitted in sorted order.
+    """
+
+    width = 0
+    height = 0
+
+    def __init__(self, key, title, level=0, closed=True, collector=None,
+                 sort_key=None):
+        super().__init__()
+        self.key = key
+        self.title = title
+        self.level = level
+        self.closed = closed
+        self.collector = collector
+        self.sort_key = sort_key
+
+    def draw(self):
+        self.canv.bookmarkHorizontalAbsolute(self.key, self.canv._y)
+        if self.collector is not None:
+            self.collector.add(
+                self.key, self.title, self.level, self.closed, self.sort_key)
+
+
+class AbsoluteAnchorFlowable(Flowable):
+    """Zero-size flowable that registers a named destination using
+    ``bookmarkHorizontalAbsolute`` so the bookmark resolves to the
+    correct page position even when embedded inside a Table cell.
+
+    ReportLab's built-in ``AnchorFlowable`` uses ``bookmarkHorizontal``
+    which relies on the current transformation matrix.  Inside table cells
+    the CTM is local to the cell, so bookmarks can point to wrong locations
+    — especially when the table spans multiple pages.  This class avoids
+    that problem by using the canvas's absolute Y directly.
+    """
+
+    width = 0
+    height = 0
+
+    def __init__(self, name):
+        super().__init__()
+        self._name = name
+
+    def draw(self):
+        self.canv.bookmarkHorizontalAbsolute(self._name, self.canv._y)
+
+
+class FinalizeOutlines(Flowable):
+    """Zero-size flowable placed at the very end of the story.
+
+    When drawn it tells the collector to sort all accumulated entries
+    alphabetically and write them to the PDF outline in one batch.
+    """
+
+    width = 0
+    height = 0
+
+    def __init__(self, collector):
+        super().__init__()
+        self.collector = collector
+
+    def draw(self):
+        self.collector.flush_sorted(self.canv)
 
 
 def get_high_ani_matches(member):
@@ -44,8 +166,18 @@ def check_if_k2_reads_present(strains):
     return False
 
 
-def should_include_strain(strain, args):
+def should_include_strain(strain, args, sampletype=None):
     category = str(strain.get('microbial_category', 'Unknown'))
+    # Resolve sample type from argument or from the strain's own data
+    _st = sampletype or strain.get('sampletype') or strain.get('normalized_sample_site') or ''
+    # For sterile sample types, anything listed from the pathogen sheet
+    # (i.e. any annotated organism) should always be shown regardless of category
+    if _st:
+        normalized_st = normalize_body_site(str(_st).lower())
+        if normalized_st == "sterile":
+            is_annotated = strain.get('is_annotated', 'No')
+            if is_annotated == 'Yes' or 'Primary' in category or 'sterile' in category.lower():
+                return True
     if 'Primary' in category:
         return True
     if "Opportunistic" in category and args.show_opportunistic:
@@ -237,7 +369,8 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                                   taxid_to_bookmark, valid_bookmarks,
                                   sample_total_reads=0, sample_name=None,
                                   available_width=None, use_subkey=True,
-                                  show_strains_table=True):
+                                  show_strains_table=True,
+                                  outline_collector=None):
     """
     Create a single table combining all strains from all species groups.
 
@@ -494,11 +627,25 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             # The group name cell spans columns 1+2
             spanned_name_width = col_widths[1] + col_widths[2]
 
-            # Name cell contains ONLY the name paragraph (metrics moved to right column)
+            # Name cell contains anchor + outline dest + name paragraph
             # Subtract outer cell padding (LEFT=4 + RIGHT=4) so text wraps within bounds
             name_cell_w = spanned_name_width - 8
+            name_cell_rows = []
+            # Embed the species-group anchor and outline destination directly
+            # in the table cell so bookmarks jump to this exact row.
+            # Uses AbsoluteAnchorFlowable (bookmarkHorizontalAbsolute) instead
+            # of AnchorFlowable (bookmarkHorizontal) so the Y coordinate is
+            # correct even when nested inside a table cell across page breaks.
+            if sample_name is not None:
+                sp_bm = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
+                name_cell_rows.append([AbsoluteAnchorFlowable(sp_bm)])
+                if outline_collector is not None:
+                    name_cell_rows.append([OutlineDest(
+                        f"outline_{sp_bm}", group_name,
+                        level=1, closed=True, collector=outline_collector)])
+            name_cell_rows.append([group_name_para])
             group_name_cell = Table(
-                [[group_name_para]],
+                name_cell_rows,
                 colWidths=[name_cell_w]
             )
             group_name_cell.setStyle(TableStyle([
@@ -546,7 +693,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             if rpm_col_idx <= span_end:
                 table_styles.append(('SPAN', (rpm_col_idx, row_idx), (span_end, row_idx)))
             # Always place organism count summary in the RPM slot (first cell of trailing span)
-            summary_text = f'<i>{n_strains} detected organism{"s" if n_strains != 1 else ""}</i>'
+            summary_text = f'<i>{n_strains} likely detected organism{"s" if n_strains != 1 else ""}</i>'
             group_row[rpm_col_idx] = Paragraph(summary_text, group_strain_summary_style)
             table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#E8E8E8')))
             table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'LEFT'))
@@ -940,7 +1087,7 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
 
 def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
                                 small_style, show_k2_column, valid_bookmarks,
-                                args, available_width):
+                                args, available_width, outline_collector=None):
     """
     Build the strain-detail appendix story elements.
 
@@ -972,6 +1119,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
         alignment=TA_CENTER, wordWrap='CJK')
 
     story_items.append(AnchorFlowable('strain_detail_table'))
+    story_items.append(OutlineDest('outline_strain_detail', 'Strain Detail', level=0, closed=True, collector=outline_collector))
     story_items.append(Paragraph('<b>Additional Lower-Level Strain Detail</b>', heading_style))
     story_items.append(Paragraph(
         'This appendix lists additional lower-level strains, subspecies, and assemblies '
@@ -1106,7 +1254,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
 
             # Back-link ↑ to the species row in the main table
             species_bm = f"species_{sanitize_bookmark_name(sample_name)}_{species_key}"
-            up_link = create_safe_link('Pathogenic strain detail \u2191', species_bm,
+            up_link = create_safe_link('Main detail \u2191', species_bm,
                                        valid_bookmarks, color='blue')
 
             name_html = (
@@ -1204,6 +1352,7 @@ def create_pdf_template(output_path, samples_dict, args):
     )
     available_width = doc.width
     story = []
+    outline_collector = _OutlineCollector()
     styles = getSampleStyleSheet()
     taxid_to_bookmark = build_taxid_to_bookmark_map(samples_dict)
 
@@ -1275,6 +1424,7 @@ def create_pdf_template(output_path, samples_dict, args):
     valid_bookmarks.update(taxid_to_bookmark.values())
 
     # ── Title ─────────────────────────────────────────────────────────────────
+    story.append(OutlineDest('outline_title', 'Organism Discovery Report', level=0, closed=False, collector=outline_collector))
     story.append(Paragraph("Organism Discovery Report", title_style))
     story.append(Spacer(1, 0.05*inch))
 
@@ -1293,6 +1443,7 @@ def create_pdf_template(output_path, samples_dict, args):
     story.append(Spacer(1, 0.02*inch))
 
     # ── Table of Contents ─────────────────────────────────────────────────────
+    story.append(OutlineDest('outline_toc', 'Table of Contents', level=0, closed=True, collector=outline_collector))
     story.append(Paragraph("Table of Contents", heading_style))
     story.append(Spacer(1, 0.03*inch))
     story.append(Paragraph(
@@ -1391,6 +1542,11 @@ def create_pdf_template(output_path, samples_dict, args):
 
         sampletype = (samples_dict[sample_name][0].get('sampletype', 'Unspecified Type')
                       if samples_dict[sample_name] else 'Unspecified Type')
+        # PDF outline: sample as top-level entry (collapsed by default)
+        outline_sample_key = f"outline_{bookmark_name}"
+        story.append(OutlineDest(outline_sample_key,
+                                 f'Sample: {sample_name}', level=0, closed=True,
+                                 collector=outline_collector))
         story.append(Paragraph(f"Sample: {sample_name} ({sampletype})", heading_style))
         story.append(Spacer(1, 0.1*inch))
 
@@ -1405,10 +1561,9 @@ def create_pdf_template(output_path, samples_dict, args):
         # Record for appendix
         sorted_groups_by_sample.append((sample_name, sorted_groups))
 
-        for sg in sorted_groups:
-            sp_key = sg.get('toplevelkey', sg.get('key', 'unknown'))
-            sp_bm = f"species_{sanitize_bookmark_name(sample_name)}_{sp_key}"
-            story.append(AnchorFlowable(sp_bm))
+        # NOTE: Species-group anchors + outline dests are now embedded inside the
+        # table's group header cells (in create_combined_sample_table) so that
+        # bookmarks jump to the exact row, not the top of the table.
 
         all_sample_strains = []
         species_group_map = {}
@@ -1435,13 +1590,18 @@ def create_pdf_template(output_path, samples_dict, args):
                 available_width=available_width,
                 use_subkey=use_subkey,
                 show_strains_table=show_strains_table,
+                outline_collector=outline_collector,
             )
             story.append(combined_table)
         else:
             story.append(Paragraph(
                 "<i>No data available for this sample above confidence threshold</i>",
                 styles['Italic']))
-
+            if low_confidence_strains:
+                story.append(Spacer(1, 0.02*inch))
+                story.append(Paragraph(
+                    f"<i>However, {len(low_confidence_strains)} high-consequence detections below confidence threshold were found. See section on Low Confidence, High Consequence Detections.</i>",
+                    small_style))
         if args.max_members is not None and args.max_members > 0:
             story.append(Paragraph(
                 f"<i>Showing top {args.max_members} strains per group by TASS score</i>",
@@ -1451,6 +1611,7 @@ def create_pdf_template(output_path, samples_dict, args):
     # ── Footer: Color Key ─────────────────────────────────────────────────────
     story.append(Spacer(1, 0.15*inch))
     story.append(AnchorFlowable('color_key'))
+    story.append(OutlineDest('outline_color_key', 'Color Key', level=0, closed=True, collector=outline_collector))
     story.append(Paragraph("<b>Color Key:</b>", heading_style))
     url = 'https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv'
     legend_data = [
@@ -1487,6 +1648,7 @@ def create_pdf_template(output_path, samples_dict, args):
 
     # ── Footer: Column Explanations ───────────────────────────────────────────
     story.append(AnchorFlowable('column_explanations'))
+    story.append(OutlineDest('outline_column_explanations', 'Column Explanations', level=0, closed=True, collector=outline_collector))
     story.append(Paragraph("<b>Column Explanations:</b>", heading_style))
     story.append(Spacer(1, 0.03*inch))
     explanations = [
@@ -1508,6 +1670,9 @@ def create_pdf_template(output_path, samples_dict, args):
     # ── Footer: Low Confidence ────────────────────────────────────────────────
     if low_confidence_strains:
         story.append(AnchorFlowable('low_confidence'))
+        story.append(OutlineDest('outline_low_confidence',
+                                 'Low Confidence Detections', level=0, closed=True,
+                                 collector=outline_collector))
         story.append(Paragraph("<b>Low Confidence, High Consequence Detections:</b>", heading_style))
         story.append(Paragraph(
             f"The following strains were detected but fell below the confidence threshold "
@@ -1522,12 +1687,13 @@ def create_pdf_template(output_path, samples_dict, args):
         appendix_items = create_strain_detail_tables(
             samples_dict, sorted_groups_by_sample,
             small_style, show_k2_column, valid_bookmarks,
-            args, available_width,
+            args, available_width, outline_collector=outline_collector,
         )
         story.extend(appendix_items)
 
     # ── Footer: Additional Information ───────────────────────────────────────
     story.append(AnchorFlowable('additional_info'))
+    story.append(OutlineDest('outline_additional_info', 'Additional Information', level=0, closed=True, collector=outline_collector))
     story.append(Paragraph("<b>Additional Information:</b>", heading_style))
     story.append(Spacer(1, 0.01*inch))
     url2 = "https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring"
@@ -1553,6 +1719,9 @@ def create_pdf_template(output_path, samples_dict, args):
         "here</link>. Issues should be tracked/submitted at "
         "<link href=\"https://github.com/jhuapl-bio/taxtriage/issues\" color=\"blue\">this link</link>.",
         metadata_style))
+
+    # Flush all outline entries in alphabetical order as the very last flowable
+    story.append(FinalizeOutlines(outline_collector))
 
     doc.build(story)
     print(f"\nPDF created successfully: {output_path}")
@@ -1683,7 +1852,7 @@ def parse_args():
         help="Minimum number of reads required to consider an organism for reporting. Default is 1.",
     )
     parser.add_argument(
-        "-c", "--min_conf", metavar="MINCONF", required=False, default=0.3, type=float,
+        "-c", "--min_conf", metavar="MINCONF", required=False, default=0.6, type=float,
         help="Value that must be met for a table to report an organism due to confidence column.",
     )
     parser.add_argument(
