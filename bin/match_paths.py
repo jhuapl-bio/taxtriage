@@ -308,6 +308,13 @@ def parse_args(argv=None):
     parser.add_argument("--optimize_separation_weight", type=float, default=0.0,
                     help="Multi-threshold retention shape penalty. Penalizes TP dropout and FP leakage "
                          "across thresholds [0.1, 0.2, 0.3, 0.5, 0.7]. Recommended: 0.5-2.0. 0 = disabled.")
+    parser.add_argument("--optimize_weight_prior", type=str, default=None,
+                    help="JSON string or file path specifying target weight values the optimizer "
+                         "should bias toward, e.g. '{\"breadth_weight\": 0.4}'. "
+                         "Used with --optimize_weight_prior_lambda to control pull strength.")
+    parser.add_argument("--optimize_weight_prior_lambda", type=float, default=0.0,
+                    help="Strength of the weight-prior pull. Higher values more aggressively "
+                         "bias the optimizer toward the target weights. Recommended: 0.5-5.0. 0 = disabled.")
     parser.add_argument("--optimize_report", type=str, default=None,
                         help="Optional path to write a TSV report of TP/FP counts and scores for the best weights.")
     parser.add_argument(
@@ -1162,6 +1169,18 @@ def main():
         data.update(pre_ann)
 
     if args.optimize:
+        # Parse weight prior: accepts JSON string or file path
+        _weight_prior = None
+        if args.optimize_weight_prior:
+            _wp_raw = args.optimize_weight_prior.strip()
+            if _wp_raw.startswith('{'):
+                _weight_prior = _json.loads(_wp_raw)
+            else:
+                with open(_wp_raw, 'r') as _wpf:
+                    _weight_prior = _json.load(_wpf)
+            print(f"Weight prior targets: {_weight_prior} "
+                  f"(lambda={args.optimize_weight_prior_lambda})")
+
         report_weights = optimize_weights(
             input_bam = args.input,
             final_json = strain_summary,
@@ -1196,6 +1215,8 @@ def main():
             fp_score_ceiling = args.optimize_fp_ceiling,
             fp_ceiling_weight = args.optimize_fp_ceiling_weight,
             separation_weight = args.optimize_separation_weight,
+            weight_prior = _weight_prior,
+            weight_prior_lambda = args.optimize_weight_prior_lambda,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)

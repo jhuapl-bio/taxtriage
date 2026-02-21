@@ -635,6 +635,11 @@
                     "description": "Show all known/listed potential organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "show_opportunistics": {
+                    "type": "boolean",
+                    "description": "Show all known/listed opportunistic organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "show_commensals": {
                     "type": "boolean",
                     "description": "Show all known/listed commensal organisms in the final discovery report",

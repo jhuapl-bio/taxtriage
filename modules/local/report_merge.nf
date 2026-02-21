@@ -51,7 +51,7 @@ process ORGANISM_MERGE_REPORT {
     def show_potentials = params.show_potentials ? " --show_potentials " : ""
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
-
+    def show_opportunistics = params.show_opportunistics ? " --show_opportunistic " : ""
     // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
     def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
     def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
@@ -64,12 +64,13 @@ process ORGANISM_MERGE_REPORT {
         $show_potentials \\
         $show_commensals \\
         $show_unidentified \\
+        $show_opportunistics \\
         $distribution_arg \\
         $min_conf \\
         $missing_arg \\
         $sort_alphabetical \\
         $integrate_strain_table \\
-        $rank --show_opportunistic \\
+        $rank \\
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

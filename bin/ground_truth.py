@@ -403,6 +403,8 @@ def optimize_weights(
     fp_score_ceiling=0.15,
     fp_ceiling_weight=0.0,
     separation_weight=0.0,
+    weight_prior=None,
+    weight_prior_lambda=0.0,
 ):
     import json
     import numpy as np
@@ -476,6 +478,8 @@ def optimize_weights(
             fp_score_ceiling=float(fp_score_ceiling),
             fp_ceiling_weight=float(fp_ceiling_weight),
             separation_weight=float(separation_weight),
+            weight_prior=weight_prior,
+            weight_prior_lambda=float(weight_prior_lambda),
         )
         print(f"[optimize:{label}] status: {res['status']}")
         if res["status"] == "ok":
@@ -777,6 +781,8 @@ def optimize_weights_for_tp_fp(
     fp_score_ceiling: float = 0.15,
     fp_ceiling_weight: float = 0.0,
     separation_weight: float = 0.0,
+    weight_prior: dict | None = None,
+    weight_prior_lambda: float = 0.0,
 ):
     from scipy.optimize import differential_evolution, minimize
     import numpy as np
@@ -826,6 +832,22 @@ def optimize_weights_for_tp_fp(
 
     w0 = np.clip(w0, _mw, 1.0)
     w0 = (w0 / w0.sum()) if w0.sum() > 0 else np.full(n_weights, 1.0 / n_weights)
+
+    # ── Weight prior: quadratic pull toward preferred weight targets ──────
+    # weight_prior is a dict like {"breadth_weight": 0.4} meaning "I want
+    # breadth to be near 0.4".  weight_prior_lambda controls the strength.
+    _weight_names = ["breadth_weight", "minhash_weight", "gini_weight",
+                     "disparity_weight", "hmp_weight"]
+    _prior_target = None
+    _prior_mask = None
+    if weight_prior and weight_prior_lambda > 0:
+        _prior_target = np.zeros(n_weights, dtype=float)
+        _prior_mask = np.zeros(n_weights, dtype=float)
+        for wname, wtarget in weight_prior.items():
+            if wname in _weight_names:
+                idx = _weight_names.index(wname)
+                _prior_target[idx] = float(wtarget)
+                _prior_mask[idx] = 1.0
 
     # Max entropy for reference (uniform distribution)
     _max_entropy = _entropy(np.full(n_weights, 1.0 / n_weights))
@@ -963,6 +985,12 @@ def optimize_weights_for_tp_fp(
             # = 0 when weights are uniform, = entropy_lambda when one weight = 1
             ent_penalty = entropy_lambda * (1.0 - ent / _max_entropy) if _max_entropy > 0 else 0.0
 
+        # Weight prior penalty: pull specified weights toward target values
+        prior_penalty = 0.0
+        if _prior_target is not None and _prior_mask is not None:
+            diffs = (w - _prior_target) * _prior_mask
+            prior_penalty = float(weight_prior_lambda) * float(np.sum(diffs ** 2))
+
         thresh_penalty = _threshold_pref_penalty(p)
 
         tp_target_penalty = 0.0
@@ -1058,6 +1086,7 @@ def optimize_weights_for_tp_fp(
             + tp_floor_penalty
             + fp_ceiling_penalty
             + separation_penalty
+            + prior_penalty
         )
 
     # --- Global stage (DE) over 4 vars, 5th implied by sum=1 ---
