@@ -1493,24 +1493,27 @@ def create_pdf_template(output_path, samples_dict, args):
         total_alignments, primary_count = get_sample_stats(species_groups)
         _mc = sample_min_conf.get(sample_name, _DEFAULT_CONF)
 
-        if args.sort_alphabetical:
-            sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
-        else:
-            sorted_groups = sorted(species_groups, key=lambda sg: get_species_group_stats(sg)[0], reverse=True)
-
+        # Filter then sort — same logic as the main table so TOC order matches
         visible_groups = []
-        for sg in sorted_groups:
-            has_visible = any(
-                should_include_strain(s, args)
-                and has_min_reads(s, 1)
-                and passes_confidence_threshold(s, _mc)
-                for s in sg.get('members', [])
-            )
-            if has_visible:
-                visible_groups.append(sg)
+        for sg in species_groups:
+            best_tass = max(
+                (s.get('tass_score', 0) for s in sg.get('members', [])
+                 if should_include_strain(s, args)
+                 and has_min_reads(s, 1)
+                 and passes_confidence_threshold(s, _mc)),
+                default=None)
+            if best_tass is not None:
+                visible_groups.append((sg, best_tass))
 
         if not visible_groups:
             continue
+
+        if args.sort_alphabetical:
+            visible_groups.sort(key=lambda pair: pair[0].get('toplevelname', 'Unknown'))
+        else:
+            visible_groups.sort(key=lambda pair: pair[1], reverse=True)
+
+        visible_groups = [sg for sg, _ in visible_groups]
 
         link_text = create_safe_link(
             f'{sample_name} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
@@ -1586,31 +1589,39 @@ def create_pdf_template(output_path, samples_dict, args):
         species_groups = samples_dict[sample_name]
         sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
 
-        if args.sort_alphabetical:
-            sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
-        else:
-            sorted_groups = sorted(species_groups, key=lambda sg: get_species_group_stats(sg)[0], reverse=True)
-
-        # Record for appendix
-        sorted_groups_by_sample.append((sample_name, sorted_groups))
-
-        # NOTE: Species-group anchors + outline dests are now embedded inside the
-        # table's group header cells (in create_combined_sample_table) so that
-        # bookmarks jump to the exact row, not the top of the table.
-
+        # ── Filter members first, THEN sort groups by best visible TASS ─────
         all_sample_strains = []
         species_group_map = {}
-
-        for sg in sorted_groups:
+        # Collect qualifying strains per group so we can sort by post-filter TASS
+        _group_qualified = []  # list of (sg, [qualifying strains])
+        for sg in species_groups:
             group_strains = []
             for strain in sg.get('members', []):
                 if should_include_strain(strain, args) and has_min_reads(strain, 1):
                     if passes_confidence_threshold(strain, _mc):
                         group_strains.append(strain)
-                        species_group_map[id(strain)] = sg
-            group_strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
+            if group_strains:
+                group_strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
+                _group_qualified.append((sg, group_strains))
+
+        if args.sort_alphabetical:
+            _group_qualified.sort(key=lambda pair: pair[0].get('toplevelname', 'Unknown'))
+        else:
+            # Sort by the best qualifying member's TASS (what the user sees)
+            _group_qualified.sort(
+                key=lambda pair: pair[1][0].get('tass_score', 0) if pair[1] else 0,
+                reverse=True)
+
+        sorted_groups = [sg for sg, _ in _group_qualified]
+
+        # Record for appendix
+        sorted_groups_by_sample.append((sample_name, sorted_groups))
+
+        for sg, group_strains in _group_qualified:
             if args.max_members is not None and args.max_members > 0:
                 group_strains = group_strains[:args.max_members]
+            for strain in group_strains:
+                species_group_map[id(strain)] = sg
             all_sample_strains.extend(group_strains)
 
         if all_sample_strains:
@@ -1792,11 +1803,13 @@ def create_tabular_output(output_path, samples_dict, args):
     for sample_name in sorted(samples_dict.keys()):
         species_groups = samples_dict[sample_name]
 
+        def _max_member_tass(sg):
+            return max((m.get('tass_score', 0) for m in sg.get('members', [])), default=0)
+
         if args.sort_alphabetical:
             sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
         else:
-            sorted_groups = sorted(
-                species_groups, key=lambda sg: get_species_group_stats(sg)[0], reverse=True)
+            sorted_groups = sorted(species_groups, key=_max_member_tass, reverse=True)
 
         sample_total_reads = max(1, sum(sg.get('numreads', 0) for sg in species_groups))
 
