@@ -33,13 +33,14 @@ workflow REPORT {
         pathogens_list
         distributions
         assemblyfile
-        ch_taxdump_nodes
+        ch_taxdump_dir
         all_samples
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
         // make the ch_report_microbert an empty path channel
         ch_report_microbert = Channel.empty()
+        ch_empty_file3 = Channel.fromPath("$projectDir/assets/NO_FILE3", checkIfExists: true)
 
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
@@ -85,6 +86,7 @@ workflow REPORT {
                 alignments.combine(pathogens_list),
                 assemblyfile,
                 params.minmapq,
+                ch_taxdump_dir,
             )
 
             // collect all outputs FIND_PATHOGENS.out.txt into a single channel
@@ -92,17 +94,15 @@ workflow REPORT {
             ALIGNMENT_PER_SAMPLE.out.txt.map{ m, txt ->txt }.collect().map{
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
-
+            // merge
             SINGLE_REPORT(
                 ALIGNMENT_PER_SAMPLE.out.txt.combine(distributions),
                 false,
-                ch_taxdump_nodes
             )
 
             ORGANISM_MERGE_REPORT(
                 full_list_pathogen_files.combine(distributions),
                 missing_samples,
-                ch_taxdump_nodes
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)

@@ -108,7 +108,7 @@
                     "default": "9606"
                 },
                 "subsample": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Pull a random number of reads from the reads to be analyzed. Useful for testing only. ",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -164,7 +164,7 @@
                     "default": null
                 },
                 "microbert_maxlen": {
-                    "type": "integer",
+                    "type": ["integer", "null"],
                     "description": "What max length you would like to use for microbert clustering. Default is 2000. We do not recommend going above 5k bp",
                     "fa_icon": "fas fa-file-signature",
                     "default": null
@@ -208,18 +208,18 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "top_hits_count": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "default": 5,
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_confidence": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_minimum_hit_groups": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -329,60 +329,66 @@
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
-                "sensitive": {
+                "conf_sens": {
                     "type": "boolean",
                     "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
                     "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "min_conf": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Minimum Confidence for reporting.",
                     "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "gini_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "breadth_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Minimum Log-based breadth weight for TASS Score calculation",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "minhash_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Weight for minhash filtering. It is the combination of % of reads removed + % of breadth new  / 2 ",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mapq_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "disparity_score_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "hmp_weight": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score weight for HMP percentile, recommend disabling if sample is unknown",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "dispersion_factor": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "alpha": {
+                    "type": ["number", "null"],
+                    "description": "TASS Score Alpha. This is the measure of how much weight to put on the breadth vs depth of coverage for a given alignment to an organism. The higher the alpha, the more weight put on breadth rather than depth.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 1
+                },
                 "reward_factor": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "jump_threshold": {
-                    "type": "number",
+                    "type": ["number", "null"],
                     "description": "Jump Threshold",
                     "hint": "Set a manual jump threshold for a region definition. If the change in depth is greater or less than the current for the upcoming region, then define the new region.",
                     "fa_icon": "fas fa-file-signature"
@@ -439,6 +445,7 @@
                 },
                 "minq": {
                     "type": "number",
+                    "default": 1,
                     "description": "Minimum BaseQ Score for filtering",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -472,16 +479,14 @@
                     "type": "string",
                     "description": "Name of iGenomes reference.",
                     "fa_icon": "fas fa-book",
-                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details.",
-                    "hidden": true
+                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
                 },
                 "igenomes_base": {
                     "type": "string",
                     "format": "directory-path",
                     "description": "Directory / URL base for iGenomes references.",
-                    "default": "s3://ngi-igenomes/igenomes",
-                    "fa_icon": "fas fa-cloud-download-alt",
-                    "hidden": true
+                    "default": "https://ngi-igenomes.s3.eu-west-1.amazonaws.com/igenomes",
+                    "fa_icon": "fas fa-cloud-download-alt"
                 },
                 "igenomes_ignore": {
                     "type": "boolean",
@@ -605,9 +610,34 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "loose": {
+                    "type": "boolean",
+                    "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "enable_matrix": {
+                    "type": "boolean",
+                    "description": "Enable the generation of the final report matrix for high ANI similarity. The column will be included in the report if so.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "no_subkey": {
+                    "type": "boolean",
+                    "description": "Dont use the subkey odr, puts each row as a strain rather than grouping them into a parent taxid. This can be useful for looking at strain level differences, but can be very unwieldy if there are a lot of strains that are above the ANI threshold for potential organisms.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "sort_alphabetical": {
+                    "type": "boolean",
+                    "description": "Sort the tables on alphabetical order rather than TASS. If disabled, it sorts on TASS score descending",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "show_potentials": {
                     "type": "boolean",
                     "description": "Show all known/listed potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "show_opportunistics": {
+                    "type": "boolean",
+                    "description": "Show all known/listed opportunistic organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_commensals": {
@@ -620,10 +650,28 @@
                     "description": "Show all non or non-identification organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "ani_threshold": {
+                    "type": "number",
+                    "description": "ANI threshold for reporting potential organisms in the final discovery report",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.95
+                },
+                "integrate_strain_table": {
+                    "type": "boolean",
+                    "description": "Integrate the strain level table into the main table rather than as a separate table. This is the table that has all the strains that are above the ANI threshold for potential organisms. This is disabled by default because it can be very large and unwieldy if there are a lot of potential organisms.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
                 "skip_multiqc": {
                     "type": "boolean",
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "rank": {
+                    "type": "string",
+                    "description": "What rank to bin hits in the report in the final report. Default is genus, but you can choose from [species, genus, family, order, class, phylum]",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": "genus"
                 }
             }
         },
