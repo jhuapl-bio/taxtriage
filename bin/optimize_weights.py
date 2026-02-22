@@ -413,6 +413,7 @@ def calculate_normalized_groups(
     group_field: str,
     reads_key: str = "numreads",
     sum_columns: Iterable[str] = (),
+    mapq_breadth_power: float = 2.0,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -429,6 +430,7 @@ def calculate_normalized_groups(
         # REMOVED: "breadth_log_score",  # will recalculate from aggregated coverage
         "minhash_reduction", "gini_coefficient", "diamond_identity", "rpkm", "rpm",
         "mapq_score", "rpm_confidence_weight", "read_fraction",
+        "highmapq_fraction",
     }
 
     def _to_float(x) -> float:
@@ -528,12 +530,12 @@ def calculate_normalized_groups(
             agg[f] = _weighted_mean(entries, f, reads_key)
 
         # ========== RECALCULATE breadth_log_score from aggregated coverage ==========
-        # This ensures plasmids don't skew the score
-        # agg["breadth_log_score"] = agg["coverage"] ** 2  # preferred formula
-        agg['breadth_log_score'] = breadth_score_sigmoid(agg["coverage"])
-        # Examples:
-        # agg["breadth_log_score"] = agg["coverage"] ** 3  # more aggressive
-        # agg["breadth_log_score"] = breadth_score_sigmoid(agg["coverage"])  # threshold-based
+        # This ensures plasmids don't skew the score.
+        # Scale by high-MAPQ fraction so organisms dominated by MAPQ=0 reads
+        # get their breadth crushed (unreliable alignment ≠ real coverage).
+        _hmf = float(agg.get('highmapq_fraction', 1.0))
+        _mapq_scale = _hmf ** mapq_breadth_power
+        agg['breadth_log_score'] = breadth_score_sigmoid(agg["coverage"]) * _mapq_scale
 
         out[gval] = agg
 
@@ -708,8 +710,10 @@ def compute_scores_per(
     alpha = 1,
     comparison_df = pd.DataFrame(),
     fallback_top = "Unknown",
-    total_reads = 0
+    total_reads = 0,
+    mapq_breadth_power = 2.0,
 ):
+    data['_mapq_breadth_power'] = mapq_breadth_power
     if len(data.get('covered_regions', [])) > 0:
         gini_strain = getGiniCoeff(
             data['covered_regions'],
@@ -766,9 +770,16 @@ def compute_scores_per(
     mapq = data.get('meanmapq', 0)
     data['mapq_score'] = normalize_mapq(mapq)
 
-    # Breadth
+    # Breadth — scaled by high-MAPQ read fraction
+    # If most reads are MAPQ=0 (ambiguous), breadth is unreliable and gets crushed.
+    # highmapq_fraction is the proportion of reads with MAPQ >= threshold (e.g. 5).
+    # mapq_breadth_power controls how aggressively low-MAPQ penalizes breadth.
     coverage = data.get('coverage', 0)
-    data['breadth_log_score'] = breadth_score_sigmoid(coverage)
+    hmf = float(data.get('highmapq_fraction', 1.0))
+    _mbp = float(data.get('_mapq_breadth_power', 2.0))
+    mapq_scale = hmf ** _mbp  # e.g. 0.1^2 = 0.01 → breadth almost zeroed
+    data['breadth_log_score'] = breadth_score_sigmoid(coverage) * mapq_scale
+    data['highmapq_fraction'] = hmf
     if not comparison_df.empty:
         accession = str(data['accession']).strip()
         if accession in comparison_df.index:

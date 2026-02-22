@@ -203,12 +203,14 @@ _SAMPLETYPE_CONF_MAP = {
     'sterile': 0.3,
     'blood':   0.3,
     'csf':     0.3,
-    'stool':   0.65,
-    'nasal':   0.60,
+    'stool':   0.7,
+    'oral':    0.6,
+    'nasal':   0.65,
     'skin':    0.5,
     'wound':   0.5,
+    "vaginal": 0.5,
 }
-_DEFAULT_CONF = 0.5
+_DEFAULT_CONF = 0.55
 
 
 def get_sample_min_conf(sample_name, species_groups, explicit_conf):

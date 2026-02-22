@@ -321,14 +321,14 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.05,
+        default=0.18,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.53,
+        default=0.52,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
@@ -351,7 +351,7 @@ def parse_args(argv=None):
         "--hmp_weight",
         metavar="HMPWEIGHT",
         type=float,
-        default=0.01,
+        default=0.00,
         help="value of weight for hmp abundance in final TASS Score",
     )
 
@@ -359,7 +359,7 @@ def parse_args(argv=None):
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.4,
+        default=0.3,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -414,7 +414,13 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
-    parser.add_argument('--minmapq', required=False, type=int, default=5, help="Minimum mapping quality")
+    parser.add_argument('--minmapq', required=False, type=int, default=5,
+                    help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
+                         "are counted as high-quality. The fraction of such reads scales breadth score.")
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
+                    help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
+                         "Higher values penalize low-MAPQ organisms more aggressively. "
+                         "Default: 2.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.01).")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -569,7 +575,7 @@ def import_k2_file(filename):
     # Return the mapping with parent-child relationships
     return taxids
 
-def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}):
+def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_lengths={}, args={}):
     """
     Count the number of reads aligned to each reference in a BAM file.
 
@@ -609,6 +615,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 sum_baseq = 0,
                 count_baseq = 0,
                 count_mapq = 0,
+                count_highmapq = 0,  # reads with MAPQ >= threshold
                 total_reads = 0,
                 read_positions = [],
                 total_length = 0,
@@ -634,6 +641,19 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             if alignments_to_remove and read.query_name in alignments_to_remove and ref in alignments_to_remove[read.query_name]:
                 continue
 
+            # Track MAPQ for the high-quality fraction (computed on ALL mapped reads)
+            reference_stats[ref]["sum_mapq"] += read.mapping_quality
+            reference_stats[ref]["count_mapq"] += 1
+            if read.mapping_quality >= args.minmapq:
+                reference_stats[ref]["count_highmapq"] += 1
+
+            # ── Filter: skip reads below --minmapq for all downstream metrics ──
+            # These reads don't count toward read totals, coverage, depth, or
+            # base quality.  They ARE still counted for highmapq_fraction above
+            # so the fraction reflects the full alignment picture.
+            if read.mapping_quality < args.minmapq:
+                continue
+
             # Create a unique key for the read based on its query name and strand
             read_id_key = f"{read.query_name}:{read.is_reverse}"
 
@@ -647,15 +667,10 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             if not read.is_unmapped:
                 aligned_reads += 1
 
-
                 # Accumulate base quality scores
                 if read.query_qualities:
                     reference_stats[ref]["sum_baseq"] += sum(read.query_qualities)
                     reference_stats[ref]["count_baseq"] += len(read.query_qualities)
-
-                # Accumulate mapping quality scores
-                reference_stats[ref]["sum_mapq"] += read.mapping_quality
-                reference_stats[ref]["count_mapq"] += 1
 
                 # Record read positions for coverage calculation
                 reference_stats[ref]["read_positions"].append((read.reference_start, read.reference_end))
@@ -672,6 +687,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 reference_stats[ref]["covered_regions"] = []
                 reference_stats[ref]['numreads'] = 0
                 reference_stats[ref]['accession'] = ref
+                reference_stats[ref]['highmapq_fraction'] = 0.0
             else:
 
                 # Calculate average read length
@@ -718,12 +734,18 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 reference_stats[ref]["covered_regions"] = coverage_regions
                 reference_stats[ref]['numreads'] = stats["total_reads"]
                 reference_stats[ref]['accession'] = ref
+                # Fraction of reads with MAPQ >= minmapq threshold
+                _n_mapped = stats.get("count_mapq", 0)
+                _n_hiq = stats.get("count_highmapq", 0)
+                reference_stats[ref]['highmapq_fraction'] = (
+                    _n_hiq / _n_mapped if _n_mapped > 0 else 0.0)
 
                 # Clean up intermediate fields
                 del reference_stats[ref]["sum_baseq"]
                 del reference_stats[ref]["count_baseq"]
                 del reference_stats[ref]["sum_mapq"]
                 del reference_stats[ref]["count_mapq"]
+                del reference_stats[ref]["count_highmapq"]
                 del reference_stats[ref]["read_positions"]
                 del reference_stats[ref]["unique_read_ids"]
                 del reference_stats[ref]["total_reads"]
@@ -989,6 +1011,7 @@ def main():
     reference_hits, aligned_total, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
+        args=args
     )
 
     mmbert_dict = dict()
@@ -1147,11 +1170,13 @@ def main():
             comparison_df = comparison_df,
             fallback_top = top,
             total_reads = total_reads,
+            mapq_breadth_power = args.mapq_breadth_power,
         )
     strain_summary = calculate_normalized_groups(
         hits=reference_hits,
         group_field="key",
         reads_key="numreads",
+        mapq_breadth_power=args.mapq_breadth_power,
     )
 
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
@@ -1264,6 +1289,7 @@ def main():
         hits=strain_summary,
         group_field="toplevelkey",
         reads_key="numreads",
+        mapq_breadth_power=args.mapq_breadth_power,
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():
