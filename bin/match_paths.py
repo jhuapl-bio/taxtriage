@@ -84,7 +84,7 @@ def parse_args(argv=None):
         "-r",
         "--min_reads_align",
         metavar="MINREADSALIGN",
-        default=2,
+        default=3,
         type=int,
         help="Filter for minimum reads aligned to reference per organism. Default is 1",
     )
@@ -194,6 +194,25 @@ def parse_args(argv=None):
         metavar="SAMPLENAME",
         default="No_Name",
         help="Name of the sample to process. If Empty, defaults to 'No_Name'",
+    )
+    parser.add_argument(
+        "--platform",
+        type=str,
+        default="unknown",
+        help="Sequencing platform (e.g. illumina, nanopore, pacbio, ion_torrent). "
+             "Stored in output JSON metadata. Default: unknown.",
+    )
+    parser.add_argument(
+        "--workflow_revision",
+        type=str,
+        default=None,
+        help="Nextflow workflow revision string stored in output JSON metadata.",
+    )
+    parser.add_argument(
+        "--commit_id",
+        type=str,
+        default=None,
+        help="Pipeline commit/version ID stored in output JSON metadata.",
     )
     parser.add_argument(
         "-p",
@@ -321,15 +340,22 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.18,
+        default=0.51,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.52,
+        default=0.13,
         help="value of weight for minhash signature reduction in final TASS Score",
+    )
+    parser.add_argument(
+        "--gini_weight",
+        metavar="GINIWEIGHT",
+        type=float,
+        default=0.36,
+        help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
         "--k2_disparity_weight",
@@ -353,14 +379,6 @@ def parse_args(argv=None):
         type=float,
         default=0.00,
         help="value of weight for hmp abundance in final TASS Score",
-    )
-
-    parser.add_argument(
-        "--gini_weight",
-        metavar="GINIWEIGHT",
-        type=float,
-        default=0.3,
-        help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
         "--dispersion_factor",
@@ -414,7 +432,7 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
-    parser.add_argument('--minmapq', required=False, type=int, default=5,
+    parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
     parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
@@ -590,6 +608,18 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     unaligned = 0
     aligned_reads = 0
     total_reads = 0
+    primary_counts = defaultdict(int)
+    secondary_counts = defaultdict(int)
+
+    # Pre-pass: count primary/secondary alignments per read to gate MAPQ=0 reads
+    with pysam.AlignmentFile(bam_file_path, "rb") as bam_count:
+        for read in bam_count.fetch(until_eof=True):
+            if read.is_unmapped:
+                continue
+            if read.is_secondary or read.is_supplementary:
+                secondary_counts[read.query_name] += 1
+                continue
+            primary_counts[read.query_name] += 1
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
@@ -632,6 +662,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             if read.is_unmapped:
                 unaligned += 1
                 continue
+            if read.is_secondary or read.is_supplementary:
+                continue
             ref = read.reference_name
             total_reads += 1
 
@@ -652,7 +684,12 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             # base quality.  They ARE still counted for highmapq_fraction above
             # so the fraction reflects the full alignment picture.
             if read.mapping_quality < args.minmapq:
-                continue
+                allow_low_mapq = (
+                    read.mapping_quality == 0
+                    and secondary_counts.get(read.query_name, 0) > 0
+                )
+                if not allow_low_mapq:
+                    continue
 
             # Create a unique key for the read based on its query name and strand
             read_id_key = f"{read.query_name}:{read.is_reverse}"
@@ -1179,6 +1216,7 @@ def main():
         mapq_breadth_power=args.mapq_breadth_power,
     )
 
+
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
     # This ensures optimize_weights() / build_metrics_df_from_final_json() can
     # read microbial_category for the debug JSON output.
@@ -1285,6 +1323,18 @@ def main():
     # : Define a function to calculate disparity for each organism
     i=0
 
+    # ── Filter strains by min_reads_align BEFORE species-level aggregation ──
+    # This ensures low-read strains don't inflate species aggregate stats
+    # (coverage, breadth, Gini, etc.) and are excluded from members.
+    _min_ra = int(args.min_reads_align) if args.min_reads_align else 0
+    if _min_ra > 0:
+        _before = len(strain_summary)
+        strain_summary = {
+            k: v for k, v in strain_summary.items()
+            if v.get('numreads', 0) >= _min_ra
+        }
+        print(f"Filtered strains by min_reads_align={_min_ra}: {_before} → {len(strain_summary)}")
+
     aggregate_dict = calculate_normalized_groups(
         hits=strain_summary,
         group_field="toplevelkey",
@@ -1296,17 +1346,12 @@ def main():
         for acc in species_to_all_accs.get(k, []):
             acc_to_parent[acc] = k
 
-    # for k, v in strain_summary.items():
-    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{100*v.get('tass_score')}")
-    # print("\n________________________________\n")
-    # exit()
     for _, data in aggregate_dict.items():
         # add all the strains to the strains list from strain_summary if data['toplevelkey'] matches
         data['members'] = [
             x for _, x in strain_summary.items()
             if x.get('toplevelkey') == data.get('toplevelkey')
         ]
-
 
         data['name'] = data.get('toplevelname', None)
         data['key'] = data.get('toplevelkey', None)
@@ -1330,9 +1375,6 @@ def main():
             data = data,
             weights = weights,
         )
-    # for k, v in aggregate_dict.items():
-    #     print(f"{k}\t{v.get('name', '')}\t{v.get('key', '')}\t{v.get('toplevelkey', '')}\t{v.get('toplevelname', '')}\t{v.get('microbial_category', 0)}\t{v.get('accessions')}\t{v.get('tass_score', 0)}")
-    # exit()
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -1408,7 +1450,45 @@ def main():
     #         f"\n\tMicrobial Category: {data.get('microbial_category', 'N/A')},"
     #         f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
     #     )
-    write_to_json(args.output.replace(".tsv", ".json"), final_json)
+    # ── Build structured output with metadata ────────────────────────────────
+    _all_keys = set()
+    _all_subkeys = set()
+    _all_toplevelkeys = set()
+    _total_organism_reads = 0
+    for grp in final_json:
+        _all_toplevelkeys.add(grp.get('toplevelkey', grp.get('key', '')))
+        for m in grp.get('members', []):
+            _all_keys.add(m.get('key', ''))
+            _all_subkeys.add(m.get('subkey', m.get('key', '')))
+            _total_organism_reads += float(m.get('numreads', 0))
+    # Strip covered_regions from JSON output — large and only needed internally
+    import copy as _copy
+    _json_out = _copy.deepcopy(final_json)
+    for _grp in _json_out:
+        _grp.pop('covered_regions', None)
+        for _m in _grp.get('members', []):
+            _m.pop('covered_regions', None)
+    output_json = {
+        "metadata": {
+            "sample_name": args.samplename,
+            "sample_type": sampletype,
+            "platform": args.platform,
+            "workflow_revision": args.workflow_revision,
+            "commit_id": args.commit_id,
+            "total_reads": total_reads,
+            "total_organism_reads": int(_total_organism_reads),
+            "num_species_groups": len(final_json),
+            "num_keys": len(_all_keys),
+            "num_subkeys": len(_all_subkeys),
+            "num_toplevelkeys": len(_all_toplevelkeys),
+            "minmapq": args.minmapq,
+            "mapq_breadth_power": args.mapq_breadth_power,
+            "weights": dict(weights),
+            "min_conf_applied": None,  # populated by create_report per-sample
+        },
+        "organisms": _json_out,
+    }
+    write_to_json(args.output.replace(".tsv", ".json"), output_json)
 
     # ── Report Metrics (TP/FP analysis with threshold percentiles) ───────────
     if args.report_metrics:

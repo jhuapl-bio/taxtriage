@@ -357,6 +357,7 @@ workflow TAXTRIAGE {
         ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
     }
 
+
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
     ch_db = Channel.empty()
@@ -419,6 +420,7 @@ workflow TAXTRIAGE {
         workflow.repository = 'local'
     }
     println "Repository URL: ${workflow.repository}"
+
     // get the date and time of the run
     def date = new Date()
     println "Date: ${date}"

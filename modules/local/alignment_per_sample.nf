@@ -73,7 +73,10 @@ process ALIGNMENT_PER_SAMPLE {
     def alpha = params.alpha ? " --alpha ${params.alpha} " : " --alpha 1.0 "
     def enable_matrix = params.enable_matrix ? " --enable_matrix " : " "
     def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
+    def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
+    def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
     """
+
 
     match_paths.py \\
         -i $bamfiles \\
@@ -88,7 +91,8 @@ process ALIGNMENT_PER_SAMPLE {
         --min_similarity_comparable 0.8 \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
-        $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold
+        $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
+        $workflow_revision $commitID
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
