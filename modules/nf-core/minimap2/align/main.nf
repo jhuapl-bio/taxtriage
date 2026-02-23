@@ -48,7 +48,7 @@ process MINIMAP2_ALIGN {
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
     // if it contains the substring "dnwld" in reference 
     // then download the reference and use it
-    def split_prefix  = params.split_prefix ? "--split-prefix ${meta.id}.prefix" : ''
+    def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
 
 
     """

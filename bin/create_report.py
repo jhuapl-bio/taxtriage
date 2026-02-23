@@ -1922,8 +1922,6 @@ def parse_args():
         "-v", "--version", metavar="VERSION", required=False, default='Local Build',
         help="What version of TaxTriage is in use",
     )
-    parser.add_argument('--sorttass', action="store_true", required=False,
-                        help="Sort by TASS score if available")
     parser.add_argument('--sort_alphabetical', action="store_true", required=False,
                         help="Sort groups alphabetically instead of by TASS score")
     parser.add_argument('--enable_matrix', action="store_true", required=False,
