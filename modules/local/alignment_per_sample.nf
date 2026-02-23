@@ -74,12 +74,7 @@ process ALIGNMENT_PER_SAMPLE {
     def enable_matrix = params.enable_matrix ? " --enable_matrix " : " "
     def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
     def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
-    def pipeline_repo = "${workflow.repository}"
-    def pipeline_revision = "${workflow.revision ?: 'NA'}"
-    def pipeline_commit = "${workflow.commitId ?: 'NA'}"
-    def nextflow_version = "${nextflow.version}"
-    println "Running revision version info: ${workflow.revision}, commit: ${workflow.commitId}, repository: ${workflow.repository}"
-
+    def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
     """
 
 
@@ -97,7 +92,7 @@ process ALIGNMENT_PER_SAMPLE {
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
-        $workflow_revision
+        $workflow_revision $commitID
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

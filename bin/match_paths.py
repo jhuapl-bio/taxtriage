@@ -209,6 +209,12 @@ def parse_args(argv=None):
         help="Nextflow workflow revision string stored in output JSON metadata.",
     )
     parser.add_argument(
+        "--commit_id",
+        type=str,
+        default=None,
+        help="Pipeline commit/version ID stored in output JSON metadata.",
+    )
+    parser.add_argument(
         "-p",
         "--pathogens",
         metavar="PATHOGENS",
@@ -1450,6 +1456,7 @@ def main():
             "sample_type": sampletype,
             "platform": args.platform,
             "workflow_revision": args.workflow_revision,
+            "commit_id": args.commit_id,
             "total_reads": total_reads,
             "total_organism_reads": int(_total_organism_reads),
             "num_species_groups": len(final_json),

@@ -1490,7 +1490,7 @@ def create_pdf_template(output_path, samples_dict, args):
     generation_text = (
         f"This report was generated using "
         f"<link href=\"https://github.com/jhuapl-bio/taxtriage\" color=\"blue\">TaxTriage</link> "
-        f"<b>{args.version}</b> on <b>{current_time}</b> and is derived from "
+        f"at <b>{current_time}</b> and is derived from "
         f"an in <link href=\"https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv\" "
         f"color=\"blue\">development spreadsheet of human-host pathogens</link>."
     )
@@ -1502,7 +1502,17 @@ def create_pdf_template(output_path, samples_dict, args):
             workflow_rev = _rev
             break
     if workflow_rev and str(workflow_rev).upper() != "NA":
-        story.append(Paragraph(f"Workflow revision: <b>{workflow_rev}</b>", metadata_style))
+        story.append(Paragraph(f"TaxTriage version: <b>{workflow_rev}</b>", metadata_style))
+    elif not workflow_rev:
+        story.append(Paragraph(f"TaxTriage Version: <b>Not Specified or Local Build</b>", metadata_style))
+    commit_id = None
+    for _meta in getattr(args, '_input_metadata', {}).values():
+        _cid = _meta.get('commit_id')
+        if _cid:
+            commit_id = _cid
+            break
+    if commit_id and str(commit_id).upper() != "NA":
+        story.append(Paragraph(f"Commit ID: <b>{commit_id}</b>", metadata_style))
     story.append(Spacer(1, 0.02*inch))
     story.append(Paragraph("<b>★</b> = High Consequence Pathogen", small_style))
     story.append(Spacer(1, 0.02*inch))
@@ -1969,10 +1979,6 @@ def parse_args():
     parser.add_argument(
         "-p", "--percentile", metavar="PERCENTILE", required=False, type=float, default=0.75,
         help="Only show organisms that are in the top percentile of healthy subjects expected abu",
-    )
-    parser.add_argument(
-        "-v", "--version", metavar="VERSION", required=False, default='Local Build',
-        help="What version of TaxTriage is in use",
     )
     parser.add_argument('--sort_alphabetical', action="store_true", required=False,
                         help="Sort groups alphabetically instead of by TASS score")
