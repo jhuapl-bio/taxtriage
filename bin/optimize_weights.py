@@ -428,7 +428,9 @@ def calculate_normalized_groups(
         "meandepth", "meanmapq", "meanbaseq",
         "minhash_score", "k2_disparity_score", "hmp_percentile",
         # REMOVED: "breadth_log_score",  # will recalculate from aggregated coverage
-        "minhash_reduction", "gini_coefficient", "diamond_identity", "rpkm", "rpm",
+        "minhash_reduction", "diamond_identity", "rpkm", "rpm",
+        # NOTE: gini_coefficient is NOT in WAVG_FIELDS — it is recomputed from
+        # the combined coverage histogram at the group level (like breadth).
         "mapq_score", "rpm_confidence_weight", "read_fraction",
         "highmapq_fraction",
     }
@@ -536,6 +538,29 @@ def calculate_normalized_groups(
         _hmf = float(agg.get('highmapq_fraction', 1.0))
         _mapq_scale = _hmf ** mapq_breadth_power
         agg['breadth_log_score'] = breadth_score_sigmoid(agg["coverage"]) * _mapq_scale
+
+        # ========== RECALCULATE gini_coefficient from combined coverage ==========
+        # Read-weighted averaging of per-contig Gini is misleading: a few small
+        # contigs with uniform coverage can score ~1.0 even when 99.9% of the
+        # total genome is uncovered.  Instead, build one combined coverage
+        # histogram from ALL entries' covered_regions and compute Gini against
+        # the total aggregated genome length — same philosophy as breadth.
+        _combined_regions = []
+        _offset = 0  # offset each contig's regions into a virtual concatenated genome
+        for _e in entries:
+            for _start, _end, _depth in _e.get('covered_regions', []):
+                _combined_regions.append((_start + _offset, _end + _offset, _depth))
+            _offset += int(_to_float(_e.get('length', 0)))
+        _total_genome_len = int(agg["length"]) if agg["length"] > 0 else 1
+        if _combined_regions:
+            agg['gini_coefficient'] = getGiniCoeff(
+                _combined_regions, _total_genome_len,
+                alpha=1.8, reward_factor=2, beta=0.5)
+        else:
+            agg['gini_coefficient'] = 0.0
+        # Preserve combined regions so the next aggregation level (strain→species)
+        # can recompute Gini from the full picture instead of averaging.
+        agg['covered_regions'] = _combined_regions
 
         out[gval] = agg
 

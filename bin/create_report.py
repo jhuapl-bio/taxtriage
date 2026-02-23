@@ -228,12 +228,35 @@ def get_sample_min_conf(sample_name, species_groups, explicit_conf):
 
 
 def load_json_samples(input_files):
+    """Load organism data from one or more JSON files.
+
+    Supports both the new structured format::
+
+        {"metadata": {...}, "organisms": [...]}
+
+    and the legacy plain-list format::
+
+        [{organism}, {organism}, ...]
+
+    Returns (all_sample_data, all_metadata) where all_metadata is a list
+    of metadata dicts (one per input file, empty dict for legacy files).
+    """
     all_sample_data = []
+    all_metadata = []
     for input_file in input_files:
         with open(input_file, 'r') as f:
             data = json.load(f)
+        if isinstance(data, dict) and 'organisms' in data:
+            # New structured format
+            all_sample_data.extend(data['organisms'])
+            all_metadata.append(data.get('metadata', {}))
+        elif isinstance(data, list):
+            # Legacy plain list
             all_sample_data.extend(data)
-    return all_sample_data
+            all_metadata.append({})
+        else:
+            print(f"WARNING: Unexpected JSON format in {input_file}, skipping.")
+    return all_sample_data, all_metadata
 
 
 def organize_data_by_sample(sample_data):
@@ -1219,9 +1242,12 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
         strain_sample_bm = f"strain_sample_{sanitize_bookmark_name(sample_name)}"
         main_sample_bm = f"sample_{sanitize_bookmark_name(sample_name)}"
         back_link = create_safe_link('\u2191', main_sample_bm, valid_bookmarks, color='blue')
+        _strain_meta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _strain_plat = _strain_meta.get('platform', '')
+        _strain_plat_str = f" — {_strain_plat}" if _strain_plat and _strain_plat != 'unknown' else ''
         story_items.append(AnchorFlowable(strain_sample_bm))
         story_items.append(Paragraph(
-            f'<b>{sample_name}</b> {back_link}', sample_heading_style))
+            f'<b>{sample_name}{_strain_plat_str}</b> {back_link}', sample_heading_style))
 
         # ── Column headers ────────────────────────────────────────────────────
         col_headers = [
@@ -1469,6 +1495,14 @@ def create_pdf_template(output_path, samples_dict, args):
         f"color=\"blue\">development spreadsheet of human-host pathogens</link>."
     )
     story.append(Paragraph(generation_text, metadata_style))
+    workflow_rev = None
+    for _meta in getattr(args, '_input_metadata', {}).values():
+        _rev = _meta.get('workflow_revision')
+        if _rev:
+            workflow_rev = _rev
+            break
+    if workflow_rev and str(workflow_rev).upper() != "NA":
+        story.append(Paragraph(f"Workflow revision: <b>{workflow_rev}</b>", metadata_style))
     story.append(Spacer(1, 0.02*inch))
     story.append(Paragraph("<b>★</b> = High Consequence Pathogen", small_style))
     story.append(Spacer(1, 0.02*inch))
@@ -1517,8 +1551,11 @@ def create_pdf_template(output_path, samples_dict, args):
 
         visible_groups = [sg for sg, _ in visible_groups]
 
+        _toc_meta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _toc_plat = _toc_meta.get('platform', '')
+        _toc_plat_str = f" — {_toc_plat}" if _toc_plat and _toc_plat != 'unknown' else ''
         link_text = create_safe_link(
-            f'{sample_name} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
+            f'{sample_name}{_toc_plat_str} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
             bookmark_name, valid_bookmarks)
         story.append(Paragraph(link_text, heading_style))
         story.append(Spacer(1, 0.04*inch))
@@ -1578,14 +1615,29 @@ def create_pdf_template(output_path, samples_dict, args):
         sampletype = (samples_dict[sample_name][0].get('sampletype', 'Unspecified Type')
                       if samples_dict[sample_name] else 'Unspecified Type')
         _mc = sample_min_conf.get(sample_name, _DEFAULT_CONF)
+        _smeta_hdr = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _plat_hdr = _smeta_hdr.get('platform', '')
+        _plat_str = f" — {_plat_hdr}" if _plat_hdr and _plat_hdr != 'unknown' else ''
         # PDF outline: sample as top-level entry (collapsed by default)
         outline_sample_key = f"outline_{bookmark_name}"
         story.append(OutlineDest(outline_sample_key,
-                                 f'Sample: {sample_name}', level=0, closed=True,
+                                 f'Sample: {sample_name}{_plat_str}', level=0, closed=True,
                                  collector=outline_collector))
-        story.append(Paragraph(f"Sample: {sample_name} ({sampletype})", heading_style))
+        story.append(Paragraph(f"Sample: {sample_name}{_plat_str} ({sampletype})", heading_style))
+        # Sample metadata line: TASS cutoff + platform + read stats from input metadata
+        _smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _meta_parts = [f"TASS cutoff: {_mc}"]
+        _tr = _smeta.get('total_reads')
+        _ar = _smeta.get('aligned_reads')
+        if _tr is not None:
+            _meta_parts.append(f"Total reads: {int(_tr):,}")
+        if _ar is not None:
+            _meta_parts.append(f"Aligned: {int(_ar):,}")
+        _nsg = _smeta.get('num_species_groups')
+        if _nsg is not None:
+            _meta_parts.append(f"Species groups: {_nsg}")
         story.append(Paragraph(
-            f"<i>TASS confidence cutoff: {_mc}</i>", small_style))
+            f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
         story.append(Spacer(1, 0.08*inch))
 
         species_groups = samples_dict[sample_name]
@@ -2020,8 +2072,23 @@ def main():
             merged_tax_data = load_merged(f"{args.taxdump}/merged.dmp")
             print(f"Loaded merged.dmp: {len(merged_tax_data)} entries")
 
-    sample_data = load_json_samples(args.input)
+    sample_data, input_metadata = load_json_samples(args.input)
     print(f"Loaded {len(sample_data)} species groups from JSON file(s)")
+
+    # Build per-sample metadata lookup from all input files
+    # Key by sample_name from metadata; later accessible via args._input_metadata
+    _per_sample_meta = {}
+    for meta in input_metadata:
+        sn = meta.get('sample_name')
+        if sn:
+            _per_sample_meta[sn] = meta
+    args._input_metadata = _per_sample_meta
+    if _per_sample_meta:
+        for sn, m in _per_sample_meta.items():
+            print(f"  Metadata for '{sn}': platform={m.get('platform', 'unknown')}, "
+                  f"total_reads={m.get('total_reads', '?')}, "
+                  f"aligned_reads={m.get('aligned_reads', '?')}, "
+                  f"species_groups={m.get('num_species_groups', '?')}")
 
     samples_dict = organize_data_by_sample(sample_data)
     print(f"Found {len(samples_dict)} unique sample(s)")

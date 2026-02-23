@@ -84,7 +84,7 @@ def parse_args(argv=None):
         "-r",
         "--min_reads_align",
         metavar="MINREADSALIGN",
-        default=2,
+        default=3,
         type=int,
         help="Filter for minimum reads aligned to reference per organism. Default is 1",
     )
@@ -194,6 +194,19 @@ def parse_args(argv=None):
         metavar="SAMPLENAME",
         default="No_Name",
         help="Name of the sample to process. If Empty, defaults to 'No_Name'",
+    )
+    parser.add_argument(
+        "--platform",
+        type=str,
+        default="unknown",
+        help="Sequencing platform (e.g. illumina, nanopore, pacbio, ion_torrent). "
+             "Stored in output JSON metadata. Default: unknown.",
+    )
+    parser.add_argument(
+        "--workflow_revision",
+        type=str,
+        default=None,
+        help="Nextflow workflow revision string stored in output JSON metadata.",
     )
     parser.add_argument(
         "-p",
@@ -1179,6 +1192,7 @@ def main():
         mapq_breadth_power=args.mapq_breadth_power,
     )
 
+
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
     # This ensures optimize_weights() / build_metrics_df_from_final_json() can
     # read microbial_category for the debug JSON output.
@@ -1285,6 +1299,18 @@ def main():
     # : Define a function to calculate disparity for each organism
     i=0
 
+    # ── Filter strains by min_reads_align BEFORE species-level aggregation ──
+    # This ensures low-read strains don't inflate species aggregate stats
+    # (coverage, breadth, Gini, etc.) and are excluded from members.
+    _min_ra = int(args.min_reads_align) if args.min_reads_align else 0
+    if _min_ra > 0:
+        _before = len(strain_summary)
+        strain_summary = {
+            k: v for k, v in strain_summary.items()
+            if v.get('numreads', 0) >= _min_ra
+        }
+        print(f"Filtered strains by min_reads_align={_min_ra}: {_before} → {len(strain_summary)}")
+
     aggregate_dict = calculate_normalized_groups(
         hits=strain_summary,
         group_field="toplevelkey",
@@ -1296,17 +1322,12 @@ def main():
         for acc in species_to_all_accs.get(k, []):
             acc_to_parent[acc] = k
 
-    # for k, v in strain_summary.items():
-    #     print(f"{i}\t{k}\t{v.get('name', '')}\t{100*v.get('tass_score')}")
-    # print("\n________________________________\n")
-    # exit()
     for _, data in aggregate_dict.items():
         # add all the strains to the strains list from strain_summary if data['toplevelkey'] matches
         data['members'] = [
             x for _, x in strain_summary.items()
             if x.get('toplevelkey') == data.get('toplevelkey')
         ]
-
 
         data['name'] = data.get('toplevelname', None)
         data['key'] = data.get('toplevelkey', None)
@@ -1330,9 +1351,6 @@ def main():
             data = data,
             weights = weights,
         )
-    # for k, v in aggregate_dict.items():
-    #     print(f"{k}\t{v.get('name', '')}\t{v.get('key', '')}\t{v.get('toplevelkey', '')}\t{v.get('toplevelname', '')}\t{v.get('microbial_category', 0)}\t{v.get('accessions')}\t{v.get('tass_score', 0)}")
-    # exit()
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -1408,7 +1426,44 @@ def main():
     #         f"\n\tMicrobial Category: {data.get('microbial_category', 'N/A')},"
     #         f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
     #     )
-    write_to_json(args.output.replace(".tsv", ".json"), final_json)
+    # ── Build structured output with metadata ────────────────────────────────
+    _all_keys = set()
+    _all_subkeys = set()
+    _all_toplevelkeys = set()
+    _total_organism_reads = 0
+    for grp in final_json:
+        _all_toplevelkeys.add(grp.get('toplevelkey', grp.get('key', '')))
+        for m in grp.get('members', []):
+            _all_keys.add(m.get('key', ''))
+            _all_subkeys.add(m.get('subkey', m.get('key', '')))
+            _total_organism_reads += float(m.get('numreads', 0))
+    # Strip covered_regions from JSON output — large and only needed internally
+    import copy as _copy
+    _json_out = _copy.deepcopy(final_json)
+    for _grp in _json_out:
+        _grp.pop('covered_regions', None)
+        for _m in _grp.get('members', []):
+            _m.pop('covered_regions', None)
+    output_json = {
+        "metadata": {
+            "sample_name": args.samplename,
+            "sample_type": sampletype,
+            "platform": args.platform,
+            "workflow_revision": args.workflow_revision,
+            "total_reads": total_reads,
+            "total_organism_reads": int(_total_organism_reads),
+            "num_species_groups": len(final_json),
+            "num_keys": len(_all_keys),
+            "num_subkeys": len(_all_subkeys),
+            "num_toplevelkeys": len(_all_toplevelkeys),
+            "minmapq": args.minmapq,
+            "mapq_breadth_power": args.mapq_breadth_power,
+            "weights": dict(weights),
+            "min_conf_applied": None,  # populated by create_report per-sample
+        },
+        "organisms": _json_out,
+    }
+    write_to_json(args.output.replace(".tsv", ".json"), output_json)
 
     # ── Report Metrics (TP/FP analysis with threshold percentiles) ───────────
     if args.report_metrics:

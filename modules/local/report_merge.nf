@@ -73,8 +73,12 @@ process ORGANISM_MERGE_REPORT {
         $no_subkey \\
 
     cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
+        "${task.process}":
         awk: \$(awk --version 2>&1)
+        pipeline_repo: "${workflow.repository}"
+        pipeline_revision: "${workflow.revision ?: 'NA'}"
+        pipeline_commit: "${workflow.commitId ?: 'NA'}"
+        nextflow_version: "${nextflow.version}"
     END_VERSIONS
 
     """
