@@ -356,12 +356,6 @@ workflow TAXTRIAGE {
         ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
         ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
     }
-    def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
-    def pipeline_repo = "${workflow.repository}"
-    def pipeline_revision = "${workflow.revision ?: 'NA'}"
-    def pipeline_commit = "${workflow.commitId ?: 'NA'}"
-    def nextflow_version = "${nextflow.version}"
-    println "Running revision version info: ${workflow.revision}, commit: ${workflow.commitId}, repository: ${workflow.repository}"
 
 
     // if the download_db params is called AND the --db is not existient as a path
@@ -426,6 +420,14 @@ workflow TAXTRIAGE {
         workflow.repository = 'local'
     }
     println "Repository URL: ${workflow.repository}"
+    def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
+    def pipeline_repo = "${workflow.repository}"
+    def pipeline_revision = "${workflow.revision ?: 'NA'}"
+    def pipeline_commit = "${workflow.commitId ?: 'NA'}"
+    def nextflow_version = "${nextflow.version}"
+    println "Running revision version info: ${workflow.revision}, commit: ${workflow.commitId}, repository: ${workflow.repository}"
+
+
     // get the date and time of the run
     def date = new Date()
     println "Date: ${date}"
