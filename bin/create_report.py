@@ -1512,7 +1512,7 @@ def create_pdf_template(output_path, samples_dict, args):
             commit_id = _cid
             break
     if commit_id and str(commit_id).upper() != "NA":
-        story.append(Paragraph(f"Commit ID: <b>{commit_id}</b>", metadata_style))
+        story.append(Paragraph(f"Commit ID: <link href=\"https://github.com/jhuapl-bio/taxtriage/commit/{commit_id}\" color=\"blue\">{commit_id}</link>", metadata_style))
     story.append(Spacer(1, 0.02*inch))
     story.append(Paragraph("<b>★</b> = High Consequence Pathogen", small_style))
     story.append(Spacer(1, 0.02*inch))
