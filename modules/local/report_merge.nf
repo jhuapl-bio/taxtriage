@@ -56,7 +56,7 @@ process ORGANISM_MERGE_REPORT {
     def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
     def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
-
+    def no_subkey = params.no_subkey ? " --no_subkey " : ""
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -71,6 +71,7 @@ process ORGANISM_MERGE_REPORT {
         $sort_alphabetical \\
         $integrate_strain_table \\
         $rank \\
+        $no_subkey \\
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
