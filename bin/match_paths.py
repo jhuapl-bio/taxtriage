@@ -340,21 +340,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.39,
+        default=0.275,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.4,
+        default=0.45,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.21,
+        default=0.275,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
