@@ -825,7 +825,7 @@ def compute_scores_per(
 
     return data
 
-def rpm_confidence_weight(read_fraction, k=50000, midpoint=0.0001):
+def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
     """
     read_fraction = reads_mapped / total_reads  (value between 0 and 1)
     midpoint: fraction at which confidence = 0.5
@@ -835,8 +835,13 @@ def rpm_confidence_weight(read_fraction, k=50000, midpoint=0.0001):
     return 1.0 / (1.0 + math.exp(-k * (read_fraction - midpoint)))
 
 
-def breadth_score_sigmoid(coverage, midpoint=0.02, steepness=20):
-        return 1.0 / (1.0 + math.exp(-steepness * (coverage - midpoint)))
+def breadth_score_sigmoid(coverage, midpoint=0.01, steepness=12_000):
+        x = steepness * (coverage - midpoint)
+        if x >= 50:
+            return 1.0
+        if x <= -50:
+            return 0.0
+        return 1.0 / (1.0 + math.exp(-x))
 def calculate_mmbert_prob(
     mmbert_dict = {},
     taxid = None

@@ -340,15 +340,22 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.18,
+        default=0.39,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.52,
+        default=0.4,
         help="value of weight for minhash signature reduction in final TASS Score",
+    )
+    parser.add_argument(
+        "--gini_weight",
+        metavar="GINIWEIGHT",
+        type=float,
+        default=0.21,
+        help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
         "--k2_disparity_weight",
@@ -372,14 +379,6 @@ def parse_args(argv=None):
         type=float,
         default=0.00,
         help="value of weight for hmp abundance in final TASS Score",
-    )
-
-    parser.add_argument(
-        "--gini_weight",
-        metavar="GINIWEIGHT",
-        type=float,
-        default=0.3,
-        help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
         "--dispersion_factor",
@@ -433,7 +432,7 @@ def parse_args(argv=None):
     parser.add_argument("--fast", required=False, action='store_true', help="FAST Mode enabled. Uses Sourmash's SBT bloom factory for querying similarity of jaccard scores per signature per region. This is much faster than the original method but requires a pre-built SBT file which takes time and can lead to false positive region matches.")
     parser.add_argument('--gap_allowance', type=float, default=0.1, help="Gap allowance for determining merging of regions")
     parser.add_argument('--jump_threshold', type=float, default=None, help="Gap allowance for determining merging of regions")
-    parser.add_argument('--minmapq', required=False, type=int, default=5,
+    parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
     parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
@@ -609,6 +608,18 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     unaligned = 0
     aligned_reads = 0
     total_reads = 0
+    primary_counts = defaultdict(int)
+    secondary_counts = defaultdict(int)
+
+    # Pre-pass: count primary/secondary alignments per read to gate MAPQ=0 reads
+    with pysam.AlignmentFile(bam_file_path, "rb") as bam_count:
+        for read in bam_count.fetch(until_eof=True):
+            if read.is_unmapped:
+                continue
+            if read.is_secondary or read.is_supplementary:
+                secondary_counts[read.query_name] += 1
+                continue
+            primary_counts[read.query_name] += 1
 
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
@@ -651,6 +662,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             if read.is_unmapped:
                 unaligned += 1
                 continue
+            if read.is_secondary or read.is_supplementary:
+                continue
             ref = read.reference_name
             total_reads += 1
 
@@ -671,7 +684,12 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             # base quality.  They ARE still counted for highmapq_fraction above
             # so the fraction reflects the full alignment picture.
             if read.mapping_quality < args.minmapq:
-                continue
+                allow_low_mapq = (
+                    read.mapping_quality == 0
+                    and secondary_counts.get(read.query_name, 0) > 0
+                )
+                if not allow_low_mapq:
+                    continue
 
             # Create a unique key for the read based on its query name and strand
             read_id_key = f"{read.query_name}:{read.is_reverse}"
