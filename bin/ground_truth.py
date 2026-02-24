@@ -405,6 +405,7 @@ def optimize_weights(
     separation_weight=0.0,
     weight_prior=None,
     weight_prior_lambda=0.0,
+    plasmid_bonus_weight=0.05,
 ):
     import json
     import numpy as np
@@ -444,6 +445,7 @@ def optimize_weights(
         gini_weight=float(gini_weight),
         disparity_weight=float(disparity_weight),
         hmp_weight=float(hmp_weight),
+        plasmid_bonus_weight=float(plasmid_bonus_weight),
     )
 
     # ── Helper: run optimizer at a given granularity ─────────────────────────
@@ -480,6 +482,7 @@ def optimize_weights(
             separation_weight=float(separation_weight),
             weight_prior=weight_prior,
             weight_prior_lambda=float(weight_prior_lambda),
+            plasmid_bonus_weight=float(plasmid_bonus_weight),
         )
         print(f"[optimize:{label}] status: {res['status']}")
         if res["status"] == "ok":
@@ -515,6 +518,8 @@ def optimize_weights(
             "disparity_score": "max",
             "gini_coefficient": "max",
             "hmp_percentile": "max",
+            "plasmid_score": "max",
+            "has_plasmid": "max",
             "tp_reads": "sum",
             "fp_reads": "sum",
             "total_reads": "sum",
@@ -556,6 +561,7 @@ def optimize_weights(
                 disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
                 hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
                 alpha=float(alpha),
+                plasmid_bonus_w=float(plasmid_bonus_weight),
             )
             g_scores = np.asarray(g_scores, dtype=float)
 
@@ -579,6 +585,8 @@ def optimize_weights(
                         "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
                         "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
                         "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
+                        "plasmid_score": float(grouped.iloc[i].get("plasmid_score", 0.0)),
+                        "has_plasmid": bool(grouped.iloc[i].get("has_plasmid", False)),
                     },
                 })
             gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
@@ -661,6 +669,7 @@ def optimize_weights(
         disparity_w=float(disparity_weight),
         hmp_w=float(hmp_weight),
         alpha=float(alpha),
+        plasmid_bonus_w=float(plasmid_bonus_weight),
     )
     scores = np.asarray(scores, dtype=float)
 
@@ -688,6 +697,8 @@ def optimize_weights(
                 "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
                 "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
                 "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
+                "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
+                "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
             }
         })
 
@@ -724,6 +735,7 @@ def optimize_weights(
             "gini_weight": float(gini_weight),
             "disparity_weight": float(disparity_weight),
             "hmp_weight": float(hmp_weight),
+            "plasmid_bonus_weight": float(plasmid_bonus_weight),
         },
         "best_granularity": best_label,
         "granularity_results": {
@@ -783,6 +795,7 @@ def optimize_weights_for_tp_fp(
     separation_weight: float = 0.0,
     weight_prior: dict | None = None,
     weight_prior_lambda: float = 0.0,
+    plasmid_bonus_weight: float = 0.0,
 ):
     from scipy.optimize import differential_evolution, minimize
     import numpy as np
@@ -953,6 +966,7 @@ def optimize_weights_for_tp_fp(
             disparity_w=float(w[3]),
             hmp_w=float(w[4]),
             alpha=alpha,
+            plasmid_bonus_w=float(plasmid_bonus_weight),
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1153,6 +1167,7 @@ def optimize_weights_for_tp_fp(
         disparity_w=float(w_best[3]),
         hmp_w=float(w_best[4]),
         alpha=alpha,
+        plasmid_bonus_w=float(plasmid_bonus_weight),
     )
     scores_best = np.asarray(scores_best, dtype=float)
 
@@ -1168,6 +1183,7 @@ def optimize_weights_for_tp_fp(
             "gini_weight": float(w_best[2]),
             "disparity_weight": float(w_best[3]),
             "hmp_weight": float(w_best[4]),
+            "plasmid_bonus_weight": float(plasmid_bonus_weight),
         },
         "status": "ok",
         "optimize_mode": optimize_mode,
@@ -1342,6 +1358,7 @@ def build_metrics_df_from_final_json(
 
         gini = float(stats.get("gini_coefficient", 0.0))
         hmp = float(stats.get("hmp_percentile", 0.0))
+        plasmid_sc = float(stats.get("plasmid_score", 0.0))
 
         tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
         total = tp + fp
@@ -1359,6 +1376,8 @@ def build_metrics_df_from_final_json(
             "disparity_score": disparity,
             "gini_coefficient": gini,
             "hmp_percentile": hmp,
+            "plasmid_score": plasmid_sc,
+            "has_plasmid": bool(stats.get("has_plasmid", False)),
             "tp_reads": int(tp),
             "fp_reads": int(fp),
             "total_reads": int(total),

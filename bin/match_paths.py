@@ -381,6 +381,14 @@ def parse_args(argv=None):
         help="value of weight for hmp abundance in final TASS Score",
     )
     parser.add_argument(
+        "--plasmid_bonus_weight",
+        type=float,
+        default=0.05,
+        help="Additive TASS bonus for strains with strong plasmid coverage "
+             "relative to sibling strains in the same species. Applied outside "
+             "the normalized weight pool. 0 = disabled. Default: 0.05",
+    )
+    parser.add_argument(
         "--dispersion_factor",
         metavar="DISP_FACTOR",
         type=float,
@@ -853,6 +861,9 @@ def main():
                 weights[key] = weights[key] / total_weight
             else:
                 weights[key] = 0
+    # Plasmid bonus is additive — added AFTER normalization so it doesn't
+    # dilute the core weights.  Set to 0 to disable.
+    weights['plasmid_bonus_weight'] = args.plasmid_bonus_weight
     """
     # Final Score Calculation
 
@@ -1095,6 +1106,16 @@ def main():
                     elif name:
                         reference_hits[accession]["name"] = name
         f.close()
+    # ── Tag plasmid accessions from the description/name field ──────────────
+    _plasmid_count = 0
+    for acc, hit in reference_hits.items():
+        _desc = (hit.get('name', '') or '').lower()
+        hit['is_plasmid'] = 'plasmid' in _desc
+        if hit['is_plasmid']:
+            _plasmid_count += 1
+    if _plasmid_count:
+        print(f"Tagged {_plasmid_count} accessions as plasmid")
+
     taxdump, taxdump_names = {}, {}
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
@@ -1189,6 +1210,30 @@ def main():
     else:
         dists = {}
 
+    # ── Aggregate comparison_df to subkey (species) level for minhash scoring ──
+    # The raw comparison_df is per-accession (contig), but minhash reduction
+    # should reflect the species-level conflict picture: sum reads, weighted-avg
+    # breadth ratios, so that a species with many contigs gets one composite score.
+    subkey_comparison_df = pd.DataFrame()
+    if comparison_df is not None and not comparison_df.empty:
+        _cdf = comparison_df.copy()
+        _cdf['subkey'] = _cdf.index.map(lambda a: acc_to_subkey.get(a, a))
+        # Weighted aggregation: weight by Total Reads per accession
+        _numeric_cols = ['Total Reads', 'Pass Filtered Reads', 'Δ All',
+                         'Reference Length']
+        _wavg_cols = ['Δ All%', 'Δ^-1 Breadth', 'Breadth Original', 'Breadth New']
+        _grouped = _cdf.groupby('subkey')
+        _sums = _grouped[_numeric_cols].sum()
+        # Read-weighted averages for ratio/percentage columns
+        _wavg_parts = {}
+        for col in _wavg_cols:
+            if col in _cdf.columns:
+                _cdf[f'_w_{col}'] = _cdf[col] * _cdf['Total Reads']
+                _wavg_parts[col] = _grouped[f'_w_{col}'].sum() / _sums['Total Reads'].replace(0, 1)
+        _wavg_df = pd.DataFrame(_wavg_parts)
+        subkey_comparison_df = pd.concat([_sums, _wavg_df], axis=1)
+        print(f"Aggregated comparison_df: {len(comparison_df)} accessions → {len(subkey_comparison_df)} subkeys")
+
     for acc, data in reference_hits.items():
         if not data.get('organism'):
             # try to get organism from taxdump names
@@ -1204,7 +1249,7 @@ def main():
             reward_factor = args.reward_factor,
             dispersion_factor = args.dispersion_factor,
             alpha = args.alpha,
-            comparison_df = comparison_df,
+            comparison_df = subkey_comparison_df,
             fallback_top = top,
             total_reads = total_reads,
             mapq_breadth_power = args.mapq_breadth_power,
@@ -1216,6 +1261,62 @@ def main():
         mapq_breadth_power=args.mapq_breadth_power,
     )
 
+    # ── Plasmid disparity: score strains by relative plasmid presence ────────
+    # Within each subkey (species), compare plasmid coverage across strains.
+    # A strain whose plasmid(s) have notably better coverage/reads than
+    # sibling strains' plasmids gets a higher plasmid_score (0–1).
+    # Strains with no plasmid accessions get plasmid_score = 0 (neutral).
+    #
+    # 1) Collect plasmid stats per strain, grouped by subkey
+    _subkey_plasmid_stats = defaultdict(dict)  # subkey → {strain_key → {reads, covered_bases, length}}
+    for acc, hit in reference_hits.items():
+        if not hit.get('is_plasmid', False):
+            continue
+        _sk = str(hit.get('subkey', ''))
+        _strain = str(hit.get('key', acc))
+        if _strain not in _subkey_plasmid_stats[_sk]:
+            _subkey_plasmid_stats[_sk][_strain] = {
+                'reads': 0, 'covered_bases': 0, 'length': 0, 'coverage': 0.0
+            }
+        _ps = _subkey_plasmid_stats[_sk][_strain]
+        _ps['reads'] += hit.get('numreads', 0)
+        _ps['covered_bases'] += hit.get('covered_bases', 0)
+        _ps['length'] += hit.get('length', 0)
+
+    # 2) Compute coverage and rank within each subkey
+    _strain_plasmid_score = {}  # strain_key → plasmid_score (0–1)
+    for _sk, strains_map in _subkey_plasmid_stats.items():
+        # Coverage per strain's plasmid(s)
+        for _strain, _ps in strains_map.items():
+            _ps['coverage'] = (_ps['covered_bases'] / _ps['length']) if _ps['length'] > 0 else 0.0
+        # Max coverage in this subkey
+        _max_cov = max((_ps['coverage'] for _ps in strains_map.values()), default=0.0)
+        _max_reads = max((_ps['reads'] for _ps in strains_map.values()), default=0)
+        if _max_cov <= 0 and _max_reads <= 0:
+            for _strain in strains_map:
+                _strain_plasmid_score[_strain] = 0.0
+            continue
+        for _strain, _ps in strains_map.items():
+            # Relative coverage score (0–1): how does this strain compare to the best?
+            _cov_ratio = (_ps['coverage'] / _max_cov) if _max_cov > 0 else 0.0
+            # Read ratio as secondary signal
+            _read_ratio = (_ps['reads'] / _max_reads) if _max_reads > 0 else 0.0
+            # Composite: weighted toward coverage
+            _strain_plasmid_score[_strain] = min(1.0, 0.7 * _cov_ratio + 0.3 * _read_ratio)
+
+    # 3) Apply plasmid_score to strain_summary
+    _plasmid_scored = 0
+    for k, data in strain_summary.items():
+        _skey = str(data.get('key', k))
+        if _skey in _strain_plasmid_score:
+            data['plasmid_score'] = _strain_plasmid_score[_skey]
+            data['has_plasmid'] = True
+            _plasmid_scored += 1
+        else:
+            data['plasmid_score'] = 0.0
+            data['has_plasmid'] = False
+    if _plasmid_scored:
+        print(f"Plasmid disparity scored for {_plasmid_scored} strains across {len(_subkey_plasmid_stats)} subkeys")
 
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
     # This ensures optimize_weights() / build_metrics_df_from_final_json() can
@@ -1280,6 +1381,7 @@ def main():
             separation_weight = args.optimize_separation_weight,
             weight_prior = _weight_prior,
             weight_prior_lambda = args.optimize_weight_prior_lambda,
+            plasmid_bonus_weight = args.plasmid_bonus_weight,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)

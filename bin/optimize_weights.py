@@ -432,7 +432,7 @@ def calculate_normalized_groups(
         # NOTE: gini_coefficient is NOT in WAVG_FIELDS — it is recomputed from
         # the combined coverage histogram at the group level (like breadth).
         "mapq_score", "rpm_confidence_weight", "read_fraction",
-        "highmapq_fraction",
+        "highmapq_fraction", "plasmid_score",
     }
 
     def _to_float(x) -> float:
@@ -806,10 +806,13 @@ def compute_scores_per(
     data['breadth_log_score'] = breadth_score_sigmoid(coverage) * mapq_scale
     data['highmapq_fraction'] = hmf
     if not comparison_df.empty:
-        accession = str(data['accession']).strip()
-        if accession in comparison_df.index:
-            c1 = float(comparison_df.loc[accession, col_stat])
-            d_all = float(comparison_df.loc[accession, col_stat2])
+        # Look up by subkey (species) — comparison_df is now aggregated to
+        # the subkey level so all accessions in the same species share one
+        # composite minhash signal.
+        lookup_key = str(data.get('subkey', data.get('accession', ''))).strip()
+        if lookup_key in comparison_df.index:
+            c1 = float(comparison_df.loc[lookup_key, col_stat])
+            d_all = float(comparison_df.loc[lookup_key, col_stat2])
 
             k_sig = 0.90
             x0 = -10.0
@@ -1021,7 +1024,8 @@ def calculate_siblings_score (
     return data
 
 def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
-                                    disparity_w=0.0, hmp_w=0.0, alpha=1.0):
+                                    disparity_w=0.0, hmp_w=0.0, alpha=1.0,
+                                    plasmid_bonus_w=0.0):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
@@ -1031,6 +1035,12 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
 
     score = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
     score = alpha * score
+
+    # Plasmid bonus: additive, outside normalized weights
+    if plasmid_bonus_w > 0 and "plasmid_score" in metrics_df.columns:
+        ps = metrics_df["plasmid_score"].to_numpy(float)
+        score = score + plasmid_bonus_w * ps
+
     return np.clip(score, 0.0, 1.0)
 
 def compute_tass_score(data = {}, weights={}):
@@ -1059,6 +1069,16 @@ def compute_tass_score(data = {}, weights={}):
         apply_weight(data.get('k2_disparity_score', 0),         weights.get('k2_disparity_score_weight', 0)),
         apply_weight(data.get('diamond', {}).get('identity', 0),
                      weights.get('diamond_identity', 0))  ])
+
+    # ── Plasmid bonus: additive boost outside normalized weight pool ──────
+    # If a strain has a plasmid with better coverage than sibling strains'
+    # plasmids (same subkey), plasmid_score is high (0–1).  The bonus is
+    # applied additively so it never reduces the base TASS.
+    _plasmid_score = float(data.get('plasmid_score', 0))
+    _plasmid_bonus_w = float(weights.get('plasmid_bonus_weight', 0))
+    if _plasmid_score > 0 and _plasmid_bonus_w > 0:
+        tass_score += _plasmid_score * _plasmid_bonus_w
+
     return tass_score
 
 def calculate_hmp_percentile(
