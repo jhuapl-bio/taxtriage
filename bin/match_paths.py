@@ -340,21 +340,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.17,
+        default=0.09,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.35,
+        default=0.71,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.48,
+        default=0.20,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -383,7 +383,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--plasmid_bonus_weight",
         type=float,
-        default=0.15,
+        default=0.19,
         help="Additive TASS bonus for strains with strong plasmid coverage "
              "relative to sibling strains in the same species. Applied outside "
              "the normalized weight pool. 0 = disabled. Default: 0.05",
