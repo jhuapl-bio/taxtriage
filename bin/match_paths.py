@@ -340,7 +340,7 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.51,
+        default=0.36,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
@@ -354,7 +354,7 @@ def parse_args(argv=None):
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.36,
+        default=0.51,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -383,7 +383,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--plasmid_bonus_weight",
         type=float,
-        default=0.09,
+        default=0.19,
         help="Additive TASS bonus for strains with strong plasmid coverage "
              "relative to sibling strains in the same species. Applied outside "
              "the normalized weight pool. 0 = disabled. Default: 0.05",
@@ -654,6 +654,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 count_baseq = 0,
                 count_mapq = 0,
                 count_highmapq = 0,  # reads with MAPQ >= threshold
+                sum_mapq_filtered = 0,   # MAPQ sum for reads that pass the filter
+                count_mapq_filtered = 0, # count of reads that pass the filter
                 total_reads = 0,
                 read_positions = [],
                 total_length = 0,
@@ -699,6 +701,11 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 if not allow_low_mapq:
                     continue
 
+            # Accumulate MAPQ only for reads that passed the filter
+            # (so meanmapq reflects the actual reads used for coverage/depth)
+            reference_stats[ref]["sum_mapq_filtered"] += read.mapping_quality
+            reference_stats[ref]["count_mapq_filtered"] += 1
+
             # Create a unique key for the read based on its query name and strand
             read_id_key = f"{read.query_name}:{read.is_reverse}"
 
@@ -739,8 +746,12 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 avg_read_length = math.ceil(stats["total_length"] / stats["total_reads"]) if stats["total_reads"] > 0 else 0
                 # Calculate average base quality
                 avg_baseq = stats["sum_baseq"] / stats["count_baseq"] if stats["count_baseq"] > 0 else 0
-                # Calculate average mapping quality
-                avg_mapq = stats.get("sum_mapq", 0) / stats.get("count_mapq", 0) if stats.get("count_mapq", 0) > 0 else 0
+                # Calculate average mapping quality from reads that PASSED the
+                # minmapq filter (or the allow_low_mapq exception).  Using all
+                # reads would drag the mean down with skipped MAPQ=0 alignments.
+                _smf = stats.get("sum_mapq_filtered", 0)
+                _cmf = stats.get("count_mapq_filtered", 0)
+                avg_mapq = _smf / _cmf if _cmf > 0 else 0
 
 
 
