@@ -531,6 +531,9 @@ def calculate_normalized_groups(
         for f in WAVG_FIELDS:
             agg[f] = _weighted_mean(entries, f, reads_key)
 
+        # Propagate has_plasmid: true if ANY member has a plasmid
+        agg['has_plasmid'] = any(bool(_e.get('has_plasmid', False)) for _e in entries)
+
         # ========== RECALCULATE breadth_log_score from aggregated coverage ==========
         # This ensures plasmids don't skew the score.
         # Scale by high-MAPQ fraction so organisms dominated by MAPQ=0 reads
@@ -1079,7 +1082,7 @@ def compute_tass_score(data = {}, weights={}):
     if _plasmid_score > 0 and _plasmid_bonus_w > 0:
         tass_score += _plasmid_score * _plasmid_bonus_w
 
-    return tass_score
+    return min(1.0, max(0.0, tass_score))
 
 def calculate_hmp_percentile(
         value = {},

@@ -35,7 +35,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category
+from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var
 
@@ -340,21 +340,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.51,
+        default=0.17,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.13,
+        default=0.35,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.36,
+        default=0.48,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -368,7 +368,7 @@ def parse_args(argv=None):
         help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
-        metavar="DISPARITYSCOREWEIGHT",
+        metavar="DIAMONDIDENTITYWEIGHT",
         type=float,
         default=0.0,
         help="value of weight for disparity of diamond_identity in final TASS Score",
@@ -383,7 +383,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--plasmid_bonus_weight",
         type=float,
-        default=0.05,
+        default=0.15,
         help="Additive TASS bonus for strains with strong plasmid coverage "
              "relative to sibling strains in the same species. Applied outside "
              "the normalized weight pool. 0 = disabled. Default: 0.05",
@@ -1101,15 +1101,24 @@ def main():
                     if taxid and not reference_hits[accession].get("taxid"):
                         reference_hits[accession]["taxid"] = taxid
 
+                    # Store the raw description from the mapfile BEFORE
+                    # overwriting 'name' with the cleaner organism column.
+                    # The description often contains "plasmid pXXX" which
+                    # we need for plasmid tagging downstream.
+                    if name:
+                        reference_hits[accession]["description"] = name
                     if organism:
                         reference_hits[accession]["name"] = organism
                     elif name:
                         reference_hits[accession]["name"] = name
         f.close()
-    # ── Tag plasmid accessions from the description/name field ──────────────
+    # ── Tag plasmid accessions from the description field ──────────────────
+    # Use 'description' (raw mapfile name column) which preserves strings
+    # like "E. coli ETEC H10407 plasmid p666, complete sequence".
+    # Fall back to 'name' if description wasn't populated.
     _plasmid_count = 0
     for acc, hit in reference_hits.items():
-        _desc = (hit.get('name', '') or '').lower()
+        _desc = (hit.get('description', '') or hit.get('name', '') or '').lower()
         hit['is_plasmid'] = 'plasmid' in _desc
         if hit['is_plasmid']:
             _plasmid_count += 1
@@ -1219,8 +1228,8 @@ def main():
         _cdf = comparison_df.copy()
         _cdf['subkey'] = _cdf.index.map(lambda a: acc_to_subkey.get(a, a))
         # Weighted aggregation: weight by Total Reads per accession
-        _numeric_cols = ['Total Reads', 'Pass Filtered Reads', 'Δ All',
-                         'Reference Length']
+        _numeric_cols = [c for c in ['Total Reads', 'Pass Filtered Reads', 'Δ All',
+                         'Reference Length'] if c in _cdf.columns]
         _wavg_cols = ['Δ All%', 'Δ^-1 Breadth', 'Breadth Original', 'Breadth New']
         _grouped = _cdf.groupby('subkey')
         _sums = _grouped[_numeric_cols].sum()
@@ -1265,10 +1274,13 @@ def main():
     # Within each subkey (species), compare plasmid coverage across strains.
     # A strain whose plasmid(s) have notably better coverage/reads than
     # sibling strains' plasmids gets a higher plasmid_score (0–1).
+    # The score also factors in the plasmid's own alignment quality
+    # (breadth_log_score and gini_coefficient) so that a plasmid with
+    # garbage coverage doesn't inflate the bonus.
     # Strains with no plasmid accessions get plasmid_score = 0 (neutral).
     #
     # 1) Collect plasmid stats per strain, grouped by subkey
-    _subkey_plasmid_stats = defaultdict(dict)  # subkey → {strain_key → {reads, covered_bases, length}}
+    _subkey_plasmid_stats = defaultdict(dict)  # subkey → {strain_key → {reads, covered_bases, length, covered_regions}}
     for acc, hit in reference_hits.items():
         if not hit.get('is_plasmid', False):
             continue
@@ -1276,33 +1288,69 @@ def main():
         _strain = str(hit.get('key', acc))
         if _strain not in _subkey_plasmid_stats[_sk]:
             _subkey_plasmid_stats[_sk][_strain] = {
-                'reads': 0, 'covered_bases': 0, 'length': 0, 'coverage': 0.0
+                'reads': 0, 'covered_bases': 0, 'length': 0, 'coverage': 0.0,
+                'covered_regions': [], '_region_offset': 0,
             }
         _ps = _subkey_plasmid_stats[_sk][_strain]
         _ps['reads'] += hit.get('numreads', 0)
         _ps['covered_bases'] += hit.get('covered_bases', 0)
-        _ps['length'] += hit.get('length', 0)
+        # Accumulate covered_regions with offset for multi-plasmid strains
+        for _start, _end, _depth in hit.get('covered_regions', []):
+            _ps['covered_regions'].append((_start + _ps['_region_offset'], _end + _ps['_region_offset'], _depth))
+        _ps['_region_offset'] += int(hit.get('length', 0) or 0)
+        _ps['length'] += int(hit.get('length', 0) or 0)
 
-    # 2) Compute coverage and rank within each subkey
+    # 2) Compute coverage, breadth, gini, and rank within each subkey
     _strain_plasmid_score = {}  # strain_key → plasmid_score (0–1)
     for _sk, strains_map in _subkey_plasmid_stats.items():
-        # Coverage per strain's plasmid(s)
+        # Per-strain plasmid quality metrics
         for _strain, _ps in strains_map.items():
-            _ps['coverage'] = (_ps['covered_bases'] / _ps['length']) if _ps['length'] > 0 else 0.0
-        # Max coverage in this subkey
+            _plen = max(1, _ps['length'])
+            _ps['coverage'] = _ps['covered_bases'] / _plen
+            # Compute breadth_log_score for this strain's plasmid(s)
+            _ps['breadth'] = breadth_score_sigmoid(_ps['coverage'])
+            # Compute gini from combined covered_regions
+            if _ps['covered_regions']:
+                _ps['gini'] = getGiniCoeff(
+                    _ps['covered_regions'], _plen,
+                    alpha=1.8, reward_factor=2, beta=0.5)
+            else:
+                _ps['gini'] = 0.0
+
+        # Max values across siblings for relative comparison
         _max_cov = max((_ps['coverage'] for _ps in strains_map.values()), default=0.0)
         _max_reads = max((_ps['reads'] for _ps in strains_map.values()), default=0)
+        _n_strains_with_plasmid = len(strains_map)
         if _max_cov <= 0 and _max_reads <= 0:
             for _strain in strains_map:
                 _strain_plasmid_score[_strain] = 0.0
             continue
+
         for _strain, _ps in strains_map.items():
-            # Relative coverage score (0–1): how does this strain compare to the best?
-            _cov_ratio = (_ps['coverage'] / _max_cov) if _max_cov > 0 else 0.0
-            # Read ratio as secondary signal
-            _read_ratio = (_ps['reads'] / _max_reads) if _max_reads > 0 else 0.0
-            # Composite: weighted toward coverage
-            _strain_plasmid_score[_strain] = min(1.0, 0.7 * _cov_ratio + 0.3 * _read_ratio)
+            # ── Absolute quality: does this plasmid have real coverage? ──
+            # breadth (0–1): sigmoid of coverage fraction
+            # gini (0–1): evenness of that coverage
+            # Both must be decent — geometric mean ensures this.
+            _breadth = float(_ps.get('breadth', 0.0))
+            _gini = float(_ps.get('gini', 0.0))
+            _quality = (_breadth * _gini) ** 0.5  # 0–1
+
+            # ── Relative disparity: how does this strain compare to siblings? ──
+            # Only meaningful when multiple strains have plasmids.
+            if _n_strains_with_plasmid > 1:
+                _cov_ratio = (_ps['coverage'] / _max_cov) if _max_cov > 0 else 0.0
+                _read_ratio = (_ps['reads'] / _max_reads) if _max_reads > 0 else 0.0
+                _disparity = min(1.0, 0.7 * _cov_ratio + 0.3 * _read_ratio)
+            else:
+                # Single strain with plasmid: disparity is neutral (1.0).
+                # Score is driven entirely by absolute quality — a garbage
+                # plasmid with poor breadth/gini will still score low.
+                _disparity = 1.0
+
+            # ── Final plasmid score = quality * disparity ──
+            # quality gates the score: poor breadth or gini crushes it
+            # disparity separates strains when multiple have plasmids
+            _strain_plasmid_score[_strain] = min(1.0, _quality * _disparity)
 
     # 3) Apply plasmid_score to strain_summary
     _plasmid_scored = 0

@@ -561,7 +561,7 @@ def optimize_weights(
                 disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
                 hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
                 alpha=float(alpha),
-                plasmid_bonus_w=float(plasmid_bonus_weight),
+                plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
             )
             g_scores = np.asarray(g_scores, dtype=float)
 
@@ -660,6 +660,7 @@ def optimize_weights(
     gini_weight = best_w["gini_weight"]
     disparity_weight = best_w.get("disparity_weight", 0.0)
     hmp_weight = best_w.get("hmp_weight", 0.0)
+    _best_pbw = float(best_w.get("plasmid_bonus_weight", plasmid_bonus_weight))
 
     scores = compute_tass_score_from_metrics(
         metrics_df,
@@ -669,7 +670,7 @@ def optimize_weights(
         disparity_w=float(disparity_weight),
         hmp_w=float(hmp_weight),
         alpha=float(alpha),
-        plasmid_bonus_w=float(plasmid_bonus_weight),
+        plasmid_bonus_w=_best_pbw,
     )
     scores = np.asarray(scores, dtype=float)
 
@@ -735,7 +736,7 @@ def optimize_weights(
             "gini_weight": float(gini_weight),
             "disparity_weight": float(disparity_weight),
             "hmp_weight": float(hmp_weight),
-            "plasmid_bonus_weight": float(plasmid_bonus_weight),
+            "plasmid_bonus_weight": _best_pbw,
         },
         "best_granularity": best_label,
         "granularity_results": {
@@ -839,6 +840,10 @@ def optimize_weights_for_tp_fp(
         start_weights.get("hmp_weight", 0.0),
     ], dtype=float)
 
+    # Starting plasmid bonus weight (optimized separately, not on simplex)
+    _pbw0 = float(start_weights.get("plasmid_bonus_weight", plasmid_bonus_weight))
+    _pbw_max = 0.20  # upper bound for plasmid bonus
+
     # Apply min-weight floor to w0 and bounds
     _mw = max(0.0, min(0.15, float(min_weight)))  # cap at 15% per weight
     n_weights = 5
@@ -864,6 +869,10 @@ def optimize_weights_for_tp_fp(
 
     # Max entropy for reference (uniform distribution)
     _max_entropy = _entropy(np.full(n_weights, 1.0 / n_weights))
+
+    # Check if any organisms actually have plasmid data — skip pbw optimization if not
+    _has_plasmid_data = ("plasmid_score" in metrics_df.columns
+                         and (metrics_df["plasmid_score"] > 0).any())
 
     def _threshold_pref_penalty(scores: np.ndarray) -> float:
         if threshold_pref_lambda <= 0:
@@ -951,6 +960,10 @@ def optimize_weights_for_tp_fp(
 
         return _at(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
 
+    # Mutable container for the current plasmid bonus weight during optimization.
+    # Updated by the outer DE/SLSQP loops so loss_for_w always sees the latest value.
+    _current_pbw = [_pbw0]
+
     def loss_for_w(w: np.ndarray) -> float:
         # simplex + min-weight constraints (soft)
         if np.any(w < 0) or np.any(w > 1) or abs(w.sum() - 1.0) > 1e-6:
@@ -966,7 +979,7 @@ def optimize_weights_for_tp_fp(
             disparity_w=float(w[3]),
             hmp_w=float(w[4]),
             alpha=alpha,
-            plasmid_bonus_w=float(plasmid_bonus_weight),
+            plasmid_bonus_w=float(_current_pbw[0]),
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1103,26 +1116,36 @@ def optimize_weights_for_tp_fp(
             + prior_penalty
         )
 
-    # --- Global stage (DE) over 4 vars, 5th implied by sum=1 ---
-    # x = [w_breadth, w_minhash, w_gini, w_disparity], w_hmp = 1 - sum(x)
+    # --- Global stage (DE) over 4 simplex vars + optional pbw ---
+    # x = [w_breadth, w_minhash, w_gini, w_disparity, (pbw)], w_hmp = 1 - sum(x[:4])
     _upper = 1.0 - (n_weights - 1) * _mw  # max any single weight can be
+    _optimize_pbw = _has_plasmid_data  # only optimize pbw if plasmid data exists
+    if _optimize_pbw:
+        print(f"[optimize] Plasmid data detected — optimizing plasmid_bonus_weight (start={_pbw0:.4f}, max={_pbw_max})")
+    else:
+        print(f"[optimize] No plasmid data in metrics — plasmid_bonus_weight fixed at {_pbw0:.4f}")
 
-    def unpack_x(x: np.ndarray) -> np.ndarray:
+    def unpack_x(x: np.ndarray):
+        """Unpack DE vector into (5-weight array, pbw_value)."""
         wb, wm, wg, wd = float(x[0]), float(x[1]), float(x[2]), float(x[3])
         wh = 1.0 - (wb + wm + wg + wd)
         w = np.array([wb, wm, wg, wd, wh], dtype=float)
         if _mw > 0:
             w = np.clip(w, _mw, _upper)
             w = w / w.sum()  # re-normalize after clipping
-        return w
+        pbw_val = float(x[4]) if (_optimize_pbw and len(x) > 4) else _pbw0
+        return w, pbw_val
 
     def loss_for_x(x: np.ndarray) -> float:
-        w = unpack_x(x)
+        w, pbw_val = unpack_x(x)
         if np.any(w < 0.0) or np.any(w > 1.0):
             return 1e6 + 1e6 * max(0.0, -w.min())
+        _current_pbw[0] = pbw_val
         return loss_for_w(w)
 
     bounds = [(_mw, _upper), (_mw, _upper), (_mw, _upper), (_mw, _upper)]
+    if _optimize_pbw:
+        bounds.append((0.0, _pbw_max))
     rng = np.random.RandomState(seed)
 
     de_res = differential_evolution(
@@ -1135,28 +1158,60 @@ def optimize_weights_for_tp_fp(
         workers=1,
     )
 
-    w_de = unpack_x(de_res.x)
+    w_de, pbw_de = unpack_x(de_res.x)
     if np.any(w_de < 0) or abs(w_de.sum() - 1.0) > 1e-6:
         w_de = w0.copy()
+        pbw_de = _pbw0
     else:
         w_de = np.clip(w_de, _mw, _upper)
         w_de = w_de / w_de.sum()
 
-    # --- Local refinement (SLSQP) on 5 vars ---
-    cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bnds = [(_mw, _upper)] * n_weights
+    _current_pbw[0] = pbw_de  # carry forward DE result
 
-    local_res = minimize(
-        loss_for_w,
-        x0=w_de,
-        method="SLSQP",
-        bounds=bnds,
-        constraints=cons,
-        options={"maxiter": maxiter_local, "ftol": 1e-9},
-    )
+    # --- Local refinement (SLSQP) on 5 simplex vars + optional pbw ---
+    if _optimize_pbw:
+        # 6-variable vector: w[0:5] = simplex weights, w[5] = pbw
+        def loss_for_slsqp(x6):
+            w5 = x6[:5]
+            _current_pbw[0] = float(x6[5])
+            return loss_for_w(w5)
 
-    w_best = np.clip(local_res.x, _mw, _upper)
-    w_best = w_best / w_best.sum()
+        cons_slsqp = [{"type": "eq", "fun": lambda x6: np.sum(x6[:5]) - 1.0}]
+        bnds_slsqp = [(_mw, _upper)] * n_weights + [(0.0, _pbw_max)]
+        x0_slsqp = np.append(w_de, pbw_de)
+
+        local_res = minimize(
+            loss_for_slsqp,
+            x0=x0_slsqp,
+            method="SLSQP",
+            bounds=bnds_slsqp,
+            constraints=cons_slsqp,
+            options={"maxiter": maxiter_local, "ftol": 1e-9},
+        )
+
+        w_best = np.clip(local_res.x[:5], _mw, _upper)
+        w_best = w_best / w_best.sum()
+        pbw_best = float(np.clip(local_res.x[5], 0.0, _pbw_max))
+    else:
+        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+        bnds = [(_mw, _upper)] * n_weights
+
+        local_res = minimize(
+            loss_for_w,
+            x0=w_de,
+            method="SLSQP",
+            bounds=bnds,
+            constraints=cons,
+            options={"maxiter": maxiter_local, "ftol": 1e-9},
+        )
+
+        w_best = np.clip(local_res.x, _mw, _upper)
+        w_best = w_best / w_best.sum()
+        pbw_best = _pbw0  # unchanged
+
+    _current_pbw[0] = pbw_best
+    if _optimize_pbw:
+        print(f"[optimize] Optimized plasmid_bonus_weight: {_pbw0:.4f} -> {pbw_best:.4f}")
 
     # summaries (both read and taxid views)
     scores_best = compute_tass_score_from_metrics(
@@ -1167,7 +1222,7 @@ def optimize_weights_for_tp_fp(
         disparity_w=float(w_best[3]),
         hmp_w=float(w_best[4]),
         alpha=alpha,
-        plasmid_bonus_w=float(plasmid_bonus_weight),
+        plasmid_bonus_w=float(pbw_best),
     )
     scores_best = np.asarray(scores_best, dtype=float)
 
@@ -1183,7 +1238,7 @@ def optimize_weights_for_tp_fp(
             "gini_weight": float(w_best[2]),
             "disparity_weight": float(w_best[3]),
             "hmp_weight": float(w_best[4]),
-            "plasmid_bonus_weight": float(plasmid_bonus_weight),
+            "plasmid_bonus_weight": float(pbw_best),
         },
         "status": "ok",
         "optimize_mode": optimize_mode,
@@ -1407,6 +1462,8 @@ def build_metrics_df_from_final_json(
         "disparity_score": "max",
         "gini_coefficient": "max",
         "hmp_percentile": "max",
+        "plasmid_score": "max",
+        "has_plasmid": "max",
         "tp_reads": "sum",
         "fp_reads": "sum",
         "total_reads": "sum",
