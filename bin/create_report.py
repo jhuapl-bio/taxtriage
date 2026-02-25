@@ -203,7 +203,7 @@ _SAMPLETYPE_CONF_MAP = {
     'sterile': 0.3,
     'blood':   0.3,
     'csf':     0.3,
-    'stool':   0.60,
+    'stool':   0.55,
     'oral':    0.6,
     'nasal':   0.65,
     'skin':    0.7,
@@ -1648,6 +1648,8 @@ def create_pdf_template(output_path, samples_dict, args):
             _meta_parts.append(f"Species groups: {_nsg}")
         story.append(Paragraph(
             f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
+        if sampletype in ['blood', 'csf', 'sterile', 'serum']:
+            story.append(Paragraph(f"<b>Sterile sampletype likely leads to lower TASS scores</b>", small_style))
         story.append(Spacer(1, 0.08*inch))
 
         species_groups = samples_dict[sample_name]

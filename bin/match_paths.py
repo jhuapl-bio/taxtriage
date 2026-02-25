@@ -340,21 +340,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.2,
+        default=0.26,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.23,
+        default=0.29,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.57,
+        default=0.45,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -628,7 +628,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 secondary_counts[read.query_name] += 1
                 continue
             primary_counts[read.query_name] += 1
-
+    # for each of the reads, check which ones have more than 1 count
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
 
@@ -667,6 +667,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
         total_reads = 0
         # check if the alignment was paired end or single end
         start_time = time.time()
+
         for read in bam_file.fetch():
 
             if read.is_unmapped:
@@ -694,10 +695,17 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             # base quality.  They ARE still counted for highmapq_fraction above
             # so the fraction reflects the full alignment picture.
             if read.mapping_quality < args.minmapq:
+                # if read.reference_name == "NC_002695.2":
+                #     print(read.mapping_quality, read)
                 allow_low_mapq = (
                     read.mapping_quality == 0
                     and secondary_counts.get(read.query_name, 0) > 0
                 )
+                # if"NC_002695.2" in read.query_name:
+                #     print(read.query_qualities)
+                #     print(help(read), read.is_mapped)
+                #     exit()
+                #     print(read.mapping_quality, read.query_name, read.reference_name, allow_low_mapq)
                 if not allow_low_mapq:
                     continue
 
@@ -1067,11 +1075,12 @@ def main():
                     except Exception as e:
                         print(f"Error in: {e}")
                 i+=1
-    reference_hits, aligned_total, total_reads = count_reference_hits(
+    reference_hits, _, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
         args=args
     )
+    # exit()
 
     mmbert_dict = dict()
     if args.microbert:

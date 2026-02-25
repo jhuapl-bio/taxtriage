@@ -1641,23 +1641,23 @@ def determine_conflicts(
                     fasta_files=fasta_files,
                     output_csv=report_path,
                     ksize=31,
-                    scaled=800,
-                    window=10_000,
-                    step=10_000,
+                    scaled=4000,
+                    window=90_000,
+                    step=90_000,
                     jaccard_threshold=sim_ani_threshold,
                     max_hits_per_query=5,
                     skip_self_same_fasta=False,
                 )
         else:
             print("Creating shared FASTA report from scratch")
-            sim_ani_threshold=0.9
+            sim_ani_threshold=0.5
             report_shared_windows_across_fastas(
                 fasta_files=fasta_files,
                 output_csv=report_path,
-                ksize=51,
-                scaled=6000,
-                window=100_000,
-                step=100_000,
+                ksize=31,
+                scaled=5000,
+                window=90_000,
+                step=90_000,
                 jaccard_threshold=sim_ani_threshold,
                 max_hits_per_query=120,
                 skip_self_same_fasta=False,
@@ -1670,8 +1670,8 @@ def determine_conflicts(
         removed_read_ids = build_removed_ids_best_alignment(
             bam_path=input_bam,
             shared_idx=shared_idx,
-            penalize_weight=1.0,
-            as_weight=0.0,
+            penalize_weight=0.9,
+            as_weight=0.1,
             drop_contigs=set(),
             drop_if_ambiguous=True,
             min_alt_count=1,
@@ -1760,12 +1760,7 @@ def determine_conflicts(
                 fp.write(f"{ref}\t{read_id}\n")
     print(f"Wrote removals: {failed_path}")
 
-    # Optional: create filtered BAM
-    if filtered_bam_create:
-        try:
-            create_filtered_bam(bam_fs, filtered_bam_create, removed_read_ids)
-        except Exception as e:
-            print(f"Filtered BAM failed: {e}")
+
 
     # Breadth before/after
     breadth_old = calculate_breadth_coverage_from_bam(bam_fs, reflengths, removed_ids={})
@@ -1849,7 +1844,12 @@ def determine_conflicts(
         )
     except Exception as e:
         print(f"Stats export failed: {e}")
-
+    # Optional: create filtered BAM
+    if filtered_bam_create:
+        try:
+            create_filtered_bam(bam_fs, filtered_bam_create, removed_read_ids)
+        except Exception as e:
+            print(f"Filtered BAM failed: {e}")
     bam_fs.close()
 
     return removed_read_ids, comparison_df
