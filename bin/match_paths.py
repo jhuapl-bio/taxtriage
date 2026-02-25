@@ -340,21 +340,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.15,
+        default=0.2,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.34,
+        default=0.23,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.51,
+        default=0.57,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -1242,6 +1242,10 @@ def main():
         _numeric_cols = [c for c in ['Total Reads', 'Pass Filtered Reads', 'Δ All',
                          'Reference Length'] if c in _cdf.columns]
         _wavg_cols = ['Δ All%', 'Δ^-1 Breadth', 'Breadth Original', 'Breadth New']
+        # Force all numeric columns to numeric dtype (some may arrive as strings)
+        for _nc in _numeric_cols + _wavg_cols:
+            if _nc in _cdf.columns:
+                _cdf[_nc] = pd.to_numeric(_cdf[_nc], errors='coerce').fillna(0)
         _grouped = _cdf.groupby('subkey')
         _sums = _grouped[_numeric_cols].sum()
         # Read-weighted averages for ratio/percentage columns
