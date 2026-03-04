@@ -537,7 +537,14 @@ def import_pathogens(pathogens_file):
 
     # No need to explicitly close the file, `with` statement handles it.
     return pathogens_dict
+def normalize_weights(weights):
+    total = sum(weights.values())
 
+    if total == 0:
+        # Avoid division by zero
+        return {k: 0 for k in weights}
+
+    return {k: v / total for k, v in weights.items()}
 def import_k2_file(filename):
     """Import the Kraken2 output file with parent-child relationships based on name indentation"""
 
@@ -918,13 +925,8 @@ def main():
         'diamond_identity': args.diamond_identity_weight,
         "k2_disparity_score_weight": args.k2_disparity_weight,
     }
-    total_weight = sum(weights.values())
-    if total_weight != 1:
-        for key in weights:
-            if total_weight != 0:
-                weights[key] = weights[key] / total_weight
-            else:
-                weights[key] = 0
+    # total_weight = sum(weights.values())
+    weights = normalize_weights(weights)
     # Plasmid bonus is additive — added AFTER normalization so it doesn't
     # dilute the core weights.  Set to 0 to disable.
     weights['plasmid_bonus_weight'] = args.plasmid_bonus_weight

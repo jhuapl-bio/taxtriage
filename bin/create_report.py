@@ -1831,7 +1831,9 @@ def create_pdf_template(output_path, samples_dict, args):
         story.append(Paragraph(
             f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
         if sampletype in ['blood', 'csf', 'sterile', 'serum']:
-            story.append(Paragraph(f"<b>Sterile sampletype likely leads to lower TASS scores</b>", small_style))
+            story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} sample likely leads to lower TASS scores due to relatively low read count or coverage of organisms. All pathogens are defaulted to primary pathogens.</font>", small_style))
+            if sampletype != "blood":
+                story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} follows the same anticipated clinical distribution as blood samples.</font>", small_style))
 
         # ── Check if any qualifying strains have below-threshold zscore ───
         # If so, add a note explaining the diamond symbol and faded rows.
