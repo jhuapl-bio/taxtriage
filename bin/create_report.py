@@ -137,6 +137,29 @@ class FinalizeOutlines(Flowable):
         self.collector.flush_sorted(self.canv)
 
 
+class PageTracker(Flowable):
+    """Zero-size flowable that records ``(page_index, y_position)`` when drawn.
+
+    ``page_index`` is 0-based so it aligns with pikepdf's ``pdf.pages``
+    indexing.  ``y_position`` is in PDF user-space points measured from the
+    bottom of the page (standard PDF coordinate system).
+    """
+
+    width = 0
+    height = 0
+
+    def __init__(self, record_dict, key):
+        super().__init__()
+        self._record = record_dict
+        self._key = key
+
+    def draw(self):
+        # ReportLab page numbers start at 1; convert to 0-based for pikepdf
+        pg = self.canv.getPageNumber() - 1
+        y = self.canv._y          # current Y in PDF points (0 = page bottom)
+        self._record[self._key] = (pg, y)
+
+
 def get_high_ani_matches(member):
     """Return the pre-computed high-ANI match list embedded in the member dict.
 
@@ -213,18 +236,48 @@ _SAMPLETYPE_CONF_MAP = {
 _DEFAULT_CONF = 0.5
 
 
-def get_sample_min_conf(sample_name, species_groups, explicit_conf):
-    """Return the effective min_conf for a sample.
+def get_sample_min_conf(sample_name, species_groups, explicit_conf,
+                        input_metadata=None):
+    """Return ``(min_conf, source_label)`` for a sample.
 
-    If the user explicitly set ``--min_conf``, that value is used for every
-    sample.  Otherwise the threshold is derived from the sample's body-site
-    type via ``normalize_body_site``.
+    Resolution order:
+
+    1. ``--min_conf`` CLI flag (user-provided, overrides everything).
+    2. ``best_cutoffs`` from the per-sample metadata written by
+       ``match_paths.py`` (derived from the thresholds JSON).
+       We prefer the **toplevelkey** cutoff because the report groups
+       organisms at that level.
+    3. Hard-coded ``_SAMPLETYPE_CONF_MAP`` based on the body-site type.
+
+    *source_label* is a human-readable string describing where the value
+    came from (displayed in the report header).
     """
+    # 1. Explicit CLI flag
     if explicit_conf is not None:
-        return explicit_conf
+        return explicit_conf, "user-specified (--min_conf)"
+
+    # 2. Best cutoff from thresholds JSON (via match_paths metadata)
+    meta = (input_metadata or {}).get(sample_name, {})
+    best_cutoffs = meta.get('best_cutoffs')
+    if best_cutoffs:
+        # Use the preferred granularity from match_paths (default: subkey),
+        # then fall back through the remaining levels.
+        _pref = meta.get('preferred_granularity', 'subkey')
+        _fallback_order = [_pref] + [
+            g for g in ("subkey", "key", "toplevelkey") if g != _pref
+        ]
+        for _level in _fallback_order:
+            _lc = best_cutoffs.get(_level, {})
+            _bt = _lc.get("best_threshold") if isinstance(_lc, dict) else None
+            if _bt is not None:
+                _src = meta.get('best_cutoffs_source', 'thresholds JSON')
+                return float(_bt), f"derived from optimised thresholds ({', '.join(_src.split('|'))}, {_level})"
+
+    # 3. Sampletype-based defaults
     raw_st = (species_groups[0].get('sampletype', '') if species_groups else '').strip()
     norm_st = normalize_body_site(raw_st.lower()) if raw_st else 'unknown'
-    return _SAMPLETYPE_CONF_MAP.get(norm_st, _DEFAULT_CONF)
+    conf = _SAMPLETYPE_CONF_MAP.get(norm_st, _DEFAULT_CONF)
+    return conf, f"default for sample type '{norm_st}'"
 
 
 def load_json_samples(input_files):
@@ -422,7 +475,9 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                                   sample_total_reads=0, sample_name=None,
                                   available_width=None, use_subkey=True,
                                   show_strains_table=True,
-                                  outline_collector=None):
+                                  outline_collector=None,
+                                  zscore_threshold=None,
+                                  zscore_separator_index=None):
     """
     Create a single table combining all strains from all species groups.
 
@@ -441,6 +496,15 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         wordWrap='CJK')
     data_style = ParagraphStyle(
         'DataStyle', parent=small_style, fontSize=8, leading=9,
+        wordWrap='CJK')
+    strain_name_style_small = ParagraphStyle(
+        'StrainNameSmall', parent=small_style, fontSize=8, leading=9,
+        wordWrap='CJK')
+    data_style_small = ParagraphStyle(
+        'DataStyleSmall', parent=small_style, fontSize=7, leading=8,
+        wordWrap='CJK')
+    ani_style_small = ParagraphStyle(
+        'ANIStyleSmall', parent=small_style, fontSize=5, leading=7,
         wordWrap='CJK')
     ani_style = ParagraphStyle(
         'ANIStyle', parent=small_style, fontSize=6, leading=8,
@@ -645,6 +709,32 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 best_dmnd = c_v if best_dmnd is None else max(best_dmnd, c_v)
         if best_dmnd is not None:
             group_dmnd_cds_max[gk] = best_dmnd
+    # ── Z-score separator tracking ───────────────────────────────────────────
+    # When zscore_threshold is set, we insert a visual separator row between
+    # the last "elevated abundance" group (zscore >= threshold) and the first
+    # "within expected bounds" group.  Pre-compute which groups are elevated.
+    _zscore_elevated_groups = set()
+    _any_elevated = False
+    _any_normal = False
+    if zscore_threshold is not None:
+        for s in all_strains:
+            sg = species_group_map[id(s)]
+            gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            # Check zscore on both the group and the member; take the max
+            gz = max(float(sg.get('zscore', 0) or 0),
+                     float(s.get('zscore', 0) or 0))
+            if gz >= zscore_threshold:
+                _zscore_elevated_groups.add(gk)
+        _any_elevated = bool(_zscore_elevated_groups)
+        # Check if there are any normal groups too (need both sides for a separator)
+        for s in all_strains:
+            sg = species_group_map[id(s)]
+            gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            if gk not in _zscore_elevated_groups:
+                _any_normal = True
+                break
+    _zscore_separator_inserted = False
+
     i = 0
     while i < len(all_strains):
         strain = all_strains[i]
@@ -653,6 +743,36 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         # ── Species group header row ──────────────────────────────────────────
         if current_species_key != species_key:
+            # ── Insert z-score separator if transitioning from elevated to normal ──
+            if (_any_elevated and _any_normal
+                    and not _zscore_separator_inserted
+                    and species_key not in _zscore_elevated_groups):
+                # Insert a visual divider row
+                sep_label = (
+                    f'<i>— Below: organisms within expected abundance '
+                    f'(z-score &lt; {zscore_threshold}) —</i>'
+                )
+                sep_style = ParagraphStyle(
+                    'ZScoreSep', parent=small_style, fontSize=8, leading=10,
+                    alignment=TA_CENTER, fontName='Helvetica-Oblique',
+                    textColor=colors.HexColor('#666666'))
+                sep_row = [''] * n_total
+                sep_row[1] = Paragraph(sep_label, sep_style)
+                table_data.append(sep_row)
+                # Span the label across all columns except the indicator
+                table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
+                table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
+                                     colors.HexColor('#F5F5F5')))
+                table_styles.append(('LINEABOVE', (0, row_idx), (-1, row_idx),
+                                     2.0, colors.HexColor('#999999')))
+                table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx),
+                                     0.5, colors.HexColor('#CCCCCC')))
+                table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
+                table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 6))
+                table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'CENTER'))
+                row_idx += 1
+                _zscore_separator_inserted = True
+
             current_species_key = species_key
             emitted_subkeys_per_group[species_key] = set()
 
@@ -780,6 +900,15 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             is_hc = best.get('high_cons', False)
             indicator_text = '★' if is_hc else ''
 
+            # ── Early per-row zscore check (needed before building name HTML) ─
+            _row_below_zscore = False
+            if zscore_threshold is not None:
+                _all_member_zscores = [float(best.get('zscore', 0) or 0)]
+                _all_member_zscores.extend(
+                    float(m.get('zscore', 0) or 0) for m in subkey_members)
+                _row_max_z = max(_all_member_zscores)
+                _row_below_zscore = _row_max_z < zscore_threshold
+
             best_key = best.get('key', '')
 
             # Count total visible members in this species group to decide
@@ -807,10 +936,11 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 display_name = best.get('name', 'Unknown')
                 display_key = best_key
             # Base name HTML (arrow suffix added below once we know if one is needed)
+            _zscore_sym = ' <font color="#999999">&#9830;</font>' if _row_below_zscore else ''
             name_html_base = (
                 f'{display_name} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={display_key}" '
-                f'color="blue">{display_key}</link>)'
+                f'color="blue">{display_key}</link>){_zscore_sym}'
             )
 
             # ── Determine whether sub-level strains exist ──────────────────────
@@ -873,17 +1003,23 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 else:
                     high_ani_text = Paragraph("-", ani_style)
 
+            row_name_style = strain_name_style_small if _row_below_zscore else strain_name_style
+            row_data_style = data_style_small if _row_below_zscore else data_style
+            row_ani_style = ani_style_small if _row_below_zscore else ani_style
+
             row = [
                 indicator_text,
-                Paragraph(name_html, strain_name_style),
-                Paragraph(f"{best.get('tass_score', 0)*100:.1f}", data_style),
+                Paragraph(name_html, row_name_style),
+                Paragraph(f"{best.get('tass_score', 0)*100:.1f}", row_data_style),
             ]
             if show_k2_column:
-                row.append(Paragraph(f"{best.get('k2_reads', 0):,.0f}", data_style))
-            row.append(Paragraph(f"{strain_reads:,.0f} ({pct:.1f}%)", data_style))
-            row.append(Paragraph(f"{rpm:,.0f}", data_style))
-            row.append(Paragraph(f"{min(100, best.get('coverage', 0)*100):.1f}%", data_style))
+                row.append(Paragraph(f"{best.get('k2_reads', 0):,.0f}", row_data_style))
+            row.append(Paragraph(f"{strain_reads:,.0f} ({pct:.1f}%)", row_data_style))
+            row.append(Paragraph(f"{rpm:,.0f}", row_data_style))
+            row.append(Paragraph(f"{min(100, best.get('coverage', 0)*100):.1f}%", row_data_style))
             if show_ani_column:
+                if isinstance(high_ani_text, Paragraph) and _row_below_zscore:
+                    high_ani_text = Paragraph(high_ani_text.text, row_ani_style)
                 row.append(high_ani_text)
 
             # ── Right detail column (inline mini-table, show_strains_table only) ─
@@ -934,14 +1070,28 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             print(f"  Row {row_idx}: [sk={sk}] {best.get('name', '')[:40]} "
                   f"({len(subkey_members)} member(s)) - Cat: {microbial_category}")
 
-            ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
-            row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
+            # ── Per-row zscore opacity: fade rows whose member-level zscore
+            # is below the threshold (acceptable / within expected abundance).
+            # _row_below_zscore was computed earlier (before name HTML building).
+            if _row_below_zscore:
+                ind_color = get_category_color(microbial_category, ann_class, alpha=0.35)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.05)
+            else:
+                ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
             table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
             table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
+            if _row_below_zscore:
+                table_styles.append(('TEXTCOLOR', (1, row_idx), (-1, row_idx),
+                                     colors.Color(0.6, 0.6, 0.6, 1)))
+                table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 3))
+                table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 3))
+                table_styles.append(('FONTSIZE', (1, row_idx), (-1, row_idx), 7))
             # Horizontal separator below each strain row with padding
             table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1.5, colors.HexColor('#CCCCCC')))
-            table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
-            table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
+            if not _row_below_zscore:
+                table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
+                table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
             row_idx += 1
             i += 1
 
@@ -952,11 +1102,18 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             is_hc = strain.get('high_cons', False)
             indicator_text = '★' if is_hc else ''
 
+            # ── Early per-row zscore check (flat mode) ────────────────────
+            _row_below_zscore = False
+            if zscore_threshold is not None:
+                _strain_z = float(strain.get('zscore', 0) or 0)
+                _row_below_zscore = _strain_z < zscore_threshold
+
             strain_key = strain.get('key', '')
+            _zscore_sym = ' <font color="#999999">&#9671;</font>' if _row_below_zscore else ''
             name_html = (
                 f'{strain.get("name", "Unknown")} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
-                f'color="blue">{strain_key}</link>)'
+                f'color="blue">{strain_key}</link>){_zscore_sym}'
             )
 
             high_ani_text = ''
@@ -985,17 +1142,23 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
             rpm = strain.get('rpm', 0) or 0
 
+            row_name_style = strain_name_style_small if _row_below_zscore else strain_name_style
+            row_data_style = data_style_small if _row_below_zscore else data_style
+            row_ani_style = ani_style_small if _row_below_zscore else ani_style
+
             row = [
                 indicator_text,
-                Paragraph(name_html, strain_name_style),
-                Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style),
+                Paragraph(name_html, row_name_style),
+                Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", row_data_style),
             ]
             if show_k2_column:
-                row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))
-            row.append(Paragraph(f"{strain_reads:,.0f} ({pct:.1f}%)", data_style))
-            row.append(Paragraph(f"{rpm:,.0f}", data_style))
-            row.append(Paragraph(f"{min(100, strain.get('coverage', 0)*100):.1f}%", data_style))
+                row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", row_data_style))
+            row.append(Paragraph(f"{strain_reads:,.0f} ({pct:.1f}%)", row_data_style))
+            row.append(Paragraph(f"{rpm:,.0f}", row_data_style))
+            row.append(Paragraph(f"{min(100, strain.get('coverage', 0)*100):.1f}%", row_data_style))
             if show_ani_column:
+                if isinstance(high_ani_text, Paragraph) and _row_below_zscore:
+                    high_ani_text = Paragraph(high_ani_text.text, row_ani_style)
                 row.append(high_ani_text)
 
             table_data.append(row)
@@ -1003,14 +1166,27 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             print(f"  Row {row_idx}: {strain.get('name', 'Unknown')[:40]} "
                   f"- Category: {microbial_category}, Class: {ann_class}")
 
-            ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
-            row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
+            # ── Per-row zscore opacity (flat mode) ────────────────────────
+            # _row_below_zscore was computed earlier (before name HTML building).
+            if _row_below_zscore:
+                ind_color = get_category_color(microbial_category, ann_class, alpha=0.35)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.05)
+            else:
+                ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
             table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
             table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
+            if _row_below_zscore:
+                table_styles.append(('TEXTCOLOR', (1, row_idx), (-1, row_idx),
+                                     colors.Color(0.6, 0.6, 0.6, 1)))
+                table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 3))
+                table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 3))
+                table_styles.append(('FONTSIZE', (1, row_idx), (-1, row_idx), 7))
             # Horizontal separator below each strain row with padding
             table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1.5, colors.HexColor('#CCCCCC')))
-            table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
-            table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
+            if not _row_below_zscore:
+                table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
+                table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
             row_idx += 1
             i += 1
 
@@ -1319,7 +1495,10 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             )
 
             strain_reads = float(strain.get('numreads', 0) or 0)
-            sample_total = max(1, sum(
+            # Use total reads from metadata (includes unaligned) when available
+            _det_smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+            _det_meta_total = _det_smeta.get('total_reads')
+            sample_total = max(1, int(_det_meta_total) if _det_meta_total else sum(
                 sg2.get('numreads', 0)
                 for sg2 in samples_dict.get(sample_name, [])
             ))
@@ -1634,9 +1813,12 @@ def create_pdf_template(output_path, samples_dict, args):
                                  f'Sample: {sample_name}{_plat_str}', level=0, closed=True,
                                  collector=outline_collector))
         story.append(Paragraph(f"Sample: {sample_name}{_plat_str} ({sampletype})", heading_style))
-        # Sample metadata line: TASS cutoff + platform + read stats from input metadata
+        # Sample metadata line: TASS cutoff + source + platform + read stats from input metadata
         _smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
-        _meta_parts = [f"TASS cutoff: {_mc}"]
+        _conf_src = getattr(args, '_sample_conf_source', {}).get(sample_name, '')
+        _meta_parts = [f"TASS cutoff: <b>{_mc:.2f}</b>"]
+        if _conf_src:
+            _meta_parts.append(f"Source: {_conf_src}")
         _tr = _smeta.get('total_reads')
         _ar = _smeta.get('aligned_reads')
         if _tr is not None:
@@ -1650,16 +1832,44 @@ def create_pdf_template(output_path, samples_dict, args):
             f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
         if sampletype in ['blood', 'csf', 'sterile', 'serum']:
             story.append(Paragraph(f"<b>Sterile sampletype likely leads to lower TASS scores</b>", small_style))
+
+        # ── Check if any qualifying strains have below-threshold zscore ───
+        # If so, add a note explaining the diamond symbol and faded rows.
+        _zt_note = args.zscore_threshold
+        if _zt_note is not None:
+            _has_low_z = False
+            for sg in samples_dict[sample_name]:
+                for m in sg.get('members', []):
+                    mz = float(m.get('zscore', 0) or 0)
+                    if mz < _zt_note:
+                        _has_low_z = True
+                        break
+                if _has_low_z:
+                    break
+            if _has_low_z:
+                story.append(Paragraph(
+                    f'<font color="#666666">&#9830; Rows marked with a diamond '
+                    f'(&#9830;) and faded styling indicate organisms whose abundance '
+                    f'z-score is below the threshold of {_zt_note}. These organisms '
+                    f'are within expected abundance ranges for this sample type and '
+                    f'are less likely to be clinically significant.</font>',
+                    small_style))
+
         story.append(Spacer(1, 0.08*inch))
 
         species_groups = samples_dict[sample_name]
-        sample_total_reads = sum(sg.get('numreads', 0) for sg in species_groups)
+        # Use total reads from metadata (includes unaligned) when available;
+        # fall back to sum of aligned reads across species groups.
+        _smeta_reads = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _meta_total = _smeta_reads.get('total_reads')
+        sample_total_reads = int(_meta_total) if _meta_total else sum(sg.get('numreads', 0) for sg in species_groups)
 
         # ── Filter members first, THEN sort groups by best visible TASS ─────
         all_sample_strains = []
         species_group_map = {}
         # Collect qualifying strains per group so we can sort by post-filter TASS
         _group_qualified = []  # list of (sg, [qualifying strains])
+        _zt = args.zscore_threshold
         for sg in species_groups:
             group_strains = []
             for strain in sg.get('members', []):
@@ -1668,15 +1878,39 @@ def create_pdf_template(output_path, samples_dict, args):
                         group_strains.append(strain)
             if group_strains:
                 group_strains.sort(key=lambda s: s.get('tass_score', 0), reverse=True)
+                if _zt is not None:
+                    _z_vals = [float(s.get('zscore', 0) or 0) for s in group_strains]
+                    _has_hi = any(z >= _zt for z in _z_vals)
+                    _has_lo = any(z < _zt for z in _z_vals)
+                    if _has_hi and _has_lo:
+                        group_strains.sort(
+                            key=lambda s: (
+                                float(s.get('zscore', 0) or 0) < _zt,
+                                -float(s.get('tass_score', 0) or 0)
+                            )
+                        )
                 _group_qualified.append((sg, group_strains))
+
+        # ── Sort: elevated z-score groups first, then by TASS / alpha ─────
+        def _group_zscore(pair):
+            """Max zscore across the group-level and all qualifying members."""
+            sg, strains = pair
+            vals = [float(sg.get('zscore', 0) or 0)]
+            vals.extend(float(s.get('zscore', 0) or 0) for s in strains)
+            return max(vals)
 
         if args.sort_alphabetical:
             _group_qualified.sort(key=lambda pair: pair[0].get('toplevelname', 'Unknown'))
         else:
-            # Sort by the best qualifying member's TASS (what the user sees)
             _group_qualified.sort(
                 key=lambda pair: pair[1][0].get('tass_score', 0) if pair[1] else 0,
                 reverse=True)
+
+        # Partition: elevated zscore groups come first (preserving order within)
+        if _zt is not None:
+            _elevated = [p for p in _group_qualified if _group_zscore(p) >= _zt]
+            _normal = [p for p in _group_qualified if _group_zscore(p) < _zt]
+            _group_qualified = _elevated + _normal
 
         sorted_groups = [sg for sg, _ in _group_qualified]
 
@@ -1701,6 +1935,7 @@ def create_pdf_template(output_path, samples_dict, args):
                 use_subkey=use_subkey,
                 show_strains_table=show_strains_table,
                 outline_collector=outline_collector,
+                zscore_threshold=args.zscore_threshold,
             )
             story.append(combined_table)
         else:
@@ -1766,7 +2001,7 @@ def create_pdf_template(output_path, samples_dict, args):
         "• <b>Detected Organism:</b> The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
         "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest value.",
         "• <b>K2 Reads:</b> The number of reads classified by Kraken2, a tool for taxonomic classification of sequencing data.",
-        "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome. (%) refers to all alignments for that species across the entire sample.",
+        "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome. (%) refers to the percentage of total reads in the sample aligned to that species.",
         "• <b>RPM:</b> Reads Per Million (RPM). This normalized metric allows for comparison of abundance across samples and organisms of different sizes.",
         "• <b>Cov.:</b> The coverage of the organism's genome by aligned reads, expressed as a percentage.",
         "• <b>Strain Detail Columns (subkey mode):</b> When subkey grouping is enabled (default), the rightmost section shows each individual strain within the subkey group — its name, TASS score, and read count. The main row values are taken from the highest-confidence (best-TASS) member of that subkey group. Pass <b>--no_subkey</b> to disable this and revert to one row per strain.",
@@ -1827,7 +2062,7 @@ def create_pdf_template(output_path, samples_dict, args):
     story.append(Spacer(1, 0.01*inch))
     story.append(Paragraph(
         "Read amounts are represented as the <b>total number of aligned reads</b> of sufficient "
-        "mapping quality <b>(% aligned for all reads in sample)</b>.", metadata_style))
+        "mapping quality <b>(% relative to total reads in sample)</b>.", metadata_style))
     story.append(Spacer(1, 0.01*inch))
     story.append(Paragraph(
         "If there are questions or issues with your report, please open an issue on GitHub as a "
@@ -1877,7 +2112,11 @@ def create_tabular_output(output_path, samples_dict, args):
         else:
             sorted_groups = sorted(species_groups, key=_max_member_tass, reverse=True)
 
-        sample_total_reads = max(1, sum(sg.get('numreads', 0) for sg in species_groups))
+        # Use total reads from metadata (includes unaligned) when available;
+        # fall back to sum of aligned reads across species groups.
+        _tab_smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _tab_meta_total = _tab_smeta.get('total_reads')
+        sample_total_reads = max(1, int(_tab_meta_total) if _tab_meta_total else sum(sg.get('numreads', 0) for sg in species_groups))
 
         for sg in sorted_groups:
             group_key = sg.get('toplevelkey', sg.get('key', ''))
@@ -1994,6 +2233,12 @@ def parse_args():
         "--max_toc", metavar="MAX_TOC", required=False, type=int, default=4,
         help="Maximum number of species groups to show in TOC per sample. Default: 4",
     )
+    parser.add_argument(
+        "--zscore_threshold", metavar="ZSCORE", required=False, type=float, default=2.0,
+        help="HMP abundance z-score threshold. Organisms with zscore >= this value "
+             "are shown above a visual separator in the primary table as 'elevated abundance'. "
+             "Those below are listed underneath. Default: 2.0.",
+    )
     parser.add_argument("--show_commensals", action="store_true", required=False,
                         help="Show the commensals table")
     parser.add_argument("--show_unidentified", action="store_true", required=False,
@@ -2106,11 +2351,18 @@ def main():
     # cutoff based on body-site type. If the user explicitly set --min_conf,
     # that value is applied uniformly to all samples.
     sample_min_conf = {}
+    sample_conf_source = {}
     for sname, sgroups in samples_dict.items():
-        sample_min_conf[sname] = get_sample_min_conf(sname, sgroups, args.min_conf)
-        print(f"  Sample '{sname}' min_conf = {sample_min_conf[sname]}")
+        _conf, _src = get_sample_min_conf(
+            sname, sgroups, args.min_conf,
+            input_metadata=_per_sample_meta,
+        )
+        sample_min_conf[sname] = _conf
+        sample_conf_source[sname] = _src
+        print(f"  Sample '{sname}' min_conf = {_conf}  ({_src})")
     # Store on args so downstream functions can access it
     args._sample_min_conf = sample_min_conf
+    args._sample_conf_source = sample_conf_source
 
     print(f"\nConfiguration:")
     print(f"  Output PDF: {args.output}")

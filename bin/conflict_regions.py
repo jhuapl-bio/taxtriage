@@ -25,6 +25,7 @@ import random
 import statistics
 import time
 from collections import defaultdict, Counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -414,6 +415,28 @@ def fast_mode_sbt(
     return sum_comparisons
 
 
+def load_region_comparisons_csv(csv_path: str) -> Dict[str, List[dict]]:
+    """Reload sum_comparisons from a previously-written region_comparisons.csv.
+
+    This mirrors the dict structure produced by fast_mode_sbt so that
+    build_conflict_groups can consume it directly.
+    """
+    sum_comparisons: Dict[str, List[dict]] = defaultdict(list)
+    with open(csv_path, "r", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            r1 = row["reference1"]
+            s1 = int(row["start1"])
+            e1 = int(row["end1"])
+            r2 = row["reference2"]
+            s2 = int(row["start2"])
+            e2 = int(row["end2"])
+            j = float(row["jaccard"])
+            sum_comparisons[r1].append(dict(jaccard=j, to=r2, s1=s1, e1=e1, s2=s2, e2=e2))
+            sum_comparisons[r2].append(dict(jaccard=j, to=r1, s1=s2, e1=e2, s2=s1, e2=e1))
+    return sum_comparisons
+
+
 def build_conflict_groups(sum_comparisons: Dict[str, List[dict]], min_jaccard: float = 0.0) -> List[set]:
     """Connected components on region nodes using jaccard>=min_jaccard edges."""
     from collections import deque
@@ -469,6 +492,14 @@ def parse_window_id(wid: str) -> Tuple[str, str, int, int]:
     s, e = coords.split("-", 1)
     return fasta_label, contig, int(s), int(e)
 
+def _sketch_window(args):
+    """Top-level worker: sketch a single window (must be picklable for ProcessPoolExecutor)."""
+    wid, subseq, ksize, scaled = args
+    mh = MinHash(n=0, ksize=ksize, scaled=scaled)
+    mh.add_sequence(subseq, force=True)
+    return wid, SourmashSignature(mh, name=wid)
+
+
 def window_sigs_from_fasta(
     fasta_path: str,
     *,
@@ -479,13 +510,24 @@ def window_sigs_from_fasta(
     step: int = 500,
     max_n_frac: float = 0.05,
     contigs: Optional[List[str]] = None,
+    n_jobs: Optional[int] = None,
 ) -> Dict[str, SourmashSignature]:
-    """Sketch fixed windows across contigs; if contig shorter than window, sketch the full contig once."""
+    """Sketch fixed windows across contigs; if contig shorter than window, sketch the full contig once.
+
+    Parameters
+    ----------
+    n_jobs : int or None
+        Number of parallel workers for sketching.  ``None`` (default) uses all CPUs.
+        Set to 1 to disable parallelism.
+    """
     if fasta_label is None:
         fasta_label = os.path.basename(fasta_path)
+    if n_jobs is None:
+        n_jobs = os.cpu_count() or 1
 
+    # ── Serial I/O: read all sequences and collect window tasks ──────────
     fa = pysam.FastaFile(fasta_path)
-    sigs: Dict[str, SourmashSignature] = {}
+    tasks = []  # (wid, subseq, ksize, scaled)
 
     contig_list = contigs if contigs is not None else list(fa.references)
     for contig in contig_list:
@@ -495,31 +537,38 @@ def window_sigs_from_fasta(
         seq = fa.fetch(contig).upper()
         L = len(seq)
 
-        # If contig is too short to even sketch, skip
         if L < ksize:
             continue
 
-        # Adaptive window: if contig shorter than window, do ONE window spanning the contig
         if L < window:
-            windows = [(0, L)]
+            win_list = [(0, L)]
         else:
-            windows = list(iter_windows(L, window, step))
+            win_list = list(iter_windows(L, window, step))
 
-        for s, e in windows:
+        for s, e in win_list:
             subseq = seq[s:e]
             if len(subseq) < ksize:
                 continue
             if max_n_frac is not None and max_n_frac >= 0:
                 if subseq.count("N") / len(subseq) > max_n_frac:
                     continue
-
-            mh = MinHash(n=0, ksize=ksize, scaled=scaled)
-            mh.add_sequence(subseq, force=True)
-
             wid = make_window_id(fasta_label, contig, s, e)
-            sigs[wid] = SourmashSignature(mh, name=wid)
+            tasks.append((wid, subseq, ksize, scaled))
 
     fa.close()
+
+    # ── Parallel CPU-bound sketching ─────────────────────────────────────
+    sigs: Dict[str, SourmashSignature] = {}
+
+    if len(tasks) <= 50 or n_jobs <= 1:
+        for t in tasks:
+            wid, sig = _sketch_window(t)
+            sigs[wid] = sig
+    else:
+        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
+            for wid, sig in pool.map(_sketch_window, tasks, chunksize=max(1, len(tasks) // (n_jobs * 4))):
+                sigs[wid] = sig
+
     return sigs
 
 
@@ -529,6 +578,86 @@ def build_sbt(sigs: Dict[str, SourmashSignature], ksize: int) -> SBT:
     for wid, sig in sigs.items():
         sbt.add_node(SigLeaf(wid, sig))
     return sbt
+
+
+# ---- helpers for parallel report_shared_windows_across_fastas ----
+
+def _generate_sigs_for_fasta(args):
+    """Top-level worker for parallel signature generation (must be picklable).
+
+    When called from a ProcessPoolExecutor (multi-FASTA path), n_jobs_inner
+    should be 1 to avoid nested pools.  When called from the serial path,
+    n_jobs_inner enables intra-file parallelism.
+    """
+    fp, ksize, scaled, window, step, max_windows_per_fasta, n_jobs_inner = args
+    label = os.path.basename(fp)
+    sigs = window_sigs_from_fasta(
+        fp, fasta_label=label, ksize=ksize, scaled=scaled,
+        window=window, step=step, n_jobs=n_jobs_inner,
+    )
+    if max_windows_per_fasta is not None and len(sigs) > max_windows_per_fasta:
+        sigs = dict(list(sigs.items())[:max_windows_per_fasta])
+    return sigs
+
+
+def _search_chunk(args):
+    """Top-level worker: compare a chunk of query windows against all target sigs.
+
+    Rebuilds MinHash objects once per target (cached for the chunk) and once per
+    query, then does brute-force Jaccard comparison.
+    """
+    (query_items, target_items, jaccard_threshold, max_hits_per_query,
+     skip_self_same_fasta, skip_self_same_contig) = args
+
+    # Pre-build all target MinHash objects once for this worker
+    target_mhs = {}
+    target_parsed = {}
+    for m_wid, m_mh_hashes, m_mh_ksize, m_mh_scaled in target_items:
+        mh_m = MinHash(n=0, ksize=m_mh_ksize, scaled=m_mh_scaled)
+        mh_m.add_many(m_mh_hashes)
+        if mh_m:
+            target_mhs[m_wid] = mh_m
+            target_parsed[m_wid] = parse_window_id(m_wid)
+
+    results = []
+    for q_wid, q_mh_hashes, q_mh_ksize, q_mh_scaled in query_items:
+        q_fa, q_contig, q_s, q_e = parse_window_id(q_wid)
+
+        mh_q = MinHash(n=0, ksize=q_mh_ksize, scaled=q_mh_scaled)
+        mh_q.add_many(q_mh_hashes)
+
+        if not mh_q:
+            continue
+
+        hits = []
+        for m_wid, mh_m in target_mhs.items():
+            if m_wid == q_wid:
+                continue
+
+            m_fa, m_contig, m_s, m_e = target_parsed[m_wid]
+
+            if skip_self_same_fasta and (m_fa == q_fa):
+                continue
+            if skip_self_same_contig and (m_fa == q_fa and m_contig == q_contig):
+                continue
+
+            j = mh_q.jaccard(mh_m)
+            if j < jaccard_threshold:
+                continue
+
+            c1 = mh_q.avg_containment(mh_m)
+            c2 = mh_m.avg_containment(mh_q)
+            hits.append((j, m_fa, m_contig, m_s, m_e, c1, c2))
+
+        if not hits:
+            continue
+        hits.sort(key=lambda x: x[0], reverse=True)
+        hits = hits[:max_hits_per_query]
+
+        for (j, m_fa, m_contig, m_s, m_e, c1, c2) in hits:
+            results.append((q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, j, c1, c2))
+
+    return results
 
 
 def report_shared_windows_across_fastas(
@@ -544,101 +673,103 @@ def report_shared_windows_across_fastas(
     skip_self_same_fasta: bool = True,
     skip_self_same_contig: bool = True,
     max_windows_per_fasta: Optional[int] = None,
+    n_jobs: Optional[int] = None,
 ) -> None:
-    """Sketch windows for each FASTA, index in SBT, then report cross-fasta hits."""
+    """Sketch windows for each FASTA, then report cross-fasta hits (parallelized).
+
+    Parameters
+    ----------
+    n_jobs : int or None
+        Number of parallel workers.  ``None`` (default) uses all available CPUs.
+    """
+    if n_jobs is None:
+        n_jobs = os.cpu_count() or 1
+
+    _CSV_HEADER = [
+        "query_fasta", "query_contig", "q_start", "q_end",
+        "match_fasta", "match_contig", "m_start", "m_end",
+        "jaccard", "containment_q_in_m", "containment_m_in_q",
+    ]
+
+    # ── Phase 1: parallel signature generation ──────────────────────────
     all_sigs: Dict[str, SourmashSignature] = {}
 
-    for fp in fasta_files:
-        label = os.path.basename(fp)
-        sigs = window_sigs_from_fasta(
-            fp,
-            fasta_label=label,
-            ksize=ksize,
-            scaled=scaled,
-            window=window,
-            step=step,
-        )
-        if max_windows_per_fasta is not None and len(sigs) > max_windows_per_fasta:
-            sigs = dict(list(sigs.items())[:max_windows_per_fasta])
-        all_sigs.update(sigs)
+    # Multi-FASTA: parallelize across files (inner sketching is serial to avoid nested pools).
+    # Single-FASTA or serial: parallelize across windows inside each file.
+    multi_fasta = len(fasta_files) > 1 and n_jobs > 1
+    n_jobs_inner = 1 if multi_fasta else n_jobs
+
+    worker_args = [
+        (fp, ksize, scaled, window, step, max_windows_per_fasta, n_jobs_inner)
+        for fp in fasta_files
+    ]
+
+    if not multi_fasta:
+        # Serial across files, but each file parallelizes its own windows
+        for wa in tqdm(worker_args, desc="Sketching FASTAs", unit="file"):
+            all_sigs.update(_generate_sigs_for_fasta(wa))
+    else:
+        with ProcessPoolExecutor(max_workers=min(n_jobs, len(fasta_files))) as pool:
+            futures = {pool.submit(_generate_sigs_for_fasta, wa): wa for wa in worker_args}
+            for fut in tqdm(as_completed(futures), total=len(futures),
+                           desc="Sketching FASTAs", unit="file"):
+                all_sigs.update(fut.result())
+
+    print(f"  Generated {len(all_sigs)} window signatures from {len(fasta_files)} FASTAs")
 
     if not all_sigs:
-        # still write a valid CSV with header so downstream loading is safe
-        print(f"WARNING: No window signatures generated; skipping shared-window comparisons (check window/step/ksize and FASTA content).")
+        print("WARNING: No window signatures generated; skipping shared-window comparisons "
+              "(check window/step/ksize and FASTA content).")
         with open(output_csv, "w", newline="") as out:
-            w = csv.writer(out)
-            w.writerow(
-                [
-                    "query_fasta",
-                    "query_contig",
-                    "q_start",
-                    "q_end",
-                    "match_fasta",
-                    "match_contig",
-                    "m_start",
-                    "m_end",
-                    "jaccard",
-                    "containment_q_in_m",
-                    "containment_m_in_q",
-                ]
-            )
-        print(
-            "WARNING: No window signatures generated; skipping shared-window comparisons "
-            "(check window/step/ksize and FASTA content)."
-        )
+            csv.writer(out).writerow(_CSV_HEADER)
         return
 
+    # ── Phase 2: parallel pairwise search ───────────────────────────────
+    # Serialize MinHash data as (wid, hashes, ksize, scaled) tuples for pickling
+    serialized = []
+    for wid, sig in all_sigs.items():
+        mh = sig.minhash
+        serialized.append((wid, list(mh.hashes), mh.ksize, mh.scaled))
 
-    sbt = build_sbt(all_sigs, ksize=ksize)
+    n_queries = len(serialized)
 
+    if n_queries <= 50 or n_jobs <= 1:
+        # Small enough to run single-threaded
+        chunk_results = _search_chunk((
+            serialized, serialized, jaccard_threshold, max_hits_per_query,
+            skip_self_same_fasta, skip_self_same_contig,
+        ))
+        all_results = chunk_results
+    else:
+        # Split queries into chunks, each worker gets all targets
+        chunk_size = max(1, n_queries // n_jobs)
+        query_chunks = [
+            serialized[i:i + chunk_size]
+            for i in range(0, n_queries, chunk_size)
+        ]
+        print(f"  Searching {n_queries} windows across {len(query_chunks)} parallel chunks")
+
+        all_results = []
+        with ProcessPoolExecutor(max_workers=min(n_jobs, len(query_chunks))) as pool:
+            futures = []
+            for chunk in query_chunks:
+                futures.append(pool.submit(
+                    _search_chunk,
+                    (chunk, serialized, jaccard_threshold, max_hits_per_query,
+                     skip_self_same_fasta, skip_self_same_contig),
+                ))
+            for fut in as_completed(futures):
+                all_results.extend(fut.result())
+
+    # ── Phase 3: write results ──────────────────────────────────────────
     with open(output_csv, "w", newline="") as out:
         w = csv.writer(out)
-        w.writerow(
-            [
-                "query_fasta",
-                "query_contig",
-                "q_start",
-                "q_end",
-                "match_fasta",
-                "match_contig",
-                "m_start",
-                "m_end",
-                "jaccard",
-                "containment_q_in_m",
-                "containment_m_in_q",
-            ]
-        )
+        w.writerow(_CSV_HEADER)
+        for (q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, j, c1, c2) in all_results:
+            w.writerow([q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e,
+                        f"{j:.6f}", f"{c1:.6f}", f"{c2:.6f}"])
 
-        for q_wid, q_sig in all_sigs.items():
-            q_fa, q_contig, q_s, q_e = parse_window_id(q_wid)
-            mh_q = q_sig.minhash
-
-            hits = []
-            for sr in sbt.search(q_sig, threshold=jaccard_threshold, best_only=False):
-                m_wid = sr.signature.name
-                if m_wid == q_wid:
-                    continue
-
-                m_fa, m_contig, m_s, m_e = parse_window_id(m_wid)
-
-                if skip_self_same_fasta and (m_fa == q_fa):
-                    continue
-                if skip_self_same_contig and (m_fa == q_fa and m_contig == q_contig):
-                    continue
-
-                j = float(sr.score)
-                mh_m = sr.signature.minhash
-                c1 = mh_q.avg_containment(mh_m)
-                c2 = mh_m.avg_containment(mh_q)
-                hits.append((j, m_fa, m_contig, m_s, m_e, c1, c2))
-
-            if not hits:
-                continue
-            hits.sort(key=lambda x: x[0], reverse=True)
-            hits = hits[:max_hits_per_query]
-
-            for (j, m_fa, m_contig, m_s, m_e, c1, c2) in hits:
-                w.writerow([q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, f"{j:.6f}", f"{c1:.6f}", f"{c2:.6f}"])
+    print(f"  Wrote {len(all_results)} shared-window hits to {output_csv}")
 
 
 @dataclass(frozen=True)
@@ -1607,61 +1738,79 @@ def determine_conflicts(
     t0 = time.time()
 
 
+    # Resolve the cached CSV path for the shared-window / region-comparison report.
+    # Use sigfile as the path if it points to an existing CSV; otherwise fall back
+    # to a default inside output_dir.
+    if compare_to_reference_windows:
+        default_csv = os.path.join(output_dir, "shared_windows_report.csv")
+    else:
+        default_csv = os.path.join(output_dir, "region_comparisons.csv")
+
+    if sigfile and sigfile.endswith(".csv"):
+        report_path = sigfile
+    else:
+        report_path = default_csv
+
     # Optional: compare_to_reference_windows adds shared-window signatures (and later uses alignment-based removal)
     shared_idx = None
+    if sigfile and (not os.path.exists(sigfile) or os.path.getsize(sigfile) <= 0):
+        sigfile = None  # only use sigfile if it points to an existing file; otherwise ignore it for signatures
     if compare_to_reference_windows:
-        print("Building shared-window report across FASTAs...")
-        report_path = os.path.join(output_dir, "shared_windows_report.csv")
 
-        if find_optimal_windows:
-            success, best_params, best_stats, all_results = tune_shared_window_params(
-                bam_path=input_bam,
-                fasta_files=fasta_files,
-                attempts=28,
-                allowed_tp_loss_frac=0.02,
-                alpha=1.0,
-                min_jaccard=sim_ani_threshold,
-                tmp_dir=os.path.join(output_dir, "sbt_tune_tmp"),
-            )
-            print("Tuner:", success, best_params)
-            if success and best_params:
-                report_shared_windows_across_fastas(
-                    fasta_files=fasta_files,
-                    output_csv=report_path,
-                    ksize=best_params["ksize"],
-                    scaled=best_params["scaled"],
-                    window=best_params["window"],
-                    step=best_params["step"],
-                    jaccard_threshold=sim_ani_threshold,
-                    max_hits_per_query=4,
-                    skip_self_same_fasta=False,
-                )
-            else:
-                report_shared_windows_across_fastas(
-                    fasta_files=fasta_files,
-                    output_csv=report_path,
-                    ksize=31,
-                    scaled=4000,
-                    window=90_000,
-                    step=90_000,
-                    jaccard_threshold=sim_ani_threshold,
-                    max_hits_per_query=5,
-                    skip_self_same_fasta=False,
-                )
+        if os.path.exists(report_path) and os.path.getsize(report_path) > 0:
+            print(f"Reusing cached shared-window report: {report_path}")
         else:
-            print("Creating shared FASTA report from scratch")
-            sim_ani_threshold=0.5
-            report_shared_windows_across_fastas(
-                fasta_files=fasta_files,
-                output_csv=report_path,
-                ksize=31,
-                scaled=5000,
-                window=90_000,
-                step=90_000,
-                jaccard_threshold=sim_ani_threshold,
-                max_hits_per_query=120,
-                skip_self_same_fasta=False,
-            )
+            print("Building shared-window report across FASTAs...")
+
+            if find_optimal_windows:
+                success, best_params, _, _ = tune_shared_window_params(
+                    bam_path=input_bam,
+                    fasta_files=fasta_files,
+                    attempts=28,
+                    allowed_tp_loss_frac=0.02,
+                    alpha=1.0,
+                    min_jaccard=sim_ani_threshold,
+                    tmp_dir=os.path.join(output_dir, "sbt_tune_tmp"),
+                )
+                print("Tuner:", success, best_params)
+                if success and best_params:
+                    report_shared_windows_across_fastas(
+                        fasta_files=fasta_files,
+                        output_csv=report_path,
+                        ksize=best_params["ksize"],
+                        scaled=best_params["scaled"],
+                        window=best_params["window"],
+                        step=best_params["step"],
+                        jaccard_threshold=sim_ani_threshold,
+                        max_hits_per_query=4,
+                        skip_self_same_fasta=False,
+                    )
+                else:
+                    report_shared_windows_across_fastas(
+                        fasta_files=fasta_files,
+                        output_csv=report_path,
+                        ksize=31,
+                        scaled=4000,
+                        window=90_000,
+                        step=90_000,
+                        jaccard_threshold=sim_ani_threshold,
+                        max_hits_per_query=5,
+                        skip_self_same_fasta=False,
+                    )
+            else:
+                print("Creating shared FASTA report from scratch")
+                sim_ani_threshold=0.9
+                report_shared_windows_across_fastas(
+                    fasta_files=fasta_files,
+                    output_csv=report_path,
+                    ksize=51,
+                    scaled=5000,
+                    window=900_000,
+                    step=900_000,
+                    jaccard_threshold=sim_ani_threshold,
+                    max_hits_per_query=12,
+                    skip_self_same_fasta=False,
+                )
 
         shared_idx = load_shared_windows_csv(report_path, min_jaccard=sim_ani_threshold, skip_same_contig=True)
 
@@ -1697,43 +1846,48 @@ def determine_conflicts(
             gap_allowance=gap_allowance,
         )
         print(f"Merged regions: {len(merged_regions)} (from {len(regions)}) in {time.time()-t0:.2f}s")
-        signatures = {}
-        # Signatures: load or generate
-        if not sigfile or not os.path.exists(sigfile):
-            nworkers = cpu_count if cpu_count else max(1, int(os.cpu_count() / 2))
-            print(f"Sketching merged regions (workers={nworkers})")
-            t0 = time.time()
-            signatures = create_signatures_for_regions(
-                regions_df=merged_regions,
-                bam_path=input_bam,
-                fasta_paths=fasta_files,
-                kmer_size=kmer_size,
-                scaled=scaled,
-                num_workers=nworkers,
-            )
-            print(f"Signatures: {len(signatures)} in {time.time()-t0:.2f}s")
 
-            sig_dir = os.path.join(output_dir, "signatures")
-            single_sigfile = os.path.join(sig_dir, "merged_regions.sig")
-            save_signatures_sourmash(signatures, single_sigfile)
+        # Check for cached region_comparisons CSV — skip signature + SBT if it exists
+        output_csv = report_path  # uses the resolved path (sigfile CSV or default)
+        if os.path.exists(output_csv) and os.path.getsize(output_csv) > 0:
+            print(f"Reusing cached region comparisons: {output_csv}")
+            sum_comparisons = load_region_comparisons_csv(output_csv)
         else:
-            print(f"Loading signatures from: {sigfile}")
-            signatures = rebuild_sig_dict(load_signatures_sourmash(sigfile))
-        # Clustering (kept minimal): compare all refs together by default
-        clusters = [set([x.split(":")[0] for x in signatures.keys()])]
+            signatures = {}
+            # Signatures: load or generate
+            if not sigfile or not os.path.exists(sigfile):
+                nworkers = cpu_count if cpu_count else max(1, int(os.cpu_count() / 2))
+                print(f"Sketching merged regions (workers={nworkers})")
+                t0 = time.time()
+                signatures = create_signatures_for_regions(
+                    regions_df=merged_regions,
+                    bam_path=input_bam,
+                    fasta_paths=fasta_files,
+                    kmer_size=kmer_size,
+                    scaled=scaled,
+                    num_workers=nworkers,
+                )
+                print(f"Signatures: {len(signatures)} in {time.time()-t0:.2f}s")
 
-        # Compare signatures via SBT
-        output_csv = os.path.join(output_dir, "region_comparisons.csv")
-        sig_items = list(signatures.items())
+                sig_dir = os.path.join(output_dir, "signatures")
+                single_sigfile = os.path.join(sig_dir, "merged_regions.sig")
+                save_signatures_sourmash(signatures, single_sigfile)
+            else:
+                print(f"Loading signatures from: {sigfile}")
+                signatures = rebuild_sig_dict(load_signatures_sourmash(sigfile))
+            # Clustering (kept minimal): compare all refs together by default
+            clusters = [set([x.split(":")[0] for x in signatures.keys()])]
 
+            # Compare signatures via SBT
+            sig_items = list(signatures.items())
 
-        if FAST_MODE:
-            print("Building SBT index...")
-            sbt_index = build_sbt_index(sig_items, ksize=51, clusters=clusters)
-            print("Searching SBT...")
-            sum_comparisons = fast_mode_sbt(sig_items, sbt_index, output_csv, min_threshold, clusters)
-        else:
-            raise NotImplementedError("Slow mode removed in this cleaned version. Use FAST_MODE=True.")
+            if FAST_MODE:
+                print("Building SBT index...")
+                sbt_index = build_sbt_index(sig_items, ksize=51, clusters=clusters)
+                print("Searching SBT...")
+                sum_comparisons = fast_mode_sbt(sig_items, sbt_index, output_csv, min_threshold, clusters)
+            else:
+                raise NotImplementedError("Slow mode removed in this cleaned version. Use FAST_MODE=True.")
 
         # Build conflict groups
         print("Building conflict groups...")

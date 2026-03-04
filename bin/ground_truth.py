@@ -406,6 +406,7 @@ def optimize_weights(
     weight_prior=None,
     weight_prior_lambda=0.0,
     plasmid_bonus_weight=0.05,
+    prefer_granularity="subkey",
 ):
     import json
     import numpy as np
@@ -416,7 +417,6 @@ def optimize_weights(
         debug_n=10,
     )
     metrics_df = build_metrics_df_from_final_json(final_json, tp_fp_counts)
-    print(metrics_df,"<")
     accession_col = "taxid"
 
     gran_tp_fp_counts = {"key": tp_fp_counts}
@@ -593,23 +593,36 @@ def optimize_weights(
             granularity_reports[gran_field] = gran_rows
 
     # ── Select best overall result ───────────────────────────────────────────
-    # Compare primary (taxid) with granularity results, pick lowest loss
+    # Prefer the user-specified granularity if it succeeded; otherwise fall
+    # back to the level with the lowest loss across all granularities.
     all_opts = {"taxid": opt}
     all_opts.update(granularity_results)
 
-    best_label = "taxid"
-    best_opt = opt
-    for label, result in all_opts.items():
-        if result.get("status") != "ok":
-            continue
-        if best_opt.get("status") != "ok":
-            best_label = label
-            best_opt = result
-            continue
-        # Lower loss = better
-        if result.get("loss", float("inf")) < best_opt.get("loss", float("inf")):
-            best_label = label
-            best_opt = result
+    # Try the preferred granularity first
+    _pref = prefer_granularity or "subkey"
+    if _pref in all_opts and all_opts[_pref].get("status") == "ok":
+        best_label = _pref
+        best_opt = all_opts[_pref]
+        print(f"[optimize] Using preferred granularity: {_pref} "
+              f"(loss={best_opt.get('loss', 'N/A')})")
+    else:
+        # Fallback: pick the level with the lowest loss
+        if _pref in all_opts:
+            print(f"[optimize] Preferred granularity '{_pref}' did not succeed "
+                  f"(status={all_opts[_pref].get('status', '?')}), falling back to best loss")
+        best_label = "taxid"
+        best_opt = opt
+        for label, result in all_opts.items():
+            if result.get("status") != "ok":
+                continue
+            if best_opt.get("status") != "ok":
+                best_label = label
+                best_opt = result
+                continue
+            # Lower loss = better
+            if result.get("loss", float("inf")) < best_opt.get("loss", float("inf")):
+                best_label = label
+                best_opt = result
 
     print(f"\n[optimize] Best granularity: {best_label} (loss={best_opt.get('loss', 'N/A')})")
 
@@ -802,8 +815,21 @@ def optimize_weights_for_tp_fp(
     import numpy as np
 
     accessions = metrics_df[accession_col].astype(str).tolist()
-    tp = np.array([tp_fp_counts.get(a, (0, 0))[0] for a in accessions], dtype=float)
-    fp = np.array([tp_fp_counts.get(a, (0, 0))[1] for a in accessions], dtype=float)
+    tp_raw = np.array([tp_fp_counts.get(a, (0, 0))[0] for a in accessions], dtype=float)
+    fp_raw = np.array([tp_fp_counts.get(a, (0, 0))[1] for a in accessions], dtype=float)
+
+    # Filter out accessions with zero TP *and* zero FP reads –
+    # they carry no ground-truth signal and skew mean scores / taxa counts.
+    has_signal = (tp_raw + fp_raw) >= 1
+    if has_signal.sum() == 0:
+        return {"weights": start_weights, "status": "skipped (no accessions with TP+FP >= 1)"}
+
+    # Keep only rows that have at least 1 read of ground-truth signal
+    keep_idx = np.where(has_signal)[0]
+    tp = tp_raw[keep_idx]
+    fp = fp_raw[keep_idx]
+    metrics_df = metrics_df.iloc[keep_idx].reset_index(drop=True)
+    accessions = [accessions[i] for i in keep_idx]
 
     # Taxid-level labels: TP if any TP reads exist, else negative.
     y_pos = (tp > 0).astype(float)
@@ -1279,7 +1305,8 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-_ACCESSION_RE = re.compile(r"([A-Z]{1,4}_[A-Z0-9]{3,}\.\d+|[A-Z]{1,4}[0-9]{5,}\.\d+)")
+_ACCESSION_RE = re.compile(r"([A-Z]{1,4}_[A-Z0-9]{3,}|[A-Z]{1,4}[0-9]{5,})\.\d+")
+_ACCESSION_RE2 = re.compile(r"([A-Z]{1,4}-[A-Z0-9]{3,}|[A-Z]{1,4}[0-9]{5,})_\d+")
 
 def canonical_accession(s: str) -> Optional[str]:
     """
@@ -1299,6 +1326,10 @@ def canonical_accession(s: str) -> Optional[str]:
     m = _ACCESSION_RE.search(s)
     if m:
         return m.group(1)
+
+    m2 = _ACCESSION_RE2.search(s)
+    if m2:
+        return m2.group(1).replace("-", "_")
 
     # fallback to your original rule
     return s.split("_", 1)[0]
@@ -1549,8 +1580,6 @@ def build_ground_truth_metrics_df(
 
     return df
 
-# A reasonably broad accession matcher (NC_, NZ_, CP, etc.), with version if present
-_ACCESSION_RE = re.compile(r"([A-Z]{1,4}_[A-Z0-9]{3,}\.\d+|[A-Z]{1,4}[0-9]{5,}\.\d+)")
 
 
 def _canonical_accession(s: str) -> Optional[str]:

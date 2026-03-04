@@ -336,6 +336,13 @@ def parse_args(argv=None):
                          "bias the optimizer toward the target weights. Recommended: 0.5-5.0. 0 = disabled.")
     parser.add_argument("--optimize_report", type=str, default=None,
                         help="Optional path to write a TSV report of TP/FP counts and scores for the best weights.")
+    parser.add_argument("--optimize_granularity", type=str, default="subkey",
+                        choices=["key", "subkey", "toplevelkey"],
+                        help="Preferred granularity level for selecting optimized weights. "
+                             "The optimizer runs at all levels but prefers this one unless another "
+                             "level has a significantly lower loss. Also controls which "
+                             "best_threshold from --thresholds_json is used for the TASS cutoff "
+                             "in the report. Default: subkey.")
     parser.add_argument(
         '--breadth_weight',
         metavar="BREADTHSCORE",
@@ -829,22 +836,57 @@ def main():
         disparity_w = args.disparity_score_weight
 
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
+    # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
+    # Lookup order (first match wins):
+    #   1. {sampletype}|{platform}
+    #   2. {sampletype}|all
+    #   3. all|{platform}
+    #   4. all|all
+    # Platform normalisation: pacbio → ont; default platform is "illumina".
     thresholds_config = None
     if args.thresholds_json:
         with open(args.thresholds_json, 'r') as _tf:
             thresholds_config = _json.load(_tf)
-        # Determine the normalized sample type to look up in the JSON.
-        # Sterile sites use "blood" thresholds (closest profile available).
-        # Unknown or unmatched types fall back to "all".
+
+        # ─ normalise sample type ─
         _norm_st = normalize_body_site(args.sampletype.lower()) if args.sampletype else "unknown"
         if _norm_st == "sterile":
             _norm_st = "blood"
-        if _norm_st in thresholds_config:
-            _st_key = _norm_st
+
+        # ─ normalise platform ─
+        _raw_plat = (args.platform or "unknown").strip().lower()
+        if _raw_plat in ("pacbio", "pac_bio", "pb"):
+            _norm_plat = "ont"
+        elif _raw_plat in ("illumina", "miseq", "hiseq", "nextseq", "novaseq"):
+            _norm_plat = "illumina"
+        elif _raw_plat in ("ont", "nanopore", "minion", "promethion"):
+            _norm_plat = "ont"
+        elif _raw_plat in ("unknown", ""):
+            _norm_plat = "illumina"          # default platform
         else:
-            _st_key = "all"
-        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' normalized to "
-              f"'{_norm_st}', using thresholds key: '{_st_key}'")
+            _norm_plat = _raw_plat            # pass through as-is
+
+        # ─ lookup with fallback chain ─
+        _candidates = [
+            f"{_norm_st}|{_norm_plat}",       # exact match
+            f"{_norm_st}|all",                 # any platform for this sampletype
+            f"all|{_norm_plat}",               # any sampletype for this platform
+            "all|all",                         # universal fallback
+        ]
+        _st_key = None
+        for _cand in _candidates:
+            if _cand in thresholds_config:
+                _st_key = _cand
+                break
+        if _st_key is None:
+            # Last resort: grab the first key in the JSON
+            _st_key = next(iter(thresholds_config))
+            print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+
+        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
+              f"platform '{args.platform}' → '{_norm_plat}', "
+              f"using thresholds key: '{_st_key}'")
+
         _best_w = thresholds_config[_st_key].get("best_weights", {})
         # Override CLI weight defaults with JSON best weights
         if "breadth_weight" in _best_w:
@@ -858,9 +900,12 @@ def main():
         if "disparity_weight" in _best_w:
             disparity_w = _best_w["disparity_weight"]
             args.disparity_weight = disparity_w
+        if "plasmid_bonus_weight" in _best_w:
+            args.plasmid_bonus_weight = _best_w["plasmid_bonus_weight"]
         print(f"  Applied weights from JSON: breadth={args.breadth_weight:.6g}, "
               f"gini={args.gini_weight:.6g}, minhash={args.minhash_weight:.6g}, "
-              f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}")
+              f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}, "
+              f"plasmid_bonus={args.plasmid_bonus_weight:.6g}")
 
     weights = {
         'mapq_score': args.mapq_weight,
@@ -1101,10 +1146,11 @@ def main():
         with open(matcher, "r") as f:
             for i, line in enumerate(f):
                 line = line.rstrip("\n")
-                if i == 0:  # header
+                splitline = line.split("\t")
+
+                if i == 0 and len(splitline) > 0 and splitline[0] == "Acc":  # header
                     continue
 
-                splitline = line.split("\t")
                 if not splitline or len(splitline) <= accindex:
                     continue
 
@@ -1112,7 +1158,6 @@ def main():
                 taxid     = splitline[taxcol].strip() if len(splitline) > taxcol else None
                 name      = splitline[nameindex].strip() if len(splitline) > nameindex else None
                 organism = splitline[orgindex].strip() if len(splitline) > orgindex else None
-
                 if not accession:
                     continue
 
@@ -1205,10 +1250,15 @@ def main():
         acc_to_key[acc] = str(hit.get("key", acc))
         acc_to_subkey[acc] = str(hit.get("subkey", acc))
         acc_to_toplevelkey[acc] = str(hit.get("toplevelkey", acc))
+        acc_sub = re.sub(r"\.\d+$", "", acc)
+        acc_to_key[acc_sub] = str(hit.get("key", acc))
+        acc_to_subkey[acc_sub] = str(hit.get("subkey", acc))
+        acc_to_toplevelkey[acc_sub] = str(hit.get("toplevelkey", acc))
     species_to_all_accs = defaultdict(set)
     all_readscounts = [x['numreads'] for x in reference_hits.values()]
-    total_reads = sum(all_readscounts)
-    print(f"Total aligned reads: {total_reads}")
+    aligned_reads_total = sum(all_readscounts)
+    total_reads = aligned_reads_total
+    print(f"Total aligned reads: {aligned_reads_total}")
     variance_reads = calculate_var(all_readscounts)
     print(f"\n\tVariance of reads: {variance_reads}")
     if args.sampletype:
@@ -1454,6 +1504,7 @@ def main():
             weight_prior = _weight_prior,
             weight_prior_lambda = args.optimize_weight_prior_lambda,
             plasmid_bonus_weight = args.plasmid_bonus_weight,
+            prefer_granularity = args.optimize_granularity,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)
@@ -1642,6 +1693,24 @@ def main():
         _grp.pop('covered_regions', None)
         for _m in _grp.get('members', []):
             _m.pop('covered_regions', None)
+    # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
+    # Extract per-group best_threshold values so create_report.py can use
+    # them instead of its hard-coded sampletype defaults.
+    _best_cutoffs = None
+    if thresholds_config and _st_key in thresholds_config:
+        _groups_block = thresholds_config[_st_key].get("groups", {})
+        if _groups_block:
+            _best_cutoffs = {}
+            for _gname, _gdata in _groups_block.items():
+                _best_cutoffs[_gname] = {
+                    "best_threshold": _gdata.get("best_threshold"),
+                    "fp_le_0_1pct": _gdata.get("fp_le_0_1pct", {}).get("threshold"),
+                    "tp_ge_99_5pct": _gdata.get("tp_ge_99_5pct", {}).get("threshold"),
+                }
+            print(f"  Best cutoffs from thresholds JSON ({_st_key}):")
+            for _gn, _gc in _best_cutoffs.items():
+                print(f"    {_gn}: best_threshold={_gc['best_threshold']}")
+
     output_json = {
         "metadata": {
             "sample_name": args.samplename,
@@ -1650,6 +1719,7 @@ def main():
             "workflow_revision": args.workflow_revision,
             "commit_id": args.commit_id,
             "total_reads": total_reads,
+            "aligned_reads": aligned_reads_total,
             "total_organism_reads": int(_total_organism_reads),
             "num_species_groups": len(final_json),
             "num_keys": len(_all_keys),
@@ -1659,6 +1729,9 @@ def main():
             "mapq_breadth_power": args.mapq_breadth_power,
             "weights": dict(weights),
             "min_conf_applied": None,  # populated by create_report per-sample
+            "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
+            "best_cutoffs_source": _st_key if _best_cutoffs else None,
+            "preferred_granularity": args.optimize_granularity,
         },
         "organisms": _json_out,
     }
@@ -1695,6 +1768,10 @@ def main():
                 "classification": "TP" if is_tp else "FP",
                 "microbial_category": data.get('microbial_category', 'Unknown'),
             })
+
+        # Filter out organisms with zero TP and zero FP reads –
+        # they carry no ground-truth signal and skew mean scores.
+        organism_rows = [r for r in organism_rows if (r['tp_reads'] + r['fp_reads']) >= 1]
 
         organism_rows.sort(key=lambda r: r['tass_score'], reverse=True)
 
@@ -1760,6 +1837,9 @@ def main():
                     "classification": "TP" if tp_reads > 0 else "FP",
                     "member_count": len(members),
                 })
+
+            # Filter out groups with zero TP and zero FP reads
+            rows = [r for r in rows if (r['tp_reads'] + r['fp_reads']) >= 1]
 
             rows.sort(key=lambda r: r["tass_score"], reverse=True)
             tp_groups = [r for r in rows if r["classification"] == "TP"]
@@ -1881,7 +1961,10 @@ def write_to_tsv(output_path, final_scores, header):
             formatname = entry.get('formatname', "N/A")
             sample_name = entry.get('sample_name', "N/A")
             ref = entry.get('ref', "N/A")
-            percent_aligned = entry.get('percent_aligned', 0)
+            # Compute percent_aligned relative to total reads in sample
+            _entry_total = entry.get('total_reads', 0)
+            _entry_reads = entry.get('reads_aligned', 0)
+            percent_aligned = (100 * _entry_reads / _entry_total) if _entry_total > 0 and _entry_reads > 0 else 0
             is_pathogen = entry.get('is_pathogen', "Unknown")
             status = entry.get('status', "N/A")
             is_annotated= entry.get('is_annotated', "N/A")

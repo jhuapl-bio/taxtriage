@@ -75,6 +75,15 @@ process ALIGNMENT_PER_SAMPLE {
     def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
     def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
     def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
+    // add assets/sampletype_best_thresholds.json if it exists
+
+    if (!params.disable_auto_weights && file("$projectDir/assets/sampletype_best_thresholds.json").exists()) {
+        sampletype_thresholds = " --thresholds_json $projectDir/assets/sampletype_best_thresholds.json "
+    } else {
+        sampletype_thresholds = " "
+    }
+
+
     """
 
 
