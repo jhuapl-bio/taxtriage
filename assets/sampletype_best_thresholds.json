@@ -1,870 +1,870 @@
 {
-  "all|all": {
-    "sampletype": "all",
-    "platform": "all",
-    "best_weights": {
-      "breadth_weight": 0.23688846507075573,
-      "minhash_weight": 0.35549947223974027,
-      "gini_weight": 0.40497847683790344,
-      "disparity_weight": 0.0015876003410863018,
-      "hmp_weight": 0.0012406545731079156,
-      "plasmid_bonus_weight": 0.1572483019851624
+    "all|all": {
+        "sampletype": "all",
+        "platform": "all",
+        "best_weights": {
+            "breadth_weight": 0.23688846507075573,
+            "minhash_weight": 0.35549947223974027,
+            "gini_weight": 0.40497847683790344,
+            "disparity_weight": 0.0015876003410863018,
+            "hmp_weight": 0.0012406545731079156,
+            "plasmid_bonus_weight": 0.1572483019851624
+        },
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.664720600500417,
+                "best_TP_retained": 0.9991508554972923,
+                "best_FP_retained": 3.7479573632370355e-5,
+                "best_J": 0.99911337592366,
+                "fp_le_0_1pct": {
+                    "threshold": 0.664720600500417,
+                    "tp_retained": 0.9991508554972923,
+                    "fp_retained": 3.7479573632370355e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7481234361968306,
+                    "tp_retained": 0.9970487581257513,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.5696413678065054,
+                "best_TP_retained": 0.9754993235690335,
+                "best_FP_retained": 0.000359605307192314,
+                "best_J": 0.9751397182618411,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5696413678065054,
+                    "tp_retained": 0.9754993235690335,
+                    "fp_retained": 0.000359605307192314
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5187656380316931,
+                    "tp_retained": 0.9954270602884463,
+                    "fp_retained": 0.09195571935265502
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.5679733110925771,
+                "best_TP_retained": 0.9787335849717935,
+                "best_FP_retained": 0.000449408794981774,
+                "best_J": 0.9782841761768117,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5679733110925771,
+                    "tp_retained": 0.9787335849717935,
+                    "fp_retained": 0.000449408794981774
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5187656380316931,
+                    "tp_retained": 0.9953705338709528,
+                    "fp_retained": 0.11428758374758723
+                }
+            }
+        }
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.664720600500417,
-        "best_TP_retained": 0.9991508554972923,
-        "best_FP_retained": 3.7479573632370355e-05,
-        "best_J": 0.99911337592366,
-        "fp_le_0_1pct": {
-          "threshold": 0.664720600500417,
-          "tp_retained": 0.9991508554972923,
-          "fp_retained": 3.7479573632370355e-05
+    "all|illumina": {
+        "sampletype": "all",
+        "platform": "illumina",
+        "best_weights": {
+            "breadth_weight": 0.1792153512450153,
+            "minhash_weight": 0.4084499848317045,
+            "gini_weight": 0.4094993768502492,
+            "disparity_weight": 0.0018088825487874917,
+            "hmp_weight": 0.001306778356019153,
+            "plasmid_bonus_weight": 0.17212400196905317
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7481234361968306,
-          "tp_retained": 0.9970487581257513,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.664720600500417,
+                "best_TP_retained": 0.9991408328376199,
+                "best_FP_retained": 3.873596789562981e-5,
+                "best_J": 0.9991020968697243,
+                "fp_le_0_1pct": {
+                    "threshold": 0.664720600500417,
+                    "tp_retained": 0.9991408328376199,
+                    "fp_retained": 3.873596789562981e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7481234361968306,
+                    "tp_retained": 0.9969994251180159,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.5696413678065054,
+                "best_TP_retained": 0.9753634258573688,
+                "best_FP_retained": 0.00038281902322877975,
+                "best_J": 0.97498060683414,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5696413678065054,
+                    "tp_retained": 0.9753634258573688,
+                    "fp_retained": 0.00038281902322877975
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5187656380316931,
+                    "tp_retained": 0.9959601720215553,
+                    "fp_retained": 0.09789176621928228
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.5679733110925771,
+                "best_TP_retained": 0.9790219532546752,
+                "best_FP_retained": 0.00046791341988237624,
+                "best_J": 0.9785540398347928,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5679733110925771,
+                    "tp_retained": 0.9790219532546752,
+                    "fp_retained": 0.00046791341988237624
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5195996663886572,
+                    "tp_retained": 0.9953500068671056,
+                    "fp_retained": 0.11899343038801855
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.5696413678065054,
-        "best_TP_retained": 0.9754993235690335,
-        "best_FP_retained": 0.000359605307192314,
-        "best_J": 0.9751397182618411,
-        "fp_le_0_1pct": {
-          "threshold": 0.5696413678065054,
-          "tp_retained": 0.9754993235690335,
-          "fp_retained": 0.000359605307192314
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5187656380316931,
-          "tp_retained": 0.9954270602884463,
-          "fp_retained": 0.09195571935265502
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.5679733110925771,
-        "best_TP_retained": 0.9787335849717935,
-        "best_FP_retained": 0.000449408794981774,
-        "best_J": 0.9782841761768117,
-        "fp_le_0_1pct": {
-          "threshold": 0.5679733110925771,
-          "tp_retained": 0.9787335849717935,
-          "fp_retained": 0.000449408794981774
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5187656380316931,
-          "tp_retained": 0.9953705338709528,
-          "fp_retained": 0.11428758374758723
-        }
-      }
-    }
-  },
-  "all|illumina": {
-    "sampletype": "all",
-    "platform": "illumina",
-    "best_weights": {
-      "breadth_weight": 0.1792153512450153,
-      "minhash_weight": 0.4084499848317045,
-      "gini_weight": 0.4094993768502492,
-      "disparity_weight": 0.0018088825487874917,
-      "hmp_weight": 0.001306778356019153,
-      "plasmid_bonus_weight": 0.17212400196905317
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.664720600500417,
-        "best_TP_retained": 0.9991408328376199,
-        "best_FP_retained": 3.873596789562981e-05,
-        "best_J": 0.9991020968697243,
-        "fp_le_0_1pct": {
-          "threshold": 0.664720600500417,
-          "tp_retained": 0.9991408328376199,
-          "fp_retained": 3.873596789562981e-05
+    "all|ont": {
+        "sampletype": "all",
+        "platform": "ont",
+        "best_weights": {
+            "breadth_weight": 0.35556198775064457,
+            "minhash_weight": 0.24654360979089066,
+            "gini_weight": 0.3956758556586534,
+            "disparity_weight": 0.0011322696444703907,
+            "hmp_weight": 0.0011045921736559455,
+            "plasmid_bonus_weight": 0.12663868855677188
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7481234361968306,
-          "tp_retained": 0.9969994251180159,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.20016680567139283,
+                "best_TP_retained": 0.9999817697888942,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9999817697888942,
+                "fp_le_0_1pct": {
+                    "threshold": 0.19182652210175144,
+                    "tp_retained": 0.9999817697888942,
+                    "fp_retained": 0.0009244280101687081
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.8098415346121768,
+                    "tp_retained": 0.9960983469465172,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.4303586321934946,
+                "best_TP_retained": 0.9800450542051229,
+                "best_FP_retained": 1.1426351451717952e-5,
+                "best_J": 0.9800336278536712,
+                "fp_le_0_1pct": {
+                    "threshold": 0.20016680567139283,
+                    "tp_retained": 0.9802022259706441,
+                    "fp_retained": 0.00021710067758264108
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.13678065054211844,
+                    "tp_retained": 0.999595333733577,
+                    "fp_retained": 0.8523601128923524
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.20016680567139283,
+                "best_TP_retained": 0.9774393154061919,
+                "best_FP_retained": 0.0003918580603026015,
+                "best_J": 0.9770474573458893,
+                "fp_le_0_1pct": {
+                    "threshold": 0.20016680567139283,
+                    "tp_retained": 0.9774393154061919,
+                    "fp_retained": 0.0003918580603026015
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.1884904086738949,
+                    "tp_retained": 0.9951209141669177,
+                    "fp_retained": 0.08542505714596713
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.5696413678065054,
-        "best_TP_retained": 0.9753634258573688,
-        "best_FP_retained": 0.00038281902322877975,
-        "best_J": 0.97498060683414,
-        "fp_le_0_1pct": {
-          "threshold": 0.5696413678065054,
-          "tp_retained": 0.9753634258573688,
-          "fp_retained": 0.00038281902322877975
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5187656380316931,
-          "tp_retained": 0.9959601720215553,
-          "fp_retained": 0.09789176621928228
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.5679733110925771,
-        "best_TP_retained": 0.9790219532546752,
-        "best_FP_retained": 0.00046791341988237624,
-        "best_J": 0.9785540398347928,
-        "fp_le_0_1pct": {
-          "threshold": 0.5679733110925771,
-          "tp_retained": 0.9790219532546752,
-          "fp_retained": 0.00046791341988237624
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5195996663886572,
-          "tp_retained": 0.9953500068671056,
-          "fp_retained": 0.11899343038801855
-        }
-      }
-    }
-  },
-  "all|ont": {
-    "sampletype": "all",
-    "platform": "ont",
-    "best_weights": {
-      "breadth_weight": 0.35556198775064457,
-      "minhash_weight": 0.24654360979089066,
-      "gini_weight": 0.3956758556586534,
-      "disparity_weight": 0.0011322696444703907,
-      "hmp_weight": 0.0011045921736559455,
-      "plasmid_bonus_weight": 0.12663868855677188
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.20016680567139283,
-        "best_TP_retained": 0.9999817697888942,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9999817697888942,
-        "fp_le_0_1pct": {
-          "threshold": 0.19182652210175144,
-          "tp_retained": 0.9999817697888942,
-          "fp_retained": 0.0009244280101687081
+    "blood|all": {
+        "sampletype": "blood",
+        "platform": "all",
+        "best_weights": {
+            "breadth_weight": 0.07146529390935669,
+            "minhash_weight": 0.694110481066362,
+            "gini_weight": 0.23106670567156443,
+            "disparity_weight": 0.002857776019886833,
+            "hmp_weight": 0.0014088342419210633,
+            "plasmid_bonus_weight": 0.17755040430712632
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.8098415346121768,
-          "tp_retained": 0.9960983469465172,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.0008340283569641367,
+                "best_TP_retained": 0.9967597024817734,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9967597024817734,
+                "fp_le_0_1pct": {
+                    "threshold": 0.0008340283569641367,
+                    "tp_retained": 0.9967597024817734,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.25938281901584653,
+                    "tp_retained": 0.9967597024817734,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.24103419516263552,
+                "best_TP_retained": 0.9898415586384656,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9898415586384656,
+                "fp_le_0_1pct": {
+                    "threshold": 0.24103419516263552,
+                    "tp_retained": 0.9898415586384656,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.0,
+                    "tp_retained": 1.0,
+                    "fp_retained": 1.0
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.24103419516263552,
+                "best_TP_retained": 0.9893355209187858,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9893355209187858,
+                "fp_le_0_1pct": {
+                    "threshold": 0.24103419516263552,
+                    "tp_retained": 0.9893355209187858,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.0,
+                    "tp_retained": 1.0,
+                    "fp_retained": 1.0
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.4303586321934946,
-        "best_TP_retained": 0.9800450542051229,
-        "best_FP_retained": 1.1426351451717952e-05,
-        "best_J": 0.9800336278536712,
-        "fp_le_0_1pct": {
-          "threshold": 0.20016680567139283,
-          "tp_retained": 0.9802022259706441,
-          "fp_retained": 0.00021710067758264108
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.13678065054211844,
-          "tp_retained": 0.999595333733577,
-          "fp_retained": 0.8523601128923524
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.20016680567139283,
-        "best_TP_retained": 0.9774393154061919,
-        "best_FP_retained": 0.0003918580603026015,
-        "best_J": 0.9770474573458893,
-        "fp_le_0_1pct": {
-          "threshold": 0.20016680567139283,
-          "tp_retained": 0.9774393154061919,
-          "fp_retained": 0.0003918580603026015
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.1884904086738949,
-          "tp_retained": 0.9951209141669177,
-          "fp_retained": 0.08542505714596713
-        }
-      }
-    }
-  },
-  "blood|all": {
-    "sampletype": "blood",
-    "platform": "all",
-    "best_weights": {
-      "breadth_weight": 0.07146529390935669,
-      "minhash_weight": 0.694110481066362,
-      "gini_weight": 0.23106670567156443,
-      "disparity_weight": 0.002857776019886833,
-      "hmp_weight": 0.0014088342419210633,
-      "plasmid_bonus_weight": 0.17755040430712632
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.0008340283569641367,
-        "best_TP_retained": 0.9967597024817734,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9967597024817734,
-        "fp_le_0_1pct": {
-          "threshold": 0.0008340283569641367,
-          "tp_retained": 0.9967597024817734,
-          "fp_retained": 0.0
+    "blood|illumina": {
+        "sampletype": "blood",
+        "platform": "illumina",
+        "best_weights": {
+            "breadth_weight": 0.07146529390935669,
+            "minhash_weight": 0.694110481066362,
+            "gini_weight": 0.23106670567156443,
+            "disparity_weight": 0.002857776019886833,
+            "hmp_weight": 0.0014088342419210633,
+            "plasmid_bonus_weight": 0.17755040430712632
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.25938281901584653,
-          "tp_retained": 0.9967597024817734,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.0008340283569641367,
+                "best_TP_retained": 0.9967597024817734,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9967597024817734,
+                "fp_le_0_1pct": {
+                    "threshold": 0.0008340283569641367,
+                    "tp_retained": 0.9967597024817734,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.25938281901584653,
+                    "tp_retained": 0.9967597024817734,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.24103419516263552,
+                "best_TP_retained": 0.9898415586384656,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9898415586384656,
+                "fp_le_0_1pct": {
+                    "threshold": 0.24103419516263552,
+                    "tp_retained": 0.9898415586384656,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.0,
+                    "tp_retained": 1.0,
+                    "fp_retained": 1.0
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.24103419516263552,
+                "best_TP_retained": 0.9893355209187858,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9893355209187858,
+                "fp_le_0_1pct": {
+                    "threshold": 0.24103419516263552,
+                    "tp_retained": 0.9893355209187858,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.0,
+                    "tp_retained": 1.0,
+                    "fp_retained": 1.0
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.24103419516263552,
-        "best_TP_retained": 0.9898415586384656,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9898415586384656,
-        "fp_le_0_1pct": {
-          "threshold": 0.24103419516263552,
-          "tp_retained": 0.9898415586384656,
-          "fp_retained": 0.0
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.0,
-          "tp_retained": 1.0,
-          "fp_retained": 1.0
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.24103419516263552,
-        "best_TP_retained": 0.9893355209187858,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9893355209187858,
-        "fp_le_0_1pct": {
-          "threshold": 0.24103419516263552,
-          "tp_retained": 0.9893355209187858,
-          "fp_retained": 0.0
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.0,
-          "tp_retained": 1.0,
-          "fp_retained": 1.0
-        }
-      }
-    }
-  },
-  "blood|illumina": {
-    "sampletype": "blood",
-    "platform": "illumina",
-    "best_weights": {
-      "breadth_weight": 0.07146529390935669,
-      "minhash_weight": 0.694110481066362,
-      "gini_weight": 0.23106670567156443,
-      "disparity_weight": 0.002857776019886833,
-      "hmp_weight": 0.0014088342419210633,
-      "plasmid_bonus_weight": 0.17755040430712632
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.0008340283569641367,
-        "best_TP_retained": 0.9967597024817734,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9967597024817734,
-        "fp_le_0_1pct": {
-          "threshold": 0.0008340283569641367,
-          "tp_retained": 0.9967597024817734,
-          "fp_retained": 0.0
+    "general|all": {
+        "sampletype": "general",
+        "platform": "all",
+        "best_weights": {
+            "breadth_weight": 0.2873042886559267,
+            "minhash_weight": 0.2557637663553159,
+            "gini_weight": 0.4546667314625513,
+            "disparity_weight": 0.0011429556178980888,
+            "hmp_weight": 0.0011309953482379642,
+            "plasmid_bonus_weight": 0.1447606292425708
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.25938281901584653,
-          "tp_retained": 0.9967597024817734,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.3628023352793995,
+                "best_TP_retained": 0.9998921179306408,
+                "best_FP_retained": 2.450269733859869e-5,
+                "best_J": 0.9998676152333023,
+                "fp_le_0_1pct": {
+                    "threshold": 0.3427856547122602,
+                    "tp_retained": 0.9998976852392659,
+                    "fp_retained": 0.00011026213802369411
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7447873227689741,
+                    "tp_retained": 0.9955673831034064,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.5279399499582985,
+                "best_TP_retained": 0.9954479615993135,
+                "best_FP_retained": 3.713270907329674e-5,
+                "best_J": 0.9954108288902401,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5279399499582985,
+                    "tp_retained": 0.9954479615993135,
+                    "fp_retained": 3.713270907329674e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.628023352793995,
+                    "tp_retained": 0.9953042521694545,
+                    "fp_retained": 2.4216984178237004e-5
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.530442035029191,
+                "best_TP_retained": 0.9957831987688405,
+                "best_FP_retained": 7.064270542469154e-5,
+                "best_J": 0.9957125560634158,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5279399499582985,
+                    "tp_retained": 0.9957831987688405,
+                    "fp_retained": 7.159733657907926e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.603836530442035,
+                    "tp_retained": 0.9956733399294107,
+                    "fp_retained": 3.24574592491826e-5
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.24103419516263552,
-        "best_TP_retained": 0.9898415586384656,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9898415586384656,
-        "fp_le_0_1pct": {
-          "threshold": 0.24103419516263552,
-          "tp_retained": 0.9898415586384656,
-          "fp_retained": 0.0
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.0,
-          "tp_retained": 1.0,
-          "fp_retained": 1.0
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.24103419516263552,
-        "best_TP_retained": 0.9893355209187858,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9893355209187858,
-        "fp_le_0_1pct": {
-          "threshold": 0.24103419516263552,
-          "tp_retained": 0.9893355209187858,
-          "fp_retained": 0.0
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.0,
-          "tp_retained": 1.0,
-          "fp_retained": 1.0
-        }
-      }
-    }
-  },
-  "general|all": {
-    "sampletype": "general",
-    "platform": "all",
-    "best_weights": {
-      "breadth_weight": 0.2873042886559267,
-      "minhash_weight": 0.2557637663553159,
-      "gini_weight": 0.4546667314625513,
-      "disparity_weight": 0.0011429556178980888,
-      "hmp_weight": 0.0011309953482379642,
-      "plasmid_bonus_weight": 0.1447606292425708
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.3628023352793995,
-        "best_TP_retained": 0.9998921179306408,
-        "best_FP_retained": 2.450269733859869e-05,
-        "best_J": 0.9998676152333023,
-        "fp_le_0_1pct": {
-          "threshold": 0.3427856547122602,
-          "tp_retained": 0.9998976852392659,
-          "fp_retained": 0.00011026213802369411
+    "general|illumina": {
+        "sampletype": "general",
+        "platform": "illumina",
+        "best_weights": {
+            "breadth_weight": 0.2250341070256579,
+            "minhash_weight": 0.26417513725619507,
+            "gini_weight": 0.5084829690380374,
+            "disparity_weight": 0.001152704225235638,
+            "hmp_weight": 0.0011550824548741917,
+            "plasmid_bonus_weight": 0.1612929260085628
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7447873227689741,
-          "tp_retained": 0.9955673831034064,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.3628023352793995,
+                "best_TP_retained": 0.9998939115791864,
+                "best_FP_retained": 2.5400373385488768e-5,
+                "best_J": 0.9998685112058009,
+                "fp_le_0_1pct": {
+                    "threshold": 0.3427856547122602,
+                    "tp_retained": 0.9998986160482708,
+                    "fp_retained": 0.00011430168023469945
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7447873227689741,
+                    "tp_retained": 0.9953118908389794,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.5279399499582985,
+                "best_TP_retained": 0.9971294720428954,
+                "best_FP_retained": 3.9955423644751115e-5,
+                "best_J": 0.9970895166192506,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5279399499582985,
+                    "tp_retained": 0.9971294720428954,
+                    "fp_retained": 3.9955423644751115e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.6630525437864887,
+                    "tp_retained": 0.9968485359671388,
+                    "fp_retained": 2.605788498570725e-5
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.530442035029191,
+                "best_TP_retained": 0.9985026478551341,
+                "best_FP_retained": 7.388252678241596e-5,
+                "best_J": 0.9984287653283517,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5279399499582985,
+                    "tp_retained": 0.9985026478551341,
+                    "fp_retained": 7.488093930650266e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.6538782318598833,
+                    "tp_retained": 0.9955456826512722,
+                    "fp_retained": 2.9952375722601066e-5
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.5279399499582985,
-        "best_TP_retained": 0.9954479615993135,
-        "best_FP_retained": 3.713270907329674e-05,
-        "best_J": 0.9954108288902401,
-        "fp_le_0_1pct": {
-          "threshold": 0.5279399499582985,
-          "tp_retained": 0.9954479615993135,
-          "fp_retained": 3.713270907329674e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.628023352793995,
-          "tp_retained": 0.9953042521694545,
-          "fp_retained": 2.4216984178237004e-05
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.530442035029191,
-        "best_TP_retained": 0.9957831987688405,
-        "best_FP_retained": 7.064270542469154e-05,
-        "best_J": 0.9957125560634158,
-        "fp_le_0_1pct": {
-          "threshold": 0.5279399499582985,
-          "tp_retained": 0.9957831987688405,
-          "fp_retained": 7.159733657907926e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.603836530442035,
-          "tp_retained": 0.9956733399294107,
-          "fp_retained": 3.24574592491826e-05
-        }
-      }
-    }
-  },
-  "general|illumina": {
-    "sampletype": "general",
-    "platform": "illumina",
-    "best_weights": {
-      "breadth_weight": 0.2250341070256579,
-      "minhash_weight": 0.26417513725619507,
-      "gini_weight": 0.5084829690380374,
-      "disparity_weight": 0.001152704225235638,
-      "hmp_weight": 0.0011550824548741917,
-      "plasmid_bonus_weight": 0.1612929260085628
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.3628023352793995,
-        "best_TP_retained": 0.9998939115791864,
-        "best_FP_retained": 2.5400373385488768e-05,
-        "best_J": 0.9998685112058009,
-        "fp_le_0_1pct": {
-          "threshold": 0.3427856547122602,
-          "tp_retained": 0.9998986160482708,
-          "fp_retained": 0.00011430168023469945
+    "general|ont": {
+        "sampletype": "general",
+        "platform": "ont",
+        "best_weights": {
+            "breadth_weight": 0.35556198775064457,
+            "minhash_weight": 0.24654360979089066,
+            "gini_weight": 0.3956758556586534,
+            "disparity_weight": 0.0011322696444703907,
+            "hmp_weight": 0.0011045921736559455,
+            "plasmid_bonus_weight": 0.12663868855677188
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7447873227689741,
-          "tp_retained": 0.9953118908389794,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.20016680567139283,
+                "best_TP_retained": 0.9999817697888942,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9999817697888942,
+                "fp_le_0_1pct": {
+                    "threshold": 0.19182652210175144,
+                    "tp_retained": 0.9999817697888942,
+                    "fp_retained": 0.0009244280101687081
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.8098415346121768,
+                    "tp_retained": 0.9960983469465172,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.4303586321934946,
+                "best_TP_retained": 0.9800450542051229,
+                "best_FP_retained": 1.1426351451717952e-5,
+                "best_J": 0.9800336278536712,
+                "fp_le_0_1pct": {
+                    "threshold": 0.20016680567139283,
+                    "tp_retained": 0.9802022259706441,
+                    "fp_retained": 0.00021710067758264108
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.13678065054211844,
+                    "tp_retained": 0.999595333733577,
+                    "fp_retained": 0.8523601128923524
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.20016680567139283,
+                "best_TP_retained": 0.9774393154061919,
+                "best_FP_retained": 0.0003918580603026015,
+                "best_J": 0.9770474573458893,
+                "fp_le_0_1pct": {
+                    "threshold": 0.20016680567139283,
+                    "tp_retained": 0.9774393154061919,
+                    "fp_retained": 0.0003918580603026015
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.1884904086738949,
+                    "tp_retained": 0.9951209141669177,
+                    "fp_retained": 0.08542505714596713
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.5279399499582985,
-        "best_TP_retained": 0.9971294720428954,
-        "best_FP_retained": 3.9955423644751115e-05,
-        "best_J": 0.9970895166192506,
-        "fp_le_0_1pct": {
-          "threshold": 0.5279399499582985,
-          "tp_retained": 0.9971294720428954,
-          "fp_retained": 3.9955423644751115e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.6630525437864887,
-          "tp_retained": 0.9968485359671388,
-          "fp_retained": 2.605788498570725e-05
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.530442035029191,
-        "best_TP_retained": 0.9985026478551341,
-        "best_FP_retained": 7.388252678241596e-05,
-        "best_J": 0.9984287653283517,
-        "fp_le_0_1pct": {
-          "threshold": 0.5279399499582985,
-          "tp_retained": 0.9985026478551341,
-          "fp_retained": 7.488093930650266e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.6538782318598833,
-          "tp_retained": 0.9955456826512722,
-          "fp_retained": 2.9952375722601066e-05
-        }
-      }
-    }
-  },
-  "general|ont": {
-    "sampletype": "general",
-    "platform": "ont",
-    "best_weights": {
-      "breadth_weight": 0.35556198775064457,
-      "minhash_weight": 0.24654360979089066,
-      "gini_weight": 0.3956758556586534,
-      "disparity_weight": 0.0011322696444703907,
-      "hmp_weight": 0.0011045921736559455,
-      "plasmid_bonus_weight": 0.12663868855677188
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.20016680567139283,
-        "best_TP_retained": 0.9999817697888942,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9999817697888942,
-        "fp_le_0_1pct": {
-          "threshold": 0.19182652210175144,
-          "tp_retained": 0.9999817697888942,
-          "fp_retained": 0.0009244280101687081
+    "nasal|all": {
+        "sampletype": "nasal",
+        "platform": "all",
+        "best_weights": {
+            "breadth_weight": 0.14689847761748534,
+            "minhash_weight": 0.484817948093519,
+            "gini_weight": 0.364198365281098,
+            "disparity_weight": 0.00206185929995789,
+            "hmp_weight": 0.0020233497079397682,
+            "plasmid_bonus_weight": 0.1796321415433279
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.8098415346121768,
-          "tp_retained": 0.9960983469465172,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.5087572977481234,
+                "best_TP_retained": 0.9999192477103291,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9999192477103291,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5087572977481234,
+                    "tp_retained": 0.9999192477103291,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7381150959132611,
+                    "tp_retained": 0.9979508687656342,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.4445371142618849,
+                "best_TP_retained": 0.9990291589278489,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9990291589278489,
+                "fp_le_0_1pct": {
+                    "threshold": 0.3686405337781484,
+                    "tp_retained": 0.9993465232936408,
+                    "fp_retained": 0.0005941770647653001
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.6505421184320267,
+                    "tp_retained": 0.9952162262201575,
+                    "fp_retained": 0.0
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.44620517097581314,
+                "best_TP_retained": 0.9989043791729693,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9989043791729693,
+                "fp_le_0_1pct": {
+                    "threshold": 0.36530442035029187,
+                    "tp_retained": 0.9993364966210898,
+                    "fp_retained": 0.0005966587112171838
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5404503753127606,
+                    "tp_retained": 0.995060839299262,
+                    "fp_retained": 0.0
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.4303586321934946,
-        "best_TP_retained": 0.9800450542051229,
-        "best_FP_retained": 1.1426351451717952e-05,
-        "best_J": 0.9800336278536712,
-        "fp_le_0_1pct": {
-          "threshold": 0.20016680567139283,
-          "tp_retained": 0.9802022259706441,
-          "fp_retained": 0.00021710067758264108
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.13678065054211844,
-          "tp_retained": 0.999595333733577,
-          "fp_retained": 0.8523601128923524
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.20016680567139283,
-        "best_TP_retained": 0.9774393154061919,
-        "best_FP_retained": 0.0003918580603026015,
-        "best_J": 0.9770474573458893,
-        "fp_le_0_1pct": {
-          "threshold": 0.20016680567139283,
-          "tp_retained": 0.9774393154061919,
-          "fp_retained": 0.0003918580603026015
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.1884904086738949,
-          "tp_retained": 0.9951209141669177,
-          "fp_retained": 0.08542505714596713
-        }
-      }
-    }
-  },
-  "nasal|all": {
-    "sampletype": "nasal",
-    "platform": "all",
-    "best_weights": {
-      "breadth_weight": 0.14689847761748534,
-      "minhash_weight": 0.484817948093519,
-      "gini_weight": 0.364198365281098,
-      "disparity_weight": 0.00206185929995789,
-      "hmp_weight": 0.0020233497079397682,
-      "plasmid_bonus_weight": 0.1796321415433279
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.5087572977481234,
-        "best_TP_retained": 0.9999192477103291,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9999192477103291,
-        "fp_le_0_1pct": {
-          "threshold": 0.5087572977481234,
-          "tp_retained": 0.9999192477103291,
-          "fp_retained": 0.0
+    "nasal|illumina": {
+        "sampletype": "nasal",
+        "platform": "illumina",
+        "best_weights": {
+            "breadth_weight": 0.14689847761748534,
+            "minhash_weight": 0.484817948093519,
+            "gini_weight": 0.364198365281098,
+            "disparity_weight": 0.00206185929995789,
+            "hmp_weight": 0.0020233497079397682,
+            "plasmid_bonus_weight": 0.1796321415433279
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7381150959132611,
-          "tp_retained": 0.9979508687656342,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.5087572977481234,
+                "best_TP_retained": 0.9999192477103291,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9999192477103291,
+                "fp_le_0_1pct": {
+                    "threshold": 0.5087572977481234,
+                    "tp_retained": 0.9999192477103291,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7381150959132611,
+                    "tp_retained": 0.9979508687656342,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.4445371142618849,
+                "best_TP_retained": 0.9990291589278489,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9990291589278489,
+                "fp_le_0_1pct": {
+                    "threshold": 0.3686405337781484,
+                    "tp_retained": 0.9993465232936408,
+                    "fp_retained": 0.0005941770647653001
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.6505421184320267,
+                    "tp_retained": 0.9952162262201575,
+                    "fp_retained": 0.0
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.44620517097581314,
+                "best_TP_retained": 0.9989043791729693,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9989043791729693,
+                "fp_le_0_1pct": {
+                    "threshold": 0.36530442035029187,
+                    "tp_retained": 0.9993364966210898,
+                    "fp_retained": 0.0005966587112171838
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5404503753127606,
+                    "tp_retained": 0.995060839299262,
+                    "fp_retained": 0.0
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.4445371142618849,
-        "best_TP_retained": 0.9990291589278489,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9990291589278489,
-        "fp_le_0_1pct": {
-          "threshold": 0.3686405337781484,
-          "tp_retained": 0.9993465232936408,
-          "fp_retained": 0.0005941770647653001
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.6505421184320267,
-          "tp_retained": 0.9952162262201575,
-          "fp_retained": 0.0
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.44620517097581314,
-        "best_TP_retained": 0.9989043791729693,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9989043791729693,
-        "fp_le_0_1pct": {
-          "threshold": 0.36530442035029187,
-          "tp_retained": 0.9993364966210898,
-          "fp_retained": 0.0005966587112171838
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5404503753127606,
-          "tp_retained": 0.995060839299262,
-          "fp_retained": 0.0
-        }
-      }
-    }
-  },
-  "nasal|illumina": {
-    "sampletype": "nasal",
-    "platform": "illumina",
-    "best_weights": {
-      "breadth_weight": 0.14689847761748534,
-      "minhash_weight": 0.484817948093519,
-      "gini_weight": 0.364198365281098,
-      "disparity_weight": 0.00206185929995789,
-      "hmp_weight": 0.0020233497079397682,
-      "plasmid_bonus_weight": 0.1796321415433279
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.5087572977481234,
-        "best_TP_retained": 0.9999192477103291,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9999192477103291,
-        "fp_le_0_1pct": {
-          "threshold": 0.5087572977481234,
-          "tp_retained": 0.9999192477103291,
-          "fp_retained": 0.0
+    "skin|all": {
+        "sampletype": "skin",
+        "platform": "all",
+        "best_weights": {
+            "breadth_weight": 0.22500162525775977,
+            "minhash_weight": 0.3778579848713848,
+            "gini_weight": 0.39657108964441745,
+            "disparity_weight": 0.00028515729118288685,
+            "hmp_weight": 0.0002841429352550871,
+            "plasmid_bonus_weight": 0.2
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7381150959132611,
-          "tp_retained": 0.9979508687656342,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.3978315262718932,
+                "best_TP_retained": 1.0,
+                "best_FP_retained": 0.0,
+                "best_J": 1.0,
+                "fp_le_0_1pct": {
+                    "threshold": 0.3978315262718932,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.9282735613010842,
+                    "tp_retained": 0.9957115662196934,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.3803169307756464,
+                "best_TP_retained": 1.0,
+                "best_FP_retained": 0.0,
+                "best_J": 1.0,
+                "fp_le_0_1pct": {
+                    "threshold": 0.19349457881567972,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0004887585532746823
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7464553794829024,
+                    "tp_retained": 0.9956131331825347,
+                    "fp_retained": 0.0
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.3878231859883236,
+                "best_TP_retained": 1.0,
+                "best_FP_retained": 0.0,
+                "best_J": 1.0,
+                "fp_le_0_1pct": {
+                    "threshold": 0.19349457881567972,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0004887585532746823
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7447873227689741,
+                    "tp_retained": 0.9956131331825347,
+                    "fp_retained": 0.0
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.4445371142618849,
-        "best_TP_retained": 0.9990291589278489,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9990291589278489,
-        "fp_le_0_1pct": {
-          "threshold": 0.3686405337781484,
-          "tp_retained": 0.9993465232936408,
-          "fp_retained": 0.0005941770647653001
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.6505421184320267,
-          "tp_retained": 0.9952162262201575,
-          "fp_retained": 0.0
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.44620517097581314,
-        "best_TP_retained": 0.9989043791729693,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9989043791729693,
-        "fp_le_0_1pct": {
-          "threshold": 0.36530442035029187,
-          "tp_retained": 0.9993364966210898,
-          "fp_retained": 0.0005966587112171838
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5404503753127606,
-          "tp_retained": 0.995060839299262,
-          "fp_retained": 0.0
-        }
-      }
-    }
-  },
-  "skin|all": {
-    "sampletype": "skin",
-    "platform": "all",
-    "best_weights": {
-      "breadth_weight": 0.22500162525775977,
-      "minhash_weight": 0.3778579848713848,
-      "gini_weight": 0.39657108964441745,
-      "disparity_weight": 0.00028515729118288685,
-      "hmp_weight": 0.0002841429352550871,
-      "plasmid_bonus_weight": 0.2
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.3978315262718932,
-        "best_TP_retained": 1.0,
-        "best_FP_retained": 0.0,
-        "best_J": 1.0,
-        "fp_le_0_1pct": {
-          "threshold": 0.3978315262718932,
-          "tp_retained": 1.0,
-          "fp_retained": 0.0
+    "skin|illumina": {
+        "sampletype": "skin",
+        "platform": "illumina",
+        "best_weights": {
+            "breadth_weight": 0.22500162525775977,
+            "minhash_weight": 0.3778579848713848,
+            "gini_weight": 0.39657108964441745,
+            "disparity_weight": 0.00028515729118288685,
+            "hmp_weight": 0.0002841429352550871,
+            "plasmid_bonus_weight": 0.2
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.9282735613010842,
-          "tp_retained": 0.9957115662196934,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.3978315262718932,
+                "best_TP_retained": 1.0,
+                "best_FP_retained": 0.0,
+                "best_J": 1.0,
+                "fp_le_0_1pct": {
+                    "threshold": 0.3978315262718932,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.9282735613010842,
+                    "tp_retained": 0.9957115662196934,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.3803169307756464,
+                "best_TP_retained": 1.0,
+                "best_FP_retained": 0.0,
+                "best_J": 1.0,
+                "fp_le_0_1pct": {
+                    "threshold": 0.19349457881567972,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0004887585532746823
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7464553794829024,
+                    "tp_retained": 0.9956131331825347,
+                    "fp_retained": 0.0
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.3878231859883236,
+                "best_TP_retained": 1.0,
+                "best_FP_retained": 0.0,
+                "best_J": 1.0,
+                "fp_le_0_1pct": {
+                    "threshold": 0.19349457881567972,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0004887585532746823
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7447873227689741,
+                    "tp_retained": 0.9956131331825347,
+                    "fp_retained": 0.0
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.3803169307756464,
-        "best_TP_retained": 1.0,
-        "best_FP_retained": 0.0,
-        "best_J": 1.0,
-        "fp_le_0_1pct": {
-          "threshold": 0.19349457881567972,
-          "tp_retained": 1.0,
-          "fp_retained": 0.0004887585532746823
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7464553794829024,
-          "tp_retained": 0.9956131331825347,
-          "fp_retained": 0.0
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.3878231859883236,
-        "best_TP_retained": 1.0,
-        "best_FP_retained": 0.0,
-        "best_J": 1.0,
-        "fp_le_0_1pct": {
-          "threshold": 0.19349457881567972,
-          "tp_retained": 1.0,
-          "fp_retained": 0.0004887585532746823
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7447873227689741,
-          "tp_retained": 0.9956131331825347,
-          "fp_retained": 0.0
-        }
-      }
-    }
-  },
-  "skin|illumina": {
-    "sampletype": "skin",
-    "platform": "illumina",
-    "best_weights": {
-      "breadth_weight": 0.22500162525775977,
-      "minhash_weight": 0.3778579848713848,
-      "gini_weight": 0.39657108964441745,
-      "disparity_weight": 0.00028515729118288685,
-      "hmp_weight": 0.0002841429352550871,
-      "plasmid_bonus_weight": 0.2
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.3978315262718932,
-        "best_TP_retained": 1.0,
-        "best_FP_retained": 0.0,
-        "best_J": 1.0,
-        "fp_le_0_1pct": {
-          "threshold": 0.3978315262718932,
-          "tp_retained": 1.0,
-          "fp_retained": 0.0
+    "stool|all": {
+        "sampletype": "stool",
+        "platform": "all",
+        "best_weights": {
+            "breadth_weight": 0.17392094322499338,
+            "minhash_weight": 0.5024081231857732,
+            "gini_weight": 0.3197669374126448,
+            "disparity_weight": 0.003165702921542432,
+            "hmp_weight": 0.0015075240242768703,
+            "plasmid_bonus_weight": 0.19550069049747837
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.9282735613010842,
-          "tp_retained": 0.9957115662196934,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.6964136780650542,
+                "best_TP_retained": 0.9997155827934032,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9997155827934032,
+                "fp_le_0_1pct": {
+                    "threshold": 0.664720600500417,
+                    "tp_retained": 0.999729878662925,
+                    "fp_retained": 0.0004918355301987016
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7481234361968306,
+                    "tp_retained": 0.9991921657105421,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.5696413678065054,
+                "best_TP_retained": 0.9592129776749282,
+                "best_FP_retained": 0.002430519946672136,
+                "best_J": 0.9567824577282561,
+                "fp_le_0_1pct": {
+                    "threshold": 0.6672226855713094,
+                    "tp_retained": 0.91694554475332,
+                    "fp_retained": 5.127679212388473e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5170975813177647,
+                    "tp_retained": 0.9954647527748227,
+                    "fp_retained": 0.12613065326633166
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.5679733110925771,
+                "best_TP_retained": 0.9657411221072288,
+                "best_FP_retained": 0.004522469230035302,
+                "best_J": 0.9612186528771935,
+                "fp_le_0_1pct": {
+                    "threshold": 0.6672226855713094,
+                    "tp_retained": 0.9030379159949381,
+                    "fp_retained": 9.541074324968991e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.517931609674729,
+                    "tp_retained": 0.9966768290545339,
+                    "fp_retained": 0.23469134624558724
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.3803169307756464,
-        "best_TP_retained": 1.0,
-        "best_FP_retained": 0.0,
-        "best_J": 1.0,
-        "fp_le_0_1pct": {
-          "threshold": 0.19349457881567972,
-          "tp_retained": 1.0,
-          "fp_retained": 0.0004887585532746823
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7464553794829024,
-          "tp_retained": 0.9956131331825347,
-          "fp_retained": 0.0
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.3878231859883236,
-        "best_TP_retained": 1.0,
-        "best_FP_retained": 0.0,
-        "best_J": 1.0,
-        "fp_le_0_1pct": {
-          "threshold": 0.19349457881567972,
-          "tp_retained": 1.0,
-          "fp_retained": 0.0004887585532746823
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7447873227689741,
-          "tp_retained": 0.9956131331825347,
-          "fp_retained": 0.0
-        }
-      }
-    }
-  },
-  "stool|all": {
-    "sampletype": "stool",
-    "platform": "all",
-    "best_weights": {
-      "breadth_weight": 0.17392094322499338,
-      "minhash_weight": 0.5024081231857732,
-      "gini_weight": 0.3197669374126448,
-      "disparity_weight": 0.003165702921542432,
-      "hmp_weight": 0.0015075240242768703,
-      "plasmid_bonus_weight": 0.19550069049747837
     },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.6964136780650542,
-        "best_TP_retained": 0.9997155827934032,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9997155827934032,
-        "fp_le_0_1pct": {
-          "threshold": 0.664720600500417,
-          "tp_retained": 0.999729878662925,
-          "fp_retained": 0.0004918355301987016
+    "stool|illumina": {
+        "sampletype": "stool",
+        "platform": "illumina",
+        "best_weights": {
+            "breadth_weight": 0.17392094322499338,
+            "minhash_weight": 0.5024081231857732,
+            "gini_weight": 0.3197669374126448,
+            "disparity_weight": 0.003165702921542432,
+            "hmp_weight": 0.0015075240242768703,
+            "plasmid_bonus_weight": 0.19550069049747837
         },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7481234361968306,
-          "tp_retained": 0.9991921657105421,
-          "fp_retained": 0.0
+        "groups": {
+            "toplevelkey": {
+                "best_threshold": 0.6964136780650542,
+                "best_TP_retained": 0.9997155827934032,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9997155827934032,
+                "fp_le_0_1pct": {
+                    "threshold": 0.664720600500417,
+                    "tp_retained": 0.999729878662925,
+                    "fp_retained": 0.0004918355301987016
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.7481234361968306,
+                    "tp_retained": 0.9991921657105421,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.5696413678065054,
+                "best_TP_retained": 0.9592129776749282,
+                "best_FP_retained": 0.002430519946672136,
+                "best_J": 0.9567824577282561,
+                "fp_le_0_1pct": {
+                    "threshold": 0.6672226855713094,
+                    "tp_retained": 0.91694554475332,
+                    "fp_retained": 5.127679212388473e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.5170975813177647,
+                    "tp_retained": 0.9954647527748227,
+                    "fp_retained": 0.12613065326633166
+                }
+            },
+            "subkey": {
+                "best_threshold": 0.5679733110925771,
+                "best_TP_retained": 0.9657411221072288,
+                "best_FP_retained": 0.004522469230035302,
+                "best_J": 0.9612186528771935,
+                "fp_le_0_1pct": {
+                    "threshold": 0.6672226855713094,
+                    "tp_retained": 0.9030379159949381,
+                    "fp_retained": 9.541074324968991e-5
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.517931609674729,
+                    "tp_retained": 0.9966768290545339,
+                    "fp_retained": 0.23469134624558724
+                }
+            }
         }
-      },
-      "key": {
-        "best_threshold": 0.5696413678065054,
-        "best_TP_retained": 0.9592129776749282,
-        "best_FP_retained": 0.002430519946672136,
-        "best_J": 0.9567824577282561,
-        "fp_le_0_1pct": {
-          "threshold": 0.6672226855713094,
-          "tp_retained": 0.91694554475332,
-          "fp_retained": 5.127679212388473e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5170975813177647,
-          "tp_retained": 0.9954647527748227,
-          "fp_retained": 0.12613065326633166
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.5679733110925771,
-        "best_TP_retained": 0.9657411221072288,
-        "best_FP_retained": 0.004522469230035302,
-        "best_J": 0.9612186528771935,
-        "fp_le_0_1pct": {
-          "threshold": 0.6672226855713094,
-          "tp_retained": 0.9030379159949381,
-          "fp_retained": 9.541074324968991e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.517931609674729,
-          "tp_retained": 0.9966768290545339,
-          "fp_retained": 0.23469134624558724
-        }
-      }
     }
-  },
-  "stool|illumina": {
-    "sampletype": "stool",
-    "platform": "illumina",
-    "best_weights": {
-      "breadth_weight": 0.17392094322499338,
-      "minhash_weight": 0.5024081231857732,
-      "gini_weight": 0.3197669374126448,
-      "disparity_weight": 0.003165702921542432,
-      "hmp_weight": 0.0015075240242768703,
-      "plasmid_bonus_weight": 0.19550069049747837
-    },
-    "groups": {
-      "toplevelkey": {
-        "best_threshold": 0.6964136780650542,
-        "best_TP_retained": 0.9997155827934032,
-        "best_FP_retained": 0.0,
-        "best_J": 0.9997155827934032,
-        "fp_le_0_1pct": {
-          "threshold": 0.664720600500417,
-          "tp_retained": 0.999729878662925,
-          "fp_retained": 0.0004918355301987016
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.7481234361968306,
-          "tp_retained": 0.9991921657105421,
-          "fp_retained": 0.0
-        }
-      },
-      "key": {
-        "best_threshold": 0.5696413678065054,
-        "best_TP_retained": 0.9592129776749282,
-        "best_FP_retained": 0.002430519946672136,
-        "best_J": 0.9567824577282561,
-        "fp_le_0_1pct": {
-          "threshold": 0.6672226855713094,
-          "tp_retained": 0.91694554475332,
-          "fp_retained": 5.127679212388473e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.5170975813177647,
-          "tp_retained": 0.9954647527748227,
-          "fp_retained": 0.12613065326633166
-        }
-      },
-      "subkey": {
-        "best_threshold": 0.5679733110925771,
-        "best_TP_retained": 0.9657411221072288,
-        "best_FP_retained": 0.004522469230035302,
-        "best_J": 0.9612186528771935,
-        "fp_le_0_1pct": {
-          "threshold": 0.6672226855713094,
-          "tp_retained": 0.9030379159949381,
-          "fp_retained": 9.541074324968991e-05
-        },
-        "tp_ge_99_5pct": {
-          "threshold": 0.517931609674729,
-          "tp_retained": 0.9966768290545339,
-          "fp_retained": 0.23469134624558724
-        }
-      }
-    }
-  }
 }
