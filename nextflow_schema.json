@@ -341,6 +341,11 @@
                     "hint": "This is the minimum confidence for a given taxa to be reported in the final report. Must be between 0 and 1. All items, regardless of conf, will still be present in the annotation txt file.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "disable_auto_weights": {
+                    "type": "boolean",
+                    "description": "Disable the automatic setting of TASS Score weights based on sample type and platform. If set to true, it uses the default weights for all sample types rather than adjusting them based on the sample type-specific thresholds determined in our testing.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "gini_weight": {
                     "type": ["number", "null"],
                     "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",

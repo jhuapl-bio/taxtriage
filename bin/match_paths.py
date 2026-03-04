@@ -35,7 +35,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category
+from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var
 
@@ -336,25 +336,32 @@ def parse_args(argv=None):
                          "bias the optimizer toward the target weights. Recommended: 0.5-5.0. 0 = disabled.")
     parser.add_argument("--optimize_report", type=str, default=None,
                         help="Optional path to write a TSV report of TP/FP counts and scores for the best weights.")
+    parser.add_argument("--optimize_granularity", type=str, default="subkey",
+                        choices=["key", "subkey", "toplevelkey"],
+                        help="Preferred granularity level for selecting optimized weights. "
+                             "The optimizer runs at all levels but prefers this one unless another "
+                             "level has a significantly lower loss. Also controls which "
+                             "best_threshold from --thresholds_json is used for the TASS cutoff "
+                             "in the report. Default: subkey.")
     parser.add_argument(
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.51,
+        default=0.26,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.13,
+        default=0.29,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.36,
+        default=0.45,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -368,7 +375,7 @@ def parse_args(argv=None):
         help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
-        metavar="DISPARITYSCOREWEIGHT",
+        metavar="DIAMONDIDENTITYWEIGHT",
         type=float,
         default=0.0,
         help="value of weight for disparity of diamond_identity in final TASS Score",
@@ -379,6 +386,14 @@ def parse_args(argv=None):
         type=float,
         default=0.00,
         help="value of weight for hmp abundance in final TASS Score",
+    )
+    parser.add_argument(
+        "--plasmid_bonus_weight",
+        type=float,
+        default=0.19,
+        help="Additive TASS bonus for strains with strong plasmid coverage "
+             "relative to sibling strains in the same species. Applied outside "
+             "the normalized weight pool. 0 = disabled. Default: 0.05",
     )
     parser.add_argument(
         "--dispersion_factor",
@@ -522,7 +537,14 @@ def import_pathogens(pathogens_file):
 
     # No need to explicitly close the file, `with` statement handles it.
     return pathogens_dict
+def normalize_weights(weights):
+    total = sum(weights.values())
 
+    if total == 0:
+        # Avoid division by zero
+        return {k: 0 for k in weights}
+
+    return {k: v / total for k, v in weights.items()}
 def import_k2_file(filename):
     """Import the Kraken2 output file with parent-child relationships based on name indentation"""
 
@@ -620,7 +642,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 secondary_counts[read.query_name] += 1
                 continue
             primary_counts[read.query_name] += 1
-
+    # for each of the reads, check which ones have more than 1 count
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
 
@@ -646,6 +668,8 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 count_baseq = 0,
                 count_mapq = 0,
                 count_highmapq = 0,  # reads with MAPQ >= threshold
+                sum_mapq_filtered = 0,   # MAPQ sum for reads that pass the filter
+                count_mapq_filtered = 0, # count of reads that pass the filter
                 total_reads = 0,
                 read_positions = [],
                 total_length = 0,
@@ -657,6 +681,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
         total_reads = 0
         # check if the alignment was paired end or single end
         start_time = time.time()
+
         for read in bam_file.fetch():
 
             if read.is_unmapped:
@@ -684,12 +709,24 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
             # base quality.  They ARE still counted for highmapq_fraction above
             # so the fraction reflects the full alignment picture.
             if read.mapping_quality < args.minmapq:
+                # if read.reference_name == "NC_002695.2":
+                #     print(read.mapping_quality, read)
                 allow_low_mapq = (
                     read.mapping_quality == 0
                     and secondary_counts.get(read.query_name, 0) > 0
                 )
+                # if"NC_002695.2" in read.query_name:
+                #     print(read.query_qualities)
+                #     print(help(read), read.is_mapped)
+                #     exit()
+                #     print(read.mapping_quality, read.query_name, read.reference_name, allow_low_mapq)
                 if not allow_low_mapq:
                     continue
+
+            # Accumulate MAPQ only for reads that passed the filter
+            # (so meanmapq reflects the actual reads used for coverage/depth)
+            reference_stats[ref]["sum_mapq_filtered"] += read.mapping_quality
+            reference_stats[ref]["count_mapq_filtered"] += 1
 
             # Create a unique key for the read based on its query name and strand
             read_id_key = f"{read.query_name}:{read.is_reverse}"
@@ -731,8 +768,12 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 avg_read_length = math.ceil(stats["total_length"] / stats["total_reads"]) if stats["total_reads"] > 0 else 0
                 # Calculate average base quality
                 avg_baseq = stats["sum_baseq"] / stats["count_baseq"] if stats["count_baseq"] > 0 else 0
-                # Calculate average mapping quality
-                avg_mapq = stats.get("sum_mapq", 0) / stats.get("count_mapq", 0) if stats.get("count_mapq", 0) > 0 else 0
+                # Calculate average mapping quality from reads that PASSED the
+                # minmapq filter (or the allow_low_mapq exception).  Using all
+                # reads would drag the mean down with skipped MAPQ=0 alignments.
+                _smf = stats.get("sum_mapq_filtered", 0)
+                _cmf = stats.get("count_mapq_filtered", 0)
+                avg_mapq = _smf / _cmf if _cmf > 0 else 0
 
 
 
@@ -802,22 +843,57 @@ def main():
         disparity_w = args.disparity_score_weight
 
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
+    # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
+    # Lookup order (first match wins):
+    #   1. {sampletype}|{platform}
+    #   2. {sampletype}|all
+    #   3. all|{platform}
+    #   4. all|all
+    # Platform normalisation: pacbio → ont; default platform is "illumina".
     thresholds_config = None
     if args.thresholds_json:
         with open(args.thresholds_json, 'r') as _tf:
             thresholds_config = _json.load(_tf)
-        # Determine the normalized sample type to look up in the JSON.
-        # Sterile sites use "blood" thresholds (closest profile available).
-        # Unknown or unmatched types fall back to "all".
+
+        # ─ normalise sample type ─
         _norm_st = normalize_body_site(args.sampletype.lower()) if args.sampletype else "unknown"
         if _norm_st == "sterile":
             _norm_st = "blood"
-        if _norm_st in thresholds_config:
-            _st_key = _norm_st
+
+        # ─ normalise platform ─
+        _raw_plat = (args.platform or "unknown").strip().lower()
+        if _raw_plat in ("pacbio", "pac_bio", "pb"):
+            _norm_plat = "ont"
+        elif _raw_plat in ("illumina", "miseq", "hiseq", "nextseq", "novaseq"):
+            _norm_plat = "illumina"
+        elif _raw_plat in ("ont", "nanopore", "minion", "promethion"):
+            _norm_plat = "ont"
+        elif _raw_plat in ("unknown", ""):
+            _norm_plat = "illumina"          # default platform
         else:
-            _st_key = "all"
-        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' normalized to "
-              f"'{_norm_st}', using thresholds key: '{_st_key}'")
+            _norm_plat = _raw_plat            # pass through as-is
+
+        # ─ lookup with fallback chain ─
+        _candidates = [
+            f"{_norm_st}|{_norm_plat}",       # exact match
+            f"{_norm_st}|all",                 # any platform for this sampletype
+            f"all|{_norm_plat}",               # any sampletype for this platform
+            "all|all",                         # universal fallback
+        ]
+        _st_key = None
+        for _cand in _candidates:
+            if _cand in thresholds_config:
+                _st_key = _cand
+                break
+        if _st_key is None:
+            # Last resort: grab the first key in the JSON
+            _st_key = next(iter(thresholds_config))
+            print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+
+        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
+              f"platform '{args.platform}' → '{_norm_plat}', "
+              f"using thresholds key: '{_st_key}'")
+
         _best_w = thresholds_config[_st_key].get("best_weights", {})
         # Override CLI weight defaults with JSON best weights
         if "breadth_weight" in _best_w:
@@ -831,9 +907,12 @@ def main():
         if "disparity_weight" in _best_w:
             disparity_w = _best_w["disparity_weight"]
             args.disparity_weight = disparity_w
+        if "plasmid_bonus_weight" in _best_w:
+            args.plasmid_bonus_weight = _best_w["plasmid_bonus_weight"]
         print(f"  Applied weights from JSON: breadth={args.breadth_weight:.6g}, "
               f"gini={args.gini_weight:.6g}, minhash={args.minhash_weight:.6g}, "
-              f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}")
+              f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}, "
+              f"plasmid_bonus={args.plasmid_bonus_weight:.6g}")
 
     weights = {
         'mapq_score': args.mapq_weight,
@@ -846,13 +925,11 @@ def main():
         'diamond_identity': args.diamond_identity_weight,
         "k2_disparity_score_weight": args.k2_disparity_weight,
     }
-    total_weight = sum(weights.values())
-    if total_weight != 1:
-        for key in weights:
-            if total_weight != 0:
-                weights[key] = weights[key] / total_weight
-            else:
-                weights[key] = 0
+    # total_weight = sum(weights.values())
+    weights = normalize_weights(weights)
+    # Plasmid bonus is additive — added AFTER normalization so it doesn't
+    # dilute the core weights.  Set to 0 to disable.
+    weights['plasmid_bonus_weight'] = args.plasmid_bonus_weight
     """
     # Final Score Calculation
 
@@ -1045,11 +1122,12 @@ def main():
                     except Exception as e:
                         print(f"Error in: {e}")
                 i+=1
-    reference_hits, aligned_total, total_reads = count_reference_hits(
+    reference_hits, _, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
         args=args
     )
+    # exit()
 
     mmbert_dict = dict()
     if args.microbert:
@@ -1070,10 +1148,11 @@ def main():
         with open(matcher, "r") as f:
             for i, line in enumerate(f):
                 line = line.rstrip("\n")
-                if i == 0:  # header
+                splitline = line.split("\t")
+
+                if i == 0 and len(splitline) > 0 and splitline[0] == "Acc":  # header
                     continue
 
-                splitline = line.split("\t")
                 if not splitline or len(splitline) <= accindex:
                     continue
 
@@ -1081,7 +1160,6 @@ def main():
                 taxid     = splitline[taxcol].strip() if len(splitline) > taxcol else None
                 name      = splitline[nameindex].strip() if len(splitline) > nameindex else None
                 organism = splitline[orgindex].strip() if len(splitline) > orgindex else None
-
                 if not accession:
                     continue
 
@@ -1090,11 +1168,30 @@ def main():
                     if taxid and not reference_hits[accession].get("taxid"):
                         reference_hits[accession]["taxid"] = taxid
 
+                    # Store the raw description from the mapfile BEFORE
+                    # overwriting 'name' with the cleaner organism column.
+                    # The description often contains "plasmid pXXX" which
+                    # we need for plasmid tagging downstream.
+                    if name:
+                        reference_hits[accession]["description"] = name
                     if organism:
                         reference_hits[accession]["name"] = organism
                     elif name:
                         reference_hits[accession]["name"] = name
         f.close()
+    # ── Tag plasmid accessions from the description field ──────────────────
+    # Use 'description' (raw mapfile name column) which preserves strings
+    # like "E. coli ETEC H10407 plasmid p666, complete sequence".
+    # Fall back to 'name' if description wasn't populated.
+    _plasmid_count = 0
+    for acc, hit in reference_hits.items():
+        _desc = (hit.get('description', '') or hit.get('name', '') or '').lower()
+        hit['is_plasmid'] = 'plasmid' in _desc
+        if hit['is_plasmid']:
+            _plasmid_count += 1
+    if _plasmid_count:
+        print(f"Tagged {_plasmid_count} accessions as plasmid")
+
     taxdump, taxdump_names = {}, {}
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
@@ -1155,10 +1252,15 @@ def main():
         acc_to_key[acc] = str(hit.get("key", acc))
         acc_to_subkey[acc] = str(hit.get("subkey", acc))
         acc_to_toplevelkey[acc] = str(hit.get("toplevelkey", acc))
+        acc_sub = re.sub(r"\.\d+$", "", acc)
+        acc_to_key[acc_sub] = str(hit.get("key", acc))
+        acc_to_subkey[acc_sub] = str(hit.get("subkey", acc))
+        acc_to_toplevelkey[acc_sub] = str(hit.get("toplevelkey", acc))
     species_to_all_accs = defaultdict(set)
     all_readscounts = [x['numreads'] for x in reference_hits.values()]
-    total_reads = sum(all_readscounts)
-    print(f"Total aligned reads: {total_reads}")
+    aligned_reads_total = sum(all_readscounts)
+    total_reads = aligned_reads_total
+    print(f"Total aligned reads: {aligned_reads_total}")
     variance_reads = calculate_var(all_readscounts)
     print(f"\n\tVariance of reads: {variance_reads}")
     if args.sampletype:
@@ -1189,6 +1291,34 @@ def main():
     else:
         dists = {}
 
+    # ── Aggregate comparison_df to subkey (species) level for minhash scoring ──
+    # The raw comparison_df is per-accession (contig), but minhash reduction
+    # should reflect the species-level conflict picture: sum reads, weighted-avg
+    # breadth ratios, so that a species with many contigs gets one composite score.
+    subkey_comparison_df = pd.DataFrame()
+    if comparison_df is not None and not comparison_df.empty:
+        _cdf = comparison_df.copy()
+        _cdf['subkey'] = _cdf.index.map(lambda a: acc_to_subkey.get(a, a))
+        # Weighted aggregation: weight by Total Reads per accession
+        _numeric_cols = [c for c in ['Total Reads', 'Pass Filtered Reads', 'Δ All',
+                         'Reference Length'] if c in _cdf.columns]
+        _wavg_cols = ['Δ All%', 'Δ^-1 Breadth', 'Breadth Original', 'Breadth New']
+        # Force all numeric columns to numeric dtype (some may arrive as strings)
+        for _nc in _numeric_cols + _wavg_cols:
+            if _nc in _cdf.columns:
+                _cdf[_nc] = pd.to_numeric(_cdf[_nc], errors='coerce').fillna(0)
+        _grouped = _cdf.groupby('subkey')
+        _sums = _grouped[_numeric_cols].sum()
+        # Read-weighted averages for ratio/percentage columns
+        _wavg_parts = {}
+        for col in _wavg_cols:
+            if col in _cdf.columns:
+                _cdf[f'_w_{col}'] = _cdf[col] * _cdf['Total Reads']
+                _wavg_parts[col] = _grouped[f'_w_{col}'].sum() / _sums['Total Reads'].replace(0, 1)
+        _wavg_df = pd.DataFrame(_wavg_parts)
+        subkey_comparison_df = pd.concat([_sums, _wavg_df], axis=1)
+        print(f"Aggregated comparison_df: {len(comparison_df)} accessions → {len(subkey_comparison_df)} subkeys")
+
     for acc, data in reference_hits.items():
         if not data.get('organism'):
             # try to get organism from taxdump names
@@ -1204,7 +1334,7 @@ def main():
             reward_factor = args.reward_factor,
             dispersion_factor = args.dispersion_factor,
             alpha = args.alpha,
-            comparison_df = comparison_df,
+            comparison_df = subkey_comparison_df,
             fallback_top = top,
             total_reads = total_reads,
             mapq_breadth_power = args.mapq_breadth_power,
@@ -1216,6 +1346,101 @@ def main():
         mapq_breadth_power=args.mapq_breadth_power,
     )
 
+    # ── Plasmid disparity: score strains by relative plasmid presence ────────
+    # Within each subkey (species), compare plasmid coverage across strains.
+    # A strain whose plasmid(s) have notably better coverage/reads than
+    # sibling strains' plasmids gets a higher plasmid_score (0–1).
+    # The score also factors in the plasmid's own alignment quality
+    # (breadth_log_score and gini_coefficient) so that a plasmid with
+    # garbage coverage doesn't inflate the bonus.
+    # Strains with no plasmid accessions get plasmid_score = 0 (neutral).
+    #
+    # 1) Collect plasmid stats per strain, grouped by subkey
+    _subkey_plasmid_stats = defaultdict(dict)  # subkey → {strain_key → {reads, covered_bases, length, covered_regions}}
+    for acc, hit in reference_hits.items():
+        if not hit.get('is_plasmid', False):
+            continue
+        _sk = str(hit.get('subkey', ''))
+        _strain = str(hit.get('key', acc))
+        if _strain not in _subkey_plasmid_stats[_sk]:
+            _subkey_plasmid_stats[_sk][_strain] = {
+                'reads': 0, 'covered_bases': 0, 'length': 0, 'coverage': 0.0,
+                'covered_regions': [], '_region_offset': 0,
+            }
+        _ps = _subkey_plasmid_stats[_sk][_strain]
+        _ps['reads'] += hit.get('numreads', 0)
+        _ps['covered_bases'] += hit.get('covered_bases', 0)
+        # Accumulate covered_regions with offset for multi-plasmid strains
+        for _start, _end, _depth in hit.get('covered_regions', []):
+            _ps['covered_regions'].append((_start + _ps['_region_offset'], _end + _ps['_region_offset'], _depth))
+        _ps['_region_offset'] += int(hit.get('length', 0) or 0)
+        _ps['length'] += int(hit.get('length', 0) or 0)
+
+    # 2) Compute coverage, breadth, gini, and rank within each subkey
+    _strain_plasmid_score = {}  # strain_key → plasmid_score (0–1)
+    for _sk, strains_map in _subkey_plasmid_stats.items():
+        # Per-strain plasmid quality metrics
+        for _strain, _ps in strains_map.items():
+            _plen = max(1, _ps['length'])
+            _ps['coverage'] = _ps['covered_bases'] / _plen
+            # Compute breadth_log_score for this strain's plasmid(s)
+            _ps['breadth'] = breadth_score_sigmoid(_ps['coverage'])
+            # Compute gini from combined covered_regions
+            if _ps['covered_regions']:
+                _ps['gini'] = getGiniCoeff(
+                    _ps['covered_regions'], _plen,
+                    alpha=1.8, reward_factor=2, beta=0.5)
+            else:
+                _ps['gini'] = 0.0
+
+        # Max values across siblings for relative comparison
+        _max_cov = max((_ps['coverage'] for _ps in strains_map.values()), default=0.0)
+        _max_reads = max((_ps['reads'] for _ps in strains_map.values()), default=0)
+        _n_strains_with_plasmid = len(strains_map)
+        if _max_cov <= 0 and _max_reads <= 0:
+            for _strain in strains_map:
+                _strain_plasmid_score[_strain] = 0.0
+            continue
+
+        for _strain, _ps in strains_map.items():
+            # ── Absolute quality: does this plasmid have real coverage? ──
+            # breadth (0–1): sigmoid of coverage fraction
+            # gini (0–1): evenness of that coverage
+            # Both must be decent — geometric mean ensures this.
+            _breadth = float(_ps.get('breadth', 0.0))
+            _gini = float(_ps.get('gini', 0.0))
+            _quality = (_breadth * _gini) ** 0.5  # 0–1
+
+            # ── Relative disparity: how does this strain compare to siblings? ──
+            # Only meaningful when multiple strains have plasmids.
+            if _n_strains_with_plasmid > 1:
+                _cov_ratio = (_ps['coverage'] / _max_cov) if _max_cov > 0 else 0.0
+                _read_ratio = (_ps['reads'] / _max_reads) if _max_reads > 0 else 0.0
+                _disparity = min(1.0, 0.7 * _cov_ratio + 0.3 * _read_ratio)
+            else:
+                # Single strain with plasmid: disparity is neutral (1.0).
+                # Score is driven entirely by absolute quality — a garbage
+                # plasmid with poor breadth/gini will still score low.
+                _disparity = 1.0
+
+            # ── Final plasmid score = quality * disparity ──
+            # quality gates the score: poor breadth or gini crushes it
+            # disparity separates strains when multiple have plasmids
+            _strain_plasmid_score[_strain] = min(1.0, _quality * _disparity)
+
+    # 3) Apply plasmid_score to strain_summary
+    _plasmid_scored = 0
+    for k, data in strain_summary.items():
+        _skey = str(data.get('key', k))
+        if _skey in _strain_plasmid_score:
+            data['plasmid_score'] = _strain_plasmid_score[_skey]
+            data['has_plasmid'] = True
+            _plasmid_scored += 1
+        else:
+            data['plasmid_score'] = 0.0
+            data['has_plasmid'] = False
+    if _plasmid_scored:
+        print(f"Plasmid disparity scored for {_plasmid_scored} strains across {len(_subkey_plasmid_stats)} subkeys")
 
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
     # This ensures optimize_weights() / build_metrics_df_from_final_json() can
@@ -1280,6 +1505,8 @@ def main():
             separation_weight = args.optimize_separation_weight,
             weight_prior = _weight_prior,
             weight_prior_lambda = args.optimize_weight_prior_lambda,
+            plasmid_bonus_weight = args.plasmid_bonus_weight,
+            prefer_granularity = args.optimize_granularity,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)
@@ -1468,6 +1695,24 @@ def main():
         _grp.pop('covered_regions', None)
         for _m in _grp.get('members', []):
             _m.pop('covered_regions', None)
+    # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
+    # Extract per-group best_threshold values so create_report.py can use
+    # them instead of its hard-coded sampletype defaults.
+    _best_cutoffs = None
+    if thresholds_config and _st_key in thresholds_config:
+        _groups_block = thresholds_config[_st_key].get("groups", {})
+        if _groups_block:
+            _best_cutoffs = {}
+            for _gname, _gdata in _groups_block.items():
+                _best_cutoffs[_gname] = {
+                    "best_threshold": _gdata.get("best_threshold"),
+                    "fp_le_0_1pct": _gdata.get("fp_le_0_1pct", {}).get("threshold"),
+                    "tp_ge_99_5pct": _gdata.get("tp_ge_99_5pct", {}).get("threshold"),
+                }
+            print(f"  Best cutoffs from thresholds JSON ({_st_key}):")
+            for _gn, _gc in _best_cutoffs.items():
+                print(f"    {_gn}: best_threshold={_gc['best_threshold']}")
+
     output_json = {
         "metadata": {
             "sample_name": args.samplename,
@@ -1476,6 +1721,7 @@ def main():
             "workflow_revision": args.workflow_revision,
             "commit_id": args.commit_id,
             "total_reads": total_reads,
+            "aligned_reads": aligned_reads_total,
             "total_organism_reads": int(_total_organism_reads),
             "num_species_groups": len(final_json),
             "num_keys": len(_all_keys),
@@ -1485,6 +1731,9 @@ def main():
             "mapq_breadth_power": args.mapq_breadth_power,
             "weights": dict(weights),
             "min_conf_applied": None,  # populated by create_report per-sample
+            "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
+            "best_cutoffs_source": _st_key if _best_cutoffs else None,
+            "preferred_granularity": args.optimize_granularity,
         },
         "organisms": _json_out,
     }
@@ -1521,6 +1770,10 @@ def main():
                 "classification": "TP" if is_tp else "FP",
                 "microbial_category": data.get('microbial_category', 'Unknown'),
             })
+
+        # Filter out organisms with zero TP and zero FP reads –
+        # they carry no ground-truth signal and skew mean scores.
+        organism_rows = [r for r in organism_rows if (r['tp_reads'] + r['fp_reads']) >= 1]
 
         organism_rows.sort(key=lambda r: r['tass_score'], reverse=True)
 
@@ -1586,6 +1839,9 @@ def main():
                     "classification": "TP" if tp_reads > 0 else "FP",
                     "member_count": len(members),
                 })
+
+            # Filter out groups with zero TP and zero FP reads
+            rows = [r for r in rows if (r['tp_reads'] + r['fp_reads']) >= 1]
 
             rows.sort(key=lambda r: r["tass_score"], reverse=True)
             tp_groups = [r for r in rows if r["classification"] == "TP"]
@@ -1707,7 +1963,10 @@ def write_to_tsv(output_path, final_scores, header):
             formatname = entry.get('formatname', "N/A")
             sample_name = entry.get('sample_name', "N/A")
             ref = entry.get('ref', "N/A")
-            percent_aligned = entry.get('percent_aligned', 0)
+            # Compute percent_aligned relative to total reads in sample
+            _entry_total = entry.get('total_reads', 0)
+            _entry_reads = entry.get('reads_aligned', 0)
+            percent_aligned = (100 * _entry_reads / _entry_total) if _entry_total > 0 and _entry_reads > 0 else 0
             is_pathogen = entry.get('is_pathogen', "Unknown")
             status = entry.get('status', "N/A")
             is_annotated= entry.get('is_annotated', "N/A")
