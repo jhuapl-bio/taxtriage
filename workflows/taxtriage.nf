@@ -484,19 +484,15 @@ workflow TAXTRIAGE {
     COUNT_READS(ch_reads)
     readCountChannel = COUNT_READS.out.count
     // Update the meta with the read count by reading the file content
-    // readCountChannel.map { meta, countFile ->
-    //     def count = countFile.text.trim().toInteger()
-    //     // Update meta map by adding a new key 'read_count'
-    //     meta.read_count = count
-    //     return [meta, reads]
-    // }.set{ ch_reads }
+    ch_reads = ch_reads
+        .map { meta, reads -> [meta.id, meta, reads] }
+        .join(readCountChannel.map { meta, countFile -> [meta.id, countFile] }, by: 0)
+        .map { id, meta, reads, countFile ->
+            def count = countFile.text.trim().toInteger()
+            meta.read_count = count
+            return [meta, reads]
+        }
 
-    ch_reads = ch_reads.join(readCountChannel)
-    .map { meta, reads, countFile ->
-        def count = countFile.text.trim().toInteger()
-        meta.read_count = count
-        return [meta, reads]
-    }
 
     //////////////////// RUN PYCOQC on any seq summary file ////////////////////
 

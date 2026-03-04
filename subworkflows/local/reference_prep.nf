@@ -85,7 +85,6 @@ workflow  REFERENCE_PREP {
                 return [meta, report]
             }
         }
-        ch_reports_to_download.view()
     }
 
 
