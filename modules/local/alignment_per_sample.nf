@@ -76,7 +76,7 @@ process ALIGNMENT_PER_SAMPLE {
     def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
     def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
     // add assets/sampletype_best_thresholds.json if it exists
-
+    def platform = meta.platform ? " --platform ${meta.platform} " : " "
     if (!params.disable_auto_weights && file("$projectDir/assets/sampletype_best_thresholds.json").exists()) {
         sampletype_thresholds = " --thresholds_json $projectDir/assets/sampletype_best_thresholds.json "
     } else {
@@ -101,7 +101,7 @@ process ALIGNMENT_PER_SAMPLE {
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
-        $workflow_revision $commitID
+        $workflow_revision $commitID $platform
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
