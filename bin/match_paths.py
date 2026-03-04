@@ -841,7 +841,8 @@ def main():
         disparity_w = args.disparity_weight
     else:
         disparity_w = args.disparity_score_weight
-
+    if args.platform:
+        args.platform = args.platform.lower()
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
     # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
     # Lookup order (first match wins):
