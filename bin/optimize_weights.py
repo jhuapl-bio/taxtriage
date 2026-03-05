@@ -1477,3 +1477,229 @@ def pathogen_label(rft, sample_type):
         isPathi = True
     return is_pathogen, isPathi, direct_match, high_cons
 
+
+# ── Control comparison utilities ─────────────────────────────────────────────
+
+def load_control_data(json_paths):
+    """Load one or more match_paths.py output JSONs and index organisms by key levels.
+
+    Each JSON is expected to have the standard ``{metadata, organisms}``
+    structure *or* the legacy plain-list format.
+
+    Returns a dict::
+
+        {
+            "by_toplevelkey": { "<tlk>": [ {tass_score, numreads, source}, ... ] },
+            "by_key":         { "<key>": [ ... ] },
+            "by_subkey":      { "<sk>":  [ ... ] },
+        }
+
+    where each list entry represents one control sample's value for that
+    organism (allowing multiple control replicates).
+    """
+    import json as _json_mod
+    import os
+
+    index = {
+        "by_toplevelkey": defaultdict(list),
+        "by_key": defaultdict(list),
+        "by_subkey": defaultdict(list),
+    }
+
+    if not json_paths:
+        return index
+
+    for fpath in json_paths:
+        if not os.path.exists(fpath):
+            print(f"WARNING: control file not found, skipping: {fpath}")
+            continue
+        with open(fpath, "r") as fh:
+            raw = _json_mod.load(fh)
+
+        # Accept both structured and legacy list format
+        if isinstance(raw, dict) and "organisms" in raw:
+            organisms = raw["organisms"]
+        elif isinstance(raw, list):
+            organisms = raw
+        else:
+            print(f"WARNING: unexpected control JSON format in {fpath}, skipping")
+            continue
+
+        source = os.path.basename(fpath)
+
+        for grp in organisms:
+            tlk = str(grp.get("toplevelkey", grp.get("key", "")))
+            grp_entry = {
+                "tass_score": float(grp.get("tass_score", 0) or 0),
+                "numreads": float(grp.get("numreads", 0) or 0),
+                "source": source,
+            }
+            if tlk:
+                index["by_toplevelkey"][tlk].append(grp_entry)
+
+            # Index individual members at key and subkey levels
+            for member in grp.get("members", []):
+                m_key = str(member.get("key", ""))
+                m_subkey = str(member.get("subkey", member.get("key", "")))
+                m_entry = {
+                    "tass_score": float(member.get("tass_score", 0) or 0),
+                    "numreads": float(member.get("numreads", 0) or 0),
+                    "source": source,
+                }
+                if m_key:
+                    index["by_key"][m_key].append(m_entry)
+                if m_subkey:
+                    index["by_subkey"][m_subkey].append(m_entry)
+
+    return index
+
+
+def compute_control_metrics(
+    sample_tass,
+    sample_reads,
+    neg_values,
+    pos_values,
+    fold_threshold=2.0,
+):
+    """Compute fold-change metrics comparing a sample organism to controls.
+
+    Parameters
+    ----------
+    sample_tass : float
+        TASS score of the sample organism.
+    sample_reads : float
+        Read count of the sample organism.
+    neg_values : list[dict]
+        List of ``{tass_score, numreads, source}`` from negative controls.
+    pos_values : list[dict]
+        List of ``{tass_score, numreads, source}`` from positive controls.
+    fold_threshold : float
+        Fold-change below which the sample is considered "within_negative"
+        control range.  Default 2.0.
+
+    Returns
+    -------
+    dict with keys:
+        neg_max_tass, neg_max_reads,
+        pos_min_tass, pos_min_reads,
+        tass_fold_over_neg, reads_fold_over_neg,
+        control_flag ("within_negative" | "above_negative" | "no_neg_controls"),
+        neg_control_values, pos_control_values
+    """
+    result = {
+        "neg_max_tass": 0.0,
+        "neg_max_reads": 0.0,
+        "pos_min_tass": None,
+        "pos_min_reads": None,
+        "tass_fold_over_neg": None,
+        "reads_fold_over_neg": None,
+        "control_flag": "no_neg_controls",
+        "neg_control_values": [],
+        "pos_control_values": [],
+    }
+
+    # ── Negative controls ────────────────────────────────────────────────
+    if neg_values:
+        neg_tass_vals = [v["tass_score"] for v in neg_values]
+        neg_reads_vals = [v["numreads"] for v in neg_values]
+        result["neg_max_tass"] = max(neg_tass_vals)
+        result["neg_max_reads"] = max(neg_reads_vals)
+        result["neg_control_values"] = [
+            {"tass_score": v["tass_score"], "numreads": v["numreads"],
+             "source": v.get("source", "")}
+            for v in neg_values
+        ]
+
+        # Fold-change: how many times higher is the sample vs the worst neg control?
+        if result["neg_max_tass"] > 0:
+            result["tass_fold_over_neg"] = round(
+                float(sample_tass) / result["neg_max_tass"], 4)
+        else:
+            # Neg controls have 0 TASS → any sample signal is infinitely above
+            result["tass_fold_over_neg"] = float("inf") if sample_tass > 0 else 1.0
+
+        if result["neg_max_reads"] > 0:
+            result["reads_fold_over_neg"] = round(
+                float(sample_reads) / result["neg_max_reads"], 4)
+        else:
+            result["reads_fold_over_neg"] = float("inf") if sample_reads > 0 else 1.0
+
+        # Flag
+        tass_fold = result["tass_fold_over_neg"]
+        if tass_fold is not None and tass_fold != float("inf") and tass_fold < fold_threshold:
+            result["control_flag"] = "within_negative"
+        else:
+            result["control_flag"] = "above_negative"
+
+    # ── Positive controls ────────────────────────────────────────────────
+    if pos_values:
+        pos_tass_vals = [v["tass_score"] for v in pos_values]
+        pos_reads_vals = [v["numreads"] for v in pos_values]
+        result["pos_min_tass"] = min(pos_tass_vals)
+        result["pos_min_reads"] = min(pos_reads_vals)
+        result["pos_control_values"] = [
+            {"tass_score": v["tass_score"], "numreads": v["numreads"],
+             "source": v.get("source", "")}
+            for v in pos_values
+        ]
+
+    return result
+
+
+def compute_control_comparison(
+    data,
+    neg_index,
+    pos_index,
+    fold_threshold=2.0,
+    level="toplevelkey",
+):
+    """Compute control comparison for a single organism dict at a given hierarchy level.
+
+    Parameters
+    ----------
+    data : dict
+        Organism or member dict containing 'toplevelkey', 'key', 'subkey',
+        'tass_score', and 'numreads'.
+    neg_index : dict
+        Output from ``load_control_data()`` for negative controls.
+    pos_index : dict
+        Output from ``load_control_data()`` for positive controls.
+    fold_threshold : float
+        Passed through to ``compute_control_metrics()``.
+    level : str
+        One of "toplevelkey", "key", "subkey".
+
+    Returns
+    -------
+    dict or None
+        Control comparison dict, or None if no controls at all.
+    """
+    level_map = {
+        "toplevelkey": "by_toplevelkey",
+        "key": "by_key",
+        "subkey": "by_subkey",
+    }
+    idx_key = level_map.get(level, "by_toplevelkey")
+
+    # Determine the organism's identifier at this level
+    org_id = str(data.get(level, data.get("key", "")))
+    if not org_id:
+        return None
+
+    neg_vals = neg_index.get(idx_key, {}).get(org_id, [])
+    pos_vals = pos_index.get(idx_key, {}).get(org_id, [])
+
+    if not neg_vals and not pos_vals:
+        return None
+
+    sample_tass = float(data.get("tass_score", 0) or 0)
+    sample_reads = float(data.get("numreads", 0) or 0)
+
+    return compute_control_metrics(
+        sample_tass=sample_tass,
+        sample_reads=sample_reads,
+        neg_values=neg_vals,
+        pos_values=pos_vals,
+        fold_threshold=fold_threshold,
+    )
+

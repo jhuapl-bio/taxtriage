@@ -35,7 +35,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff
+from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var
 
@@ -486,6 +486,39 @@ def parse_args(argv=None):
         help="Output XLSX path. If not set, will write to <output_dir>/alignment_confusion_report.xlsx"
     )
 
+    # ── Control sample arguments ────────────────────────────────────────────
+    parser.add_argument(
+        "--negative_controls",
+        nargs="+",
+        default=None,
+        help="One or more JSON files (match_paths output format) from negative control "
+             "samples.  Organisms whose TASS / reads are within fold-change of these "
+             "controls are flagged as 'within_negative' bounds.",
+    )
+    parser.add_argument(
+        "--positive_controls",
+        nargs="+",
+        default=None,
+        help="One or more JSON files (match_paths output format) from positive control "
+             "samples.  Used for spark-bar visualisation in the report.",
+    )
+    parser.add_argument(
+        "--control_type",
+        type=str,
+        default=None,
+        choices=["positive", "negative"],
+        help="Mark THIS sample as a control.  Stored in output JSON metadata as "
+             "'control_type'.  Omit for normal (non-control) samples.",
+    )
+    parser.add_argument(
+        "--control_fold_threshold",
+        type=float,
+        default=2.0,
+        help="Fold-change threshold for negative-control comparison.  If sample "
+             "TASS / max(neg TASS) < this value, organism is flagged "
+             "'within_negative'.  Default: 2.0.",
+    )
+
     return parser.parse_args(argv)
 
 def import_pathogens(pathogens_file):
@@ -851,6 +884,7 @@ def main():
     #   3. all|{platform}
     #   4. all|all
     # Platform normalisation: pacbio → ont; default platform is "illumina".
+
     thresholds_config = None
     if args.thresholds_json:
         with open(args.thresholds_json, 'r') as _tf:
@@ -863,11 +897,18 @@ def main():
 
         # ─ normalise platform ─
         _raw_plat = (args.platform or "unknown").strip().lower()
-        if _raw_plat in ("pacbio", "pac_bio", "pb"):
+        _raw_plat = _raw_plat.replace("_", " ").replace("-", " ")
+        if _raw_plat in ("pacbio", "pac bio", "pb"):
             _norm_plat = "ont"
-        elif _raw_plat in ("illumina", "miseq", "hiseq", "nextseq", "novaseq"):
+        elif _raw_plat in (
+            "illumina", "ilumina", "ill", "illum", "miseq", "hi seq", "hiseq",
+            "nextseq", "nova seq", "novaseq"
+        ):
             _norm_plat = "illumina"
-        elif _raw_plat in ("ont", "nanopore", "minion", "promethion"):
+        elif _raw_plat in (
+            "ont", "nano", "nanopore", "oxford", "oxford nanopore",
+            "oxford nan", "minion", "promethion", "gridion"
+        ):
             _norm_plat = "ont"
         elif _raw_plat in ("unknown", ""):
             _norm_plat = "illumina"          # default platform
@@ -1678,6 +1719,62 @@ def main():
     #         f"\n\tMicrobial Category: {data.get('microbial_category', 'N/A')},"
     #         f"\n\tFinal Score: {data.get('tass_score', 'N/A')}\n\n+________________________________\n"
     #     )
+    # ── Control comparison annotation ────────────────────────────────────────
+    # If negative and/or positive control JSONs were provided, load them and
+    # annotate each group + member with fold-change metrics.  These are purely
+    # informational annotations — the TASS score is NOT modified.
+    _neg_index = load_control_data(args.negative_controls) if args.negative_controls else None
+    _pos_index = load_control_data(args.positive_controls) if args.positive_controls else None
+
+    if _neg_index or _pos_index:
+        _neg = _neg_index or {"by_toplevelkey": {}, "by_key": {}, "by_subkey": {}}
+        _pos = _pos_index or {"by_toplevelkey": {}, "by_key": {}, "by_subkey": {}}
+        _ctrl_threshold = args.control_fold_threshold
+        _ctrl_annotated = 0
+
+        for group in final_json:
+            # Group-level comparison (toplevelkey)
+            grp_ctrl = compute_control_comparison(
+                data=group, neg_index=_neg, pos_index=_pos,
+                fold_threshold=_ctrl_threshold, level="toplevelkey",
+            )
+            if grp_ctrl:
+                group['control_comparison'] = grp_ctrl
+                _ctrl_annotated += 1
+
+            # Member-level comparison (key and subkey)
+            for member in group.get('members', []):
+                # Compare at key level (strain)
+                m_ctrl_key = compute_control_comparison(
+                    data=member, neg_index=_neg, pos_index=_pos,
+                    fold_threshold=_ctrl_threshold, level="key",
+                )
+                # Compare at subkey level (species)
+                m_ctrl_subkey = compute_control_comparison(
+                    data=member, neg_index=_neg, pos_index=_pos,
+                    fold_threshold=_ctrl_threshold, level="subkey",
+                )
+                member['control_comparison'] = {}
+                if m_ctrl_key:
+                    member['control_comparison']['by_key'] = m_ctrl_key
+                if m_ctrl_subkey:
+                    member['control_comparison']['by_subkey'] = m_ctrl_subkey
+                # Also store a top-level summary using the key-level result
+                # (or subkey fallback) for easy access in the report
+                _best_ctrl = m_ctrl_key or m_ctrl_subkey
+                if _best_ctrl:
+                    for _f in ('neg_max_tass', 'neg_max_reads', 'tass_fold_over_neg',
+                               'reads_fold_over_neg', 'control_flag',
+                               'neg_control_values', 'pos_control_values',
+                               'pos_min_tass', 'pos_min_reads'):
+                        member['control_comparison'][_f] = _best_ctrl.get(_f)
+
+        if _ctrl_annotated:
+            print(f"Control comparison: annotated {_ctrl_annotated} species groups "
+                  f"(neg={len(args.negative_controls or [])} files, "
+                  f"pos={len(args.positive_controls or [])} files, "
+                  f"fold_threshold={_ctrl_threshold})")
+
     # ── Build structured output with metadata ────────────────────────────────
     _all_keys = set()
     _all_subkeys = set()
@@ -1735,6 +1832,15 @@ def main():
             "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
             "best_cutoffs_source": _st_key if _best_cutoffs else None,
             "preferred_granularity": args.optimize_granularity,
+            "control_type": args.control_type,  # "positive", "negative", or None
+            "negative_controls_used": [
+                os.path.basename(p) for p in (args.negative_controls or [])
+            ] or None,
+            "positive_controls_used": [
+                os.path.basename(p) for p in (args.positive_controls or [])
+            ] or None,
+            "control_fold_threshold": args.control_fold_threshold if (
+                args.negative_controls or args.positive_controls) else None,
         },
         "organisms": _json_out,
     }

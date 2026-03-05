@@ -160,6 +160,173 @@ class PageTracker(Flowable):
         self._record[self._key] = (pg, y)
 
 
+class ControlSparkBar(Flowable):
+    """Inline spark bar showing where a sample's TASS score falls relative
+    to negative and positive control distributions.
+
+    The bar is rendered as a compact horizontal strip:
+
+    - Full bar represents the TASS range 0–1.
+    - Red shaded zone: 0 → max(negative control TASS values).
+    - Green shaded zone: min(positive control TASS) → 1.0  (if positives exist).
+    - Small tick marks for each individual control value.
+    - Black triangle marker for the sample's own TASS score.
+    - If the sample falls within the negative (red) zone, the triangle is red.
+    """
+
+    def __init__(self, sample_tass, neg_values=None, pos_values=None,
+                 control_flag=None, bar_width=72, bar_height=10,
+                 tass_fold=None, reads_fold=None):
+        super().__init__()
+        self.sample_tass = float(sample_tass or 0)
+        self.neg_values = neg_values or []
+        self.pos_values = pos_values or []
+        self.control_flag = control_flag or "no_neg_controls"
+        self.tass_fold = tass_fold      # fold-change over neg max TASS
+        self.reads_fold = reads_fold    # fold-change over neg max reads
+        self._label_h = 7              # height reserved for the fold label
+        self.width = bar_width
+        self.height = bar_height + self._label_h
+
+    def draw(self):
+        c = self.canv
+        w = self.width
+        label_h = self._label_h
+        bar_h = self.height - label_h   # actual bar height (above the label)
+
+        # The bar is drawn with its bottom edge at y=label_h so the fold
+        # label fits underneath.
+        by = label_h  # bar y-origin
+
+        # ── Background bar ───────────────────────────────────────────────
+        c.setFillColor(colors.Color(0.93, 0.93, 0.93, 1))
+        c.rect(0, by, w, bar_h, fill=1, stroke=0)
+
+        # ── Red zone (negative control range) ────────────────────────────
+        neg_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.neg_values]
+        if neg_tass_vals:
+            neg_max = max(neg_tass_vals)
+            red_w = neg_max * w
+            if red_w > 0:
+                c.setFillColor(colors.Color(0.95, 0.7, 0.7, 0.5))
+                c.rect(0, by, red_w, bar_h, fill=1, stroke=0)
+            # Tick marks for individual neg values
+            c.setStrokeColor(colors.Color(0.8, 0.2, 0.2, 0.7))
+            c.setLineWidth(0.5)
+            for val in neg_tass_vals:
+                x = val * w
+                c.line(x, by, x, by + bar_h)
+
+        # ── Green zone (positive control range) ──────────────────────────
+        pos_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.pos_values]
+        if pos_tass_vals:
+            pos_min = min(pos_tass_vals)
+            pos_max = max(pos_tass_vals)
+            green_x = pos_min * w
+            green_w = max(1, (pos_max - pos_min) * w)
+            # Extend to right edge if pos_max is close to 1
+            if pos_max >= 0.95:
+                green_w = w - green_x
+            c.setFillColor(colors.Color(0.7, 0.92, 0.7, 0.5))
+            c.rect(green_x, by, green_w, bar_h, fill=1, stroke=0)
+            # Tick marks for individual pos values
+            c.setStrokeColor(colors.Color(0.2, 0.7, 0.2, 0.7))
+            c.setLineWidth(0.5)
+            for val in pos_tass_vals:
+                x = val * w
+                c.line(x, by, x, by + bar_h)
+
+        # ── Sample marker (triangle) ─────────────────────────────────────
+        sx = self.sample_tass * w
+        # Clamp to bar bounds
+        sx = max(2, min(w - 2, sx))
+        tri_h = bar_h * 0.7
+        tri_half = 3
+
+        if self.control_flag == "within_negative":
+            c.setFillColor(colors.Color(0.85, 0.15, 0.15, 1))
+        else:
+            c.setFillColor(colors.Color(0.1, 0.1, 0.1, 1))
+
+        p = c.beginPath()
+        p.moveTo(sx - tri_half, by)
+        p.lineTo(sx + tri_half, by)
+        p.lineTo(sx, by + tri_h)
+        p.close()
+        c.drawPath(p, fill=1, stroke=0)
+
+        # ── Thin border ──────────────────────────────────────────────────
+        c.setStrokeColor(colors.Color(0.6, 0.6, 0.6, 1))
+        c.setLineWidth(0.3)
+        c.rect(0, by, w, bar_h, fill=0, stroke=1)
+
+        # ── Fold-change label (tiny text below the bar) ──────────────────
+        if self.tass_fold is not None and neg_tass_vals:
+            c.setFont("Helvetica", 5)
+            if self.tass_fold == float("inf"):
+                fold_txt = "\u221e\u00d7"  # ∞×
+            else:
+                fold_txt = f"{self.tass_fold:.1f}\u00d7"  # e.g. "3.2×"
+            # Color: red if within neg, dark gray otherwise
+            if self.control_flag == "within_negative":
+                c.setFillColor(colors.Color(0.75, 0.1, 0.1, 1))
+            else:
+                c.setFillColor(colors.Color(0.35, 0.35, 0.35, 1))
+            c.drawString(1, 0.5, fold_txt)
+
+            # If reads fold also available, show it after a separator
+            if self.reads_fold is not None:
+                if self.reads_fold == float("inf"):
+                    rd_txt = "\u221e\u00d7 rd"
+                else:
+                    rd_txt = f"{self.reads_fold:.1f}\u00d7 rd"
+                # Position after the tass fold text
+                tass_txt_w = c.stringWidth(fold_txt, "Helvetica", 5)
+                c.setFillColor(colors.Color(0.5, 0.5, 0.5, 1))
+                c.drawString(tass_txt_w + 4, 0.5, rd_txt)
+
+
+def _has_control_data(species_groups):
+    """Check if any organism in the dataset has control_comparison data."""
+    for sg in species_groups:
+        if sg.get('control_comparison'):
+            return True
+        for m in sg.get('members', []):
+            if m.get('control_comparison'):
+                return True
+    return False
+
+
+def _build_spark_bar_from_member(member, bar_width=72, bar_height=10):
+    """Build a ControlSparkBar from a member's control_comparison dict.
+
+    Returns None if no control data is present.
+    """
+    cc = member.get('control_comparison')
+    if not cc:
+        return None
+
+    # Extract fold values — handle inf stored as string in JSON round-trips
+    def _safe_fold(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    return ControlSparkBar(
+        sample_tass=member.get('tass_score', 0),
+        neg_values=cc.get('neg_control_values', []),
+        pos_values=cc.get('pos_control_values', []),
+        control_flag=cc.get('control_flag', 'no_neg_controls'),
+        bar_width=bar_width,
+        bar_height=bar_height,
+        tass_fold=_safe_fold(cc.get('tass_fold_over_neg')),
+        reads_fold=_safe_fold(cc.get('reads_fold_over_neg')),
+    )
+
+
 def get_high_ani_matches(member):
     """Return the pre-computed high-ANI match list embedded in the member dict.
 
@@ -477,7 +644,8 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                                   show_strains_table=True,
                                   outline_collector=None,
                                   zscore_threshold=None,
-                                  zscore_separator_index=None):
+                                  zscore_separator_index=None,
+                                  show_control_bar=False):
     """
     Create a single table combining all strains from all species groups.
 
@@ -572,6 +740,8 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     ]
     if show_ani_column:
         base_headers.append(Paragraph('High<br/>ANI', header_style))
+    if show_control_bar:
+        base_headers.append(Paragraph('Ctrl', header_style))
     n_base = len(base_headers)
 
     # Strain detail column in subkey mode (single column holding a nested mini-table).
@@ -584,16 +754,31 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     n_total = len(headers)
 
     # ── Column widths ─────────────────────────────────────────────────────────
-    #   Columns: [indicator, Organism, TASS, (K2 Reads), Reads, RPM, Coverage, (High ANI)]
+    #   Columns: [indicator, Organism, TASS, (K2 Reads), Reads, RPM, Coverage, (High ANI), (Ctrl)]
     def _base_col_widths(w):
-        if show_k2_column and show_ani_column:
-            return [w*0.03, w*0.24, w*0.08, w*0.11, w*0.14, w*0.10, w*0.10, w*0.20]
-        elif show_k2_column:
-            return [w*0.03, w*0.30, w*0.09, w*0.13, w*0.15, w*0.13, w*0.17]
-        elif show_ani_column:
-            return [w*0.03, w*0.28, w*0.09, w*0.15, w*0.12, w*0.12, w*0.21]
+        if show_control_bar:
+            # When control bar is present, allocate ~12% for it and shrink organism
+            _ctrl_w = 0.12
+            _remaining = 1.0 - _ctrl_w
+            if show_k2_column and show_ani_column:
+                base = [w*0.03, w*0.18, w*0.07, w*0.09, w*0.12, w*0.09, w*0.09, w*0.15]
+            elif show_k2_column:
+                base = [w*0.03, w*0.25, w*0.08, w*0.11, w*0.13, w*0.11, w*0.14]
+            elif show_ani_column:
+                base = [w*0.03, w*0.23, w*0.08, w*0.13, w*0.10, w*0.10, w*0.17]
+            else:
+                base = [w*0.03, w*0.34, w*0.09, w*0.14, w*0.12, w*0.14]
+            base.append(w * _ctrl_w)
+            return base
         else:
-            return [w*0.03, w*0.40, w*0.10, w*0.17, w*0.14, w*0.16]
+            if show_k2_column and show_ani_column:
+                return [w*0.03, w*0.24, w*0.08, w*0.11, w*0.14, w*0.10, w*0.10, w*0.20]
+            elif show_k2_column:
+                return [w*0.03, w*0.30, w*0.09, w*0.13, w*0.15, w*0.13, w*0.17]
+            elif show_ani_column:
+                return [w*0.03, w*0.28, w*0.09, w*0.15, w*0.12, w*0.12, w*0.21]
+            else:
+                return [w*0.03, w*0.40, w*0.10, w*0.17, w*0.14, w*0.16]
 
     def build_metrics_mini_table(max_cds, max_mmbert, max_width=None):
         """
@@ -835,6 +1020,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             group_row += ['', '']
             if show_ani_column:
                 group_row.append('')
+            if show_control_bar:
+                # Group-level spark bar using the group's control_comparison
+                _grp_spark = _build_spark_bar_from_member(species_group, bar_width=int(col_widths[-2 if show_inline_table else -1] - 6) if col_widths else 72, bar_height=10)
+                group_row.append(_grp_spark if _grp_spark else '')
 
             # Right-side detail column (inline mode only — compact mode has no extra column)
             if show_inline_table:
@@ -1021,6 +1210,9 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 if isinstance(high_ani_text, Paragraph) and _row_below_zscore:
                     high_ani_text = Paragraph(high_ani_text.text, row_ani_style)
                 row.append(high_ani_text)
+            if show_control_bar:
+                _spark = _build_spark_bar_from_member(best, bar_width=int(col_widths[-2 if show_inline_table else -1] - 6) if col_widths else 72, bar_height=10)
+                row.append(_spark if _spark else Paragraph('-', row_data_style))
 
             # ── Right detail column (inline mini-table, show_strains_table only) ─
             if show_inline_table:
@@ -1160,6 +1352,9 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 if isinstance(high_ani_text, Paragraph) and _row_below_zscore:
                     high_ani_text = Paragraph(high_ani_text.text, row_ani_style)
                 row.append(high_ani_text)
+            if show_control_bar:
+                _spark = _build_spark_bar_from_member(strain, bar_width=int(col_widths[-1] - 6) if col_widths else 72, bar_height=10)
+                row.append(_spark if _spark else Paragraph('-', row_data_style))
 
             table_data.append(row)
 
@@ -1927,6 +2122,8 @@ def create_pdf_template(output_path, samples_dict, args):
             all_sample_strains.extend(group_strains)
 
         if all_sample_strains:
+            # Auto-detect control data presence for the control bar column
+            _show_ctrl = getattr(args, 'show_control_bar', False) or _has_control_data(species_groups)
             combined_table = create_combined_sample_table(
                 all_sample_strains, species_group_map, small_style,
                 show_ani_column, show_k2_column,
@@ -1938,8 +2135,49 @@ def create_pdf_template(output_path, samples_dict, args):
                 show_strains_table=show_strains_table,
                 outline_collector=outline_collector,
                 zscore_threshold=args.zscore_threshold,
+                show_control_bar=_show_ctrl,
             )
             story.append(combined_table)
+
+            # ── Control bar legend (shown only when control data is present) ──
+            if _show_ctrl:
+                _smeta_ctrl = getattr(args, '_input_metadata', {}).get(sample_name, {})
+                _neg_used = _smeta_ctrl.get('negative_controls_used') or []
+                _pos_used = _smeta_ctrl.get('positive_controls_used') or []
+                _fold_thresh = _smeta_ctrl.get('control_fold_threshold')
+                _ctrl_legend_style = ParagraphStyle(
+                    'CtrlLegend', parent=small_style,
+                    fontSize=6.5, leading=9, textColor=colors.Color(0.35, 0.35, 0.35))
+                _ctrl_parts = [
+                    '<b>Ctrl column:</b> '
+                    'The bar shows each organism\u2019s TASS score position (▲) relative to '
+                    'control samples. '
+                ]
+                if _neg_used:
+                    _neg_names = ', '.join(_neg_used)
+                    _ctrl_parts.append(
+                        f'<font color="#cc2222">\u25a0 Red zone</font> = '
+                        f'negative control range ({_neg_names}). '
+                    )
+                if _pos_used:
+                    _pos_names = ', '.join(_pos_used)
+                    _ctrl_parts.append(
+                        f'<font color="#2a8a2a">\u25a0 Green zone</font> = '
+                        f'positive control range ({_pos_names}). '
+                    )
+                _ctrl_parts.append(
+                    'The label below the bar shows: '
+                    '<b>#\u00d7</b> = fold-change of sample TASS over max negative-control TASS; '
+                    '<b>#\u00d7 rd</b> = same ratio for read counts. '
+                )
+                if _fold_thresh is not None:
+                    _ctrl_parts.append(
+                        f'Organisms with fold &lt; {_fold_thresh}\u00d7 are considered '
+                        f'within negative-control bounds (triangle shown in red).'
+                    )
+                story.append(Spacer(1, 0.03 * inch))
+                story.append(Paragraph(''.join(_ctrl_parts), _ctrl_legend_style))
+
         else:
             story.append(Paragraph(
                 "<i>No data available for this sample above confidence threshold</i>",
@@ -2304,6 +2542,16 @@ def parse_args():
             "moved to a separate appendix table placed after the Low Confidence section, "
             "and the main table right column shows a compact strain-count link instead."
         ),
+    )
+
+    # ── Control comparison visualisation ──────────────────────────────────────
+    parser.add_argument(
+        "--show_control_bar",
+        action="store_true",
+        default=False,
+        help="Force display of the control comparison spark-bar column in the "
+             "primary table.  When not set, the column is auto-enabled whenever "
+             "control_comparison data is present in the input JSON.",
     )
 
     return parser.parse_args()

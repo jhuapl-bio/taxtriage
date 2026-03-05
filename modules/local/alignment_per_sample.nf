@@ -24,7 +24,7 @@ process ALIGNMENT_PER_SAMPLE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list)
+    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list), path(sampletype_thresholds_file)
     file assembly
     val minmapq
     path(taxdump)
@@ -75,13 +75,8 @@ process ALIGNMENT_PER_SAMPLE {
     def ani_threshold = params.ani_threshold ? " --ani_threshold $params.ani_threshold " : ""
     def workflow_revision = workflow.revision ? " --workflow_revision ${workflow.revision} " : " --workflow_revision NA "
     def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
-    // add assets/sampletype_best_thresholds.json if it exists
     def platform = meta.platform ? " --platform ${meta.platform} " : " "
-    if (!params.disable_auto_weights && file("$projectDir/assets/sampletype_best_thresholds.json").exists()) {
-        sampletype_thresholds = " --thresholds_json $projectDir/assets/sampletype_best_thresholds.json "
-    } else {
-        sampletype_thresholds = " "
-    }
+    def sampletype_thresholds = sampletype_thresholds_file.name != "NO_FILE_thresholds" ? " --thresholds_json ${sampletype_thresholds_file} " : " "
 
 
     """
@@ -101,7 +96,7 @@ process ALIGNMENT_PER_SAMPLE {
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
-        $workflow_revision $commitID $platform
+        $workflow_revision $commitID $platform $sampletype_thresholds
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
