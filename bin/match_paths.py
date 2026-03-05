@@ -863,11 +863,18 @@ def main():
 
         # ─ normalise platform ─
         _raw_plat = (args.platform or "unknown").strip().lower()
-        if _raw_plat in ("pacbio", "pac_bio", "pb"):
+        _raw_plat = _raw_plat.replace("_", " ").replace("-", " ")
+        if _raw_plat in ("pacbio", "pac bio", "pb"):
             _norm_plat = "ont"
-        elif _raw_plat in ("illumina", "miseq", "hiseq", "nextseq", "novaseq"):
+        elif _raw_plat in (
+            "illumina", "ilumina", "ill", "illum", "miseq", "hi seq", "hiseq",
+            "nextseq", "nova seq", "novaseq"
+        ):
             _norm_plat = "illumina"
-        elif _raw_plat in ("ont", "nanopore", "minion", "promethion"):
+        elif _raw_plat in (
+            "ont", "nano", "nanopore", "oxford", "oxford nanopore",
+            "oxford nan", "minion", "promethion", "gridion"
+        ):
             _norm_plat = "ont"
         elif _raw_plat in ("unknown", ""):
             _norm_plat = "illumina"          # default platform

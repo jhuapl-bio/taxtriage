@@ -41,6 +41,10 @@ workflow REPORT {
         // make the ch_report_microbert an empty path channel
         ch_report_microbert = Channel.empty()
         ch_empty_file3 = Channel.fromPath("$projectDir/assets/NO_FILE3", checkIfExists: true)
+        ch_sampletype_thresholds = params.disable_auto_weights
+            ? Channel.value(file("$projectDir/assets/NO_FILE_thresholds"))
+            : Channel.fromPath("$projectDir/assets/sampletype_best_thresholds.json", checkIfExists: false)
+                .ifEmpty { Channel.value(file("$projectDir/assets/NO_FILE_thresholds")) }
 
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
@@ -82,8 +86,10 @@ workflow REPORT {
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
+
+
             ALIGNMENT_PER_SAMPLE(
-                alignments.combine(pathogens_list),
+                alignments.combine(pathogens_list).combine(ch_sampletype_thresholds),
                 assemblyfile,
                 params.minmapq,
                 ch_taxdump_dir,
