@@ -565,6 +565,25 @@ def calculate_normalized_groups(
         # can recompute Gini from the full picture instead of averaging.
         agg['covered_regions'] = _combined_regions
 
+        # ========== REAPPLY minhash confidence gate at organism level ==========
+        # Per-contig confidence gating is defeated by weighted averaging:
+        # contigs with 0 reads have minhash_reduction=0 but contribute
+        # nothing to the average (weight=0), so a few high-coverage contigs
+        # dominate.  E.g. Toxoplasma: 82K reads on 3/80 contigs → per-contig
+        # weighted avg ≈ 0.99, but organism-level coverage is only 0.15%.
+        #
+        # Fix: recompute the confidence gate from the organism-level coverage
+        # and gini (which were just recalculated above from the full genome).
+        _agg_cov = agg.get('coverage', 0)
+        _agg_gini = float(agg.get('gini_coefficient', 0))
+        _agg_cov_conf = breadth_score_sigmoid(_agg_cov)
+        _agg_mh_conf = 0.7 * _agg_cov_conf + 0.3 * _agg_gini
+        _agg_mh_conf = min(1.0, max(0.0, _agg_mh_conf))
+
+        _agg_raw_mh = float(agg.get('minhash_score', agg.get('minhash_reduction', 0)))
+        agg['minhash_reduction'] = _agg_raw_mh * _agg_mh_conf
+        agg['minhash_confidence'] = _agg_mh_conf
+
         out[gval] = agg
 
     # ========== RPM-NORMALIZED MINHASH REDUCTION ==========
@@ -615,12 +634,28 @@ def calculate_normalized_groups(
             raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
             conf = _to_float(out[mk].get("rpm_confidence_weight", 0))
 
-            gap = 1.0 - raw_minhash
+            # ── Respect the minhash_confidence gate ──────────────────
+            # The confidence gate (set earlier from coverage + gini)
+            # caps how high minhash_reduction can go.  Without this,
+            # the solo boost pushes low-coverage organisms (e.g.
+            # Toxoplasma with 82K reads but 0.15% coverage) right
+            # back to ~1.0, undoing the gate entirely.
+            #
+            # ceiling = minhash_confidence: the maximum the boosted
+            # value should reach.  For good-coverage organisms
+            # (confidence ≈ 0.94), the boost can push from gated
+            # toward 0.94 — a modest helpful lift.  For low-coverage
+            # noise (confidence ≈ 0.08), the boost is capped near
+            # the gated value and can't inflate the score.
+            _mh_conf = _to_float(out[mk].get("minhash_confidence", 1.0))
+            ceiling = _mh_conf  # coverage evidence caps the max
+
+            gap = max(0.0, ceiling - raw_minhash)
             boost = gap * _solo_boost_strength * conf
             adjusted = raw_minhash + boost
 
             out[mk]["minhash_reduction_raw"] = raw_minhash
-            out[mk]["minhash_reduction"] = min(1.0, adjusted)
+            out[mk]["minhash_reduction"] = min(ceiling, adjusted)
             out[mk]["rpm_share_in_group"] = 1.0
             out[mk]["rpm_norm_scale"] = 1.0
             out[mk]["solo_exclusivity_boost"] = boost
@@ -825,10 +860,37 @@ def compute_scores_per(
             data['minhash_score'] = comparison_value
         else:
             data['minhash_score'] = rpm_weight * 0.5  # default to a moderate score if no comparison available
-    data['minhash_reduction'] = data.get('minhash_score', 1)
+    # ── Confidence-gated minhash_reduction ─────────────────────────────
+    # Problem: minhash_score can be 1.0 even when coverage is negligible
+    # (e.g. Toxoplasma at 0.001% coverage).  For sterile/blood samples
+    # where minhash_weight is high, this inflates the TASS score for
+    # what are likely contaminants or false positives.
+    #
+    # Solution: scale minhash_score by a "coverage confidence" factor
+    # derived from breadth and gini.  This preserves full minhash power
+    # for legitimate high-ANI conflicts (Shigella vs E. coli) that have
+    # real coverage, while crushing it for noise hits.
+    #
+    # confidence = breadth_w * breadth_sigmoid(coverage) + gini_w * gini
+    #   - breadth_sigmoid(coverage): primary gate — is this organism
+    #     actually present?  At 0.001% coverage → ~0;  at 5%+ → ~1
+    #   - gini: secondary signal — are reads uniformly distributed?
+    #     Low gini = reads clumped in a tiny region = suspicious
+    #
+    # The raw coverage sigmoid is used (not breadth_log_score) to avoid
+    # double-penalizing through mapq_scale, which is already captured in
+    # the breadth_log_score component of TASS.
+    raw_minhash = data.get('minhash_score', 1)
+    cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
+    gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
 
+    _mcg_breadth_w = 0.7   # how much coverage evidence matters
+    _mcg_gini_w    = 0.3   # how much distribution uniformity matters
+    minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
+    minhash_confidence = min(1.0, max(0.0, minhash_confidence))
 
-
+    data['minhash_reduction'] = raw_minhash * minhash_confidence
+    data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
     return data
 
 def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
@@ -1133,9 +1195,11 @@ def calculate_hmp_percentile(
     else:
         # Fallback: use pre-computed read_fraction if total_reads wasn't passed
         fraction_observed = float(value.get('read_fraction', 0) or 0)
-    sum_abus_expected = sum([x.get('norm_abundance', 0) for x in abus])  # means are already fractions (0–1)
+    sum_abus_expected = sum([x.get('mean', 0) for x in abus])  # means are already fractions (0–1)
+    # sum_abus_expected = sum([x.get('norm_abundance', 0) for x in abus])  # means are already fractions (0–1)
 
-    stdsum = sum([x.get('norm_stdev', 0) for x in abus])
+    stdsum = sum([x.get('std', 0) for x in abus])
+#     stdsum = sum([x.get('norm_stdev', 0) for x in abus])
     zscore = ((fraction_observed - sum_abus_expected) / stdsum) if stdsum > 0 else 3
     # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
     base_percentile = norm.cdf(zscore)

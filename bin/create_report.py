@@ -1915,7 +1915,7 @@ def create_pdf_template(output_path, samples_dict, args):
         'CustomHeading', parent=styles['Heading2'], fontSize=16,
         textColor=colors.HexColor('#34495E'), spaceAfter=0, spaceBefore=12)
     indent_style = ParagraphStyle(
-        'IndentStyle', parent=styles['Normal'], fontSize=10, leading=10, leftIndent=20)
+        'IndentStyle', parent=styles['Normal'], fontSize=7, leading=10, leftIndent=20)
     small_style = ParagraphStyle('SmallText', parent=styles['Normal'], fontSize=10, leading=10)
     metadata_style = styles['Normal']
 
@@ -2027,7 +2027,10 @@ def create_pdf_template(output_path, samples_dict, args):
         "The table is organized by samples first, then in order of TASS Score by default or alphabetical if selected. "
         "Each row below a group is attributed to the highest-TASS strain in that group, and the number of strains shown per group is limited in the TOC for readability (see settings).",
         small_style))
-
+    # add text for "Sample"
+    story.append(Spacer(1, 0.12*inch))
+    story.append(Paragraph(f"<b>Samples in Run:</b>", small_style))
+    story.append(Spacer(1, 0.07*inch))
     for sample_name in sorted(samples_dict.keys()):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
         species_groups = samples_dict[sample_name]
@@ -2060,9 +2063,9 @@ def create_pdf_template(output_path, samples_dict, args):
         _toc_plat = _toc_meta.get('platform', '')
         _toc_plat_str = f" — {_toc_plat}" if _toc_plat and _toc_plat != 'unknown' else ''
         link_text = create_safe_link(
-            f'{sample_name}{_toc_plat_str} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
+            f'<b>{sample_name}</b>{_toc_plat_str} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
             bookmark_name, valid_bookmarks)
-        story.append(Paragraph(link_text, heading_style))
+        story.append(Paragraph(link_text, small_style))
         story.append(Spacer(1, 0.04*inch))
 
         toc_groups = visible_groups[:args.max_toc]

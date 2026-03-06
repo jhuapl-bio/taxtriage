@@ -1401,6 +1401,10 @@ def main():
         reads_key="numreads",
         mapq_breadth_power=args.mapq_breadth_power,
     )
+    # for k, v in strain_summary.items():
+    #     if v.get('toplevelname') == "Toxoplasma":
+    #         print(v.get('toplevelname'), v.get('name'), v.get('minhash_reduction_raw'), v.get('minhash_reduction'), v.get('minhash_score'))
+    # exit()
 
     # ── Plasmid disparity: score strains by relative plasmid presence ────────
     # Within each subkey (species), compare plasmid coverage across strains.
