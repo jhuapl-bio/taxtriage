@@ -123,7 +123,7 @@ def gini_coefficient_from_hist(coverage_hist):
         x2 = pop_cum / N
         y2 = coverage_cum / total_coverage
 
-        # Append the new point (x2, y2)
+        # Append the point (x2, y2)
         lorenz_points.append((x2, y2))
 
     # Now, approximate the area under the Lorenz curve via trapezoids
@@ -565,6 +565,25 @@ def calculate_normalized_groups(
         # can recompute Gini from the full picture instead of averaging.
         agg['covered_regions'] = _combined_regions
 
+        # ========== REAPPLY minhash confidence gate at organism level ==========
+        # Per-contig confidence gating is defeated by weighted averaging:
+        # contigs with 0 reads have minhash_reduction=0 but contribute
+        # nothing to the average (weight=0), so a few high-coverage contigs
+        # dominate.  E.g. Toxoplasma: 82K reads on 3/80 contigs → per-contig
+        # weighted avg ≈ 0.99, but organism-level coverage is only 0.15%.
+        #
+        # Fix: recompute the confidence gate from the organism-level coverage
+        # and gini (which were just recalculated above from the full genome).
+        _agg_cov = agg.get('coverage', 0)
+        _agg_gini = float(agg.get('gini_coefficient', 0))
+        _agg_cov_conf = breadth_score_sigmoid(_agg_cov)
+        _agg_mh_conf = 0.7 * _agg_cov_conf + 0.3 * _agg_gini
+        _agg_mh_conf = min(1.0, max(0.0, _agg_mh_conf))
+
+        _agg_raw_mh = float(agg.get('minhash_score', agg.get('minhash_reduction', 0)))
+        agg['minhash_reduction'] = _agg_raw_mh * _agg_mh_conf
+        agg['minhash_confidence'] = _agg_mh_conf
+
         out[gval] = agg
 
     # ========== RPM-NORMALIZED MINHASH REDUCTION ==========
@@ -615,12 +634,28 @@ def calculate_normalized_groups(
             raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
             conf = _to_float(out[mk].get("rpm_confidence_weight", 0))
 
-            gap = 1.0 - raw_minhash
+            # ── Respect the minhash_confidence gate ──────────────────
+            # The confidence gate (set earlier from coverage + gini)
+            # caps how high minhash_reduction can go.  Without this,
+            # the solo boost pushes low-coverage organisms (e.g.
+            # Toxoplasma with 82K reads but 0.15% coverage) right
+            # back to ~1.0, undoing the gate entirely.
+            #
+            # ceiling = minhash_confidence: the maximum the boosted
+            # value should reach.  For good-coverage organisms
+            # (confidence ≈ 0.94), the boost can push from gated
+            # toward 0.94 — a modest helpful lift.  For low-coverage
+            # noise (confidence ≈ 0.08), the boost is capped near
+            # the gated value and can't inflate the score.
+            _mh_conf = _to_float(out[mk].get("minhash_confidence", 1.0))
+            ceiling = _mh_conf  # coverage evidence caps the max
+
+            gap = max(0.0, ceiling - raw_minhash)
             boost = gap * _solo_boost_strength * conf
             adjusted = raw_minhash + boost
 
             out[mk]["minhash_reduction_raw"] = raw_minhash
-            out[mk]["minhash_reduction"] = min(1.0, adjusted)
+            out[mk]["minhash_reduction"] = min(ceiling, adjusted)
             out[mk]["rpm_share_in_group"] = 1.0
             out[mk]["rpm_norm_scale"] = 1.0
             out[mk]["solo_exclusivity_boost"] = boost
@@ -825,10 +860,37 @@ def compute_scores_per(
             data['minhash_score'] = comparison_value
         else:
             data['minhash_score'] = rpm_weight * 0.5  # default to a moderate score if no comparison available
-    data['minhash_reduction'] = data.get('minhash_score', 1)
+    # ── Confidence-gated minhash_reduction ─────────────────────────────
+    # Problem: minhash_score can be 1.0 even when coverage is negligible
+    # (e.g. Toxoplasma at 0.001% coverage).  For sterile/blood samples
+    # where minhash_weight is high, this inflates the TASS score for
+    # what are likely contaminants or false positives.
+    #
+    # Solution: scale minhash_score by a "coverage confidence" factor
+    # derived from breadth and gini.  This preserves full minhash power
+    # for legitimate high-ANI conflicts (Shigella vs E. coli) that have
+    # real coverage, while crushing it for noise hits.
+    #
+    # confidence = breadth_w * breadth_sigmoid(coverage) + gini_w * gini
+    #   - breadth_sigmoid(coverage): primary gate — is this organism
+    #     actually present?  At 0.001% coverage → ~0;  at 5%+ → ~1
+    #   - gini: secondary signal — are reads uniformly distributed?
+    #     Low gini = reads clumped in a tiny region = suspicious
+    #
+    # The raw coverage sigmoid is used (not breadth_log_score) to avoid
+    # double-penalizing through mapq_scale, which is already captured in
+    # the breadth_log_score component of TASS.
+    raw_minhash = data.get('minhash_score', 1)
+    cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
+    gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
 
+    _mcg_breadth_w = 0.7   # how much coverage evidence matters
+    _mcg_gini_w    = 0.3   # how much distribution uniformity matters
+    minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
+    minhash_confidence = min(1.0, max(0.0, minhash_confidence))
 
-
+    data['minhash_reduction'] = raw_minhash * minhash_confidence
+    data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
     return data
 
 def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
@@ -907,13 +969,14 @@ def calculate_aggregate_scores(
     mmbert_dict = {},
     dmnd = [],
     min_cds_found = 5,
-
+    total_reads = 0,
 ):
-    zscore, hmp_percentile = calculate_hmp_percentile(
+    zscore, hmp_percentile, hmp_info = calculate_hmp_percentile(
         value = data,
         dists = hmp_dists,
         body_sites = body_sites,
         sampletype= sampletype,
+        total_reads = total_reads,
     )
     data['mmbert'], data['mmbert_model'] = calculate_mmbert_prob(
         mmbert_dict = mmbert_dict,
@@ -921,6 +984,10 @@ def calculate_aggregate_scores(
     )
     data['zscore'] = zscore
     data['hmp_percentile'] = hmp_percentile
+    data['hmp_norm_abundance'] = hmp_info.get('hmp_norm_abundance', 0)
+    data['hmp_mean'] = hmp_info.get('hmp_mean', 0)
+    data['hmp_std'] = hmp_info.get('hmp_std', 0)
+    data['observed_abundance'] = hmp_info.get('observed_abundance', 0)
     data['k2_reads'] = k2_mapping.get(data.get('key', None), {}).get('clades_covered', 0)
     data['k2_disparity_score'] = calculate_k2_reads_disparity(
         data = data,
@@ -1114,6 +1181,7 @@ def calculate_hmp_percentile(
                     abus.append(
                         dict(
                             norm_abundance = dists[k].get('norm_abundance', 0),
+                            norm_stdev = dists[k].get('norm_stdev', 0),
                             std = dists[k].get('std', 0),
                             mean = dists[k].get('mean', 0),
                         )
@@ -1121,10 +1189,18 @@ def calculate_hmp_percentile(
                     break
         except Exception as e:
             print(f"Error in taxid lookup for hmp: {e}")
-    percent_total_reads_observed = 100*(sum(value.get('numreads', [])) / total_reads) if total_reads > 0 else 0
-    sum_abus_expected = sum([x.get('mean',0)/100 for x in abus])
-    stdsum = sum([x.get('std',0) for x in abus])
-    zscore = ((percent_total_reads_observed -sum_abus_expected)/ stdsum)  if stdsum > 0 else 3
+    # Use read fraction (0–1 scale) to match HMP distribution mean/std which are also fractions
+    if total_reads > 0:
+        fraction_observed = float(value.get('numreads', 0) or 0) / total_reads
+    else:
+        # Fallback: use pre-computed read_fraction if total_reads wasn't passed
+        fraction_observed = float(value.get('read_fraction', 0) or 0)
+    sum_abus_expected = sum([x.get('mean', 0) for x in abus])  # means are already fractions (0–1)
+    # sum_abus_expected = sum([x.get('norm_abundance', 0) for x in abus])  # means are already fractions (0–1)
+
+    stdsum = sum([x.get('std', 0) for x in abus])
+#     stdsum = sum([x.get('norm_stdev', 0) for x in abus])
+    zscore = ((fraction_observed - sum_abus_expected) / stdsum) if stdsum > 0 else 3
     # zscore = ((percent_total_reads_observed -sum_norm_abu)/ stdsum)  if stdsum > 0 else 3
     base_percentile = norm.cdf(zscore)
 
@@ -1139,7 +1215,13 @@ def calculate_hmp_percentile(
     else:
         adjusted_percentile = 1.0 - (1.0 - base_percentile) ** 2
 
-    return zscore, adjusted_percentile
+    hmp_info = {
+        'hmp_norm_abundance': sum_abus_expected,
+        'hmp_mean': sum([x.get('mean', 0) for x in abus]),
+        'hmp_std': stdsum,
+        'observed_abundance': fraction_observed,
+    }
+    return zscore, adjusted_percentile, hmp_info
 
 def json_safe(x):
     """Convert numpy/pandas/scalars/containers into JSON-serializable Python types."""
@@ -1176,7 +1258,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 lineage traversal for pathogen lookup.
 
     Returns:
-        dict: A new dictionary with the record data plus classification fields:
+        dict: A dictionary with the record data plus classification fields:
             - high_cons: bool
             - is_pathogen: str (category)
             - microbial_category: str (category)
@@ -1254,8 +1336,6 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
             refpath, matched_taxid, matched_rank = find_pathogen_in_lineage(member_taxid)
 
             if refpath:
-                # Use the new context-aware classification
-
                 cat, direct = get_pathogen_classification(refpath, normalized_sample_type)
                 st_cat = normalize_category(cat)
                 st_ann = "Direct" if direct else "Derived"
@@ -1263,6 +1343,9 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 is_annotated = "Yes"
                 status = refpath.get("status", "N/A")
                 member_matched_info.append((matched_taxid, matched_rank))
+                # Propagate body-site-specific flora info onto the member
+                member['commensal_sites'] = refpath.get('commensal_sites', [])
+                member['pathogenic_sites'] = refpath.get('pathogenic_sites', [])
             else:
                 st_cat = "Unknown"
                 st_ann = "Direct"
@@ -1270,6 +1353,8 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 is_annotated = "No"
                 status = ""
                 member_matched_info.append((None, None))
+                member['commensal_sites'] = []
+                member['pathogenic_sites'] = []
 
             member_categories.append(st_cat)
             member_high_cons.append(st_hc)
@@ -1310,19 +1395,37 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 matched_rank = m_rank
                 break
 
+        # Union of all member commensal/pathogenic sites for group-level display
+        _agg_commensal = set()
+        _agg_pathogenic = set()
+        for member in rec["members"]:
+            for s in member.get('commensal_sites', []):
+                if isinstance(s, list):
+                    _agg_commensal.update(s)
+                elif s:
+                    _agg_commensal.add(s)
+            for s in member.get('pathogenic_sites', []):
+                if isinstance(s, list):
+                    _agg_pathogenic.update(s)
+                elif s:
+                    _agg_pathogenic.add(s)
+        agg_commensal_sites = sorted(_agg_commensal)
+        agg_pathogenic_sites = sorted(_agg_pathogenic)
+
     else:
         # No members, use the aggregate taxid directly
         # Search: taxid → genus → family → ... until match found
         refpath, matched_taxid, matched_rank = find_pathogen_in_lineage(taxid)
 
         if refpath:
-            # Use the new context-aware classification
             cat, direct = get_pathogen_classification(refpath, normalized_sample_type)
             st_cat = normalize_category(cat)
             st_ann = "Direct" if direct else "Derived"
             st_hc = bool(refpath.get('high_cons', False) or refpath.get("high_consequence", False))
             is_annotated = "Yes"
             status = refpath.get("status", "N/A")
+            agg_commensal_sites = refpath.get("commensal_sites", [])
+            agg_pathogenic_sites = refpath.get("pathogenic_sites", [])
         else:
             st_cat = "Unknown"
             st_ann = "Direct"
@@ -1331,6 +1434,8 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
             status = ""
             matched_taxid = None
             matched_rank = None
+            agg_commensal_sites = []
+            agg_pathogenic_sites = []
 
     # make a shallow copy so we don't mutate the input record
     new_item = dict(rec)
@@ -1347,6 +1452,8 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
         "matched_taxid": matched_taxid,  # Which taxid in lineage matched
         "matched_rank": matched_rank,    # At what rank the match occurred
         "normalized_sample_site": normalized_sample_type,
+        "commensal_sites": agg_commensal_sites,
+        "pathogenic_sites": agg_pathogenic_sites,
     })
 
     return new_item
@@ -1476,4 +1583,330 @@ def pathogen_label(rft, sample_type):
         is_pathogen = callclass.capitalize() if callclass else "Unknown"
         isPathi = True
     return is_pathogen, isPathi, direct_match, high_cons
+
+
+# ── Control comparison utilities ─────────────────────────────────────────────
+
+def load_control_data(json_paths):
+    """Load one or more match_paths.py output JSONs and index organisms by key levels.
+
+    Each JSON is expected to have the standard ``{metadata, organisms}``
+    structure *or* the legacy plain-list format.
+
+    Returns a dict::
+
+        {
+            "by_toplevelkey": { "<tlk>": [ {tass_score, numreads, source}, ... ] },
+            "by_key":         { "<key>": [ ... ] },
+            "by_subkey":      { "<sk>":  [ ... ] },
+        }
+
+    where each list entry represents one control sample's value for that
+    organism (allowing multiple control replicates).
+    """
+    import json as _json_mod
+    import os
+
+    index = {
+        "by_toplevelkey": defaultdict(list),
+        "by_key": defaultdict(list),
+        "by_subkey": defaultdict(list),
+    }
+
+    if not json_paths:
+        return index
+
+    for fpath in json_paths:
+        if not os.path.exists(fpath):
+            print(f"WARNING: control file not found, skipping: {fpath}")
+            continue
+        with open(fpath, "r") as fh:
+            raw = _json_mod.load(fh)
+
+        # Accept both structured and legacy list format
+        if isinstance(raw, dict) and "organisms" in raw:
+            organisms = raw["organisms"]
+        elif isinstance(raw, list):
+            organisms = raw
+        else:
+            print(f"WARNING: unexpected control JSON format in {fpath}, skipping")
+            continue
+
+        source = os.path.basename(fpath)
+
+        for grp in organisms:
+            tlk = str(grp.get("toplevelkey", grp.get("key", "")))
+            grp_name = grp.get("name") or grp.get("toplevelname") or tlk
+            grp_entry = {
+                "tass_score": float(grp.get("tass_score", 0) or 0),
+                "numreads": float(grp.get("numreads", 0) or 0),
+                "source": source,
+                "name": grp_name,
+            }
+            if tlk:
+                index["by_toplevelkey"][tlk].append(grp_entry)
+
+            # Index individual members at key and subkey levels
+            for member in grp.get("members", []):
+                m_key = str(member.get("key", ""))
+                m_subkey = str(member.get("subkey", member.get("key", "")))
+                m_name = member.get("name") or member.get("toplevelname") or grp_name
+                m_entry = {
+                    "tass_score": float(member.get("tass_score", 0) or 0),
+                    "numreads": float(member.get("numreads", 0) or 0),
+                    "source": source,
+                    "name": m_name,
+                }
+                if m_key:
+                    index["by_key"][m_key].append(m_entry)
+                if m_subkey:
+                    index["by_subkey"][m_subkey].append(m_entry)
+
+    return index
+
+
+def compute_control_metrics(
+    sample_tass,
+    sample_reads,
+    neg_values,
+    pos_values,
+    fold_threshold=2.0,
+):
+    """Compute fold-change metrics comparing a sample organism to controls.
+
+    Parameters
+    ----------
+    sample_tass : float
+        TASS score of the sample organism.
+    sample_reads : float
+        Read count of the sample organism.
+    neg_values : list[dict]
+        List of ``{tass_score, numreads, source}`` from negative controls.
+    pos_values : list[dict]
+        List of ``{tass_score, numreads, source}`` from positive controls.
+    fold_threshold : float
+        Fold-change below which the sample is considered "within_negative"
+        control range.  Default 2.0.
+
+    Returns
+    -------
+    dict with keys:
+        neg_max_tass, neg_max_reads,
+        pos_min_tass, pos_min_reads,
+        tass_fold_over_neg, reads_fold_over_neg,
+        control_flag ("within_negative" | "above_negative" | "no_neg_controls"),
+        neg_control_values, pos_control_values
+    """
+    result = {
+        "neg_max_tass": 0.0,
+        "neg_max_reads": 0.0,
+        "pos_min_tass": None,
+        "pos_min_reads": None,
+        "tass_fold_over_neg": None,
+        "reads_fold_over_neg": None,
+        "tass_fold_over_pos": None,
+        "reads_fold_over_pos": None,
+        "control_flag": "no_neg_controls",
+        "neg_control_values": [],
+        "pos_control_values": [],
+    }
+
+    # ── Negative controls ────────────────────────────────────────────────
+    if neg_values:
+        neg_tass_vals = [v["tass_score"] for v in neg_values]
+        neg_reads_vals = [v["numreads"] for v in neg_values]
+        result["neg_max_tass"] = max(neg_tass_vals)
+        result["neg_max_reads"] = max(neg_reads_vals)
+        result["neg_control_values"] = [
+            {"tass_score": v["tass_score"], "numreads": v["numreads"],
+             "source": v.get("source", "")}
+            for v in neg_values
+        ]
+
+        # Fold-change: how many times higher is the sample vs the worst neg control?
+        if result["neg_max_tass"] > 0:
+            result["tass_fold_over_neg"] = round(
+                float(sample_tass) / result["neg_max_tass"], 4)
+        else:
+            # Neg controls have 0 TASS → any sample signal is infinitely above
+            result["tass_fold_over_neg"] = float("inf") if sample_tass > 0 else 1.0
+
+        if result["neg_max_reads"] > 0:
+            result["reads_fold_over_neg"] = round(
+                float(sample_reads) / result["neg_max_reads"], 4)
+        else:
+            result["reads_fold_over_neg"] = float("inf") if sample_reads > 0 else 1.0
+
+        # Flag
+        tass_fold = result["tass_fold_over_neg"]
+        if tass_fold is not None and tass_fold != float("inf") and tass_fold < fold_threshold:
+            result["control_flag"] = "within_negative"
+        else:
+            result["control_flag"] = "above_negative"
+
+    # ── Positive controls ────────────────────────────────────────────────
+    if pos_values:
+        pos_tass_vals = [v["tass_score"] for v in pos_values]
+        pos_reads_vals = [v["numreads"] for v in pos_values]
+        result["pos_min_tass"] = min(pos_tass_vals)
+        result["pos_min_reads"] = min(pos_reads_vals)
+        result["pos_control_values"] = [
+            {"tass_score": v["tass_score"], "numreads": v["numreads"],
+             "source": v.get("source", "")}
+            for v in pos_values
+        ]
+
+        # Fold-change: sample vs the minimum (weakest) positive control
+        pos_min_tass = result["pos_min_tass"]
+        pos_min_reads = result["pos_min_reads"]
+        if pos_min_tass and pos_min_tass > 0:
+            result["tass_fold_over_pos"] = round(
+                float(sample_tass) / pos_min_tass, 4)
+        else:
+            result["tass_fold_over_pos"] = float("inf") if sample_tass > 0 else 0.0
+
+        if pos_min_reads and pos_min_reads > 0:
+            result["reads_fold_over_pos"] = round(
+                float(sample_reads) / pos_min_reads, 4)
+        else:
+            result["reads_fold_over_pos"] = float("inf") if sample_reads > 0 else 0.0
+
+    return result
+
+
+def compute_control_comparison(
+    data,
+    neg_index,
+    pos_index,
+    fold_threshold=2.0,
+    level="toplevelkey",
+):
+    """Compute control comparison for a single organism dict at a given hierarchy level.
+
+    Parameters
+    ----------
+    data : dict
+        Organism or member dict containing 'toplevelkey', 'key', 'subkey',
+        'tass_score', and 'numreads'.
+    neg_index : dict
+        Output from ``load_control_data()`` for negative controls.
+    pos_index : dict
+        Output from ``load_control_data()`` for positive controls.
+    fold_threshold : float
+        Passed through to ``compute_control_metrics()``.
+    level : str
+        One of "toplevelkey", "key", "subkey".
+
+    Returns
+    -------
+    dict or None
+        Control comparison dict, or None if no controls at all.
+    """
+    level_map = {
+        "toplevelkey": "by_toplevelkey",
+        "key": "by_key",
+        "subkey": "by_subkey",
+    }
+    idx_key = level_map.get(level, "by_toplevelkey")
+
+    # Determine the organism's identifier at this level
+    org_id = str(data.get(level, data.get("key", "")))
+    if not org_id:
+        return None
+
+    neg_vals = neg_index.get(idx_key, {}).get(org_id, [])
+    pos_vals = pos_index.get(idx_key, {}).get(org_id, [])
+
+    if not neg_vals and not pos_vals:
+        return None
+
+    sample_tass = float(data.get("tass_score", 0) or 0)
+    sample_reads = float(data.get("numreads", 0) or 0)
+
+    return compute_control_metrics(
+        sample_tass=sample_tass,
+        sample_reads=sample_reads,
+        neg_values=neg_vals,
+        pos_values=pos_vals,
+        fold_threshold=fold_threshold,
+    )
+
+
+def find_missing_positive_controls(final_json, pos_index, levels=None):
+    """Identify organisms present in the positive control(s) but absent from the sample.
+
+    Parameters
+    ----------
+    final_json : list[dict]
+        The sample's output organism list (each element is a group with
+        ``toplevelkey`` and ``members``).
+    pos_index : dict
+        The positive-control index returned by :func:`load_control_data`.
+    levels : list[str] or None
+        Which hierarchy levels to check.  Any combination of
+        ``"toplevelkey"``, ``"key"``, ``"subkey"``.  Defaults to
+        ``["toplevelkey"]`` when *None*.
+
+    Returns
+    -------
+    list[dict]
+        One entry per missing organism, each containing:
+        ``level``, ``id``, ``name``, ``pos_tass_score``, ``pos_numreads``,
+        ``source``, and ``missing_control: True``.
+    """
+    if not pos_index:
+        return []
+    if levels is None:
+        levels = ["toplevelkey"]
+
+    # Collect IDs present in the sample at each level
+    sample_ids = {
+        "toplevelkey": set(),
+        "key": set(),
+        "subkey": set(),
+    }
+    for grp in final_json:
+        tlk = str(grp.get("toplevelkey", grp.get("key", "")))
+        if tlk:
+            sample_ids["toplevelkey"].add(tlk)
+        for m in grp.get("members", []):
+            mk = str(m.get("key", ""))
+            msk = str(m.get("subkey", m.get("key", "")))
+            if mk:
+                sample_ids["key"].add(mk)
+            if msk:
+                sample_ids["subkey"].add(msk)
+
+    missing = []
+    _seen = set()  # (level, id) pairs to avoid duplicates
+
+    level_to_index_key = {
+        "toplevelkey": "by_toplevelkey",
+        "key": "by_key",
+        "subkey": "by_subkey",
+    }
+
+    for lvl in levels:
+        idx_key = level_to_index_key.get(lvl)
+        if not idx_key:
+            continue
+        present = sample_ids.get(lvl, set())
+        for org_id, entries in pos_index.get(idx_key, {}).items():
+            if org_id in present:
+                continue
+            if (lvl, org_id) in _seen:
+                continue
+            _seen.add((lvl, org_id))
+            best = max(entries, key=lambda e: e.get("tass_score", 0))
+            missing.append({
+                "level": lvl,
+                "id": org_id,
+                "name": best.get("name", org_id),
+                "pos_tass_score": best.get("tass_score", 0),
+                "pos_numreads": best.get("numreads", 0),
+                "source": best.get("source", ""),
+                "missing_control": True,
+            })
+
+    return missing
 

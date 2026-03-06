@@ -1756,7 +1756,7 @@ def determine_conflicts(
     if sigfile and (not os.path.exists(sigfile) or os.path.getsize(sigfile) <= 0):
         sigfile = None  # only use sigfile if it points to an existing file; otherwise ignore it for signatures
     if compare_to_reference_windows:
-
+        print(f"Shared-window report path: {report_path}")
         if os.path.exists(report_path) and os.path.getsize(report_path) > 0:
             print(f"Reusing cached shared-window report: {report_path}")
         else:
