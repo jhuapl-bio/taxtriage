@@ -35,7 +35,7 @@ from conflict_regions import determine_conflicts, generate_ani_matrix
 import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
-from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison
+from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var
 
@@ -517,6 +517,20 @@ def parse_args(argv=None):
         help="Fold-change threshold for negative-control comparison.  If sample "
              "TASS / max(neg TASS) < this value, organism is flagged "
              "'within_negative'.  Default: 2.0.",
+    )
+    parser.add_argument(
+        "--missing_pos_levels",
+        nargs="+",
+        default=["toplevelkey"],
+        choices=["toplevelkey", "key", "subkey"],
+        help="Hierarchy level(s) at which to detect missing positive controls. "
+             "Default: toplevelkey.  Specify one or more of: toplevelkey, key, subkey.",
+    )
+    parser.add_argument(
+        "--hide_missing_pos_controls",
+        action="store_true",
+        default=False,
+        help="Suppress detection and output of missing positive control organisms.",
     )
 
     return parser.parse_args(argv)
@@ -1584,6 +1598,7 @@ def main():
             mmbert_dict = mmbert_dict,
             group_reads = group_reads,
             dmnd = dmnd,
+            total_reads = total_reads,
         )
         data['tass_score'] = compute_tass_score(
             data = data,
@@ -1639,6 +1654,7 @@ def main():
             sampletype = sampletype,
             mmbert_dict = mmbert_dict,
             group_reads = group_reads,
+            total_reads = total_reads,
         )
         data['tass_score'] = compute_tass_score(
             data = data,
@@ -1764,7 +1780,8 @@ def main():
                 _best_ctrl = m_ctrl_key or m_ctrl_subkey
                 if _best_ctrl:
                     for _f in ('neg_max_tass', 'neg_max_reads', 'tass_fold_over_neg',
-                               'reads_fold_over_neg', 'control_flag',
+                               'reads_fold_over_neg', 'tass_fold_over_pos',
+                               'reads_fold_over_pos', 'control_flag',
                                'neg_control_values', 'pos_control_values',
                                'pos_min_tass', 'pos_min_reads'):
                         member['control_comparison'][_f] = _best_ctrl.get(_f)
@@ -1774,6 +1791,19 @@ def main():
                   f"(neg={len(args.negative_controls or [])} files, "
                   f"pos={len(args.positive_controls or [])} files, "
                   f"fold_threshold={_ctrl_threshold})")
+
+        # Detect positive control organisms missing from the sample
+        if _pos and not args.hide_missing_pos_controls:
+            _missing_pos = find_missing_positive_controls(
+                final_json, _pos, levels=args.missing_pos_levels)
+            if _missing_pos:
+                print(f"Missing positive controls: {len(_missing_pos)} organism(s) "
+                      f"in positive control not found in sample "
+                      f"(levels={args.missing_pos_levels})")
+        else:
+            _missing_pos = []
+    else:
+        _missing_pos = []
 
     # ── Build structured output with metadata ────────────────────────────────
     _all_keys = set()
@@ -1841,6 +1871,7 @@ def main():
             ] or None,
             "control_fold_threshold": args.control_fold_threshold if (
                 args.negative_controls or args.positive_controls) else None,
+            "missing_positive_controls": _missing_pos if _missing_pos else None,
         },
         "organisms": _json_out,
     }
@@ -2047,7 +2078,7 @@ def main():
 
 def random_tweak(weights, scale=0.2):
     """
-    Returns a new dict, each weight randomly offset by up to ±scale.
+    Returns a dict, each weight randomly offset by up to ±scale.
     Clamps at 0 (no negative).
     """
     new_w = {}

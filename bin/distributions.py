@@ -80,6 +80,8 @@ def import_distributions(
     for key in stats_dict_new:
         stats_dict_new[key]['abundances'] = [float(x) for x in stats_dict_new[key]['abundances'].split(",")]
         stats_dict_new[key]['norm_abundance'] = sum(stats_dict_new[key]['abundances'])/stats_dict_new[key]['site_count']
+        # build the normalized std from norm_abundances
+        stats_dict_new[key]['norm_std'] = np.std(stats_dict_new[key]['abundances'])/stats_dict_new[key]['site_count']
     return stats_dict_new, site_counts
 
 def make_vplot(taxid, stats, column, result_df, percentile_column =None):

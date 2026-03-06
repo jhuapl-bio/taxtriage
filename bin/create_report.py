@@ -176,15 +176,25 @@ class ControlSparkBar(Flowable):
 
     def __init__(self, sample_tass, neg_values=None, pos_values=None,
                  control_flag=None, bar_width=72, bar_height=10,
-                 tass_fold=None, reads_fold=None):
+                 tass_fold=None, reads_fold=None,
+                 pos_tass_fold=None, pos_reads_fold=None):
         super().__init__()
         self.sample_tass = float(sample_tass or 0)
         self.neg_values = neg_values or []
         self.pos_values = pos_values or []
         self.control_flag = control_flag or "no_neg_controls"
-        self.tass_fold = tass_fold      # fold-change over neg max TASS
-        self.reads_fold = reads_fold    # fold-change over neg max reads
-        self._label_h = 7              # height reserved for the fold label
+        self.tass_fold = tass_fold          # fold-change over neg max TASS
+        self.reads_fold = reads_fold        # fold-change over neg max reads
+        self.pos_tass_fold = pos_tass_fold  # fold-change over pos min TASS
+        self.pos_reads_fold = pos_reads_fold  # fold-change over pos min reads
+        self._row_h = 6                    # height per label row
+        _has_neg_label = tass_fold is not None and bool(neg_values)
+        _has_pos_label = pos_tass_fold is not None and bool(pos_values)
+        _label_rows = int(_has_neg_label) + int(_has_pos_label)
+        _label_rows = max(_label_rows, 1)  # always reserve at least 1 row
+        self._label_h = self._row_h * _label_rows
+        self._has_neg_label = _has_neg_label
+        self._has_pos_label = _has_pos_label
         self.width = bar_width
         self.height = bar_height + self._label_h
 
@@ -260,30 +270,84 @@ class ControlSparkBar(Flowable):
         c.setLineWidth(0.3)
         c.rect(0, by, w, bar_h, fill=0, stroke=1)
 
-        # ── Fold-change label (tiny text below the bar) ──────────────────
-        if self.tass_fold is not None and neg_tass_vals:
-            c.setFont("Helvetica", 5)
-            if self.tass_fold == float("inf"):
-                fold_txt = "\u221e\u00d7"  # ∞×
-            else:
-                fold_txt = f"{self.tass_fold:.1f}\u00d7"  # e.g. "3.2×"
-            # Color: red if within neg, dark gray otherwise
+        # ── Fold-change labels (tiny text below the bar) ─────────────────
+        def _fold_str(v):
+            """Format a fold value as string, handling inf and None."""
+            if v is None:
+                return None
+            if v == float("inf"):
+                return "\u221e\u00d7"   # ∞×
+            return f"{v:.1f}\u00d7"
+
+        c.setFont("Helvetica", 5)
+
+        # Determine which row each label set occupies:
+        # When both exist: neg on row 0 (bottom), pos on row 1 (above).
+        # When only one exists: it goes on row 0.
+        _current_row = 0
+
+        # Negative control folds — red/dark-gray text
+        if self._has_neg_label and neg_tass_vals:
+            row_y = _current_row * self._row_h + 0.5
+            fold_txt = _fold_str(self.tass_fold)
             if self.control_flag == "within_negative":
                 c.setFillColor(colors.Color(0.75, 0.1, 0.1, 1))
             else:
                 c.setFillColor(colors.Color(0.35, 0.35, 0.35, 1))
-            c.drawString(1, 0.5, fold_txt)
+            c.drawString(1, row_y, fold_txt)
 
-            # If reads fold also available, show it after a separator
             if self.reads_fold is not None:
-                if self.reads_fold == float("inf"):
-                    rd_txt = "\u221e\u00d7 rd"
-                else:
-                    rd_txt = f"{self.reads_fold:.1f}\u00d7 rd"
-                # Position after the tass fold text
+                rd_txt = _fold_str(self.reads_fold)
+                if rd_txt:
+                    rd_txt = rd_txt.rstrip("\u00d7") + "\u00d7 rd"  # e.g. "28.5× rd"
                 tass_txt_w = c.stringWidth(fold_txt, "Helvetica", 5)
                 c.setFillColor(colors.Color(0.5, 0.5, 0.5, 1))
-                c.drawString(tass_txt_w + 4, 0.5, rd_txt)
+                c.drawString(tass_txt_w + 4, row_y, rd_txt)
+            _current_row += 1
+
+        # Positive control folds — green text
+        pos_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.pos_values]
+        if self._has_pos_label and pos_tass_vals:
+            row_y = _current_row * self._row_h + 0.5
+            pos_fold_txt = _fold_str(self.pos_tass_fold)
+            c.setFillColor(colors.Color(0.1, 0.55, 0.1, 1))
+            c.drawString(1, row_y, pos_fold_txt)
+
+            if self.pos_reads_fold is not None:
+                pos_rd_txt = _fold_str(self.pos_reads_fold)
+                if pos_rd_txt:
+                    pos_rd_txt = pos_rd_txt.rstrip("\u00d7") + "\u00d7 rd"
+                pos_txt_w = c.stringWidth(pos_fold_txt, "Helvetica", 5)
+                c.setFillColor(colors.Color(0.3, 0.6, 0.3, 1))
+                c.drawString(pos_txt_w + 4, row_y, pos_rd_txt)
+
+
+_STERILE_TYPES = {"sterile", "blood", "csf", "serum"}
+
+
+def _commensal_site_tag(strain, sample_type):
+    """Return an HTML tag like ' <font color="#e67e22">[skin flora]</font>'
+    if the organism is a known commensal at a non-sterile site and the
+    sample is from a sterile site.  Returns '' otherwise."""
+    if not sample_type:
+        return ''
+    norm_st = sample_type.lower().strip()
+    if norm_st not in _STERILE_TYPES:
+        return ''
+    sites = strain.get('commensal_sites', [])
+    if not sites:
+        return ''
+    # Flatten lists (body_site_map can return lists) and drop blanks
+    flat = []
+    for s in sites:
+        if isinstance(s, list):
+            flat.extend(x for x in s if x)
+        elif s:
+            flat.append(s)
+    if not flat:
+        return ''
+    label = ', '.join(sorted(set(flat)))
+    return f' <font size="6" color="#e67e22">[{label} flora]</font>'
 
 
 def _has_control_data(species_groups):
@@ -324,6 +388,8 @@ def _build_spark_bar_from_member(member, bar_width=72, bar_height=10):
         bar_height=bar_height,
         tass_fold=_safe_fold(cc.get('tass_fold_over_neg')),
         reads_fold=_safe_fold(cc.get('reads_fold_over_neg')),
+        pos_tass_fold=_safe_fold(cc.get('tass_fold_over_pos')),
+        pos_reads_fold=_safe_fold(cc.get('reads_fold_over_pos')),
     )
 
 
@@ -450,11 +516,11 @@ def get_sample_min_conf(sample_name, species_groups, explicit_conf,
 def load_json_samples(input_files):
     """Load organism data from one or more JSON files.
 
-    Supports both the new structured format::
+    Supports structured format:
 
         {"metadata": {...}, "organisms": [...]}
 
-    and the legacy plain-list format::
+    and the legacy plain format::
 
         [{organism}, {organism}, ...]
 
@@ -467,11 +533,9 @@ def load_json_samples(input_files):
         with open(input_file, 'r') as f:
             data = json.load(f)
         if isinstance(data, dict) and 'organisms' in data:
-            # New structured format
             all_sample_data.extend(data['organisms'])
             all_metadata.append(data.get('metadata', {}))
         elif isinstance(data, list):
-            # Legacy plain list
             all_sample_data.extend(data)
             all_metadata.append({})
         else:
@@ -645,7 +709,8 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                                   outline_collector=None,
                                   zscore_threshold=None,
                                   zscore_separator_index=None,
-                                  show_control_bar=False):
+                                  show_control_bar=False,
+                                  missing_pos_controls=None):
     """
     Create a single table combining all strains from all species groups.
 
@@ -968,9 +1033,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             group_strain_names = strains_per_group.get(species_key, [])
             n_strains = len(group_strain_names)
 
+            _grp_flora = _commensal_site_tag(species_group, species_group.get('normalized_sample_site', ''))
             group_name_para = Paragraph(
                 f'<b><link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" '
-                f'color="blue">{group_name}</link></b>',
+                f'color="blue">{group_name}</link></b>{_grp_flora}',
                 group_header_style
             )
 
@@ -1126,10 +1192,11 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 display_key = best_key
             # Base name HTML (arrow suffix added below once we know if one is needed)
             _zscore_sym = ' <font color="#999999">&#9830;</font>' if _row_below_zscore else ''
+            _flora_tag = _commensal_site_tag(best, best.get('normalized_sample_site', ''))
             name_html_base = (
                 f'{display_name} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={display_key}" '
-                f'color="blue">{display_key}</link>){_zscore_sym}'
+                f'color="blue">{display_key}</link>){_flora_tag}{_zscore_sym}'
             )
 
             # ── Determine whether sub-level strains exist ──────────────────────
@@ -1302,10 +1369,11 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
             strain_key = strain.get('key', '')
             _zscore_sym = ' <font color="#999999">&#9671;</font>' if _row_below_zscore else ''
+            _flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
             name_html = (
                 f'{strain.get("name", "Unknown")} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
-                f'color="blue">{strain_key}</link>){_zscore_sym}'
+                f'color="blue">{strain_key}</link>){_flora_tag}{_zscore_sym}'
             )
 
             high_ani_text = ''
@@ -1384,6 +1452,59 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
             row_idx += 1
             i += 1
+
+    # ── Missing positive control rows (tiny, faded) ─────────────────────────
+    _miss_pos = missing_pos_controls or []
+    if _miss_pos:
+        _miss_style = ParagraphStyle(
+            'MissingCtrl', parent=small_style,
+            fontSize=6.5, leading=8, textColor=colors.Color(0.5, 0.3, 0.1))
+        _miss_data_style = ParagraphStyle(
+            'MissingCtrlData', parent=small_style,
+            fontSize=6, leading=7, textColor=colors.Color(0.55, 0.55, 0.55))
+
+        # Separator row labelling the section
+        _sep_label = Paragraph(
+            '<font size="6"><b>Not found but in the positive control</b></font>',
+            ParagraphStyle('MissSep', parent=small_style, fontSize=6,
+                           leading=7, textColor=colors.Color(0.45, 0.25, 0.1)))
+        _sep_row = [''] * n_total
+        _sep_row[1] = _sep_label
+        table_data.append(_sep_row)
+        table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
+        table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
+                             colors.Color(0.97, 0.93, 0.87, 1)))
+        table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 2))
+        table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 2))
+        row_idx += 1
+
+        for mp in _miss_pos:
+            _mname = mp.get('name') or mp.get('id') or '?'
+            _mlevel = mp.get('level', 'toplevelkey')
+            _mtass = mp.get('pos_tass_score', 0)
+            _mreads = mp.get('pos_numreads', 0)
+            _msrc = mp.get('source', '')
+
+            _name_html = (
+                f'<font color="#8B4513"><i>{_mname}</i></font>'
+                f'&nbsp;<font size="5" color="#999999">'
+                f'[{_mlevel}]  Not detected \u2014 '
+                f'ctrl TASS {_mtass:.2f}, {int(_mreads):,} reads'
+                f'{", " + _msrc if _msrc else ""}</font>'
+            )
+            miss_row = [''] * n_total
+            miss_row[0] = ''  # no category indicator
+            miss_row[1] = Paragraph(_name_html, _miss_style)
+            # Span organism name across all data columns
+            table_data.append(miss_row)
+            table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
+            table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
+                                 colors.Color(0.98, 0.96, 0.92, 1)))
+            table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 1))
+            table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 1))
+            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.5,
+                                 colors.Color(0.85, 0.85, 0.85)))
+            row_idx += 1
 
     # ── Base table style ──────────────────────────────────────────────────────
     base_ts = [
@@ -1586,12 +1707,12 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             if not has_sublevel_members:
                 continue
             # Detect single-strain name-switch (mirrors single_strain_in_group
-            # logic from create_combined_sample_table): only one visible member
+            # logic from create_combined_sample_table): only one visible entry
             # in the entire species group and its key differs from its subkey.
             if len(qualifying) == 1 and str(qualifying[0].get('key', '')) != str(qualifying[0].get('subkey', qualifying[0].get('key', ''))):
                 continue
-            # Only append members that are genuine sub-level strains (key != subkey).
-            # Members where key == subkey are already shown as their own species row
+            # Only append entries that are genuine sub-level strains (key != subkey).
+            # entries where key == subkey are already shown as their own species row
             # in the main table and must not appear again in the appendix.
             sublevel = [
                 m for m in qualifying
@@ -2124,6 +2245,12 @@ def create_pdf_template(output_path, samples_dict, args):
         if all_sample_strains:
             # Auto-detect control data presence for the control bar column
             _show_ctrl = getattr(args, 'show_control_bar', False) or _has_control_data(species_groups)
+            # Gather missing positive controls for this sample (if not hidden)
+            _smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+            _miss_pos_list = []
+            if not getattr(args, 'hide_missing_pos_controls', False):
+                _miss_pos_list = _smeta.get('missing_positive_controls') or []
+
             combined_table = create_combined_sample_table(
                 all_sample_strains, species_group_map, small_style,
                 show_ani_column, show_k2_column,
@@ -2136,6 +2263,7 @@ def create_pdf_template(output_path, samples_dict, args):
                 outline_collector=outline_collector,
                 zscore_threshold=args.zscore_threshold,
                 show_control_bar=_show_ctrl,
+                missing_pos_controls=_miss_pos_list,
             )
             story.append(combined_table)
 
@@ -2167,9 +2295,17 @@ def create_pdf_template(output_path, samples_dict, args):
                     )
                 _ctrl_parts.append(
                     'The label below the bar shows: '
-                    '<b>#\u00d7</b> = fold-change of sample TASS over max negative-control TASS; '
+                    '<b>#\u00d7</b> = fold-change of sample TASS; '
                     '<b>#\u00d7 rd</b> = same ratio for read counts. '
                 )
+                if _neg_used:
+                    _ctrl_parts.append(
+                        'Dark gray / <font color="#cc2222">red</font> text = vs. max negative control. '
+                    )
+                if _pos_used:
+                    _ctrl_parts.append(
+                        '<font color="#2a8a2a">Green text</font> = vs. min positive control. '
+                    )
                 if _fold_thresh is not None:
                     _ctrl_parts.append(
                         f'Organisms with fold &lt; {_fold_thresh}\u00d7 are considered '
@@ -2229,6 +2365,16 @@ def create_pdf_template(output_path, samples_dict, args):
         ('LEFTPADDING', (1, 1), (-1, -1), 6),
     ]))
     story.append(legend_table)
+    story.append(Spacer(1, 0.04*inch))
+    _flora_note_style = ParagraphStyle(
+        'FloraNote', parent=legend_text_style,
+        fontSize=7, leading=9, textColor=colors.Color(0.35, 0.35, 0.35))
+    story.append(Paragraph(
+        '<font color="#e67e22"><b>[site flora]</b></font> '
+        'Appears next to organism names in sterile samples (blood, CSF, serum) '
+        'when the organism is a known commensal at the indicated body site. '
+        'Detection in a normally sterile site may suggest contamination.',
+        _flora_note_style))
     story.append(Spacer(1, 0.02*inch))
 
     # ── Footer: Column Explanations ───────────────────────────────────────────
@@ -2403,7 +2549,7 @@ def create_tabular_output(output_path, samples_dict, args):
                     strain.get('mmbert_model', '') or '',
                     int(strain_reads),
                     group_key,
-                    strain.get('subkey', strain.get('key', ''))  # NEW: subkey column
+                    strain.get('subkey', strain.get('key', ''))
                 ])
                 global_index += 1
 
@@ -2516,7 +2662,7 @@ def parse_args():
         "-u", "--output_txt", metavar="OUTPUT_TXT", required=False, type=str,
         help="Path of tabular output file. Format determined by extension: .csv, .tsv, .txt (TSV), or .xlsx",
     )
-    # ── NEW: subkey grouping control ──────────────────────────────────────────
+    # ── subkey grouping control ──────────────────────────────────────────
     parser.add_argument(
         "--no_subkey",
         action="store_true",
@@ -2552,6 +2698,14 @@ def parse_args():
         help="Force display of the control comparison spark-bar column in the "
              "primary table.  When not set, the column is auto-enabled whenever "
              "control_comparison data is present in the input JSON.",
+    )
+    parser.add_argument(
+        "--hide_missing_pos_controls",
+        action="store_true",
+        default=False,
+        help="Suppress the 'missing positive controls' rows at the bottom of "
+             "the primary table.  By default, organisms present in the positive "
+             "control but absent from the sample are shown as faded rows.",
     )
 
     return parser.parse_args()

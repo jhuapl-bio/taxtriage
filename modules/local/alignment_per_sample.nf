@@ -28,6 +28,8 @@ process ALIGNMENT_PER_SAMPLE {
     file assembly
     val minmapq
     path(taxdump)
+    path(negative_control_jsons)
+    path(positive_control_jsons)
 
     output:
         path "versions.yml"           , emit: versions
@@ -78,6 +80,11 @@ process ALIGNMENT_PER_SAMPLE {
     def platform = meta.platform ? " --platform ${meta.platform} " : " "
     def sampletype_thresholds = sampletype_thresholds_file.name != "NO_FILE_thresholds" ? " --thresholds_json ${sampletype_thresholds_file} " : " "
 
+    // Control sample arguments
+    def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
+    def neg_ctrls = negative_control_jsons.name != "NO_FILE_neg_ctrl" ? " --negative_controls ${negative_control_jsons} " : " "
+    def pos_ctrls = positive_control_jsons.name != "NO_FILE_pos_ctrl" ? " --positive_controls ${positive_control_jsons} " : " "
+
 
     """
 
@@ -96,7 +103,8 @@ process ALIGNMENT_PER_SAMPLE {
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
-        $workflow_revision $commitID $platform $sampletype_thresholds
+        $workflow_revision $commitID $platform $sampletype_thresholds \\
+        $ctrl_type $neg_ctrls $pos_ctrls
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

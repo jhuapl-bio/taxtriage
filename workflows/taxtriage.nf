@@ -426,6 +426,22 @@ workflow TAXTRIAGE {
     println "Date: ${date}"
 
     ch_reads = INPUT_CHECK.out.reads
+
+    // Apply --positive / --negative CLI param overrides to force a sample as a control
+    if (params.negative || params.positive) {
+        ch_reads = ch_reads.map { meta, reads ->
+            if (params.negative && meta.id == params.negative) {
+                meta.control = true
+                meta.control_type = 'negative'
+            }
+            if (params.positive && meta.id == params.positive) {
+                meta.control = true
+                meta.control_type = 'positive'
+            }
+            [meta, reads]
+        }
+    }
+
     ch_pass_files = ch_reads.map{ meta, reads -> {
             return [ meta ]
         }
