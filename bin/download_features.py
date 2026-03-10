@@ -184,6 +184,9 @@ def main():
             accessions_map[gcf] = set()
             try:
                 gcf_url = assembly_urls[gcf]
+                # strip "/" if at end of the gcf_url
+                if gcf_url.endswith("/"):
+                    gcf_url = gcf_url.rstrip("/")
                 baseurl = os.path.basename(gcf_url)
                 url = f"{gcf_url}/{baseurl}_feature_table.txt.gz"
 
