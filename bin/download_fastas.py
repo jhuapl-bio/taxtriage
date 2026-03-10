@@ -230,8 +230,10 @@ def import_assembly_file(
     assembly_cols = [int(x) for x in matchcol.split(",")]
 
     def get_url(utl, id_):
-        bb = os.path.basename(utl)
-        return utl + "/" + bb + "_genomic.fna.gz"
+        # remove any trailing / that is empty from utl
+        utl_formatted = utl.rstrip("/")
+        bb = os.path.basename(utl_formatted)
+        return utl_formatted + "/" + bb + "_genomic.fna.gz"
 
     # priorities[matchval][prio] = (file_index, obj)
     priorities = {}
@@ -291,7 +293,6 @@ def import_assembly_file(
 
                 if matchval not in priorities:
                     priorities[matchval] = {}
-
                 obj = dict(
                     id="{}|{}".format(gcfidx, formatted_header),
                     accession=gcfidx,
@@ -303,9 +304,7 @@ def import_assembly_file(
                     taxidcol=taxidcol,
                     species_taxidcol=species_taxidcol,
                 )
-
                 # assign priority bucket
-                # NOTE: your numbering comments say 1-4 but your code uses '0','1','2','3'
                 # We'll keep your existing meaning:
                 # 0 = representative genome
                 # 1 = reference genome
