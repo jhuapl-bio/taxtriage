@@ -304,10 +304,7 @@ def import_assembly_file(
                     taxidcol=taxidcol,
                     species_taxidcol=species_taxidcol,
                 )
-                print(urlcol, gcfidx, get_url(urlcol, gcfidx))
-
                 # assign priority bucket
-                # NOTE: your numbering comments say 1-4 but your code uses '0','1','2','3'
                 # We'll keep your existing meaning:
                 # 0 = representative genome
                 # 1 = reference genome
