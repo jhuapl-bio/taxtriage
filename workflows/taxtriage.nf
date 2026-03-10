@@ -532,6 +532,13 @@ workflow TAXTRIAGE {
     }
 
     //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
+    // Force singleton removal when de novo assembly or diamond is enabled,
+    // as singletons can cause issues with assemblers
+    if ((params.use_denovo || params.use_diamond) && params.include_singletons_removal) {
+        println "WARNING: --include_singletons_removal has been overwritten to false because --use_denovo or --use_diamond was specified. Singletons will be removed from paired-end host-removed reads."
+        params.include_singletons_removal = false
+    }
+
     HOST_REMOVAL(
         ch_reads,
         params.genome
