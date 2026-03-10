@@ -78,6 +78,8 @@ def create_fastq_channel(LinkedHashMap row) {
 
     meta.id         = row.sample
     meta.platform = row.platform ? row.platform : 'ILLUMINA'
+    // capitalize the platform
+    meta.platform = meta.platform.toUpperCase()
     meta.fastq_1 = row.fastq_1
     // Check if 'fastq_2' exists in 'row'
     if (row.containsKey('fastq_2')) {
