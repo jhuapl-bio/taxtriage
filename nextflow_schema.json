@@ -246,9 +246,15 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": null
                 },
-                "both_unmapped": {
+                "include_singletons_hostremoval": {
                     "type": "boolean",
                     "description": "-f 12 instead of -f 4 for removing hostreads.  Removes reads where BOTH reads are unmapped instead of just one side",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": false
+                },
+                "include_singletons_removal": {
+                    "type": "boolean",
+                    "description": "Keep singleton (unpaired) reads in paired-end datasets after host removal. By default (false), singletons are discarded. Has no effect on single-end reads. Automatically overridden to false when --use_denovo or --use_diamond is specified.",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
