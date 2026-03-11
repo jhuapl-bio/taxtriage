@@ -881,16 +881,17 @@ def compute_scores_per(
     # double-penalizing through mapq_scale, which is already captured in
     # the breadth_log_score component of TASS.
     raw_minhash = data.get('minhash_score', 1)
-    cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
-    gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
+    # cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
+    # gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
 
-    _mcg_breadth_w = 0.7   # how much coverage evidence matters
-    _mcg_gini_w    = 0.3   # how much distribution uniformity matters
-    minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
-    minhash_confidence = min(1.0, max(0.0, minhash_confidence))
+    # _mcg_breadth_w = 0.7   # how much coverage evidence matters
+    # _mcg_gini_w    = 0.3   # how much distribution uniformity matters
+    # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
+    # minhash_confidence = min(1.0, max(0.0, minhash_confidence))
 
-    data['minhash_reduction'] = raw_minhash * minhash_confidence
-    data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
+    data['minhash_reduction'] = raw_minhash
+    # data['minhash_reduction'] = raw_minhash * minhash_confidence
+    data['minhash_confidence'] = raw_minhash
     return data
 
 def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
