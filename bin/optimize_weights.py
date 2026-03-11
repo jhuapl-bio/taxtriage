@@ -893,6 +893,7 @@ def compute_scores_per(
     minhash_confidence = min(1.0, max(0.0, raw_minhash))
     data['minhash_reduction'] = minhash_confidence
     data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
+
     return data
 
 def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
