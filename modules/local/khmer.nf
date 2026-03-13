@@ -2,7 +2,6 @@ process KHMER_NORMALIZEBYMEDIAN {
     tag "${meta.id}"
     label 'process_high'
 
-    conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/khmer:3.0.0a3--py37haa7609a_2' :
         'biocontainers/khmer:3.0.0a3--py37haa7609a_2' }"
@@ -49,7 +48,7 @@ process KHMER_NORMALIZEBYMEDIAN {
     } else {
         peCmd
     }
-    
+
     // and then write out your versions.yml as before
     """
     ${ meta.single_end ? seCmd : peCmd }
