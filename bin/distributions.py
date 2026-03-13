@@ -71,7 +71,6 @@ def import_distributions(
             if 'body_site' in value and value['body_site'] in body_sites:
                 stats_dict_new[(value[column_id], value['body_site'])] = value
     else:
-        print("ELE")
         stats_dict_new = {(x[column_id], body_site_map(x['body_site'])): x for x in stats_dict}
     # Sort the saved_amts list of dicts on the "number_samples" key
     saved_amts = sorted(saved_amts, key=lambda x: x['proportion total'], reverse=False)

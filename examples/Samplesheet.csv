@@ -1,5 +1,5 @@
 sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type,negative,positive
-Nanopore Run A,OXFORD,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut,Negative Control Miseq,Positive Control Miseq
-Miseq Run A,ILLUMINA,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/iss_reads_R1.fastq.gz,https://github.com/jhuapl-bio/datasets/raw/main/sequencing/iss_reads_R2.fastq.gz,,FALSE,nasal
+Nanopore Run A,OXFORD,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/nanosim_metagenome.fastq.gz,,,FALSE,gut,,
+Miseq Run A,ILLUMINA,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/iss_reads_R1.fastq.gz,https://github.com/jhuapl-bio/datasets/raw/main/sequencing/iss_reads_R2.fastq.gz,,FALSE,nasal,Negative Control Miseq,Positive Control Miseq
 Positive Control Miseq,ILLUMINA,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/controls/positive/pos_R1.fastq.gz,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/controls/positive/pos_R2.fastq.gz,,FALSE,nasal,,
 Negative Control Miseq,ILLUMINA,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/controls/negative/neg_R1.fastq.gz,https://github.com/jhuapl-bio/taxtriage/raw/main/examples/data/controls/negative/neg_R2.fastq.gz,,FALSE,nasal,,
