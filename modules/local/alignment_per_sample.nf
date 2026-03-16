@@ -34,9 +34,7 @@ process ALIGNMENT_PER_SAMPLE {
     output:
         path "versions.yml"           , emit: versions
         tuple val(meta), path("*.json")    , optional:false, emit: txt
-        tuple val(meta), path("*_removal_stats.xlsx")    , optional:true, emit: removal
-        tuple val(meta), path("*_organism_ani_matrix.csv")    , optional:true, emit: ani
-
+        tuple val(meta), path("*_removal_stats_by_taxid.xlsx")    , optional:true, emit: removal_by_taxid
     when:
     task.ext.when == null || task.ext.when
 
@@ -100,7 +98,7 @@ process ALIGNMENT_PER_SAMPLE {
         $alpha \\
         --min_threshold 0.002 \\
         -p $pathogens_list  $mapping $k2 $gap_allowance $jump_threshold \\
-        --min_similarity_comparable 0.8 \\
+        --min_similarity_comparable 0.8 --taxid_removal_stats \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
@@ -108,7 +106,7 @@ process ALIGNMENT_PER_SAMPLE {
         $ctrl_type $neg_ctrls $pos_ctrls
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
-    cp search_results/organism_ani_matrix.csv "${meta.id}_organism_ani_matrix.csv" || true
+    cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
