@@ -407,6 +407,7 @@ def optimize_weights(
     weight_prior_lambda=0.0,
     plasmid_bonus_weight=0.05,
     prefer_granularity="subkey",
+    platform=None
 ):
     import json
     import numpy as np
@@ -495,6 +496,11 @@ def optimize_weights(
 
     # ── Primary optimization at taxid level (existing behaviour) ─────────────
     opt = _run_optimize(metrics_df, tp_fp_counts, accession_col, "taxid")
+    ## general stats on total taxa expected
+    tp_total_taxa = metrics_df[metrics_df['tp_reads']>0]['key'].unique().shape[0]
+    fp_total_taxa = metrics_df[(metrics_df['tp_reads']==0) & (metrics_df['fp_reads']>0)]['key'].unique().shape[0]
+    total_taxa = metrics_df["key"].unique().shape[0]
+
 
     # ── Multi-granularity optimization (key, subkey, toplevelkey) ─────────────
     granularity_results = {}
@@ -631,6 +637,10 @@ def optimize_weights(
             "status": best_opt.get("status", "failed"),
             "config": {
                 "alpha": float(alpha),
+                "total_fp_taxa": fp_total_taxa,
+                "total_tp_taxa": tp_total_taxa,
+                "total_taxa": total_taxa,
+                "platform": platform,
                 "sampletype": sampletype,
                 "pos_weight": float(optimize_pos_weight),
                 "neg_weight": float(optimize_neg_weight),

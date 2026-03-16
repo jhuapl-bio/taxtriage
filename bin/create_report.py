@@ -2071,7 +2071,7 @@ def create_pdf_template(output_path, samples_dict, args):
         "Category Label ■ (# Primary Strains, Max TASS)</i>", small_style))
     story.append(Spacer(1, 0.15*inch))
     story.append(Paragraph(
-        "Click on sample names or species groups to jump to their sections. "
+        "Click on sample names or species groups to jump to their sections. Samples are listed in order of appearance in the main table with their top groups listed below. They are sorted by TASS Score by default or alphabetically if selected."
         "Only samples/groups with visible strains are shown here", small_style))
     story.append(Paragraph(
         "The table is organized by samples first, then in order of TASS Score by default or alphabetical if selected. "
@@ -2116,7 +2116,7 @@ def create_pdf_template(output_path, samples_dict, args):
             f'<b>{sample_name}</b>{_toc_plat_str} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
             bookmark_name, valid_bookmarks)
         story.append(Paragraph(link_text, small_style))
-        story.append(Spacer(1, 0.04*inch))
+        story.append(Spacer(1, 0.05*inch))
 
         toc_groups = visible_groups[:args.max_toc]
         has_more = len(visible_groups) > args.max_toc
