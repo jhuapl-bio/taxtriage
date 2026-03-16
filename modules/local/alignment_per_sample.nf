@@ -34,7 +34,8 @@ process ALIGNMENT_PER_SAMPLE {
     output:
         path "versions.yml"           , emit: versions
         tuple val(meta), path("*.json")    , optional:false, emit: txt
-        tuple val(meta), path("search_results/organism_ani_matrix.csv")    , optional:true, emit: ani
+        tuple val(meta), path("*_removal_stats.xlsx")    , optional:true, emit: removal
+        tuple val(meta), path("*_organism_ani_matrix.csv")    , optional:true, emit: ani
 
     when:
     task.ext.when == null || task.ext.when
@@ -105,6 +106,9 @@ process ALIGNMENT_PER_SAMPLE {
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls
+
+    cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
+    cp search_results/organism_ani_matrix.csv "${meta.id}_organism_ani_matrix.csv" || true
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

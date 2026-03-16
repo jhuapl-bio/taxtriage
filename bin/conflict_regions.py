@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import csv
 import itertools
+import re
 import math
 import os
 import random
@@ -1056,7 +1057,8 @@ def calculate_breadth_coverage_from_bam(
         cov[ref] = (100.0 * total_covered / L) if L > 0 else 0.0
 
     return cov
-def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int]) -> pd.DataFrame:
+def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
+                    accession_to_taxid: Optional[Dict[str, str]] = None) -> pd.DataFrame:
     rows = []
     for ref, st in sorted(per_ref_stats.items()):
         total_reads = st.get("total_reads", 0)
@@ -1069,9 +1071,19 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int]) 
 
         ref_len = reflengths.get(ref, 0)
 
+        # Resolve taxid for this accession
+        taxid = ""
+        if accession_to_taxid:
+            taxid = accession_to_taxid.get(ref, "")
+            if not taxid:
+                # Try without version suffix (e.g. NC_001234.1 -> NC_001234)
+                ref_noversion = re.sub(r"\.\d+$", "", ref)
+                taxid = accession_to_taxid.get(ref_noversion, "")
+
         rows.append(
             {
                 "Reference": ref,
+                "Taxid": taxid,
                 "Reference Length": ref_len,
                 "TP Original": st.get("TP Original", 0),
                 "FP Original": st.get("FP Original", 0),
@@ -1710,6 +1722,8 @@ def determine_conflicts(
     sim_ani_threshold: float = 0.99,
     compare_to_reference_windows: bool = False,
     find_optimal_windows: bool = False,
+    accession_to_taxid: Optional[Dict[str, str]] = None,
+    taxid_removal_stats: bool = False,
 ):
     if output_dir is None or input_bam is None or bedfile is None:
         raise ValueError("output_dir, input_bam, and bedfile are required.")
@@ -1960,7 +1974,7 @@ def determine_conflicts(
         per_ref[ref]["breadth_old"] = breadth_old.get(ref, 0.0)
         per_ref[ref]["breadth"] = breadth_new.get(ref, 0.0)
 
-    comparison_df = compare_metrics(per_ref, reflengths)
+    comparison_df = compare_metrics(per_ref, reflengths, accession_to_taxid=accession_to_taxid)
 
 
     try:
@@ -1968,6 +1982,7 @@ def determine_conflicts(
         # add a "Total" row that is the sum of all the TP/FP/FN columns, empty for others
         total_row = {
             "Reference": "Total",
+            "Taxid": "",
             "TP Original": comparison_df["TP Original"].sum(),
             "FP Original": comparison_df["FP Original"].sum(),
             "FN Original": comparison_df["FN Original"].sum(),
@@ -1998,6 +2013,73 @@ def determine_conflicts(
         )
     except Exception as e:
         print(f"Stats export failed: {e}")
+
+    # Optional: taxid-aggregated removal stats
+    if taxid_removal_stats and "Taxid" in comparison_df.columns:
+        try:
+            # Work on copy without the Total row
+            _tdf = comparison_df[comparison_df["Reference"] != "Total"].copy()
+            _tdf["Taxid"] = _tdf["Taxid"].astype(str)
+            # Only aggregate rows that have a non-empty taxid
+            _has_taxid = _tdf[_tdf["Taxid"].str.strip().ne("")]
+            if not _has_taxid.empty:
+                _sum_cols = ["TP Original", "FP Original", "FN Original",
+                             "TP New", "FP New", "FN New",
+                             "Total Reads", "Pass Filtered Reads", "Δ All",
+                             "Reference Length"]
+                _grouped = _has_taxid.groupby("Taxid", sort=True)
+                taxid_agg = _grouped[_sum_cols].sum()
+                # Weighted-average for breadth columns (weighted by Reference Length)
+                for bcol in ["Breadth Original", "Breadth New"]:
+                    if bcol in _has_taxid.columns:
+                        _has_taxid[f"_w_{bcol}"] = _has_taxid[bcol] * _has_taxid["Reference Length"]
+                        taxid_agg[bcol] = _grouped[f"_w_{bcol}"].sum() / taxid_agg["Reference Length"].replace(0, 1)
+                # Recompute derived columns
+                taxid_agg["Δ All%"] = (100.0 * taxid_agg["Δ All"] / taxid_agg["Total Reads"]).fillna(0.0)
+                taxid_agg["Δ^-1 Breadth"] = (taxid_agg["Breadth New"] / taxid_agg["Breadth Original"].replace(0, float("nan"))).fillna(0.0)
+                taxid_agg["Δ Breadth"] = taxid_agg["Breadth New"] - taxid_agg["Breadth Original"]
+                denom = taxid_agg["TP Original"] + taxid_agg["FP Original"]
+                taxid_agg["Precision"] = (taxid_agg["TP Original"] / denom.replace(0, float("nan"))).fillna(0.0)
+                taxid_agg["Recall"] = (taxid_agg["TP Original"] / taxid_agg["Total Reads"].replace(0, float("nan"))).fillna(0.0)
+                pr = taxid_agg["Precision"] + taxid_agg["Recall"]
+                taxid_agg["F1"] = (2 * taxid_agg["Precision"] * taxid_agg["Recall"] / pr.replace(0, float("nan"))).fillna(0.0)
+                taxid_agg["Proportion Aligned"] = (taxid_agg["TP Original"] / taxid_agg["Total Reads"].replace(0, float("nan"))).fillna(0.0)
+                # Collect accessions per taxid for reference
+                taxid_agg["Accessions"] = _grouped["Reference"].apply(lambda x: "; ".join(sorted(x)))
+                taxid_agg = taxid_agg.reset_index()
+                # Reorder columns
+                col_order = ["Taxid", "Accessions", "Reference Length",
+                             "TP Original", "FP Original", "FN Original",
+                             "TP New", "FP New", "FN New",
+                             "Total Reads", "Pass Filtered Reads",
+                             "Proportion Aligned", "Precision", "Recall", "F1",
+                             "Δ All", "Δ All%",
+                             "Breadth Original", "Breadth New", "Δ Breadth", "Δ^-1 Breadth"]
+                col_order = [c for c in col_order if c in taxid_agg.columns]
+                taxid_agg = taxid_agg[col_order]
+                # Add Total row
+                taxid_total = {"Taxid": "Total", "Accessions": ""}
+                for c in _sum_cols:
+                    if c in taxid_agg.columns:
+                        taxid_total[c] = taxid_agg[c].sum()
+                taxid_total["Δ All%"] = ""
+                taxid_total["Precision"] = ""
+                taxid_total["Recall"] = ""
+                taxid_total["F1"] = ""
+                taxid_total["Proportion Aligned"] = ""
+                taxid_total["Δ^-1 Breadth"] = ""
+                taxid_total["Δ Breadth"] = ""
+                taxid_total["Breadth Original"] = ""
+                taxid_total["Breadth New"] = ""
+                taxid_agg = pd.concat([pd.DataFrame([taxid_total]), taxid_agg], ignore_index=True)
+                out_taxid_xlsx = os.path.join(output_dir, "removal_stats_by_taxid.xlsx")
+                taxid_agg.to_excel(out_taxid_xlsx, index=False)
+                print(f"Wrote: {out_taxid_xlsx}")
+            else:
+                print("Skipping taxid removal stats: no taxid mappings found in comparison data.")
+        except Exception as e:
+            print(f"Taxid removal stats export failed: {e}")
+
     # Optional: create filtered BAM
     if filtered_bam_create:
         try:

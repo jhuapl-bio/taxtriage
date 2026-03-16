@@ -37,7 +37,7 @@ import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
 from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
 from map_taxid import load_taxdump, load_names
-from utils import taxid_to_rank, calculate_var
+from utils import taxid_to_rank, calculate_var, load_matchfile
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -484,6 +484,13 @@ def parse_args(argv=None):
         required=False,
         default=None,
         help="Output XLSX path. If not set, will write to <output_dir>/alignment_confusion_report.xlsx"
+    )
+    parser.add_argument(
+        "--taxid_removal_stats",
+        action="store_true",
+        help="In addition to the standard removal_stats.xlsx, output a taxid-aggregated "
+             "removal_stats_by_taxid.xlsx where accessions are grouped by their taxid. "
+             "Requires --match to provide accession-to-taxid mappings."
     )
 
     # ── Control sample arguments ────────────────────────────────────────────
@@ -1080,6 +1087,18 @@ def main():
                         ani_data[t1][str(taxid2)] = float(val)
             print(f"ANI data loaded for {len(ani_data)} taxa (threshold {args.ani_threshold})")
 
+    # Build an early accession→taxid map from the matchfile for use by
+    # determine_conflicts (the full acc_to_key map is built later after
+    # reference_hits are populated and taxdump is loaded).
+    early_acc_to_taxid = {}
+    if args.match and os.path.exists(args.match):
+        early_acc_to_taxid, _, _ = load_matchfile(
+            args.match,
+            accession_col=args.accessioncol,
+            taxid_col=args.taxcol,
+            desc_col=args.namecol,
+        )
+
     if args.minhash_weight > 0:
         if args.comparisons and os.path.exists(args.comparisons):
             # if ends with csv
@@ -1111,7 +1130,9 @@ def main():
                 cpu_count=args.cpu_count,
                 jump_threshold = args.jump_threshold,
                 gap_allowance=args.gap_allowance,
-                compare_to_reference_windows=args.compare_references
+                compare_to_reference_windows=args.compare_references,
+                accession_to_taxid=early_acc_to_taxid if early_acc_to_taxid else None,
+                taxid_removal_stats=args.taxid_removal_stats,
             )
             # import the file args.output_dir/region_comparisons.csv
         if args.failed_reads:
@@ -1567,6 +1588,7 @@ def main():
             weight_prior_lambda = args.optimize_weight_prior_lambda,
             plasmid_bonus_weight = args.plasmid_bonus_weight,
             prefer_granularity = args.optimize_granularity,
+            platform=args.platform
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)
