@@ -1058,7 +1058,8 @@ def calculate_breadth_coverage_from_bam(
 
     return cov
 def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
-                    accession_to_taxid: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+                    accession_to_taxid: Optional[Dict[str, str]] = None,
+                    taxid_to_name: Optional[Dict[str, str]] = None) -> pd.DataFrame:
     rows = []
     for ref, st in sorted(per_ref_stats.items()):
         total_reads = st.get("total_reads", 0)
@@ -1080,10 +1081,16 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
                 ref_noversion = re.sub(r"\.\d+$", "", ref)
                 taxid = accession_to_taxid.get(ref_noversion, "")
 
+        # Resolve organism name from taxid
+        organism = ""
+        if taxid and taxid_to_name:
+            organism = taxid_to_name.get(str(taxid), "")
+
         rows.append(
             {
                 "Reference": ref,
                 "Taxid": taxid,
+                "Organism": organism,
                 "Reference Length": ref_len,
                 "TP Original": st.get("TP Original", 0),
                 "FP Original": st.get("FP Original", 0),
@@ -1723,6 +1730,7 @@ def determine_conflicts(
     compare_to_reference_windows: bool = False,
     find_optimal_windows: bool = False,
     accession_to_taxid: Optional[Dict[str, str]] = None,
+    taxid_to_name: Optional[Dict[str, str]] = None,
     taxid_removal_stats: bool = False,
 ):
     if output_dir is None or input_bam is None or bedfile is None:
@@ -1974,7 +1982,8 @@ def determine_conflicts(
         per_ref[ref]["breadth_old"] = breadth_old.get(ref, 0.0)
         per_ref[ref]["breadth"] = breadth_new.get(ref, 0.0)
 
-    comparison_df = compare_metrics(per_ref, reflengths, accession_to_taxid=accession_to_taxid)
+    comparison_df = compare_metrics(per_ref, reflengths, accession_to_taxid=accession_to_taxid,
+                                    taxid_to_name=taxid_to_name)
 
 
     try:
@@ -1983,6 +1992,7 @@ def determine_conflicts(
         total_row = {
             "Reference": "Total",
             "Taxid": "",
+            "Organism": "",
             "TP Original": comparison_df["TP Original"].sum(),
             "FP Original": comparison_df["FP Original"].sum(),
             "FN Original": comparison_df["FN Original"].sum(),
@@ -2017,6 +2027,7 @@ def determine_conflicts(
     # Optional: taxid-aggregated removal stats
     if taxid_removal_stats and "Taxid" in comparison_df.columns:
         try:
+            print("trying to match taxids in removal reads xlsx output")
             # Work on copy without the Total row
             _tdf = comparison_df[comparison_df["Reference"] != "Total"].copy()
             _tdf["Taxid"] = _tdf["Taxid"].astype(str)
@@ -2047,8 +2058,14 @@ def determine_conflicts(
                 # Collect accessions per taxid for reference
                 taxid_agg["Accessions"] = _grouped["Reference"].apply(lambda x: "; ".join(sorted(x)))
                 taxid_agg = taxid_agg.reset_index()
+                # Map organism name from taxid
+                if taxid_to_name:
+                    taxid_agg["Organism"] = taxid_agg["Taxid"].map(
+                        lambda t: taxid_to_name.get(str(t), ""))
+                else:
+                    taxid_agg["Organism"] = ""
                 # Reorder columns
-                col_order = ["Taxid", "Accessions", "Reference Length",
+                col_order = ["Taxid", "Organism", "Accessions", "Reference Length",
                              "TP Original", "FP Original", "FN Original",
                              "TP New", "FP New", "FN New",
                              "Total Reads", "Pass Filtered Reads",
@@ -2058,7 +2075,7 @@ def determine_conflicts(
                 col_order = [c for c in col_order if c in taxid_agg.columns]
                 taxid_agg = taxid_agg[col_order]
                 # Add Total row
-                taxid_total = {"Taxid": "Total", "Accessions": ""}
+                taxid_total = {"Taxid": "Total", "Organism": "", "Accessions": ""}
                 for c in _sum_cols:
                     if c in taxid_agg.columns:
                         taxid_total[c] = taxid_agg[c].sum()

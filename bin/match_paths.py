@@ -1091,8 +1091,9 @@ def main():
     # determine_conflicts (the full acc_to_key map is built later after
     # reference_hits are populated and taxdump is loaded).
     early_acc_to_taxid = {}
+    early_taxid_to_desc = {}
     if args.match and os.path.exists(args.match):
-        early_acc_to_taxid, _, _ = load_matchfile(
+        early_acc_to_taxid, early_taxid_to_desc, _ = load_matchfile(
             args.match,
             accession_col=args.accessioncol,
             taxid_col=args.taxcol,
@@ -1132,6 +1133,7 @@ def main():
                 gap_allowance=args.gap_allowance,
                 compare_to_reference_windows=args.compare_references,
                 accession_to_taxid=early_acc_to_taxid if early_acc_to_taxid else None,
+                taxid_to_name=early_taxid_to_desc if early_taxid_to_desc else None,
                 taxid_removal_stats=args.taxid_removal_stats,
             )
             # import the file args.output_dir/region_comparisons.csv
