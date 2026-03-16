@@ -887,11 +887,13 @@ def compute_scores_per(
     # _mcg_breadth_w = 0.7   # how much coverage evidence matters
     # _mcg_gini_w    = 0.3   # how much distribution uniformity matters
     # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
-    # minhash_confidence = min(1.0, max(0.0, minhash_confidence))
+    # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
 
-    data['minhash_reduction'] = raw_minhash
-    # data['minhash_reduction'] = raw_minhash * minhash_confidence
-    data['minhash_confidence'] = raw_minhash
+    # data['minhash_reduction'] = minhash_confidence * raw_minhash
+    minhash_confidence = min(1.0, max(0.0, raw_minhash))
+    data['minhash_reduction'] = minhash_confidence
+    data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
+
     return data
 
 def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
@@ -989,6 +991,8 @@ def calculate_aggregate_scores(
     data['hmp_mean'] = hmp_info.get('hmp_mean', 0)
     data['hmp_std'] = hmp_info.get('hmp_std', 0)
     data['observed_abundance'] = hmp_info.get('observed_abundance', 0)
+    data['hmp_site_count'] = hmp_info.get('hmp_site_count', 0)
+    data['hmp_num_samples'] = hmp_info.get('hmp_num_samples', 0)
     data['k2_reads'] = k2_mapping.get(data.get('key', None), {}).get('clades_covered', 0)
     data['k2_disparity_score'] = calculate_k2_reads_disparity(
         data = data,
@@ -1185,6 +1189,8 @@ def calculate_hmp_percentile(
                             norm_stdev = dists[k].get('norm_stdev', 0),
                             std = dists[k].get('std', 0),
                             mean = dists[k].get('mean', 0),
+                            site_count = dists[k].get('site_count', 0),
+                            num_samples = len(dists[k].get('abundances', [])),
                         )
                     )
                     break
@@ -1216,11 +1222,17 @@ def calculate_hmp_percentile(
     else:
         adjusted_percentile = 1.0 - (1.0 - base_percentile) ** 2
 
+    # Aggregate site_count and num_samples across matched body sites
+    total_site_count = sum(x.get('site_count', 0) for x in abus)
+    total_num_samples = sum(x.get('num_samples', 0) for x in abus)
+
     hmp_info = {
         'hmp_norm_abundance': sum_abus_expected,
         'hmp_mean': sum([x.get('mean', 0) for x in abus]),
         'hmp_std': stdsum,
         'observed_abundance': fraction_observed,
+        'hmp_site_count': total_site_count,
+        'hmp_num_samples': total_num_samples,
     }
     return zscore, adjusted_percentile, hmp_info
 

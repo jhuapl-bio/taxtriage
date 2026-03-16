@@ -350,6 +350,27 @@ def _commensal_site_tag(strain, sample_type):
     return f' <font size="6" color="#e67e22">[{label} flora]</font>'
 
 
+def _is_flora_on_sterile(strain, sample_type):
+    """Return True if this organism has commensal flora sites (e.g. skin,
+    nasal) AND the sample type is sterile (blood, csf, etc.).
+    Used to slightly fade background colours for these rows."""
+    if not sample_type:
+        return False
+    norm_st = sample_type.lower().strip()
+    if norm_st not in _STERILE_TYPES:
+        return False
+    sites = strain.get('commensal_sites', [])
+    if not sites:
+        return False
+    flat = []
+    for s in sites:
+        if isinstance(s, list):
+            flat.extend(x for x in s if x)
+        elif s:
+            flat.append(s)
+    return bool(flat)
+
+
 def _has_control_data(species_groups):
     """Check if any organism in the dataset has control_comparison data."""
     for sg in species_groups:
@@ -1191,7 +1212,18 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 display_name = best.get('name', 'Unknown')
                 display_key = best_key
             # Base name HTML (arrow suffix added below once we know if one is needed)
-            _zscore_sym = ' <font color="#999999">&#9830;</font>' if _row_below_zscore else ''
+            if _row_below_zscore:
+                _n_samples = int(best.get('hmp_num_samples', 0) or 0)
+                _n_sites = int(best.get('hmp_site_count', 0) or 0)
+                if _n_sites > 0:
+                    _pct = (_n_samples / _n_sites) * 100
+                    _pct_str = '&lt;0.001%' if _pct < 0.001 else f'{_pct:.1f}%'
+                    _sample_label = f' <font color="#999999" size="6">{_n_samples} ({_pct_str})</font>'
+                else:
+                    _sample_label = ''
+                _zscore_sym = f' <font color="#999999">&#9830;</font>{_sample_label}<font color="#999999">&#9830;</font>'
+            else:
+                _zscore_sym = ''
             _flora_tag = _commensal_site_tag(best, best.get('normalized_sample_site', ''))
             name_html_base = (
                 f'{display_name} '
@@ -1332,12 +1364,16 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             # ── Per-row zscore opacity: fade rows whose member-level zscore
             # is below the threshold (acceptable / within expected abundance).
             # _row_below_zscore was computed earlier (before name HTML building).
+            # ── Flora-on-sterile fade: slightly reduce alpha (~70%) when the
+            # organism is tagged as commensal flora on a sterile sample type.
+            _flora_fade = _is_flora_on_sterile(best, best.get('normalized_sample_site', ''))
+            _flora_mult = 0.70 if _flora_fade else 1.0
             if _row_below_zscore:
-                ind_color = get_category_color(microbial_category, ann_class, alpha=0.35)
-                row_color = get_category_color(microbial_category, ann_class, alpha=0.05)
+                ind_color = get_category_color(microbial_category, ann_class, alpha=0.35 * _flora_mult)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.05 * _flora_mult)
             else:
-                ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
-                row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
+                ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * _flora_mult)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.15 * _flora_mult)
             table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
             table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
             if _row_below_zscore:
@@ -1368,7 +1404,18 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 _row_below_zscore = _strain_z < zscore_threshold
 
             strain_key = strain.get('key', '')
-            _zscore_sym = ' <font color="#999999">&#9671;</font>' if _row_below_zscore else ''
+            if _row_below_zscore:
+                _n_samples = int(strain.get('hmp_num_samples', 0) or 0)
+                _n_sites = int(strain.get('hmp_site_count', 0) or 0)
+                if _n_sites > 0:
+                    _pct = (_n_samples / _n_sites) * 100
+                    _pct_str = '&lt;0.001%' if _pct < 0.001 else f'{_pct:.3f}%'
+                    _sample_label = f' <font color="#999999" size="6">{_n_samples} ({_pct_str})</font>'
+                else:
+                    _sample_label = ''
+                _zscore_sym = f' <font color="#999999">&#9671;</font>{_sample_label}'
+            else:
+                _zscore_sym = ''
             _flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
             name_html = (
                 f'{strain.get("name", "Unknown")} '
@@ -1431,12 +1478,15 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
             # ── Per-row zscore opacity (flat mode) ────────────────────────
             # _row_below_zscore was computed earlier (before name HTML building).
+            # ── Flora-on-sterile fade (flat mode) ─────────────────────────
+            _flora_fade = _is_flora_on_sterile(strain, strain.get('normalized_sample_site', ''))
+            _flora_mult = 0.70 if _flora_fade else 1.0
             if _row_below_zscore:
-                ind_color = get_category_color(microbial_category, ann_class, alpha=0.35)
-                row_color = get_category_color(microbial_category, ann_class, alpha=0.05)
+                ind_color = get_category_color(microbial_category, ann_class, alpha=0.35 * _flora_mult)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.05 * _flora_mult)
             else:
-                ind_color = get_category_color(microbial_category, ann_class, alpha=1.0)
-                row_color = get_category_color(microbial_category, ann_class, alpha=0.15)
+                ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * _flora_mult)
+                row_color = get_category_color(microbial_category, ann_class, alpha=0.15 * _flora_mult)
             table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
             table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
             if _row_below_zscore:
@@ -2021,7 +2071,7 @@ def create_pdf_template(output_path, samples_dict, args):
         "Category Label ■ (# Primary Strains, Max TASS)</i>", small_style))
     story.append(Spacer(1, 0.15*inch))
     story.append(Paragraph(
-        "Click on sample names or species groups to jump to their sections. "
+        "Click on sample names or species groups to jump to their sections. Samples are listed in order of appearance in the main table with their top groups listed below. They are sorted by TASS Score by default or alphabetically if selected."
         "Only samples/groups with visible strains are shown here", small_style))
     story.append(Paragraph(
         "The table is organized by samples first, then in order of TASS Score by default or alphabetical if selected. "
@@ -2066,7 +2116,7 @@ def create_pdf_template(output_path, samples_dict, args):
             f'<b>{sample_name}</b>{_toc_plat_str} ({total_alignments:,} Alignments - {primary_count} Primary Pathogens)',
             bookmark_name, valid_bookmarks)
         story.append(Paragraph(link_text, small_style))
-        story.append(Spacer(1, 0.04*inch))
+        story.append(Spacer(1, 0.05*inch))
 
         toc_groups = visible_groups[:args.max_toc]
         has_more = len(visible_groups) > args.max_toc
@@ -2159,21 +2209,27 @@ def create_pdf_template(output_path, samples_dict, args):
         _zt_note = args.zscore_threshold
         if _zt_note is not None:
             _has_low_z = False
+            _max_site_count = 0
             for sg in samples_dict[sample_name]:
                 for m in sg.get('members', []):
                     mz = float(m.get('zscore', 0) or 0)
+                    _sc = int(m.get('hmp_site_count', 0) or 0)
+                    if _sc > _max_site_count:
+                        _max_site_count = _sc
                     if mz < _zt_note:
                         _has_low_z = True
-                        break
-                if _has_low_z:
-                    break
             if _has_low_z:
+                _total_bold = f'<b>{_max_site_count:,}</b>' if _max_site_count > 0 else 'N/A'
                 story.append(Paragraph(
                     f'<font color="#666666">&#9830; Rows marked with a diamond '
                     f'(&#9830;) and faded styling indicate organisms whose abundance '
                     f'z-score is below the threshold of {_zt_note}. These organisms '
                     f'are within expected abundance ranges for this sample type and '
-                    f'are less likely to be clinically significant.</font>',
+                    f'are less likely to be clinically significant. The number next to '
+                    f'the diamond shows how many reference samples contained that '
+                    f'organism, with the percentage of total samples in parentheses. '
+                    f'The reference dataset contains {_total_bold} total samples '
+                    f'for this body site.</font>',
                     small_style))
 
         story.append(Spacer(1, 0.08*inch))
