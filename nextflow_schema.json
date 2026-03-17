@@ -443,6 +443,12 @@
                     "description": "Minimum reads threshold for realignment",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "min_mapq_host": {
+                    "type": ["number", "null"],
+                    "default": null,
+                    "description": "Minimum MapQ Score for host alignment. If null, the default value will be used.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "zscore_accepted": {
                     "type": "number",
                     "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",

@@ -39,6 +39,7 @@ workflow HOST_REMOVAL {
         ch_filt_illumina = Channel.empty()
         ch_filt_oxfo = Channel.empty()
         ch_filtered_stats = Channel.empty()
+        ch_host_removal_stats = Channel.empty()
         ch_reference_fasta = Channel.empty()
         ch_filter_db = Channel.empty()
         supported_filter_dbs = [
@@ -78,6 +79,7 @@ workflow HOST_REMOVAL {
                 ch_bam_hosts
             )
             ch_filtered_reads = REMOVE_HOSTREADS.out.reads
+            ch_host_removal_stats = REMOVE_HOSTREADS.out.stats.collect{it[1]}.ifEmpty([])
 
             // Check the filtered output and fallback to original reads if filtered reads are empty
             CHECK_GZIPPED_READS(ch_filtered_reads, 4)
@@ -133,4 +135,5 @@ workflow HOST_REMOVAL {
     emit:
         unclassified_reads = ch_reads
         stats_filtered = ch_filtered_stats
+        host_removal_stats = ch_host_removal_stats
 }
