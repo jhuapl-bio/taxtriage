@@ -3,16 +3,16 @@ process INSILICOSEQ_SIMULATE {
     label 'process_medium'
 
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/insilicoseq:1.3.5--py_0' :
-        'biocontainers/insilicoseq:1.3.5--py_0' }"
+        'https://depot.galaxyproject.org/singularity/insilicoseq:2.0.1--pyh7cba7a3_0' :
+        'biocontainers/insilicoseq:2.0.1--pyh7cba7a3_0' }"
 
     input:
-    tuple val(meta), path(genome_list), path(abundance_file)
-    val(reference_fasta)
+    tuple val(meta), path(reference_fasta), path(abundance_file)
     val(num_reads)
+    val(model)
 
     output:
-    tuple val(meta), path("*.fastq.gz"), emit: simulated
+    tuple val(meta), path("*.fastq.gz"), emit: reads
     path "versions.yml"           , emit: versions
 
     when:
@@ -20,32 +20,29 @@ process INSILICOSEQ_SIMULATE {
 
     script:
     def args = task.ext.args ?: ''
-    def prefix = task.ext.prefix ?: "${meta.id}.simulated"
-    def mode = "kde" // default to KDE mode, but allow override with task.ext.mode
-    if (task.ext.mode) {
-        if (["kde", "empirical"].contains(task.ext.mode)) {
-            mode = task.ext.mode
-        } else {
-            log.warn "Invalid mode specified in task.ext.mode: ${task.ext.mode}. Defaulting to 'kde'."
-        }
-    }
-
-
+    def prefix = task.ext.prefix ?: "${meta.id}.iss"
+    def iss_model = model ?: 'miseq'
+    def mode = task.ext.mode ?: 'kde'
 
     """
+    iss generate \
+        --genomes ${reference_fasta} \
+        --model ${iss_model} \
+        --output ${prefix} \
+        --mode ${mode} \
+        --abundance_file ${abundance_file} \
+        -n ${num_reads} \
+        --cpus ${task.cpus} \
+        ${args}
 
-    iss generate --genomes $reference_fasta \
-        --model $iss_model \
-        --output $prefix \
-        --mode $mode \
-        --abundance_file $abundance_file \
-        -n $num_reads \
-        $args
-
+    # Compress FASTQ files if not already gzipped
+    for f in ${prefix}_R*.fastq; do
+        [ -f "\$f" ] && gzip "\$f"
+    done
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        insilicoseq: \$(echo \$(iss --version 2>&1) | sed 's/^.*iss v//' ))
+        insilicoseq: \$(iss --version 2>&1 | sed 's/^.*iss //')
     END_VERSIONS
     """
 }

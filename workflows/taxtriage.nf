@@ -180,6 +180,7 @@ include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
+include { INSILICO } from '../subworkflows/local/insilico'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -634,6 +635,37 @@ workflow TAXTRIAGE {
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
 
+    ////////////////////////////// OPTIONAL: IN-SILICO READ SIMULATION //////////////////////////////
+    // Run ISS (Illumina) and/or NanoSim (ONT) simulation if requested via --generate_iss / --generate_nanosim
+    // Uses Kraken2 top_report + REFERENCE_PREP outputs to generate simulated FASTQ files.
+    // User can also provide --sim_abundance (taxid<TAB>abundance TSV) to bypass Kraken2.
+    ch_insilico_jsons = Channel.empty()
+    if (params.generate_iss || params.generate_nanosim) {
+        // Extract merged_taxid map from REFERENCE_PREP prepped files (non-controls only)
+        ch_sim_merged_taxid = ch_preppedfiles
+            .filter { !it[0].control }
+            .map { meta, fastas, mergedmap, mergedids ->
+                [meta, mergedmap]
+            }
+
+        // Extract reference FASTAs from REFERENCE_PREP (non-controls only)
+        ch_sim_fastas = REFERENCE_PREP.out.fastas
+            .filter { !it[0].control }
+
+        // Top hits from CLASSIFIER (non-controls only)
+        ch_sim_tops = CLASSIFIER.out.ch_tops
+            .filter { !it[0].control }
+
+        INSILICO(
+            ch_sim_tops,
+            ch_sim_merged_taxid,
+            ch_sim_fastas
+        )
+        ch_versions = ch_versions.mix(INSILICO.out.versions)
+        ch_insilico_jsons = INSILICO.out.insilico_json
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
@@ -729,7 +761,8 @@ workflow TAXTRIAGE {
                 distributions,
                 ch_assembly_txt,
                 ch_taxdump_dir,
-                all_samples
+                all_samples,
+                ch_insilico_jsons
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
