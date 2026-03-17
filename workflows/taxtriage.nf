@@ -557,6 +557,7 @@ workflow TAXTRIAGE {
     }
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.host_removal_stats)
 
     //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
     if (!params.skip_plots) {
