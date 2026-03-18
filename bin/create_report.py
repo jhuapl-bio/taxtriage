@@ -477,14 +477,14 @@ def passes_confidence_threshold(strain, threshold):
 
 # ── Per-sample-type confidence defaults ──────────────────────────────────────
 _SAMPLETYPE_CONF_MAP = {
-    'sterile': 0.3,
-    'blood':   0.3,
-    'csf':     0.3,
-    'stool':   0.55,
-    'oral':    0.6,
-    'nasal':   0.65,
-    'skin':    0.7,
-    'wound':   0.7,
+    'sterile': 0.1,
+    'blood':   0.1,
+    'csf':     0.1,
+    'stool':   0.8,
+    'oral':    0.8,
+    'nasal':   0.8,
+    'skin':    0.75,
+    'wound':   0.75,
     "vaginal": 0.5,
 }
 _DEFAULT_CONF = 0.5

@@ -407,12 +407,15 @@ def optimize_weights(
     weight_prior=None,
     weight_prior_lambda=0.0,
     plasmid_bonus_weight=0.05,
+    abundance_gate=False,
     youden_min_threshold=None,
     prefer_granularity="subkey",
     platform=None
 ):
     import json
     import numpy as np
+
+    _abundance_gate = bool(abundance_gate)
 
     tp_fp_counts = compute_tp_fp_counts_by_taxid(
         input_bam,
@@ -488,6 +491,7 @@ def optimize_weights(
             weight_prior_lambda=float(weight_prior_lambda),
             plasmid_bonus_weight=float(plasmid_bonus_weight),
             abundance_confidence_weight=float(abundance_confidence_weight),
+            abundance_gate=_abundance_gate,
             youden_min_threshold=youden_min_threshold,
         )
         print(f"[optimize:{label}] status: {res['status']}")
@@ -575,6 +579,7 @@ def optimize_weights(
                 alpha=float(alpha),
                 plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
                 abundance_confidence_w=float(g_weights.get("abundance_confidence_weight", abundance_confidence_weight)),
+                abundance_gate=_abundance_gate,
             )
             g_scores = np.asarray(g_scores, dtype=float)
 
@@ -702,6 +707,7 @@ def optimize_weights(
         alpha=float(alpha),
         plasmid_bonus_w=_best_pbw,
         abundance_confidence_w=float(abundance_confidence_weight),
+        abundance_gate=_abundance_gate,
     )
     scores = np.asarray(scores, dtype=float)
 
@@ -831,6 +837,7 @@ def optimize_weights_for_tp_fp(
     weight_prior_lambda: float = 0.0,
     plasmid_bonus_weight: float = 0.0,
     abundance_confidence_weight: float = 0.0,
+    abundance_gate: bool = False,
     youden_min_threshold: float | None = None,
 ):
     from scipy.optimize import differential_evolution, minimize
@@ -839,6 +846,7 @@ def optimize_weights_for_tp_fp(
     # Store the abundance_confidence_weight for use in score computations.
     # It's additive (like plasmid_bonus_weight) — not on the simplex.
     _acw = float(abundance_confidence_weight)
+    _abundance_gate = bool(abundance_gate)
 
     # Minimum allowed Youden J threshold — prevents optimizer from picking
     # unreasonably low cutoffs for sterile/blood sites.
@@ -1045,6 +1053,7 @@ def optimize_weights_for_tp_fp(
             alpha=alpha,
             plasmid_bonus_w=float(_current_pbw[0]),
             abundance_confidence_w=_acw,
+            abundance_gate=_abundance_gate,
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1302,6 +1311,7 @@ def optimize_weights_for_tp_fp(
         alpha=alpha,
         plasmid_bonus_w=float(pbw_best),
         abundance_confidence_w=_acw,
+        abundance_gate=_abundance_gate,
     )
     scores_best = np.asarray(scores_best, dtype=float)
 

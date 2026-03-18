@@ -363,6 +363,14 @@ def parse_args(argv=None):
                              "For sterile/blood: 1.0-5.0. For gut/skin: 50-200. Default: 5.0.")
     parser.add_argument("--abundance_rpm_steepness", type=float, default=2.0,
                         help="Steepness of the log-RPM sigmoid for abundance confidence. Default: 2.0.")
+    parser.add_argument("--abundance_gate", action="store_true", default=False,
+                        help="Use abundance_confidence as a multiplicative gate on the entire "
+                             "TASS score.  Organisms with trivially low RPM (e.g. 3 reads in a "
+                             "deep sample) get their score crushed toward 0, preventing noise "
+                             "from accumulating small metric contributions into inflated scores. "
+                             "The gate uses the same log-RPM sigmoid controlled by "
+                             "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
+                             "Default: disabled.")
     # ── Youden J minimum threshold floor ─────────────────────────────────
     parser.add_argument("--youden_min_threshold", type=float, default=None,
                         help="Minimum allowed TASS threshold for Youden J cutoff. "
@@ -1022,6 +1030,10 @@ def main():
     # Abundance confidence is also additive (outside normalized pool).
     # It boosts organisms meaningful at low read counts (sterile/blood).
     weights['abundance_confidence_weight'] = args.abundance_confidence_weight
+    # Multiplicative abundance gate: when enabled, the abundance_confidence
+    # sigmoid is used as a multiplier on the entire TASS score, crushing
+    # noise organisms with trivially low RPM.
+    weights['abundance_gate'] = args.abundance_gate
     """
     # Final Score Calculation
 
@@ -1625,7 +1637,8 @@ def main():
             abundance_confidence_weight = args.abundance_confidence_weight,
             youden_min_threshold = args.youden_min_threshold,
             prefer_granularity = args.optimize_granularity,
-            platform=args.platform
+            platform=args.platform,
+            abundance_gate = args.abundance_gate,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)

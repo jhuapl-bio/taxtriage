@@ -1180,7 +1180,8 @@ def calculate_siblings_score (
 def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
                                     disparity_w=0.0, hmp_w=0.0, alpha=1.0,
                                     plasmid_bonus_w=0.0,
-                                    abundance_confidence_w=0.0):
+                                    abundance_confidence_w=0.0,
+                                    abundance_gate=False):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
@@ -1202,6 +1203,14 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
     if abundance_confidence_w > 0 and "abundance_confidence" in metrics_df.columns:
         ac = metrics_df["abundance_confidence"].to_numpy(float)
         score = score + abundance_confidence_w * ac
+
+    # ── Multiplicative abundance gate ─────────────────────────────────────
+    # When enabled, multiply the entire score by the abundance_confidence
+    # sigmoid (0→1).  Crushes noise organisms with trivially low RPM while
+    # leaving real detections untouched.
+    if abundance_gate and "abundance_confidence" in metrics_df.columns:
+        gate = metrics_df["abundance_confidence"].to_numpy(float)
+        score = score * gate
 
     return np.clip(score, 0.0, 1.0)
 
@@ -1246,6 +1255,19 @@ def compute_tass_score(data = {}, weights={}):
     _plasmid_bonus_w = float(weights.get('plasmid_bonus_weight', 0))
     if _plasmid_score > 0 and _plasmid_bonus_w > 0:
         tass_score += _plasmid_score * _plasmid_bonus_w
+
+    # ── Multiplicative abundance gate ─────────────────────────────────────
+    # When enabled (--abundance_gate), the pre-computed abundance_confidence
+    # sigmoid (log-RPM based, 0→1) is used as a *multiplier* on the entire
+    # TASS score.  This crushes scores for organisms with trivially low RPM
+    # (e.g. 3 reads in a deep sample → RPM ~0.01 → gate ~0.02) while
+    # leaving organisms with real signal essentially untouched (gate ≈ 1).
+    # Unlike the additive abundance_confidence_weight, this prevents noise
+    # organisms from accumulating small metric contributions into inflated
+    # scores (the "sterile site 0.08 average" problem).
+    if weights.get('abundance_gate', False):
+        gate = float(data.get('abundance_confidence', 0.0))
+        tass_score *= gate
 
     return min(1.0, max(0.0, tass_score))
 
