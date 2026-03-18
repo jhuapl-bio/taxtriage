@@ -343,6 +343,32 @@ def parse_args(argv=None):
                              "level has a significantly lower loss. Also controls which "
                              "best_threshold from --thresholds_json is used for the TASS cutoff "
                              "in the report. Default: subkey.")
+    # ── Site-aware breadth sigmoid tuning ────────────────────────────────
+    parser.add_argument("--breadth_midpoint", type=float, default=0.01,
+                        help="Breadth sigmoid midpoint (fraction of genome covered at 50%% score). "
+                             "Lower values make the sigmoid more sensitive to low-coverage organisms. "
+                             "For sterile/blood sites use 0.001 or 0.0001. Default: 0.01 (1%% coverage).")
+    parser.add_argument("--breadth_steepness", type=float, default=12000,
+                        help="Breadth sigmoid steepness. Higher = sharper transition. "
+                             "When lowering --breadth_midpoint, increase steepness proportionally "
+                             "(e.g. midpoint=0.001 → steepness=120000). Default: 12000.")
+    # ── Low-abundance confidence (sterile-site boost) ────────────────────
+    parser.add_argument("--abundance_confidence_weight", type=float, default=0.0,
+                        help="Weight for the low-abundance confidence component in TASS score. "
+                             "This component uses log-RPM to boost organisms that are meaningful "
+                             "at low read counts (e.g. pathogens in sterile/blood sites). "
+                             "Recommended: 0.15-0.30 for sterile sites. 0 = disabled. Default: 0.0.")
+    parser.add_argument("--abundance_rpm_midpoint", type=float, default=5.0,
+                        help="Expected RPM for a meaningful detection in this site type. "
+                             "For sterile/blood: 1.0-5.0. For gut/skin: 50-200. Default: 5.0.")
+    parser.add_argument("--abundance_rpm_steepness", type=float, default=2.0,
+                        help="Steepness of the log-RPM sigmoid for abundance confidence. Default: 2.0.")
+    # ── Youden J minimum threshold floor ─────────────────────────────────
+    parser.add_argument("--youden_min_threshold", type=float, default=None,
+                        help="Minimum allowed TASS threshold for Youden J cutoff. "
+                             "Prevents the optimizer from selecting unreasonably low cutoffs "
+                             "for sterile sites. E.g. 0.05 means Youden J can never return "
+                             "a threshold below 0.05. Default: None (no floor).")
     parser.add_argument(
         '--breadth_weight',
         metavar="BREADTHSCORE",
@@ -993,6 +1019,9 @@ def main():
     # Plasmid bonus is additive — added AFTER normalization so it doesn't
     # dilute the core weights.  Set to 0 to disable.
     weights['plasmid_bonus_weight'] = args.plasmid_bonus_weight
+    # Abundance confidence is also additive (outside normalized pool).
+    # It boosts organisms meaningful at low read counts (sterile/blood).
+    weights['abundance_confidence_weight'] = args.abundance_confidence_weight
     """
     # Final Score Calculation
 
@@ -1417,6 +1446,10 @@ def main():
             fallback_top = top,
             total_reads = total_reads,
             mapq_breadth_power = args.mapq_breadth_power,
+            breadth_midpoint = args.breadth_midpoint,
+            breadth_steepness = args.breadth_steepness,
+            abundance_rpm_midpoint = args.abundance_rpm_midpoint,
+            abundance_rpm_steepness = args.abundance_rpm_steepness,
         )
     strain_summary = calculate_normalized_groups(
         hits=reference_hits,
@@ -1589,6 +1622,8 @@ def main():
             weight_prior = _weight_prior,
             weight_prior_lambda = args.optimize_weight_prior_lambda,
             plasmid_bonus_weight = args.plasmid_bonus_weight,
+            abundance_confidence_weight = args.abundance_confidence_weight,
+            youden_min_threshold = args.youden_min_threshold,
             prefer_granularity = args.optimize_granularity,
             platform=args.platform
         )

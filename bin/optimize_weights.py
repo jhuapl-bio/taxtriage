@@ -775,6 +775,10 @@ def compute_scores_per(
     fallback_top = "Unknown",
     total_reads = 0,
     mapq_breadth_power = 2.0,
+    breadth_midpoint = 0.01,
+    breadth_steepness = 12_000,
+    abundance_rpm_midpoint = 5.0,
+    abundance_rpm_steepness = 2.0,
 ):
     data['_mapq_breadth_power'] = mapq_breadth_power
     if len(data.get('covered_regions', [])) > 0:
@@ -841,8 +845,22 @@ def compute_scores_per(
     hmf = float(data.get('highmapq_fraction', 1.0))
     _mbp = float(data.get('_mapq_breadth_power', 2.0))
     mapq_scale = hmf ** _mbp  # e.g. 0.1^2 = 0.01 → breadth almost zeroed
-    data['breadth_log_score'] = breadth_score_sigmoid(coverage) * mapq_scale
+    data['breadth_log_score'] = breadth_score_sigmoid(
+        coverage, midpoint=breadth_midpoint, steepness=breadth_steepness
+    ) * mapq_scale
     data['highmapq_fraction'] = hmf
+
+    # ── Low-abundance confidence (sterile-site boost) ────────────────────
+    # Uses log-RPM sigmoid to score organisms that are meaningful even at
+    # low read counts.  Stored as a feature; actual weighting happens in
+    # compute_tass_score / compute_tass_score_from_metrics.
+    data['abundance_confidence'] = low_abundance_confidence(
+        numreads=data.get('numreads', 0),
+        total_reads=total_reads,
+        genome_length_bp=data.get('length', 1),
+        rpm_midpoint=abundance_rpm_midpoint,
+        rpm_steepness=abundance_rpm_steepness,
+    )
     if not comparison_df.empty:
         # Look up by subkey (species) — comparison_df is now aggregated to
         # the subkey level so all accessions in the same species share one
@@ -907,12 +925,73 @@ def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
 
 
 def breadth_score_sigmoid(coverage, midpoint=0.01, steepness=12_000):
+        """Sigmoid mapping of genome coverage fraction → [0, 1].
+
+        Parameters
+        ----------
+        coverage : float
+            Fraction of the genome covered (0–1).
+        midpoint : float
+            Coverage fraction at which the sigmoid returns 0.5.
+            Lower values make the curve sensitive to very low coverage
+            (useful for sterile/blood sites).  Default 0.01 (1%).
+        steepness : float
+            Controls how sharply the sigmoid transitions.  When lowering
+            *midpoint*, increase *steepness* proportionally to keep the
+            curve tight (e.g. midpoint=0.001 → steepness≈120 000).
+        """
         x = steepness * (coverage - midpoint)
         if x >= 50:
             return 1.0
         if x <= -50:
             return 0.0
         return 1.0 / (1.0 + math.exp(-x))
+
+def low_abundance_confidence(numreads, total_reads, genome_length_bp,
+                              rpm_midpoint=5.0, rpm_steepness=2.0):
+    """Score that rewards organisms whose RPM is meaningful given sequencing
+    depth, even when absolute read counts are very low.
+
+    Operates in **log₁₀-RPM** space so the sigmoid is not crushed by the
+    huge dynamic range of metagenomic read counts.
+
+    Parameters
+    ----------
+    numreads : int
+        Reads mapped to this organism.
+    total_reads : int
+        Total reads in the sample (denominator for RPM).
+    genome_length_bp : int
+        Reference genome length in base-pairs (used for optional RPKM
+        awareness — currently kept simple with RPM only).
+    rpm_midpoint : float
+        RPM at which the sigmoid returns 0.5.  For sterile/blood sites
+        where even 5 RPM is significant, use 1.0–5.0.  For high-biomass
+        sites (gut, skin) where 50+ RPM is expected, use 50–200.
+    rpm_steepness : float
+        Steepness of the log₁₀-RPM sigmoid.  Default 2.0 gives a gentle
+        curve that reaches ~0.95 about one order of magnitude above
+        *rpm_midpoint*.
+
+    Returns
+    -------
+    float in [0, 1]
+    """
+    if total_reads <= 0 or numreads <= 0:
+        return 0.0
+
+    rpm = (numreads / total_reads) * 1e6
+    # Work in log-space so the sigmoid is not crushed by tiny fractions.
+    # log10(5) ≈ 0.70,  log10(50) ≈ 1.70
+    log_rpm = math.log10(max(rpm, 1e-3))
+    log_mid = math.log10(max(rpm_midpoint, 1e-3))
+
+    x = rpm_steepness * (log_rpm - log_mid)
+    if x >= 50:
+        return 1.0
+    if x <= -50:
+        return 0.0
+    return 1.0 / (1.0 + math.exp(-x))
 def calculate_mmbert_prob(
     mmbert_dict = {},
     taxid = None
@@ -1100,7 +1179,8 @@ def calculate_siblings_score (
 
 def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
                                     disparity_w=0.0, hmp_w=0.0, alpha=1.0,
-                                    plasmid_bonus_w=0.0):
+                                    plasmid_bonus_w=0.0,
+                                    abundance_confidence_w=0.0):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
@@ -1115,6 +1195,13 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
     if plasmid_bonus_w > 0 and "plasmid_score" in metrics_df.columns:
         ps = metrics_df["plasmid_score"].to_numpy(float)
         score = score + plasmid_bonus_w * ps
+
+    # Abundance confidence bonus: additive, outside normalized weights.
+    # Boosts organisms whose RPM is meaningful even at low absolute read
+    # counts (particularly useful for sterile/blood sites).
+    if abundance_confidence_w > 0 and "abundance_confidence" in metrics_df.columns:
+        ac = metrics_df["abundance_confidence"].to_numpy(float)
+        score = score + abundance_confidence_w * ac
 
     return np.clip(score, 0.0, 1.0)
 
@@ -1143,7 +1230,13 @@ def compute_tass_score(data = {}, weights={}):
         apply_weight(data.get('mapq_score', 0),       weights.get('mapq_score', 0)),
         apply_weight(data.get('k2_disparity_score', 0),         weights.get('k2_disparity_score_weight', 0)),
         apply_weight(data.get('diamond', {}).get('identity', 0),
-                     weights.get('diamond_identity', 0))  ])
+                     weights.get('diamond_identity', 0)),
+        # Low-abundance confidence: boosts organisms meaningful at low read
+        # counts (sterile/blood sites).  Weight = 0 by default → no effect
+        # unless explicitly enabled via --abundance_confidence_weight.
+        apply_weight(data.get('abundance_confidence', 0),
+                     weights.get('abundance_confidence_weight', 0)),
+    ])
 
     # ── Plasmid bonus: additive boost outside normalized weight pool ──────
     # If a strain has a plasmid with better coverage than sibling strains'

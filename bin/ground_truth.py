@@ -377,6 +377,7 @@ def optimize_weights(
     gini_weight=1/3,
     disparity_weight=0.0,
     hmp_weight=0.0,
+    abundance_confidence_weight=0.0,
     alpha=1.0,
     optimize_pos_weight=1.0,
     optimize_neg_weight=1.0,
@@ -406,6 +407,7 @@ def optimize_weights(
     weight_prior=None,
     weight_prior_lambda=0.0,
     plasmid_bonus_weight=0.05,
+    youden_min_threshold=None,
     prefer_granularity="subkey",
     platform=None
 ):
@@ -447,6 +449,7 @@ def optimize_weights(
         disparity_weight=float(disparity_weight),
         hmp_weight=float(hmp_weight),
         plasmid_bonus_weight=float(plasmid_bonus_weight),
+        abundance_confidence_weight=float(abundance_confidence_weight),
     )
 
     # ── Helper: run optimizer at a given granularity ─────────────────────────
@@ -484,6 +487,8 @@ def optimize_weights(
             weight_prior=weight_prior,
             weight_prior_lambda=float(weight_prior_lambda),
             plasmid_bonus_weight=float(plasmid_bonus_weight),
+            abundance_confidence_weight=float(abundance_confidence_weight),
+            youden_min_threshold=youden_min_threshold,
         )
         print(f"[optimize:{label}] status: {res['status']}")
         if res["status"] == "ok":
@@ -525,6 +530,7 @@ def optimize_weights(
             "gini_coefficient": "max",
             "hmp_percentile": "max",
             "plasmid_score": "max",
+            "abundance_confidence": "max",
             "has_plasmid": "max",
             "tp_reads": "sum",
             "fp_reads": "sum",
@@ -568,6 +574,7 @@ def optimize_weights(
                 hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
                 alpha=float(alpha),
                 plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
+                abundance_confidence_w=float(g_weights.get("abundance_confidence_weight", abundance_confidence_weight)),
             )
             g_scores = np.asarray(g_scores, dtype=float)
 
@@ -694,6 +701,7 @@ def optimize_weights(
         hmp_w=float(hmp_weight),
         alpha=float(alpha),
         plasmid_bonus_w=_best_pbw,
+        abundance_confidence_w=float(abundance_confidence_weight),
     )
     scores = np.asarray(scores, dtype=float)
 
@@ -722,6 +730,7 @@ def optimize_weights(
                 "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
                 "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
                 "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
+                "abundance_confidence": float(metrics_df.iloc[i].get("abundance_confidence", 0.0)),
                 "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
             }
         })
@@ -760,6 +769,7 @@ def optimize_weights(
             "disparity_weight": float(disparity_weight),
             "hmp_weight": float(hmp_weight),
             "plasmid_bonus_weight": _best_pbw,
+            "abundance_confidence_weight": float(abundance_confidence_weight),
         },
         "best_granularity": best_label,
         "granularity_results": {
@@ -820,9 +830,19 @@ def optimize_weights_for_tp_fp(
     weight_prior: dict | None = None,
     weight_prior_lambda: float = 0.0,
     plasmid_bonus_weight: float = 0.0,
+    abundance_confidence_weight: float = 0.0,
+    youden_min_threshold: float | None = None,
 ):
     from scipy.optimize import differential_evolution, minimize
     import numpy as np
+
+    # Store the abundance_confidence_weight for use in score computations.
+    # It's additive (like plasmid_bonus_weight) — not on the simplex.
+    _acw = float(abundance_confidence_weight)
+
+    # Minimum allowed Youden J threshold — prevents optimizer from picking
+    # unreasonably low cutoffs for sterile/blood sites.
+    _youden_min_t = float(youden_min_threshold) if youden_min_threshold is not None else None
 
     accessions = metrics_df[accession_col].astype(str).tolist()
     tp_raw = np.array([tp_fp_counts.get(a, (0, 0))[0] for a in accessions], dtype=float)
@@ -937,7 +957,15 @@ def optimize_weights_for_tp_fp(
         fp_ret = np.cumsum(fp_sorted) / (total_fp + 1e-12)
         J = tp_ret - fp_ret
 
-        best_idx = int(np.nanargmax(J))
+        # Apply minimum threshold floor if configured
+        if _youden_min_t is not None:
+            floor_mask = scores_sorted >= _youden_min_t
+            if floor_mask.any():
+                best_idx = int(np.where(floor_mask, J, -np.inf).argmax())
+            else:
+                best_idx = int(np.nanargmax(J))
+        else:
+            best_idx = int(np.nanargmax(J))
         t_min = float(scores_sorted.min())
         t_max = float(scores_sorted.max())
         norm_t = (float(scores_sorted[best_idx]) - t_min) / (t_max - t_min + 1e-12)
@@ -1016,6 +1044,7 @@ def optimize_weights_for_tp_fp(
             hmp_w=float(w[4]),
             alpha=alpha,
             plasmid_bonus_w=float(_current_pbw[0]),
+            abundance_confidence_w=_acw,
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1083,9 +1112,22 @@ def optimize_weights_for_tp_fp(
 
         youden_penalty = 0.0
         if youden_weight > 0:
-            tp_ret, fp_ret, _ = _retention_curves(p, curve_scope)
-            if tp_ret is not None:
-                best_j = float(np.nanmax(tp_ret - fp_ret))
+            tp_ret, fp_ret, s_sorted = _retention_curves(p, curve_scope)
+            if tp_ret is not None and s_sorted is not None:
+                j_vals = tp_ret - fp_ret
+                # Apply minimum threshold floor: mask out Youden J values
+                # at thresholds below the floor (if configured).  This
+                # prevents the optimizer from rewarding very low cutoffs
+                # that are impractical for sterile/blood sites.
+                if _youden_min_t is not None:
+                    floor_mask = s_sorted >= _youden_min_t
+                    if floor_mask.any():
+                        best_j = float(np.nanmax(j_vals[floor_mask]))
+                    else:
+                        # All thresholds below floor → penalize heavily
+                        best_j = 0.0
+                else:
+                    best_j = float(np.nanmax(j_vals))
                 youden_penalty = float(youden_weight) * (1.0 - best_j)
 
         fp_cutoff_penalty = 0.0
@@ -1259,6 +1301,7 @@ def optimize_weights_for_tp_fp(
         hmp_w=float(w_best[4]),
         alpha=alpha,
         plasmid_bonus_w=float(pbw_best),
+        abundance_confidence_w=_acw,
     )
     scores_best = np.asarray(scores_best, dtype=float)
 
@@ -1275,6 +1318,7 @@ def optimize_weights_for_tp_fp(
             "disparity_weight": float(w_best[3]),
             "hmp_weight": float(w_best[4]),
             "plasmid_bonus_weight": float(pbw_best),
+            "abundance_confidence_weight": _acw,
         },
         "status": "ok",
         "optimize_mode": optimize_mode,
@@ -1455,6 +1499,7 @@ def build_metrics_df_from_final_json(
         gini = float(stats.get("gini_coefficient", 0.0))
         hmp = float(stats.get("hmp_percentile", 0.0))
         plasmid_sc = float(stats.get("plasmid_score", 0.0))
+        abundance_conf = float(stats.get("abundance_confidence", 0.0))
 
         tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
         total = tp + fp
@@ -1473,6 +1518,7 @@ def build_metrics_df_from_final_json(
             "gini_coefficient": gini,
             "hmp_percentile": hmp,
             "plasmid_score": plasmid_sc,
+            "abundance_confidence": abundance_conf,
             "has_plasmid": bool(stats.get("has_plasmid", False)),
             "tp_reads": int(tp),
             "fp_reads": int(fp),
@@ -1504,6 +1550,7 @@ def build_metrics_df_from_final_json(
         "gini_coefficient": "max",
         "hmp_percentile": "max",
         "plasmid_score": "max",
+        "abundance_confidence": "max",
         "has_plasmid": "max",
         "tp_reads": "sum",
         "fp_reads": "sum",
