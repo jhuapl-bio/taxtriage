@@ -260,7 +260,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.0008340283569641367,
+                "best_threshold": 0.25340283569641367,
                 "best_TP_retained": 0.9982970919570343,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9982970919570343,
@@ -276,7 +276,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.0008340283569641367,
+                "best_threshold": 0.2540283569641367,
                 "best_TP_retained": 0.994458894040484,
                 "best_FP_retained": 0.0,
                 "best_J": 0.994458894040484,
@@ -292,7 +292,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.0008340283569641367,
+                "best_threshold": 0.25340283569641367,
                 "best_TP_retained": 0.9936246418338109,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9936246418338109,
