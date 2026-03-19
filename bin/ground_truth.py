@@ -536,6 +536,9 @@ def optimize_weights(
             "plasmid_score": "max",
             "abundance_confidence": "max",
             "has_plasmid": "max",
+            "commensal_sites": "first",
+            "pathogenic_sites": "first",
+            "normalized_sample_site": "first",
             "tp_reads": "sum",
             "fp_reads": "sum",
             "total_reads": "sum",
@@ -567,48 +570,58 @@ def optimize_weights(
         gran_opt = _run_optimize(grouped, gran_counts, gran_field, gran_field)
         granularity_results[gran_field] = gran_opt
 
+        # Always build the per-organism report, even when optimization was
+        # skipped (e.g. only TP or only FP present).  When skipped we fall
+        # back to the start / default weights so the user still gets the
+        # full organism listing with scores and flora annotations.
         if gran_opt.get("status") == "ok":
             g_weights = gran_opt.get("weights") or {}
-            g_scores = compute_tass_score_from_metrics(
-                grouped,
-                breadth_w=float(g_weights.get("breadth_weight", breadth_weight)),
-                minhash_w=float(g_weights.get("minhash_weight", minhash_weight)),
-                gini_w=float(g_weights.get("gini_weight", gini_weight)),
-                disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
-                hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
-                alpha=float(alpha),
-                plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
-                abundance_confidence_w=float(g_weights.get("abundance_confidence_weight", abundance_confidence_weight)),
-                abundance_gate=_abundance_gate,
-            )
-            g_scores = np.asarray(g_scores, dtype=float)
+        else:
+            g_weights = gran_opt.get("weights") or start_w
 
-            gran_rows = []
-            for i in range(len(grouped)):
-                gran_rows.append({
-                    "group": str(grouped.iloc[i][gran_field]),
-                    "name": str(grouped.iloc[i].get("name", "")),
-                    "key": str(grouped.iloc[i].get("key", "")),
-                    "subkey": str(grouped.iloc[i].get("subkey", "")),
-                    "toplevelkey": str(grouped.iloc[i].get("toplevelkey", "")),
-                    "microbial_category": str(grouped.iloc[i].get("category", "")),
-                    "tp_reads": int(grouped.iloc[i]["tp_reads"]),
-                    "fp_reads": int(grouped.iloc[i]["fp_reads"]),
-                    "total_reads": int(grouped.iloc[i]["total_reads"]),
-                    "fp_fraction": float(grouped.iloc[i]["fp_reads"] / grouped.iloc[i]["total_reads"]) if grouped.iloc[i]["total_reads"] else 0.0,
-                    "tass_score": float(g_scores[i]),
-                    "features": {
-                        "breadth_log_score": float(grouped.iloc[i].get("breadth_log_score", 0.0)),
-                        "minhash_reduction": float(grouped.iloc[i].get("minhash_reduction", 0.0)),
-                        "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
-                        "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
-                        "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
-                        "plasmid_score": float(grouped.iloc[i].get("plasmid_score", 0.0)),
-                        "has_plasmid": bool(grouped.iloc[i].get("has_plasmid", False)),
-                    },
-                })
-            gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
-            granularity_reports[gran_field] = gran_rows
+        g_scores = compute_tass_score_from_metrics(
+            grouped,
+            breadth_w=float(g_weights.get("breadth_weight", breadth_weight)),
+            minhash_w=float(g_weights.get("minhash_weight", minhash_weight)),
+            gini_w=float(g_weights.get("gini_weight", gini_weight)),
+            disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
+            hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
+            alpha=float(alpha),
+            plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
+            abundance_confidence_w=float(g_weights.get("abundance_confidence_weight", abundance_confidence_weight)),
+            abundance_gate=_abundance_gate,
+        )
+        g_scores = np.asarray(g_scores, dtype=float)
+
+        gran_rows = []
+        for i in range(len(grouped)):
+            gran_rows.append({
+                "group": str(grouped.iloc[i][gran_field]),
+                "name": str(grouped.iloc[i].get("name", "")),
+                "key": str(grouped.iloc[i].get("key", "")),
+                "subkey": str(grouped.iloc[i].get("subkey", "")),
+                "toplevelkey": str(grouped.iloc[i].get("toplevelkey", "")),
+                "microbial_category": str(grouped.iloc[i].get("category", "")),
+                "normalized_sample_site": str(grouped.iloc[i].get("normalized_sample_site", "")),
+                "commensal_sites": grouped.iloc[i].get("commensal_sites", []),
+                "pathogenic_sites": grouped.iloc[i].get("pathogenic_sites", []),
+                "tp_reads": int(grouped.iloc[i]["tp_reads"]),
+                "fp_reads": int(grouped.iloc[i]["fp_reads"]),
+                "total_reads": int(grouped.iloc[i]["total_reads"]),
+                "fp_fraction": float(grouped.iloc[i]["fp_reads"] / grouped.iloc[i]["total_reads"]) if grouped.iloc[i]["total_reads"] else 0.0,
+                "tass_score": float(g_scores[i]),
+                "features": {
+                    "breadth_log_score": float(grouped.iloc[i].get("breadth_log_score", 0.0)),
+                    "minhash_reduction": float(grouped.iloc[i].get("minhash_reduction", 0.0)),
+                    "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
+                    "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
+                    "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
+                    "plasmid_score": float(grouped.iloc[i].get("plasmid_score", 0.0)),
+                    "has_plasmid": bool(grouped.iloc[i].get("has_plasmid", False)),
+                },
+            })
+        gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
+        granularity_reports[gran_field] = gran_rows
 
     # ── Select best overall result ───────────────────────────────────────────
     # Prefer the user-specified granularity if it succeeded; otherwise fall
@@ -646,6 +659,7 @@ def optimize_weights(
 
     if best_opt.get("status") != "ok":
         report_obj = {
+            "optimizer": best_opt,
             "status": best_opt.get("status", "failed"),
             "config": {
                 "alpha": float(alpha),
@@ -674,7 +688,6 @@ def optimize_weights(
                 "hybrid_lambda": float(hybrid_lambda),
                 "start_weights": start_w,
             },
-            "optimizer": best_opt,
             "best_weights": start_w,
             "best_granularity": best_label,
             "granularity_results": {
@@ -684,6 +697,60 @@ def optimize_weights(
             "granularity_reports": granularity_reports,
             "report": [],
         }
+
+        # Even when optimization was skipped, still build the per-organism
+        # report using start/default weights so the user gets full organism
+        # listings with scores and flora annotations.
+        if not metrics_df.empty:
+            _sw = start_w
+            _fallback_scores = compute_tass_score_from_metrics(
+                metrics_df,
+                breadth_w=float(_sw.get("breadth_weight", 0.0)),
+                minhash_w=float(_sw.get("minhash_weight", 0.0)),
+                gini_w=float(_sw.get("gini_weight", 0.0)),
+                disparity_w=float(_sw.get("disparity_weight", 0.0)),
+                hmp_w=float(_sw.get("hmp_weight", 0.0)),
+                alpha=float(alpha),
+                plasmid_bonus_w=float(_sw.get("plasmid_bonus_weight", plasmid_bonus_weight)),
+                abundance_confidence_w=float(abundance_confidence_weight),
+                abundance_gate=_abundance_gate,
+            )
+            _fallback_scores = np.asarray(_fallback_scores, dtype=float)
+            _fb_tp = metrics_df["tp_reads"].to_numpy(dtype=int)
+            _fb_fp = metrics_df["fp_reads"].to_numpy(dtype=int)
+            _fb_total = _fb_tp + _fb_fp
+
+            fallback_rows = []
+            for i in range(len(metrics_df)):
+                fallback_rows.append({
+                    "taxid": str(metrics_df.iloc[i]["taxid"]),
+                    "name": str(metrics_df.iloc[i].get("name", "")),
+                    "microbial_category": str(metrics_df.iloc[i].get("category", "")),
+                    "key": metrics_df.iloc[i].get("key"),
+                    "subkey": metrics_df.iloc[i].get("subkey"),
+                    "toplevelkey": metrics_df.iloc[i].get("toplevelkey"),
+                    "tp_reads": int(_fb_tp[i]),
+                    "fp_reads": int(_fb_fp[i]),
+                    "total_reads": int(_fb_total[i]),
+                    "fp_fraction": float(_fb_fp[i] / _fb_total[i]) if _fb_total[i] else 0.0,
+                    "tass_score": float(_fallback_scores[i]),
+                    "normalized_sample_site": str(metrics_df.iloc[i].get("normalized_sample_site", "")),
+                    "commensal_sites": metrics_df.iloc[i].get("commensal_sites", []),
+                    "pathogenic_sites": metrics_df.iloc[i].get("pathogenic_sites", []),
+                    "features": {
+                        "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
+                        "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
+                        "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
+                        "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
+                        "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
+                        "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
+                        "abundance_confidence": float(metrics_df.iloc[i].get("abundance_confidence", 0.0)),
+                        "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
+                    }
+                })
+            fallback_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
+            report_obj["report"] = fallback_rows
+
         if optimize_report:
             with open(optimize_report, "w") as f:
                 json.dump(report_obj, f, indent=2)
@@ -729,6 +796,9 @@ def optimize_weights(
             "total_reads": int(total[i]),
             "fp_fraction": float(fp[i] / total[i]) if total[i] else 0.0,
             "tass_score": float(scores[i]),
+            "normalized_sample_site": str(metrics_df.iloc[i].get("normalized_sample_site", "")),
+            "commensal_sites": metrics_df.iloc[i].get("commensal_sites", []),
+            "pathogenic_sites": metrics_df.iloc[i].get("pathogenic_sites", []),
             "features": {
                 "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
                 "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
@@ -744,6 +814,7 @@ def optimize_weights(
     report_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
 
     report_obj = {
+        "optimizer": best_opt,
         "status": "ok",
         "config": {
             "alpha": float(alpha),
@@ -783,7 +854,6 @@ def optimize_weights(
             for k, v in all_opts.items()
         },
         "granularity_reports": granularity_reports,
-        "optimizer": best_opt,
         "report": report_rows,
     }
 
@@ -1530,6 +1600,9 @@ def build_metrics_df_from_final_json(
             "plasmid_score": plasmid_sc,
             "abundance_confidence": abundance_conf,
             "has_plasmid": bool(stats.get("has_plasmid", False)),
+            "commensal_sites": stats.get("commensal_sites", []),
+            "pathogenic_sites": stats.get("pathogenic_sites", []),
+            "normalized_sample_site": stats.get("normalized_sample_site", ""),
             "tp_reads": int(tp),
             "fp_reads": int(fp),
             "total_reads": int(total),
@@ -1562,6 +1635,9 @@ def build_metrics_df_from_final_json(
         "plasmid_score": "max",
         "abundance_confidence": "max",
         "has_plasmid": "max",
+        "commensal_sites": "first",
+        "pathogenic_sites": "first",
+        "normalized_sample_site": "first",
         "tp_reads": "sum",
         "fp_reads": "sum",
         "total_reads": "sum",

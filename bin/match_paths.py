@@ -344,21 +344,21 @@ def parse_args(argv=None):
                              "best_threshold from --thresholds_json is used for the TASS cutoff "
                              "in the report. Default: subkey.")
     # ── Site-aware breadth sigmoid tuning ────────────────────────────────
-    parser.add_argument("--breadth_midpoint", type=float, default=0.01,
+    parser.add_argument("--breadth_midpoint", type=float, default=0.0005,
                         help="Breadth sigmoid midpoint (fraction of genome covered at 50%% score). "
                              "Lower values make the sigmoid more sensitive to low-coverage organisms. "
-                             "For sterile/blood sites use 0.001 or 0.0001. Default: 0.01 (1%% coverage).")
-    parser.add_argument("--breadth_steepness", type=float, default=12000,
+                             "For sterile/blood sites use 0.001 or 0.0001. Default: 0.0005 (0.05%% coverage).")
+    parser.add_argument("--breadth_steepness", type=float, default=50000,
                         help="Breadth sigmoid steepness. Higher = sharper transition. "
                              "When lowering --breadth_midpoint, increase steepness proportionally "
-                             "(e.g. midpoint=0.001 → steepness=120000). Default: 12000.")
+                             "(e.g. midpoint=0.001 → steepness=120000). Default: 50000.")
     # ── Low-abundance confidence (sterile-site boost) ────────────────────
-    parser.add_argument("--abundance_confidence_weight", type=float, default=0.0,
+    parser.add_argument("--abundance_confidence_weight", type=float, default=0.20,
                         help="Weight for the low-abundance confidence component in TASS score. "
                              "This component uses log-RPM to boost organisms that are meaningful "
                              "at low read counts (e.g. pathogens in sterile/blood sites). "
-                             "Recommended: 0.15-0.30 for sterile sites. 0 = disabled. Default: 0.0.")
-    parser.add_argument("--abundance_rpm_midpoint", type=float, default=5.0,
+                             "Recommended: 0.15-0.30 for sterile sites. 0 = disabled. Default: 0.20.")
+    parser.add_argument("--abundance_rpm_midpoint", type=float, default=3.0,
                         help="Expected RPM for a meaningful detection in this site type. "
                              "For sterile/blood: 1.0-5.0. For gut/skin: 50-200. Default: 5.0.")
     parser.add_argument("--abundance_rpm_steepness", type=float, default=2.0,
