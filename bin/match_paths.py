@@ -305,6 +305,11 @@ def parse_args(argv=None):
     parser.add_argument("--optimize_tp_target_scope", type=str, default="taxa",
                     choices=["taxa", "reads", "hybrid"],
                     help="Which TP mean to target: taxa, reads, or hybrid.")
+    parser.add_argument("--optimize_mode", type=str, default="taxids",
+                    choices=["taxids", "reads", "hybrid"],
+                    help="Optimization objective mode. 'taxids' weights each organism equally, "
+                            "'reads' weights by read count, 'hybrid' blends both via --optimize_hybrid_lambda. "
+                            "Default: taxids.")
     parser.add_argument("--optimize_youden_weight", type=float, default=0.0,
                     help="Penalty weight to maximize Youden J (TP retention - FP retention). Higher values push FP down." )
     parser.add_argument("--optimize_fp_cutoff", type=float, default=None,
@@ -343,6 +348,14 @@ def parse_args(argv=None):
                              "level has a significantly lower loss. Also controls which "
                              "best_threshold from --thresholds_json is used for the TASS cutoff "
                              "in the report. Default: subkey.")
+    parser.add_argument("--optimize_hybrid_lambda", type=float, default=0.5,
+                        help="Blend factor when --optimize_mode hybrid. 1.0 = pure taxid-level, "
+                             "0.0 = pure read-level. Default: 0.5.")
+    parser.add_argument("--optimize_categories", nargs='+', default=None,
+                        choices=["Primary", "Potential", "Opportunistic", "Commensal", "Unknown"],
+                        help="Restrict weight optimization to only these microbial categories. "
+                             "Accepts one or more of: Primary, Potential, Opportunistic, Commensal, Unknown. "
+                             "If not set, all categories are included in the optimization objective.")
     # ── Site-aware breadth sigmoid tuning ────────────────────────────────
     parser.add_argument("--breadth_midpoint", type=float, default=0.0005,
                         help="Breadth sigmoid midpoint (fraction of genome covered at 50%% score). "
@@ -353,7 +366,7 @@ def parse_args(argv=None):
                              "When lowering --breadth_midpoint, increase steepness proportionally "
                              "(e.g. midpoint=0.001 → steepness=120000). Default: 50000.")
     # ── Low-abundance confidence (sterile-site boost) ────────────────────
-    parser.add_argument("--abundance_confidence_weight", type=float, default=0.20,
+    parser.add_argument("--abundance_confidence_weight", type=float, default=0.0,
                         help="Weight for the low-abundance confidence component in TASS score. "
                              "This component uses log-RPM to boost organisms that are meaningful "
                              "at low read counts (e.g. pathogens in sterile/blood sites). "
@@ -381,21 +394,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.26,
+        default=0.40,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.29,
+        default=0.55,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.45,
+        default=0.15,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -488,6 +501,16 @@ def parse_args(argv=None):
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
                          "Default: 2.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.01).")
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=1.0,
+                    help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
+                         "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
+                         "Default: 1.0. Set to 0 to disable.")
+    parser.add_argument('--contig_penalty_power', required=False, type=float, default=0.3,
+                    help="Power exponent for contig utilization penalty on Gini. "
+                         "gini *= (covered_contigs/total_contigs)^power. "
+                         "Penalizes organisms where reads concentrate on few contigs "
+                         "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
+                         "Default: 0.3. Set to 0 to disable.")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -1468,6 +1491,8 @@ def main():
         group_field="key",
         reads_key="numreads",
         mapq_breadth_power=args.mapq_breadth_power,
+        mapq_gini_power=args.mapq_gini_power,
+        contig_penalty_power=args.contig_penalty_power,
     )
     # for k, v in strain_summary.items():
     #     if v.get('toplevelname') == "Toxoplasma":
@@ -1639,6 +1664,9 @@ def main():
             prefer_granularity = args.optimize_granularity,
             platform=args.platform,
             abundance_gate = args.abundance_gate,
+            optimize_mode = args.optimize_mode,
+            hybrid_lambda = args.optimize_hybrid_lambda,
+            optimize_categories = args.optimize_categories,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)
@@ -1700,6 +1728,8 @@ def main():
         group_field="toplevelkey",
         reads_key="numreads",
         mapq_breadth_power=args.mapq_breadth_power,
+        mapq_gini_power=args.mapq_gini_power,
+        contig_penalty_power=args.contig_penalty_power,
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():

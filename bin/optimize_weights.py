@@ -414,6 +414,8 @@ def calculate_normalized_groups(
     reads_key: str = "numreads",
     sum_columns: Iterable[str] = (),
     mapq_breadth_power: float = 2.0,
+    mapq_gini_power: float = 1.0,
+    contig_penalty_power: float = 0.3,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -564,6 +566,51 @@ def calculate_normalized_groups(
         # Preserve combined regions so the next aggregation level (strain→species)
         # can recompute Gini from the full picture instead of averaging.
         agg['covered_regions'] = _combined_regions
+
+        # ========== MAPQ + CONTIG UTILIZATION PENALTY ON GINI ==========
+        # Problem: an organism with 2000 contigs but reads on only 2 can get
+        # an inflated Gini because the length-based scaling and dispersion
+        # factors in getGiniCoeff over-compensate for large genomes.
+        #
+        # Fix 1 — Contig utilization penalty:
+        #   If only 2/2000 contigs have any reads, coverage is extremely
+        #   concentrated and the Gini score should reflect that.
+        #   penalty = (covered_contigs / total_contigs) ^ contig_penalty_power
+        #   e.g. (2/2000)^0.3 ≈ 0.063 → Gini drops to ~6% of original
+        #        (50/100)^0.3  ≈ 0.81  → mild 19% penalty
+        #        (100/100)     = 1.0    → no penalty
+        #
+        # Fix 2 — MAPQ penalty (same pattern as breadth_log_score):
+        #   gini *= highmapq_fraction ^ mapq_gini_power
+        #   Organisms dominated by low-MAPQ reads get their Gini crushed
+        #   because the coverage is unreliable.
+        _n_total_contigs = len(entries)
+        _n_covered_contigs = sum(
+            1 for _e in entries
+            if _e.get('numreads', 0) > 0 or len(_e.get('covered_regions', [])) > 0
+        )
+        _contig_frac = (
+            _n_covered_contigs / _n_total_contigs
+            if _n_total_contigs > 0 else 1.0
+        )
+
+        # Only apply contig penalty when there are multiple contigs —
+        # single-contig organisms shouldn't be penalized for having 1/1.
+        if _n_total_contigs > 1 and contig_penalty_power > 0:
+            _contig_penalty = _contig_frac ** contig_penalty_power
+        else:
+            _contig_penalty = 1.0
+
+        # MAPQ penalty: same approach as breadth scaling
+        _hmf_gini = float(agg.get('highmapq_fraction', 1.0))
+        _mapq_gini_scale = _hmf_gini ** mapq_gini_power if mapq_gini_power > 0 else 1.0
+
+        agg['gini_coefficient'] *= _contig_penalty * _mapq_gini_scale
+        agg['gini_contig_frac'] = _contig_frac
+        agg['gini_contig_penalty'] = _contig_penalty
+        agg['gini_mapq_scale'] = _mapq_gini_scale
+        agg['n_contigs_total'] = _n_total_contigs
+        agg['n_contigs_covered'] = _n_covered_contigs
 
         # ========== REAPPLY minhash confidence gate at organism level ==========
         # Per-contig confidence gating is defeated by weighted averaging:
@@ -899,16 +946,16 @@ def compute_scores_per(
     # double-penalizing through mapq_scale, which is already captured in
     # the breadth_log_score component of TASS.
     raw_minhash = data.get('minhash_score', 1)
-    # cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
-    # gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
-
-    # _mcg_breadth_w = 0.7   # how much coverage evidence matters
-    # _mcg_gini_w    = 0.3   # how much distribution uniformity matters
-    # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
-    # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
-
     # data['minhash_reduction'] = minhash_confidence * raw_minhash
-    minhash_confidence = min(1.0, max(0.0, raw_minhash))
+    # minhash_confidence = min(1.0, max(0.0, raw_minhash))
+
+    cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
+    gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
+    _mcg_breadth_w = 1   # how much coverage evidence matters
+    _mcg_gini_w    = 0.0   # how much distribution uniformity matters
+    minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
+    minhash_confidence = min(1.0, max(0.0, minhash_confidence))  # sanity clamp
+
     data['minhash_reduction'] = minhash_confidence
     data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
 

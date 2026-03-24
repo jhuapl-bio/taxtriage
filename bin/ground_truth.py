@@ -410,7 +410,8 @@ def optimize_weights(
     abundance_gate=False,
     youden_min_threshold=None,
     prefer_granularity="subkey",
-    platform=None
+    platform=None,
+    optimize_categories=None,
 ):
     import json
     import numpy as np
@@ -423,6 +424,14 @@ def optimize_weights(
         debug_n=10,
     )
     metrics_df = build_metrics_df_from_final_json(final_json, tp_fp_counts)
+
+    # ── Category filter: restrict optimization to selected categories ────
+    if optimize_categories:
+        _allowed = set(optimize_categories)
+        _before = len(metrics_df)
+        metrics_df = metrics_df[metrics_df["category"].isin(_allowed)].reset_index(drop=True)
+        print(f"[optimize] Category filter {list(_allowed)}: "
+              f"{_before} → {len(metrics_df)} taxa retained")
     accession_col = "taxid"
 
     gran_tp_fp_counts = {"key": tp_fp_counts}

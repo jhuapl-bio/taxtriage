@@ -480,11 +480,11 @@ _SAMPLETYPE_CONF_MAP = {
     'sterile': 0.1,
     'blood':   0.1,
     'csf':     0.1,
-    'stool':   0.8,
-    'oral':    0.8,
-    'nasal':   0.8,
-    'skin':    0.75,
-    'wound':   0.75,
+    'stool':   0.5,
+    'oral':    0.45,
+    'nasal':   0.45,
+    'skin':    0.55,
+    'wound':   0.55,
     "vaginal": 0.5,
 }
 _DEFAULT_CONF = 0.5
