@@ -412,6 +412,8 @@ def optimize_weights(
     prefer_granularity="subkey",
     platform=None,
     optimize_categories=None,
+    score_power=1.0,
+    auto_score_power=False,
 ):
     import json
     import numpy as np
@@ -502,6 +504,8 @@ def optimize_weights(
             abundance_confidence_weight=float(abundance_confidence_weight),
             abundance_gate=_abundance_gate,
             youden_min_threshold=youden_min_threshold,
+            score_power=float(score_power),
+            auto_score_power=bool(auto_score_power),
         )
         print(f"[optimize:{label}] status: {res['status']}")
         if res["status"] == "ok":
@@ -772,6 +776,7 @@ def optimize_weights(
     disparity_weight = best_w.get("disparity_weight", 0.0)
     hmp_weight = best_w.get("hmp_weight", 0.0)
     _best_pbw = float(best_w.get("plasmid_bonus_weight", plasmid_bonus_weight))
+    _best_score_power = float(best_w.get("score_power", score_power))
 
     scores = compute_tass_score_from_metrics(
         metrics_df,
@@ -784,6 +789,7 @@ def optimize_weights(
         plasmid_bonus_w=_best_pbw,
         abundance_confidence_w=float(abundance_confidence_weight),
         abundance_gate=_abundance_gate,
+        score_power=_best_score_power,
     )
     scores = np.asarray(scores, dtype=float)
 
@@ -856,6 +862,7 @@ def optimize_weights(
             "hmp_weight": float(hmp_weight),
             "plasmid_bonus_weight": _best_pbw,
             "abundance_confidence_weight": float(abundance_confidence_weight),
+            "score_power": _best_score_power,
         },
         "best_granularity": best_label,
         "granularity_results": {
@@ -918,6 +925,8 @@ def optimize_weights_for_tp_fp(
     abundance_confidence_weight: float = 0.0,
     abundance_gate: bool = False,
     youden_min_threshold: float | None = None,
+    score_power: float = 1.0,
+    auto_score_power: bool = False,
 ):
     from scipy.optimize import differential_evolution, minimize
     import numpy as np
@@ -926,6 +935,7 @@ def optimize_weights_for_tp_fp(
     # It's additive (like plasmid_bonus_weight) — not on the simplex.
     _acw = float(abundance_confidence_weight)
     _abundance_gate = bool(abundance_gate)
+    _score_power = float(score_power)
 
     # Minimum allowed Youden J threshold — prevents optimizer from picking
     # unreasonably low cutoffs for sterile/blood sites.
@@ -1133,6 +1143,7 @@ def optimize_weights_for_tp_fp(
             plasmid_bonus_w=float(_current_pbw[0]),
             abundance_confidence_w=_acw,
             abundance_gate=_abundance_gate,
+            score_power=_score_power,
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1379,6 +1390,46 @@ def optimize_weights_for_tp_fp(
     if _optimize_pbw:
         print(f"[optimize] Optimized plasmid_bonus_weight: {_pbw0:.4f} -> {pbw_best:.4f}")
 
+    # ── Auto score_power: compute gamma from TP mean vs target ──────────
+    # After weight optimization, if the raw TP mean is below tp_target,
+    # compute a power transform gamma that lifts it to the target:
+    #   gamma = log(target) / log(tp_mean)
+    # This is a post-optimization calibration step that preserves the
+    # optimized weight ratios while expanding the score range.
+    _final_score_power = _score_power
+    if auto_score_power and tp_target is not None and tp_target > 0:
+        # Compute raw scores (without power transform) to measure the gap
+        raw_scores = compute_tass_score_from_metrics(
+            metrics_df,
+            breadth_w=float(w_best[0]),
+            minhash_w=float(w_best[1]),
+            gini_w=float(w_best[2]),
+            disparity_w=float(w_best[3]),
+            hmp_w=float(w_best[4]),
+            alpha=alpha,
+            plasmid_bonus_w=float(pbw_best),
+            abundance_confidence_w=_acw,
+            abundance_gate=_abundance_gate,
+            score_power=1.0,  # raw scores, no power transform
+        )
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        _raw_tp_mean = (
+            float(np.sum(y_pos * raw_scores) / tp_total_taxa)
+            if tp_total_taxa > 0 else 0.0
+        )
+
+        if 0 < _raw_tp_mean < float(tp_target):
+            import math
+            _auto_gamma = math.log(float(tp_target)) / math.log(_raw_tp_mean)
+            # Clamp to [0.15, 1.0] to avoid extreme transforms
+            _auto_gamma = max(0.15, min(1.0, _auto_gamma))
+            _final_score_power = _auto_gamma
+            print(f"[optimize] Auto score_power: raw tp_mean={_raw_tp_mean:.4f}, "
+                  f"target={tp_target}, computed gamma={_auto_gamma:.4f}")
+        else:
+            print(f"[optimize] Auto score_power: raw tp_mean={_raw_tp_mean:.4f} "
+                  f">= target={tp_target}, no power transform needed")
+
     # summaries (both read and taxid views)
     scores_best = compute_tass_score_from_metrics(
         metrics_df,
@@ -1391,6 +1442,7 @@ def optimize_weights_for_tp_fp(
         plasmid_bonus_w=float(pbw_best),
         abundance_confidence_w=_acw,
         abundance_gate=_abundance_gate,
+        score_power=_final_score_power,
     )
     scores_best = np.asarray(scores_best, dtype=float)
 
@@ -1408,6 +1460,7 @@ def optimize_weights_for_tp_fp(
             "hmp_weight": float(w_best[4]),
             "plasmid_bonus_weight": float(pbw_best),
             "abundance_confidence_weight": _acw,
+            "score_power": float(_final_score_power),
         },
         "status": "ok",
         "optimize_mode": optimize_mode,
@@ -1428,6 +1481,7 @@ def optimize_weights_for_tp_fp(
         "fp_mean_score_reads": fp_mean_reads,
         "tp_mean_score_taxa": tp_mean_taxa,
         "fp_mean_score_taxa": fp_mean_taxa,
+        "score_power": float(_final_score_power),
         "loss": float(loss_for_w(w_best)),
         "global_fun": float(de_res.fun),
         "local_success": bool(local_res.success),

@@ -410,6 +410,16 @@ def parse_args(argv=None):
                              "The gate uses the same log-RPM sigmoid controlled by "
                              "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
                              "Default: disabled.")
+    parser.add_argument("--score_power", type=float, default=0.0,
+                        help="Power transform (gamma) applied to TASS scores. "
+                             "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
+                             "Preserves monotonic ordering so thresholds still separate TP/FP. "
+                             "Default: 1.0 (no transform).")
+    parser.add_argument("--auto_score_power", action="store_true", default=False,
+                        help="Automatically compute score_power after optimization so that "
+                             "the mean TP TASS score hits --optimize_tp_target. "
+                             "Requires --optimize and --optimize_tp_target. "
+                             "Overrides --score_power if both are set.")
     # ── Youden J minimum threshold floor ─────────────────────────────────
     parser.add_argument("--youden_min_threshold", type=float, default=None,
                         help="Minimum allowed TASS threshold for Youden J cutoff. "
@@ -463,7 +473,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--plasmid_bonus_weight",
         type=float,
-        default=0.19,
+        default=0.0,
         help="Additive TASS bonus for strains with strong plasmid coverage "
              "relative to sibling strains in the same species. Applied outside "
              "the normalized weight pool. 0 = disabled. Default: 0.05",
@@ -536,6 +546,14 @@ def parse_args(argv=None):
                          "gini *= (covered_contigs/total_contigs)^power. "
                          "Penalizes organisms where reads concentrate on few contigs "
                          "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
+                         "Default: 0.3. Set to 0 to disable.")
+    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
+                    help="Power exponent for depth-concentration penalty on Gini. "
+                         "Detects the conserved-human-reads pattern: many reads map to a "
+                         "tiny region of a large genome (high depth, negligible coverage). "
+                         "Measures actual_coverage / expected_coverage from read count. "
+                         "e.g. 80K reads on 65Mbp genome with 0.15%% coverage: "
+                         "efficiency=0.008, penalty^0.3=0.22 -> Gini crushed to 22%%. "
                          "Default: 0.3. Set to 0 to disable.")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
@@ -1055,10 +1073,16 @@ def main():
             args.disparity_weight = disparity_w
         if "plasmid_bonus_weight" in _best_w:
             args.plasmid_bonus_weight = _best_w["plasmid_bonus_weight"]
+        if "abundance_confidence_weight" in _best_w:
+            args.abundance_confidence_weight = _best_w["abundance_confidence_weight"]
+        if "score_power" in _best_w:
+            args.score_power = _best_w["score_power"]
         print(f"  Applied weights from JSON: breadth={args.breadth_weight:.6g}, "
               f"gini={args.gini_weight:.6g}, minhash={args.minhash_weight:.6g}, "
               f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}, "
-              f"plasmid_bonus={args.plasmid_bonus_weight:.6g}")
+              f"plasmid_bonus={args.plasmid_bonus_weight:.6g}, "
+              f"abundance_conf={args.abundance_confidence_weight:.6g}, "
+              f"score_power={args.score_power:.6g}")
 
     weights = {
         'mapq_score': args.mapq_weight,
@@ -1083,6 +1107,9 @@ def main():
     # sigmoid is used as a multiplier on the entire TASS score, crushing
     # noise organisms with trivially low RPM.
     weights['abundance_gate'] = args.abundance_gate
+    # Score power transform: applied to TASS scores to lift compressed values.
+    # score_power < 1 expands the low-score range (0.09^0.5 = 0.30).
+    weights['score_power'] = args.score_power
     """
     # Final Score Calculation
 
@@ -1519,6 +1546,7 @@ def main():
         mapq_breadth_power=args.mapq_breadth_power,
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
+        depth_concentration_power=args.depth_concentration_power,
     )
     # for k, v in strain_summary.items():
     #     if v.get('toplevelname') == "Toxoplasma":
@@ -1693,6 +1721,8 @@ def main():
             optimize_mode = args.optimize_mode,
             hybrid_lambda = args.optimize_hybrid_lambda,
             optimize_categories = args.optimize_categories,
+            score_power = args.score_power,
+            auto_score_power = args.auto_score_power,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)
@@ -1756,6 +1786,7 @@ def main():
         mapq_breadth_power=args.mapq_breadth_power,
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
+        depth_concentration_power=args.depth_concentration_power,
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():

@@ -416,6 +416,8 @@ def calculate_normalized_groups(
     mapq_breadth_power: float = 2.0,
     mapq_gini_power: float = 1.0,
     contig_penalty_power: float = 0.3,
+    depth_concentration_power: float = 0.3,
+    default_read_length: int = 150,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -435,6 +437,7 @@ def calculate_normalized_groups(
         # the combined coverage histogram at the group level (like breadth).
         "mapq_score", "rpm_confidence_weight", "read_fraction",
         "highmapq_fraction", "plasmid_score",
+        "abundance_confidence",  # low-abundance confidence sigmoid (log-RPM based)
     }
 
     def _to_float(x) -> float:
@@ -605,10 +608,49 @@ def calculate_normalized_groups(
         _hmf_gini = float(agg.get('highmapq_fraction', 1.0))
         _mapq_gini_scale = _hmf_gini ** mapq_gini_power if mapq_gini_power > 0 else 1.0
 
-        agg['gini_coefficient'] *= _contig_penalty * _mapq_gini_scale
+        # Fix 3 — Depth-concentration penalty:
+        #   Detects the "conserved human reads" pattern: many reads map to a
+        #   tiny region of a large genome → absurdly high depth but negligible
+        #   coverage.  Measures the ratio of actual coverage to expected coverage
+        #   given the read count and genome size.
+        #
+        #   coverage_efficiency = actual_coverage / expected_coverage
+        #   expected_coverage = (numreads * avg_read_length) / genome_length
+        #
+        #   e.g. Toxoplasma: 80K reads, 65Mbp genome, 0.15% actual coverage
+        #        expected ~18%, efficiency = 0.15/18 = 0.008 → penalty^0.3 = 0.22
+        #        Burkholderia: 575 reads, 15Mbp genome, 0.46% actual coverage
+        #        expected ~0.6%, efficiency = 0.46/0.6 = 0.77 → penalty^0.3 = 0.93
+        _depth_conc_penalty = 1.0
+        if depth_concentration_power > 0:
+            _total_numreads = float(agg.get('numreads', 0))
+            _genome_len = float(agg.get('length', 1))
+            _actual_cov = float(agg.get('coverage', 0))
+
+            # Estimate avg read length from entries (weighted by numreads)
+            _rl_num, _rl_den = 0.0, 0.0
+            for _e in entries:
+                _nr = _to_float(_e.get('numreads', 0))
+                _arl = _to_float(_e.get('avg_read_length', default_read_length))
+                if _nr > 0 and _arl > 0:
+                    _rl_num += _arl * _nr
+                    _rl_den += _nr
+            _avg_rl = _rl_num / _rl_den if _rl_den > 0 else float(default_read_length)
+
+            if _total_numreads > 0 and _genome_len > 0:
+                _expected_cov = (_total_numreads * _avg_rl) / _genome_len
+                _expected_cov = min(1.0, _expected_cov)  # cap at 100%
+
+                if _expected_cov > 0:
+                    _cov_efficiency = min(1.0, _actual_cov / _expected_cov)
+                    _depth_conc_penalty = _cov_efficiency ** depth_concentration_power
+                # else: no reads expected → no penalty
+
+        agg['gini_coefficient'] *= _contig_penalty * _mapq_gini_scale * _depth_conc_penalty
         agg['gini_contig_frac'] = _contig_frac
         agg['gini_contig_penalty'] = _contig_penalty
         agg['gini_mapq_scale'] = _mapq_gini_scale
+        agg['gini_depth_conc_penalty'] = _depth_conc_penalty
         agg['n_contigs_total'] = _n_total_contigs
         agg['n_contigs_covered'] = _n_covered_contigs
 
@@ -1228,7 +1270,9 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
                                     disparity_w=0.0, hmp_w=0.0, alpha=1.0,
                                     plasmid_bonus_w=0.0,
                                     abundance_confidence_w=0.0,
-                                    abundance_gate=False):
+                                    abundance_gate=False,
+                                    score_power=1.0,
+                                    tass_mode="additive"):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
@@ -1236,6 +1280,73 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
     d = metrics_df["disparity_score"].to_numpy(float) if "disparity_score" in metrics_df else 0.0
     h = metrics_df["hmp_percentile"].to_numpy(float) if "hmp_percentile" in metrics_df else 0.0
 
+    if tass_mode == "penalized":
+        # ── PENALIZED MODE ────────────────────────────────────────────────
+        # Baseline 0.5; core metrics push score up (good signal) or down
+        # (poor signal).  Each metric in [0,1] contributes:
+        #   weight * (metric - 0.5)  →  range [-0.5*w, +0.5*w]
+        # The weighted sum of deviations is scaled by alpha and added to 0.5.
+        # This means an organism with ALL metrics at 0 gets penalized hard
+        # (score ≈ 0.0) and one with ALL metrics at 1 gets score ≈ 1.0.
+        # An organism with no signal (all zeros) scores:
+        #   0.5 + alpha * sum(w_i * (0 - 0.5)) = 0.5 - 0.5*alpha ≈ 0.0
+
+        core_signal = (breadth_w * (b - 0.5)
+                       + minhash_w * (m - 0.5)
+                       + gini_w * (g - 0.5)
+                       + disparity_w * (d - 0.5)
+                       + hmp_w * (h - 0.5))
+        core_signal = alpha * core_signal
+
+        # Raw core score (before bonuses): centered at 0.5
+        score = 0.5 + core_signal
+
+        # ── Abundance confidence: multiplicative scaler on deviation ──────
+        # Instead of adding a free bonus, AC scales how far the score can
+        # deviate from 0.5.  High AC (≈1) → full deviation preserved.
+        # Low AC (≈0) → score collapses back toward 0.5.
+        # This prevents organisms with bad core metrics from being inflated
+        # by high abundance confidence.  An organism with core=0.046 gets:
+        #   deviation = 0.046 - 0.5 = -0.454  (penalized)
+        #   with AC=0.84: deviation stays -0.454 (already penalized, AC keeps it)
+        # vs additive mode: 0.046 + 0.3*0.84 = 0.298 (inflated!)
+        if abundance_confidence_w > 0 and "abundance_confidence" in metrics_df.columns:
+            ac = metrics_df["abundance_confidence"].to_numpy(float)
+            # Scale the deviation by a blend of 1.0 and AC, controlled by weight.
+            # When abundance_confidence_w=0: deviation unchanged (blend=1.0)
+            # When abundance_confidence_w=1: deviation fully scaled by AC
+            # ac_scaler in [0, 1] range
+            ac_scaler = (1.0 - abundance_confidence_w) + abundance_confidence_w * ac
+            deviation = score - 0.5
+            score = 0.5 + deviation * ac_scaler
+
+        # ── Plasmid bonus: gated by core metric quality ───────────────────
+        # Only grant plasmid bonus if the organism has meaningful core signal.
+        # "Meaningful" = core weighted score (before centering) > 0.15.
+        # This prevents FP organisms with gini=0.04, minhash=0.004 from
+        # getting free plasmid boost.
+        if plasmid_bonus_w > 0 and "plasmid_score" in metrics_df.columns:
+            ps = metrics_df["plasmid_score"].to_numpy(float)
+            # Core quality = raw weighted sum (same as additive mode score)
+            core_quality = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
+            core_quality = alpha * core_quality
+            # Gate: only apply bonus where core quality > 0.15
+            plasmid_gate = np.where(core_quality > 0.15, 1.0, core_quality / 0.15)
+            score = score + plasmid_bonus_w * ps * plasmid_gate
+
+        # ── Multiplicative abundance gate (optional, same as additive) ────
+        if abundance_gate and "abundance_confidence" in metrics_df.columns:
+            gate = metrics_df["abundance_confidence"].to_numpy(float)
+            # In penalized mode, gate dampens deviation from 0.5
+            deviation = score - 0.5
+            score = 0.5 + deviation * gate
+
+        # No score_power in penalized mode — the baseline-centered approach
+        # naturally produces a well-distributed range.
+
+        return np.clip(score, 0.0, 1.0)
+
+    # ── ADDITIVE MODE (original behavior) ─────────────────────────────────
     score = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
     score = alpha * score
 
@@ -1259,6 +1370,16 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
         gate = metrics_df["abundance_confidence"].to_numpy(float)
         score = score * gate
 
+    # ── Power transform (score recalibration) ─────────────────────────────
+    # When score_power < 1, compresses high scores and lifts low scores:
+    #   score_power=0.5 → 0.09 becomes 0.30,  0.95 stays 0.97
+    #   score_power=0.3 → 0.09 becomes 0.52,  0.95 stays 0.98
+    # Preserves monotonic ordering so thresholds still separate TP/FP.
+    # score_power=1.0 (default) is a no-op.
+    if score_power != 1.0 and score_power > 0:
+        score = np.clip(score, 0.0, 1.0)
+        score = np.power(score, score_power)
+
     return np.clip(score, 0.0, 1.0)
 
 def compute_tass_score(data = {}, weights={}):
@@ -1272,11 +1393,79 @@ def compute_tass_score(data = {}, weights={}):
     }
     We apply the known formula for TASS Score using the provided weights.
     """
-    # normalize score of count to 0-1, min max range is 3, if larger than 3 set to 3 first
-    # convert z score to percentile
+    _tass_mode = weights.get('tass_mode', 'additive')
 
-    # Summation of each sub-score * weight
+    if _tass_mode == 'penalized':
+        # ── PENALIZED MODE ────────────────────────────────────────────────
+        # Baseline 0.5; core metrics push score up or down.
+        # Metric contribution: weight * (metric - 0.5)
 
+        _bw = float(weights.get('breadth_weight', 0))
+        _mw = float(weights.get('minhash_weight', 0))
+        _gw = float(weights.get('gini_weight', 0))
+        _dw = float(weights.get('disparity_weight', 0))
+        _hw = float(weights.get('hmp_weight', 0))
+
+        _b = float(data.get('breadth_log_score', 0))
+        _m = float(data.get('minhash_reduction', 0))
+        _g = float(data.get('gini_coefficient', 0))
+        _d = float(data.get('disparity', 0))
+        _h = float(data.get('hmp_percentile', 0))
+
+        core_signal = (_bw * (_b - 0.5)
+                       + _mw * (_m - 0.5)
+                       + _gw * (_g - 0.5)
+                       + _dw * (_d - 0.5)
+                       + _hw * (_h - 0.5))
+
+        # Also include minor metrics if they have weights
+        _mapq_w = float(weights.get('mapq_score', 0))
+        _mapq = float(data.get('mapq_score', 0))
+        if _mapq_w > 0:
+            core_signal += _mapq_w * (_mapq - 0.5)
+
+        _k2w = float(weights.get('k2_disparity_score_weight', 0))
+        _k2 = float(data.get('k2_disparity_score', 0))
+        if _k2w > 0:
+            core_signal += _k2w * (_k2 - 0.5)
+
+        _diw = float(weights.get('diamond_identity', 0))
+        _di = float(data.get('diamond', {}).get('identity', 0))
+        if _diw > 0:
+            core_signal += _diw * (_di - 0.5)
+
+        tass_score = 0.5 + core_signal
+
+        # ── Abundance confidence: multiplicative scaler on deviation ──────
+        _acw = float(weights.get('abundance_confidence_weight', 0))
+        _ac = float(data.get('abundance_confidence', 0))
+        if _acw > 0:
+            ac_scaler = (1.0 - _acw) + _acw * _ac
+            deviation = tass_score - 0.5
+            tass_score = 0.5 + deviation * ac_scaler
+
+        # ── Plasmid bonus: gated by core quality ─────────────────────────
+        _plasmid_score = float(data.get('plasmid_score', 0))
+        _plasmid_bonus_w = float(weights.get('plasmid_bonus_weight', 0))
+        if _plasmid_score > 0 and _plasmid_bonus_w > 0:
+            # Raw core quality = weighted sum without centering
+            core_quality = (_bw * _b + _mw * _m + _gw * _g
+                            + _dw * _d + _hw * _h)
+            # Gate: ramp from 0 at core_quality=0 to 1 at core_quality=0.15
+            plasmid_gate = min(1.0, core_quality / 0.15) if core_quality < 0.15 else 1.0
+            tass_score += _plasmid_score * _plasmid_bonus_w * plasmid_gate
+
+        # ── Multiplicative abundance gate (optional) ──────────────────────
+        if weights.get('abundance_gate', False):
+            gate = float(data.get('abundance_confidence', 0.0))
+            deviation = tass_score - 0.5
+            tass_score = 0.5 + deviation * gate
+
+        # No score_power in penalized mode
+
+        return min(1.0, max(0.0, tass_score))
+
+    # ── ADDITIVE MODE (original behavior) ─────────────────────────────────
     tass_score = sum([
         apply_weight(data.get('disparity', 0), weights.get('disparity_weight', 0)),
         apply_weight(data.get('minhash_reduction', 0),       weights.get('minhash_weight', 0)),
@@ -1295,26 +1484,21 @@ def compute_tass_score(data = {}, weights={}):
     ])
 
     # ── Plasmid bonus: additive boost outside normalized weight pool ──────
-    # If a strain has a plasmid with better coverage than sibling strains'
-    # plasmids (same subkey), plasmid_score is high (0–1).  The bonus is
-    # applied additively so it never reduces the base TASS.
     _plasmid_score = float(data.get('plasmid_score', 0))
     _plasmid_bonus_w = float(weights.get('plasmid_bonus_weight', 0))
     if _plasmid_score > 0 and _plasmid_bonus_w > 0:
         tass_score += _plasmid_score * _plasmid_bonus_w
 
     # ── Multiplicative abundance gate ─────────────────────────────────────
-    # When enabled (--abundance_gate), the pre-computed abundance_confidence
-    # sigmoid (log-RPM based, 0→1) is used as a *multiplier* on the entire
-    # TASS score.  This crushes scores for organisms with trivially low RPM
-    # (e.g. 3 reads in a deep sample → RPM ~0.01 → gate ~0.02) while
-    # leaving organisms with real signal essentially untouched (gate ≈ 1).
-    # Unlike the additive abundance_confidence_weight, this prevents noise
-    # organisms from accumulating small metric contributions into inflated
-    # scores (the "sterile site 0.08 average" problem).
     if weights.get('abundance_gate', False):
         gate = float(data.get('abundance_confidence', 0.0))
         tass_score *= gate
+
+    # ── Power transform (score recalibration) ─────────────────────────────
+    _score_power = float(weights.get('score_power', 1.0))
+    if _score_power != 1.0 and _score_power > 0:
+        tass_score = max(0.0, min(1.0, tass_score))
+        tass_score = tass_score ** _score_power
 
     return min(1.0, max(0.0, tass_score))
 

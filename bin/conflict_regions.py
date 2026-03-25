@@ -2032,7 +2032,7 @@ def determine_conflicts(
             _tdf = comparison_df[comparison_df["Reference"] != "Total"].copy()
             _tdf["Taxid"] = _tdf["Taxid"].astype(str)
             # Only aggregate rows that have a non-empty taxid
-            _has_taxid = _tdf[_tdf["Taxid"].str.strip().ne("")]
+            _has_taxid = _tdf[_tdf["Taxid"].str.strip().ne("")].copy()
             if not _has_taxid.empty:
                 _sum_cols = ["TP Original", "FP Original", "FN Original",
                              "TP New", "FP New", "FN New",
