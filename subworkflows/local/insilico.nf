@@ -1,23 +1,24 @@
 //
 // INSILICO: Optional in-silico read simulation from classification results
 //
-// Generates simulated FASTQ reads (Illumina via InSilicoSeq, ONT via NanoSim),
-// aligns them back to the reference, and produces control JSONs that can be
-// compared against real sample results in the report.
+// Generates simulated FASTQ reads (Illumina via InSilicoSeq, ONT via NanoSim)
+// and emits them as new samples with insilico meta so they can flow through the
+// normal ALIGNMENT → REPORT pipeline.  In REPORT, these insilico samples are
+// split out, processed through ALIGNMENT_PER_SAMPLE, and their resulting JSONs
+// are used as insilico controls for the real (non-control) samples.
 //
 // Flow:
 //   Kraken2 top_report (or custom abundance) + merged_taxid + reference FASTA
 //     -> MAKE_SIMULATED_SAMPLES (abundance.tsv + reference.fasta per sample)
-//       -> INSILICOSEQ_SIMULATE  (paired R1/R2 fastq.gz)   [if generate_iss]
-//       -> PREPARE_NANOSIM_INPUTS + NANOSIM_SIMULATE (ONT fastq.gz) [if generate_nanosim]
-//     -> ALIGN_INSILICO_READS (align simulated reads back -> JSON control)
+//     -> INSILICOSEQ_SIMULATE  (paired R1/R2 fastq.gz)   [if generate_iss]
+//     -> PREPARE_NANOSIM_INPUTS + NANOSIM_SIMULATE (ONT fastq.gz) [if generate_nanosim]
+//   Simulated reads are tagged with insilico meta and emitted as new samples.
 //
 
 include { MAKE_SIMULATED_SAMPLES } from '../../modules/local/make_simulated_samples'
 include { INSILICOSEQ_SIMULATE   } from '../../modules/local/insilicoseq'
 include { PREPARE_NANOSIM_INPUTS } from '../../modules/local/prepare_nanosim_inputs'
 include { NANOSIM_SIMULATE       } from '../../modules/local/nanosim'
-include { ALIGN_INSILICO_READS   } from '../../modules/local/align_insilico'
 
 
 workflow INSILICO {
@@ -28,15 +29,9 @@ workflow INSILICO {
 
     main:
     ch_versions = Channel.empty()
-    ch_iss_reads = Channel.empty()
-    ch_nanosim_reads = Channel.empty()
-    ch_insilico_json = Channel.empty()
+    ch_insilico_reads = Channel.empty()
 
     ch_empty_file = file("$projectDir/assets/NO_FILE")
-    ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
-    if (params.pathogens) {
-        ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
-    }
 
     // ── Resolve abundance source ────────────────────────────────────────
     if (params.sim_abundance) {
@@ -80,33 +75,22 @@ workflow INSILICO {
             iss_nreads,
             params.iss_model ?: 'miseq'
         )
-        ch_iss_reads = INSILICOSEQ_SIMULATE.out.reads
         ch_versions = ch_versions.mix(INSILICOSEQ_SIMULATE.out.versions)
 
-        // ── Step 3a: Align ISS reads back to reference → insilico JSON ──
-        // Combine: ISS reads + shared_reference + merged_taxid
-        // ISS reads: (meta, [R1.fq.gz, R2.fq.gz])
-        // shared_reference: (meta, reference_sequences.fasta) from MAKE_SIMULATED_SAMPLES
-        // merged_taxid: (meta, merged_taxid.tsv)
-        ch_iss_align_input = INSILICOSEQ_SIMULATE.out.reads
-            .join(MAKE_SIMULATED_SAMPLES.out.shared_reference)
-            .combine(ch_merged_taxid.map { meta, taxid -> taxid }.first())
-        // Now: (meta, [reads], reference.fasta, merged_taxid.tsv)
-
-        // Restructure for ALIGN_INSILICO_READS input
-        ch_iss_align = ch_iss_align_input.map { meta, reads, ref, mapping ->
-            [meta, reads, ref, mapping]
+        // Tag ISS reads with insilico meta so they can flow as new samples
+        ch_iss_tagged = INSILICOSEQ_SIMULATE.out.reads.map { meta, reads ->
+            def insilico_meta = meta.collectEntries { k, v -> [k, v] }
+            insilico_meta.parent_id = meta.id
+            insilico_meta.id = "${meta.id}_insilico_iss"
+            insilico_meta.insilico = true
+            insilico_meta.control = false
+            insilico_meta.platform = 'ILLUMINA'
+            insilico_meta.single_end = false
+            insilico_meta.trim = false
+            insilico_meta.read_count = iss_nreads
+            [insilico_meta, reads]
         }
-
-        ALIGN_INSILICO_READS(
-            ch_iss_align,
-            ch_pathogens.first(),
-            params.assembly ? file(params.assembly) : [],
-            params.minmapq ?: 0,
-            params.taxdump ? file(params.taxdump) : file("$projectDir/assets/NO_FILE")
-        )
-        ch_insilico_json = ALIGN_INSILICO_READS.out.json
-        ch_versions = ch_versions.mix(ALIGN_INSILICO_READS.out.versions)
+        ch_insilico_reads = ch_insilico_reads.mix(ch_iss_tagged)
     }
 
     // ── Step 2b: NanoSim (ONT long reads) ───────────────────────────────
@@ -134,16 +118,26 @@ workflow INSILICO {
             NANOSIM_SIMULATE(
                 ch_nanosim_input
             )
-            ch_nanosim_reads = NANOSIM_SIMULATE.out.reads
             ch_versions = ch_versions.mix(NANOSIM_SIMULATE.out.versions)
 
-            // TODO: Add NanoSim alignment step similar to ISS when needed
+            // Tag NanoSim reads with insilico meta
+            ch_nanosim_tagged = NANOSIM_SIMULATE.out.reads.map { meta, reads ->
+                def insilico_meta = meta.collectEntries { k, v -> [k, v] }
+                insilico_meta.parent_id = meta.id
+                insilico_meta.id = "${meta.id}_insilico_nanosim"
+                insilico_meta.insilico = true
+                insilico_meta.control = false
+                insilico_meta.platform = 'OXFORD'
+                insilico_meta.single_end = true
+                insilico_meta.trim = false
+                insilico_meta.read_count = ont_nreads
+                [insilico_meta, reads]
+            }
+            ch_insilico_reads = ch_insilico_reads.mix(ch_nanosim_tagged)
         }
     }
 
     emit:
-    iss_reads      = ch_iss_reads       // tuple(meta, [R1.fastq.gz, R2.fastq.gz])
-    nanosim_reads  = ch_nanosim_reads   // tuple(meta, [ont_reads.fastq.gz])
-    insilico_json  = ch_insilico_json   // tuple(meta, insilico.json) for report comparison
+    insilico_reads = ch_insilico_reads   // tuple(insilico_meta, reads) — new samples for ALIGNMENT
     versions       = ch_versions
 }
