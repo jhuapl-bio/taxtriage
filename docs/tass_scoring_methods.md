@@ -489,19 +489,19 @@ $$
 
 ### 9.2 Default Weights
 
-| Component              | Weight   | CLI Flag                        |
-| ---------------------- | -------- | ------------------------------- |
-| `breadth_log_score`    | **0.40** | `--breadth_weight`              |
-| `minhash_reduction`    | **0.55** | `--minhash_weight`              |
-| `gini_coefficient`     | **0.15** | `--gini_weight`                 |
-| `hmp_percentile`       | 0.00     | `--hmp_weight`                  |
-| `disparity`            | 0.00     | `--disparity_weight`            |
-| `mapq_score`           | 0.00     | `--mapq_score`                  |
-| `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight`   |
-| `diamond_identity`     | 0.00     | `--diamond_identity`            |
-| `abundance_confidence` | 0.20     | `--abundance_confidence_weight` |
+| Component              | Weight   | CLI Flag                      |
+| ---------------------- | -------- | ----------------------------- |
+| `breadth_log_score`    | **0.26** | `--breadth_weight`            |
+| `minhash_reduction`    | **0.29** | `--minhash_weight`            |
+| `gini_coefficient`     | **0.45** | `--gini_weight`               |
+| `hmp_percentile`       | 0.00     | `--hmp_weight`                |
+| `disparity`            | 0.00     | `--disparity_weight`          |
+| `mapq_score`           | 0.00     | `--mapq_score`                |
+| `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight` |
+| `diamond_identity`     | 0.00     | `--diamond_identity`          |
+| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      |
 
-> **Why don't the weights add up to 1.0?** The three active primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.10, and abundance_confidence adds another 0.20. This is intentional — the final score is clamped to [0, 1] at the end, so overshooting is fine. It allows components to reinforce each other when evidence is strong.
+**Why don't the weights add up to 1.0?** If the three primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.0 when normalized, and plasmid adds another 0.19. This is intentional — the final score is clamped to [0, 1] at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism presence is good/high.
 
 ### 9.3 Additive Modifiers
 
@@ -521,7 +521,7 @@ $$
 \text{TASS}_2 = \text{TASS}_1 \times \text{abundance\_confidence}
 $$
 
-> **Note:** This is mutually exclusive with the additive `abundance_confidence` approach. With the gate on, abundance acts as a multiplier; with it off, it's an additive term.
+**Note:** This is exclusive with the additive `plasmid_bonus_weight` approach.
 
 ### 9.5 Power Transform (Optional)
 
@@ -723,4 +723,4 @@ $$
 \text{TASS} = \text{clamp}\!\bigg(\Big[\sum_i w_i x_i + w_{\text{plasm}} \cdot P\Big] \times \text{gate}^{[ab\_gate]}\bigg)^{p}
 $$
 
-Where $\text{gate}^{[ab\_gate]}$ = abundance_confidence if the gate is enabled, or 1.0 if disabled. $p$ = score_power (1.0 if disabled).
+Where $\text{gate}^{[ab\_gate]}$ = plasmid_weight if the gate is enabled, or 1.0 if disabled. $p$ = score_power (1.0 if disabled).
