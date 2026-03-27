@@ -17,6 +17,32 @@
 # OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
+# ---------------------------------------------------------------------------
+# FIPS-safe environment setup (must run before ANY imports that touch OpenSSL)
+# On HPC systems with FIPS mode enforced at the kernel level, the OpenSSL
+# library inside containers may fail the FIPS self-test and SIGABRT the
+# process.  Setting OPENSSL_CONF to /dev/null skips the FIPS provider
+# entirely.  We also ensure matplotlib and fontconfig have writable cache
+# directories so they don't emit warnings on read-only home filesystems.
+# ---------------------------------------------------------------------------
+import os as _os
+import tempfile as _tempfile
+
+if not _os.environ.get("OPENSSL_CONF"):
+    _os.environ["OPENSSL_CONF"] = "/dev/null"
+
+if not _os.environ.get("MPLCONFIGDIR"):
+    _mpl_tmp = _os.path.join(_tempfile.gettempdir(), "matplotlib_cache")
+    _os.makedirs(_mpl_tmp, exist_ok=True)
+    _os.environ["MPLCONFIGDIR"] = _mpl_tmp
+
+if not _os.environ.get("FONTCONFIG_PATH"):
+    _os.environ["FONTCONFIG_PATH"] = _tempfile.gettempdir()
+
+if not _os.environ.get("XDG_CACHE_HOME"):
+    _os.environ["XDG_CACHE_HOME"] = _tempfile.gettempdir()
+# ---------------------------------------------------------------------------
+
 """Provide a command line tool to fetch a list of refseq genome ids to a single file, useful for kraken2 database building or alignment purposes"""
 from collections import defaultdict
 import sys
