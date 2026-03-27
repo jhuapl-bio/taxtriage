@@ -17,32 +17,32 @@ When both are enabled, each produces a separate insilico sample per non control 
 
 ### Simulation Control
 
-| Parameter | Default | Type | Description |
-|-----------|---------|-------------|-------------|
-| `--generate_iss` | `false` | Boolean | Enable Illumina read simulation via InSilicoSeq |
-| `--generate_nanosim` | `false` | Boolean | Enable ONT read simulation via NanoSim |
-| `--sim_nreads` | `100000` | Integer | Total number of reads to simulate per sample |
-| `--sim_nsamples` | `1` | Integer | Number of simulated sample variants to generate per real sample |
-| `--sim_ranks` | `'S S1 S2 S3'` | String | Kraken2 taxonomic rank codes to include from the top report |
-| `--sim_minreads` | `3` | Integer | Minimum `clade_fragments_covered` threshold for organism inclusion |
-| `--sim_exclude_taxids` | `'9606'` | String | Comma-separated taxids to exclude (default excludes human) |
-| `--sim_include_taxids` | `''` | String | Comma-separated taxids to force-include regardless of filters |
-| `--sim_abundance` | none | Path | Optional custom abundance TSV file (bypasses Kraken2 report parsing) |
-| `--sim_random_abundance` | `false` | Boolean | Use Dirichlet random sampling for abundances instead of observed proportions |
+| Parameter                | Default        | Type    | Description                                                                  |
+| ------------------------ | -------------- | ------- | ---------------------------------------------------------------------------- |
+| `--generate_iss`         | `false`        | Boolean | Enable Illumina read simulation via InSilicoSeq                              |
+| `--generate_nanosim`     | `false`        | Boolean | Enable ONT read simulation via NanoSim                                       |
+| `--sim_nreads`           | `100000`       | Integer | Total number of reads to simulate per sample                                 |
+| `--sim_nsamples`         | `1`            | Integer | Number of simulated sample variants to generate per real sample              |
+| `--sim_ranks`            | `'S S1 S2 S3'` | String  | Kraken2 taxonomic rank codes to include from the top report                  |
+| `--sim_minreads`         | `3`            | Integer | Minimum `clade_fragments_covered` threshold for organism inclusion           |
+| `--sim_exclude_taxids`   | `'9606'`       | String  | Comma-separated taxids to exclude (default excludes human)                   |
+| `--sim_include_taxids`   | `''`           | String  | Comma-separated taxids to force-include regardless of filters                |
+| `--sim_abundance`        | none           | Path    | Optional custom abundance TSV file (bypasses Kraken2 report parsing)         |
+| `--sim_random_abundance` | `false`        | Boolean | Use Dirichlet random sampling for abundances instead of observed proportions |
 
 ### ISS-Specific
 
-| Parameter | Default | Type | Description |
-|-----------|---------|-------------|-------------|
+| Parameter     | Default   | Type   | Description                                                   |
+| ------------- | --------- | ------ | ------------------------------------------------------------- |
 | `--iss_model` | `'miseq'` | String | ISS error profile model. Options: `miseq`, `hiseq`, `novaseq` |
 
 ### NanoSim-Specific
 
-| Parameter | Default | Type | Description |
-|-----------|---------|-------------|-------------|
-| `--nanosim_training` | required | Path | Path to NanoSim training model directory. Required when `--generate_nanosim` is set |
-| `--nanosim_base` | required, default is "training" | String | Base filename for training model files within the training directory. Check the basename of the files in the model folder when specifying |
-| `--sim_ont_divisor` | `40` | Integer | ONT read count divisor: `ont_nreads = sim_nreads / sim_ont_divisor` |
+| Parameter            | Default                         | Type    | Description                                                                                                                               |
+| -------------------- | ------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `--nanosim_training` | required                        | Path    | Path to NanoSim training model directory. Required when `--generate_nanosim` is set                                                       |
+| `--nanosim_base`     | required, default is "training" | String  | Base filename for training model files within the training directory. Check the basename of the files in the model folder when specifying |
+| `--sim_ont_divisor`  | `40`                            | Integer | ONT read count divisor: `ont_nreads = sim_nreads / sim_ont_divisor`                                                                       |
 
 ## Pipeline Architecture
 
@@ -98,6 +98,7 @@ The script uses a 2 step method to find all organisms to simulate:
 The two sources are merged, ensuring every organism with reference sequences gets simulated.
 
 #### Abundance File Format
+
 The output `abundance.tsv` is a file at the accession level:
 
 ```
@@ -109,11 +110,13 @@ NZ_AP023070.1	0.784482075362476
 Values are abundances that sum to 1.0 (100%). When `--sim_random_abundance` is set, abundances are sampled from a standard distribution. Otherwise, they are the same as to the observed `number_fragments_assigned` numbers from the Kraken2 report.
 
 ### Step 2a: InSilicoSeq (Illumina Simulation)
+
 ISS generates paired end Illumina reads using kernel density estimation (KDE) error models trained on real sequencing data.
 
 **Container:** `biocontainers/insilicoseq:2.0.1`
 
 **Command:**
+
 ```bash
 iss generate \
     --genomes reference.fasta \
@@ -129,14 +132,14 @@ iss generate \
 
 The simulated reads are tagged with metadata:
 
-| Field | Value |
-|-------|-------|
-| `meta.id` | `{parent_sample_id}_insilico_iss` |
-| `meta.parent_id` | `{parent_sample_id}` |
-| `meta.insilico` | `true` |
-| `meta.control` | `false` |
-| `meta.platform` | `ILLUMINA` |
-| `meta.single_end` | `false` |
+| Field             | Value                             |
+| ----------------- | --------------------------------- |
+| `meta.id`         | `{parent_sample_id}_insilico_iss` |
+| `meta.parent_id`  | `{parent_sample_id}`              |
+| `meta.insilico`   | `true`                            |
+| `meta.control`    | `false`                           |
+| `meta.platform`   | `ILLUMINA`                        |
+| `meta.single_end` | `false`                           |
 
 ### Step 2b: NanoSim (ONT Simulation)
 
@@ -147,12 +150,14 @@ Nanosim requires a preparation step that converts the accessions abundance file 
 Converts the ISS style abundance file into NanoSim's metagenome format:
 
 **genome_list.tsv** — Maps organism names to individual FASTA files:
+
 ```
 Escherichia_coli    genomes/Escherichia_coli.fasta
 Zika_virus          genomes/Zika_virus.fasta
 ```
 
 **size_file.tsv** — Header line with total read count, then organism level abundances as percentages:
+
 ```
 Size    2500
 Escherichia_coli    45.62
@@ -166,6 +171,7 @@ The ONT read count is computed as `sim_nreads / sim_ont_divisor` (default: 10000
 **Container:** `biocontainers/nanosim:3.2.3`
 
 **Command:**
+
 ```bash
 simulator.py metagenome \
     -gl genome_list.tsv \
@@ -183,14 +189,14 @@ The `--perfect` flag generates reads without sequencing errors, useful for basel
 
 Tagged metadata:
 
-| Field | Value |
-|-------|-------|
-| `meta.id` | `{parent_sample_id}_insilico_nanosim` |
-| `meta.parent_id` | `{parent_sample_id}` |
-| `meta.insilico` | `true` |
-| `meta.control` | `false` |
-| `meta.platform` | `OXFORD` |
-| `meta.single_end` | `true` |
+| Field             | Value                                 |
+| ----------------- | ------------------------------------- |
+| `meta.id`         | `{parent_sample_id}_insilico_nanosim` |
+| `meta.parent_id`  | `{parent_sample_id}`                  |
+| `meta.insilico`   | `true`                                |
+| `meta.control`    | `false`                               |
+| `meta.platform`   | `OXFORD`                              |
+| `meta.single_end` | `true`                                |
 
 ### Step 3: Integration into Main Alignment Pipeline
 
@@ -257,18 +263,18 @@ The script classifies insilico files by simulator method based on filename patte
 
 TP/FP/FN/TN per microbial category:
 
-| Classification | Condition |
-|---------------|-----------|
-| **True Positive (TP)** | Organism is in the simulation AND its TASS score >= confidence threshold |
-| **False Positive (FP)** | Organism is NOT in the simulation AND its TASS score >= confidence threshold |
+| Classification          | Condition                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| **True Positive (TP)**  | Organism is in the simulation AND its TASS score >= confidence threshold                                |
+| **False Positive (FP)** | Organism is NOT in the simulation AND its TASS score >= confidence threshold                            |
 | **False Negative (FN)** | Organism is in the simulation BUT its TASS score < threshold, OR it is entirely missing from the sample |
-| **True Negative (TN)** | Organism is NOT in the simulation AND its TASS score < threshold |
+| **True Negative (TN)**  | Organism is NOT in the simulation AND its TASS score < threshold                                        |
 
 Derived metrics per category and total:
 
 - **Precision** = TP / (TP + FP)
 - **Recall** = TP / (TP + FN)
-- **F1** = 2 * Precision * Recall / (Precision + Recall)
+- **F1** = 2 _ Precision _ Recall / (Precision + Recall)
 - **Accuracy** = (TP + TN) / (TP + FP + FN + TN)
 
 When multiple simulator types are present, one table is made for each type with headers like "InSilicoSeq (Illumina) Metrics" and "NanoSim (ONT) Metrics".
@@ -277,14 +283,14 @@ When multiple simulator types are present, one table is made for each type with 
 
 Below each metrics table, a red-themed detail table lists each organism that was present in the simulation but missing from the sample:
 
-| Column | Description |
-|--------|-------------|
-| Organism | Species/strain name |
-| Taxid | Taxonomic ID |
-| Category | Microbial category (Primary, Opportunistic, etc.) |
-| InSilico TASS | TASS score in the simulation (0-100) |
-| InSilico Reads | Read count in the simulation |
-| Status | "Missing from sample (FN)" |
+| Column         | Description                                       |
+| -------------- | ------------------------------------------------- |
+| Organism       | Species/strain name                               |
+| Taxid          | Taxonomic ID                                      |
+| Category       | Microbial category (Primary, Opportunistic, etc.) |
+| InSilico TASS  | TASS score in the simulation (0-100)              |
+| InSilico Reads | Read count in the simulation                      |
+| Status         | "Missing from sample (FN)"                        |
 
 #### Sample-Only Organisms
 
@@ -294,11 +300,11 @@ After the missing organisms table, a text section lists organisms detected in th
 
 The bar plot in the Ctrl column shows change comparisons with symbols indicating the control type:
 
-| Symbol | Color | Meaning |
-|--------|-------|---------|
-| **−** (minus) | Dark gray or red | Change vs. negative control |
-| **+** (plus) | Green | Change vs. positive control |
-| **∞** (infinity loop) | Teal | Change vs. in silico control |
+| Symbol                | Color            | Meaning                      |
+| --------------------- | ---------------- | ---------------------------- |
+| **−** (minus)         | Dark gray or red | Change vs. negative control  |
+| **+** (plus)          | Green            | Change vs. positive control  |
+| **∞** (infinity loop) | Teal             | Change vs. in silico control |
 
 The fold values show `#x` for TASS fold-change and `#x rd` for read count fold-change. When an organism is in the sample but not in the simulation, the teal-ish row displays `∞ not in sim`.
 
