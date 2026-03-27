@@ -19,6 +19,7 @@
 // #
 
 include { ALIGNMENT_PER_SAMPLE as ALIGNMENT_PER_SAMPLE_CONTROLS } from '../../modules/local/alignment_per_sample'
+include { ALIGNMENT_PER_SAMPLE as ALIGNMENT_PER_SAMPLE_INSILICO } from '../../modules/local/alignment_per_sample'
 include { ALIGNMENT_PER_SAMPLE } from '../../modules/local/alignment_per_sample'
 include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
@@ -50,6 +51,7 @@ workflow REPORT {
         // Placeholder files for when no control JSONs are available
         ch_no_neg_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_neg_ctrl"))
         ch_no_pos_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_pos_ctrl"))
+        ch_no_insilico_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_insilico_ctrl"))
 
         // get the list of meta.id from alignments
         // and assign it to the variable accepted_list
@@ -91,19 +93,14 @@ workflow REPORT {
         if (!pathogens_list){
             println ("No pathogens list provided, skipping pathogen detection")
         } else{
-            // ── Split alignments into control and non-control samples ──────────
+            // ── Split alignments into control, insilico, and non-control samples ──
             alignments.branch {
                 control: it[0].control == true
+                insilico: it[0].insilico == true
                 noncontrol: true
             }.set { split_alns }
-            // alignments.view { println "All samples: ${it[0].id}, control: ${it[0].control}, negative: ${it[0].negative}, positive: ${it[0].positive}" }
-            // split_alns.control.view { println "Control sample: ${it[0].id}" }
-            // split_alns.noncontrol.view { println "Non-control sample: ${it[0].id}" }
+
             // ── Step 1: Run control samples FIRST ──────────────────────────────
-            // Controls get NO_FILE placeholders for control JSON inputs and
-            // their control_type is read from meta inside the process script.
-            // errorStrategy 'ignore' is set so that control failures do not
-            // block non-control samples from proceeding.
             ALIGNMENT_PER_SAMPLE_CONTROLS(
                 split_alns.control
                     .combine(pathogens_list)
@@ -113,12 +110,23 @@ workflow REPORT {
                 ch_taxdump_dir,
                 ch_no_neg_ctrl,
                 ch_no_pos_ctrl,
+                ch_no_insilico_ctrl,
+            )
+
+            // ── Step 1b: Run insilico samples (no controls for them) ────────────
+            ALIGNMENT_PER_SAMPLE_INSILICO(
+                split_alns.insilico
+                    .combine(pathogens_list)
+                    .combine(ch_sampletype_thresholds),
+                assemblyfile,
+                params.minmapq,
+                ch_taxdump_dir,
+                ch_no_neg_ctrl,
+                ch_no_pos_ctrl,
+                ch_no_insilico_ctrl,
             )
 
             // ── Step 2: Collect control JSON outputs into a value channel ──────
-            // Build a single value [neg_jsons_list, pos_jsons_list] that the
-            // non-control branch will .combine() with. Using toList() ensures
-            // we wait for ALL controls to finish before non-controls start.
             control_json_map = ALIGNMENT_PER_SAMPLE_CONTROLS.out.txt
                 .map { meta, json -> [meta.id, meta.control_type, json] }
                 .toList()
@@ -129,34 +137,41 @@ workflow REPORT {
                 }
                 .ifEmpty { [[[], []]] }
 
-            // ── Step 3: Run non-control samples with control JSONs ─────────────
-            // For each non-control sample, resolve its specific negative/positive
-            // control JSONs from the collected map based on meta.negative and
-            // meta.positive sample name references.
+            // ── Step 2b: Collect insilico JSONs keyed by parent sample ID ───────
+            // Each insilico sample's meta has parent_id linking to the original
+            // sample.  We key by parent_id so each non-control sample can find
+            // its corresponding insilico JSON(s).
+            // A parent may have multiple insilico children (ISS + NanoSim), so
+            // we collect a LIST of JSONs per parent_id rather than a single one.
+            insilico_json_map = ALIGNMENT_PER_SAMPLE_INSILICO.out.txt
+                .map { meta, json -> [meta.parent_id, json] }
+                .toList()
+                .map { entries ->
+                    def grouped = [:].withDefault { [] }
+                    entries.each { grouped[it[0]] << it[1] }
+                    grouped
+                }
+                .ifEmpty { Channel.value([:]) }
+
+            // ── Step 3: Run non-control samples with control + insilico JSONs ───
             noncontrol_prepped = split_alns.noncontrol
                 .combine(pathogens_list)
                 .combine(ch_sampletype_thresholds)
 
-            // Combine non-control alignment data with the collected control map
-            // The control_json_map is a single-element value channel, so
-            // .combine() will pair it with every non-control sample.
             noncontrol_with_ctrls = noncontrol_prepped
                 .combine(control_json_map)
+                .combine(insilico_json_map)
 
-            // Now split into the tuple for ALIGNMENT_PER_SAMPLE and the
-            // resolved neg/pos control JSON file channels.
             // The combined channel has shape:
             //   [meta, bam, bai, mapping, bedgraph, cov, k2, diamond, fastas,
-            //    microbert, pathogens, thresholds, [neg_jsons], [pos_jsons]]
-            // We need to extract the last two elements and resolve per-sample.
-
+            //    microbert, pathogens, thresholds, [neg_jsons], [pos_jsons], {parent_id:json_map}]
             noncontrol_tuple = noncontrol_with_ctrls.map { items ->
-                // items[-1] = [pos_jsons], items[-2] = [neg_jsons]
-                def all_neg = items[-2]
-                def all_pos = items[-1]
+                def insilico_map = items[-1]
+                def all_pos = items[-2]
+                def all_neg = items[-3]
                 def meta = items[0]
 
-                // Resolve this sample's specific negative control JSON
+                // For this sample's specific negative control JSON
                 def neg_json = null
                 if (meta.negative && all_neg) {
                     neg_json = all_neg.find { it.name.startsWith(meta.negative.replaceAll(/\s+/, '_')) ||
@@ -164,7 +179,7 @@ workflow REPORT {
                                                it.name.contains(meta.negative.replaceAll(/\s+/, '_')) }
                 }
 
-                // Resolve this sample's specific positive control JSON
+                // For this sample's specific positive control JSON
                 def pos_json = null
                 if (meta.positive && all_pos) {
                     pos_json = all_pos.find { it.name.startsWith(meta.positive.replaceAll(/\s+/, '_')) ||
@@ -172,15 +187,35 @@ workflow REPORT {
                                                it.name.contains(meta.positive.replaceAll(/\s+/, '_')) }
                 }
 
-                // Return: alignment tuple (first 12 items), neg_json, pos_json
+                // For this sample's insilico control JSONs (keyed by parent_id == this sample's ID)
+                // May be a list of JSONs (e.g. one from ISS, one from NanoSim)
+                def insilico_jsons = []
+                if (insilico_map instanceof Map) {
+                    def jsons = insilico_map.get(meta.id)
+                    if (jsons instanceof List) {
+                        insilico_jsons = jsons
+                    } else if (jsons != null) {
+                        insilico_jsons = [jsons]
+                    }
+                }
+
+                // Return: alignment tuple + neg_json, pos_json, insilico_jsons (list)
                 def aln_tuple = items[0..11]
-                return aln_tuple + [neg_json, pos_json]
+                return aln_tuple + [neg_json, pos_json, insilico_jsons]
             }
 
             // Split the resolved channel into the process inputs
             noncontrol_aln_input = noncontrol_tuple.map { it[0..11] }
             noncontrol_neg_json = noncontrol_tuple.map { it[12] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
             noncontrol_pos_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_pos_ctrl") }
+            noncontrol_insilico_json = noncontrol_tuple.map {
+                def jsons = it[14]
+                if (jsons instanceof List && jsons.size() > 0) {
+                    return jsons
+                }
+                return file("$projectDir/assets/NO_FILE_insilico_ctrl")
+            }
+
             ALIGNMENT_PER_SAMPLE(
                 noncontrol_aln_input,
                 assemblyfile,
@@ -188,10 +223,12 @@ workflow REPORT {
                 ch_taxdump_dir,
                 noncontrol_neg_json,
                 noncontrol_pos_json,
+                noncontrol_insilico_json,
             )
 
-            // ── Step 4: Merge outputs from both control and non-control runs ───
+            // ── Step 4: Merge outputs from control, insilico, and non-control runs ─
             all_alignment_outputs = ALIGNMENT_PER_SAMPLE_CONTROLS.out.txt
+                .mix(ALIGNMENT_PER_SAMPLE_INSILICO.out.txt)
                 .mix(ALIGNMENT_PER_SAMPLE.out.txt)
 
             // collect all outputs into a single channel

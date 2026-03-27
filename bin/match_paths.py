@@ -65,6 +65,23 @@ from optimize_weights import annotate_aggregate_dict, compute_scores_per, calcul
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
+
+def _find_sample_only_organisms(final_json, control_index):
+    """Identify organisms present in the sample but absent from the control index.
+
+    Returns a set of toplevelkey IDs that exist in the sample but not in the
+    control (e.g. insilico) data.
+    """
+    sample_tlks = set()
+    for grp in final_json:
+        tlk = str(grp.get('toplevelkey', grp.get('key', '')))
+        if tlk:
+            sample_tlks.add(tlk)
+
+    ctrl_tlks = set(control_index.get('by_toplevelkey', {}).keys())
+    return sample_tlks - ctrl_tlks
+
+
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -564,6 +581,16 @@ def parse_args(argv=None):
         action="store_true",
         default=False,
         help="Suppress detection and output of missing positive control organisms.",
+    )
+
+    # ── In-silico control arguments ──────────────────────────────────────────
+    parser.add_argument(
+        "--insilico_controls",
+        nargs="+",
+        default=None,
+        help="One or more JSON files (match_paths output format) from in-silico "
+             "simulated control samples.  Used to compare simulated vs real "
+             "TASS scores and read counts per organism.",
     )
 
     return parser.parse_args(argv)
@@ -1859,6 +1886,189 @@ def main():
     else:
         _missing_pos = []
 
+    # ── In-silico control comparison annotation ──────────────────────────────
+    # Same pattern as lab controls: load the insilico JSON(s), index by key
+    # levels, compute fold-change metrics, and annotate each organism.
+    # We split by simulator type (ISS vs NanoSim) for per-type metrics tables.
+    _missing_insilico = []
+
+    def _classify_insilico_files(file_list):
+        """Split insilico control files into simulator-type buckets."""
+        buckets = {}
+        for fpath in (file_list or []):
+            bname = os.path.basename(fpath).lower()
+            if '_insilico_iss' in bname or '_iss.' in bname:
+                buckets.setdefault('iss', []).append(fpath)
+            elif '_insilico_nanosim' in bname or '_nanosim.' in bname:
+                buckets.setdefault('nanosim', []).append(fpath)
+            else:
+                buckets.setdefault('unknown', []).append(fpath)
+        return buckets
+
+    _isil_buckets = _classify_insilico_files(args.insilico_controls)
+    # Also build a combined index for the merged Ctrl spark bar annotation
+    _insilico_index = load_control_data(args.insilico_controls) if args.insilico_controls else None
+    _per_type_missing = {}  # sim_type -> list of missing entries
+
+    if _insilico_index:
+        # Treat insilico as a positive-like control: we compare sample vs
+        # what the simulation produced.  Use positive-control slots in the
+        # metrics so fold-over-pos semantics apply (sample / insilico).
+        _empty_neg = {"by_toplevelkey": {}, "by_key": {}, "by_subkey": {}}
+        _insilico_annotated = 0
+
+        for group in final_json:
+            grp_isil = compute_control_comparison(
+                data=group, neg_index=_empty_neg, pos_index=_insilico_index,
+                fold_threshold=args.control_fold_threshold, level="toplevelkey",
+            )
+            if grp_isil:
+                group['insilico_comparison'] = grp_isil
+                _insilico_annotated += 1
+
+            for member in group.get('members', []):
+                m_isil_key = compute_control_comparison(
+                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
+                    fold_threshold=args.control_fold_threshold, level="key",
+                )
+                m_isil_subkey = compute_control_comparison(
+                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
+                    fold_threshold=args.control_fold_threshold, level="subkey",
+                )
+                member['insilico_comparison'] = {}
+                if m_isil_key:
+                    member['insilico_comparison']['by_key'] = m_isil_key
+                if m_isil_subkey:
+                    member['insilico_comparison']['by_subkey'] = m_isil_subkey
+                _best_isil = m_isil_key or m_isil_subkey
+                if _best_isil:
+                    for _f in ('pos_min_tass', 'pos_min_reads',
+                               'tass_fold_over_pos', 'reads_fold_over_pos',
+                               'pos_control_values'):
+                        member['insilico_comparison'][_f] = _best_isil.get(_f)
+                    # Rename for clarity: these are insilico values
+                    member['insilico_comparison']['insilico_tass'] = _best_isil.get('pos_min_tass')
+                    member['insilico_comparison']['insilico_reads'] = _best_isil.get('pos_min_reads')
+                    member['insilico_comparison']['tass_fold_over_insilico'] = _best_isil.get('tass_fold_over_pos')
+                    member['insilico_comparison']['reads_fold_over_insilico'] = _best_isil.get('reads_fold_over_pos')
+
+        if _insilico_annotated:
+            print(f"In-silico comparison: annotated {_insilico_annotated} species groups "
+                  f"(insilico={len(args.insilico_controls or [])} files, "
+                  f"fold_threshold={args.control_fold_threshold})")
+
+        # ── Per-simulator-type annotation (for separate metrics tables) ────
+        # Load each simulator type's files separately and compute per-type
+        # comparison data stored under insilico_comparison_<type>
+        for _sim_type, _sim_files in _isil_buckets.items():
+            _type_index = load_control_data(_sim_files)
+            if not _type_index:
+                continue
+            _type_key = f"insilico_comparison_{_sim_type}"
+            for group in final_json:
+                grp_isil_t = compute_control_comparison(
+                    data=group, neg_index=_empty_neg, pos_index=_type_index,
+                    fold_threshold=args.control_fold_threshold, level="toplevelkey",
+                )
+                if grp_isil_t:
+                    group[_type_key] = grp_isil_t
+                for member in group.get('members', []):
+                    m_isil_t = compute_control_comparison(
+                        data=member, neg_index=_empty_neg, pos_index=_type_index,
+                        fold_threshold=args.control_fold_threshold, level="key",
+                    ) or compute_control_comparison(
+                        data=member, neg_index=_empty_neg, pos_index=_type_index,
+                        fold_threshold=args.control_fold_threshold, level="subkey",
+                    )
+                    if m_isil_t:
+                        member[_type_key] = {
+                            'insilico_tass': m_isil_t.get('pos_min_tass'),
+                            'insilico_reads': m_isil_t.get('pos_min_reads'),
+                            'tass_fold_over_insilico': m_isil_t.get('tass_fold_over_pos'),
+                            'reads_fold_over_insilico': m_isil_t.get('reads_fold_over_pos'),
+                            'pos_control_values': m_isil_t.get('pos_control_values'),
+                        }
+
+            # Per-type missing organisms
+            _type_missing = find_missing_positive_controls(
+                final_json, _type_index, levels=["key", "subkey"])
+            if _type_missing:
+                for entry in _type_missing:
+                    entry['control_source'] = f'insilico_{_sim_type}'
+                    entry['simulator_type'] = _sim_type
+                    _cat = 'Unknown'
+                    _entry_id = str(entry.get('id', ''))
+                    _entry_name = entry.get('name', '')
+                    _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
+                    if _pinfo:
+                        _raw_cat = _pinfo.get('callclass', 'Unknown')
+                        if _raw_cat:
+                            _raw_lower = str(_raw_cat).strip().lower()
+                            if 'primary' in _raw_lower:
+                                _cat = 'Primary'
+                            elif 'opportunistic' in _raw_lower:
+                                _cat = 'Opportunistic'
+                            elif 'potential' in _raw_lower:
+                                _cat = 'Potential'
+                            elif 'commensal' in _raw_lower:
+                                _cat = 'Commensal'
+                    entry['microbial_category'] = _cat
+                _per_type_missing[_sim_type] = _type_missing
+
+            # Per-type sample-only organisms
+            _type_sample_only = _find_sample_only_organisms(final_json, _type_index)
+            if _type_sample_only:
+                for group in final_json:
+                    tlk = str(group.get('toplevelkey', group.get('key', '')))
+                    if tlk and tlk in _type_sample_only:
+                        if _type_key not in group:
+                            group[_type_key] = {}
+                        if isinstance(group[_type_key], dict):
+                            group[_type_key]['missing_from_insilico'] = True
+
+        # Detect organisms present in insilico but missing from sample (combined)
+        # Use key/subkey levels for species-level resolution (not toplevelkey/genus)
+        _missing_insilico = find_missing_positive_controls(
+            final_json, _insilico_index, levels=["key", "subkey"])
+        if _missing_insilico:
+            # Tag as insilico-origin and enrich with microbial category from pathogens dict
+            for entry in _missing_insilico:
+                entry['control_source'] = 'insilico'
+                # Look up microbial category using taxid or name from pathogens dict
+                _cat = 'Unknown'
+                _entry_id = str(entry.get('id', ''))
+                _entry_name = entry.get('name', '')
+                _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
+                if _pinfo:
+                    _raw_cat = _pinfo.get('callclass', 'Unknown')
+                    # Normalize to standard category names
+                    if _raw_cat:
+                        _raw_lower = str(_raw_cat).strip().lower()
+                        if 'primary' in _raw_lower:
+                            _cat = 'Primary'
+                        elif 'opportunistic' in _raw_lower:
+                            _cat = 'Opportunistic'
+                        elif 'potential' in _raw_lower:
+                            _cat = 'Potential'
+                        elif 'commensal' in _raw_lower:
+                            _cat = 'Commensal'
+                entry['microbial_category'] = _cat
+            print(f"Missing in-silico controls: {len(_missing_insilico)} organism(s) "
+                  f"in in-silico control not found in sample")
+
+        # Also detect organisms in sample but missing from insilico (combined)
+        _sample_only = _find_sample_only_organisms(final_json, _insilico_index)
+        if _sample_only:
+            print(f"Sample-only organisms: {len(_sample_only)} organism(s) "
+                  f"in sample not found in in-silico control")
+            # Store on each relevant group/member
+            for group in final_json:
+                tlk = str(group.get('toplevelkey', group.get('key', '')))
+                if tlk and tlk in _sample_only:
+                    if 'insilico_comparison' not in group:
+                        group['insilico_comparison'] = {}
+                    group['insilico_comparison']['missing_from_insilico'] = True
+
     # ── Build structured output with metadata ────────────────────────────────
     _all_keys = set()
     _all_subkeys = set()
@@ -1926,6 +2136,12 @@ def main():
             "control_fold_threshold": args.control_fold_threshold if (
                 args.negative_controls or args.positive_controls) else None,
             "missing_positive_controls": _missing_pos if _missing_pos else None,
+            "insilico_controls_used": [
+                os.path.basename(p) for p in (args.insilico_controls or [])
+            ] or None,
+            "insilico_simulator_types": list(_isil_buckets.keys()) if _isil_buckets else None,
+            "missing_insilico_controls": _missing_insilico if _missing_insilico else None,
+            "missing_insilico_by_type": _per_type_missing if _per_type_missing else None,
         },
         "organisms": _json_out,
     }

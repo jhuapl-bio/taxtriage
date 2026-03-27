@@ -30,6 +30,7 @@ process ALIGNMENT_PER_SAMPLE {
     path(taxdump)
     path(negative_control_jsons)
     path(positive_control_jsons)
+    path(insilico_control_jsons)
 
     output:
         path "versions.yml"           , emit: versions
@@ -83,6 +84,7 @@ process ALIGNMENT_PER_SAMPLE {
     def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
     def neg_ctrls = negative_control_jsons.name != "NO_FILE_neg_ctrl" ? " --negative_controls ${negative_control_jsons} " : " "
     def pos_ctrls = positive_control_jsons.name != "NO_FILE_pos_ctrl" ? " --positive_controls ${positive_control_jsons} " : " "
+    def insilico_ctrls = insilico_control_jsons.name != "NO_FILE_insilico_ctrl" ? " --insilico_controls ${insilico_control_jsons} " : " "
 
 
     """
@@ -103,7 +105,7 @@ process ALIGNMENT_PER_SAMPLE {
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
-        $ctrl_type $neg_ctrls $pos_ctrls
+        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

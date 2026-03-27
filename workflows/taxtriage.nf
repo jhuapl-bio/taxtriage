@@ -180,6 +180,7 @@ include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
+include { INSILICO } from '../subworkflows/local/insilico'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -635,6 +636,81 @@ workflow TAXTRIAGE {
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
 
+    ////////////////////////////// OPTIONAL: IN-SILICO READ SIMULATION //////////////////////////////
+    // Simulate reads (ISS for Illumina, NanoSim for ONT) from Kraken2 abundance profiles.
+    // Simulated reads are emitted as new samples tagged with insilico meta.  They are then
+    // injected into the normal ALIGNMENT → REPORT pipeline.  In REPORT, insilico samples are
+    // split out, processed through ALIGNMENT_PER_SAMPLE, and their JSONs are used as insilico
+    // controls for the real (non-control) samples.
+    ch_insilico_reads = Channel.empty()
+    if (params.generate_iss || params.generate_nanosim) {
+        // Extract merged_taxid map from REFERENCE_PREP prepped files (non-controls only)
+        ch_sim_merged_taxid = ch_preppedfiles
+            .filter { !it[0].control }
+            .map { meta, fastas, mergedmap, mergedids ->
+                [meta, mergedmap]
+            }
+
+        // Extract reference FASTAs from REFERENCE_PREP (non-controls only)
+        ch_sim_fastas = REFERENCE_PREP.out.fastas
+            .filter { !it[0].control }
+
+        // Top hits from CLASSIFIER (non-controls only)
+        ch_sim_tops = CLASSIFIER.out.ch_tops
+            .filter { !it[0].control }
+
+        INSILICO(
+            ch_sim_tops,
+            ch_sim_merged_taxid,
+            ch_sim_fastas
+        )
+        ch_versions = ch_versions.mix(INSILICO.out.versions)
+        ch_insilico_reads = INSILICO.out.insilico_reads
+
+        // ── Inject insilico reads as new samples into the pipeline channels ──
+        // Mix insilico reads into ch_reads so they flow through ALIGNMENT
+        ch_reads = ch_reads.mix(ch_insilico_reads)
+
+        // Create ch_preppedfiles entries for insilico samples by cloning the
+        // parent sample's reference prep data with the insilico meta.
+        // INSILICO.out.insilico_reads has tuple(insilico_meta, reads) where
+        // insilico_meta.parent_id == original sample id.
+        ch_insilico_prepfiles = ch_insilico_reads
+            .map { meta, reads -> [meta.parent_id, meta] }
+            .combine(
+                ch_preppedfiles.map { meta, fastas, map, gcfids -> [meta.id, fastas, map, gcfids] },
+                by: 0
+            )
+            .map { parent_id, insilico_meta, fastas, map, gcfids ->
+                [insilico_meta, fastas, map, gcfids]
+            }
+        ch_preppedfiles = ch_preppedfiles.mix(ch_insilico_prepfiles)
+
+        // Update ch_mapped_assemblies to include insilico entries
+        ch_mapped_assemblies = ch_mapped_assemblies.mix(
+            ch_insilico_prepfiles.map { meta, fastas, map, gcfids -> [meta, map] }
+        )
+
+        // Create placeholder ch_kraken2_report entries for insilico samples
+        ch_kraken2_report = ch_kraken2_report.mix(
+            ch_insilico_reads.map { meta, reads ->
+                [meta, file("$projectDir/assets/NO_FILE")]
+            }
+        )
+
+        // Add insilico entries to ch_fastas (REFERENCE_PREP.out.fastas)
+        ch_insilico_fastas = ch_insilico_reads
+            .map { meta, reads -> [meta.parent_id, meta] }
+            .combine(
+                REFERENCE_PREP.out.fastas.map { meta, fastas -> [meta.id, fastas] },
+                by: 0
+            )
+            .map { parent_id, insilico_meta, fastas ->
+                [insilico_meta, fastas]
+            }
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
@@ -671,11 +747,19 @@ workflow TAXTRIAGE {
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
         ch_fastas = REFERENCE_PREP.out.fastas
 
+        // Add insilico fastas if simulation was run
+        if (params.generate_iss || params.generate_nanosim) {
+            ch_fastas = ch_fastas.mix(ch_insilico_fastas)
+        }
+
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
             it[1]
         }
+        // Insilico samples will be naturally filtered out here because they
+        // don't have entries in ch_bedfiles, ch_reference_cds, etc.
+        // This is correct — insilico samples skip ASSEMBLY.
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
@@ -701,6 +785,17 @@ workflow TAXTRIAGE {
         ch_versions = ch_versions.mix(ASSEMBLY.out.versions)
 
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
+
+        // Add placeholder assembly analysis entries for insilico samples so
+        // they are not filtered out by the inner join in input_alignment_files
+        if (params.generate_iss || params.generate_nanosim) {
+            ch_assembly_analysis = ch_assembly_analysis.mix(
+                ch_insilico_reads.map { meta, reads ->
+                    [meta, file("$projectDir/assets/NO_FILE2")]
+                }
+            )
+        }
+
         ch_assembly_analysis_opt = ch_assembly_analysis.ifEmpty {
             Channel.value(null)
         }
