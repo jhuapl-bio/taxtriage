@@ -91,6 +91,15 @@ def load_matchfile(mapfile_path: str,
     if not mapfile_path or not os.path.exists(mapfile_path):
         return accession_to_taxid, taxid_to_desc, taxid_to_accessions
 
+    # Header synonym sets for auto-detection (lowercased)
+    _ACC_HDRS = {"acc", "accession", "accession_version", "refseq",
+                 "accession.version", "ref"}
+    _TAX_HDRS = {"taxid", "tax_id", "mapped_value", "staxids",
+                 "taxon_id", "ncbi_taxid", "species_taxid"}
+    _DESC_HDRS = {"name", "description", "desc", "seqname",
+                  "sequence_name", "refseq_name", "organism",
+                  "org", "species", "scientific_name", "organism_name"}
+
     # autodetect delimiter
     with open(mapfile_path, newline='') as fh:
         sample = fh.read(8192)
@@ -98,17 +107,46 @@ def load_matchfile(mapfile_path: str,
         delim = '\t' if '\t' in sample and sample.count('\t') >= sample.count(',') else ','
         reader = csv.reader(fh, delimiter=delim)
 
-        if has_header:
-            next(reader, None)
+        # ── Header auto-detection ────────────────────────────────
+        _first_row = next(reader, None)
+        if _first_row:
+            _hdr_lower = [c.strip().lower() for c in _first_row]
+            _is_header = any(
+                h in (_ACC_HDRS | _TAX_HDRS | _DESC_HDRS)
+                for h in _hdr_lower
+            )
+
+            if _is_header:
+                # Override column indices from header names
+                for _ci, _h in enumerate(_hdr_lower):
+                    if _h in _ACC_HDRS:
+                        accession_col = _ci
+                    elif _h in _TAX_HDRS:
+                        taxid_col = _ci
+                    elif _h in _DESC_HDRS:
+                        desc_col = _ci
+            elif not has_header:
+                # Not a header and caller said no header — put it back
+                # by re-seeking (we'll re-read below).
+                fh.seek(0)
+                reader = csv.reader(fh, delimiter=delim)
+
+        # Only require accession and taxid columns to be present;
+        # desc_col is optional (e.g. 2-column matchfiles with just
+        # accession + taxid).
+        _min_cols = max(accession_col, taxid_col) + 1
 
         for row in reader:
-            # guard against short rows
-            if len(row) <= max(accession_col, taxid_col, desc_col):
+            # guard against short rows – only need accession & taxid
+            if len(row) < _min_cols:
                 continue
 
             acc = row[accession_col].strip()
             tax = str(row[taxid_col]).strip()
-            desc = row[desc_col].strip() if desc_col is not None else ""
+            # desc_col is optional; grab it when present, else empty
+            desc = (row[desc_col].strip()
+                    if desc_col is not None and len(row) > desc_col
+                    else "")
 
             if not acc or not tax:
                 continue

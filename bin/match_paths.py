@@ -1269,6 +1269,27 @@ def main():
         mmbert['taxid'] = mmbert['taxid'].astype(str)
         mmbert_dict = mmbert.set_index('taxid').T.to_dict()
 
+    taxdump, taxdump_names = {}, {}
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+        taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+        taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
+
+    # When the matchfile lacks a name/description column (e.g. only
+    # accession + taxid), taxid_to_desc entries will be empty strings.
+    # Back-fill from taxdump/names.dmp so downstream code has real
+    # organism names even for minimal 2-column matchfiles.
+    if taxdump_names and early_taxid_to_desc:
+        for _tid, _desc in early_taxid_to_desc.items():
+            if not _desc and _tid in taxdump_names:
+                early_taxid_to_desc[_tid] = taxdump_names[_tid]
+    # Also fill in any taxids from early_acc_to_taxid that aren't in
+    # early_taxid_to_desc at all (shouldn't happen, but defensive).
+    if taxdump_names and early_acc_to_taxid:
+        for _acc, _tid in early_acc_to_taxid.items():
+            if _tid not in early_taxid_to_desc and _tid in taxdump_names:
+                early_taxid_to_desc[_tid] = taxdump_names[_tid]
+
     pathogens = import_pathogens(pathogenfile)
 
     if args.match and os.path.exists(matcher):
@@ -1277,16 +1298,67 @@ def main():
         taxcol = args.taxcol
         orgindex = args.orgcol
 
+        # Map unversioned accession -> canonical BAM reference accession so
+        # mapfiles that omit version suffixes (e.g., .1) still match.
+        _ref_by_unversioned = {}
+        for _ref_acc in reference_hits.keys():
+            _ref_unv = re.sub(r"\.\d+$", "", str(_ref_acc))
+            _ref_by_unversioned[_ref_unv] = _ref_acc
+
         with open(matcher, "r") as f:
-            for i, line in enumerate(f):
-                line = line.rstrip("\n")
-                splitline = line.split("\t")
+            _sample = f.read(8192)
+            f.seek(0)
+            _delim = '\t' if _sample.count('\t') >= _sample.count(',') else ','
+            _reader = csv.reader(f, delimiter=_delim)
 
-                if i == 0 and len(splitline) > 0 and splitline[0] == "Acc":  # header
-                    continue
+            # ── Header auto-detection ────────────────────────────────
+            # Recognised header synonyms (all lowercased).
+            _ACC_HDRS = {"acc", "accession", "accession_version", "refseq",
+                         "accession.version", "ref"}
+            _TAX_HDRS = {"taxid", "tax_id", "mapped_value", "staxids",
+                         "taxon_id", "ncbi_taxid", "species_taxid"}
+            _NAME_HDRS = {"name", "description", "desc", "seqname",
+                          "sequence_name", "refseq_name"}
+            _ORG_HDRS  = {"organism", "org", "species", "scientific_name",
+                          "organism_name"}
 
-                if not splitline or len(splitline) <= accindex:
+            _skip_header = False
+            _ncols = None
+
+            for i, splitline in enumerate(_reader):
+                # First row: try to auto-detect columns from header
+                if i == 0 and splitline:
+                    _ncols = len(splitline)
+                    _hdr_lower = [c.strip().lower() for c in splitline]
+
+                    # Check if this looks like a header row
+                    _is_header = any(
+                        h in (_ACC_HDRS | _TAX_HDRS | _NAME_HDRS | _ORG_HDRS)
+                        for h in _hdr_lower
+                    )
+
+                    if _is_header:
+                        _skip_header = True
+                        # Auto-detect column indices from header names
+                        for _ci, _h in enumerate(_hdr_lower):
+                            if _h in _ACC_HDRS:
+                                accindex = _ci
+                            elif _h in _TAX_HDRS:
+                                taxcol = _ci
+                            elif _h in _NAME_HDRS:
+                                nameindex = _ci
+                            elif _h in _ORG_HDRS:
+                                orgindex = _ci
+                        print(f"Matchfile header detected ({_ncols} columns): "
+                              f"acc={accindex}, taxid={taxcol}, "
+                              f"name={nameindex}, org={orgindex}")
+                        continue
+
+                if not splitline or len(splitline) <= accindex or accindex < 0:
                     continue
+                # Track column count from first data row if header wasn't present
+                if _ncols is None:
+                    _ncols = len(splitline)
 
                 accession = splitline[accindex].strip() or None
                 taxid     = splitline[taxcol].strip() if len(splitline) > taxcol else None
@@ -1295,22 +1367,61 @@ def main():
                 if not accession:
                     continue
 
+                accession = str(accession)
+                accession_unv = re.sub(r"\.\d+$", "", accession)
+                target_accession = accession
+                if target_accession not in reference_hits:
+                    target_accession = _ref_by_unversioned.get(accession_unv)
+                if not target_accession:
+                    continue
+
                 # Optional: only fill taxid if it exists and if this accession is already in reference_hits
-                if accession in reference_hits:
-                    if taxid and not reference_hits[accession].get("taxid"):
-                        reference_hits[accession]["taxid"] = taxid
+                if target_accession in reference_hits:
+                    if taxid and not reference_hits[target_accession].get("taxid"):
+                        reference_hits[target_accession]["taxid"] = taxid
+
+                    # If org/name columns are empty or missing, prefer a taxdump
+                    # scientific name over accession fallback when taxid is known.
+                    _resolved_taxid = taxid or reference_hits[target_accession].get("taxid")
+                    _taxdump_name = (
+                        taxdump_names.get(str(_resolved_taxid))
+                        if _resolved_taxid and taxdump_names
+                        else None
+                    )
 
                     # Store the raw description from the mapfile BEFORE
                     # overwriting 'name' with the cleaner organism column.
                     # The description often contains "plasmid pXXX" which
                     # we need for plasmid tagging downstream.
                     if name:
-                        reference_hits[accession]["description"] = name
+                        reference_hits[target_accession]["description"] = name
                     if organism:
-                        reference_hits[accession]["name"] = organism
+                        reference_hits[target_accession]["name"] = organism
                     elif name:
-                        reference_hits[accession]["name"] = name
+                        reference_hits[target_accession]["name"] = name
+                    elif _taxdump_name:
+                        reference_hits[target_accession]["name"] = _taxdump_name
         f.close()
+
+    # ── Resolve missing names from taxdump/names.dmp ─────────────────────
+    # When the matchfile has only accession + taxid (no name/org columns),
+    # entries may still have name == accession.  Resolve them from
+    # taxdump_names so downstream JSON has real organism names.
+    if taxdump_names:
+        _resolved_count = 0
+        for _acc, _hit in reference_hits.items():
+            _cur_name = _hit.get('name', _acc)
+            _tid = _hit.get('taxid')
+            # If the name is still just the accession (never overwritten),
+            # look it up from names.dmp via the taxid.
+            if _tid and (_cur_name == _acc or not _cur_name):
+                _sci_name = taxdump_names.get(str(_tid))
+                if _sci_name:
+                    _hit['name'] = _sci_name
+                    _resolved_count += 1
+        if _resolved_count:
+            print(f"Resolved {_resolved_count} organism names from names.dmp (matchfile had no name/org columns)")
+
     # ── Tag plasmid accessions from the description field ──────────────────
     # Use 'description' (raw mapfile name column) which preserves strings
     # like "E. coli ETEC H10407 plasmid p666, complete sequence".
@@ -1323,12 +1434,6 @@ def main():
             _plasmid_count += 1
     if _plasmid_count:
         print(f"Tagged {_plasmid_count} accessions as plasmid")
-
-    taxdump, taxdump_names = {}, {}
-    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
-        taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
-    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
-        taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
 
     subrank = args.subrank
 
