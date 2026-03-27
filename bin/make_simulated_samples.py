@@ -149,6 +149,71 @@ def build_fasta_index(fasta_path: Path) -> Dict[str, int]:
     return refs
 
 
+def discover_organisms_from_fasta(
+    fasta_path: Path,
+    taxid_to_accs: Dict[int, List[str]],
+    taxid_values: Dict[int, float],
+    default_min_count: float = 1.0,
+) -> Dict[int, float]:
+    """
+    Discover all organisms present in the reference FASTA by cross-referencing
+    accessions with the merged_taxid mapping.  This ensures every organism that
+    has a downloaded reference gets included in the simulation, even if its
+    taxid doesn't appear in the top_report (e.g. due to taxid level mismatch
+    between species-level Kraken2 report and strain-level reference accessions).
+
+    For organisms already in taxid_values (from top_report), the original
+    abundance/count is kept.  For newly discovered organisms, a minimum count
+    is assigned so they still receive simulated reads.
+
+    Args:
+        fasta_path: Path to the merged reference FASTA
+        taxid_to_accs: Dictionary of taxid -> list of accessions (from merged_taxid.tsv)
+        taxid_values: Existing taxid -> value dict (from top_report parsing)
+        default_min_count: Minimum count assigned to newly discovered organisms
+
+    Returns:
+        Updated dictionary mapping taxid -> abundance/count (superset of taxid_values)
+    """
+    # Get all accessions present in the reference FASTA
+    fasta_accessions = build_fasta_index(fasta_path)
+    if not fasta_accessions:
+        return taxid_values
+
+    # Build reverse map: accession -> taxid
+    acc_to_taxid = {}
+    for taxid, accs in taxid_to_accs.items():
+        for acc in accs:
+            acc_to_taxid[acc] = taxid
+
+    # Find all taxids that have at least one accession in the FASTA
+    fasta_taxids = set()
+    for acc in fasta_accessions:
+        if acc in acc_to_taxid:
+            fasta_taxids.add(acc_to_taxid[acc])
+        else:
+            # Try partial match (some FASTAs have "ACC.1 description" headers)
+            for ref_acc, taxid in acc_to_taxid.items():
+                if ref_acc.startswith(acc) or acc.startswith(ref_acc):
+                    fasta_taxids.add(taxid)
+                    break
+
+    # Merge: keep existing values, add newly discovered taxids with min count
+    merged = dict(taxid_values)
+    newly_discovered = 0
+    for taxid in fasta_taxids:
+        if taxid not in merged:
+            merged[taxid] = default_min_count
+            newly_discovered += 1
+
+    if newly_discovered > 0:
+        print(f"  FASTA discovery: found {newly_discovered} additional taxids "
+              f"in reference FASTA (not in top_report)")
+        print(f"  Total organisms for simulation: {len(merged)}")
+
+    return merged
+
+
 def extract_sequences(fasta_path: Path, accessions: List[str], output_fasta: Path,
                       _fasta_handle: 'pysam.FastaFile' = None) -> None:
     """
@@ -458,12 +523,28 @@ Outputs per sample directory:
         taxid_values = parse_top_report(args.top_report, args.ranks, exclude_taxids, include_taxids, use_abundance_col, args.minreads)
 
     if not taxid_values:
+        print("WARNING: No taxa found from top_report/abundance_input "
+              f"(after excluding taxids: {exclude_taxids}). "
+              "Will attempt to discover organisms from the reference FASTA.")
+        taxid_values = {}
+
+    print(f"Found {len(taxid_values)} unique taxids from top_report/abundance_input")
+
+    # ── FASTA-first organism discovery ──────────────────────────────────────
+    # Cross-reference the reference FASTA with merged_taxid.tsv to discover
+    # ALL organisms that have downloaded references.  This catches organisms
+    # whose taxids in merged_taxid are at a different rank level (e.g. strain)
+    # than the top_report (e.g. species).
+    taxid_values = discover_organisms_from_fasta(
+        args.fasta, taxid_to_accs, taxid_values,
+        default_min_count=max(1.0, args.minreads)
+    )
+
+    if not taxid_values:
         raise SystemExit(
-            f"No taxa found after parsing input "
+            "No taxa found after parsing input and scanning reference FASTA "
             f"(after excluding taxids: {exclude_taxids})"
         )
-
-    print(f"Found {len(taxid_values)} unique taxids with abundance/counts")
 
     # Filter to taxids present in mapping file
     taxids_with_accessions = {
@@ -472,8 +553,8 @@ Outputs per sample directory:
 
     if not taxids_with_accessions:
         raise SystemExit(
-            "No taxids from top_report found in mapping file. "
-            "Check that your mapping file covers the taxa in your report."
+            "No taxids found in mapping file. "
+            "Check that your mapping file covers the taxa in your report/reference."
         )
 
     print(f"{len(taxids_with_accessions)} taxids have accessions in mapping file")

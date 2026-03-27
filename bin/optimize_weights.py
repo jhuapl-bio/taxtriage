@@ -1891,7 +1891,7 @@ def find_missing_positive_controls(final_json, pos_index, levels=None):
                 sample_ids["subkey"].add(msk)
 
     missing = []
-    _seen = set()  # (level, id) pairs to avoid duplicates
+    _seen_ids = set()  # org IDs already emitted (dedup across levels)
 
     level_to_index_key = {
         "toplevelkey": "by_toplevelkey",
@@ -1907,9 +1907,9 @@ def find_missing_positive_controls(final_json, pos_index, levels=None):
         for org_id, entries in pos_index.get(idx_key, {}).items():
             if org_id in present:
                 continue
-            if (lvl, org_id) in _seen:
+            if org_id in _seen_ids:
                 continue
-            _seen.add((lvl, org_id))
+            _seen_ids.add(org_id)
             best = max(entries, key=lambda e: e.get("tass_score", 0))
             missing.append({
                 "level": lvl,

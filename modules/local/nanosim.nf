@@ -8,7 +8,7 @@ process NANOSIM_SIMULATE {
         'biocontainers/nanosim:3.2.3--hdfd78af_2' }"
 
     input:
-    tuple val(meta), path(genome_list), path(size_file), path(nanosim_training)
+    tuple val(meta), path(genome_list), path(size_file), path(nanosim_training), path(genomes)
 
     output:
     tuple val(meta), path("*.fastq.gz"), emit: reads
@@ -20,14 +20,16 @@ process NANOSIM_SIMULATE {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}.nanosim"
+    def nanosim_base = task.ext.nanosim_base ?: params.nanosim_base
 
     """
     simulator.py metagenome \
         -gl ${genome_list} \
         -a ${size_file} \
-        -c ${nanosim_training} \
+        -c ${nanosim_training}/${nanosim_base} \
         -o ${prefix} \
         --fastq \
+        --perfect \
         -t ${task.cpus} \
         ${args}
 
@@ -38,7 +40,7 @@ process NANOSIM_SIMULATE {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        nanosim: \$(simulator.py --version 2>&1 | head -1 || echo "3.2.3")
+        nanosim: 3.2.3
     END_VERSIONS
     """
 }

@@ -109,11 +109,10 @@ workflow INSILICO {
                 ont_nreads
             )
             ch_versions = ch_versions.mix(PREPARE_NANOSIM_INPUTS.out.versions)
-
+            ch_genomes = PREPARE_NANOSIM_INPUTS.out.genomes
             ch_nanosim_training = Channel.value(file(params.nanosim_training, checkIfExists: true))
-
             ch_nanosim_input = PREPARE_NANOSIM_INPUTS.out.nanosim_inputs
-                .combine(ch_nanosim_training)
+                .combine(ch_nanosim_training).combine(ch_genomes, by: 0)
 
             NANOSIM_SIMULATE(
                 ch_nanosim_input

@@ -313,10 +313,10 @@ class ControlSparkBar(Flowable):
         # When only one exists: it goes on row 0.
         _current_row = 0
 
-        # Negative control folds — red/dark-gray text
+        # Negative control folds — red/dark-gray text, prefixed with "−"
         if self._has_neg_label and neg_tass_vals:
             row_y = _current_row * self._row_h + 0.5
-            fold_txt = _fold_str(self.tass_fold)
+            fold_txt = "\u2212 " + _fold_str(self.tass_fold)  # − prefix
             if self.control_flag == "within_negative":
                 c.setFillColor(colors.Color(0.75, 0.1, 0.1, 1))
             else:
@@ -332,11 +332,11 @@ class ControlSparkBar(Flowable):
                 c.drawString(tass_txt_w + 4, row_y, rd_txt)
             _current_row += 1
 
-        # Positive control folds — green text
+        # Positive control folds — green text, prefixed with "+"
         pos_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.pos_values]
         if self._has_pos_label and pos_tass_vals:
             row_y = _current_row * self._row_h + 0.5
-            pos_fold_txt = _fold_str(self.pos_tass_fold)
+            pos_fold_txt = "+ " + _fold_str(self.pos_tass_fold)  # + prefix
             c.setFillColor(colors.Color(0.1, 0.55, 0.1, 1))
             c.drawString(1, row_y, pos_fold_txt)
 
@@ -349,14 +349,14 @@ class ControlSparkBar(Flowable):
                 c.drawString(pos_txt_w + 4, row_y, pos_rd_txt)
             _current_row += 1
 
-        # In-silico control folds — teal text
+        # In-silico control folds — teal text, prefixed with "∞"
         if self._has_isil_label:
             row_y = _current_row * self._row_h + 0.5
             if self.missing_from_insilico:
                 c.setFillColor(colors.Color(0.0, 0.45, 0.45, 1))
-                c.drawString(1, row_y, "not in sim")
+                c.drawString(1, row_y, "\u221e not in sim")  # ∞ prefix
             elif isil_tass_vals:
-                isil_fold_txt = _fold_str(self.insilico_tass_fold)
+                isil_fold_txt = "\u221e " + _fold_str(self.insilico_tass_fold)  # ∞ prefix
                 c.setFillColor(colors.Color(0.0, 0.45, 0.45, 1))
                 c.drawString(1, row_y, isil_fold_txt)
 
@@ -783,11 +783,11 @@ def strip_species_prefix(strain_name, species_name):
 
 
 def build_insilico_metrics_table(species_groups, min_conf, available_width,
-                                 missing_insilico=None):
+                                 missing_insilico=None, comparison_key='insilico_comparison'):
     """Build a summary table of TP/FP/precision/recall/F1 by microbial category.
 
     An organism is a True Positive (TP) if:
-      - It exists in the insilico simulation (has insilico_comparison with pos_control_values)
+      - It exists in the insilico simulation (has comparison data with pos_control_values)
       - AND its TASS score >= min_conf (the passing threshold)
 
     A False Positive (FP) if:
@@ -801,6 +801,13 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
     A True Negative (TN) if:
       - It does NOT exist in the insilico simulation
       - AND its TASS score < min_conf
+
+    Parameters
+    ----------
+    comparison_key : str
+        The key to look up on each member/group for insilico comparison data.
+        Default 'insilico_comparison' (combined). For per-type tables use
+        'insilico_comparison_iss' or 'insilico_comparison_nanosim'.
 
     Returns a ReportLab Table or None if no insilico data present.
     """
@@ -828,7 +835,7 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
             reads = float(member.get('numreads', 0) or 0)
             passes = tass >= min_conf
 
-            ic = member.get('insilico_comparison') or {}
+            ic = member.get(comparison_key) or {}
             # Determine if this organism was in the simulation
             in_sim = bool(ic.get('pos_control_values')) and not ic.get('missing_from_insilico')
             is_missing_from_insilico = bool(ic.get('missing_from_insilico'))
@@ -854,12 +861,18 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
                 cat_stats[cat]['tn'] += 1
                 cat_stats[cat]['tn_reads'] += reads
 
-    # Also count missing insilico organisms as FN
+    # Also count missing insilico organisms as FN — use their actual category
     if missing_insilico:
         has_any_insilico = True
         for entry in missing_insilico:
-            cat_stats['Unknown']['fn'] += 1
-            cat_stats['Unknown']['fn_reads'] += float(entry.get('pos_numreads', 0) or 0)
+            cat_raw = str(entry.get('microbial_category', 'Unknown'))
+            cat = 'Unknown'
+            for c in categories:
+                if c in cat_raw:
+                    cat = c
+                    break
+            cat_stats[cat]['fn'] += 1
+            cat_stats[cat]['fn_reads'] += float(entry.get('pos_numreads', 0) or 0)
 
     if not has_any_insilico:
         return None
@@ -964,6 +977,73 @@ def build_insilico_metrics_table(species_groups, min_conf, available_width,
         # Total row styling
         ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E0F7F7')),
         ('LINEABOVE', (0, -1), (-1, -1), 0.8, colors.HexColor('#008B8B')),
+    ]
+    tbl.setStyle(TableStyle(tbl_styles))
+    return tbl
+
+
+def build_missing_insilico_detail_table(missing_insilico, available_width):
+    """Build a detail table listing specific organisms present in insilico but missing from sample.
+
+    Each row shows the organism name, taxid, category, and the insilico TASS/reads.
+    Returns a ReportLab Table or None if no missing organisms.
+    """
+    if not missing_insilico:
+        return None
+
+    from reportlab.lib import colors
+    from reportlab.platypus import Table, TableStyle, Paragraph
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    styles = getSampleStyleSheet()
+
+    hdr_style = ParagraphStyle('MissIsilHdr', parent=styles['Normal'],
+                                fontSize=7, leading=9,
+                                fontName='Helvetica-Bold',
+                                textColor=colors.white)
+    cell_style = ParagraphStyle('MissIsilCell', parent=styles['Normal'],
+                                 fontSize=7, leading=9,
+                                 fontName='Helvetica')
+
+    headers = ['Organism', 'Taxid', 'Category', 'InSilico TASS', 'InSilico Reads', 'Status']
+    table_data = [[Paragraph(h, hdr_style) for h in headers]]
+
+    for entry in missing_insilico:
+        name = entry.get('name', 'Unknown')
+        taxid = str(entry.get('id', '-'))
+        cat = entry.get('microbial_category', 'Unknown')
+        tass = entry.get('pos_tass_score', 0)
+        reads = entry.get('pos_numreads', 0)
+        tass_str = f"{float(tass) * 100:.2f}" if tass else '-'
+        reads_str = f"{float(reads):,.0f}" if reads else '-'
+
+        row = [
+            Paragraph(name, cell_style),
+            Paragraph(taxid, cell_style),
+            Paragraph(cat, cell_style),
+            Paragraph(tass_str, cell_style),
+            Paragraph(reads_str, cell_style),
+            Paragraph('<font color="red">Missing from sample (FN)</font>', cell_style),
+        ]
+        table_data.append(row)
+
+    w = available_width or 500
+    col_w = [w * 0.28, w * 0.10, w * 0.14, w * 0.14, w * 0.14, w * 0.20]
+
+    tbl = Table(table_data, colWidths=col_w)
+    tbl_styles = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#B22222')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.Color(0.7, 0.7, 0.7)),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(1.0, 0.95, 0.95),
+                                                colors.white]),
     ]
     tbl.setStyle(TableStyle(tbl_styles))
     return tbl
@@ -2604,14 +2684,17 @@ def create_pdf_template(output_path, samples_dict, args):
                     'The label below the bar shows: '
                     '<b>#\u00d7</b> = fold-change of sample TASS; '
                     '<b>#\u00d7 rd</b> = same ratio for read counts. '
+                    'Prefix symbols indicate control type: '
                 )
                 if _neg_used:
                     _ctrl_parts.append(
-                        'Dark gray / <font color="#cc2222">red</font> text = vs. max negative control. '
+                        '<b>\u2212</b> (minus) = vs. max negative control '
+                        '(dark gray / <font color="#cc2222">red</font> text). '
                     )
                 if _pos_used:
                     _ctrl_parts.append(
-                        '<font color="#2a8a2a">Green text</font> = vs. min positive control. '
+                        '<b>+</b> (plus) = vs. min positive control '
+                        '(<font color="#2a8a2a">green text</font>). '
                     )
                 _isil_used = _smeta_ctrl.get('insilico_controls_used') or []
                 if _isil_used:
@@ -2621,7 +2704,8 @@ def create_pdf_template(output_path, samples_dict, args):
                         f'in-silico simulation range ({_isil_names}). '
                     )
                     _ctrl_parts.append(
-                        '<font color="#007373">Teal text</font> = vs. in-silico control. '
+                        '<b>\u221e</b> (loop) = vs. in-silico control '
+                        '(<font color="#007373">teal text</font>). '
                     )
                 if _fold_thresh is not None:
                     _ctrl_parts.append(
@@ -2631,23 +2715,146 @@ def create_pdf_template(output_path, samples_dict, args):
                 story.append(Spacer(1, 0.03 * inch))
                 story.append(Paragraph(''.join(_ctrl_parts), _ctrl_legend_style))
 
-            # ── In-silico metrics summary table ──────────────────────────────
+            # ── In-silico metrics summary tables (one per simulator type) ─────
             _miss_isil = _smeta.get('missing_insilico_controls') or []
-            _isil_tbl = build_insilico_metrics_table(
-                species_groups, _mc, available_width,
-                missing_insilico=_miss_isil,
-            )
-            if _isil_tbl:
-                _isil_hdr_style = ParagraphStyle(
-                    'IsilHeader', parent=small_style,
-                    fontSize=7.5, leading=10, fontName='Helvetica-Bold',
-                    textColor=colors.HexColor('#008B8B'))
+            _miss_by_type = _smeta.get('missing_insilico_by_type') or {}
+            _sim_types = _smeta.get('insilico_simulator_types') or []
+
+            _isil_hdr_style = ParagraphStyle(
+                'IsilHeader', parent=small_style,
+                fontSize=7.5, leading=10, fontName='Helvetica-Bold',
+                textColor=colors.HexColor('#008B8B'))
+            _miss_hdr_style = ParagraphStyle(
+                'MissIsilHeader', parent=small_style,
+                fontSize=7.5, leading=10, fontName='Helvetica-Bold',
+                textColor=colors.HexColor('#B22222'))
+
+            _SIM_TYPE_LABELS = {
+                'iss': 'InSilicoSeq (Illumina)',
+                'nanosim': 'NanoSim (ONT)',
+                'unknown': 'In-Silico',
+            }
+
+            def _render_isil_section(sim_label, comp_key, miss_list, so_comp_key):
+                """Render one metrics table + missing + sample-only section."""
+                _tbl = build_insilico_metrics_table(
+                    species_groups, _mc, available_width,
+                    missing_insilico=miss_list,
+                    comparison_key=comp_key,
+                )
+                if not _tbl:
+                    return
                 story.append(Spacer(1, 0.08 * inch))
                 story.append(Paragraph(
-                    f'In-Silico Simulation Metrics (TASS threshold: {_mc*100:.1f})',
+                    f'{sim_label} Metrics (TASS threshold: {_mc*100:.1f})',
                     _isil_hdr_style))
                 story.append(Spacer(1, 0.03 * inch))
-                story.append(_isil_tbl)
+                story.append(_tbl)
+
+                # Missing organisms detail
+                if miss_list:
+                    _miss_tbl = build_missing_insilico_detail_table(
+                        miss_list, available_width)
+                    if _miss_tbl:
+                        story.append(Spacer(1, 0.06 * inch))
+                        story.append(Paragraph(
+                            f'Missing {sim_label} Organisms (present in simulation, absent from sample)',
+                            _miss_hdr_style))
+                        story.append(Spacer(1, 0.03 * inch))
+                        story.append(_miss_tbl)
+
+                # Sample-only organisms for this type
+                _so_orgs = []
+                for sg in species_groups:
+                    ic = sg.get(so_comp_key) or {}
+                    if ic.get('missing_from_insilico'):
+                        _so_name = sg.get('name') or sg.get('toplevelname') or str(sg.get('toplevelkey', ''))
+                        _so_tass = float(sg.get('tass_score', 0) or 0)
+                        _so_cat = sg.get('microbial_category') or sg.get('is_pathogen') or 'Unknown'
+                        _so_orgs.append((_so_name, _so_tass, _so_cat))
+                if _so_orgs:
+                    _so_hdr_style = ParagraphStyle(
+                        'SampleOnlyHeader', parent=small_style,
+                        fontSize=7.5, leading=10, fontName='Helvetica-Bold',
+                        textColor=colors.HexColor('#555555'))
+                    story.append(Spacer(1, 0.06 * inch))
+                    story.append(Paragraph(
+                        f'Sample-Only Organisms \u2014 {sim_label} (detected in sample but absent from simulation)',
+                        _so_hdr_style))
+                    _so_cell_style = ParagraphStyle(
+                        'SampleOnlyCell', parent=small_style,
+                        fontSize=7, leading=9)
+                    _so_parts = []
+                    for _so_name, _so_tass, _so_cat in _so_orgs:
+                        _so_parts.append(
+                            f'<b>{_so_name}</b> (TASS: {_so_tass*100:.2f}, {_so_cat})')
+                    story.append(Spacer(1, 0.02 * inch))
+                    story.append(Paragraph(
+                        'These organisms are counted as FP in the metrics above: ' +
+                        '; '.join(_so_parts) + '.',
+                        _so_cell_style))
+
+            if _sim_types and len(_sim_types) >= 1:
+                # Render one table per simulator type
+                for _st in _sim_types:
+                    _st_label = _SIM_TYPE_LABELS.get(_st, f'In-Silico ({_st})')
+                    _st_comp_key = f'insilico_comparison_{_st}'
+                    _st_miss = _miss_by_type.get(_st, [])
+                    _render_isil_section(_st_label, _st_comp_key, _st_miss, _st_comp_key)
+            else:
+                # Fallback: single combined table (no per-type data available)
+                _isil_tbl = build_insilico_metrics_table(
+                    species_groups, _mc, available_width,
+                    missing_insilico=_miss_isil,
+                )
+                if _isil_tbl:
+                    story.append(Spacer(1, 0.08 * inch))
+                    story.append(Paragraph(
+                        f'In-Silico Simulation Metrics (TASS threshold: {_mc*100:.1f})',
+                        _isil_hdr_style))
+                    story.append(Spacer(1, 0.03 * inch))
+                    story.append(_isil_tbl)
+
+                    if _miss_isil:
+                        _miss_detail_tbl = build_missing_insilico_detail_table(
+                            _miss_isil, available_width)
+                        if _miss_detail_tbl:
+                            story.append(Spacer(1, 0.06 * inch))
+                            story.append(Paragraph(
+                                'Missing In-Silico Organisms (present in simulation, absent from sample)',
+                                _miss_hdr_style))
+                            story.append(Spacer(1, 0.03 * inch))
+                            story.append(_miss_detail_tbl)
+
+                    _sample_only_orgs = []
+                    for sg in species_groups:
+                        ic = sg.get('insilico_comparison') or {}
+                        if ic.get('missing_from_insilico'):
+                            _so_name = sg.get('name') or sg.get('toplevelname') or str(sg.get('toplevelkey', ''))
+                            _so_tass = float(sg.get('tass_score', 0) or 0)
+                            _so_cat = sg.get('microbial_category') or sg.get('is_pathogen') or 'Unknown'
+                            _sample_only_orgs.append((_so_name, _so_tass, _so_cat))
+                    if _sample_only_orgs:
+                        _so_hdr_style = ParagraphStyle(
+                            'SampleOnlyHeader', parent=small_style,
+                            fontSize=7.5, leading=10, fontName='Helvetica-Bold',
+                            textColor=colors.HexColor('#555555'))
+                        story.append(Spacer(1, 0.06 * inch))
+                        story.append(Paragraph(
+                            'Sample-Only Organisms (detected in sample but absent from in-silico simulation)',
+                            _so_hdr_style))
+                        _so_cell_style = ParagraphStyle(
+                            'SampleOnlyCell', parent=small_style,
+                            fontSize=7, leading=9)
+                        _so_parts = []
+                        for _so_name, _so_tass, _so_cat in _sample_only_orgs:
+                            _so_parts.append(
+                                f'<b>{_so_name}</b> (TASS: {_so_tass*100:.2f}, {_so_cat})')
+                        story.append(Spacer(1, 0.02 * inch))
+                        story.append(Paragraph(
+                            'These organisms are counted as FP in the metrics above: ' +
+                            '; '.join(_so_parts) + '.',
+                            _so_cell_style))
 
         else:
             story.append(Paragraph(

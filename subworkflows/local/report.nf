@@ -140,12 +140,16 @@ workflow REPORT {
             // ── Step 2b: Collect insilico JSONs keyed by parent sample ID ───────
             // Each insilico sample's meta has parent_id linking to the original
             // sample.  We key by parent_id so each non-control sample can find
-            // its corresponding insilico JSON.
+            // its corresponding insilico JSON(s).
+            // A parent may have multiple insilico children (ISS + NanoSim), so
+            // we collect a LIST of JSONs per parent_id rather than a single one.
             insilico_json_map = ALIGNMENT_PER_SAMPLE_INSILICO.out.txt
                 .map { meta, json -> [meta.parent_id, json] }
                 .toList()
                 .map { entries ->
-                    entries.collectEntries { [it[0], it[1]] }
+                    def grouped = [:].withDefault { [] }
+                    entries.each { grouped[it[0]] << it[1] }
+                    grouped
                 }
                 .ifEmpty { Channel.value([:]) }
 
@@ -183,22 +187,34 @@ workflow REPORT {
                                                it.name.contains(meta.positive.replaceAll(/\s+/, '_')) }
                 }
 
-                // For this sample's insilico control JSON (keyed by parent_id == this sample's ID)
-                def insilico_json = null
+                // For this sample's insilico control JSONs (keyed by parent_id == this sample's ID)
+                // May be a list of JSONs (e.g. one from ISS, one from NanoSim)
+                def insilico_jsons = []
                 if (insilico_map instanceof Map) {
-                    insilico_json = insilico_map.get(meta.id)
+                    def jsons = insilico_map.get(meta.id)
+                    if (jsons instanceof List) {
+                        insilico_jsons = jsons
+                    } else if (jsons != null) {
+                        insilico_jsons = [jsons]
+                    }
                 }
 
-                // Return: alignment tuple + neg_json, pos_json, insilico_json
+                // Return: alignment tuple + neg_json, pos_json, insilico_jsons (list)
                 def aln_tuple = items[0..11]
-                return aln_tuple + [neg_json, pos_json, insilico_json]
+                return aln_tuple + [neg_json, pos_json, insilico_jsons]
             }
 
             // Split the resolved channel into the process inputs
             noncontrol_aln_input = noncontrol_tuple.map { it[0..11] }
             noncontrol_neg_json = noncontrol_tuple.map { it[12] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
             noncontrol_pos_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_pos_ctrl") }
-            noncontrol_insilico_json = noncontrol_tuple.map { it[14] ?: file("$projectDir/assets/NO_FILE_insilico_ctrl") }
+            noncontrol_insilico_json = noncontrol_tuple.map {
+                def jsons = it[14]
+                if (jsons instanceof List && jsons.size() > 0) {
+                    return jsons
+                }
+                return file("$projectDir/assets/NO_FILE_insilico_ctrl")
+            }
 
             ALIGNMENT_PER_SAMPLE(
                 noncontrol_aln_input,

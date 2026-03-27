@@ -13,7 +13,7 @@ process PREPARE_NANOSIM_INPUTS {
 
     output:
     tuple val(meta), path("genome_list.tsv"), path("size_file.tsv"), emit: nanosim_inputs
-    path("genomes/*.fasta")     , emit: organism_fastas
+    tuple val(meta), path("genomes")     , emit: genomes
     path "versions.yml"         , emit: versions
 
     when:
