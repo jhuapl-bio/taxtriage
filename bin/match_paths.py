@@ -65,6 +65,23 @@ from optimize_weights import annotate_aggregate_dict, compute_scores_per, calcul
 from map_taxid import load_taxdump, load_names
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
+
+def _find_sample_only_organisms(final_json, control_index):
+    """Identify organisms present in the sample but absent from the control index.
+
+    Returns a set of toplevelkey IDs that exist in the sample but not in the
+    control (e.g. insilico) data.
+    """
+    sample_tlks = set()
+    for grp in final_json:
+        tlk = str(grp.get('toplevelkey', grp.get('key', '')))
+        if tlk:
+            sample_tlks.add(tlk)
+
+    ctrl_tlks = set(control_index.get('by_toplevelkey', {}).keys())
+    return sample_tlks - ctrl_tlks
+
+
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -639,6 +656,16 @@ def parse_args(argv=None):
         action="store_true",
         default=False,
         help="Suppress detection and output of missing positive control organisms.",
+    )
+
+    # ── In-silico control arguments ──────────────────────────────────────────
+    parser.add_argument(
+        "--insilico_controls",
+        nargs="+",
+        default=None,
+        help="One or more JSON files (match_paths output format) from in-silico "
+             "simulated control samples.  Used to compare simulated vs real "
+             "TASS scores and read counts per organism.",
     )
 
     return parser.parse_args(argv)
@@ -1333,6 +1360,27 @@ def main():
         mmbert['taxid'] = mmbert['taxid'].astype(str)
         mmbert_dict = mmbert.set_index('taxid').T.to_dict()
 
+    taxdump, taxdump_names = {}, {}
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+        taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+        taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
+
+    # When the matchfile lacks a name/description column (e.g. only
+    # accession + taxid), taxid_to_desc entries will be empty strings.
+    # Back-fill from taxdump/names.dmp so downstream code has real
+    # organism names even for minimal 2-column matchfiles.
+    if taxdump_names and early_taxid_to_desc:
+        for _tid, _desc in early_taxid_to_desc.items():
+            if not _desc and _tid in taxdump_names:
+                early_taxid_to_desc[_tid] = taxdump_names[_tid]
+    # Also fill in any taxids from early_acc_to_taxid that aren't in
+    # early_taxid_to_desc at all (shouldn't happen, but defensive).
+    if taxdump_names and early_acc_to_taxid:
+        for _acc, _tid in early_acc_to_taxid.items():
+            if _tid not in early_taxid_to_desc and _tid in taxdump_names:
+                early_taxid_to_desc[_tid] = taxdump_names[_tid]
+
     pathogens = import_pathogens(pathogenfile)
 
     if args.match and os.path.exists(matcher):
@@ -1341,16 +1389,67 @@ def main():
         taxcol = args.taxcol
         orgindex = args.orgcol
 
+        # Map unversioned accession -> canonical BAM reference accession so
+        # mapfiles that omit version suffixes (e.g., .1) still match.
+        _ref_by_unversioned = {}
+        for _ref_acc in reference_hits.keys():
+            _ref_unv = re.sub(r"\.\d+$", "", str(_ref_acc))
+            _ref_by_unversioned[_ref_unv] = _ref_acc
+
         with open(matcher, "r") as f:
-            for i, line in enumerate(f):
-                line = line.rstrip("\n")
-                splitline = line.split("\t")
+            _sample = f.read(8192)
+            f.seek(0)
+            _delim = '\t' if _sample.count('\t') >= _sample.count(',') else ','
+            _reader = csv.reader(f, delimiter=_delim)
 
-                if i == 0 and len(splitline) > 0 and splitline[0] == "Acc":  # header
-                    continue
+            # ── Header auto-detection ────────────────────────────────
+            # Recognised header synonyms (all lowercased).
+            _ACC_HDRS = {"acc", "accession", "accession_version", "refseq",
+                         "accession.version", "ref"}
+            _TAX_HDRS = {"taxid", "tax_id", "mapped_value", "staxids",
+                         "taxon_id", "ncbi_taxid", "species_taxid"}
+            _NAME_HDRS = {"name", "description", "desc", "seqname",
+                          "sequence_name", "refseq_name"}
+            _ORG_HDRS  = {"organism", "org", "species", "scientific_name",
+                          "organism_name"}
 
-                if not splitline or len(splitline) <= accindex:
+            _skip_header = False
+            _ncols = None
+
+            for i, splitline in enumerate(_reader):
+                # First row: try to auto-detect columns from header
+                if i == 0 and splitline:
+                    _ncols = len(splitline)
+                    _hdr_lower = [c.strip().lower() for c in splitline]
+
+                    # Check if this looks like a header row
+                    _is_header = any(
+                        h in (_ACC_HDRS | _TAX_HDRS | _NAME_HDRS | _ORG_HDRS)
+                        for h in _hdr_lower
+                    )
+
+                    if _is_header:
+                        _skip_header = True
+                        # Auto-detect column indices from header names
+                        for _ci, _h in enumerate(_hdr_lower):
+                            if _h in _ACC_HDRS:
+                                accindex = _ci
+                            elif _h in _TAX_HDRS:
+                                taxcol = _ci
+                            elif _h in _NAME_HDRS:
+                                nameindex = _ci
+                            elif _h in _ORG_HDRS:
+                                orgindex = _ci
+                        print(f"Matchfile header detected ({_ncols} columns): "
+                              f"acc={accindex}, taxid={taxcol}, "
+                              f"name={nameindex}, org={orgindex}")
+                        continue
+
+                if not splitline or len(splitline) <= accindex or accindex < 0:
                     continue
+                # Track column count from first data row if header wasn't present
+                if _ncols is None:
+                    _ncols = len(splitline)
 
                 accession = splitline[accindex].strip() or None
                 taxid     = splitline[taxcol].strip() if len(splitline) > taxcol else None
@@ -1359,22 +1458,61 @@ def main():
                 if not accession:
                     continue
 
+                accession = str(accession)
+                accession_unv = re.sub(r"\.\d+$", "", accession)
+                target_accession = accession
+                if target_accession not in reference_hits:
+                    target_accession = _ref_by_unversioned.get(accession_unv)
+                if not target_accession:
+                    continue
+
                 # Optional: only fill taxid if it exists and if this accession is already in reference_hits
-                if accession in reference_hits:
-                    if taxid and not reference_hits[accession].get("taxid"):
-                        reference_hits[accession]["taxid"] = taxid
+                if target_accession in reference_hits:
+                    if taxid and not reference_hits[target_accession].get("taxid"):
+                        reference_hits[target_accession]["taxid"] = taxid
+
+                    # If org/name columns are empty or missing, prefer a taxdump
+                    # scientific name over accession fallback when taxid is known.
+                    _resolved_taxid = taxid or reference_hits[target_accession].get("taxid")
+                    _taxdump_name = (
+                        taxdump_names.get(str(_resolved_taxid))
+                        if _resolved_taxid and taxdump_names
+                        else None
+                    )
 
                     # Store the raw description from the mapfile BEFORE
                     # overwriting 'name' with the cleaner organism column.
                     # The description often contains "plasmid pXXX" which
                     # we need for plasmid tagging downstream.
                     if name:
-                        reference_hits[accession]["description"] = name
+                        reference_hits[target_accession]["description"] = name
                     if organism:
-                        reference_hits[accession]["name"] = organism
+                        reference_hits[target_accession]["name"] = organism
                     elif name:
-                        reference_hits[accession]["name"] = name
+                        reference_hits[target_accession]["name"] = name
+                    elif _taxdump_name:
+                        reference_hits[target_accession]["name"] = _taxdump_name
         f.close()
+
+    # ── Resolve missing names from taxdump/names.dmp ─────────────────────
+    # When the matchfile has only accession + taxid (no name/org columns),
+    # entries may still have name == accession.  Resolve them from
+    # taxdump_names so downstream JSON has real organism names.
+    if taxdump_names:
+        _resolved_count = 0
+        for _acc, _hit in reference_hits.items():
+            _cur_name = _hit.get('name', _acc)
+            _tid = _hit.get('taxid')
+            # If the name is still just the accession (never overwritten),
+            # look it up from names.dmp via the taxid.
+            if _tid and (_cur_name == _acc or not _cur_name):
+                _sci_name = taxdump_names.get(str(_tid))
+                if _sci_name:
+                    _hit['name'] = _sci_name
+                    _resolved_count += 1
+        if _resolved_count:
+            print(f"Resolved {_resolved_count} organism names from names.dmp (matchfile had no name/org columns)")
+
     # ── Tag plasmid accessions from the description field ──────────────────
     # Use 'description' (raw mapfile name column) which preserves strings
     # like "E. coli ETEC H10407 plasmid p666, complete sequence".
@@ -1387,12 +1525,6 @@ def main():
             _plasmid_count += 1
     if _plasmid_count:
         print(f"Tagged {_plasmid_count} accessions as plasmid")
-
-    taxdump, taxdump_names = {}, {}
-    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
-        taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
-    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
-        taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
 
     subrank = args.subrank
 
@@ -1968,6 +2100,189 @@ def main():
     else:
         _missing_pos = []
 
+    # ── In-silico control comparison annotation ──────────────────────────────
+    # Same pattern as lab controls: load the insilico JSON(s), index by key
+    # levels, compute fold-change metrics, and annotate each organism.
+    # We split by simulator type (ISS vs NanoSim) for per-type metrics tables.
+    _missing_insilico = []
+
+    def _classify_insilico_files(file_list):
+        """Split insilico control files into simulator-type buckets."""
+        buckets = {}
+        for fpath in (file_list or []):
+            bname = os.path.basename(fpath).lower()
+            if '_insilico_iss' in bname or '_iss.' in bname:
+                buckets.setdefault('iss', []).append(fpath)
+            elif '_insilico_nanosim' in bname or '_nanosim.' in bname:
+                buckets.setdefault('nanosim', []).append(fpath)
+            else:
+                buckets.setdefault('unknown', []).append(fpath)
+        return buckets
+
+    _isil_buckets = _classify_insilico_files(args.insilico_controls)
+    # Also build a combined index for the merged Ctrl spark bar annotation
+    _insilico_index = load_control_data(args.insilico_controls) if args.insilico_controls else None
+    _per_type_missing = {}  # sim_type -> list of missing entries
+
+    if _insilico_index:
+        # Treat insilico as a positive-like control: we compare sample vs
+        # what the simulation produced.  Use positive-control slots in the
+        # metrics so fold-over-pos semantics apply (sample / insilico).
+        _empty_neg = {"by_toplevelkey": {}, "by_key": {}, "by_subkey": {}}
+        _insilico_annotated = 0
+
+        for group in final_json:
+            grp_isil = compute_control_comparison(
+                data=group, neg_index=_empty_neg, pos_index=_insilico_index,
+                fold_threshold=args.control_fold_threshold, level="toplevelkey",
+            )
+            if grp_isil:
+                group['insilico_comparison'] = grp_isil
+                _insilico_annotated += 1
+
+            for member in group.get('members', []):
+                m_isil_key = compute_control_comparison(
+                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
+                    fold_threshold=args.control_fold_threshold, level="key",
+                )
+                m_isil_subkey = compute_control_comparison(
+                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
+                    fold_threshold=args.control_fold_threshold, level="subkey",
+                )
+                member['insilico_comparison'] = {}
+                if m_isil_key:
+                    member['insilico_comparison']['by_key'] = m_isil_key
+                if m_isil_subkey:
+                    member['insilico_comparison']['by_subkey'] = m_isil_subkey
+                _best_isil = m_isil_key or m_isil_subkey
+                if _best_isil:
+                    for _f in ('pos_min_tass', 'pos_min_reads',
+                               'tass_fold_over_pos', 'reads_fold_over_pos',
+                               'pos_control_values'):
+                        member['insilico_comparison'][_f] = _best_isil.get(_f)
+                    # Rename for clarity: these are insilico values
+                    member['insilico_comparison']['insilico_tass'] = _best_isil.get('pos_min_tass')
+                    member['insilico_comparison']['insilico_reads'] = _best_isil.get('pos_min_reads')
+                    member['insilico_comparison']['tass_fold_over_insilico'] = _best_isil.get('tass_fold_over_pos')
+                    member['insilico_comparison']['reads_fold_over_insilico'] = _best_isil.get('reads_fold_over_pos')
+
+        if _insilico_annotated:
+            print(f"In-silico comparison: annotated {_insilico_annotated} species groups "
+                  f"(insilico={len(args.insilico_controls or [])} files, "
+                  f"fold_threshold={args.control_fold_threshold})")
+
+        # ── Per-simulator-type annotation (for separate metrics tables) ────
+        # Load each simulator type's files separately and compute per-type
+        # comparison data stored under insilico_comparison_<type>
+        for _sim_type, _sim_files in _isil_buckets.items():
+            _type_index = load_control_data(_sim_files)
+            if not _type_index:
+                continue
+            _type_key = f"insilico_comparison_{_sim_type}"
+            for group in final_json:
+                grp_isil_t = compute_control_comparison(
+                    data=group, neg_index=_empty_neg, pos_index=_type_index,
+                    fold_threshold=args.control_fold_threshold, level="toplevelkey",
+                )
+                if grp_isil_t:
+                    group[_type_key] = grp_isil_t
+                for member in group.get('members', []):
+                    m_isil_t = compute_control_comparison(
+                        data=member, neg_index=_empty_neg, pos_index=_type_index,
+                        fold_threshold=args.control_fold_threshold, level="key",
+                    ) or compute_control_comparison(
+                        data=member, neg_index=_empty_neg, pos_index=_type_index,
+                        fold_threshold=args.control_fold_threshold, level="subkey",
+                    )
+                    if m_isil_t:
+                        member[_type_key] = {
+                            'insilico_tass': m_isil_t.get('pos_min_tass'),
+                            'insilico_reads': m_isil_t.get('pos_min_reads'),
+                            'tass_fold_over_insilico': m_isil_t.get('tass_fold_over_pos'),
+                            'reads_fold_over_insilico': m_isil_t.get('reads_fold_over_pos'),
+                            'pos_control_values': m_isil_t.get('pos_control_values'),
+                        }
+
+            # Per-type missing organisms
+            _type_missing = find_missing_positive_controls(
+                final_json, _type_index, levels=["key", "subkey"])
+            if _type_missing:
+                for entry in _type_missing:
+                    entry['control_source'] = f'insilico_{_sim_type}'
+                    entry['simulator_type'] = _sim_type
+                    _cat = 'Unknown'
+                    _entry_id = str(entry.get('id', ''))
+                    _entry_name = entry.get('name', '')
+                    _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
+                    if _pinfo:
+                        _raw_cat = _pinfo.get('callclass', 'Unknown')
+                        if _raw_cat:
+                            _raw_lower = str(_raw_cat).strip().lower()
+                            if 'primary' in _raw_lower:
+                                _cat = 'Primary'
+                            elif 'opportunistic' in _raw_lower:
+                                _cat = 'Opportunistic'
+                            elif 'potential' in _raw_lower:
+                                _cat = 'Potential'
+                            elif 'commensal' in _raw_lower:
+                                _cat = 'Commensal'
+                    entry['microbial_category'] = _cat
+                _per_type_missing[_sim_type] = _type_missing
+
+            # Per-type sample-only organisms
+            _type_sample_only = _find_sample_only_organisms(final_json, _type_index)
+            if _type_sample_only:
+                for group in final_json:
+                    tlk = str(group.get('toplevelkey', group.get('key', '')))
+                    if tlk and tlk in _type_sample_only:
+                        if _type_key not in group:
+                            group[_type_key] = {}
+                        if isinstance(group[_type_key], dict):
+                            group[_type_key]['missing_from_insilico'] = True
+
+        # Detect organisms present in insilico but missing from sample (combined)
+        # Use key/subkey levels for species-level resolution (not toplevelkey/genus)
+        _missing_insilico = find_missing_positive_controls(
+            final_json, _insilico_index, levels=["key", "subkey"])
+        if _missing_insilico:
+            # Tag as insilico-origin and enrich with microbial category from pathogens dict
+            for entry in _missing_insilico:
+                entry['control_source'] = 'insilico'
+                # Look up microbial category using taxid or name from pathogens dict
+                _cat = 'Unknown'
+                _entry_id = str(entry.get('id', ''))
+                _entry_name = entry.get('name', '')
+                _pinfo = pathogens.get(_entry_id) or pathogens.get(_entry_name)
+                if _pinfo:
+                    _raw_cat = _pinfo.get('callclass', 'Unknown')
+                    # Normalize to standard category names
+                    if _raw_cat:
+                        _raw_lower = str(_raw_cat).strip().lower()
+                        if 'primary' in _raw_lower:
+                            _cat = 'Primary'
+                        elif 'opportunistic' in _raw_lower:
+                            _cat = 'Opportunistic'
+                        elif 'potential' in _raw_lower:
+                            _cat = 'Potential'
+                        elif 'commensal' in _raw_lower:
+                            _cat = 'Commensal'
+                entry['microbial_category'] = _cat
+            print(f"Missing in-silico controls: {len(_missing_insilico)} organism(s) "
+                  f"in in-silico control not found in sample")
+
+        # Also detect organisms in sample but missing from insilico (combined)
+        _sample_only = _find_sample_only_organisms(final_json, _insilico_index)
+        if _sample_only:
+            print(f"Sample-only organisms: {len(_sample_only)} organism(s) "
+                  f"in sample not found in in-silico control")
+            # Store on each relevant group/member
+            for group in final_json:
+                tlk = str(group.get('toplevelkey', group.get('key', '')))
+                if tlk and tlk in _sample_only:
+                    if 'insilico_comparison' not in group:
+                        group['insilico_comparison'] = {}
+                    group['insilico_comparison']['missing_from_insilico'] = True
+
     # ── Build structured output with metadata ────────────────────────────────
     _all_keys = set()
     _all_subkeys = set()
@@ -2035,6 +2350,12 @@ def main():
             "control_fold_threshold": args.control_fold_threshold if (
                 args.negative_controls or args.positive_controls) else None,
             "missing_positive_controls": _missing_pos if _missing_pos else None,
+            "insilico_controls_used": [
+                os.path.basename(p) for p in (args.insilico_controls or [])
+            ] or None,
+            "insilico_simulator_types": list(_isil_buckets.keys()) if _isil_buckets else None,
+            "missing_insilico_controls": _missing_insilico if _missing_insilico else None,
+            "missing_insilico_by_type": _per_type_missing if _per_type_missing else None,
         },
         "organisms": _json_out,
     }

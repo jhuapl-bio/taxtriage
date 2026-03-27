@@ -501,35 +501,28 @@ def _sketch_window(args):
     return wid, SourmashSignature(mh, name=wid)
 
 
-def window_sigs_from_fasta(
-    fasta_path: str,
-    *,
-    fasta_label: Optional[str] = None,
-    ksize: int = 31,
-    scaled: int = 200,
-    window: int = 2000,
-    step: int = 500,
-    max_n_frac: float = 0.05,
-    contigs: Optional[List[str]] = None,
-    n_jobs: Optional[int] = None,
-) -> Dict[str, SourmashSignature]:
-    """Sketch fixed windows across contigs; if contig shorter than window, sketch the full contig once.
+def _sketch_window_batch(args):
+    """Top-level worker: sketch a batch of windows to reduce IPC overhead.
 
-    Parameters
-    ----------
-    n_jobs : int or None
-        Number of parallel workers for sketching.  ``None`` (default) uses all CPUs.
-        Set to 1 to disable parallelism.
+    Accepts (batch_of_tasks, ksize, scaled) where batch_of_tasks is a list of
+    (wid, subseq) tuples.  Returns a list of (wid, SourmashSignature).
     """
-    if fasta_label is None:
-        fasta_label = os.path.basename(fasta_path)
-    if n_jobs is None:
-        n_jobs = os.cpu_count() or 1
+    batch, ksize, scaled = args
+    results = []
+    for wid, subseq in batch:
+        mh = MinHash(n=0, ksize=ksize, scaled=scaled)
+        mh.add_sequence(subseq, force=True)
+        results.append((wid, SourmashSignature(mh, name=wid)))
+    return results
 
-    # ── Serial I/O: read all sequences and collect window tasks ──────────
+
+def _iter_window_tasks(fasta_path, fasta_label, ksize, window, step, max_n_frac, contigs):
+    """Generator that yields (wid, subseq) one contig at a time.
+
+    This avoids holding all subsequences in memory simultaneously -- only one
+    contig's worth of data is live at a time.
+    """
     fa = pysam.FastaFile(fasta_path)
-    tasks = []  # (wid, subseq, ksize, scaled)
-
     contig_list = contigs if contigs is not None else list(fa.references)
     for contig in contig_list:
         if contig not in fa.references:
@@ -537,8 +530,8 @@ def window_sigs_from_fasta(
 
         seq = fa.fetch(contig).upper()
         L = len(seq)
-
         if L < ksize:
+            del seq
             continue
 
         if L < window:
@@ -554,21 +547,69 @@ def window_sigs_from_fasta(
                 if subseq.count("N") / len(subseq) > max_n_frac:
                     continue
             wid = make_window_id(fasta_label, contig, s, e)
-            tasks.append((wid, subseq, ksize, scaled))
+            yield wid, subseq
+
+        del seq  # free contig memory before moving to next
 
     fa.close()
 
-    # ── Parallel CPU-bound sketching ─────────────────────────────────────
+
+def window_sigs_from_fasta(
+    fasta_path: str,
+    *,
+    fasta_label: Optional[str] = None,
+    ksize: int = 31,
+    scaled: int = 200,
+    window: int = 2000,
+    step: int = 500,
+    max_n_frac: float = 0.05,
+    contigs: Optional[List[str]] = None,
+    n_jobs: Optional[int] = None,
+    batch_size: int = 500,
+) -> Dict[str, SourmashSignature]:
+    """Sketch fixed windows across contigs; if contig shorter than window, sketch the full contig once.
+
+    Parameters
+    ----------
+    n_jobs : int or None
+        Number of parallel workers for sketching.  ``None`` (default) uses all CPUs.
+        Set to 1 to disable parallelism.
+    batch_size : int
+        Number of windows per worker batch.  Limits peak memory by streaming
+        tasks to workers in fixed-size batches instead of materializing all
+        subsequences up front.
+    """
+    if fasta_label is None:
+        fasta_label = os.path.basename(fasta_path)
+    if n_jobs is None:
+        n_jobs = os.cpu_count() or 1
+
     sigs: Dict[str, SourmashSignature] = {}
 
-    if len(tasks) <= 50 or n_jobs <= 1:
-        for t in tasks:
-            wid, sig = _sketch_window(t)
-            sigs[wid] = sig
+    task_iter = _iter_window_tasks(fasta_path, fasta_label, ksize, window, step, max_n_frac, contigs)
+
+    if n_jobs <= 1:
+        # Serial: process one window at a time -- no list accumulation
+        for wid, subseq in task_iter:
+            mh = MinHash(n=0, ksize=ksize, scaled=scaled)
+            mh.add_sequence(subseq, force=True)
+            sigs[wid] = SourmashSignature(mh, name=wid)
     else:
+        # Parallel: stream batches to workers to cap memory
+        def _batch_iter():
+            batch = []
+            for wid, subseq in task_iter:
+                batch.append((wid, subseq))
+                if len(batch) >= batch_size:
+                    yield (batch, ksize, scaled)
+                    batch = []
+            if batch:
+                yield (batch, ksize, scaled)
+
         with ProcessPoolExecutor(max_workers=n_jobs) as pool:
-            for wid, sig in pool.map(_sketch_window, tasks, chunksize=max(1, len(tasks) // (n_jobs * 4))):
-                sigs[wid] = sig
+            for result_batch in pool.map(_sketch_window_batch, _batch_iter()):
+                for wid, sig in result_batch:
+                    sigs[wid] = sig
 
     return sigs
 
@@ -602,15 +643,18 @@ def _generate_sigs_for_fasta(args):
 
 
 def _search_chunk(args):
-    """Top-level worker: compare a chunk of query windows against all target sigs.
+    """Top-level worker: compare a chunk of query windows against a chunk of target sigs.
 
     Rebuilds MinHash objects once per target (cached for the chunk) and once per
     query, then does brute-force Jaccard comparison.
+
+    Changed from original: accepts a *target chunk* instead of ALL targets,
+    so each worker only reconstructs a subset -- dramatically reducing peak memory.
     """
     (query_items, target_items, jaccard_threshold, max_hits_per_query,
      skip_self_same_fasta, skip_self_same_contig) = args
 
-    # Pre-build all target MinHash objects once for this worker
+    # Pre-build target MinHash objects for this chunk only
     target_mhs = {}
     target_parsed = {}
     for m_wid, m_mh_hashes, m_mh_ksize, m_mh_scaled in target_items:
@@ -726,11 +770,15 @@ def report_shared_windows_across_fastas(
         return
 
     # ── Phase 2: parallel pairwise search ───────────────────────────────
-    # Serialize MinHash data as (wid, hashes, ksize, scaled) tuples for pickling
+    # Serialize MinHash data as (wid, hashes, ksize, scaled) tuples for pickling.
+    # We convert hashes to a compact tuple instead of list to save memory.
     serialized = []
     for wid, sig in all_sigs.items():
         mh = sig.minhash
-        serialized.append((wid, list(mh.hashes), mh.ksize, mh.scaled))
+        serialized.append((wid, tuple(mh.hashes), mh.ksize, mh.scaled))
+
+    # Free the full SourmashSignature objects now that we have serialized data
+    del all_sigs
 
     n_queries = len(serialized)
 
@@ -742,25 +790,66 @@ def report_shared_windows_across_fastas(
         ))
         all_results = chunk_results
     else:
-        # Split queries into chunks, each worker gets all targets
-        chunk_size = max(1, n_queries // n_jobs)
-        query_chunks = [
-            serialized[i:i + chunk_size]
-            for i in range(0, n_queries, chunk_size)
-        ]
-        print(f"  Searching {n_queries} windows across {len(query_chunks)} parallel chunks")
+        # ── Memory-safe tiled approach ──────────────────────────────────
+        # Instead of sending ALL targets to each worker (which causes OOM
+        # when pickled N_workers times), we tile the target space into
+        # chunks too.  Each job gets (query_chunk x target_chunk).
+        # After all tiles complete, we merge per-query hits and keep top-k.
+        #
+        # Memory per worker ≈ O(query_chunk + target_chunk) instead of
+        # O(query_chunk + ALL_targets).
 
-        all_results = []
-        with ProcessPoolExecutor(max_workers=min(n_jobs, len(query_chunks))) as pool:
+        # Heuristic: target chunk size so each worker's pickle payload
+        # stays under ~200 MB even with large hash sets.
+        # With average ~100 hashes/sig at 8 bytes each, ~1 KB per sig,
+        # 200k sigs ≈ 200 MB.  We cap at 2000 targets per chunk as a
+        # safe default that works well up to ~500k total windows.
+        TARGET_CHUNK_CAP = 2000
+        QUERY_CHUNK_CAP = max(1, n_queries // n_jobs)
+
+        query_chunks = [
+            serialized[i:i + QUERY_CHUNK_CAP]
+            for i in range(0, n_queries, QUERY_CHUNK_CAP)
+        ]
+        target_chunks = [
+            serialized[i:i + TARGET_CHUNK_CAP]
+            for i in range(0, n_queries, TARGET_CHUNK_CAP)
+        ]
+
+        n_tiles = len(query_chunks) * len(target_chunks)
+        print(f"  Searching {n_queries} windows: {len(query_chunks)} query chunks x "
+              f"{len(target_chunks)} target chunks = {n_tiles} tiles across {n_jobs} workers")
+
+        # Collect raw hits per query window id, then trim to top-k at the end
+        from collections import defaultdict as _dd
+        per_query_hits = _dd(list)
+
+        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
             futures = []
-            for chunk in query_chunks:
-                futures.append(pool.submit(
-                    _search_chunk,
-                    (chunk, serialized, jaccard_threshold, max_hits_per_query,
-                     skip_self_same_fasta, skip_self_same_contig),
-                ))
-            for fut in as_completed(futures):
-                all_results.extend(fut.result())
+            for q_chunk in query_chunks:
+                for t_chunk in target_chunks:
+                    futures.append(pool.submit(
+                        _search_chunk,
+                        (q_chunk, t_chunk, jaccard_threshold,
+                         max_hits_per_query,
+                         skip_self_same_fasta, skip_self_same_contig),
+                    ))
+            for fut in tqdm(as_completed(futures), total=len(futures),
+                            desc="  Tile search", unit="tile"):
+                for row in fut.result():
+                    # row = (q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, j, c1, c2)
+                    q_key = (row[0], row[1], row[2], row[3])
+                    per_query_hits[q_key].append(row)
+
+        # Merge: keep only top max_hits_per_query per query window
+        all_results = []
+        for q_key, hits in per_query_hits.items():
+            hits.sort(key=lambda r: r[8], reverse=True)  # sort by jaccard
+            all_results.extend(hits[:max_hits_per_query])
+        del per_query_hits
+
+    # Free serialized data before writing results
+    del serialized
 
     # ── Phase 3: write results ──────────────────────────────────────────
     with open(output_csv, "w", newline="") as out:
