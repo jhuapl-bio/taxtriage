@@ -53,7 +53,7 @@ process ALIGNMENT_PER_SAMPLE {
     def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
-    def assemblyi = assembly ? " -j ${assembly} " : " "
+    // def assemblyi = assembly ? " -j ${assembly} " : " "
     def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
     def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
@@ -93,7 +93,7 @@ process ALIGNMENT_PER_SAMPLE {
     match_paths.py \\
         -i $bamfiles \\
         -o $output $bedgraph \\
-        -s $id $assemblyi \\
+        -s $id \\
         $type $read_count \\
         --output_dir $output_dir $fastas $cpu_count \\
         --scaled 8000 \\

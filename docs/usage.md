@@ -1,8 +1,12 @@
 # TaxTriage: Usage
 
-> _Documentation of pipeline parameters is generated automatically from the pipeline schema and can no longer be found in markdown files._
->
-> See [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
+To see further details on specific steps of the pipeline, please see the following documentation:
+
+- [Troubleshooting](./troubleshooting.md) for a working set of information on the common issues found or FAQ needs
+- [Score Calculation](./tass_scoring_methods.md) For information on how the TASS score is calculated and how the different parameters influence it.
+- [In Silico Validation](./insilico_simulation.md) for information on how the pipeline was validated with simulated data and how to interpret the results of that validation.
+- [Samplesheet information](#samplesheet-information)
+- [Top Hits](#top-hits-calculation) for information on how the top hits are calculated and how to interpret them.
 
 ## Introduction
 
@@ -410,8 +414,9 @@ Unless you are using Seqera, most of the temporary directories and final outputs
 
 In order to properly identify, with confidence, the organisms present post-alignment(s), we utilize several curated pipelines/workflows using for metagenomics that are publicly available. Using benchmarks and results identified in several papers, we prioritize and weight the confidence metrics used based on their F1 Scores.
 
-Weighted Confidence Score: The final scoring methodology is defined [here](similarity_metrics_v2.pdf)
+[TASS V3 Scoring](./tass_scoring_methods.md)
 
+**Deprecated**: Weighted Confidence Score V1-2: The final scoring methodology is defined [here](similarity_metrics_v2.pdf)
 ![Figure 1](../assets/confidence_metric.png)
 
 ### Top Hits Calculation
