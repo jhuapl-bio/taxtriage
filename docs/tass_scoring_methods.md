@@ -665,13 +665,15 @@ bedtools genomecov -ibam Miseq_Run_A.Miseq_Run_A.dwnld.references.bam -bg > Mise
 | NC_001781.1 | 11250        |
 | NC_001803.1 | 208893       |
 
-You can also provide custom names with the `--namecol` option if you don't want the taxdump names to be used by default. You'll need to have the column added to the match file and specify the column name like `--namecol 2`. Example:
-| Acc | Mapped_Value | Custom_Name |
-|---|---|---|
-| NC_000913.3 | 511145 | Escherichia coli str. K-12 substr. MG1655 |
-| NC_000964.3 | 224308 | Bacillus subtilis subsp. subtilis str. 168 |
-| NC_001781.1 | 11250 | Human respiratory syncytial virus |
-| NC_001803.1 | 208893 | Pseudomonas aeruginosa PAO1
+You can also provide custom names with the `--namecol` option if you don't want the taxdump names to be used by default. You'll need to have the column index (0-index) added to the match file and specify the column name like `--namecol 2`. Example:
+
+| Acc         | Mapped_Value | Custom_Name                                |
+| ----------- | ------------ | ------------------------------------------ |
+| NC_000913.3 | 511145       | Escherichia coli str. K-12 substr. MG1655  |
+| NC_000964.3 | 224308       | Bacillus subtilis subsp. subtilis str. 168 |
+| NC_001781.1 | 11250        | Human respiratory syncytial virus          |
+| NC_001803.1 | 208893       | Pseudomonas aeruginosa PAO1                |
+
 |
 
 Finally, the TASS scoring can be run with:
@@ -697,7 +699,7 @@ match_paths.py \
        --thresholds_json sampletype_best_thresholds.json
 ```
 
-:warning: The above command is an example and may require adjustments based on your specific file paths, sample types, and desired parameters.
+:warning: The above command is an example and may require adjustments based on your specific file paths, sample types, and desired parameters. Not all of these args are required as well, so you can omit those that don't apply to your use case. For instance, if you don't have Kraken2/Centrifuge results for comparison, you can leave out the `--k2` argument.
 
 The output will be in JSON format, which can be generated downstream as ODR and TSV with:
 
@@ -717,9 +719,9 @@ Scores are computed at multiple taxonomic levels:
 1. **Accession level** — Raw per-reference statistics
 2. **Strain level** (key) — Accessions grouped by strain; plasmid accessions are tagged and scored separately
 3. **Species level** (subkey) — Aggregated across strains; minhash comparison operates at this level
-4. **Genus level** (toplevelkey) — Highest aggregation; used for HMP lookups and final reporting
+4. **Genus level** (toplevelkey) — Highest aggregation, used for HMP lookups and final reporting. You can adjust this for higher level lookups such as order or family.
 
-At each level, metrics are either summed (`numreads`, `covered_bases`), averaged (MAPQ), or re-computed from scratch (`gini`, `breadth` from merged regions).
+At each level, metrics are either summed (`numreads`, `covered_bases`), averaged (MAPQ), or re-computed from scratch (`gini`, `breadth` from merged regions). The toplevelkey can also be adjusted with the `--rank` parameter in TaxTriage.
 
 ---
 
@@ -727,10 +729,26 @@ At each level, metrics are either summed (`numreads`, `covered_bases`), averaged
 
 When ground-truth labels are available (e.g., simulated data where read names encode their true origin), the pipeline can automatically optimize scoring weights using:
 
-1. **Differential Evolution** — broad search across the full weight space
-2. **SLSQP** — local refinement starting from the best solution found above
+1. [**Differential Evolution**](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html) — broad search across the full weight space
+2. [**SLSQP**](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html) — local refinement starting from the best solution found above
 
 The objective is to maximize the score gap between true positives and false positives, while keeping weights within valid ranges. Optimized weights are written back into the pipeline arguments for the final scoring pass.
+
+See info in the [insilico testing docs](insilico_simulation.md) for how reads were generated to establish a ground truth of hits post-alignment. When optimizing, the reads are mapped to ground truth by reading the fastq read names, which are formatted like this:
+
+`@CP000253.1_621_4/1`
+
+Where the first part is the reference accession is the organism name. From these headers, we can determine which reads belong to which organisms and use that as a basis for evaluating how well different weight combinations separate true positives from false positives. Keep it in mind when establishing your own benchmarks. See the arguments within `match_paths.py` for how to enable weight optimization and adjust the optimization parameters. You can start with just applying `--optimize` provided your BAM file reads have names formatted like the above example. All of the read ids should have a match the the reference FASTA file. Also make sure the accession matches the references in the `-m` argument (match file) so that the taxid lookup works correctly. For example:
+
+| Acc         | Mapped_Value |
+| ----------- | ------------ |
+| NC_000913.3 | 511145       |
+| CP000253.1  | 93601        |
+| ......      | ......       |
+
+You can see that CP000253.1 matches the read id when parsing the read info out i.e. `_621_4/1`. We recommend using InsilicoSeq to generate simulate reads.
+
+Lastly, outside of the scope of this document, we've collected various clinical datasets with spike-in positives and have been used for benchmarking to create the "optimized" weights for common clinical sample types. This is found [here](../assets/sampletype_best_thresholds.json) in the repo. The specified sample type is matched based on the platform $[ILLUMINA, NANOPORE]$ and body site $[nasal, oral, skin, gut, blood, sterile]$. If you have a dataset with known positives that you'd like to use for optimizing weights, you can add it to this JSON file and re-run the pipeline with `--thresholds_json` pointing to your updated file.
 
 ---
 
