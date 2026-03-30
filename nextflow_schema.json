@@ -538,6 +538,15 @@
                     "help_text": "For a minor bug on cluster environments where megahit can't work on compressed files",
                     "fa_icon": "fas fa-ban"
                 },
+                "thresholds_json": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "schema": "assets/schema_input.json",
+                    "default": null,
+                    "description": "Path to a json file that contains the sample type and platform specific thresholds for the TASS Score. If not provided, it uses the default thresholds determined in our testing.",
+                    "help_text": "",
+                    "fa_icon": "fas fa-file-csv"
+                },
                 "distributions": {
                     "type": "string",
                     "format": "file-path",

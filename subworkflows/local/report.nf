@@ -43,11 +43,15 @@ workflow REPORT {
         // make the ch_report_microbert an empty path channel
         ch_report_microbert = Channel.empty()
         ch_empty_file3 = Channel.fromPath("$projectDir/assets/NO_FILE3", checkIfExists: true)
-        ch_sampletype_thresholds = params.disable_auto_weights
-            ? Channel.value(file("$projectDir/assets/NO_FILE_thresholds"))
-            : Channel.fromPath("$projectDir/assets/sampletype_best_thresholds.json", checkIfExists: false)
-                .ifEmpty { Channel.value(file("$projectDir/assets/NO_FILE_thresholds")) }
 
+        if (params.thresholds_json){
+            ch_sampletype_thresholds = Channel.fromPath(params.thresholds_json, checkIfExists: true)
+        } else {
+            ch_sampletype_thresholds = params.disable_auto_weights
+                ? Channel.value(file("$projectDir/assets/NO_FILE_thresholds"))
+                : Channel.fromPath("$projectDir/assets/sampletype_best_thresholds.json", checkIfExists: false)
+                    .ifEmpty { Channel.value(file("$projectDir/assets/NO_FILE_thresholds")) }
+        }
         // Placeholder files for when no control JSONs are available
         ch_no_neg_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_neg_ctrl"))
         ch_no_pos_ctrl = Channel.value(file("$projectDir/assets/NO_FILE_pos_ctrl"))
