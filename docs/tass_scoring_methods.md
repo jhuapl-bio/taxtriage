@@ -180,9 +180,9 @@ This fraction is passed through a sigmoid curve to produce a 0–1 confidence va
 
 Defined in `breadth_score_sigmoid()`:
 
-$$
+```math
 \text{breadth\_sigmoid}(c) = \frac{1}{1 + e^{-s \cdot (c - m)}}
-$$
+```
 
 Where:
 
@@ -196,17 +196,17 @@ Where:
 
 Low mapping quality (MAPQ ≈ 0) suggests reads are aligning ambiguously — they may not truly belong to this organism. The breadth sigmoid is scaled down when most reads have low MAPQ:
 
-$$
+```math
 \text{mapq\_scale} = (\text{highmapq\_fraction})^{p}
-$$
+```
 
 Where $p$ = `mapq_breadth_power` (default: 2.0).
 
 ### 5.4 Final Breadth Log Score
 
-$$
+```math
 \boxed{\text{breadth\_log\_score} = \text{breadth\_sigmoid}(c, m, s) \times (\text{highmapq\_fraction})^{p}}
-$$
+```
 
 **Example:** Coverage = 15%, midpoint = 0.01, steepness = 12,000, 90% of reads have high MAPQ:
 
@@ -241,9 +241,9 @@ The full computation lives in `getGiniCoeff()` and has five sub-steps.
 
 Each region's depth is log-transformed to reduce the effect of extreme outliers:
 
-$$
+```math
 d'_i = \log_{10}(1 + d_i)
-$$
+```
 
 A histogram maps each transformed depth value to the number of bases at that depth. Uncovered bases are recorded at $\log_{10}(1 + 0) = 0$.
 
@@ -255,13 +255,13 @@ The Gini coefficient summarizes inequality in coverage:
 2. Build cumulative Lorenz points: $(x_i, y_i)$ where $x_i$ = cumulative fraction of bases, $y_i$ = cumulative fraction of total coverage
 3. Compute the area under the Lorenz curve via trapezoidal integration:
 
-$$
+```math
 A_L = \sum_{i} \frac{(x_{i+1} - x_i)(y_i + y_{i+1})}{2}
-$$
+```
 
-$$
+```math
 G_{\text{raw}} = 1 - 2 A_L
-$$
+```
 
 $G_{\text{raw}} \in [0, 1]$: 0 = perfectly uniform, 1 = maximally unequal.
 
@@ -269,9 +269,9 @@ $G_{\text{raw}} \in [0, 1]$: 0 = perfectly uniform, 1 = maximally unequal.
 
 Since low Gini (uniform coverage) is what we want, we invert it:
 
-$$
+```math
 G_{\text{transformed}} = \text{clamp}\!\Big(\alpha \cdot \sqrt{1 - G_{\text{raw}}},\; 0,\; 1\Big)
-$$
+```
 
 Where $\alpha = 1.8$ (default). Examples:
 
@@ -282,9 +282,9 @@ Where $\alpha = 1.8$ (default). Examples:
 
 Larger genomes need more reads to achieve uniform coverage. A log-scale bonus rewards organisms with bigger genomes:
 
-$$
+```math
 S_{\text{length}} = 1 + R \cdot \log_{10}\!\Big(\max\!\big(\frac{\min(L, L_{\max})}{L_{\text{base}}},\; 1\big)\Big)
-$$
+```
 
 Where:
 
@@ -297,21 +297,21 @@ Where:
 
 This measures how spread out the covered regions are across the genome. Even if depth is uniform, we want reads scattered in different places, not all in one block.
 
-$$
+```math
 \bar{m} = \frac{1}{n}\sum_{i=1}^{n} \frac{s_i + e_i}{2}
 \qquad
 \sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(m_i - \bar{m})^2
 \qquad
 D = \sqrt{\frac{\sigma^2}{L^2 / 12}}
-$$
+```
 
 $L^2/12$ is the maximum variance of a uniform distribution over $[0, L]$. $D \in [0, 1]$: higher means more spatially spread out.
 
 #### Step 6: Final Gini Score
 
-$$
+```math
 \boxed{\text{gini\_coefficient} = \min\!\Big(1.0,\;\; G_{\text{transformed}} \times S_{\text{length}} \times (1 + \beta \cdot D)\Big)}
-$$
+```
 
 Where $\beta$ = dispersion weight (default: 0.5).
 
@@ -343,40 +343,40 @@ The conflict detection pipeline produces per-reference metrics at the species le
 
 The raw minhash score penalizes organisms that lost a lot of reads:
 
-$$
+```math
 \text{penalty} = \frac{1}{1 + e^{-k \cdot (\Delta\% - x_0)}}
 \qquad k = 0.90,\; x_0 = -10.0
-$$
+```
 
-$$
+```math
 \text{minhash\_score} = \min(1.0,\;\; B_r \times \text{penalty})
-$$
+```
 
 **Fallback (no comparison data available):**
 
-$$
+```math
 \text{minhash\_score}_{\text{fallback}} = \text{rpm\_confidence} \times 0.5
-$$
+```
 
 Where `rpm_confidence` is a sigmoid over the fraction of total reads:
 
-$$
+```math
 \text{rpm\_confidence} = \frac{1}{1 + e^{-50000 \cdot (f_{\text{reads}} - 0.0001)}}
-$$
+```
 
 ### 7.3 Confidence Gating
 
 Before the minhash score is used, it's gated by a coverage confidence factor. This prevents organisms with very little coverage from getting inflated minhash scores:
 
-$$
+```math
 \text{conf} = w_b \cdot \text{breadth\_sigmoid}(c) + w_g \cdot G_{\text{score}}
-$$
+```
 
 By default $w_b = 1.0$ and $w_g = 0.0$, so gating is based purely on breadth.
 
-$$
+```math
 \boxed{\text{minhash\_reduction} = \text{clamp}(\text{conf},\; 0,\; 1)}
-$$
+```
 
 > **Note:** The value stored as `minhash_reduction` is the _confidence_ value, not the raw minhash score itself. This means the minhash component represents how confident we are that the organism's alignment signal is real — primarily driven by whether the organism has meaningful genome breadth.
 
@@ -388,13 +388,13 @@ $$
 
 This compares the observed abundance to what the Human Microbiome Project found for this organism at the relevant body site. If an organism is at typical abundance for that site, it gets a neutral score. Unusually high or low abundance is flagged.
 
-$$
+```math
 f_{\text{obs}} = \frac{\text{numreads}}{\text{total\_reads}}
 \qquad
 z = \frac{f_{\text{obs}} - \mu_{\text{HMP}}}{\sigma_{\text{HMP}}}
 \qquad
 P_{\text{base}} = \Phi(z)
-$$
+```
 
 The base percentile is then adjusted based on how far from normal the observation is:
 
@@ -411,26 +411,26 @@ Within each species, strains are compared by their plasmid coverage. Computed in
 
 **Absolute quality** (does this plasmid have real coverage?):
 
-$$
+```math
 Q = \sqrt{B_{\text{plasmid}} \times G_{\text{plasmid}}}
-$$
+```
 
 Where $B_{\text{plasmid}}$ = `breadth_score_sigmoid(plasmid_coverage)` and $G_{\text{plasmid}}$ = `getGiniCoeff(plasmid_regions)`. The geometric mean requires both breadth and uniformity to be decent — one alone isn't enough.
 
 **Relative disparity** (how does this strain compare to others in the same species?):
 
-$$
+```math
 D_{\text{rel}} = \begin{cases}
 \min\!\big(1.0,\; 0.7 \cdot \frac{c_{\text{strain}}}{c_{\max}} + 0.3 \cdot \frac{r_{\text{strain}}}{r_{\max}}\big) & \text{if multiple strains have plasmids} \\
 1.0 & \text{if this is the only strain with a plasmid}
 \end{cases}
-$$
+```
 
 **Final plasmid score:**
 
-$$
+```math
 \text{plasmid\_score} = \min(1.0,\;\; Q \times D_{\text{rel}})
-$$
+```
 
 Strains with no plasmid accessions receive `plasmid_score = 0`.
 
@@ -438,13 +438,13 @@ Strains with no plasmid accessions receive `plasmid_score = 0`.
 
 A sigmoid in log₁₀-RPM space that rewards organisms with meaningful RPM even when absolute read counts are low. Particularly useful for sterile or blood-site samples.
 
-$$
+```math
 \text{RPM} = \frac{\text{numreads}}{\text{total\_reads}} \times 10^6
-$$
+```
 
-$$
+```math
 \text{abundance\_confidence} = \frac{1}{1 + e^{-s \cdot (\log_{10}(\text{RPM}) - \log_{10}(m))}}
-$$
+```
 
 Where $s$ = steepness (default: 2.0) and $m$ = RPM midpoint (default: 5.0).
 
@@ -464,28 +464,28 @@ Average amino acid identity from a DIAMOND BLASTX protein alignment, weighted by
 
 Computed in `compute_tass_score()`:
 
-$$
+```math
 \boxed{
 \text{TASS}_{\text{base}} = \sum_{i} w_i \cdot x_i
 }
-$$
+```
 
 Expanded:
 
-$$
+```math
 \text{TASS}_{\text{base}} = w_b \cdot \text{breadth\_log\_score}
 \;+\; w_m \cdot \text{minhash\_reduction}
 \;+\; w_g \cdot \text{gini\_coefficient}
 \;+\; w_h \cdot \text{hmp\_percentile}
-$$
+```
 
-$$
+```math
 \;+\; w_d \cdot \text{disparity}
 \;+\; w_q \cdot \text{mapq\_score}
 \;+\; w_{k2} \cdot \text{k2\_disparity\_score}
 \;+\; w_{di} \cdot \text{diamond\_identity}
 \;+\; w_{ac} \cdot \text{abundance\_confidence}
-$$
+```
 
 ### 9.2 Default Weights
 
@@ -507,9 +507,9 @@ $$
 
 **Plasmid bonus** (applied after the base sum):
 
-$$
+```math
 \text{TASS}_1 = \text{TASS}_{\text{base}} + w_{\text{plasmid}} \times \text{plasmid\_score}
-$$
+```
 
 Where $w_{\text{plasmid}}$ = `plasmid_bonus_weight` (default: 0.0 — disabled).
 
@@ -517,9 +517,9 @@ Where $w_{\text{plasmid}}$ = `plasmid_bonus_weight` (default: 0.0 — disabled).
 
 When `--abundance_gate` is enabled, the full score is multiplied by the abundance confidence sigmoid. This collapses scores for organisms with very low read fractions:
 
-$$
+```math
 \text{TASS}_2 = \text{TASS}_1 \times \text{abundance\_confidence}
-$$
+```
 
 **Note:** This is exclusive with the additive `plasmid_bonus_weight` approach.
 
@@ -527,9 +527,9 @@ $$
 
 When `score_power` ≠ 1.0, a power transform reshapes the score distribution:
 
-$$
+```math
 \text{TASS}_3 = (\text{clamp}(\text{TASS}_2, 0, 1))^{p}
-$$
+```
 
 Where $p$ = `score_power`. Some examples:
 
@@ -539,9 +539,9 @@ Where $p$ = `score_power`. Some examples:
 
 ### 9.6 Final Clamping
 
-$$
+```math
 \boxed{\text{TASS}_{\text{final}} = \text{clamp}(\text{TASS}_3,\; 0,\; 1)}
-$$
+```
 
 ---
 
@@ -701,26 +701,26 @@ The objective is to maximize the score gap between true positives and false posi
 
 ### Breadth Log Score
 
-$$
+```math
 \text{breadth\_log\_score} = \frac{1}{1 + e^{-s(c-m)}} \times (\text{highmapq\_fraction})^p
-$$
+```
 
 ### Gini Coefficient Score
 
-$$
+```math
 \text{gini\_coefficient} = \min\!\Big(1,\; \alpha\sqrt{1-G} \;\times\; \big(1 + R\log_{10}\tfrac{L}{L_b}\big) \;\times\; (1+\beta D)\Big)
-$$
+```
 
 ### Minhash Reduction
 
-$$
+```math
 \text{minhash\_reduction} = \text{clamp}\!\big(w_b \cdot \text{breadth\_sigmoid}(c) + w_g \cdot G_{\text{score}},\; 0,\; 1\big)
-$$
+```
 
 ### TASS Score
 
-$$
+```math
 \text{TASS} = \text{clamp}\!\bigg(\Big[\sum_i w_i x_i + w_{\text{plasm}} \cdot P\Big] \times \text{gate}^{[ab\_gate]}\bigg)^{p}
-$$
+```
 
 Where $\text{gate}^{[ab\_gate]}$ = plasmid_weight if the gate is enabled, or 1.0 if disabled. $p$ = score_power (1.0 if disabled).
