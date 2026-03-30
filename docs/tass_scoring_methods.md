@@ -227,6 +227,8 @@ breadth_log_score = 1.0 × 0.81 = 0.81
 
 ## 6. Component 2: Gini Coefficient (Coverage Uniformity)
 
+Inspiration for Gini is derived from a paper that used gini to determine gene expression information from [GeneGini](https://doi.org/10.1016/j.cels.2018.01.003) (DOI: 10.1016/j.cels.2018.01.003).
+
 ### 6.1 What It Measures
 
 The Gini score measures how evenly reads are spread across the genome. If an organism is truly present, reads should appear across many different genomic positions — not just cluster in one conserved region.
@@ -489,17 +491,17 @@ Expanded:
 
 ### 9.2 Default Weights
 
-| Component              | Weight   | CLI Flag                      |
-| ---------------------- | -------- | ----------------------------- |
-| `breadth_log_score`    | **0.26** | `--breadth_weight`            |
-| `minhash_reduction`    | **0.29** | `--minhash_weight`            |
-| `gini_coefficient`     | **0.45** | `--gini_weight`               |
-| `hmp_percentile`       | 0.00     | `--hmp_weight`                |
-| `disparity`            | 0.00     | `--disparity_weight`          |
-| `mapq_score`           | 0.00     | `--mapq_score`                |
-| `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight` |
-| `diamond_identity`     | 0.00     | `--diamond_identity`          |
-| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      |
+| Component              | Weight   | CLI Flag                      | Type |
+| ---------------------- | -------- | ----------------------------- | ---- |
+| `breadth_log_score`    | **0.26** | `--breadth_weight`            |  included |
+| `minhash_reduction`    | **0.29** | `--minhash_weight`            | included |
+| `gini_coefficient`     | **0.45** | `--gini_weight`               | included |
+| `hmp_percentile`       | 0.00     | `--hmp_weight`                | included |
+| `disparity`            | 0.00     | `--disparity_weight`          | included |
+| `mapq_score`           | 0.00     | `--mapq_score`                | included |
+| `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight` | included |
+| `diamond_identity`     | 0.00     | `--diamond_identity`          | included |
+| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      | bonus |
 
 **Why don't the weights add up to 1.0?** If the three primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.0 when normalized, and plasmid adds another 0.19. This is intentional — the final score is clamped to [0, 1] at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism presence is good/high.
 
