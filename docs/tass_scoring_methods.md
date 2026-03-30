@@ -4,25 +4,7 @@
 
 ---
 
-### A Quick Note on Math Notation Used in This Document
-
-Before diving in, here are some common math symbols you'll see throughout:
-
-- **∈** — means "is in the range of" or "falls between." For example, `D ∈ [0, 1]` just means D can be any value from 0 to 1.
-- **Greek letters** — these are just variable names, like nicknames for values:
-  - **α** (alpha) — a scaling multiplier
-  - **β** (beta) — a weighting factor that controls how much influence something has
-  - **σ²** (sigma squared) — the statistical variance, which tells you how spread out values are from the average
-  - **μ** (mu) — the average (mean) of a set of values
-  - **Φ** (Phi) — the standard normal cumulative distribution function (basically: "what percentile does this value fall at on a bell curve?")
-  - **Δ** (delta) — means "change in" or "difference"
-- **Σ** (capital sigma) — means "add up all the values." For example, `Σ wᵢ · xᵢ` means "multiply each weight by its matching score, then add them all together."
-- **log₁₀** — the base-10 logarithm. It answers "10 raised to what power gives me this number?" For example, log₁₀(1000) = 3 because 10³ = 1000. We use logs to compress big ranges of values into more manageable ones.
-- **e** — Euler's number (~2.718), a mathematical constant used in sigmoid ("S-shaped") curves.
-- **clamp(value, 0, 1)** — if the value goes below 0, force it to 0; if it goes above 1, force it to 1. Think of it as guardrails that keep a number within bounds.
-- **min(a, b)** — whichever value is smaller.
-
----
+See [notations](#notations) for info on the mathematical symbols used in the formulas below.
 
 ## 1. Pipeline Overview
 
@@ -56,7 +38,7 @@ The BAM file is read using `pysam`. For each reference, we extract:
 - **`numreads`** — Number of primary, non-supplementary alignments
 - **`meanmapq`** — Average mapping quality across all aligned reads
 - **`highmapq_fraction`** — Fraction of reads with MAPQ ≥ threshold (e.g., MAPQ ≥ 5)
-- **`covered_regions`** — List of `(start, end, depth)` tuples from the bedgraph
+- **`covered_regions`** — List of `(start, end, depth)` from the bedgraph
 
 ### 2.2 Coverage from Depth/Bedgraph
 
@@ -96,16 +78,16 @@ The result is clipped to [0, 1] to handle any out-of-range values.
 
 ### 3.1 What This Stage Does
 
-Closely related organisms (e.g., _E. coli_ vs _Shigella_) share large regions of their genomes. This means reads from one organism can legitimately align to the other — a problem called **cross-mapping**. Left unchecked, cross-mapping inflates the apparent confidence for organisms that aren't really there.
+Closely related organisms (e.g., _E. coli_ vs _Shigella_) share large regions of their genomes. This means reads from one organism can legitimately align to the other — a problem called **cross-mapping**. Cross-mapping inflates the apparent confidence for organisms that aren't really there.
 
-This stage finds those shared regions and removes a proportional share of ambiguous reads before scoring.
+This step finds those shared regions and removes a proportional share of ambiguous reads before scoring.
 
 ### 3.2 Region Merging
 
 Raw bedgraph intervals are merged into larger contiguous regions using `merge_bedgraph_regions()`. The default strategy (`"jump"`) groups adjacent intervals when:
 
 1. The depth change between consecutive intervals is ≤ a threshold (set automatically from the 97.5th percentile of depth)
-2. The gap between intervals is ≤ 10% of the reference length (configurable)
+2. The gap between intervals is ≤ 10% of the reference length (editable via `--gap_allowance`)
 3. The merged group doesn't exceed `max_group_size` intervals
 
 The result is a smaller set of meaningful regions per reference, each described by `(chrom, start, end, mean_depth)`.
@@ -141,7 +123,7 @@ Any pair of regions from _different_ references with Jaccard similarity ≥ `min
 - **Nodes** are genomic regions `(ref, start, end)` — each node represents one stretch of one organism's genome.
 - **Edges** connect regions from different organisms that look too similar (Jaccard similarity ≥ threshold). **Jaccard similarity** is a simple measure of overlap: it counts how many k-mers two regions share divided by the total unique k-mers between them. A value of 1.0 means identical; 0.0 means nothing in common.
 
-Connected components (found via BFS — breadth-first search, a standard way to find clusters in a network) define **conflict groups** — clusters of regions across multiple organisms that share significant k-mer content and therefore could cause reads to be ambiguously assigned.
+Connected components (found via BFS — breadth-first search) define **conflict groups** clusters of regions across multiple organisms that share significant k-mer content and therefore could cause reads to be ambiguously assigned.
 
 ### 3.6 Proportional Read Removal
 
@@ -298,7 +280,7 @@ $G_{\text{raw}}$ falls in the range [0, 1]: 0 means perfectly uniform coverage, 
 
 #### Step 3: Invert and Scale the Raw Gini
 
-Since a low raw Gini means uniform coverage (which is a *good* sign), we flip and scale it so that uniform coverage gives a *high* score:
+Since a low raw Gini means uniform coverage (which is a _good_ sign), we flip and scale it so that uniform coverage gives a _high_ score:
 
 ```math
 G_{\text{transformed}} = \text{clamp}\!\Big(\alpha \cdot \sqrt{1 - G_{\text{raw}}},\; 0,\; 1\Big)
@@ -326,7 +308,7 @@ Where:
 
 #### Step 5: Positional Dispersion Factor
 
-This measures how spread out the covered regions are physically along the genome. Even if the depth of coverage is uniform, we want reads scattered across many different locations — not all clumped in one contiguous block. Think of it like this: if you're checking whether someone actually read a whole book, you'd be more convinced if they highlighted passages from every chapter, not just one section.
+This measures how spread out the covered regions are physically along the genome. Even if the depth of coverage is uniform, we want reads scattered across many different locations and not all clumped in one contiguous block. Think of it like this: if you're checking whether someone actually read a whole book, you'd be more convinced if they could talk about many passages from every chapter with general detail instead of having a highly detailed summary of just one chapter.
 
 ```math
 \bar{m} = \frac{1}{n}\sum_{i=1}^{n} \frac{s_i + e_i}{2}
@@ -341,7 +323,7 @@ Breaking this down:
 - First, we find the **midpoint** of each covered region: $(s_i + e_i) / 2$, where $s_i$ is the start position and $e_i$ is the end position of region $i$.
 - $\bar{m}$ (m-bar) is the **average midpoint** across all $n$ regions. It tells us where the "center of mass" of coverage is.
 - $\sigma^2$ (sigma squared) is the **variance** of those midpoints — how spread out they are from the average. If all regions are near the same spot, variance is low. If they're scattered across the genome, variance is high.
-- **$L^2/12$** is the key normalization term. It represents the **maximum possible variance** you'd see if regions were spread out as evenly as possible (uniformly distributed) across a genome of length $L$. This comes from a well-known statistical fact: a uniform distribution over any range [0, L] has a variance of exactly L²/12. By dividing the actual variance by this theoretical maximum, we get a ratio that tells us "how spread out are our regions compared to the best-case scenario?"
+- **$L^2/12$** is the key normalization term. It represents the **maximum possible variance** you'd see if regions were spread out as evenly as possible (uniformly distributed) across a genome of length $L$. This comes from a well-known statistical fact: a uniform distribution over any range [0, L] has a variance of exactly L²/12. By dividing the actual variance by this, we get a ratio that tells us "how spread out are our regions compared to the best-case scenario?" The denominator has been shown with some slight benchmarking to be sufficient for most genomes but could use some additional tuning in the future.
 - $D$ (the Dispersion factor) is the square root of that ratio, which brings it back to the same scale as the original positions. $D$ falls in the range [0, 1]: a value near 0 means everything is clustered together, while a value near 1 means the regions are spread out almost as well as theoretically possible.
 
 #### Step 6: Final Gini Score
@@ -445,9 +427,9 @@ Breaking this down:
 - $\mu_{\text{HMP}}$ (mu) is the **average abundance** for this organism at this body site, according to the Human Microbiome Project data.
 - $\sigma_{\text{HMP}}$ (sigma) is the **standard deviation** of that abundance — how much variation is normal.
 - $z$ is the **z-score**: how many standard deviations away from normal our observation is. A z-score of 0 means "exactly average," +2 means "well above average," and -2 means "well below average."
-- $\Phi(z)$ (Phi of z) converts the z-score into a **percentile** on a bell curve. For example, a z-score of 0 gives the 50th percentile; a z-score of +2 gives roughly the 97th percentile.
+- $\Phi(z)$ (Phi of z) converts the z-score into a **percentile** on a bell curve. For example, a z-score of 0 gives the 50th percentile; a z-score of +2 gives the 97.5th percentile.
 
-The base percentile is then adjusted based on how far from normal the observation is:
+The base percentile is then adjusted based on how far from normal it is:
 
 | Z-score range          | Adjusted percentile               | What it means                     |
 | ---------------------- | --------------------------------- | --------------------------------- |
@@ -458,15 +440,15 @@ The base percentile is then adjusted based on how far from normal the observatio
 
 ### 8.2 Plasmid Score
 
-Within each species, strains are compared by their plasmid coverage. Computed in `match_paths.py`.
+Within each species, strains are compared by their plasmid coverage. Calc. in `match_paths.py`.
 
-**Absolute quality** (does this plasmid have real coverage?):
+**Absolute quality** (does this plasmid have good coverage?):
 
 ```math
 Q = \sqrt{B_{\text{plasmid}} \times G_{\text{plasmid}}}
 ```
 
-Where $B_{\text{plasmid}}$ is the breadth sigmoid score for the plasmid's coverage and $G_{\text{plasmid}}$ is the Gini coefficient for the plasmid's read distribution. The square root of their product is called a **geometric mean** — it's a way of averaging two values that requires *both* to be decent. If either breadth or uniformity is near zero, the geometric mean tanks. You can't fake a good plasmid score with great breadth but terrible uniformity, or vice versa.
+Where $B_{\text{plasmid}}$ is the breadth sigmoid score for the plasmid's coverage and $G_{\text{plasmid}}$ is the Gini coefficient for the plasmid's depth distribution. The square root of this product is called a **geometric mean** — it's a way of averaging two values that requires _both_ to be decent. The reason we use the geometric mean is because it accounts for means in extreme value scenarios i.e. there is a more likely scenario that a small plasmid will either have no coverage or super good coverage. If either breadth or uniformity is near zero, the geometric mean is poor. You can't fake a good plasmid score with good breadth of coverage but terrible uniformity, or vice versa.
 
 **Relative disparity** (how does this strain compare to others in the same species?):
 
@@ -477,7 +459,7 @@ D_{\text{rel}} = \begin{cases}
 \end{cases}
 ```
 
-In plain terms: when there are multiple strains of the same species, we compare each strain's plasmid coverage ($c_{\text{strain}}$) and read count ($r_{\text{strain}}$) against the best strain in the group ($c_{\max}$ and $r_{\max}$). Coverage gets 70% of the weight and read count gets 30%. If this is the only strain with a plasmid, there's nothing to compare against, so it gets full marks (1.0).
+In other terms: when there are multiple strains of the same species (matched from their shared species level taxid), we compare each strain's plasmid coverage ($c_{\text{strain}}$) and read count ($r_{\text{strain}}$) against the best strain in the group ($c_{\max}$ and $r_{\max}$). Coverage gets 70% of the weight and read count gets 30%. If this is the only strain with a plasmid, there's nothing to compare against, so it gets a 1.0.
 
 **Final plasmid score:**
 
@@ -485,7 +467,7 @@ In plain terms: when there are multiple strains of the same species, we compare 
 \text{plasmid\_score} = \min(1.0,\;\; Q \times D_{\text{rel}})
 ```
 
-Strains with no plasmid accessions receive `plasmid_score = 0`.
+Strains with no plasmid accessions receive `plasmid_score = 0`. This is not a penalty so that we don't strains/species that lack plasmids in the database/references.
 
 ### 8.3 Low-Abundance Confidence
 
@@ -503,11 +485,11 @@ Where $s$ = steepness (default: 2.0) and $m$ = RPM midpoint (default: 5.0).
 
 ### 8.4 K2 Disparity Score
 
-Compares the pipeline's species-level classification against Kraken2's independent classification. If Kraken2 assigns reads to a different genus, this reduces confidence. **Disabled by default** (`k2_disparity_score_weight = 0`).
+Compares the pipeline's species-level classification against Kraken2's (or Centrifuge if enabled instead) classification. If Kraken2/Centrifuge assigns reads to a different genus, this reduces confidence. **Disabled by default** (`k2_disparity_score_weight = 0`).
 
 ### 8.5 DIAMOND Identity
 
-Average amino acid identity from a DIAMOND BLASTX protein alignment, weighted by CDS count. Provides protein-level confirmation of the taxonomic assignment. **Disabled by default** (`diamond_identity = 0`).
+Average amino acid identity from a DIAMOND BLASTX protein alignment, weighted by CDS count. Provides protein-level confirmation of the taxonomic assignment. **Disabled by default** (`diamond_identity = 0`). We have not tested this since v1.0 so consider it less reliable of a tool to implement. The associated modules are still functional, however.
 
 ---
 
@@ -515,7 +497,7 @@ Average amino acid identity from a DIAMOND BLASTX protein alignment, weighted by
 
 ### 9.1 The Core Weighted Sum
 
-Computed in `compute_tass_score()`. The final score is simply a **weighted sum** — each component score ($x_i$) is multiplied by its corresponding weight ($w_i$), and then they're all added together. Components with higher weights have more influence on the final result:
+Computed in `compute_tass_score()`. The final score is simply a **weighted sum** — each component score ($x_i$) is multiplied by its relative weight ($w_i$), and then they're all added together and clamped between 0 and 1. Components with higher weights have more influence on the final result:
 
 ```math
 \boxed{
@@ -542,9 +524,9 @@ Expanded:
 
 ### 9.2 Default Weights
 
-| Component              | Weight   | CLI Flag                      | Type |
-| ---------------------- | -------- | ----------------------------- | ---- |
-| `breadth_log_score`    | **0.26** | `--breadth_weight`            |  included |
+| Component              | Weight   | CLI Flag                      | Type     |
+| ---------------------- | -------- | ----------------------------- | -------- |
+| `breadth_log_score`    | **0.26** | `--breadth_weight`            | included |
 | `minhash_reduction`    | **0.29** | `--minhash_weight`            | included |
 | `gini_coefficient`     | **0.45** | `--gini_weight`               | included |
 | `hmp_percentile`       | 0.00     | `--hmp_weight`                | included |
@@ -552,9 +534,9 @@ Expanded:
 | `mapq_score`           | 0.00     | `--mapq_score`                | included |
 | `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight` | included |
 | `diamond_identity`     | 0.00     | `--diamond_identity`          | included |
-| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      | bonus |
+| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      | bonus    |
 
-**Why don't the weights add up to 1.0?** If the three primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.0 when normalized, and plasmid adds another 0.19. This is intentional — the final score is clamped to [0, 1] at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism presence is good/high.
+**What if all weights don't add up to 1.0?** If the three primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.0 when normalized, and plasmid adds another 0.19. This is intentional — the final score is clamped to $[0, 1]$ at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism presence is good/high.
 
 ### 9.3 Additive Modifiers
 
@@ -566,9 +548,11 @@ Expanded:
 
 Where $w_{\text{plasmid}}$ = `plasmid_bonus_weight` (default: 0.0 — disabled).
 
+This can also work with additional additive modifiers to be added in the future.
+
 ### 9.4 Multiplicative Abundance Gate (Optional)
 
-When `--abundance_gate` is enabled, the full score is multiplied by the abundance confidence sigmoid. This collapses scores for organisms with very low read fractions:
+When `--abundance_gate` (not recommended for most samples) is enabled, the full score is multiplied by the abundance confidence sigmoid. This collapses scores for organisms with very low read fractions:
 
 ```math
 \text{TASS}_2 = \text{TASS}_1 \times \text{abundance\_confidence}
@@ -578,7 +562,7 @@ When `--abundance_gate` is enabled, the full score is multiplied by the abundanc
 
 ### 9.5 Power Transform (Optional)
 
-When `score_power` isn't set to the default of 1.0, a power transform reshapes the score distribution. This is useful for adjusting how "generous" or "strict" the final scores are. A power less than 1 lifts low scores (making the system more generous), while a power greater than 1 would push low scores even lower (more strict):
+When `score_power` isn't set to the default of 1.0, a power transform reshapes the score distribution. This is useful for adjusting how "generous" or "strict" the final scores are. A power less than 1 rises low scores (making the system more lax), while a power greater than 1 would push low scores even lower (more conservative):
 
 ```math
 \text{TASS}_3 = (\text{clamp}(\text{TASS}_2, 0, 1))^{p}
@@ -586,8 +570,8 @@ When `score_power` isn't set to the default of 1.0, a power transform reshapes t
 
 Where $p$ = `score_power`. Some examples:
 
-- $p = 0.5$: score 0.09 → 0.30, score 0.95 → 0.97 (lifts low scores, making borderline organisms more visible)
-- $p = 0.3$: score 0.09 → 0.52, score 0.95 → 0.98 (aggressively lifts low scores)
+- $p = 0.5$: score 0.09 → 0.30, score 0.95 → 0.97 (rises low scores, making borderline organisms more visible)
+- $p = 0.3$: score 0.09 → 0.52, score 0.95 → 0.98 (dramatically rises low scores)
 - $p = 1.0$: no change (default — the score passes through as-is)
 
 ### 9.6 Final Clamping
@@ -777,3 +761,23 @@ The objective is to maximize the score gap between true positives and false posi
 ```
 
 In words: add up all the weighted component scores, toss in the plasmid bonus, optionally multiply by the abundance gate (if enabled; otherwise it's just ×1.0 which does nothing), raise to the power $p$ (which is 1.0 by default, meaning no change), and clamp the result to [0, 1].
+
+#### Notations
+
+Common math symbols you'll see in the doc:
+
+- **∈** — means "is in the range of" or "falls between." For example, `D ∈ [0, 1]` just means D can be any value from 0 to 1.
+- **Greek letters** — these are just variable names, like nicknames for values:
+  - **α** (alpha) — a scaling multiplier
+  - **β** (beta) — a weighting factor that controls how much influence something has
+  - **σ²** (sigma squared) — the variance, which tells you how spread out values are from the average
+  - **μ** (mu) — the average (mean) of a set of values
+  - **Φ** (Phi) — the standard normal cumulative distribution function (basically: "what percentile does this value fall at on a bell curve?")
+  - **Δ** (delta) — means "change in" or "difference"
+- **Σ** (capital sigma) — means "add up all the values." For example, `Σ wᵢ x xᵢ` means "multiply each weight by its matching score, then add them all together."
+- **log₁₀** — the base-10 log. It answers "10 raised to what power gives me this number?" For example, log₁₀(1000) = 3 because 10³ = 1000. We use logs to compress big ranges of values into more manageable ones.
+- **e** — Euler's number (~2.718), a mathematical constant used in sigmoid ("S-shaped") curves.
+- **clamp(value, 0, 1)** — if the value goes below 0, force it to 0; if it goes above 1, force it to 1. Think of it as a buffer that keep a number from going too high.
+- **min(a, b)** — whichever value is smaller.
+
+---
