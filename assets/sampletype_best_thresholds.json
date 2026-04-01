@@ -3,61 +3,61 @@
         "sampletype": "all",
         "platform": "all",
         "best_weights": {
-            "breadth_weight": 0.207060623001416,
-            "minhash_weight": 0.19226973804692613,
-            "gini_weight": 0.5084334215926295,
-            "disparity_weight": 0.05485054744471759,
-            "hmp_weight": 0.0534273365809775,
-            "plasmid_bonus_weight": 0.1414116213825378,
+            "breadth_weight": 0.1587860814633038,
+            "minhash_weight": 0.2749032580984764,
+            "gini_weight": 0.5658844894560128,
+            "disparity_weight": 0.015774500188313022,
+            "hmp_weight": 0.01334732296780724,
+            "plasmid_bonus_weight": 0.12356753799059439,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6000000000000002
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9988400119777822,
+                "best_TP_retained": 0.9990699961957447,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9988400119777822,
+                "best_J": 0.9990699961957447,
                 "fp_le_0_1pct": {
-                    "threshold": 0.371976647206005,
-                    "tp_retained": 0.9999708107491244,
-                    "fp_retained": 0.00032698056801195815
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 0.9999954180792504,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9591326105087573,
-                    "tp_retained": 0.9961549305499614,
+                    "threshold": 1.0,
+                    "tp_retained": 0.9987656347536588,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9762383861399038,
+                "best_TP_retained": 0.9855882944926693,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9762383861399038,
+                "best_J": 0.9855882944926693,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9999973295454149,
-                    "fp_retained": 0.00040299469838085683
+                    "threshold": 0.292743953294412,
+                    "tp_retained": 0.9992048748084197,
+                    "fp_retained": 3.228548982468979e-5
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7539616346955796,
-                    "tp_retained": 0.9951810433168673,
+                    "threshold": 0.8281901584653878,
+                    "tp_retained": 0.995204022716166,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9786802868426077,
+                "best_TP_retained": 0.9867415589471813,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9786802868426077,
+                "best_J": 0.9867415589471813,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9999972415948819,
-                    "fp_retained": 0.0008165381375153911
+                    "threshold": 0.2910758965804837,
+                    "tp_retained": 0.9992004032311368,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7514595496246872,
-                    "tp_retained": 0.9955786706536432,
+                    "threshold": 0.8273561301084237,
+                    "tp_retained": 0.9952174723258326,
                     "fp_retained": 0.0
                 }
             }
@@ -67,61 +67,61 @@
         "sampletype": "all",
         "platform": "illumina",
         "best_weights": {
-            "breadth_weight": 0.15437317040788975,
-            "minhash_weight": 0.1344607777716492,
-            "gini_weight": 0.6317767755950626,
-            "disparity_weight": 0.045217416610247134,
-            "hmp_weight": 0.043338526281818036,
-            "plasmid_bonus_weight": 0.17364801780134434,
+            "breadth_weight": 0.10977880836444046,
+            "minhash_weight": 0.23503816430280752,
+            "gini_weight": 0.6524209674614485,
+            "disparity_weight": 0.012020835860940179,
+            "hmp_weight": 0.009871658792972058,
+            "plasmid_bonus_weight": 0.14818598375721337,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.5999999999999999
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9988679378695318,
+                "best_TP_retained": 0.9991625106804604,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9988679378695318,
+                "best_J": 0.9991625106804604,
                 "fp_le_0_1pct": {
-                    "threshold": 0.371976647206005,
-                    "tp_retained": 0.9999734767448061,
-                    "fp_retained": 0.0003275160248912179
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 0.999995468017324,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9591326105087573,
-                    "tp_retained": 0.9961596624959629,
+                    "threshold": 1.0,
+                    "tp_retained": 0.9988808321479037,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9761293425672862,
+                "best_TP_retained": 0.985716643123535,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9761293425672862,
+                "best_J": 0.985716643123535,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.999997488198823,
-                    "fp_retained": 7.173794130042954e-5
+                    "threshold": 0.292743953294412,
+                    "tp_retained": 0.9992147100402996,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7539616346955796,
-                    "tp_retained": 0.9951867150468163,
+                    "threshold": 0.8281901584653878,
+                    "tp_retained": 0.9953224079406211,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.978579781716709,
+                "best_TP_retained": 0.9868680034470887,
                 "best_FP_retained": 0.0,
-                "best_J": 0.978579781716709,
+                "best_J": 0.9868680034470887,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9999973992038504,
-                    "fp_retained": 0.0007005799244930525
+                    "threshold": 0.2910758965804837,
+                    "tp_retained": 0.9992096929054552,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7514595496246872,
-                    "tp_retained": 0.9955822264650896,
+                    "threshold": 0.8273561301084237,
+                    "tp_retained": 0.9953329370179261,
                     "fp_retained": 0.0
                 }
             }
@@ -131,61 +131,61 @@
         "sampletype": "all",
         "platform": "ont",
         "best_weights": {
-            "breadth_weight": 0.25974807559494234,
-            "minhash_weight": 0.25007869832220303,
-            "gini_weight": 0.3850900675901963,
-            "disparity_weight": 0.06448367827918805,
-            "hmp_weight": 0.06351614688013697,
-            "plasmid_bonus_weight": 0.10917522496373121,
+            "breadth_weight": 0.20779335456216713,
+            "minhash_weight": 0.31476835189414504,
+            "gini_weight": 0.4793480114505769,
+            "disparity_weight": 0.019528164515685863,
+            "hmp_weight": 0.016822987142642427,
+            "plasmid_bonus_weight": 0.09894909222397538,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.5999999999999999
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9957938144329896,
+                "best_TP_retained": 0.967195613493591,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9957938144329896,
+                "best_J": 0.967195613493591,
                 "fp_le_0_1pct": {
-                    "threshold": 0.10091743119266054,
+                    "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9824854045037531,
-                    "tp_retained": 0.9951076288659794,
+                    "threshold": 0.35696413678065053,
+                    "tp_retained": 0.9950905987871745,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9870678012984266,
+                "best_TP_retained": 0.9549702819924938,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9870678012984266,
+                "best_J": 0.9549702819924938,
                 "fp_le_0_1pct": {
-                    "threshold": 0.27773144286905754,
-                    "tp_retained": 0.9994305146520445,
+                    "threshold": 0.33444537114261885,
+                    "tp_retained": 0.99404909677702,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7055879899916597,
-                    "tp_retained": 0.9950308335638393,
-                    "fp_retained": 0.0
+                    "threshold": 0.3094245204336947,
+                    "tp_retained": 0.9950348292127283,
+                    "fp_retained": 0.05660377358490566
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9888296109533495,
+                "best_TP_retained": 0.9574138937536486,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9888296109533495,
+                "best_J": 0.9574138937536486,
                 "fp_le_0_1pct": {
-                    "threshold": 0.14845704753961633,
-                    "tp_retained": 0.9999512635730949,
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 0.9999562171628722,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.756463719766472,
-                    "tp_retained": 0.9952010864974105,
+                    "threshold": 0.3127606338615513,
+                    "tp_retained": 0.9950014594279043,
                     "fp_retained": 0.0
                 }
             }
@@ -195,61 +195,61 @@
         "sampletype": "blood",
         "platform": "all",
         "best_weights": {
-            "breadth_weight": 0.1242942926426249,
-            "minhash_weight": 0.14947046901893316,
-            "gini_weight": 0.697613998457681,
-            "disparity_weight": 0.02238979977787659,
-            "hmp_weight": 0.022731440102884526,
-            "plasmid_bonus_weight": 0.1399502583449926,
+            "breadth_weight": 0.20198413593146847,
+            "minhash_weight": 0.35529679769685707,
+            "gini_weight": 0.44928575266304255,
+            "disparity_weight": 0.017327154556216175,
+            "hmp_weight": 0.014606159152415718,
+            "plasmid_bonus_weight": 0.09994255149682954,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.5999999999999999
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.64,
-                "best_TP_retained": 0.9551820728291317,
+                "best_threshold": 0.75,
+                "best_TP_retained": 0.9530431062145684,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9551820728291317,
+                "best_J": 0.9530431062145684,
                 "fp_le_0_1pct": {
-                    "threshold": 0.09007506255212677,
-                    "tp_retained": 0.9961027889416636,
+                    "threshold": 0.0008340283569641367,
+                    "tp_retained": 0.9995721467536635,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.09424520433694746,
-                    "tp_retained": 0.9953720618682256,
+                    "threshold": 0.10258548790658882,
+                    "tp_retained": 0.9952936142902984,
                     "fp_retained": 0.0
                 }
             },
             "key": {
-                "best_threshold": 0.57,
-                "best_TP_retained": 0.9548473433782713,
+                "best_threshold": 0.74,
+                "best_TP_retained": 0.9564449064449064,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9548473433782713,
+                "best_J": 0.9564449064449064,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9982652656621729,
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.17848206839032527,
-                    "tp_retained": 0.9950436161776368,
+                    "threshold": 0.1409507923269391,
+                    "tp_retained": 0.9963617463617463,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
-                "best_threshold": 0.61,
-                "best_TP_retained": 0.954292031144862,
+                "best_threshold": 0.75,
+                "best_TP_retained": 0.9597659858359848,
                 "best_FP_retained": 0.0,
-                "best_J": 0.954292031144862,
+                "best_J": 0.9597659858359848,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9978371623570124,
+                    "threshold": 0.045037531276063386,
+                    "tp_retained": 0.9995894488350611,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.16430358632193495,
-                    "tp_retained": 0.9955301355378257,
+                    "threshold": 0.08924103419516263,
+                    "tp_retained": 0.9992815354613569,
                     "fp_retained": 0.0
                 }
             }
@@ -259,61 +259,61 @@
         "sampletype": "blood",
         "platform": "illumina",
         "best_weights": {
-            "breadth_weight": 0.04000000000000001,
-            "minhash_weight": 0.05711976087665407,
-            "gini_weight": 0.912880239123346,
-            "disparity_weight": 0.0010000000000000135,
-            "hmp_weight": 1.5684521665242596e-17,
-            "plasmid_bonus_weight": 0.18,
+            "breadth_weight": 0.0813209420251697,
+            "minhash_weight": 0.27072196812021465,
+            "gini_weight": 0.6668024395423321,
+            "disparity_weight": 0.00267456015856913,
+            "hmp_weight": 0.00048009015371456144,
+            "plasmid_bonus_weight": 0.13996980504931505,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.5999999999999999
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.1,
-                "best_TP_retained": 0.972181551976574,
+                "best_TP_retained": 0.9506726457399103,
                 "best_FP_retained": 0.0,
-                "best_J": 0.972181551976574,
+                "best_J": 0.9506726457399103,
                 "fp_le_0_1pct": {
-                    "threshold": 0.0008340283569641367,
-                    "tp_retained": 0.9985358711566618,
+                    "threshold": 0.0008269820712732772,
+                    "tp_retained": 0.9955156950672646,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.056713928273561295,
-                    "tp_retained": 0.9963396778916545,
+                    "threshold": 0.06036969120294924,
+                    "tp_retained": 0.9955156950672646,
                     "fp_retained": 0.0
                 }
             },
             "key": {
-                "best_threshold": 0.18,
-                "best_TP_retained": 0.9559748427672956,
+                "best_threshold": 0.15,
+                "best_TP_retained": 0.9521345407503234,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9559748427672956,
+                "best_J": 0.9521345407503234,
                 "fp_le_0_1pct": {
                     "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.05004170141784821,
-                    "tp_retained": 0.9966134494436382,
+                    "threshold": 0.0884070058381985,
+                    "tp_retained": 0.9961190168175937,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.16,
-                "best_TP_retained": 0.9643485915492958,
+                "best_TP_retained": 0.9677804295942721,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9643485915492958,
+                "best_J": 0.9677804295942721,
                 "fp_le_0_1pct": {
                     "threshold": 0.0008340283569641367,
-                    "tp_retained": 0.9982394366197183,
+                    "tp_retained": 0.9952267303102625,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.04837364470391993,
-                    "tp_retained": 0.9955985915492958,
+                    "threshold": 0.07089241034195162,
+                    "tp_retained": 0.9952267303102625,
                     "fp_retained": 0.0
                 }
             }
@@ -323,61 +323,46 @@
         "sampletype": "blood",
         "platform": "ont",
         "best_weights": {
-            "breadth_weight": 0.20858858528524976,
-            "minhash_weight": 0.24182117716121226,
-            "gini_weight": 0.4823477577920158,
-            "disparity_weight": 0.04377959955575317,
-            "hmp_weight": 0.04546288020576904,
-            "plasmid_bonus_weight": 0.09990051668998516,
+            "breadth_weight": 0.32264732983776717,
+            "minhash_weight": 0.4398716272734995,
+            "gini_weight": 0.23176906578375323,
+            "disparity_weight": 0.03197974895386322,
+            "hmp_weight": 0.028732228151116875,
+            "plasmid_bonus_weight": 0.05991529794434405,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
-            "toplevelkey": {
-                "best_threshold": 0.75,
-                "best_TP_retained": 0.9637691745799853,
-                "best_FP_retained": 0.0,
-                "best_J": 0.9637691745799853,
-                "fp_le_0_1pct": {
-                    "threshold": 0.09007506255212677,
-                    "tp_retained": 1.0,
-                    "fp_retained": 0.0
-                },
-                "tp_ge_99_5pct": {
-                    "threshold": 0.5004170141784821,
-                    "tp_retained": 0.995982468955442,
-                    "fp_retained": 0.0
-                }
-            },
+            "toplevelkey": {},
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9533381191672649,
+                "best_TP_retained": 0.9596473380807053,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9533381191672649,
+                "best_J": 0.9596473380807053,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
+                    "threshold": 0.06922435362802334,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.3886572143452877,
-                    "tp_retained": 0.9953062013363521,
+                    "threshold": 0.3711426188490409,
+                    "tp_retained": 0.9953656606759353,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9572677241825833,
+                "best_TP_retained": 0.9705783267827064,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9572677241825833,
+                "best_J": 0.9705783267827064,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
+                    "threshold": 0.045037531276063386,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.36196830692243537,
-                    "tp_retained": 0.9954138340347469,
+                    "threshold": 0.08924103419516263,
+                    "tp_retained": 1.0,
                     "fp_retained": 0.0
                 }
             }
@@ -387,61 +372,61 @@
         "sampletype": "nasal",
         "platform": "all",
         "best_weights": {
-            "breadth_weight": 0.28774414211097155,
-            "minhash_weight": 0.24811417386797763,
-            "gini_weight": 0.3481741591736875,
-            "disparity_weight": 0.0737394819293618,
-            "hmp_weight": 0.06972804291800157,
-            "plasmid_bonus_weight": 0.13944313181771126,
+            "breadth_weight": 0.10191269526387378,
+            "minhash_weight": 0.1851506028792394,
+            "gini_weight": 0.7181225423068935,
+            "disparity_weight": 0.010479086865256072,
+            "hmp_weight": 0.0063350726847372345,
+            "plasmid_bonus_weight": 0.1410512221454036,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.5999999999999999
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9999526299846575,
+                "best_TP_retained": 0.9978243556479988,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9999526299846575,
+                "best_J": 0.9978243556479988,
                 "fp_le_0_1pct": {
-                    "threshold": 0.45371142618849036,
-                    "tp_retained": 0.9999572685915011,
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 0.9999899924362834,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9591326105087573,
-                    "tp_retained": 0.9963942562802168,
+                    "threshold": 1.0,
+                    "tp_retained": 0.997598585010551,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9916195579172956,
+                "best_TP_retained": 0.9938331971115192,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9916195579172956,
+                "best_J": 0.9938331971115192,
                 "fp_le_0_1pct": {
-                    "threshold": 0.5479566305254379,
-                    "tp_retained": 0.9997033810450993,
-                    "fp_retained": 0.0006550218340611354
+                    "threshold": 0.2226855713094245,
+                    "tp_retained": 0.9995934530403963,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.8657214345287739,
-                    "tp_retained": 0.9950361321001656,
+                    "threshold": 0.8582151793160967,
+                    "tp_retained": 0.9950025996811784,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9916185789465778,
+                "best_TP_retained": 0.993997124349201,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9916185789465778,
+                "best_J": 0.993997124349201,
                 "fp_le_0_1pct": {
-                    "threshold": 0.5504587155963303,
-                    "tp_retained": 0.9997023894724102,
+                    "threshold": 0.22351959966638865,
+                    "tp_retained": 0.9995781544955193,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.866555462885738,
-                    "tp_retained": 0.9950351478033084,
+                    "threshold": 0.8632193494578815,
+                    "tp_retained": 0.9950133059876843,
                     "fp_retained": 0.0
                 }
             }
@@ -451,61 +436,61 @@
         "sampletype": "nasal",
         "platform": "illumina",
         "best_weights": {
-            "breadth_weight": 0.24846648972967586,
-            "minhash_weight": 0.14184444766246626,
-            "gini_weight": 0.42350218625107616,
-            "disparity_weight": 0.09457505767066209,
-            "hmp_weight": 0.09161181868611962,
-            "plasmid_bonus_weight": 0.1788862636354225,
+            "breadth_weight": 0.11089585297378428,
+            "minhash_weight": 0.18787463236239405,
+            "gini_weight": 0.7004184545400035,
+            "disparity_weight": 0.014973667204113406,
+            "hmp_weight": 0.007837392919704917,
+            "plasmid_bonus_weight": 0.15925943705238246,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9999610918819499,
+                "best_TP_retained": 0.9980881636161586,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9999610918819499,
+                "best_J": 0.9980881636161586,
                 "fp_le_0_1pct": {
-                    "threshold": 0.45371142618849036,
-                    "tp_retained": 0.9999610918819499,
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 0.9999898919510213,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9591326105087573,
-                    "tp_retained": 0.99633991905681,
+                    "threshold": 1.0,
+                    "tp_retained": 0.9978904501781342,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9916152091978693,
+                "best_TP_retained": 0.9943848685095357,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9916152091978693,
+                "best_J": 0.9943848685095357,
                 "fp_le_0_1pct": {
-                    "threshold": 0.5479566305254379,
-                    "tp_retained": 0.9997100784519055,
-                    "fp_retained": 0.0006594856012310398
+                    "threshold": 0.2226855713094245,
+                    "tp_retained": 0.9996087442401854,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.8657214345287739,
-                    "tp_retained": 0.9950013774879524,
+                    "threshold": 0.9140950792326938,
+                    "tp_retained": 0.9950017076683684,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9916142128260224,
+                "best_TP_retained": 0.9945467149066647,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9916142128260224,
+                "best_J": 0.9945467149066647,
                 "fp_le_0_1pct": {
-                    "threshold": 0.5504587155963303,
-                    "tp_retained": 0.9997090692364733,
+                    "threshold": 0.22351959966638865,
+                    "tp_retained": 0.9995922720370749,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.866555462885738,
-                    "tp_retained": 0.9950003757434998,
+                    "threshold": 0.9357798165137614,
+                    "tp_retained": 0.9950834242791509,
                     "fp_retained": 0.0
                 }
             }
@@ -515,61 +500,46 @@
         "sampletype": "nasal",
         "platform": "ont",
         "best_weights": {
-            "breadth_weight": 0.32702179449226726,
-            "minhash_weight": 0.3543839000734889,
-            "gini_weight": 0.2728461320962988,
-            "disparity_weight": 0.05290390618806154,
-            "hmp_weight": 0.047844267149883546,
-            "plasmid_bonus_weight": 0.10000000000000002,
+            "breadth_weight": 0.09292953755396326,
+            "minhash_weight": 0.18242657339608478,
+            "gini_weight": 0.7358266300737837,
+            "disparity_weight": 0.005984506526398738,
+            "hmp_weight": 0.004832752449769556,
+            "plasmid_bonus_weight": 0.12284300723842478,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
-            "toplevelkey": {
-                "best_threshold": 0.75,
-                "best_TP_retained": 0.9994731552327843,
-                "best_FP_retained": 0.0,
-                "best_J": 0.9994731552327843,
-                "fp_le_0_1pct": {
-                    "threshold": 0.10091743119266054,
-                    "tp_retained": 1.0,
-                    "fp_retained": 0.0
-                },
-                "tp_ge_99_5pct": {
-                    "threshold": 0.9974979149291076,
-                    "tp_retained": 0.9985410452600182,
-                    "fp_retained": 0.0
-                }
-            },
+            "toplevelkey": {},
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9917099958631095,
+                "best_TP_retained": 0.9569458870491436,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9917099958631095,
+                "best_J": 0.9569458870491436,
                 "fp_le_0_1pct": {
-                    "threshold": 0.10508757297748123,
+                    "threshold": 0.021684737281067554,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9074228523769807,
-                    "tp_retained": 0.995708990030905,
+                    "threshold": 0.28523769808173477,
+                    "tp_retained": 0.9950713834748783,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9918641153137953,
+                "best_TP_retained": 0.9572769666239029,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9918641153137953,
+                "best_J": 0.9572769666239029,
                 "fp_le_0_1pct": {
-                    "threshold": 0.10508757297748123,
+                    "threshold": 0.022518765638031693,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9074228523769807,
-                    "tp_retained": 0.995708990030905,
+                    "threshold": 0.28940783986655544,
+                    "tp_retained": 0.9950312582727513,
                     "fp_retained": 0.0
                 }
             }
@@ -579,61 +549,61 @@
         "sampletype": "skin",
         "platform": "all",
         "best_weights": {
-            "breadth_weight": 0.20519770505475549,
-            "minhash_weight": 0.1874974434178678,
-            "gini_weight": 0.43060675774747537,
-            "disparity_weight": 0.08840211734556923,
-            "hmp_weight": 0.0882959764343322,
-            "plasmid_bonus_weight": 0.18509416826831698,
+            "breadth_weight": 0.3223753304621464,
+            "minhash_weight": 0.3504877424387325,
+            "gini_weight": 0.2631520516871445,
+            "disparity_weight": 0.044652914925992035,
+            "hmp_weight": 0.04683196048598465,
+            "plasmid_bonus_weight": 0.14987563071443855,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9982186468945078,
+                "best_TP_retained": 0.9984017443950869,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9982186468945078,
+                "best_J": 0.9984017443950869,
                 "fp_le_0_1pct": {
-                    "threshold": 0.012510425354462052,
+                    "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
                     "threshold": 1.0,
-                    "tp_retained": 0.9968916679144744,
+                    "tp_retained": 0.9970679316623946,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9955498715909209,
+                "best_TP_retained": 0.9931594758559422,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9955498715909209,
+                "best_J": 0.9931594758559422,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11509591326105087,
-                    "tp_retained": 0.9999792050074342,
+                    "threshold": 0.292743953294412,
+                    "tp_retained": 0.9999462296461676,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9366138448707255,
-                    "tp_retained": 0.9955498715909209,
+                    "threshold": 0.8790658882402002,
+                    "tp_retained": 0.9952822359115828,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9955498715909209,
+                "best_TP_retained": 0.9931594758559422,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9955498715909209,
+                "best_J": 0.9931594758559422,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11509591326105087,
-                    "tp_retained": 0.9999792050074342,
+                    "threshold": 0.2910758965804837,
+                    "tp_retained": 0.9999462296461676,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9366138448707255,
-                    "tp_retained": 0.9955498715909209,
+                    "threshold": 0.8790658882402002,
+                    "tp_retained": 0.9952822359115828,
                     "fp_retained": 0.0
                 }
             }
@@ -643,61 +613,61 @@
         "sampletype": "skin",
         "platform": "illumina",
         "best_weights": {
-            "breadth_weight": 0.21828455430410598,
-            "minhash_weight": 0.1748028844020706,
-            "gini_weight": 0.44180793699522986,
-            "disparity_weight": 0.08259002032220807,
-            "hmp_weight": 0.08251460397638563,
-            "plasmid_bonus_weight": 0.2,
+            "breadth_weight": 0.33780101035164245,
+            "minhash_weight": 0.3067713010302069,
+            "gini_weight": 0.22712174266694213,
+            "disparity_weight": 0.05945589260723656,
+            "hmp_weight": 0.06885005334397204,
+            "plasmid_bonus_weight": 0.1997512614288771,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9980927654286048,
+                "best_TP_retained": 0.9986815763676212,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9980927654286048,
+                "best_J": 0.9986815763676212,
                 "fp_le_0_1pct": {
-                    "threshold": 0.012510425354462052,
+                    "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
                     "threshold": 1.0,
-                    "tp_retained": 0.9970099483816192,
+                    "tp_retained": 0.9973388275759736,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9950193210646123,
+                "best_TP_retained": 0.993341475617293,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9950193210646123,
+                "best_J": 0.993341475617293,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11509591326105087,
-                    "tp_retained": 0.9999751896441574,
+                    "threshold": 0.292743953294412,
+                    "tp_retained": 0.9999509500966283,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9366138448707255,
-                    "tp_retained": 0.9950193210646123,
+                    "threshold": 0.8790658882402002,
+                    "tp_retained": 0.99544326397677,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9950193210646123,
+                "best_TP_retained": 0.993341475617293,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9950193210646123,
+                "best_J": 0.993341475617293,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11509591326105087,
-                    "tp_retained": 0.9999751896441574,
+                    "threshold": 0.2910758965804837,
+                    "tp_retained": 0.9999509500966283,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9366138448707255,
-                    "tp_retained": 0.9950193210646123,
+                    "threshold": 0.8790658882402002,
+                    "tp_retained": 0.99544326397677,
                     "fp_retained": 0.0
                 }
             }
@@ -707,46 +677,61 @@
         "sampletype": "skin",
         "platform": "ont",
         "best_weights": {
-            "breadth_weight": 0.192110855805405,
-            "minhash_weight": 0.20019200243366503,
-            "gini_weight": 0.4194055784997208,
-            "disparity_weight": 0.09421421436893039,
-            "hmp_weight": 0.09407734889227874,
-            "plasmid_bonus_weight": 0.17018833653663396,
+            "breadth_weight": 0.3069496505726503,
+            "minhash_weight": 0.3942041838472582,
+            "gini_weight": 0.29918236070734683,
+            "disparity_weight": 0.029849937244747504,
+            "hmp_weight": 0.02481386762799725,
+            "plasmid_bonus_weight": 0.09999999999999996,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
-            "toplevelkey": {},
-            "key": {
+            "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9982975169445247,
+                "best_TP_retained": 0.9926492649264926,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9982975169445247,
+                "best_J": 0.9926492649264926,
                 "fp_le_0_1pct": {
-                    "threshold": 0.09924937447873228,
+                    "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 1.0,
-                    "tp_retained": 0.9969162571070637,
+                    "threshold": 0.854045037531276,
+                    "tp_retained": 0.9957495749574957,
+                    "fp_retained": 0.0
+                }
+            },
+            "key": {
+                "best_threshold": 0.75,
+                "best_TP_retained": 0.9907486122918437,
+                "best_FP_retained": 0.0,
+                "best_J": 0.9907486122918437,
+                "fp_le_0_1pct": {
+                    "threshold": 0.0008340283569641367,
+                    "tp_retained": 1.0,
+                    "fp_retained": 0.0
+                },
+                "tp_ge_99_5pct": {
+                    "threshold": 0.6380316930775646,
+                    "tp_retained": 0.9952492873931089,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9982975169445247,
+                "best_TP_retained": 0.9907486122918437,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9982975169445247,
+                "best_J": 0.9907486122918437,
                 "fp_le_0_1pct": {
-                    "threshold": 0.09924937447873228,
+                    "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 1.0,
-                    "tp_retained": 0.9969162571070637,
+                    "threshold": 0.6380316930775646,
+                    "tp_retained": 0.9952492873931089,
                     "fp_retained": 0.0
                 }
             }
@@ -756,61 +741,61 @@
         "sampletype": "stool",
         "platform": "all",
         "best_weights": {
-            "breadth_weight": 0.2649419604720658,
-            "minhash_weight": 0.20934818214888237,
-            "gini_weight": 0.3793339438515371,
-            "disparity_weight": 0.07887900243785785,
-            "hmp_weight": 0.07666357775632347,
-            "plasmid_bonus_weight": 0.1312548670480132,
+            "breadth_weight": 0.07965406284960684,
+            "minhash_weight": 0.19051307667045356,
+            "gini_weight": 0.7342614859915185,
+            "disparity_weight": 0.007973449098462206,
+            "hmp_weight": 0.005931258723292316,
+            "plasmid_bonus_weight": 0.13960341444324662,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.5999999999999999
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.998604907328894,
+                "best_TP_retained": 0.9992337743896268,
                 "best_FP_retained": 0.0,
-                "best_J": 0.998604907328894,
+                "best_J": 0.9992337743896268,
                 "fp_le_0_1pct": {
-                    "threshold": 0.021684737281067554,
-                    "tp_retained": 1.0,
-                    "fp_retained": 0.00010074551682450131
+                    "threshold": 0.04837364470391993,
+                    "tp_retained": 0.999998671147904,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9716430358632193,
-                    "tp_retained": 0.9952942595780058,
+                    "threshold": 1.0,
+                    "tp_retained": 0.9989522001222781,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9747899411589961,
+                "best_TP_retained": 0.9844728209365933,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9747899411589961,
+                "best_J": 0.9844728209365933,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.999999221319342,
-                    "fp_retained": 0.0003496404373340389
+                    "threshold": 0.10258548790658882,
+                    "tp_retained": 0.9999691715561858,
+                    "fp_retained": 4.47858118548044e-5
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7464553794829024,
-                    "tp_retained": 0.9951866244466014,
+                    "threshold": 0.8281901584653878,
+                    "tp_retained": 0.9952164249699773,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9779244092582804,
+                "best_TP_retained": 0.9857473442764078,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9779244092582804,
+                "best_J": 0.9857473442764078,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9999993779333359,
-                    "fp_retained": 0.00012590406110543766
+                    "threshold": 0.10341951626355296,
+                    "tp_retained": 0.9999692099096581,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7514595496246872,
-                    "tp_retained": 0.9950685276412989,
+                    "threshold": 0.8273561301084237,
+                    "tp_retained": 0.995219151840945,
                     "fp_retained": 0.0
                 }
             }
@@ -820,61 +805,61 @@
         "sampletype": "stool",
         "platform": "illumina",
         "best_weights": {
-            "breadth_weight": 0.2295980071338478,
-            "minhash_weight": 0.24253143382901687,
-            "gini_weight": 0.43486853859185426,
-            "disparity_weight": 0.057097935329590434,
-            "hmp_weight": 0.054237418449023966,
-            "plasmid_bonus_weight": 0.1490391409032882,
+            "breadth_weight": 0.08027031442637113,
+            "minhash_weight": 0.19095705564834042,
+            "gini_weight": 0.7302203496926826,
+            "disparity_weight": 0.00932558366348211,
+            "hmp_weight": 0.0075600299024571735,
+            "plasmid_bonus_weight": 0.135463311300515,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9986073685034862,
+                "best_TP_retained": 0.9992960896427535,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9986073685034862,
+                "best_J": 0.9992960896427535,
                 "fp_le_0_1pct": {
-                    "threshold": 0.021684737281067554,
-                    "tp_retained": 1.0,
-                    "fp_retained": 0.00010075059190972747
+                    "threshold": 0.04837364470391993,
+                    "tp_retained": 0.999998669266761,
+                    "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9716430358632193,
-                    "tp_retained": 0.9952805994992594,
+                    "threshold": 1.0,
+                    "tp_retained": 0.999033483695892,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9747178205173165,
+                "best_TP_retained": 0.9845531268712024,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9747178205173165,
+                "best_J": 0.9845531268712024,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.9999992172118213,
+                    "threshold": 0.10258548790658882,
+                    "tp_retained": 0.9999693451584304,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7464553794829024,
-                    "tp_retained": 0.9951876922527767,
+                    "threshold": 0.8281901584653878,
+                    "tp_retained": 0.9952875192052099,
                     "fp_retained": 0.0
                 }
             },
             "subkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9778527488047706,
+                "best_TP_retained": 0.9858240105694315,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9778527488047706,
+                "best_J": 0.9858240105694315,
                 "fp_le_0_1pct": {
-                    "threshold": 0.11759799833194329,
-                    "tp_retained": 0.999999374655181,
+                    "threshold": 0.10341951626355296,
+                    "tp_retained": 0.9999693831981071,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.7514595496246872,
-                    "tp_retained": 0.9950671628152461,
+                    "threshold": 0.8273561301084237,
+                    "tp_retained": 0.99528964483786,
                     "fp_retained": 0.0
                 }
             }
@@ -884,61 +869,61 @@
         "sampletype": "stool",
         "platform": "ont",
         "best_weights": {
-            "breadth_weight": 0.3002859138102839,
-            "minhash_weight": 0.17616493046874782,
-            "gini_weight": 0.32379934911122,
-            "disparity_weight": 0.10066006954612527,
-            "hmp_weight": 0.09908973706362297,
-            "plasmid_bonus_weight": 0.11347059319273821,
+            "breadth_weight": 0.07903781127284255,
+            "minhash_weight": 0.19006909769256666,
+            "gini_weight": 0.7383026222903545,
+            "disparity_weight": 0.006621314533442301,
+            "hmp_weight": 0.004302487544127459,
+            "plasmid_bonus_weight": 0.14374351758597823,
             "abundance_confidence_weight": 0.0,
-            "score_power": 0.75
+            "score_power": 0.6
         },
         "groups": {
             "toplevelkey": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9981322957198444,
+                "best_TP_retained": 0.9641778016517827,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9981322957198444,
+                "best_J": 0.9641778016517827,
                 "fp_le_0_1pct": {
                     "threshold": 0.0008340283569641367,
                     "tp_retained": 1.0,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.9991659716430358,
-                    "tp_retained": 0.9961385955160275,
+                    "threshold": 0.3794829024186822,
+                    "tp_retained": 0.9950647955415296,
                     "fp_retained": 0.0
                 }
             },
             "key": {
                 "best_threshold": 0.75,
-                "best_TP_retained": 0.9871340169468888,
+                "best_TP_retained": 0.9559219780033554,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9871340169468888,
+                "best_J": 0.9559219780033554,
                 "fp_le_0_1pct": {
-                    "threshold": 0.27773144286905754,
-                    "tp_retained": 0.9993322154124683,
+                    "threshold": 0.33444537114261885,
+                    "tp_retained": 0.9937297700350793,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.6964136780650542,
-                    "tp_retained": 0.9950880733672667,
-                    "fp_retained": 0.0
+                    "threshold": 0.3019182652210175,
+                    "tp_retained": 0.9951193885678455,
+                    "fp_retained": 0.1
                 }
             },
             "subkey": {
-                "best_threshold": 0.75,
-                "best_TP_retained": 0.9903880384478462,
+                "best_threshold": 0.74,
+                "best_TP_retained": 0.9607663769883621,
                 "best_FP_retained": 0.0,
-                "best_J": 0.9903880384478462,
+                "best_J": 0.9607663769883621,
                 "fp_le_0_1pct": {
-                    "threshold": 0.14845704753961633,
-                    "tp_retained": 0.999933250266999,
+                    "threshold": 0.06922435362802334,
+                    "tp_retained": 0.9999491792448035,
                     "fp_retained": 0.0
                 },
                 "tp_ge_99_5pct": {
-                    "threshold": 0.756463719766472,
-                    "tp_retained": 0.9953275186899252,
+                    "threshold": 0.3085904920767306,
+                    "tp_retained": 0.9950026257390184,
                     "fp_retained": 0.0
                 }
             }
