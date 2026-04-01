@@ -1084,6 +1084,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                                   outline_collector=None,
                                   zscore_threshold=None,
                                   zscore_separator_index=None,
+                                  sampletype=None,
                                   show_control_bar=False,
                                   missing_pos_controls=None):
     """
@@ -1199,7 +1200,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         if show_control_bar:
             # When control bar is present, allocate ~12% for it and shrink organism
             _ctrl_w = 0.12
-            _remaining = 1.0 - _ctrl_w
             if show_k2_column and show_ani_column:
                 base = [w*0.03, w*0.18, w*0.07, w*0.09, w*0.12, w*0.09, w*0.09, w*0.15]
             elif show_k2_column:
@@ -1361,6 +1361,30 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 break
     _zscore_separator_inserted = False
 
+    # ── Flora-on-sterile separator tracking ──────────────────────────────────
+    # For sterile sample types (blood, csf, serum, etc.), pre-compute which
+    # groups are commensal flora so we can insert a "Potential Contaminants"
+    # separator bar before the first such group.
+    _flora_groups_set = set()
+    _any_non_flora_grp = False
+    _any_flora_grp = False
+    _flora_separator_inserted = False
+    _is_sterile_sampletype = bool(sampletype and sampletype.lower().strip() in _STERILE_TYPES)
+    if _is_sterile_sampletype:
+        for s in all_strains:
+            sg = species_group_map[id(s)]
+            gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            if (_is_flora_on_sterile(sg, sampletype)
+                    or _is_flora_on_sterile(s, sampletype)):
+                _flora_groups_set.add(gk)
+        _any_flora_grp = bool(_flora_groups_set)
+        for s in all_strains:
+            sg = species_group_map[id(s)]
+            gk = sg.get('toplevelkey', sg.get('key', 'unknown'))
+            if gk not in _flora_groups_set:
+                _any_non_flora_grp = True
+                break
+
     i = 0
     while i < len(all_strains):
         strain = all_strains[i]
@@ -1398,6 +1422,31 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'CENTER'))
                 row_idx += 1
                 _zscore_separator_inserted = True
+
+            # ── Insert flora separator if entering a potential-contaminant group ──
+            if (_any_flora_grp and _any_non_flora_grp
+                    and not _flora_separator_inserted
+                    and species_key in _flora_groups_set):
+                flora_sep_label = '<i>— Potential Contaminants —</i>'
+                flora_sep_style = ParagraphStyle(
+                    'FloraSep', parent=small_style, fontSize=8, leading=10,
+                    alignment=TA_CENTER, fontName='Helvetica-Oblique',
+                    textColor=colors.HexColor('#e67e22'))
+                flora_sep_row = [''] * n_total
+                flora_sep_row[1] = Paragraph(flora_sep_label, flora_sep_style)
+                table_data.append(flora_sep_row)
+                table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
+                table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
+                                     colors.HexColor('#FFF8F0')))
+                table_styles.append(('LINEABOVE', (0, row_idx), (-1, row_idx),
+                                     2.0, colors.HexColor('#e67e22')))
+                table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx),
+                                     0.5, colors.HexColor('#F5CBA7')))
+                table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
+                table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 6))
+                table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'CENTER'))
+                row_idx += 1
+                _flora_separator_inserted = True
 
             current_species_key = species_key
             emitted_subkeys_per_group[species_key] = set()
@@ -2642,6 +2691,22 @@ def create_pdf_template(output_path, samples_dict, args):
             _normal = [p for p in _group_qualified if _group_zscore(p) < _zt]
             _group_qualified = _elevated + _normal
 
+        # ── Move flora-on-sterile groups to the very end ──────────────────────
+        # In sterile sample types (blood, csf, serum, etc.) organisms with
+        # commensal-flora annotations are rendered after a "Potential
+        # Contaminants" separator, so keep them together at the tail.
+        _sampletype_norm = sampletype.lower().strip() if sampletype else ''
+        if _sampletype_norm in _STERILE_TYPES:
+            def _pair_has_flora(pair):
+                sg, strains = pair
+                if _is_flora_on_sterile(sg, sampletype):
+                    return True
+                return any(_is_flora_on_sterile(s, sampletype) for s in strains)
+            _non_flora_pairs = [p for p in _group_qualified if not _pair_has_flora(p)]
+            _flora_pairs = [p for p in _group_qualified if _pair_has_flora(p)]
+            if _flora_pairs and _non_flora_pairs:
+                _group_qualified = _non_flora_pairs + _flora_pairs
+
         sorted_groups = [sg for sg, _ in _group_qualified]
 
         # Record for appendix
@@ -2675,6 +2740,7 @@ def create_pdf_template(output_path, samples_dict, args):
                 show_strains_table=show_strains_table,
                 outline_collector=outline_collector,
                 zscore_threshold=args.zscore_threshold,
+                sampletype=sampletype,
                 show_control_bar=_show_ctrl,
                 missing_pos_controls=_miss_pos_list,
             )
@@ -3049,7 +3115,8 @@ def create_tabular_output(output_path, samples_dict, args):
         'Parent K2 Reads', 'MapQ Score', 'Disparity Score', 'Minhash Score',
         'Diamond Identity', 'K2 Disparity Score', 'Siblings score',
         'Breadth Weight Score', 'TASS Score', 'MicrobeRT Probability',
-        'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey'
+        'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey',
+        'Flora Sites', 'Passes Threshold'
     ]
 
     all_rows = []
@@ -3071,6 +3138,8 @@ def create_tabular_output(output_path, samples_dict, args):
         _tab_smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
         _tab_meta_total = _tab_smeta.get('total_reads')
         sample_total_reads = max(1, int(_tab_meta_total) if _tab_meta_total else sum(sg.get('numreads', 0) for sg in species_groups))
+        # Per-sample confidence threshold (used for Passes Threshold column)
+        _mc = getattr(args, '_sample_min_conf', {}).get(sample_name, _DEFAULT_CONF)
 
         for sg in sorted_groups:
             group_key = sg.get('toplevelkey', sg.get('key', ''))
@@ -3083,6 +3152,20 @@ def create_tabular_output(output_path, samples_dict, args):
                     continue
                 strain_reads = float(strain.get('numreads', 0) or 0)
                 pct_reads = strain_reads / sample_total_reads * 100.0
+
+                # ── Flora Sites: commensal site tags for sterile sample types ──
+                _is_sterile_tab = sample_type.lower().strip() in _STERILE_TYPES
+                if _is_sterile_tab:
+                    _sites_raw = strain.get('commensal_sites', [])
+                    _sites_flat = (
+                        [s for s in _sites_raw if isinstance(s, str)]
+                        + [item for s in _sites_raw if isinstance(s, list) for item in s]
+                    )
+                    _flora_sites_str = ', '.join(sorted(set(_sites_flat))) if _sites_flat else ''
+                else:
+                    _flora_sites_str = ''
+                # ── Passes Threshold: does this strain meet the sample's TASS cutoff ──
+                _passes_thresh = 'TRUE' if passes_confidence_threshold(strain, _mc) else 'FALSE'
 
                 all_rows.append([
                     global_index, local_idx,
@@ -3117,7 +3200,9 @@ def create_tabular_output(output_path, samples_dict, args):
                     strain.get('mmbert_model', '') or '',
                     int(strain_reads),
                     group_key,
-                    strain.get('subkey', strain.get('key', ''))
+                    strain.get('subkey', strain.get('key', '')),
+                    _flora_sites_str,
+                    _passes_thresh,
                 ])
                 global_index += 1
 

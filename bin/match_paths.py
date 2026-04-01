@@ -427,7 +427,7 @@ def parse_args(argv=None):
                              "The gate uses the same log-RPM sigmoid controlled by "
                              "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
                              "Default: disabled.")
-    parser.add_argument("--score_power", type=float, default=0.0,
+    parser.add_argument("--score_power", type=float, default=0.650,
                         help="Power transform (gamma) applied to TASS scores. "
                              "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
                              "Preserves monotonic ordering so thresholds still separate TP/FP. "
@@ -609,6 +609,20 @@ def parse_args(argv=None):
         help="In addition to the standard removal_stats.xlsx, output a taxid-aggregated "
              "removal_stats_by_taxid.xlsx where accessions are grouped by their taxid. "
              "Requires --match to provide accession-to-taxid mappings."
+    )
+
+    # ── Description-based exclusion filters ─────────────────────────────────
+    parser.add_argument(
+        "--exclude_descriptions",
+        nargs="*",
+        default=None,
+        help="One or more regex patterns to match against reference descriptions "
+             "from the matchfile.  Any accession whose description matches ANY of "
+             "these patterns will be removed from the analysis (reads discarded).  "
+             "Useful for removing unplaced genomic scaffolds, mitochondrial sequences, "
+             "etc.  Example: --exclude_descriptions 'unplaced genomic scaffold' "
+             "'mitochondrion'.  If the flag is provided with no patterns, nothing is "
+             "filtered.  If the flag is omitted entirely, nothing is filtered.",
     )
 
     # ── Control sample arguments ────────────────────────────────────────────
@@ -1512,6 +1526,26 @@ def main():
                     _resolved_count += 1
         if _resolved_count:
             print(f"Resolved {_resolved_count} organism names from names.dmp (matchfile had no name/org columns)")
+
+    # ── Exclude accessions whose description matches --exclude_descriptions ──
+    # Patterns are compiled as regex and matched case-insensitively against
+    # the 'description' (or fallback 'name') field populated from the matchfile.
+    if args.exclude_descriptions:
+        _exclude_patterns = [re.compile(p, re.IGNORECASE) for p in args.exclude_descriptions]
+        _excluded_accs = []
+        _excluded_reads = 0
+        for acc, hit in list(reference_hits.items()):
+            _desc = hit.get('description', '') or hit.get('name', '') or ''
+            for _pat in _exclude_patterns:
+                if _pat.search(_desc):
+                    _excluded_accs.append(acc)
+                    _excluded_reads += hit.get('numreads', 0)
+                    break
+        for acc in _excluded_accs:
+            del reference_hits[acc]
+        if _excluded_accs:
+            print(f"--exclude_descriptions: removed {len(_excluded_accs)} accessions "
+                  f"({_excluded_reads} reads) matching {len(_exclude_patterns)} pattern(s)")
 
     # ── Tag plasmid accessions from the description field ──────────────────
     # Use 'description' (raw mapfile name column) which preserves strings

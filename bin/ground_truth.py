@@ -967,16 +967,29 @@ def optimize_weights_for_tp_fp(
     tp_total_taxa = float(y_pos.sum())
     fp_total_taxa = float(y_neg.sum())
 
-    # mode feasibility checks
+    # mode feasibility checks — only require TP signal; FP is optional.
+    # When no FP are present the neg_terms in loss_for_w() evaluate to 0.0
+    # (they are already guarded), so the optimizer simply maximises TP scores
+    # toward 1.0 without any separation objective.
+    _tp_only_mode = False
     if optimize_mode == "reads":
-        if tp_total_reads <= 0 or fp_total_reads <= 0:
-            return {"weights": start_weights, "status": "skipped (need both TP and FP reads)"}
+        if tp_total_reads <= 0:
+            return {"weights": start_weights, "status": "skipped (no TP reads)"}
+        if fp_total_reads <= 0:
+            _tp_only_mode = True
+            print("[optimize] No FP reads — running TP-maximisation optimisation only.")
     elif optimize_mode == "taxids":
-        if tp_total_taxa <= 0 or fp_total_taxa <= 0:
-            return {"weights": start_weights, "status": "skipped (need both TP and FP taxids)"}
+        if tp_total_taxa <= 0:
+            return {"weights": start_weights, "status": "skipped (no TP taxids)"}
+        if fp_total_taxa <= 0:
+            _tp_only_mode = True
+            print("[optimize] No FP taxids — running TP-maximisation optimisation only.")
     elif optimize_mode == "hybrid":
-        if (tp_total_reads <= 0 and tp_total_taxa <= 0) or (fp_total_reads <= 0 and fp_total_taxa <= 0):
-            return {"weights": start_weights, "status": "skipped (need TP/FP signal)"}
+        if tp_total_reads <= 0 and tp_total_taxa <= 0:
+            return {"weights": start_weights, "status": "skipped (no TP signal)"}
+        if fp_total_reads <= 0 and fp_total_taxa <= 0:
+            _tp_only_mode = True
+            print("[optimize] No FP signal — running TP-maximisation optimisation only.")
     else:
         raise ValueError(f"Unknown optimize_mode: {optimize_mode}")
 
@@ -1462,7 +1475,7 @@ def optimize_weights_for_tp_fp(
             "abundance_confidence_weight": _acw,
             "score_power": float(_final_score_power),
         },
-        "status": "ok",
+        "status": "ok (tp_only)" if _tp_only_mode else "ok",
         "optimize_mode": optimize_mode,
         "hybrid_lambda": float(hybrid_lambda),
         "threshold_pref_lambda": float(threshold_pref_lambda),

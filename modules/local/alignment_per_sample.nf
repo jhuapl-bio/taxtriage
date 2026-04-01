@@ -47,6 +47,9 @@ process ALIGNMENT_PER_SAMPLE {
     def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " "
     def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " "
     def disparity_score_weight = params.disparity_score_weight ? " --disparity_weight ${params.disparity_score_weight} " : " "
+    def auto_score_power = params.auto_score_power ? " --auto_score_power " : " "
+    def score_power = params.score_power != null ? " --score_power ${params.score_power} " : " "
+    def depth_concentration_power = params.depth_concentration_power != null ? " --depth_concentration_power ${params.depth_concentration_power} " : " "
 
     def output = "${meta.id}.paths.json"
     def id = meta.id
@@ -102,6 +105,7 @@ process ALIGNMENT_PER_SAMPLE {
         -p $pathogens_list  $mapping $k2 $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 --taxid_removal_stats \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
+        $auto_score_power $score_power $depth_concentration_power \\
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
