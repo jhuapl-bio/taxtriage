@@ -427,7 +427,7 @@ def parse_args(argv=None):
                              "The gate uses the same log-RPM sigmoid controlled by "
                              "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
                              "Default: disabled.")
-    parser.add_argument("--score_power", type=float, default=0.60,
+    parser.add_argument("--score_power", type=float, default=0.61,
                         help="Power transform (gamma) applied to TASS scores. "
                              "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
                              "Preserves monotonic ordering so thresholds still separate TP/FP. "
@@ -529,8 +529,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--ani_threshold",
         type=float,
-        default=0.95,
-        help="ANI threshold above which two organisms are considered highly similar (default: 0.95). "
+        default=0.97,
+        help="ANI threshold above which two organisms are considered highly similar (default=0.97). "
              "Used to annotate each member in the output JSON with a 'high_ani_matches' list.",
     )
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")

@@ -663,15 +663,15 @@ def calculate_normalized_groups(
         #
         # Fix: recompute the confidence gate from the organism-level coverage
         # and gini (which were just recalculated above from the full genome).
-        _agg_cov = agg.get('coverage', 0)
+        # _agg_cov = agg.get('coverage', 0)
         _agg_gini = float(agg.get('gini_coefficient', 0))
-        _agg_cov_conf = breadth_score_sigmoid(_agg_cov)
-        _agg_mh_conf = 0.7 * _agg_cov_conf + 0.3 * _agg_gini
-        _agg_mh_conf = min(1.0, max(0.0, _agg_mh_conf))
+        # _agg_cov_conf = breadth_score_sigmoid(_agg_cov)
+        # _agg_mh_conf = 0.7 * _agg_cov_conf + 0.3 * _agg_gini
+        # _agg_mh_conf = min(1.0, max(0.0, _agg_mh_conf))
 
         _agg_raw_mh = float(agg.get('minhash_score', agg.get('minhash_reduction', 0)))
-        agg['minhash_reduction'] = _agg_raw_mh * _agg_mh_conf
-        agg['minhash_confidence'] = _agg_mh_conf
+        agg['minhash_reduction'] = _agg_raw_mh * _agg_gini
+        agg['minhash_confidence'] = _agg_gini
 
         out[gval] = agg
 

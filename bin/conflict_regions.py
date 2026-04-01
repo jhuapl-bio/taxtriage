@@ -1802,7 +1802,7 @@ def generate_ani_matrix(
 def determine_conflicts(
     output_dir: Optional[str] = None,
     input_bam: Optional[str] = None,
-    min_threshold: float = 0.2,
+    min_threshold: float = 0.4,
     fasta_files: Optional[List[str]] = None,
     use_variance: bool = False,
     sigfile: Optional[str] = None,
@@ -1815,7 +1815,7 @@ def determine_conflicts(
     cpu_count: Optional[int] = None,
     jump_threshold: Optional[float] = None,
     gap_allowance: float = 0.1,
-    sim_ani_threshold: float = 0.99,
+    sim_ani_threshold: float = 0.96,
     compare_to_reference_windows: bool = False,
     find_optimal_windows: bool = False,
     accession_to_taxid: Optional[Dict[str, str]] = None,
@@ -1910,7 +1910,7 @@ def determine_conflicts(
                     )
             else:
                 print("Creating shared FASTA report from scratch")
-                sim_ani_threshold=0.9
+                sim_ani_threshold=0.96
                 report_shared_windows_across_fastas(
                     fasta_files=fasta_files,
                     output_csv=report_path,
