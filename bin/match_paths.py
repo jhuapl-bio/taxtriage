@@ -550,14 +550,14 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=1.0,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
-                         "Default: 2.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.01).")
-    parser.add_argument('--mapq_gini_power', required=False, type=float, default=1.0,
+                         "Default: 1.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.0,
                     help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
                          "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
-                         "Default: 1.0. Set to 0 to disable.")
+                         "Default: 0.0. Set to 0 to disable.")
     parser.add_argument('--contig_penalty_power', required=False, type=float, default=0.3,
                     help="Power exponent for contig utilization penalty on Gini. "
                          "gini *= (covered_contigs/total_contigs)^power. "
