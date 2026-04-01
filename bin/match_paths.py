@@ -427,7 +427,7 @@ def parse_args(argv=None):
                              "The gate uses the same log-RPM sigmoid controlled by "
                              "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
                              "Default: disabled.")
-    parser.add_argument("--score_power", type=float, default=0.650,
+    parser.add_argument("--score_power", type=float, default=0.60,
                         help="Power transform (gamma) applied to TASS scores. "
                              "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
                              "Preserves monotonic ordering so thresholds still separate TP/FP. "

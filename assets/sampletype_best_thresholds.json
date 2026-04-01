@@ -14,7 +14,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9988400119777822,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9988400119777822,
@@ -30,7 +30,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9762383861399038,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9762383861399038,
@@ -46,7 +46,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9786802868426077,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9786802868426077,
@@ -78,7 +78,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9988679378695318,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9988679378695318,
@@ -94,7 +94,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9761293425672862,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9761293425672862,
@@ -110,7 +110,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.978579781716709,
                 "best_FP_retained": 0.0,
                 "best_J": 0.978579781716709,
@@ -142,7 +142,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9957938144329896,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9957938144329896,
@@ -158,7 +158,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9870678012984266,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9870678012984266,
@@ -174,7 +174,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9888296109533495,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9888296109533495,
@@ -334,7 +334,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9637691745799853,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9637691745799853,
@@ -350,7 +350,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.78,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9533381191672649,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9533381191672649,
@@ -366,7 +366,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.81,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9572677241825833,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9572677241825833,
@@ -398,7 +398,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9999526299846575,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9999526299846575,
@@ -414,7 +414,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9916195579172956,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9916195579172956,
@@ -430,7 +430,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9916185789465778,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9916185789465778,
@@ -462,7 +462,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9999610918819499,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9999610918819499,
@@ -478,7 +478,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9916152091978693,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9916152091978693,
@@ -494,7 +494,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9916142128260224,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9916142128260224,
@@ -526,7 +526,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9994731552327843,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9994731552327843,
@@ -542,7 +542,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9917099958631095,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9917099958631095,
@@ -558,7 +558,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9918641153137953,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9918641153137953,
@@ -590,7 +590,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9982186468945078,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9982186468945078,
@@ -606,7 +606,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9955498715909209,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9955498715909209,
@@ -622,7 +622,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9955498715909209,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9955498715909209,
@@ -654,7 +654,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9980927654286048,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9980927654286048,
@@ -670,7 +670,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9950193210646123,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9950193210646123,
@@ -686,7 +686,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9950193210646123,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9950193210646123,
@@ -719,7 +719,7 @@
         "groups": {
             "toplevelkey": {},
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9982975169445247,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9982975169445247,
@@ -735,7 +735,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9982975169445247,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9982975169445247,
@@ -767,7 +767,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.998604907328894,
                 "best_FP_retained": 0.0,
                 "best_J": 0.998604907328894,
@@ -783,7 +783,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9747899411589961,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9747899411589961,
@@ -799,7 +799,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9779244092582804,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9779244092582804,
@@ -831,7 +831,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9986073685034862,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9986073685034862,
@@ -847,7 +847,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9747178205173165,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9747178205173165,
@@ -863,7 +863,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9778527488047706,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9778527488047706,
@@ -895,7 +895,7 @@
         },
         "groups": {
             "toplevelkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9981322957198444,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9981322957198444,
@@ -911,7 +911,7 @@
                 }
             },
             "key": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9871340169468888,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9871340169468888,
@@ -927,7 +927,7 @@
                 }
             },
             "subkey": {
-                "best_threshold": 0.85,
+                "best_threshold": 0.75,
                 "best_TP_retained": 0.9903880384478462,
                 "best_FP_retained": 0.0,
                 "best_J": 0.9903880384478462,
