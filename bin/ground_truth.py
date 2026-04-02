@@ -548,6 +548,7 @@ def optimize_weights(
             "hmp_percentile": "max",
             "plasmid_score": "max",
             "abundance_confidence": "max",
+            "score_power_scale": "first",
             "has_plasmid": "max",
             "commensal_sites": "first",
             "pathogenic_sites": "first",
@@ -1134,9 +1135,11 @@ def optimize_weights_for_tp_fp(
 
         return _at(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
 
-    # Mutable container for the current plasmid bonus weight during optimization.
+    # Mutable containers for parameters optimized outside the simplex.
     # Updated by the outer DE/SLSQP loops so loss_for_w always sees the latest value.
     _current_pbw = [_pbw0]
+    _current_sp = [_score_power]          # score_power (optimized alongside weights)
+    _sp_min, _sp_max = 0.3, 1.0           # bounds for score_power search
 
     def loss_for_w(w: np.ndarray) -> float:
         # simplex + min-weight constraints (soft)
@@ -1156,7 +1159,7 @@ def optimize_weights_for_tp_fp(
             plasmid_bonus_w=float(_current_pbw[0]),
             abundance_confidence_w=_acw,
             abundance_gate=_abundance_gate,
-            score_power=_score_power,
+            score_power=float(_current_sp[0]),
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1306,36 +1309,47 @@ def optimize_weights_for_tp_fp(
             + prior_penalty
         )
 
-    # --- Global stage (DE) over 4 simplex vars + optional pbw ---
-    # x = [w_breadth, w_minhash, w_gini, w_disparity, (pbw)], w_hmp = 1 - sum(x[:4])
+    # --- Global stage (DE) over 4 simplex vars + optional pbw + score_power ---
+    # x = [w_breadth, w_minhash, w_gini, w_disparity, (pbw), (score_power)]
+    # w_hmp = 1 - sum(x[:4])
     _upper = 1.0 - (n_weights - 1) * _mw  # max any single weight can be
     _optimize_pbw = _has_plasmid_data  # only optimize pbw if plasmid data exists
     if _optimize_pbw:
         print(f"[optimize] Plasmid data detected — optimizing plasmid_bonus_weight (start={_pbw0:.4f}, max={_pbw_max})")
     else:
         print(f"[optimize] No plasmid data in metrics — plasmid_bonus_weight fixed at {_pbw0:.4f}")
+    print(f"[optimize] Optimizing score_power (start={_score_power:.4f}, bounds=[{_sp_min}, {_sp_max}])")
 
     def unpack_x(x: np.ndarray):
-        """Unpack DE vector into (5-weight array, pbw_value)."""
+        """Unpack DE vector into (5-weight array, pbw_value, sp_value)."""
         wb, wm, wg, wd = float(x[0]), float(x[1]), float(x[2]), float(x[3])
         wh = 1.0 - (wb + wm + wg + wd)
         w = np.array([wb, wm, wg, wd, wh], dtype=float)
         if _mw > 0:
             w = np.clip(w, _mw, _upper)
             w = w / w.sum()  # re-normalize after clipping
-        pbw_val = float(x[4]) if (_optimize_pbw and len(x) > 4) else _pbw0
-        return w, pbw_val
+        # Extra dimensions after the 4 simplex vars: pbw (optional), then score_power
+        _idx = 4
+        if _optimize_pbw:
+            pbw_val = float(x[_idx]) if len(x) > _idx else _pbw0
+            _idx += 1
+        else:
+            pbw_val = _pbw0
+        sp_val = float(x[_idx]) if len(x) > _idx else _score_power
+        return w, pbw_val, sp_val
 
     def loss_for_x(x: np.ndarray) -> float:
-        w, pbw_val = unpack_x(x)
+        w, pbw_val, sp_val = unpack_x(x)
         if np.any(w < 0.0) or np.any(w > 1.0):
             return 1e6 + 1e6 * max(0.0, -w.min())
         _current_pbw[0] = pbw_val
+        _current_sp[0] = sp_val
         return loss_for_w(w)
 
     bounds = [(_mw, _upper), (_mw, _upper), (_mw, _upper), (_mw, _upper)]
     if _optimize_pbw:
         bounds.append((0.0, _pbw_max))
+    bounds.append((_sp_min, _sp_max))  # score_power always optimized
     rng = np.random.RandomState(seed)
 
     de_res = differential_evolution(
@@ -1348,68 +1362,71 @@ def optimize_weights_for_tp_fp(
         workers=1,
     )
 
-    w_de, pbw_de = unpack_x(de_res.x)
+    w_de, pbw_de, sp_de = unpack_x(de_res.x)
     if np.any(w_de < 0) or abs(w_de.sum() - 1.0) > 1e-6:
         w_de = w0.copy()
         pbw_de = _pbw0
+        sp_de = _score_power
     else:
         w_de = np.clip(w_de, _mw, _upper)
         w_de = w_de / w_de.sum()
 
     _current_pbw[0] = pbw_de  # carry forward DE result
+    _current_sp[0] = sp_de    # carry forward DE result
 
-    # --- Local refinement (SLSQP) on 5 simplex vars + optional pbw ---
+    # --- Local refinement (SLSQP) on 5 simplex vars + extra params ---
+    # Build the extended vector: [w0..w4, (pbw), score_power]
+    # The simplex constraint only applies to the first 5 elements.
+    _extra_params = []   # (start_val, lo, hi) for each extra param after simplex
+    _extra_labels = []
     if _optimize_pbw:
-        # 6-variable vector: w[0:5] = simplex weights, w[5] = pbw
-        def loss_for_slsqp(x6):
-            w5 = x6[:5]
-            _current_pbw[0] = float(x6[5])
-            return loss_for_w(w5)
+        _extra_params.append((pbw_de, 0.0, _pbw_max))
+        _extra_labels.append("pbw")
+    _extra_params.append((sp_de, _sp_min, _sp_max))
+    _extra_labels.append("sp")
 
-        cons_slsqp = [{"type": "eq", "fun": lambda x6: np.sum(x6[:5]) - 1.0}]
-        bnds_slsqp = [(_mw, _upper)] * n_weights + [(0.0, _pbw_max)]
-        x0_slsqp = np.append(w_de, pbw_de)
+    def loss_for_slsqp(xn):
+        w5 = xn[:5]
+        _idx = 5
+        if _optimize_pbw:
+            _current_pbw[0] = float(xn[_idx]); _idx += 1
+        _current_sp[0] = float(xn[_idx])
+        return loss_for_w(w5)
 
-        local_res = minimize(
-            loss_for_slsqp,
-            x0=x0_slsqp,
-            method="SLSQP",
-            bounds=bnds_slsqp,
-            constraints=cons_slsqp,
-            options={"maxiter": maxiter_local, "ftol": 1e-9},
-        )
+    cons_slsqp = [{"type": "eq", "fun": lambda xn: np.sum(xn[:5]) - 1.0}]
+    bnds_slsqp = [(_mw, _upper)] * n_weights + [(lo, hi) for _, lo, hi in _extra_params]
+    x0_slsqp = np.concatenate([w_de, np.array([v for v, _, _ in _extra_params])])
 
-        w_best = np.clip(local_res.x[:5], _mw, _upper)
-        w_best = w_best / w_best.sum()
-        pbw_best = float(np.clip(local_res.x[5], 0.0, _pbw_max))
+    local_res = minimize(
+        loss_for_slsqp,
+        x0=x0_slsqp,
+        method="SLSQP",
+        bounds=bnds_slsqp,
+        constraints=cons_slsqp,
+        options={"maxiter": maxiter_local, "ftol": 1e-9},
+    )
+
+    w_best = np.clip(local_res.x[:5], _mw, _upper)
+    w_best = w_best / w_best.sum()
+    _idx = 5
+    if _optimize_pbw:
+        pbw_best = float(np.clip(local_res.x[_idx], 0.0, _pbw_max)); _idx += 1
     else:
-        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-        bnds = [(_mw, _upper)] * n_weights
-
-        local_res = minimize(
-            loss_for_w,
-            x0=w_de,
-            method="SLSQP",
-            bounds=bnds,
-            constraints=cons,
-            options={"maxiter": maxiter_local, "ftol": 1e-9},
-        )
-
-        w_best = np.clip(local_res.x, _mw, _upper)
-        w_best = w_best / w_best.sum()
-        pbw_best = _pbw0  # unchanged
+        pbw_best = _pbw0
+    sp_best = float(np.clip(local_res.x[_idx], _sp_min, _sp_max))
 
     _current_pbw[0] = pbw_best
+    _current_sp[0] = sp_best
     if _optimize_pbw:
         print(f"[optimize] Optimized plasmid_bonus_weight: {_pbw0:.4f} -> {pbw_best:.4f}")
+    print(f"[optimize] Optimized score_power: {_score_power:.4f} -> {sp_best:.4f}")
 
-    # ── Auto score_power: compute gamma from TP mean vs target ──────────
+    # ── Auto score_power: override the DE-optimized value if enabled ─────
     # After weight optimization, if the raw TP mean is below tp_target,
     # compute a power transform gamma that lifts it to the target:
     #   gamma = log(target) / log(tp_mean)
-    # This is a post-optimization calibration step that preserves the
-    # optimized weight ratios while expanding the score range.
-    _final_score_power = _score_power
+    # This post-hoc calibration overrides the DE-optimized score_power.
+    _final_score_power = sp_best
     if auto_score_power and tp_target is not None and tp_target > 0:
         # Compute raw scores (without power transform) to measure the gap
         raw_scores = compute_tass_score_from_metrics(
@@ -1656,6 +1673,7 @@ def build_metrics_df_from_final_json(
         hmp = float(stats.get("hmp_percentile", 0.0))
         plasmid_sc = float(stats.get("plasmid_score", 0.0))
         abundance_conf = float(stats.get("abundance_confidence", 0.0))
+        sp_scale = float(stats.get("score_power_scale", 1.0))
 
         tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
         total = tp + fp
@@ -1675,6 +1693,7 @@ def build_metrics_df_from_final_json(
             "hmp_percentile": hmp,
             "plasmid_score": plasmid_sc,
             "abundance_confidence": abundance_conf,
+            "score_power_scale": sp_scale,
             "has_plasmid": bool(stats.get("has_plasmid", False)),
             "commensal_sites": stats.get("commensal_sites", []),
             "pathogenic_sites": stats.get("pathogenic_sites", []),
@@ -1710,6 +1729,7 @@ def build_metrics_df_from_final_json(
         "hmp_percentile": "max",
         "plasmid_score": "max",
         "abundance_confidence": "max",
+        "score_power_scale": "first",
         "has_plasmid": "max",
         "commensal_sites": "first",
         "pathogenic_sites": "first",

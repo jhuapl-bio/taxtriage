@@ -488,7 +488,9 @@ def calculate_normalized_groups(
         agg["name"] = entries[0].get("name") or entries[0].get("organism") or gval
         if "subkey" not in agg and "subkey" in entries[0]:
             agg["subkey"] = entries[0].get("subkey")
-            agg["subkeyname"] = entries[0].get("subkeyname", agg["name"])
+        # Always propagate subkeyname from the constituent entries
+        if "subkeyname" not in agg:
+            agg["subkeyname"] = entries[0].get("subkeyname") or agg["name"]
 
         # ---------- TOPLEVEL KEY + NAME ----------
         if group_field == "toplevelkey":
@@ -661,17 +663,13 @@ def calculate_normalized_groups(
         # dominate.  E.g. Toxoplasma: 82K reads on 3/80 contigs → per-contig
         # weighted avg ≈ 0.99, but organism-level coverage is only 0.15%.
         #
-        # Fix: recompute the confidence gate from the organism-level coverage
-        # and gini (which were just recalculated above from the full genome).
-        # _agg_cov = agg.get('coverage', 0)
-        _agg_gini = float(agg.get('gini_coefficient', 0))
-        # _agg_cov_conf = breadth_score_sigmoid(_agg_cov)
-        # _agg_mh_conf = 0.7 * _agg_cov_conf + 0.3 * _agg_gini
-        # _agg_mh_conf = min(1.0, max(0.0, _agg_mh_conf))
-
+        # No confidence gate applied — pass through the raw minhash score.
+        # The minhash comparison already captures signature uniqueness;
+        # gating by gini or coverage double-penalizes organisms that are
+        # already scored on those metrics independently in TASS.
         _agg_raw_mh = float(agg.get('minhash_score', agg.get('minhash_reduction', 0)))
-        agg['minhash_reduction'] = _agg_raw_mh * _agg_gini
-        agg['minhash_confidence'] = _agg_gini
+        agg['minhash_reduction'] = _agg_raw_mh
+        agg['minhash_confidence'] = 1.0
 
         out[gval] = agg
 
@@ -997,6 +995,21 @@ def compute_scores_per(
     _mcg_gini_w    = 0.0   # how much distribution uniformity matters
     minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
     minhash_confidence = min(1.0, max(0.0, minhash_confidence))  # sanity clamp
+
+    # ── Low-read penalty ────────────────────────────────────────────────
+    # Organisms with very few reads are more likely to be false positives.
+    # Scale minhash_confidence by a read-count factor so that low-read
+    # organisms get a harder reduction.  rpm_weight (sigmoid on
+    # read_fraction) is already computed above; we blend it in with a
+    # floor so we never completely zero out an organism that has decent
+    # coverage but happens to have few absolute reads.
+    #
+    # _read_penalty_w controls strength: 0.0 = no penalty, 1.0 = full
+    # penalty (minhash_confidence *= rpm_weight).  0.35 gives a moderate
+    # dampening: an organism at rpm_weight=0.1 sees confidence scaled by
+    # 0.65 + 0.35*0.1 = 0.685 (≈30% reduction).
+    _read_penalty_w = 0.35
+    minhash_confidence *= (1.0 - _read_penalty_w) + (_read_penalty_w * rpm_weight)
 
     data['minhash_reduction'] = minhash_confidence
     data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
@@ -1376,9 +1389,20 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
     #   score_power=0.3 → 0.09 becomes 0.52,  0.95 stays 0.98
     # Preserves monotonic ordering so thresholds still separate TP/FP.
     # score_power=1.0 (default) is a no-op.
+    #
+    # score_power_scale (per-organism, 0→1) modulates the strength of the
+    # transform.  Dominant organisms in their ANI/toplevelkey group get the
+    # full boost; minor siblings sharing reads with many close relatives
+    # get almost none.
+    #   effective_power = 1.0 - (1.0 - score_power) * score_power_scale
     if score_power != 1.0 and score_power > 0:
         score = np.clip(score, 0.0, 1.0)
-        score = np.power(score, score_power)
+        if "score_power_scale" in metrics_df.columns:
+            sp_scale = metrics_df["score_power_scale"].to_numpy(float)
+            effective_power = 1.0 - (1.0 - score_power) * sp_scale
+            score = np.power(score, effective_power)
+        else:
+            score = np.power(score, score_power)
 
     return np.clip(score, 0.0, 1.0)
 
@@ -1495,10 +1519,19 @@ def compute_tass_score(data = {}, weights={}):
         tass_score *= gate
 
     # ── Power transform (score recalibration) ─────────────────────────────
+    # score_power_scale (0→1) modulates how much the power transform
+    # applies to this organism.  Dominant organisms in their ANI/toplevelkey
+    # group (proportion≈1) get the full boost; minor siblings sharing reads
+    # with many close relatives (proportion≈0.2) get almost no boost.
+    #   effective_power = 1.0 - (1.0 - score_power) * score_power_scale
+    # When score_power_scale=1: effective_power = score_power (full effect)
+    # When score_power_scale=0: effective_power = 1.0         (no-op)
     _score_power = float(weights.get('score_power', 1.0))
     if _score_power != 1.0 and _score_power > 0:
+        _sp_scale = float(data.get('score_power_scale', 1.0))
+        _effective_power = 1.0 - (1.0 - _score_power) * _sp_scale
         tass_score = max(0.0, min(1.0, tass_score))
-        tass_score = tass_score ** _score_power
+        tass_score = tass_score ** _effective_power
 
     return min(1.0, max(0.0, tass_score))
 
@@ -1676,7 +1709,28 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
         # Not found in lineage either
         return None, None, None
     # if members is an attribute, and not empty then iterate through all of them
+    # Members may be subkey groups (which themselves have strain-level members)
+    # or flat strains.  Recursively classify nested members first.
     if "members" in rec and rec["members"]:
+        # Recursively classify nested members (subkey groups with their own members)
+        for member in rec["members"]:
+            if "members" in member and member["members"]:
+                _sub_result = calculate_classes(
+                    rec=member,
+                    ref=member.get("taxid") or member.get("key") or ref,
+                    pathogens=pathogens,
+                    sample_type=sample_type,
+                    taxdump=taxdump,
+                )
+                # Propagate classification fields back onto the member
+                for _field in ('high_cons', 'is_pathogen', 'microbial_category',
+                               'annClass', 'is_annotated', 'status', 'ref',
+                               'matched_taxid', 'matched_rank',
+                               'normalized_sample_site', 'commensal_sites',
+                               'pathogenic_sites', 'members'):
+                    if _field in _sub_result:
+                        member[_field] = _sub_result[_field]
+
         member_categories = []
         member_high_cons = []
         member_annotations = []
@@ -1689,6 +1743,20 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 or member.get("key")
                 or ref
             )
+
+            # If this member was already classified recursively, use those results
+            if member.get('is_annotated') is not None and member.get('microbial_category') is not None:
+                st_cat = member.get('microbial_category', 'Unknown')
+                st_hc = member.get('high_cons', False)
+                st_ann = member.get('annClass', 'Direct')
+                is_annotated = member.get('is_annotated', 'No')
+                status = member.get('status', '')
+                member_matched_info.append((member.get('matched_taxid'), member.get('matched_rank')))
+                member_categories.append(st_cat)
+                member_high_cons.append(st_hc)
+                member_annotations.append((st_ann, is_annotated))
+                member_statuses.append(status)
+                continue
 
             # Try to find pathogen info in lineage FOR EACH MEMBER
             # This searches: member_taxid → genus → family → ... until match found
@@ -2005,7 +2073,9 @@ def load_control_data(json_paths):
             if tlk:
                 index["by_toplevelkey"][tlk].append(grp_entry)
 
-            # Index individual members at key and subkey levels
+            # Index individual members at key and subkey levels.
+            # Supports both the 3-level hierarchy (members are subkey groups
+            # with their own 'members' of strains) and the legacy flat format.
             for member in grp.get("members", []):
                 m_key = str(member.get("key", ""))
                 m_subkey = str(member.get("subkey", member.get("key", "")))
@@ -2016,10 +2086,28 @@ def load_control_data(json_paths):
                     "source": source,
                     "name": m_name,
                 }
-                if m_key:
-                    index["by_key"][m_key].append(m_entry)
                 if m_subkey:
                     index["by_subkey"][m_subkey].append(m_entry)
+                # If this member has nested strain-level members, index those at key level
+                if "members" in member and member["members"]:
+                    for strain in member["members"]:
+                        s_key = str(strain.get("key", ""))
+                        s_subkey = str(strain.get("subkey", strain.get("key", "")))
+                        s_name = strain.get("name") or m_name
+                        s_entry = {
+                            "tass_score": float(strain.get("tass_score", 0) or 0),
+                            "numreads": float(strain.get("numreads", 0) or 0),
+                            "source": source,
+                            "name": s_name,
+                        }
+                        if s_key:
+                            index["by_key"][s_key].append(s_entry)
+                        if s_subkey and s_subkey not in index["by_subkey"]:
+                            index["by_subkey"][s_subkey].append(s_entry)
+                else:
+                    # Legacy flat structure: member IS a strain
+                    if m_key:
+                        index["by_key"][m_key].append(m_entry)
 
     return index
 
@@ -2228,13 +2316,19 @@ def find_missing_positive_controls(final_json, pos_index, levels=None):
         tlk = str(grp.get("toplevelkey", grp.get("key", "")))
         if tlk:
             sample_ids["toplevelkey"].add(tlk)
-        for m in grp.get("members", []):
-            mk = str(m.get("key", ""))
-            msk = str(m.get("subkey", m.get("key", "")))
-            if mk:
-                sample_ids["key"].add(mk)
-            if msk:
-                sample_ids["subkey"].add(msk)
+        for sk_m in grp.get("members", []):
+            # Subkey-level member
+            sk = str(sk_m.get("subkey", sk_m.get("key", "")))
+            if sk:
+                sample_ids["subkey"].add(sk)
+            # Strain-level members nested inside the subkey group
+            for strain in sk_m.get("members", []):
+                mk = str(strain.get("key", ""))
+                msk = str(strain.get("subkey", strain.get("key", "")))
+                if mk:
+                    sample_ids["key"].add(mk)
+                if msk:
+                    sample_ids["subkey"].add(msk)
 
     missing = []
     _seen_ids = set()  # org IDs already emitted (dedup across levels)

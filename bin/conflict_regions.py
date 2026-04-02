@@ -1821,8 +1821,11 @@ def determine_conflicts(
     accession_to_taxid: Optional[Dict[str, str]] = None,
     taxid_to_name: Optional[Dict[str, str]] = None,
     taxid_removal_stats: bool = False,
+    window_size: int = 5000,
+    step_size: int = 2500,
 ):
-    if output_dir is None or input_bam is None or bedfile is None:
+    # only raise error if bedfile is missing AND compare_to_reference_windows is not selected
+    if output_dir is None or input_bam is None or (bedfile is None and not compare_to_reference_windows):
         raise ValueError("output_dir, input_bam, and bedfile are required.")
     os.makedirs(output_dir, exist_ok=True)
     print(f"Starting conflict detection pipeline: {time.ctime()}")
@@ -1900,24 +1903,38 @@ def determine_conflicts(
                     report_shared_windows_across_fastas(
                         fasta_files=fasta_files,
                         output_csv=report_path,
-                        ksize=31,
-                        scaled=4000,
-                        window=90_000,
-                        step=90_000,
+                        ksize=21,
+                        scaled=500,
+                        window=window_size,
+                        step=step_size,
                         jaccard_threshold=sim_ani_threshold,
                         max_hits_per_query=5,
                         skip_self_same_fasta=False,
                     )
             else:
                 print("Creating shared FASTA report from scratch")
-                sim_ani_threshold=0.96
+                sim_ani_threshold=0.9
+                # Previous defaults (ksize=51, scaled=5000, window=900k) were
+                # far too conservative for closely related organisms like
+                # E. coli / Shigella (98%+ ANI):
+                #   - ksize=51: a single SNP breaks the k-mer → almost no
+                #     matches at 98% ANI where ~1 in 50 bases differs
+                #   - scaled=5000: sketch too sparse to capture overlap
+                #   - window=900k: most contigs smaller → single window,
+                #     no positional resolution
+                #
+                # New defaults: ksize=21 tolerates moderate divergence,
+                # scaled=500 gives reasonable sketch density, window=5000
+                # with step=2500 (50% overlap) captures local shared regions.
+                # The function-level kmer_size and scaled params override
+                # these defaults when passed from the CLI.
                 report_shared_windows_across_fastas(
                     fasta_files=fasta_files,
                     output_csv=report_path,
-                    ksize=51,
-                    scaled=5000,
-                    window=900_000,
-                    step=900_000,
+                    ksize=kmer_size,
+                    scaled=scaled,
+                    window=window_size,
+                    step=step_size,
                     jaccard_threshold=sim_ani_threshold,
                     max_hits_per_query=12,
                     skip_self_same_fasta=False,
@@ -1927,6 +1944,7 @@ def determine_conflicts(
 
     # Removal plan
     if compare_to_reference_windows and shared_idx is not None:
+        print("Building removal plan based on shared-window alignments...")
         removed_read_ids = build_removed_ids_best_alignment(
             bam_path=input_bam,
             shared_idx=shared_idx,
@@ -1940,7 +1958,7 @@ def determine_conflicts(
     else:
         # Parse bedgraph + merge regions
         regions = parse_bed_file(bedfile)
-        print(f"Input intervals: {len(regions)}")
+        print(f"Input intervals selected from bam/bed: {len(regions)}")
 
         if use_variance:
             stat_name = "variance"

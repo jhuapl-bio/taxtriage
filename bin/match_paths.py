@@ -447,21 +447,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.40,
+        default=0.27,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.55,
+        default=0.21,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.15,
+        default=0.52,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -523,7 +523,6 @@ def parse_args(argv=None):
         help="OPTIONAL: Microbert Predictions on downsampled dataset. Contains columns for each rank, e.g. superkingdom, phylum, class, order, family, genus, species and avg, median, and std probablity columns",
     )
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
-    parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
     parser.add_argument("--enable_matrix", required=False, action='store_true', help="Enable loading the ANI matrix file")
     parser.add_argument(
@@ -535,7 +534,14 @@ def parse_args(argv=None):
     )
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")
     parser.add_argument("--failed_reads", required=False, help="Load a 2 col tsv of reference   read_id that is to be the passed reads. Remove all others and update bedgraph and cov file(s)")
-    parser.add_argument("--scaled", type=int, default=2000, help="scaled factor for MinHash.")
+    parser.add_argument("--scaled", type=int, default=5000, help="scaled factor for MinHash.")
+    parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
+    parser.add_argument("--window_size", type=int, default=900_000,
+                        help="Window size (bp) for shared-region sketching in conflict detection. "
+                             "Smaller values give finer positional resolution. Default: 500,000.")
+    parser.add_argument("--step_size", type=int, default=900_000,
+                        help="Step size (bp) between windows for shared-region sketching. "
+                             "Use window_size/2 for 50%% overlap. Default: 500,000.")
     parser.add_argument("--coverage_length", type=int, default=500, help="Length of each coverage chunk.")
     parser.add_argument("--coverage_spacing", type=int, default=4, help="Allowed gap of zero coverage in a chunk.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
@@ -550,21 +556,21 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=1.0,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.7,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
                          "Default: 1.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
-    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.0,
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.34,
                     help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
                          "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
-                         "Default: 0.0. Set to 0 to disable.")
+                         "Default: 1.0. Set to 0 to disable.")
     parser.add_argument('--contig_penalty_power', required=False, type=float, default=0.3,
                     help="Power exponent for contig utilization penalty on Gini. "
                          "gini *= (covered_contigs/total_contigs)^power. "
                          "Penalizes organisms where reads concentrate on few contigs "
                          "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
                          "Default: 0.3. Set to 0 to disable.")
-    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
+    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.45,
                     help="Power exponent for depth-concentration penalty on Gini. "
                          "Detects the conserved-human-reads pattern: many reads map to a "
                          "tiny region of a large genome (high depth, negligible coverage). "
@@ -1290,6 +1296,8 @@ def main():
                 jump_threshold = args.jump_threshold,
                 gap_allowance=args.gap_allowance,
                 compare_to_reference_windows=args.compare_references,
+                window_size=args.window_size,
+                step_size=args.step_size,
                 accession_to_taxid=early_acc_to_taxid if early_acc_to_taxid else None,
                 taxid_to_name=early_taxid_to_desc if early_taxid_to_desc else None,
                 taxid_removal_stats=args.taxid_removal_stats,
@@ -1895,6 +1903,87 @@ def main():
         print("Optimized weights changed: ")
         for k, v in weights.items():
             print(f"\t{k}: {v}")
+    # ── Pre-compute score_power_scale for each strain ────────────────────
+    # score_power_scale ∈ [0, 1] controls how much the power transform
+    # applies to each organism.  Dominant organisms in their group get the
+    # full boost (scale≈1); minor siblings sharing reads with many close
+    # relatives get almost none (scale→0).
+    #
+    # Grouping strategy:
+    #   1. If ani_data is available, group organisms that share ANI ≥
+    #      ani_threshold (transitive closure of pairwise edges).
+    #   2. Otherwise fall back to toplevelkey grouping.
+    #
+    # Within each group, score_power_scale = reads / group_total_reads,
+    # so the effective exponent becomes:
+    #   effective_power = 1.0 - (1.0 - score_power) * score_power_scale
+    # A sole organism (proportion=1) gets full score_power; one of five
+    # equal Shigella (proportion≈0.2) gets almost no boost.
+
+    def _build_ani_groups(strain_dict, ani_data, threshold):
+        """Build groups of taxa connected by ANI ≥ threshold (union-find)."""
+        parent = {}
+
+        def find(x):
+            while parent.get(x, x) != x:
+                parent[x] = parent.get(parent[x], parent[x])
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        taxids = set()
+        for _k, _d in strain_dict.items():
+            t = str(_d.get('key', _k))
+            taxids.add(t)
+
+        for t1 in taxids:
+            if t1 not in ani_data:
+                continue
+            for t2, ani_val in ani_data[t1].items():
+                if t2 in taxids and ani_val >= threshold:
+                    union(t1, t2)
+
+        # Collect groups: root -> list of taxids
+        groups = defaultdict(list)
+        for t in taxids:
+            groups[find(t)].append(t)
+        return groups
+
+    if ani_data:
+        _ani_groups = _build_ani_groups(strain_summary, ani_data, args.ani_threshold)
+        # Invert: taxid -> group root
+        _taxid_to_ani_group = {}
+        for root, members in _ani_groups.items():
+            for m in members:
+                _taxid_to_ani_group[m] = root
+
+    for _k, _d in strain_summary.items():
+        _taxid = str(_d.get('key', _k))
+        _reads = float(_d.get('numreads', 0))
+
+        if ani_data and _taxid in _taxid_to_ani_group:
+            # ANI-based grouping
+            _group_root = _taxid_to_ani_group[_taxid]
+            _group_total = sum(
+                float(_d2.get('numreads', 0))
+                for _d2 in strain_summary.values()
+                if _taxid_to_ani_group.get(str(_d2.get('key', ''))) == _group_root
+            )
+        else:
+            # Fallback: toplevelkey grouping
+            _tlk = _d.get('toplevelkey', '')
+            _group_total = sum(
+                float(_d2.get('numreads', 0))
+                for _d2 in strain_summary.values()
+                if _d2.get('toplevelkey', '') == _tlk
+            )
+
+        _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
+
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename
@@ -1945,6 +2034,30 @@ def main():
         }
         print(f"Filtered strains by min_reads_align={_min_ra}: {_before} → {len(strain_summary)}")
 
+    # ── Subkey (species) level aggregation ─────────────────────────────────
+    # Intermediate aggregation: strain → subkey (species).  Each subkey group
+    # aggregates all strains sharing the same species-level taxid and will
+    # later be nested *inside* the toplevelkey (genus) group.
+    subkey_summary = calculate_normalized_groups(
+        hits=strain_summary,
+        group_field="subkey",
+        reads_key="numreads",
+        mapq_breadth_power=args.mapq_breadth_power,
+        mapq_gini_power=args.mapq_gini_power,
+        contig_penalty_power=args.contig_penalty_power,
+        depth_concentration_power=args.depth_concentration_power,
+    )
+    # Attach strain-level members to each subkey group
+    for _, sk_data in subkey_summary.items():
+        sk_data['members'] = [
+            x for _, x in strain_summary.items()
+            if str(x.get('subkey', x.get('key', ''))) == str(sk_data.get('subkey', sk_data.get('key', '')))
+        ]
+        # Ensure subkey groups carry correct identity fields
+        sk_data['name'] = sk_data.get('subkeyname', sk_data.get('name', None))
+        sk_data['key'] = sk_data.get('subkey', sk_data.get('key', None))
+    print(f"Subkey (species) aggregation: {len(strain_summary)} strains → {len(subkey_summary)} subkeys")
+
     aggregate_dict = calculate_normalized_groups(
         hits=strain_summary,
         group_field="toplevelkey",
@@ -1959,11 +2072,63 @@ def main():
         for acc in species_to_all_accs.get(k, []):
             acc_to_parent[acc] = k
 
+    # Pre-compute score_power_scale for aggregate (species-level) entries.
+    # At this level each entry IS a toplevelkey group, so default scale=1.0.
+    # But if ANI data links multiple toplevelkeys, compute proportion within
+    # the ANI super-group.
+    if ani_data:
+        _agg_ani_groups = _build_ani_groups(aggregate_dict, ani_data, args.ani_threshold)
+        _agg_taxid_to_ani_group = {}
+        for root, members in _agg_ani_groups.items():
+            for m in members:
+                _agg_taxid_to_ani_group[m] = root
+
+        for _k, _d in aggregate_dict.items():
+            _taxid = str(_d.get('toplevelkey', _k))
+            _reads = float(_d.get('numreads', 0))
+            if _taxid in _agg_taxid_to_ani_group:
+                _group_root = _agg_taxid_to_ani_group[_taxid]
+                _group_total = sum(
+                    float(_d2.get('numreads', 0))
+                    for _d2 in aggregate_dict.values()
+                    if _agg_taxid_to_ani_group.get(str(_d2.get('toplevelkey', ''))) == _group_root
+                )
+                _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
+            else:
+                _d['score_power_scale'] = 1.0
+    else:
+        for _k, _d in aggregate_dict.items():
+            _d['score_power_scale'] = 1.0  # no ANI info at species level, no penalty
+
+    # ── Compute TASS scores for subkey (species) groups ────────────────────
+    for _, sk_data in subkey_summary.items():
+        sk_data['sample_name'] = args.samplename
+        sk_group_reads = [
+            dict(reads=x['numreads'], key=x.get('key'))
+            for x in sk_data.get('members', [])
+        ]
+        calculate_aggregate_scores(
+            data=sk_data,
+            hmp_dists=dists,
+            body_sites=[sampletype],
+            k2_mapping=k2_mapping,
+            sampletype=sampletype,
+            mmbert_dict=mmbert_dict,
+            group_reads=sk_group_reads,
+            total_reads=total_reads,
+        )
+        sk_data['tass_score'] = compute_tass_score(
+            data=sk_data,
+            weights=weights,
+        )
+
     for _, data in aggregate_dict.items():
-        # add all the strains to the strains list from strain_summary if data['toplevelkey'] matches
+        # Nest subkey groups as members of the toplevelkey group.
+        # Each subkey group already contains its own 'members' list of strains.
+        tlk = str(data.get('toplevelkey', ''))
         data['members'] = [
-            x for _, x in strain_summary.items()
-            if x.get('toplevelkey') == data.get('toplevelkey')
+            sk_data for _, sk_data in subkey_summary.items()
+            if str(sk_data.get('toplevelkey', '')) == tlk
         ]
 
         data['name'] = data.get('toplevelname', None)
@@ -2026,20 +2191,36 @@ def main():
     # directly so it does not need to load or parse the ANI matrix itself.
     if ani_data:
         for group in final_json:
-            for member in group.get('members', []):
-                member_key = str(member.get('key', ''))
-                matches = []
-                if member_key in ani_data:
-                    for other_key, ani_val in ani_data[member_key].items():
-                        if other_key == member_key:
+            for subkey_member in group.get('members', []):
+                # ANI at the subkey (species) level
+                sk_key = str(subkey_member.get('key', subkey_member.get('subkey', '')))
+                sk_matches = []
+                if sk_key in ani_data:
+                    for other_key, ani_val in ani_data[sk_key].items():
+                        if other_key == sk_key:
                             continue
                         if ani_val >= args.ani_threshold:
-                            matches.append({
+                            sk_matches.append({
                                 'key': other_key,
                                 'ani_pct': round(float(ani_val) * 100, 2),
                             })
-                    matches.sort(key=lambda x: x['ani_pct'], reverse=True)
-                member['high_ani_matches'] = matches
+                    sk_matches.sort(key=lambda x: x['ani_pct'], reverse=True)
+                subkey_member['high_ani_matches'] = sk_matches
+                # ANI at the strain level (nested members)
+                for strain in subkey_member.get('members', []):
+                    strain_key = str(strain.get('key', ''))
+                    strain_matches = []
+                    if strain_key in ani_data:
+                        for other_key, ani_val in ani_data[strain_key].items():
+                            if other_key == strain_key:
+                                continue
+                            if ani_val >= args.ani_threshold:
+                                strain_matches.append({
+                                    'key': other_key,
+                                    'ani_pct': round(float(ani_val) * 100, 2),
+                                })
+                        strain_matches.sort(key=lambda x: x['ani_pct'], reverse=True)
+                    strain['high_ani_matches'] = strain_matches
 
     # for data in final_json:
     #     print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
@@ -2087,33 +2268,46 @@ def main():
                 group['control_comparison'] = grp_ctrl
                 _ctrl_annotated += 1
 
-            # Member-level comparison (key and subkey)
-            for member in group.get('members', []):
-                # Compare at key level (strain)
-                m_ctrl_key = compute_control_comparison(
-                    data=member, neg_index=_neg, pos_index=_pos,
-                    fold_threshold=_ctrl_threshold, level="key",
-                )
+            # Subkey-level comparison (species) and strain-level (nested)
+            for subkey_member in group.get('members', []):
                 # Compare at subkey level (species)
-                m_ctrl_subkey = compute_control_comparison(
-                    data=member, neg_index=_neg, pos_index=_pos,
+                sk_ctrl_subkey = compute_control_comparison(
+                    data=subkey_member, neg_index=_neg, pos_index=_pos,
                     fold_threshold=_ctrl_threshold, level="subkey",
                 )
-                member['control_comparison'] = {}
-                if m_ctrl_key:
-                    member['control_comparison']['by_key'] = m_ctrl_key
-                if m_ctrl_subkey:
-                    member['control_comparison']['by_subkey'] = m_ctrl_subkey
-                # Also store a top-level summary using the key-level result
-                # (or subkey fallback) for easy access in the report
-                _best_ctrl = m_ctrl_key or m_ctrl_subkey
-                if _best_ctrl:
+                subkey_member['control_comparison'] = {}
+                if sk_ctrl_subkey:
+                    subkey_member['control_comparison']['by_subkey'] = sk_ctrl_subkey
                     for _f in ('neg_max_tass', 'neg_max_reads', 'tass_fold_over_neg',
                                'reads_fold_over_neg', 'tass_fold_over_pos',
                                'reads_fold_over_pos', 'control_flag',
                                'neg_control_values', 'pos_control_values',
                                'pos_min_tass', 'pos_min_reads'):
-                        member['control_comparison'][_f] = _best_ctrl.get(_f)
+                        subkey_member['control_comparison'][_f] = sk_ctrl_subkey.get(_f)
+
+                # Strain-level comparison (nested members of the subkey)
+                for strain in subkey_member.get('members', []):
+                    s_ctrl_key = compute_control_comparison(
+                        data=strain, neg_index=_neg, pos_index=_pos,
+                        fold_threshold=_ctrl_threshold, level="key",
+                    )
+                    s_ctrl_subkey = compute_control_comparison(
+                        data=strain, neg_index=_neg, pos_index=_pos,
+                        fold_threshold=_ctrl_threshold, level="subkey",
+                    )
+                    strain['control_comparison'] = {}
+                    if s_ctrl_key:
+                        strain['control_comparison']['by_key'] = s_ctrl_key
+                    if s_ctrl_subkey:
+                        strain['control_comparison']['by_subkey'] = s_ctrl_subkey
+                    _best_ctrl = s_ctrl_key or s_ctrl_subkey
+                    if _best_ctrl:
+                        for _f in ('neg_max_tass', 'neg_max_reads', 'tass_fold_over_neg',
+                                   'reads_fold_over_neg', 'tass_fold_over_pos',
+                                   'reads_fold_over_pos', 'control_flag',
+                                   'neg_control_values', 'pos_control_values',
+                                   'pos_min_tass', 'pos_min_reads'):
+                            strain['control_comparison'][_f] = _best_ctrl.get(_f)
 
         if _ctrl_annotated:
             print(f"Control comparison: annotated {_ctrl_annotated} species groups "
@@ -2174,31 +2368,49 @@ def main():
                 group['insilico_comparison'] = grp_isil
                 _insilico_annotated += 1
 
-            for member in group.get('members', []):
-                m_isil_key = compute_control_comparison(
-                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
-                    fold_threshold=args.control_fold_threshold, level="key",
-                )
-                m_isil_subkey = compute_control_comparison(
-                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
+            for subkey_member in group.get('members', []):
+                # Subkey-level insilico comparison
+                sk_isil = compute_control_comparison(
+                    data=subkey_member, neg_index=_empty_neg, pos_index=_insilico_index,
                     fold_threshold=args.control_fold_threshold, level="subkey",
                 )
-                member['insilico_comparison'] = {}
-                if m_isil_key:
-                    member['insilico_comparison']['by_key'] = m_isil_key
-                if m_isil_subkey:
-                    member['insilico_comparison']['by_subkey'] = m_isil_subkey
-                _best_isil = m_isil_key or m_isil_subkey
-                if _best_isil:
+                subkey_member['insilico_comparison'] = {}
+                if sk_isil:
+                    subkey_member['insilico_comparison']['by_subkey'] = sk_isil
                     for _f in ('pos_min_tass', 'pos_min_reads',
                                'tass_fold_over_pos', 'reads_fold_over_pos',
                                'pos_control_values'):
-                        member['insilico_comparison'][_f] = _best_isil.get(_f)
-                    # Rename for clarity: these are insilico values
-                    member['insilico_comparison']['insilico_tass'] = _best_isil.get('pos_min_tass')
-                    member['insilico_comparison']['insilico_reads'] = _best_isil.get('pos_min_reads')
-                    member['insilico_comparison']['tass_fold_over_insilico'] = _best_isil.get('tass_fold_over_pos')
-                    member['insilico_comparison']['reads_fold_over_insilico'] = _best_isil.get('reads_fold_over_pos')
+                        subkey_member['insilico_comparison'][_f] = sk_isil.get(_f)
+                    subkey_member['insilico_comparison']['insilico_tass'] = sk_isil.get('pos_min_tass')
+                    subkey_member['insilico_comparison']['insilico_reads'] = sk_isil.get('pos_min_reads')
+                    subkey_member['insilico_comparison']['tass_fold_over_insilico'] = sk_isil.get('tass_fold_over_pos')
+                    subkey_member['insilico_comparison']['reads_fold_over_insilico'] = sk_isil.get('reads_fold_over_pos')
+
+                # Strain-level insilico comparison (nested members)
+                for strain in subkey_member.get('members', []):
+                    s_isil_key = compute_control_comparison(
+                        data=strain, neg_index=_empty_neg, pos_index=_insilico_index,
+                        fold_threshold=args.control_fold_threshold, level="key",
+                    )
+                    s_isil_subkey = compute_control_comparison(
+                        data=strain, neg_index=_empty_neg, pos_index=_insilico_index,
+                        fold_threshold=args.control_fold_threshold, level="subkey",
+                    )
+                    strain['insilico_comparison'] = {}
+                    if s_isil_key:
+                        strain['insilico_comparison']['by_key'] = s_isil_key
+                    if s_isil_subkey:
+                        strain['insilico_comparison']['by_subkey'] = s_isil_subkey
+                    _best_isil = s_isil_key or s_isil_subkey
+                    if _best_isil:
+                        for _f in ('pos_min_tass', 'pos_min_reads',
+                                   'tass_fold_over_pos', 'reads_fold_over_pos',
+                                   'pos_control_values'):
+                            strain['insilico_comparison'][_f] = _best_isil.get(_f)
+                        strain['insilico_comparison']['insilico_tass'] = _best_isil.get('pos_min_tass')
+                        strain['insilico_comparison']['insilico_reads'] = _best_isil.get('pos_min_reads')
+                        strain['insilico_comparison']['tass_fold_over_insilico'] = _best_isil.get('tass_fold_over_pos')
+                        strain['insilico_comparison']['reads_fold_over_insilico'] = _best_isil.get('reads_fold_over_pos')
 
         if _insilico_annotated:
             print(f"In-silico comparison: annotated {_insilico_annotated} species groups "
@@ -2220,22 +2432,35 @@ def main():
                 )
                 if grp_isil_t:
                     group[_type_key] = grp_isil_t
-                for member in group.get('members', []):
-                    m_isil_t = compute_control_comparison(
-                        data=member, neg_index=_empty_neg, pos_index=_type_index,
-                        fold_threshold=args.control_fold_threshold, level="key",
-                    ) or compute_control_comparison(
-                        data=member, neg_index=_empty_neg, pos_index=_type_index,
+                for subkey_member in group.get('members', []):
+                    sk_isil_t = compute_control_comparison(
+                        data=subkey_member, neg_index=_empty_neg, pos_index=_type_index,
                         fold_threshold=args.control_fold_threshold, level="subkey",
                     )
-                    if m_isil_t:
-                        member[_type_key] = {
-                            'insilico_tass': m_isil_t.get('pos_min_tass'),
-                            'insilico_reads': m_isil_t.get('pos_min_reads'),
-                            'tass_fold_over_insilico': m_isil_t.get('tass_fold_over_pos'),
-                            'reads_fold_over_insilico': m_isil_t.get('reads_fold_over_pos'),
-                            'pos_control_values': m_isil_t.get('pos_control_values'),
+                    if sk_isil_t:
+                        subkey_member[_type_key] = {
+                            'insilico_tass': sk_isil_t.get('pos_min_tass'),
+                            'insilico_reads': sk_isil_t.get('pos_min_reads'),
+                            'tass_fold_over_insilico': sk_isil_t.get('tass_fold_over_pos'),
+                            'reads_fold_over_insilico': sk_isil_t.get('reads_fold_over_pos'),
+                            'pos_control_values': sk_isil_t.get('pos_control_values'),
                         }
+                    for strain in subkey_member.get('members', []):
+                        s_isil_t = compute_control_comparison(
+                            data=strain, neg_index=_empty_neg, pos_index=_type_index,
+                            fold_threshold=args.control_fold_threshold, level="key",
+                        ) or compute_control_comparison(
+                            data=strain, neg_index=_empty_neg, pos_index=_type_index,
+                            fold_threshold=args.control_fold_threshold, level="subkey",
+                        )
+                        if s_isil_t:
+                            strain[_type_key] = {
+                                'insilico_tass': s_isil_t.get('pos_min_tass'),
+                                'insilico_reads': s_isil_t.get('pos_min_reads'),
+                                'tass_fold_over_insilico': s_isil_t.get('tass_fold_over_pos'),
+                                'reads_fold_over_insilico': s_isil_t.get('reads_fold_over_pos'),
+                                'pos_control_values': s_isil_t.get('pos_control_values'),
+                            }
 
             # Per-type missing organisms
             _type_missing = find_missing_positive_controls(
@@ -2324,17 +2549,20 @@ def main():
     _total_organism_reads = 0
     for grp in final_json:
         _all_toplevelkeys.add(grp.get('toplevelkey', grp.get('key', '')))
-        for m in grp.get('members', []):
-            _all_keys.add(m.get('key', ''))
-            _all_subkeys.add(m.get('subkey', m.get('key', '')))
-            _total_organism_reads += float(m.get('numreads', 0))
+        for sk_m in grp.get('members', []):
+            _all_subkeys.add(sk_m.get('subkey', sk_m.get('key', '')))
+            for strain in sk_m.get('members', []):
+                _all_keys.add(strain.get('key', ''))
+                _total_organism_reads += float(strain.get('numreads', 0))
     # Strip covered_regions from JSON output — large and only needed internally
     import copy as _copy
     _json_out = _copy.deepcopy(final_json)
     for _grp in _json_out:
         _grp.pop('covered_regions', None)
-        for _m in _grp.get('members', []):
-            _m.pop('covered_regions', None)
+        for _sk_m in _grp.get('members', []):
+            _sk_m.pop('covered_regions', None)
+            for _strain in _sk_m.get('members', []):
+                _strain.pop('covered_regions', None)
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
     # them instead of its hard-coded sampletype defaults.
