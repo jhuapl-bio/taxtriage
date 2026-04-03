@@ -663,7 +663,7 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "loose": {
+                "fast": {
                     "type": "boolean",
                     "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
                     "fa_icon": "fas fa-file-signature"

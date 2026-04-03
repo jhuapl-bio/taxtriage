@@ -41,6 +41,23 @@ from datetime import datetime
 from map_taxid import load_taxdump, load_names, load_merged
 from body_site_normalization import normalize_body_site
 
+# ── Unicode font registration ──────────────────────────────────────────────
+# Built-in PDF fonts (Helvetica, etc.) only cover WinAnsi/Latin-1.
+# Symbols such as ⚠ (U+26A0) render as blank blocks without a TTF font.
+from reportlab.pdfbase import pdfmetrics as _rl_pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont as _rl_TTFont
+
+_UNICODE_FONT = None
+
+
+# HTML snippet for a red ⚠ warning symbol in Paragraph markup.
+# Uses the registered Unicode font when available; falls back to bold ASCII.
+_WARN_SYMBOL_HTML = (
+    f'<font name="{_UNICODE_FONT}" color="#E85F50">&#9888;</font>'
+    if _UNICODE_FONT
+    else '<font color="#E85F50"><b>(!)</b></font>'
+)
+
 
 def get_all_strains(species_group):
     """Extract all strain-level members from a species group.
@@ -239,6 +256,21 @@ def build_subkey_display_lookup(species_group, args, min_conf, min_reads=1,
             float(sk_grp.get('tass_score', 0) or 0) if species_visible else 0.0,
             max((float(s.get('tass_score', 0) or 0) for s in visible_strains), default=0.0),
         )
+        # Strains that are Primary-category but did NOT pass the threshold.
+        # These are hidden from the main table but indicated via a warning badge.
+        _visible_keys = {str(s.get('key', '')) for s in visible_strains}
+        _visible_keys.add(sk)  # exclude the species-level key itself
+        below_threshold_primary = sorted(
+            [
+                s for s in get_all_strains(sk_grp)
+                if 'Primary' in str(s.get('microbial_category', '') or '')
+                and not passes_confidence_threshold(s, min_conf)
+                and str(s.get('key', '')) not in _visible_keys
+            ],
+            key=lambda s: float(s.get('tass_score', 0) or 0),
+            reverse=True,
+        )
+
         lookup[sk] = {
             'species_key': str(species_group.get('toplevelkey', species_group.get('key', 'unknown'))),
             'subkey': sk,
@@ -251,6 +283,7 @@ def build_subkey_display_lookup(species_group, args, min_conf, min_reads=1,
             'annClass': resolved['annClass'],
             'high_cons': resolved['high_cons'],
             'harmful_followup': has_harmful_followup_signal(visible_strains),
+            'below_threshold_primary': below_threshold_primary,
         }
     return lookup
 
@@ -606,6 +639,98 @@ class ControlSparkBar(Flowable):
                     isil_txt_w = c.stringWidth(isil_fold_txt, "Helvetica", 5)
                     c.setFillColor(colors.Color(0.2, 0.55, 0.55, 1))
                     c.drawString(isil_txt_w + 4, row_y, isil_rd_txt)
+
+
+class SubthresholdWarningFlowable(Flowable):
+    """Compact amber badge + PDF hover tooltip for below-threshold pathogenic strains.
+
+    Draws a small ⚠ badge (e.g. '⚠ 2 primary strains below threshold') and
+    registers a PDF link annotation over its area so that PDF viewers display
+    the full strain list (name, TASS, reads) as a hover tooltip.
+    """
+
+    def __init__(self, below_threshold_strains, badge_height=11):
+        super().__init__()
+        self.below_threshold_strains = below_threshold_strains
+        n = len(below_threshold_strains)
+        self._badge_h = badge_height
+        self._label = (
+            f'{n} primary strain{"s" if n != 1 else ""} below threshold'
+        )
+        self.height = badge_height
+        self.width = 0  # expands to content in draw()
+
+    def draw(self):
+        canv = self.canv
+        if not self.below_threshold_strains:
+            return
+
+        bh = self._badge_h
+
+        font_size = 6.5
+        # Warning triangle dimensions (canvas-drawn, no font character needed)
+        tri_w = bh * 0.55
+        tri_h = tri_w * 0.866      # height of equilateral triangle
+        x_off = 4                  # left padding
+        gap = 3                    # gap between triangle and label text
+
+        canv.saveState()
+        canv.setFont('Helvetica-Bold', font_size)
+        text_w = canv.stringWidth(self._label, 'Helvetica-Bold', font_size)
+        bw = x_off + tri_w + gap + text_w + x_off
+
+        # Amber rounded badge background
+        canv.setFillColorRGB(0.85, 0.42, 0.02)
+        canv.roundRect(0, 0, bw, bh, 2, fill=1, stroke=0)
+
+        # White equilateral warning triangle (pointing up)
+        ty = (bh - tri_h) / 2
+        canv.setFillColorRGB(1, 1, 1)
+        tri_path = canv.beginPath()
+        tri_path.moveTo(x_off + tri_w / 2, ty + tri_h)
+        tri_path.lineTo(x_off,             ty)
+        tri_path.lineTo(x_off + tri_w,     ty)
+        tri_path.close()
+        canv.drawPath(tri_path, fill=1, stroke=0)
+
+        # Amber '!' inside the triangle
+        canv.setFont('Helvetica-Bold', font_size - 1.0)
+        canv.setFillColorRGB(0.85, 0.42, 0.02)
+        canv.drawCentredString(x_off + tri_w / 2, ty + 1.5, '!')
+
+        # White label text after the triangle
+        canv.setFont('Helvetica-Bold', font_size)
+        canv.setFillColorRGB(1, 1, 1)
+        canv.drawString(x_off + tri_w + gap, (bh - font_size) / 2 + 0.5, self._label)
+        canv.restoreState()
+
+        # Build tooltip text shown on hover in PDF viewers
+        lines = [
+            f'{len(self.below_threshold_strains)} primary pathogen(s) detected below'
+            f' confidence threshold — follow-up recommended:',
+        ]
+        for s in self.below_threshold_strains:
+            name = s.get('name', 'Unknown')
+            tass = float(s.get('tass_score', 0) or 0) * 100
+            reads = int(s.get('numreads', 0) or 0)
+            lines.append(f'  \u2022 {name}')
+            lines.append(f'    TASS: {tass:.1f}  |  Reads: {reads:,}')
+        tooltip_text = '\n'.join(lines)
+
+        # Register a PDF annotation so hovering over the badge shows the tooltip.
+        # relative=1 converts local flowable coords to absolute page coords.
+        try:
+            canv.linkURL('#', (0, 0, bw, bh), relative=1,
+                         thickness=0, color=None, tooltip=tooltip_text)
+        except TypeError:
+            # Older ReportLab without tooltip kwarg — badge is still visible
+            try:
+                canv.linkURL('#', (0, 0, bw, bh), relative=1,
+                             thickness=0, color=None)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 _STERILE_TYPES = {"sterile", "blood", "csf", "serum"}
@@ -977,9 +1102,9 @@ def get_category_color(microbial_category, ann_class, alpha=1.0):
     val = str(microbial_category)
     derived = str(ann_class)
     if "Primary" in val and derived == "Direct":
-        base_color = colors.lightcoral
+        base_color = colors.HexColor("#E85F50")   # crimson red
     elif "Primary" in val:
-        base_color = colors.HexColor('#CC7000')
+        base_color = colors.HexColor('#E67E22')    # orange
     elif "Commensal" in val:
         base_color = colors.lightgreen
     elif "Opportunistic" in val:
@@ -1656,7 +1781,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         display_name = species_entry['display_name']
         followup_symbol = ''
         if species_entry['harmful_followup']:
-            followup_symbol = ' <font color="#C0392B"><b>&#9888;</b></font>'
+            followup_symbol = f' {_WARN_SYMBOL_HTML}'
         if species_entry['species_passes']:
             row_marker = ' <font color="#666666" size="7"><i>species/subkey</i></font>'
         else:
@@ -1674,9 +1799,28 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         rpm = species_record.get('rpm', 0) or 0
         high_ani_text = _build_high_ani_paragraph(species_record, row_ani_style)
 
+        _below_primary = species_entry.get('below_threshold_primary', [])
+        _name_para = Paragraph(name_html, row_name_style)
+        if _below_primary:
+            _inner_w = max(60, col_widths[1] - 18)
+            _warning_badge = SubthresholdWarningFlowable(_below_primary)
+            _name_cell = Table(
+                [[_name_para], [_warning_badge]],
+                colWidths=[_inner_w],
+            )
+            _name_cell.setStyle(TableStyle([
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+        else:
+            _name_cell = _name_para
+
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
-            Paragraph(name_html, row_name_style),
+            _name_cell,
             Paragraph(f"{species_record.get('tass_score', 0)*100:.1f}", row_data_style),
         ]
         if show_k2_column:
@@ -1696,7 +1840,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         flora_fade = _is_flora_on_sterile(species_record, species_record.get('normalized_sample_site', ''))
         flora_mult = 0.70 if flora_fade else 1.0
-        _SUMMARY_PRIMARY = colors.HexColor('#F5AA90')
+        _SUMMARY_PRIMARY = colors.HexColor('#E8A0A0')   # light red for Species/Subkey Summary
         if 'Primary' in str(microbial_category):
             if row_below_zscore:
                 ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.35 * flora_mult)
@@ -1720,7 +1864,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         table_styles.append(('LEFTPADDING', (1, row_idx), (1, row_idx), 14))
         row_idx += 1
 
-    def _append_child_strain_row(strain, promoted=False):
+    def _append_child_strain_row(strain, promoted=False, below_threshold_primary=None):
         nonlocal row_idx
 
         microbial_category = strain.get('microbial_category', 'Unknown')
@@ -1741,7 +1885,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             if strain.get('harmful_followup') or strain.get('microbial_category', '') in (
                 'Primary', 'Tier 1 Select Agent', 'Tier 2 Select Agent'
             ):
-                followup_symbol = ' <font color="#C0392B"><b>&#9888;</b></font>'
+                followup_symbol = f' {_WARN_SYMBOL_HTML}'
             name_html = (
                 f'{strain.get("name", "Unknown")} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
@@ -1763,9 +1907,27 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
         rpm = strain.get('rpm', 0) or 0
 
+        _name_para_s = Paragraph(name_html, row_name_style)
+        if promoted and below_threshold_primary:
+            _inner_w_s = max(60, col_widths[1] - 18)
+            _warning_badge_s = SubthresholdWarningFlowable(below_threshold_primary)
+            _name_cell_s = Table(
+                [[_name_para_s], [_warning_badge_s]],
+                colWidths=[_inner_w_s],
+            )
+            _name_cell_s.setStyle(TableStyle([
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+        else:
+            _name_cell_s = _name_para_s
+
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
-            Paragraph(name_html, row_name_style),
+            _name_cell_s,
             Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", row_data_style),
         ]
         if show_k2_column:
@@ -1789,7 +1951,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             ind_color = get_category_color(microbial_category, ann_class, alpha=0.30 * flora_mult)
             row_color = get_category_color(microbial_category, ann_class, alpha=0.04 * flora_mult)
         else:
-            ind_color = get_category_color(microbial_category, ann_class, alpha=0.85 * flora_mult)
+            ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * flora_mult)
             row_color = get_category_color(microbial_category, ann_class, alpha=0.10 * flora_mult)
         table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
         table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
@@ -1865,7 +2027,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         followup_symbol = ''
         if harmful_followup:
-            followup_symbol = ' <font color="#C0392B"><b>&#9888;</b></font>'
+            followup_symbol = f' {_WARN_SYMBOL_HTML}'
 
         if _row_below_zscore:
             _n_samples = int(best.get('hmp_num_samples', 0) or 0)
@@ -2297,7 +2459,10 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             visible_strains = species_entry['visible_strains']
             if len(visible_strains) == 1:
                 # Single qualifying strain — promote it directly, skip species summary row
-                _append_child_strain_row(visible_strains[0], promoted=True)
+                _append_child_strain_row(
+                    visible_strains[0], promoted=True,
+                    below_threshold_primary=species_entry.get('below_threshold_primary', []),
+                )
             else:
                 _append_species_summary_row(species_entry)
                 for visible_strain in visible_strains:
@@ -3253,10 +3418,10 @@ def create_pdf_template(output_path, samples_dict, args):
                 if len({a['display_name'] for a in _derived_alerts}) > 4:
                     _alert_extra = f' and {len({a["display_name"] for a in _derived_alerts}) - 4} more'
                 story.append(Paragraph(
-                    f'<font color="#C0392B"><b>&#9888;</b></font> '
+                    f'{_WARN_SYMBOL_HTML} '
                     f'Potential harmful pathogen signal detected in one or more species/subkey rows. '
                     f'These rows have qualifying child strains that require follow-up. '
-                    f'Affected rows are marked with <font color="#C0392B"><b>&#9888;</b></font>: {_alert_names}{_alert_extra}.',
+                    f'Affected rows are marked with {_WARN_SYMBOL_HTML}: <b>{_alert_names}{_alert_extra}</b>.',
                     small_style))
                 story.append(Spacer(1, 0.05*inch))
             # Auto-detect control data presence for the control bar column
@@ -3517,7 +3682,7 @@ def create_pdf_template(output_path, samples_dict, args):
         ['', Paragraph('Primary Pathogen', legend_text_style),
          Paragraph('It is directly detected according to taxonomic id or assembly name and is listed as being of importance in a different sample type.', legend_text_style)],
         ['', Paragraph('Species/Subkey Summary', legend_text_style),
-         Paragraph('This row summarizes a qualifying species or subkey beneath each genus group. Its color reflects the most clinically significant annotation among the species itself and any qualifying child strains. Rows marked with <font color="#C0392B"><b>&#9888;</b></font> have qualifying harmful child strains and require follow-up.', legend_text_style)],
+         Paragraph(f'This row summarizes a qualifying species or subkey beneath each genus group. Its color reflects the most clinically significant annotation among the species itself and any qualifying child strains. Rows marked with {_WARN_SYMBOL_HTML} have qualifying harmful child strains and require follow-up.', legend_text_style)],
         ['', Paragraph('Commensal', legend_text_style), Paragraph('Normal flora / non-pathogenic', legend_text_style)],
         ['', Paragraph('Opportunistic', legend_text_style), Paragraph('May cause disease in certain conditions', legend_text_style)],
         ['', Paragraph('Potential', legend_text_style), Paragraph('Potential pathogen requiring further investigation', legend_text_style)],
@@ -3530,9 +3695,9 @@ def create_pdf_template(output_path, samples_dict, args):
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('BACKGROUND', (0, 1), (0, 1), colors.lightcoral),
-        ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#CC7000')),
-        ('BACKGROUND', (0, 3), (0, 3), colors.HexColor('#F5AA90')),
+        ('BACKGROUND', (0, 1), (0, 1), colors.HexColor('#E85F50')),   # Primary Pathogen (Direct) – crimson red
+        ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#E67E22')),   # Primary Pathogen – orange
+        ('BACKGROUND', (0, 3), (0, 3), colors.HexColor('#E8A0A0')),   # Species/Subkey Summary – light red
         ('BACKGROUND', (0, 4), (0, 4), colors.lightgreen),
         ('BACKGROUND', (0, 5), (0, 5), colors.HexColor('#ffe6a8')),
         ('BACKGROUND', (0, 6), (0, 6), colors.lightblue),
@@ -3569,7 +3734,7 @@ def create_pdf_template(output_path, samples_dict, args):
         "• <b>RPM:</b> Reads Per Million (RPM). This normalized metric allows for comparison of abundance across samples and organisms of different sizes.",
         "• <b>Cov.:</b> The coverage of the organism's genome by aligned reads, expressed as a percentage.",
         "• <b>Species/Subkey Rows:</b> When subkey grouping is enabled (default), each genus group is followed by a species/subkey summary row and then any individual child strains that also pass the TASS cutoff. The species/subkey row color is promoted to the most clinically significant qualifying annotation among that species and its visible child strains.",
-        "• <b>Species/Subkey Warning Symbol:</b> Rows marked with <font color=\"#C0392B\"><b>&#9888;</b></font> have one or more qualifying harmful child strains beneath that species/subkey and should be followed up.",
+        f"• <b>Species/Subkey Warning Symbol:</b> Rows marked with {_WARN_SYMBOL_HTML} have one or more qualifying harmful child strains beneath that species/subkey and should be followed up.",
         "• <b>High ANI Matches:</b> When the High ANI column is shown, this column lists any strains in the dataset that have an Average Nucleotide Identity (ANI) above the specified threshold with the given strain. Each match includes a link to its section in the report if it is present, or just the taxonomic ID and ANI percentage if not present.",
     ]
     for e in explanations:

@@ -656,20 +656,48 @@ def calculate_normalized_groups(
         agg['n_contigs_total'] = _n_total_contigs
         agg['n_contigs_covered'] = _n_covered_contigs
 
-        # ========== REAPPLY minhash confidence gate at organism level ==========
+        # ========== COVERAGE-AWARE GATE ON MINHASH ==========
         # Per-contig confidence gating is defeated by weighted averaging:
         # contigs with 0 reads have minhash_reduction=0 but contribute
         # nothing to the average (weight=0), so a few high-coverage contigs
         # dominate.  E.g. Toxoplasma: 82K reads on 3/80 contigs → per-contig
         # weighted avg ≈ 0.99, but organism-level coverage is only 0.15%.
         #
-        # No confidence gate applied — pass through the raw minhash score.
-        # The minhash comparison already captures signature uniqueness;
-        # gating by gini or coverage double-penalizes organisms that are
-        # already scored on those metrics independently in TASS.
+        # Fix: apply the depth-concentration penalty to minhash as well.
+        # This detects the "conserved human reads" pattern where many reads
+        # pile onto a tiny region of a large genome, producing high minhash
+        # uniqueness per-contig but negligible genome-wide coverage.
+        #
+        # The penalty reuses _depth_conc_penalty (already computed above for
+        # gini) and the contig utilization fraction.  Together they ensure
+        # that an organism like Toxoplasma (20K reads, 65Mb genome, 0.05%
+        # coverage, efficiency ~0.002) gets its minhash crushed:
+        #   minhash_confidence = depth_conc_penalty * contig_penalty
+        #   e.g. 0.22 * 0.063 ≈ 0.014 → minhash drops from 1.0 to ~0.01
+        #
+        # Well-covered organisms (efficiency ≈ 1.0, full contig utilization)
+        # are unaffected: penalty ≈ 1.0.
         _agg_raw_mh = float(agg.get('minhash_score', agg.get('minhash_reduction', 0)))
-        agg['minhash_reduction'] = _agg_raw_mh
-        agg['minhash_confidence'] = 1.0
+
+        # Combine depth-concentration efficiency with contig utilization
+        # AND a direct breadth sigmoid so that organisms with near-zero
+        # genome coverage (< ~1%) have their minhash crushed regardless
+        # of the depth-concentration heuristic.
+        #
+        # breadth_gate uses a sigmoid centred at 1% coverage — same shape
+        # as breadth_log_score but without the MAPQ scaling so we don't
+        # double-penalise.  At 0.05% coverage → ~0.0;  at 2% → ~1.0.
+        #
+        # The three factors multiply so ALL must be healthy for the gate
+        # to pass:  coverage_efficiency * contig_utilisation * breadth_gate
+        _agg_cov = float(agg.get('coverage', 0))
+        _breadth_gate = breadth_score_sigmoid(_agg_cov, midpoint=0.01, steepness=12_000)
+        _mh_coverage_gate = _depth_conc_penalty * _contig_penalty * _breadth_gate
+        agg['minhash_reduction'] = _agg_raw_mh * _mh_coverage_gate
+        agg['minhash_confidence'] = _mh_coverage_gate
+        agg['minhash_reduction_pre_gate'] = _agg_raw_mh
+        agg['minhash_coverage_gate'] = _mh_coverage_gate
+        agg['minhash_breadth_gate'] = _breadth_gate
 
         out[gval] = agg
 
@@ -761,13 +789,78 @@ def calculate_normalized_groups(
         if total_rpm <= 0:
             continue
 
+        # Identify the dominant member (highest RPM in the group)
+        sorted_rpms = sorted(rpms, key=lambda x: x[1], reverse=True)
+        top_mk = sorted_rpms[0][0]
+
         for mk, r in rpms:
             rpm_share = r / total_rpm
-            # Scale: floor at _rpm_norm_floor, ceiling at 1.0
-            scale = _rpm_norm_floor + (1.0 - _rpm_norm_floor) * rpm_share
+            _mh_conf = _to_float(out[mk].get("minhash_confidence", 1.0))
             raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
             out[mk]["minhash_reduction_raw"] = raw_minhash
-            out[mk]["minhash_reduction"] = raw_minhash * scale
+
+            if mk == top_mk:
+                # ----------------------------------------------------------
+                # DOMINANT MEMBER: boost minhash toward the coverage-gate
+                # ceiling rather than scaling it down.
+                # In high-ANI conflict groups (e.g. O104:H4 vs Shigella), the
+                # minhash signal is similar for all members because they share
+                # k-mers.  The organism with the most reads is the true hit —
+                # reward it by filling the gap to its confidence ceiling,
+                # proportional to how dominant it is.
+                #
+                # Example: O104:H4 rpm_share=0.60, raw=0.90, conf=0.95
+                #   gap=0.05, boost=0.03 → final=0.93  (was 0.72 before)
+                # ----------------------------------------------------------
+                gap = max(0.0, _mh_conf - raw_minhash)
+                boost = gap * rpm_share
+                adjusted = min(_mh_conf, raw_minhash + boost)
+                scale = (adjusted / raw_minhash) if raw_minhash > 0 else 1.0
+            else:
+                # ----------------------------------------------------------
+                # LOSER: scale down aggressively, amplified by the coverage
+                # gap vs the dominant member.
+                #
+                # Base formula (RPM-share):
+                #   scale = floor + (1 - floor) * rpm_share
+                #   floor=0.10 so Shigella with low share gets a hit.
+                #
+                # Coverage-ratio penalty (new):
+                #   If the dominant organism has 20% coverage and this one
+                #   has 8%, the coverage ratio = 8/20 = 0.4.  We blend this
+                #   into the scale so that even organisms with decent RPM
+                #   share get penalised when their coverage is much lower
+                #   than the dominant — a strong signal that shared reads
+                #   were misassigned.
+                #
+                #   coverage_ratio = my_coverage / top_coverage
+                #   scale *= (cov_floor + (1 - cov_floor) * coverage_ratio)
+                #   cov_floor=0.25 so 0% coverage → 25% of base scale
+                #
+                # Example: Shigella dysenteriae rpm_share=0.21, cov=8%, top_cov=20%
+                #   base_scale = 0.10 + 0.90*0.21 = 0.289
+                #   cov_ratio  = 8/20 = 0.4
+                #   cov_scale  = 0.25 + 0.75*0.4 = 0.55
+                #   final_scale = 0.289 * 0.55 = 0.159
+                # ----------------------------------------------------------
+                _loser_floor = 0.10
+                base_scale = _loser_floor + (1.0 - _loser_floor) * rpm_share
+
+                # Coverage-ratio penalty: compare this member's breadth to
+                # the dominant member's breadth within the group.
+                _top_cov = _to_float(out[top_mk].get("coverage", 0))
+                _my_cov  = _to_float(out[mk].get("coverage", 0))
+                if _top_cov > 0:
+                    _cov_ratio = min(1.0, _my_cov / _top_cov)
+                else:
+                    _cov_ratio = 1.0  # can't penalise if dominant also has 0
+                _cov_floor = 0.25
+                _cov_scale = _cov_floor + (1.0 - _cov_floor) * _cov_ratio
+
+                scale = base_scale * _cov_scale
+                adjusted = raw_minhash * scale
+
+            out[mk]["minhash_reduction"] = adjusted
             out[mk]["rpm_share_in_group"] = rpm_share
             out[mk]["rpm_norm_scale"] = scale
 
@@ -1008,7 +1101,14 @@ def compute_scores_per(
     # penalty (minhash_confidence *= rpm_weight).  0.35 gives a moderate
     # dampening: an organism at rpm_weight=0.1 sees confidence scaled by
     # 0.65 + 0.35*0.1 = 0.685 (≈30% reduction).
-    _read_penalty_w = 0.35
+    #
+    # Coverage bypass: when cov_conf is high (organism has solid breadth),
+    # the low-read penalty is faded out proportionally.  This prevents
+    # a dominant high-coverage organism in a conflict group from being
+    # pulled down by the global read-fraction sigmoid.
+    #   cov_conf=0.95 → penalty_w fades to 0.35*(1-0.95)=0.017 (nearly off)
+    #   cov_conf=0.10 → penalty_w stays at 0.35*(1-0.10)=0.315 (nearly full)
+    _read_penalty_w = 0.35 * (1.0 - cov_conf)
     minhash_confidence *= (1.0 - _read_penalty_w) + (_read_penalty_w * rpm_weight)
 
     data['minhash_reduction'] = minhash_confidence

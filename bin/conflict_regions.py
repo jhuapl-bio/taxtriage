@@ -130,6 +130,9 @@ def merge_bedgraph_regions(
     Merge adjacent intervals within each chrom using a rule:
       - jump: merge if abs(depth - last_depth) <= threshold and gap <= allowed_gap
       - variance/gini: compute stat on buffered depths and merge if <= threshold
+
+    Optimised: uses numpy arrays per-chrom instead of itertuples, and
+    tracks running variance via Welford's algorithm (avoids O(n^2) pvariance calls).
     """
     if intervals.empty:
         return pd.DataFrame(columns=["chrom", "start", "end", "mean_depth"])
@@ -163,82 +166,114 @@ def merge_bedgraph_regions(
         jump_thr = None
 
     merged = []
+    use_jump = merging_method == "jump"
+    use_variance = merging_method == "variance"
+    use_gini = merging_method == "gini"
+
     for chrom, g in df.groupby("chrom", observed=True):
-        g = g.reset_index(drop=True)
         if g.empty:
             continue
-
-        buf_start = int(g.at[0, "start"])
-        buf_end = int(g.at[0, "end"])
-        buf_depths = [float(g.at[0, "depth"])]
 
         chrom_str = str(chrom)
         gap_thr = allowed_gap.get(chrom_str, float("inf"))
 
-        for i, row in enumerate(g.itertuples(index=False)):
-            if i == 0:
-                continue
+        # Extract numpy arrays for fast iteration (avoids itertuples overhead)
+        starts = g["start"].values   # int32 ndarray
+        ends = g["end"].values
+        depths = g["depth"].values.astype(np.float64)
+        n = len(starts)
 
-            new_start = int(row.start)
-            new_end = int(row.end)
-            new_depth = float(row.depth)
+        buf_start = int(starts[0])
+        buf_end = int(ends[0])
+        last_depth = depths[0]
+        buf_count = 1
+        buf_sum = last_depth
+
+        # Welford's running variance state (for variance method)
+        _wf_mean = last_depth
+        _wf_m2 = 0.0
+
+        # For gini we still need the full list (rare path, usually not perf-critical)
+        buf_depths_list = [last_depth] if use_gini else None
+
+        for i in range(1, n):
+            new_start = int(starts[i])
+            new_end = int(ends[i])
+            new_depth = depths[i]
             gap = new_start - buf_end
 
             can_merge = True
-            if len(buf_depths) >= max_group_size:
+            if buf_count >= max_group_size:
                 can_merge = False
-            if max_length is not None and (new_end - buf_start) > max_length:
+            if can_merge and max_length is not None and (new_end - buf_start) > max_length:
+                can_merge = False
+            if can_merge and gap > gap_thr:
                 can_merge = False
 
             if can_merge:
-                if gap > gap_thr:
-                    can_merge = False
-
-            if can_merge:
-                if merging_method == "jump":
-                    assert jump_thr is not None
-                    jump = abs(new_depth - buf_depths[-1])
-                    if jump > jump_thr:
+                if use_jump:
+                    if abs(new_depth - last_depth) > jump_thr:
                         can_merge = False
-                elif merging_method == "variance":
-                    vals = buf_depths + [new_depth]
-                    stat = statistics.pvariance(vals)
-                    if max_stat_threshold is not None and stat > max_stat_threshold:
+                elif use_variance:
+                    # Welford's online variance: O(1) per step instead of O(n)
+                    new_count = buf_count + 1
+                    delta = new_depth - _wf_mean
+                    new_mean = _wf_mean + delta / new_count
+                    delta2 = new_depth - new_mean
+                    new_m2 = _wf_m2 + delta * delta2
+                    pvar = new_m2 / new_count
+                    if max_stat_threshold is not None and pvar > max_stat_threshold:
                         can_merge = False
-                    if value_diff_tolerance is not None:
-                        if abs(new_depth - float(np.mean(buf_depths))) > value_diff_tolerance:
+                    if can_merge and value_diff_tolerance is not None:
+                        if abs(new_depth - (buf_sum / buf_count)) > value_diff_tolerance:
                             can_merge = False
-                elif merging_method == "gini":
-                    vals = buf_depths + [new_depth]
+                elif use_gini:
+                    vals = buf_depths_list + [new_depth]
                     stat = compute_gini(vals)
                     if max_stat_threshold is not None and stat > max_stat_threshold:
                         can_merge = False
-                    if value_diff_tolerance is not None:
-                        if abs(new_depth - float(np.mean(buf_depths))) > value_diff_tolerance:
+                    if can_merge and value_diff_tolerance is not None:
+                        if abs(new_depth - (buf_sum / buf_count)) > value_diff_tolerance:
                             can_merge = False
                 else:
                     raise ValueError(f"Unknown merging method: {merging_method}")
 
             if can_merge:
                 buf_end = new_end
-                buf_depths.append(new_depth)
+                last_depth = new_depth
+                buf_count += 1
+                buf_sum += new_depth
+                # Update Welford state
+                if use_variance:
+                    _wf_mean = new_mean
+                    _wf_m2 = new_m2
+                if use_gini:
+                    buf_depths_list.append(new_depth)
             else:
                 merged.append(
                     {
                         "chrom": chrom_str,
                         "start": buf_start,
                         "end": buf_end,
-                        "mean_depth": float(np.mean(buf_depths)),
+                        "mean_depth": buf_sum / buf_count,
                     }
                 )
-                buf_start, buf_end, buf_depths = new_start, new_end, [new_depth]
+                buf_start = new_start
+                buf_end = new_end
+                last_depth = new_depth
+                buf_count = 1
+                buf_sum = new_depth
+                _wf_mean = new_depth
+                _wf_m2 = 0.0
+                if use_gini:
+                    buf_depths_list = [new_depth]
 
         merged.append(
             {
                 "chrom": chrom_str,
                 "start": buf_start,
                 "end": buf_end,
-                "mean_depth": float(np.mean(buf_depths)),
+                "mean_depth": buf_sum / buf_count,
             }
         )
 
@@ -705,6 +740,69 @@ def _search_chunk(args):
     return results
 
 
+# ── Worker-initializer state for fast pairwise search ───────────────────────
+# Populated once per worker process by _init_search_worker; keyed by FASTA label
+# so same-FASTA groups can be skipped in O(1) without touching the inner loop.
+_SEARCH_WORKER_TARGETS: Dict[str, List[Tuple]] = {}
+
+
+def _init_search_worker(serialized: List[Tuple]) -> None:
+    """Worker initializer: parse & group all target windows once per process.
+
+    Stores frozenset(hashes) per window grouped by FASTA label so the worker
+    function can skip same-FASTA groups in O(1) and compute Jaccard directly
+    from set intersection without reconstructing MinHash objects.
+    """
+    global _SEARCH_WORKER_TARGETS
+    tgt: Dict[str, List[Tuple]] = defaultdict(list)
+    for m_wid, m_hashes, _ksize, _scaled in serialized:
+        m_fa, m_contig, m_s, m_e = parse_window_id(m_wid)
+        m_set = frozenset(m_hashes)
+        if m_set:
+            tgt[m_fa].append((m_wid, m_set, m_fa, m_contig, m_s, m_e))
+    _SEARCH_WORKER_TARGETS = dict(tgt)
+
+
+def _search_query_chunk_np(args: Tuple) -> List[Tuple]:
+    """Worker: frozenset-based Jaccard against pre-loaded FASTA-grouped targets.
+
+    Avoids MinHash reconstruction entirely.  Same-FASTA groups are skipped in
+    O(1).  Only pairs sharing ≥1 hash are evaluated for exact Jaccard.
+    """
+    query_items, jaccard_threshold, max_hits_per_query, skip_same_fasta, skip_same_contig = args
+    results: List[Tuple] = []
+    for q_wid, q_hashes, _ksize, _scaled in query_items:
+        q_fa, q_contig, q_s, q_e = parse_window_id(q_wid)
+        q_set = frozenset(q_hashes)
+        if not q_set:
+            continue
+        q_size = len(q_set)
+        hits = []
+        for t_fa, t_items in _SEARCH_WORKER_TARGETS.items():
+            if skip_same_fasta and t_fa == q_fa:
+                continue  # skip entire FASTA group — O(1)
+            for m_wid, m_set, m_fa, m_contig, m_s, m_e in t_items:
+                if m_wid == q_wid:
+                    continue
+                if skip_same_contig and m_fa == q_fa and m_contig == q_contig:
+                    continue
+                n_shared = len(q_set & m_set)
+                if n_shared == 0:
+                    continue  # early-exit before union math
+                n_union = q_size + len(m_set) - n_shared
+                j = n_shared / n_union
+                if j < jaccard_threshold:
+                    continue
+                hits.append((j, m_fa, m_contig, m_s, m_e,
+                              n_shared / q_size, n_shared / len(m_set)))
+        if not hits:
+            continue
+        hits.sort(key=lambda x: x[0], reverse=True)
+        for j, m_fa, m_contig, m_s, m_e, c1, c2 in hits[:max_hits_per_query]:
+            results.append((q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, j, c1, c2))
+    return results
+
+
 def report_shared_windows_across_fastas(
     fasta_files: List[str],
     output_csv: str,
@@ -783,70 +881,48 @@ def report_shared_windows_across_fastas(
     n_queries = len(serialized)
 
     if n_queries <= 50 or n_jobs <= 1:
-        # Small enough to run single-threaded
-        chunk_results = _search_chunk((
-            serialized, serialized, jaccard_threshold, max_hits_per_query,
+        # Serial: initialise worker state in-process then run directly
+        _init_search_worker(serialized)
+        all_results = _search_query_chunk_np((
+            serialized, jaccard_threshold, max_hits_per_query,
             skip_self_same_fasta, skip_self_same_contig,
         ))
-        all_results = chunk_results
     else:
-        # ── Memory-safe tiled approach ──────────────────────────────────
-        # Instead of sending ALL targets to each worker (which causes OOM
-        # when pickled N_workers times), we tile the target space into
-        # chunks too.  Each job gets (query_chunk x target_chunk).
-        # After all tiles complete, we merge per-query hits and keep top-k.
+        # ── Initializer-based parallel search ──────────────────────────
+        # Each worker receives the full target list ONCE at startup via the
+        # initializer (not once per job).  Per-job payload is only the small
+        # query chunk.  This eliminates the O(N_tiles × target_data) IPC
+        # overhead of the previous tiled approach.
         #
-        # Memory per worker ≈ O(query_chunk + target_chunk) instead of
-        # O(query_chunk + ALL_targets).
-
-        # Heuristic: target chunk size so each worker's pickle payload
-        # stays under ~200 MB even with large hash sets.
-        # With average ~100 hashes/sig at 8 bytes each, ~1 KB per sig,
-        # 200k sigs ≈ 200 MB.  We cap at 2000 targets per chunk as a
-        # safe default that works well up to ~500k total windows.
-        TARGET_CHUNK_CAP = 2000
-        QUERY_CHUNK_CAP = max(1, n_queries // n_jobs)
-
+        # Targets are stored as frozensets grouped by FASTA, so same-FASTA
+        # groups are skipped in O(1) and Jaccard is computed via set
+        # intersection without MinHash object reconstruction.
+        chunk_size = max(1, -(-n_queries // n_jobs))  # ceiling division
         query_chunks = [
-            serialized[i:i + QUERY_CHUNK_CAP]
-            for i in range(0, n_queries, QUERY_CHUNK_CAP)
+            serialized[i:i + chunk_size]
+            for i in range(0, n_queries, chunk_size)
         ]
-        target_chunks = [
-            serialized[i:i + TARGET_CHUNK_CAP]
-            for i in range(0, n_queries, TARGET_CHUNK_CAP)
-        ]
+        actual_workers = min(n_jobs, len(query_chunks))
+        print(f"  Searching {n_queries} windows: {len(query_chunks)} query chunks "
+              f"across {actual_workers} workers (targets pre-loaded via initializer)")
 
-        n_tiles = len(query_chunks) * len(target_chunks)
-        print(f"  Searching {n_queries} windows: {len(query_chunks)} query chunks x "
-              f"{len(target_chunks)} target chunks = {n_tiles} tiles across {n_jobs} workers")
-
-        # Collect raw hits per query window id, then trim to top-k at the end
-        from collections import defaultdict as _dd
-        per_query_hits = _dd(list)
-
-        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
-            futures = []
-            for q_chunk in query_chunks:
-                for t_chunk in target_chunks:
-                    futures.append(pool.submit(
-                        _search_chunk,
-                        (q_chunk, t_chunk, jaccard_threshold,
-                         max_hits_per_query,
-                         skip_self_same_fasta, skip_self_same_contig),
-                    ))
-            for fut in tqdm(as_completed(futures), total=len(futures),
-                            desc="  Tile search", unit="tile"):
-                for row in fut.result():
-                    # row = (q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, j, c1, c2)
-                    q_key = (row[0], row[1], row[2], row[3])
-                    per_query_hits[q_key].append(row)
-
-        # Merge: keep only top max_hits_per_query per query window
         all_results = []
-        for q_key, hits in per_query_hits.items():
-            hits.sort(key=lambda r: r[8], reverse=True)  # sort by jaccard
-            all_results.extend(hits[:max_hits_per_query])
-        del per_query_hits
+        with ProcessPoolExecutor(
+            max_workers=actual_workers,
+            initializer=_init_search_worker,
+            initargs=(serialized,),
+        ) as pool:
+            jobs = [
+                pool.submit(
+                    _search_query_chunk_np,
+                    (chunk, jaccard_threshold, max_hits_per_query,
+                     skip_self_same_fasta, skip_self_same_contig),
+                )
+                for chunk in query_chunks
+            ]
+            for fut in tqdm(as_completed(jobs), total=len(jobs),
+                            desc="  Tile search", unit="chunk"):
+                all_results.extend(fut.result())
 
     # Free serialized data before writing results
     del serialized
@@ -951,6 +1027,57 @@ def alignment_alt_contigs(shared_idx: Dict[str, List[SharedWindow]], contig: str
     return alt_set, ovl_bp
 
 
+def _count_reads_per_ref(bam_path: str) -> Dict[str, int]:
+    """Per-reference read counts; uses BAM index (fast) and falls back to full scan."""
+    counts: Dict[str, int] = {}
+    bam = pysam.AlignmentFile(bam_path, "rb")
+    try:
+        for stat in bam.get_index_statistics():
+            counts[stat.contig] = int(stat.mapped)
+    except Exception:
+        bam.reset()
+        for r in bam:
+            if not r.is_unmapped and r.reference_name:
+                counts[r.reference_name] = counts.get(r.reference_name, 0) + 1
+    bam.close()
+    return counts
+
+
+def compute_shared_window_stats(
+    shared_idx: Dict[str, List[SharedWindow]],
+) -> Dict[str, dict]:
+    """Per-reference summary of shared-window conflict information.
+
+    Returns a dict keyed by reference/contig name with:
+      n_shared_windows   – how many windows on this ref overlap another ref
+      n_conflicting_refs – number of distinct other refs sharing windows
+      mean_window_jaccard – average jaccard of those windows
+      max_window_jaccard  – maximum jaccard seen
+      shared_bp          – total bp of windows (windows may overlap; approx)
+    """
+    stats: Dict[str, dict] = {}
+    for contig, windows in shared_idx.items():
+        if not windows:
+            stats[contig] = {
+                "n_shared_windows": 0,
+                "n_conflicting_refs": 0,
+                "mean_window_jaccard": 0.0,
+                "max_window_jaccard": 0.0,
+                "shared_bp": 0,
+            }
+            continue
+        alt_contigs = {w.alt_contig for w in windows}
+        jaccards = [w.jaccard for w in windows]
+        stats[contig] = {
+            "n_shared_windows": len(windows),
+            "n_conflicting_refs": len(alt_contigs),
+            "mean_window_jaccard": statistics.mean(jaccards),
+            "max_window_jaccard": max(jaccards),
+            "shared_bp": sum(w.end - w.start for w in windows),
+        }
+    return stats
+
+
 def build_removed_ids_best_alignment(
     bam_path: str,
     shared_idx: Dict[str, List[SharedWindow]],
@@ -961,14 +1088,34 @@ def build_removed_ids_best_alignment(
     drop_if_ambiguous: bool = True,
     min_alt_count: int = 1,
     only_primary: bool = False,
+    ref_read_counts: Optional[Dict[str, int]] = None,
+    ani_boost_weight: float = 10.0,
 ) -> Dict[str, List[str]]:
     """
     For each read with multiple alignments, keep the alignment(s) with best score.
-    Score = MAPQ + as_weight*AS - penalize_weight*(#alt_contigs_overlapping_shared_windows)
-    Any other contig alignments are marked for removal for that read.
+
+    Score = MAPQ + as_weight*AS
+            - penalize_weight * (# alt contigs overlapping shared windows)
+            + ani_boost_weight * ani_dominance
+
+    ani_dominance: for each alt contig sharing a high-ANI window with this contig,
+      accumulate max_window_jaccard * log2(our_reads / alt_reads).  Positive when
+      the current reference has MORE reads than its competitor (boosted), negative
+      when it has fewer (penalised).  This makes removal aggressive in favour of
+      the reference with the highest read support when ANI is high.
     """
     if drop_contigs is None:
         drop_contigs = set()
+
+    # Pre-build (contig -> alt_contig -> max_jaccard) index for O(1) lookup per pair.
+    pair_max_jaccard: Optional[Dict[str, Dict[str, float]]] = None
+    if ref_read_counts is not None and ani_boost_weight > 0.0:
+        _pmj: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        for _c, _wins in shared_idx.items():
+            for _w in _wins:
+                if _w.jaccard > _pmj[_c][_w.alt_contig]:
+                    _pmj[_c][_w.alt_contig] = _w.jaccard
+        pair_max_jaccard = {k: dict(v) for k, v in _pmj.items()}
 
     per_read = defaultdict(list)
     bam = pysam.AlignmentFile(bam_path, "rb")
@@ -994,7 +1141,22 @@ def build_removed_ids_best_alignment(
             AS = 0
 
         mapq = int(r.mapping_quality)
-        score = mapq + as_weight * AS - penalize_weight * alt_n
+
+        # ANI-weighted read-dominance term:
+        #   For every competitor that shares a high-ANI window with this contig,
+        #   add jaccard * log2(our_count / their_count).  The reference with the
+        #   most reads wins decisively when regions are nearly identical.
+        ani_dominance = 0.0
+        if pair_max_jaccard is not None and alt_set:
+            our_count = max(1, ref_read_counts.get(contig, 1))
+            pmj_for_contig = pair_max_jaccard.get(contig, {})
+            for alt_contig in alt_set:
+                alt_count = max(1, ref_read_counts.get(alt_contig, 1))
+                log_ratio = math.log2(our_count / alt_count)
+                max_j = pmj_for_contig.get(alt_contig, 0.5)
+                ani_dominance += max_j * log_ratio
+
+        score = mapq + as_weight * AS - penalize_weight * alt_n + ani_boost_weight * ani_dominance
 
         per_read[r.query_name].append(
             dict(contig=contig, score=score, mapq=mapq, AS=AS, alt_n=alt_n)
@@ -1149,24 +1311,33 @@ def calculate_breadth_coverage_from_bam(
 def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
                     accession_to_taxid: Optional[Dict[str, str]] = None,
                     taxid_to_name: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+    # Denominators for RPKM/RPM (total aligned reads across all refs, pre- and post-removal)
+    total_reads_all = sum(st.get("total_reads", 0) for st in per_ref_stats.values())
+    total_passed_all = sum(st.get("pass_filtered_reads", 0) for st in per_ref_stats.values())
+
     rows = []
     for ref, st in sorted(per_ref_stats.items()):
         total_reads = st.get("total_reads", 0)
         pass_reads = st.get("pass_filtered_reads", 0)
-        removed_reads = total_reads - pass_reads  # 👈 CHANGED: Calculate reads removed
-        delta_pct = (100.0 * removed_reads / total_reads) if total_reads else 0.0  # 👈 CHANGED: % removed
+        removed_reads = total_reads - pass_reads
+        delta_pct = (100.0 * removed_reads / total_reads) if total_reads else 0.0
 
         b0 = st.get("breadth_old", 0.0)
         b1 = st.get("breadth", 0.0)
 
-        ref_len = reflengths.get(ref, 0)
+        ref_len = max(1, reflengths.get(ref, 1))
+
+        # RPKM = reads / (ref_length_kb * millions_mapped)
+        rpkm_pre  = (total_reads  / (ref_len / 1000.0)) / max(1e-9, total_reads_all  / 1e6)
+        rpkm_post = (pass_reads   / (ref_len / 1000.0)) / max(1e-9, total_passed_all / 1e6)
+        rpm_pre   =  total_reads  / max(1e-9, total_reads_all  / 1e6)
+        rpm_post  =  pass_reads   / max(1e-9, total_passed_all / 1e6)
 
         # Resolve taxid for this accession
         taxid = ""
         if accession_to_taxid:
             taxid = accession_to_taxid.get(ref, "")
             if not taxid:
-                # Try without version suffix (e.g. NC_001234.1 -> NC_001234)
                 ref_noversion = re.sub(r"\.\d+$", "", ref)
                 taxid = accession_to_taxid.get(ref_noversion, "")
 
@@ -1180,7 +1351,7 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
                 "Reference": ref,
                 "Taxid": taxid,
                 "Organism": organism,
-                "Reference Length": ref_len,
+                "Reference Length": reflengths.get(ref, 0),
                 "TP Original": st.get("TP Original", 0),
                 "FP Original": st.get("FP Original", 0),
                 "FN Original": st.get("FN Original", 0),
@@ -1199,6 +1370,17 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
                 "Breadth New": b1,
                 "Δ Breadth": (b1 - b0),
                 "Δ^-1 Breadth": (b1 / b0) if b0 else 0.0,
+                # RPKM / RPM (pre- and post-removal)
+                "RPKM Pre": rpkm_pre,
+                "RPKM Post": rpkm_post,
+                "RPM Pre": rpm_pre,
+                "RPM Post": rpm_post,
+                # Shared-window ANI conflict info
+                "Shared Windows": st.get("n_shared_windows", 0),
+                "Conflicting Refs": st.get("n_conflicting_refs", 0),
+                "Mean Shared ANI": st.get("mean_window_jaccard", 0.0),
+                "Max Shared ANI": st.get("max_window_jaccard", 0.0),
+                "Shared BP": st.get("shared_bp", 0),
             }
         )
 
@@ -1913,7 +2095,7 @@ def determine_conflicts(
                     )
             else:
                 print("Creating shared FASTA report from scratch")
-                sim_ani_threshold=0.9
+                sim_ani_threshold=0.2
                 # Previous defaults (ksize=51, scaled=5000, window=900k) were
                 # far too conservative for closely related organisms like
                 # E. coli / Shigella (98%+ ANI):
@@ -1945,15 +2127,19 @@ def determine_conflicts(
     # Removal plan
     if compare_to_reference_windows and shared_idx is not None:
         print("Building removal plan based on shared-window alignments...")
+        _ref_counts_pre = _count_reads_per_ref(input_bam)
+        print(f"  Pre-counted reads for {len(_ref_counts_pre)} references (used for ANI-weighted dominance scoring)")
         removed_read_ids = build_removed_ids_best_alignment(
             bam_path=input_bam,
             shared_idx=shared_idx,
-            penalize_weight=0.9,
-            as_weight=0.1,
+            penalize_weight=0,
+            as_weight=1.0,
             drop_contigs=set(),
             drop_if_ambiguous=True,
-            min_alt_count=1,
+            min_alt_count=2,
             only_primary=False,
+            ref_read_counts=_ref_counts_pre,
+            ani_boost_weight=10.0,
         )
     else:
         # Parse bedgraph + merge regions
@@ -2033,8 +2219,6 @@ def determine_conflicts(
             remove_mode='random'
         )
 
-    stats = report_removed_read_stats(bam_path=input_bam, removed_read_ids=removed_read_ids)
-
     # Write removals table
     failed_path = os.path.join(output_dir, "failed_reads.txt")
     with open(failed_path, "w") as fp:
@@ -2043,38 +2227,97 @@ def determine_conflicts(
                 fp.write(f"{ref}\t{read_id}\n")
     print(f"Wrote removals: {failed_path}")
 
-
-
-    # Breadth before/after
-    breadth_old = calculate_breadth_coverage_from_bam(bam_fs, reflengths, removed_ids={})
-    breadth_new = calculate_breadth_coverage_from_bam(bam_fs, reflengths, removed_ids=removed_read_ids)
-
-    # Per-reference alignment accounting (GT inferred from read name convention)
+    # ── Single-pass: breadth (old+new), per-ref accounting, removal stats ──
+    # Previously this was 4 separate full BAM scans. Now one pass per reference.
+    print(f"Computing breadth + per-ref stats (single pass): {time.ctime()}")
+    t_stats = time.time()
     per_ref = defaultdict(lambda: defaultdict(int))
+    breadth_old = {}
+    breadth_new = {}
+
+    # Pre-convert removed_read_ids values to sets for O(1) lookup
+    _removed_sets = {rid: set(refs) for rid, refs in removed_read_ids.items()}
+
+    total_reads_all = set()
+    total_alns_all = 0
+    removed_alns_all = 0
+
+    bam_fs.reset()
     for ref, L in reflengths.items():
         total = 0
         passed = 0
+
+        # Breadth tracking: two interval merge streams (old=all, new=kept)
+        old_s = old_e = None
+        new_s = new_e = None
+        covered_old = 0
+        covered_new = 0
+
         for r in bam_fs.fetch(ref, 0, L):
-            total += 1
-            gt = infer_gt_from_readname(r.query_name)
-            if gt is None:
+            if r.is_unmapped or r.reference_start is None or r.reference_end is None:
                 continue
 
-            if gt == r.reference_name:
-                per_ref[ref]["TP Original"] += 1
-            else:
-                per_ref[ref]["FP Original"] += 1
+            total += 1
+            total_alns_all += 1
+            rid = r.query_name
+            total_reads_all.add(rid)
 
-            keep = not (r.query_name in removed_read_ids and r.reference_name in removed_read_ids[r.query_name])
-            if keep:
-                passed += 1
-                if gt == r.reference_name:
-                    per_ref[ref]["TP New"] += 1
+            s = max(0, int(r.reference_start))
+            e = min(L, int(r.reference_end))
+
+            # -- breadth OLD (all reads) --
+            if s < e:
+                if old_s is None:
+                    old_s, old_e = s, e
+                elif s <= old_e + 1:
+                    old_e = max(old_e, e)
                 else:
-                    per_ref[ref]["FP New"] += 1
-            else:
+                    covered_old += (old_e - old_s)
+                    old_s, old_e = s, e
+
+            is_removed = rid in _removed_sets and ref in _removed_sets[rid]
+            if is_removed:
+                removed_alns_all += 1
+
+            # -- breadth NEW (kept reads) --
+            if not is_removed and s < e:
+                if new_s is None:
+                    new_s, new_e = s, e
+                elif s <= new_e + 1:
+                    new_e = max(new_e, e)
+                else:
+                    covered_new += (new_e - new_s)
+                    new_s, new_e = s, e
+
+            # -- GT accounting --
+            gt = infer_gt_from_readname(rid)
+            if gt is not None:
                 if gt == r.reference_name:
-                    per_ref[ref]["FN New"] += 1
+                    per_ref[ref]["TP Original"] += 1
+                else:
+                    per_ref[ref]["FP Original"] += 1
+
+                if not is_removed:
+                    passed += 1
+                    if gt == r.reference_name:
+                        per_ref[ref]["TP New"] += 1
+                    else:
+                        per_ref[ref]["FP New"] += 1
+                else:
+                    if gt == r.reference_name:
+                        per_ref[ref]["FN New"] += 1
+            else:
+                if not is_removed:
+                    passed += 1
+
+        # Flush last intervals
+        if old_s is not None:
+            covered_old += (old_e - old_s)
+        if new_s is not None:
+            covered_new += (new_e - new_s)
+
+        breadth_old[ref] = (100.0 * covered_old / L) if L > 0 else 0.0
+        breadth_new[ref] = (100.0 * covered_new / L) if L > 0 else 0.0
 
         per_ref[ref]["total_reads"] = total
         per_ref[ref]["pass_filtered_reads"] = passed
@@ -2088,6 +2331,27 @@ def determine_conflicts(
 
         per_ref[ref]["breadth_old"] = breadth_old.get(ref, 0.0)
         per_ref[ref]["breadth"] = breadth_new.get(ref, 0.0)
+
+    # Print removal summary (replaces separate report_removed_read_stats call)
+    n_reads = len(total_reads_all)
+    n_removed_reads = len(_removed_sets)
+    print(f"\n=== Removal Summary ===")
+    print(f"Unique reads:             {n_reads}")
+    print(f"Reads with ≥1 removal:    {n_removed_reads} ({100.0*n_removed_reads/max(1,n_reads):.2f}%)")
+    print(f"Total alignments:         {total_alns_all}")
+    print(f"Alignments removed:       {removed_alns_all} ({100.0*removed_alns_all/max(1,total_alns_all):.2f}%)")
+    print(f"Single-pass stats completed in {time.time()-t_stats:.2f}s")
+
+    # Attach shared-window conflict stats to per_ref (populated in xlsx as informational columns)
+    if shared_idx is not None:
+        _sw_stats = compute_shared_window_stats(shared_idx)
+        for _ref in list(per_ref.keys()):
+            _sw = _sw_stats.get(_ref, {})
+            per_ref[_ref]["n_shared_windows"]   = _sw.get("n_shared_windows", 0)
+            per_ref[_ref]["n_conflicting_refs"]  = _sw.get("n_conflicting_refs", 0)
+            per_ref[_ref]["mean_window_jaccard"] = _sw.get("mean_window_jaccard", 0.0)
+            per_ref[_ref]["max_window_jaccard"]  = _sw.get("max_window_jaccard", 0.0)
+            per_ref[_ref]["shared_bp"]           = _sw.get("shared_bp", 0)
 
     comparison_df = compare_metrics(per_ref, reflengths, accession_to_taxid=accession_to_taxid,
                                     taxid_to_name=taxid_to_name)
@@ -2117,6 +2381,17 @@ def determine_conflicts(
             "Δ^-1 Breadth": "",
             "Breadth New": "",
             "Breadth Original": "",
+            # RPKM/RPM are rates — not meaningful to sum
+            "RPKM Pre": "",
+            "RPKM Post": "",
+            "RPM Pre": "",
+            "RPM Post": "",
+            # Shared-window counts can be summed (with caveats on double-counting)
+            "Shared Windows": comparison_df["Shared Windows"].sum() if "Shared Windows" in comparison_df.columns else "",
+            "Conflicting Refs": "",
+            "Mean Shared ANI": "",
+            "Max Shared ANI": "",
+            "Shared BP": comparison_df["Shared BP"].sum() if "Shared BP" in comparison_df.columns else "",
         }
         comparison_df = pd.concat([comparison_df, pd.DataFrame([total_row])], ignore_index=True)
         # put Total at Top of excel sheet

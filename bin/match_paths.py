@@ -556,11 +556,11 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.4,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
                          "Default: 2 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
-    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.85,
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.4,
                     help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
                          "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
                          "Default: 0.85. Set to 0 to disable.")
@@ -570,14 +570,14 @@ def parse_args(argv=None):
                          "Penalizes organisms where reads concentrate on few contigs "
                          "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
                          "Default: 0.3. Set to 0 to disable.")
-    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
+    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.1,
                     help="Power exponent for depth-concentration penalty on Gini. "
                          "Detects the conserved-human-reads pattern: many reads map to a "
                          "tiny region of a large genome (high depth, negligible coverage). "
                          "Measures actual_coverage / expected_coverage from read count. "
                          "e.g. 80K reads on 65Mbp genome with 0.15%% coverage: "
                          "efficiency=0.008, penalty^0.3=0.22 -> Gini crushed to 22%%. "
-                         "Default: 0.3. Set to 0 to disable.")
+                         "Default: 0.1. Set to 0 to disable.")
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -1367,6 +1367,7 @@ def main():
                     except Exception as e:
                         print(f"Error in: {e}")
                 i+=1
+    print("Counting reference hits from BAM file…")
     reference_hits, _, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
@@ -1376,6 +1377,7 @@ def main():
 
     mmbert_dict = dict()
     if args.microbert:
+        print("Loading MicroBERT data from", args.microbert)
         # import the tsv as a dictionary
         mmbert = pd.read_csv(args.microbert, sep='\t', header=0)
         # set the taxid col to str
@@ -1384,8 +1386,10 @@ def main():
 
     taxdump, taxdump_names = {}, {}
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+        print("Loading taxdump from", args.taxdump)
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+        print("Loading taxdump names from", args.taxdump)
         taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
 
     # When the matchfile lacks a name/description column (e.g. only
@@ -1393,12 +1397,14 @@ def main():
     # Back-fill from taxdump/names.dmp so downstream code has real
     # organism names even for minimal 2-column matchfiles.
     if taxdump_names and early_taxid_to_desc:
+        print("Backfilling taxid→description from taxdump names.dmp for taxa missing descriptions in the matchfile…")
         for _tid, _desc in early_taxid_to_desc.items():
             if not _desc and _tid in taxdump_names:
                 early_taxid_to_desc[_tid] = taxdump_names[_tid]
     # Also fill in any taxids from early_acc_to_taxid that aren't in
     # early_taxid_to_desc at all (shouldn't happen, but defensive).
     if taxdump_names and early_acc_to_taxid:
+        print("Backfilling taxid→description for taxids from early accession→taxid map that are missing from the early taxid→desc map…")
         for _acc, _tid in early_acc_to_taxid.items():
             if _tid not in early_taxid_to_desc and _tid in taxdump_names:
                 early_taxid_to_desc[_tid] = taxdump_names[_tid]
@@ -1406,6 +1412,7 @@ def main():
     pathogens = import_pathogens(pathogenfile)
 
     if args.match and os.path.exists(matcher):
+        print("Processing matchfile to enrich reference hits with taxid and description information…")
         accindex = args.accessioncol
         nameindex = args.namecol
         taxcol = args.taxcol
@@ -1521,6 +1528,7 @@ def main():
     # entries may still have name == accession.  Resolve them from
     # taxdump_names so downstream JSON has real organism names.
     if taxdump_names:
+        print("Resolving missing organism names from taxdump names.dmp for entries with taxids but no names in the matchfile…")
         _resolved_count = 0
         for _acc, _hit in reference_hits.items():
             _cur_name = _hit.get('name', _acc)
@@ -1576,6 +1584,7 @@ def main():
     # get the ranks for taxid: 198214
     acc_to_parent = dict()
     if args.rank:
+        print(f"Resolving taxonomic ranks from taxdump for rank '{args.rank}' (subrank '{subrank}')…")
         wanted_rank = args.rank  # for example:  species
         for acc, hit in reference_hits.items():
             taxid = hit.get("taxid")
@@ -1631,8 +1640,8 @@ def main():
     aligned_reads_total = sum(all_readscounts)
     total_reads = aligned_reads_total
     print(f"Total aligned reads: {aligned_reads_total}")
-    variance_reads = calculate_var(all_readscounts)
-    print(f"\n\tVariance of reads: {variance_reads}")
+    # variance_reads = calculate_var(all_readscounts)
+    # print(f"\n\tVariance of reads: {variance_reads}")
     if args.sampletype:
         sampletype = body_site_map(args.sampletype.lower())
         # Also check via body_site_normalization for richer sterile detection
@@ -1667,6 +1676,7 @@ def main():
     # breadth ratios, so that a species with many contigs gets one composite score.
     subkey_comparison_df = pd.DataFrame()
     if comparison_df is not None and not comparison_df.empty:
+        print("Aggregating comparison_df to subkey level for minhash scoring…")
         _cdf = comparison_df.copy()
         _cdf['subkey'] = _cdf.index.map(lambda a: acc_to_subkey.get(a, a))
         # Weighted aggregation: weight by Total Reads per accession
