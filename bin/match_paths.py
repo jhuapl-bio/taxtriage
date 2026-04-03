@@ -570,7 +570,7 @@ def parse_args(argv=None):
                          "Penalizes organisms where reads concentrate on few contigs "
                          "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
                          "Default: 0.3. Set to 0 to disable.")
-    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.1,
+    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
                     help="Power exponent for depth-concentration penalty on Gini. "
                          "Detects the conserved-human-reads pattern: many reads map to a "
                          "tiny region of a large genome (high depth, negligible coverage). "
