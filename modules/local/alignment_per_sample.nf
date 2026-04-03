@@ -50,7 +50,8 @@ process ALIGNMENT_PER_SAMPLE {
     def auto_score_power = params.auto_score_power ? " --auto_score_power " : " "
     def score_power = params.score_power != null ? " --score_power ${params.score_power} " : " "
     def depth_concentration_power = params.depth_concentration_power != null ? " --depth_concentration_power ${params.depth_concentration_power} " : " "
-
+    def mapq_breadth_power = params.mapq_breadth_power != null ? " --mapq_breadth_power ${params.mapq_breadth_power} " : " "
+    def mapq_gini_power = params.mapq_gini_power != null ? " --mapq_gini_power ${params.mapq_gini_power} " : " "
     def output = "${meta.id}.paths.json"
     def id = meta.id
     def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
@@ -109,7 +110,8 @@ process ALIGNMENT_PER_SAMPLE {
         --fast \\
         $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
-        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls
+        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
+        $mapq_breadth_power $mapq_gini_power
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

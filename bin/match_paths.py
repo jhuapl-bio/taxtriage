@@ -414,7 +414,7 @@ def parse_args(argv=None):
                              "This component uses log-RPM to boost organisms that are meaningful "
                              "at low read counts (e.g. pathogens in sterile/blood sites). "
                              "Recommended: 0.15-0.30 for sterile sites. 0 = disabled. Default: 0.20.")
-    parser.add_argument("--abundance_rpm_midpoint", type=float, default=3.0,
+    parser.add_argument("--abundance_rpm_midpoint", type=float, default=5.0,
                         help="Expected RPM for a meaningful detection in this site type. "
                              "For sterile/blood: 1.0-5.0. For gut/skin: 50-200. Default: 5.0.")
     parser.add_argument("--abundance_rpm_steepness", type=float, default=2.0,
@@ -556,14 +556,14 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=1.5,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
-                         "Default: 1.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
-    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.64,
+                         "Default: 2 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.85,
                     help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
                          "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
-                         "Default: 1.0. Set to 0 to disable.")
+                         "Default: 0.85. Set to 0 to disable.")
     parser.add_argument('--contig_penalty_power', required=False, type=float, default=0.3,
                     help="Power exponent for contig utilization penalty on Gini. "
                          "gini *= (covered_contigs/total_contigs)^power. "

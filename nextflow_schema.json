@@ -398,6 +398,16 @@
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "mapq_gini_power": {
+                    "type": ["number", "null"],
+                    "description": "Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. Penalizes Gini score for organisms dominated by low-MAPQ reads. Default: 1.0. Set to 0 to disable.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "mapq_breadth_power": {
+                    "type": ["number", "null"],
+                    "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads → breadth scaled by 0.1).",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "auto_score_power": {
                     "type": "boolean",
                     "description": "Automatically compute score_power after optimization so that the mean TP TASS score hits the optimize_tp_target. Requires --optimize and --optimize_tp_target. Overrides score_power if both are set.",
