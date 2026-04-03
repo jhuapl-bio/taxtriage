@@ -717,18 +717,26 @@ class SubthresholdWarningFlowable(Flowable):
             lines.append(f'    TASS: {tass:.1f}  |  Reads: {reads:,}')
         tooltip_text = '\n'.join(lines)
 
-        # Register a PDF annotation so hovering over the badge shows the tooltip.
-        # relative=1 converts local flowable coords to absolute page coords.
+        # Use an invisible readonly acroform textfield overlay to carry the tooltip.
+        # PDF viewers show the widget's /TU (tooltip) entry on hover — this is the
+        # officially supported mechanism (canvas.acroform.textfield, relative=1 so
+        # local flowable coordinates are used directly).
         try:
-            canv.linkURL('#', (0, 0, bw, bh), relative=1,
-                         thickness=0, color=None, tooltip=tooltip_text)
-        except TypeError:
-            # Older ReportLab without tooltip kwarg — badge is still visible
-            try:
-                canv.linkURL('#', (0, 0, bw, bh), relative=1,
-                             thickness=0, color=None)
-            except Exception:
-                pass
+            _field_name = f'_warnbadge_{id(self):x}'
+            canv.acroform.textfield(
+                name=_field_name,
+                value='',
+                x=0, y=0,
+                width=bw,
+                height=bh,
+                borderWidth=0,
+                fillColor=None,
+                textColor=None,
+                tooltip=tooltip_text,
+                fieldFlags='readOnly',
+                annotationFlags='print',
+                relative=1,
+            )
         except Exception:
             pass
 
@@ -1779,19 +1787,19 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         row_ani_style = ani_style_small if row_below_zscore else ani_style
         species_key = species_entry['subkey']
         display_name = species_entry['display_name']
-        followup_symbol = ''
-        if species_entry['harmful_followup']:
-            followup_symbol = f' {_WARN_SYMBOL_HTML}'
+        # followup_symbol = ''
+        # if species_entry['harmful_followup']:
+        #     followup_symbol = f' {_WARN_SYMBOL_HTML}'
         if species_entry['species_passes']:
-            row_marker = ' <font color="#666666" size="7"><i>species/subkey</i></font>'
+            row_marker = ' <font color="#666666" size="7"><i>species</i></font>'
         else:
-            row_marker = ' <font color="#666666" size="7"><i>species/subkey from qualifying strains</i></font>'
+            row_marker = ' <font color="#666666" size="7"><i>species from qualifying strains</i></font>'
         flora_tag = _commensal_site_tag(species_record, species_record.get('normalized_sample_site', ''))
         name_html = (
             f'{display_name} '
             f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" '
             f'color="blue">{species_key}</link>)'
-            f'{followup_symbol}{row_marker}{flora_tag}{zscore_sym}'
+            f'{row_marker}{flora_tag}{zscore_sym}'
         )
 
         species_reads = float(species_record.get('numreads', 0) or 0)
@@ -1882,15 +1890,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
         if promoted:
             followup_symbol = ''
-            if strain.get('harmful_followup') or strain.get('microbial_category', '') in (
-                'Primary', 'Tier 1 Select Agent', 'Tier 2 Select Agent'
-            ):
+            if strain.get('harmful_followup'):
                 followup_symbol = f' {_WARN_SYMBOL_HTML}'
             name_html = (
+                f'{followup_symbol}'
                 f'{strain.get("name", "Unknown")} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>)'
-                f'{followup_symbol}'
                 f' <font color="#666666" size="7"><i>strain</i></font>'
                 f'{flora_tag}{zscore_sym}'
             )
@@ -1947,7 +1953,24 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         flora_fade = _is_flora_on_sterile(strain, strain.get('normalized_sample_site', ''))
         flora_mult = 0.70 if flora_fade else 1.0
-        if row_below_zscore:
+        _SUMMARY_PRIMARY = colors.HexColor('#E8A0A0')
+        if promoted:
+            # Match species-summary-row visual weight exactly
+            if 'Primary' in str(microbial_category):
+                if row_below_zscore:
+                    ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.35 * flora_mult)
+                    row_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.08 * flora_mult)
+                else:
+                    ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=1.0 * flora_mult)
+                    row_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.20 * flora_mult)
+            else:
+                if row_below_zscore:
+                    ind_color = get_category_color(microbial_category, ann_class, alpha=0.35 * flora_mult)
+                    row_color = get_category_color(microbial_category, ann_class, alpha=0.08 * flora_mult)
+                else:
+                    ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * flora_mult)
+                    row_color = get_category_color(microbial_category, ann_class, alpha=0.20 * flora_mult)
+        elif row_below_zscore:
             ind_color = get_category_color(microbial_category, ann_class, alpha=0.30 * flora_mult)
             row_color = get_category_color(microbial_category, ann_class, alpha=0.04 * flora_mult)
         else:
@@ -3417,12 +3440,12 @@ def create_pdf_template(output_path, samples_dict, args):
                 _alert_extra = ''
                 if len({a['display_name'] for a in _derived_alerts}) > 4:
                     _alert_extra = f' and {len({a["display_name"] for a in _derived_alerts}) - 4} more'
-                story.append(Paragraph(
-                    f'{_WARN_SYMBOL_HTML} '
-                    f'Potential harmful pathogen signal detected in one or more species/subkey rows. '
-                    f'These rows have qualifying child strains that require follow-up. '
-                    f'Affected rows are marked with {_WARN_SYMBOL_HTML}: <b>{_alert_names}{_alert_extra}</b>.',
-                    small_style))
+                # story.append(Paragraph(
+                #     f'{_WARN_SYMBOL_HTML} '
+                #     f'Potential harmful pathogen signal detected in one or more species/subkey rows. '
+                #     f'These rows have qualifying child strains that require follow-up. '
+                #     f'Affected rows are marked with {_WARN_SYMBOL_HTML}: <b>{_alert_names}{_alert_extra}</b>.',
+                #     small_style))
                 story.append(Spacer(1, 0.05*inch))
             # Auto-detect control data presence for the control bar column
             # (now also includes insilico_comparison data)
