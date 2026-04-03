@@ -427,7 +427,7 @@ def parse_args(argv=None):
                              "The gate uses the same log-RPM sigmoid controlled by "
                              "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
                              "Default: disabled.")
-    parser.add_argument("--score_power", type=float, default=0.5,
+    parser.add_argument("--score_power", type=float, default=0.7,
                         help="Power transform (gamma) applied to TASS scores. "
                              "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
                              "Preserves monotonic ordering so thresholds still separate TP/FP. "
@@ -556,11 +556,11 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.7,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=1.5,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
                          "Default: 1.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
-    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.34,
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.64,
                     help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
                          "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
                          "Default: 1.0. Set to 0 to disable.")
