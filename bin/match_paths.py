@@ -409,7 +409,7 @@ def parse_args(argv=None):
                              "When lowering --breadth_midpoint, increase steepness proportionally "
                              "(e.g. midpoint=0.001 → steepness=120000). Default: 50000.")
     # ── Low-abundance confidence (sterile-site boost) ────────────────────
-    parser.add_argument("--abundance_confidence_weight", type=float, default=0.0,
+    parser.add_argument("--abundance_confidence_weight", type=float, default=None,
                         help="Weight for the low-abundance confidence component in TASS score. "
                              "This component uses log-RPM to boost organisms that are meaningful "
                              "at low read counts (e.g. pathogens in sterile/blood sites). "
@@ -427,7 +427,7 @@ def parse_args(argv=None):
                              "The gate uses the same log-RPM sigmoid controlled by "
                              "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
                              "Default: disabled.")
-    parser.add_argument("--score_power", type=float, default=0.7,
+    parser.add_argument("--score_power", type=float, default=None,
                         help="Power transform (gamma) applied to TASS scores. "
                              "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
                              "Preserves monotonic ordering so thresholds still separate TP/FP. "
@@ -447,21 +447,21 @@ def parse_args(argv=None):
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.27,
+        default=None,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.21,
+        default=None,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.52,
+        default=None,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -471,7 +471,7 @@ def parse_args(argv=None):
         default=0.0,
         help="value of weight for disparity of k2 and alignment in final TASS Score",
     )
-    parser.add_argument("--disparity_weight", type=float, default=0.01,
+    parser.add_argument("--disparity_weight", type=float, default=None,
         help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
@@ -484,13 +484,13 @@ def parse_args(argv=None):
         "--hmp_weight",
         metavar="HMPWEIGHT",
         type=float,
-        default=0.00,
+        default=None,
         help="value of weight for hmp abundance in final TASS Score",
     )
     parser.add_argument(
         "--plasmid_bonus_weight",
         type=float,
-        default=0.0,
+        default=None,
         help="Additive TASS bonus for strains with strong plasmid coverage "
              "relative to sibling strains in the same species. Applied outside "
              "the normalized weight pool. 0 = disabled. Default: 0.05",
@@ -578,6 +578,29 @@ def parse_args(argv=None):
                          "e.g. 80K reads on 65Mbp genome with 0.15%% coverage: "
                          "efficiency=0.008, penalty^0.3=0.22 -> Gini crushed to 22%%. "
                          "Default: 0.1. Set to 0 to disable.")
+    parser.add_argument(
+        '--dominance_protect_ratio',
+        type=float,
+        default=3.0,
+        help="Read-count ratio (dominant / runner-up) within a conflict group above which the "
+             "dominant reference is fully exempt from the base (min_cov) removal.  Dominance "
+             "is determined by raw read count in the shared region.  Lower values protect more "
+             "aggressively (e.g. 2.0 = full protection when winner has ≥2× reads).  Higher "
+             "values are more conservative (e.g. 5.0 requires a very lopsided group).  "
+             "Default: 3.0.  Set to 0 or a very large number (e.g. 999) to disable protection "
+             "and restore the original unconditional base-removal behaviour.",
+    )
+    parser.add_argument(
+        '--skip_read_removal_scoring',
+        action='store_true',
+        default=False,
+        help="When set, conflict detection still runs (and breadth-change stats are computed "
+             "and written to the removal_stats report), but the removed read IDs are NOT "
+             "applied when counting reads for scoring.  Coverage, Gini, numreads, and all "
+             "TASS-score inputs are derived from the full original read set, exactly as if "
+             "no reads had been removed.  Useful for comparing Gini/breadth behaviour with "
+             "and without removal applied to the scoring pipeline.",
+    )
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -1045,6 +1068,27 @@ def main():
         disparity_w = args.disparity_score_weight
     if args.platform:
         args.platform = args.platform.lower()
+    # ── Three-layer param priority: defaults < thresholds_json < explicit CLI ─
+    # Params that are still None were not passed on the CLI; record which ones
+    # the user DID explicitly supply so the JSON block never overwrites them.
+    _WEIGHT_DEFAULTS = {
+        "breadth_weight":              0.27,
+        "minhash_weight":              0.21,
+        "gini_weight":                 0.52,
+        "disparity_weight":            0.01,
+        "hmp_weight":                  0.00,
+        "plasmid_bonus_weight":        0.0,
+        "abundance_confidence_weight": 0.0,
+        "score_power":                 0.7,
+    }
+    # Which of these did the user pass explicitly on the CLI?
+    _cli_provided = {p for p, _ in _WEIGHT_DEFAULTS.items()
+                     if getattr(args, p, None) is not None}
+    # Fill in defaults for everything not explicitly set
+    for _p, _v in _WEIGHT_DEFAULTS.items():
+        if getattr(args, _p, None) is None:
+            setattr(args, _p, _v)
+
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
     # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
     # Lookup order (first match wins):
@@ -1106,23 +1150,24 @@ def main():
               f"using thresholds key: '{_st_key}'")
 
         _best_w = thresholds_config[_st_key].get("best_weights", {})
-        # Override CLI weight defaults with JSON best weights
-        if "breadth_weight" in _best_w:
+        # Override defaults with JSON best weights — but never overwrite a param
+        # the user explicitly passed on the CLI (tracked in _cli_provided).
+        if "breadth_weight" in _best_w and "breadth_weight" not in _cli_provided:
             args.breadth_weight = _best_w["breadth_weight"]
-        if "gini_weight" in _best_w:
+        if "gini_weight" in _best_w and "gini_weight" not in _cli_provided:
             args.gini_weight = _best_w["gini_weight"]
-        if "minhash_weight" in _best_w:
+        if "minhash_weight" in _best_w and "minhash_weight" not in _cli_provided:
             args.minhash_weight = _best_w["minhash_weight"]
-        if "hmp_weight" in _best_w:
+        if "hmp_weight" in _best_w and "hmp_weight" not in _cli_provided:
             args.hmp_weight = _best_w["hmp_weight"]
-        if "disparity_weight" in _best_w:
+        if "disparity_weight" in _best_w and "disparity_weight" not in _cli_provided:
             disparity_w = _best_w["disparity_weight"]
             args.disparity_weight = disparity_w
-        if "plasmid_bonus_weight" in _best_w:
+        if "plasmid_bonus_weight" in _best_w and "plasmid_bonus_weight" not in _cli_provided:
             args.plasmid_bonus_weight = _best_w["plasmid_bonus_weight"]
-        if "abundance_confidence_weight" in _best_w:
+        if "abundance_confidence_weight" in _best_w and "abundance_confidence_weight" not in _cli_provided:
             args.abundance_confidence_weight = _best_w["abundance_confidence_weight"]
-        if "score_power" in _best_w:
+        if "score_power" in _best_w and "score_power" not in _cli_provided:
             args.score_power = _best_w["score_power"]
         print(f"  Applied weights from JSON: breadth={args.breadth_weight:.6g}, "
               f"gini={args.gini_weight:.6g}, minhash={args.minhash_weight:.6g}, "
@@ -1301,7 +1346,21 @@ def main():
                 accession_to_taxid=early_acc_to_taxid if early_acc_to_taxid else None,
                 taxid_to_name=early_taxid_to_desc if early_taxid_to_desc else None,
                 taxid_removal_stats=args.taxid_removal_stats,
+                dominance_protect_ratio=args.dominance_protect_ratio,
             )
+            # ── Skip-removal-for-scoring mode ────────────────────────────────
+            # conflict detection + breadth-change stats are always computed and
+            # written to disk (removal_stats.xlsx, cluster_dominance.json, etc.).
+            # When --skip_read_removal_scoring is set we simply discard the
+            # removal dict so that count_reference_hits uses every read for
+            # numreads / coverage / gini, giving a clean baseline for comparison.
+            if getattr(args, 'skip_read_removal_scoring', False):
+                print(
+                    "[skip_read_removal_scoring] Conflict removal computed but NOT applied "
+                    "to scoring reads.  All original reads will be used for coverage, "
+                    "Gini, numreads, and TASS-score inputs."
+                )
+                alignments_to_remove = defaultdict(set)
             # import the file args.output_dir/region_comparisons.csv
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
@@ -1699,6 +1758,107 @@ def main():
         subkey_comparison_df = pd.concat([_sums, _wavg_df], axis=1)
         print(f"Aggregated comparison_df: {len(comparison_df)} accessions → {len(subkey_comparison_df)} subkeys")
 
+    # ── Build cross-genus conflict clusters from shared_windows_report.csv ──
+    # The standard minhash winner/loser logic groups organisms by toplevelkey
+    # (genus).  Highly similar organisms from different genera — e.g. E. coli
+    # (Escherichia) and Shigella — compete for the same reads but land in
+    # separate genus buckets and are scored as independent solos.  This causes
+    # the true winner to receive less boost than it deserves and the true loser
+    # to go unpenalised at the cross-genus level.
+    #
+    # If shared_windows_report.csv exists in the output dir, we use its pairwise
+    # window-match data to build a union-find conflict graph.  Every accession
+    # that shares ≥1 window with another (across any genus) is assigned a shared
+    # conflict_cluster_id.  This ID supersedes toplevelkey in the parent_buckets
+    # computation inside calculate_normalized_groups, so cross-genus competitors
+    # are grouped together for the winner/loser minhash adjustment.
+    #
+    # When FASTA files are not provided the shared_windows_report.csv will be
+    # absent or empty; in that case the fallback toplevelkey grouping applies.
+    _acc_to_conflict_cluster: dict = {}
+    _sw_cluster_dominance: dict = {}
+    _output_dir_for_sw = args.output_dir if args.output_dir else os.path.dirname(args.output)
+    _sw_report_path = os.path.join(_output_dir_for_sw, "shared_windows_report.csv")
+    if os.path.exists(_sw_report_path):
+        try:
+            _sw_df = pd.read_csv(_sw_report_path)
+            if not _sw_df.empty and "query_contig" in _sw_df.columns and "match_contig" in _sw_df.columns:
+                # Build union-find across (query_contig, match_contig) pairs
+                _uf_parent: dict = {}
+
+                def _uf_find(x):
+                    while _uf_parent.get(x, x) != x:
+                        _uf_parent[x] = _uf_parent.get(_uf_parent[x], _uf_parent[x])
+                        x = _uf_parent[x]
+                    return x
+
+                def _uf_union(a, b):
+                    ra, rb = _uf_find(a), _uf_find(b)
+                    if ra != rb:
+                        _uf_parent[ra] = rb
+
+                for _, row in _sw_df.iterrows():
+                    qa = str(row.get("query_contig", "")).strip()
+                    mb = str(row.get("match_contig", "")).strip()
+                    if qa and mb and qa != mb:
+                        _uf_union(qa, mb)
+
+                # Map each accession to its cluster root
+                _all_accs_in_sw = set(_sw_df["query_contig"].astype(str)) | set(_sw_df["match_contig"].astype(str))
+                for _acc in _all_accs_in_sw:
+                    _acc_to_conflict_cluster[_acc] = f"conflict_cluster_{_uf_find(_acc)}"
+
+                _n_clusters = len(set(_acc_to_conflict_cluster.values()))
+                print(f"Loaded shared_windows_report.csv: {len(_all_accs_in_sw)} accessions "
+                      f"→ {_n_clusters} cross-genus conflict clusters")
+
+                # Derive per-accession cluster_dominance from shared windows
+                # so the penalty works regardless of --compare_references mode.
+                _sw_partner_count: dict = defaultdict(set)
+                _sw_region_count: dict = defaultdict(int)
+                for _, _swr in _sw_df.iterrows():
+                    _qa = str(_swr.get("query_contig", "")).strip()
+                    _mb = str(_swr.get("match_contig", "")).strip()
+                    if _qa and _mb and _qa != _mb:
+                        _sw_partner_count[_qa].add(_mb)
+                        _sw_partner_count[_mb].add(_qa)
+                        _sw_region_count[_qa] += 1
+                        _sw_region_count[_mb] += 1
+                _sw_cluster_dominance: dict = {}
+                for _acc in _all_accs_in_sw:
+                    _sw_cluster_dominance[_acc] = {
+                        "n_shared_regions": _sw_region_count.get(_acc, 0),
+                        "n_cluster_partners": len(_sw_partner_count.get(_acc, set())),
+                        "cluster_removal_frac": 0.0,
+                    }
+        except Exception as _sw_err:
+            print(f"Warning: could not load shared_windows_report.csv for conflict clustering: {_sw_err}")
+
+    # Annotate each reference_hit with its conflict_cluster_id (if any)
+    _clustered_count = 0
+    for _acc, _data in reference_hits.items():
+        _cid = _acc_to_conflict_cluster.get(_acc)
+        if _cid:
+            _data["conflict_cluster_id"] = _cid
+            _clustered_count += 1
+    if _clustered_count:
+        print(f"Annotated {_clustered_count} accessions with cross-genus conflict_cluster_id")
+
+    # ── Load cluster_dominance.json for minhash penalty scaling ────────────
+    # Written by finalize_proportional_removal when compare_to_reference_windows
+    # is False.  Contains per-accession stats: n_shared_regions,
+    # n_cluster_partners, cluster_removal_frac.
+    _cluster_dominance: dict = {}
+    _cd_path = os.path.join(_output_dir_for_sw, "cluster_dominance.json")
+    if os.path.exists(_cd_path):
+        try:
+            import json as _json_cd
+            with open(_cd_path) as _cd_fh:
+                _cluster_dominance = _json_cd.load(_cd_fh)
+            print(f"Loaded cluster_dominance.json: {len(_cluster_dominance)} accessions")
+        except Exception as _cd_err:
+            print(f"Warning: could not load cluster_dominance.json: {_cd_err}")
+
     for acc, data in reference_hits.items():
         if not data.get('organism'):
             # try to get organism from taxdump names
@@ -1707,6 +1867,13 @@ def main():
                 data['organism'] = taxdump_names[taxid]
             else:
                 data['organism'] = data.get('name', acc)
+        # Annotate with cluster dominance stats.
+        # Prefer cluster_dominance.json (from False path — has removal_frac),
+        # fall back to shared_windows-derived counts (from True path).
+        if acc in _cluster_dominance:
+            data["cluster_dominance"] = _cluster_dominance[acc]
+        elif acc in _sw_cluster_dominance:
+            data["cluster_dominance"] = _sw_cluster_dominance[acc]
         top = data.get('key')
         species_to_all_accs[top].add(acc)
         data = compute_scores_per(
@@ -2879,7 +3046,7 @@ def write_to_tsv(output_path, final_scores, header):
             disparity_score = entry.get('disparity_score', 0)
             siblings_score = entry.get('siblings_score', 0)
             tass_score = entry.get('tass_score', 0)
-            minhash_score = entry.get('minhash_score', 0)
+            minhash_score = entry.get('minhash_reduction', entry.get('minhash_score', 0))
             listpathogensstrains = entry.get('listpathogensstrains', [])
             countreads = entry.get('reads_aligned', 0)
             breadth_of_coverage = entry.get('coverage', 0)
@@ -2913,7 +3080,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tK2 Disparity Score: {entry.get('k2_disparity', 0):.2f}")
                 print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
                 print(f"\tBreadth: {entry.get('coverage', 0):.2f}")
-                print(f"\tMinhash score: {entry.get('minhash_score', 0):.2f}")
+                print(f"\tMinhash score: {entry.get('minhash_reduction', entry.get('minhash_score', 0)):.2f}")
                 print(f"\tDepth (Mean): {entry.get('meandepth', 0):.2f}")
                 print(f"\tGT Coverage: {entry.get('gtcov', 0):.2f}")
                 print(f"\tFinal Score: {entry.get('tass_score', 0):.2f}")

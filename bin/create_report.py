@@ -266,6 +266,7 @@ def build_subkey_display_lookup(species_group, args, min_conf, min_reads=1,
                 if 'Primary' in str(s.get('microbial_category', '') or '')
                 and not passes_confidence_threshold(s, min_conf)
                 and str(s.get('key', '')) not in _visible_keys
+                and str(s.get('key', '')) == str(s.get('subkey', s.get('key', '')))
             ],
             key=lambda s: float(s.get('tass_score', 0) or 0),
             reverse=True,
@@ -642,12 +643,16 @@ class ControlSparkBar(Flowable):
 
 
 class SubthresholdWarningFlowable(Flowable):
-    """Compact amber badge + PDF hover tooltip for below-threshold pathogenic strains.
+    """Compact amber badge + inline strain list for below-threshold pathogenic strains.
 
-    Draws a small ⚠ badge (e.g. '⚠ 2 primary strains below threshold') and
-    registers a PDF link annotation over its area so that PDF viewers display
-    the full strain list (name, TASS, reads) as a hover tooltip.
+    Draws a small ⚠ badge (e.g. '⚠ 2 primary strains below threshold') and,
+    directly below it, a muted gray list of strain names and TASS scores that
+    is always visible in every PDF viewer.
     """
+
+    _TEXT_FONT_SIZE = 6.0
+    _TEXT_LEADING = 7.5
+    _BADGE_GAP = 2  # vertical gap between badge bottom and text top
 
     def __init__(self, below_threshold_strains, badge_height=11):
         super().__init__()
@@ -657,7 +662,8 @@ class SubthresholdWarningFlowable(Flowable):
         self._label = (
             f'{n} primary strain{"s" if n != 1 else ""} below threshold'
         )
-        self.height = badge_height
+        strain_text_h = n * self._TEXT_LEADING if n else 0
+        self.height = badge_height + (self._BADGE_GAP + strain_text_h if n else 0)
         self.width = 0  # expands to content in draw()
 
     def draw(self):
@@ -665,7 +671,12 @@ class SubthresholdWarningFlowable(Flowable):
         if not self.below_threshold_strains:
             return
 
+        n = len(self.below_threshold_strains)
         bh = self._badge_h
+        tl = self._TEXT_LEADING
+        tf_size = self._TEXT_FONT_SIZE
+        strain_text_h = n * tl
+        badge_y = strain_text_h + self._BADGE_GAP  # badge sits above the text block
 
         font_size = 6.5
         # Warning triangle dimensions (canvas-drawn, no font character needed)
@@ -681,10 +692,10 @@ class SubthresholdWarningFlowable(Flowable):
 
         # Amber rounded badge background
         canv.setFillColorRGB(0.85, 0.42, 0.02)
-        canv.roundRect(0, 0, bw, bh, 2, fill=1, stroke=0)
+        canv.roundRect(0, badge_y, bw, bh, 2, fill=1, stroke=0)
 
         # White equilateral warning triangle (pointing up)
-        ty = (bh - tri_h) / 2
+        ty = badge_y + (bh - tri_h) / 2
         canv.setFillColorRGB(1, 1, 1)
         tri_path = canv.beginPath()
         tri_path.moveTo(x_off + tri_w / 2, ty + tri_h)
@@ -701,44 +712,18 @@ class SubthresholdWarningFlowable(Flowable):
         # White label text after the triangle
         canv.setFont('Helvetica-Bold', font_size)
         canv.setFillColorRGB(1, 1, 1)
-        canv.drawString(x_off + tri_w + gap, (bh - font_size) / 2 + 0.5, self._label)
-        canv.restoreState()
+        canv.drawString(x_off + tri_w + gap, badge_y + (bh - font_size) / 2 + 0.5, self._label)
 
-        # Build tooltip text shown on hover in PDF viewers
-        lines = [
-            f'{len(self.below_threshold_strains)} primary pathogen(s) detected below'
-            f' confidence threshold — follow-up recommended:',
-        ]
-        for s in self.below_threshold_strains:
+        # Strain list drawn below the badge in muted gray
+        canv.setFont('Helvetica', tf_size)
+        canv.setFillColorRGB(0.45, 0.45, 0.45)
+        for i, s in enumerate(self.below_threshold_strains):
             name = s.get('name', 'Unknown')
             tass = float(s.get('tass_score', 0) or 0) * 100
-            reads = int(s.get('numreads', 0) or 0)
-            lines.append(f'  \u2022 {name}')
-            lines.append(f'    TASS: {tass:.1f}  |  Reads: {reads:,}')
-        tooltip_text = '\n'.join(lines)
+            line_y = strain_text_h - (i + 1) * tl + (tl - tf_size) / 2
+            canv.drawString(x_off, line_y, f'\u2022 {name}  TASS: {tass:.1f}')
 
-        # Use an invisible readonly acroform textfield overlay to carry the tooltip.
-        # PDF viewers show the widget's /TU (tooltip) entry on hover — this is the
-        # officially supported mechanism (canvas.acroform.textfield, relative=1 so
-        # local flowable coordinates are used directly).
-        try:
-            _field_name = f'_warnbadge_{id(self):x}'
-            canv.acroform.textfield(
-                name=_field_name,
-                value='',
-                x=0, y=0,
-                width=bw,
-                height=bh,
-                borderWidth=0,
-                fillColor=None,
-                textColor=None,
-                tooltip=tooltip_text,
-                fieldFlags='readOnly',
-                annotationFlags='print',
-                relative=1,
-            )
-        except Exception:
-            pass
+        canv.restoreState()
 
 
 _STERILE_TYPES = {"sterile", "blood", "csf", "serum"}

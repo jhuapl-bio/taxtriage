@@ -503,16 +503,24 @@ def calculate_normalized_groups(
         else:
             tk = None
             tn = None
+            cid = None
             for e in entries:
                 if tk is None:
                     tk = e.get("toplevelkey")
                 if tn is None:
                     tn = e.get("toplevelname")
-                if tk and tn:
+                # Propagate conflict_cluster_id: if ANY member of this group
+                # belongs to a cross-genus conflict cluster, carry that id up
+                # so the winner/loser parent_buckets logic can use it.
+                if cid is None:
+                    cid = e.get("conflict_cluster_id")
+                if tk and tn and cid:
                     break
 
             agg["toplevelkey"] = tk
             agg["toplevelname"] = tn
+            if cid is not None:
+                agg["conflict_cluster_id"] = cid
 
         # sums
         sums = {f: 0.0 for f in SUM_FIELDS}
@@ -540,6 +548,15 @@ def calculate_normalized_groups(
 
         # Propagate has_plasmid: true if ANY member has a plasmid
         agg['has_plasmid'] = any(bool(_e.get('has_plasmid', False)) for _e in entries)
+
+        # Propagate cluster_dominance from constituent entries (aggregate)
+        _cd_list = [e["cluster_dominance"] for e in entries if e.get("cluster_dominance")]
+        if _cd_list:
+            agg["cluster_dominance"] = {
+                "cluster_removal_frac": sum(cd.get("cluster_removal_frac", 0) for cd in _cd_list) / len(_cd_list),
+                "n_cluster_partners": max(cd.get("n_cluster_partners", 0) for cd in _cd_list),
+                "n_shared_regions": sum(cd.get("n_shared_regions", 0) for cd in _cd_list),
+            }
 
         # ========== RECALCULATE breadth_log_score from aggregated coverage ==========
         # This ensures plasmids don't skew the score.
@@ -693,11 +710,49 @@ def calculate_normalized_groups(
         _agg_cov = float(agg.get('coverage', 0))
         _breadth_gate = breadth_score_sigmoid(_agg_cov, midpoint=0.01, steepness=12_000)
         _mh_coverage_gate = _depth_conc_penalty * _contig_penalty * _breadth_gate
+
+        # ── Dominant-organism gate floor ─────────────────────────────────
+        # Problem: a true positive that participated in many conflict groups
+        # may have its coverage artificially depressed by the cumulative base
+        # removals, causing _breadth_gate (and therefore _mh_coverage_gate)
+        # to collapse even though the organism clearly owns those reads.
+        #
+        # Fix: when cluster_dominance shows this organism was the dominant
+        # ref in its conflict groups (low cluster_removal_frac + high
+        # mean_conflict_mapq), we raise the gate floor so the dominant
+        # true positive cannot be over-penalized by coverage lost to removal.
+        #
+        # Gate floor formula:
+        #   mapq_norm   = mean_conflict_mapq / 60.0  (0–1, capped at MAPQ 60)
+        #   dom_strength = (1 - removal_frac) * mapq_norm
+        #     → 1.0 when removal_frac=0 AND mapq is high (clear dominant)
+        #     → 0.0 when removal_frac=1  OR mapq=0       (clear loser/noise)
+        #   gate_floor  = dom_strength * MAX_DOMINANT_GATE_FLOOR
+        #   final_gate  = max(_mh_coverage_gate, gate_floor)
+        #
+        # MAX_DOMINANT_GATE_FLOOR = 0.70 means a dominant high-mapQ organism
+        # can never have its minhash gate fall below 0.70, regardless of how
+        # many reads were trimmed.  Losers (high removal_frac) get 0 floor.
+        MAX_DOMINANT_GATE_FLOOR = 0.70
+        _cd = agg.get("cluster_dominance")
+        _gate_floor = 0.0
+        if _cd:
+            _removal_frac = float(_cd.get("cluster_removal_frac", 0.5))
+            _conflict_mapq = float(_cd.get("mean_conflict_mapq", 0.0))
+            _mapq_norm = min(1.0, _conflict_mapq / 60.0)
+            # dom_strength is high only when both conditions hold:
+            # (a) organism lost few reads → it was dominant
+            # (b) mean mapq of those reads is high → alignments are trustworthy
+            _dom_strength = (1.0 - _removal_frac) * _mapq_norm
+            _gate_floor = _dom_strength * MAX_DOMINANT_GATE_FLOOR
+        _mh_coverage_gate = max(_mh_coverage_gate, _gate_floor)
+
         agg['minhash_reduction'] = _agg_raw_mh * _mh_coverage_gate
         agg['minhash_confidence'] = _mh_coverage_gate
         agg['minhash_reduction_pre_gate'] = _agg_raw_mh
         agg['minhash_coverage_gate'] = _mh_coverage_gate
         agg['minhash_breadth_gate'] = _breadth_gate
+        agg['minhash_gate_floor'] = _gate_floor
 
         out[gval] = agg
 
@@ -715,11 +770,48 @@ def calculate_normalized_groups(
 
     _rpm_norm_floor = 0.3  # minimum scaling factor for lowest-RPM member
 
-    # 1) Bucket the output entries by their parent group
-    parent_buckets: Dict[str, List[str]] = {}
+    # 1) Bucket the output entries by their parent group.
+    # conflict_cluster_id (set upstream from shared_windows_report.csv) takes
+    # priority over toplevelkey so that cross-genus high-ANI groups (e.g.
+    # E. coli + Shigella) compete in the same winner/loser bucket instead of
+    # being scored as independent solo organisms in their own genus buckets.
+    #
+    # ── Giant-cluster guard ───────────────────────────────────────────
+    # The union-find that builds conflict clusters is transitive: if
+    # contig A shares windows with B, and B shares with C, all three
+    # land in one cluster.  In complex stool samples a single "bridge"
+    # contig can transitively link 1000+ organisms into one mega-cluster.
+    # Winner/loser logic breaks down completely in such clusters because
+    # every organism's RPM share ≈ 0 and all hit the loser floor.
+    #
+    # Fix: when a conflict_cluster has more than _MAX_CLUSTER_BUCKET
+    # members, fall back to toplevelkey sub-groups within the cluster.
+    # This preserves correct genus-level competition (9 E. coli strains
+    # compete, O104:H4 wins) while avoiding the 1388-member pathology.
+    # Organisms still carry their conflict_cluster_id for the
+    # cluster_region_penalty logic downstream.
+    _MAX_CLUSTER_BUCKET = 50
+
+    _raw_buckets: Dict[str, List[str]] = {}
     for gval, agg in out.items():
-        parent = agg.get("toplevelkey") or gval
-        parent_buckets.setdefault(str(parent), []).append(gval)
+        parent = agg.get("conflict_cluster_id") or agg.get("toplevelkey") or gval
+        _raw_buckets.setdefault(str(parent), []).append(gval)
+
+    parent_buckets: Dict[str, List[str]] = {}
+    for parent, members in _raw_buckets.items():
+        if len(members) <= _MAX_CLUSTER_BUCKET:
+            parent_buckets[parent] = members
+        else:
+            # Split oversized cluster into toplevelkey sub-groups.
+            # Each sub-group competes internally; the conflict metadata
+            # (cluster_dominance, cluster_region_penalty) is still applied.
+            _sub: Dict[str, List[str]] = {}
+            for gval in members:
+                _tlk = out[gval].get("toplevelkey") or gval
+                _sub.setdefault(str(_tlk), []).append(gval)
+            for _tlk, _sub_members in _sub.items():
+                _sub_key = f"{parent}__tlk_{_tlk}"
+                parent_buckets[_sub_key] = _sub_members
 
     # 2) For each parent group, compute RPM shares and adjust minhash_reduction
     _solo_boost_strength = 0.9  # max boost toward 1.0 for a solo organism
@@ -802,62 +894,196 @@ def calculate_normalized_groups(
             if mk == top_mk:
                 # ----------------------------------------------------------
                 # DOMINANT MEMBER: boost minhash toward the coverage-gate
-                # ceiling rather than scaling it down.
-                # In high-ANI conflict groups (e.g. O104:H4 vs Shigella), the
-                # minhash signal is similar for all members because they share
-                # k-mers.  The organism with the most reads is the true hit —
-                # reward it by filling the gap to its confidence ceiling,
-                # proportional to how dominant it is.
+                # ceiling.  Uses a lead-margin formula so a clear winner
+                # (large gap over runner-up) gets a stronger boost than a
+                # near-tie winner, which prevents over-boosting ambiguous
+                # cases while decisively rewarding the true organism in
+                # high-ANI conflict groups (e.g. E. coli vs Shigella).
                 #
-                # Example: O104:H4 rpm_share=0.60, raw=0.90, conf=0.95
-                #   gap=0.05, boost=0.03 → final=0.93  (was 0.72 before)
+                # dominance = rpm_share + 0.5 * lead_margin
+                #   lead_margin = rpm_share - runner_up_share
+                #   Capped at 1.0 so boost never exceeds gap.
+                #
+                # Example (clear winner): O104:H4 rpm_share=0.60, runner-up=0.15
+                #   lead_margin=0.45, dominance=min(1,0.60+0.225)=0.825
+                #   gap=0.05 → boost=0.041 → final=0.941  (was 0.930)
+                #
+                # Example (near-tie): A rpm_share=0.34, runner-up=0.33
+                #   lead_margin=0.01, dominance=0.345  (barely above rpm_share)
+                #   Avoids over-boosting ambiguous competition.
                 # ----------------------------------------------------------
+                _runner_up_share = sorted_rpms[1][1] / total_rpm if len(sorted_rpms) > 1 else 0.0
+                _lead_margin = rpm_share - _runner_up_share
+                # Stronger lead-margin weight (0.75 vs 0.5): a clear winner
+                # now gets a decisively larger boost than a near-tie winner.
+                dominance = min(1.0, rpm_share + _lead_margin * 0.75)
                 gap = max(0.0, _mh_conf - raw_minhash)
-                boost = gap * rpm_share
+                boost = gap * dominance
                 adjusted = min(_mh_conf, raw_minhash + boost)
                 scale = (adjusted / raw_minhash) if raw_minhash > 0 else 1.0
+                out[mk]["winner_dominance"] = dominance
+                out[mk]["winner_lead_margin"] = _lead_margin
             else:
                 # ----------------------------------------------------------
-                # LOSER: scale down aggressively, amplified by the coverage
-                # gap vs the dominant member.
+                # LOSER: apply a moderate penalty that preserves real signal.
                 #
-                # Base formula (RPM-share):
-                #   scale = floor + (1 - floor) * rpm_share
-                #   floor=0.10 so Shigella with low share gets a hit.
+                # The previous formula multiplied two sub-1 factors together
+                # (base_scale * cov_scale), which compounded to crush minhash
+                # to ~10% of its original value even for organisms with
+                # meaningful read evidence — too aggressive when the loser is
+                # a genuine but less-abundant organism.
                 #
-                # Coverage-ratio penalty (new):
-                #   If the dominant organism has 20% coverage and this one
-                #   has 8%, the coverage ratio = 8/20 = 0.4.  We blend this
-                #   into the scale so that even organisms with decent RPM
-                #   share get penalised when their coverage is much lower
-                #   than the dominant — a strong signal that shared reads
-                #   were misassigned.
+                # New approach: weighted average of the two factors so neither
+                # dominates, plus higher floors so even a true loser keeps a
+                # reasonable fraction of its minhash signal.
                 #
-                #   coverage_ratio = my_coverage / top_coverage
-                #   scale *= (cov_floor + (1 - cov_floor) * coverage_ratio)
-                #   cov_floor=0.25 so 0% coverage → 25% of base scale
+                # Base (RPM-share factor):
+                #   base_scale = floor + (1 - floor) * rpm_share
+                #   floor = 0.20  →  minimum retained even at rpm_share ≈ 0
                 #
-                # Example: Shigella dysenteriae rpm_share=0.21, cov=8%, top_cov=20%
-                #   base_scale = 0.10 + 0.90*0.21 = 0.289
-                #   cov_ratio  = 8/20 = 0.4
-                #   cov_scale  = 0.25 + 0.75*0.4 = 0.55
-                #   final_scale = 0.289 * 0.55 = 0.159
+                # Coverage-ratio modifier:
+                #   cov_scale  = cov_floor + (1 - cov_floor) * cov_ratio
+                #   cov_floor  = 0.35  →  even 0% relative coverage → 35%
+                #
+                # Combined:
+                #   scale = 0.65 * base_scale + 0.35 * cov_scale
+                #   Hard minimum: max(0.20, scale) so no loser is ever
+                #   reduced below 20% of its raw minhash.
+                #
+                # Example (Shigella): rpm_share=0.21, cov_ratio=0.40
+                #   base_scale = 0.20 + 0.80*0.21 = 0.368
+                #   cov_scale  = 0.35 + 0.65*0.40 = 0.610
+                #   scale      = 0.65*0.368 + 0.35*0.610 = 0.453
+                #   (prev multiplicative formula gave 0.115 — 4× harsher)
                 # ----------------------------------------------------------
-                _loser_floor = 0.10
+                _loser_floor = 0.20
                 base_scale = _loser_floor + (1.0 - _loser_floor) * rpm_share
 
-                # Coverage-ratio penalty: compare this member's breadth to
-                # the dominant member's breadth within the group.
                 _top_cov = _to_float(out[top_mk].get("coverage", 0))
                 _my_cov  = _to_float(out[mk].get("coverage", 0))
                 if _top_cov > 0:
                     _cov_ratio = min(1.0, _my_cov / _top_cov)
                 else:
-                    _cov_ratio = 1.0  # can't penalise if dominant also has 0
-                _cov_floor = 0.25
+                    _cov_ratio = 1.0
+                _cov_floor = 0.35
                 _cov_scale = _cov_floor + (1.0 - _cov_floor) * _cov_ratio
 
-                scale = base_scale * _cov_scale
+                # Weighted blend instead of product to avoid double-crushing
+                scale = 0.65 * base_scale + 0.35 * _cov_scale
+
+                # ── Group-size penalty ────────────────────────────────────
+                # In a 2-member group a "loser" might be a genuine co-
+                # detection.  In a 13-member group (e.g. 9 E. coli strains
+                # + 4 Shigella) almost every loser is cross-mapping noise
+                # from the dominant organism.  Scale the penalty inversely
+                # with group size to reflect this.
+                #
+                # Formula: group_penalty = 1 / (1 + 0.3 * (n - 2))
+                #   2 members: 1.0  (no extra penalty)
+                #   3 members: 0.77
+                #   5 members: 0.53
+                #  10 members: 0.29 → floored at 0.35
+                #  13 members: 0.23 → floored at 0.35
+                _n_members = len(member_keys)
+                _group_penalty = 1.0
+                if _n_members > 2:
+                    _group_penalty = max(0.35, 1.0 / (1.0 + 0.3 * (_n_members - 2)))
+                    scale *= _group_penalty
+                out[mk]["group_size_penalty"] = _group_penalty
+                out[mk]["n_group_members"] = _n_members
+
+                # ── Cluster-region penalty (shared-region amplifier) ──────
+                # When cluster_dominance metadata is available for this
+                # loser, organisms that share many regions with many
+                # partners get an extra minhash penalty.  The dominant
+                # organism (winner) is unaffected — only losers.
+                #
+                # cluster_removal_frac: fraction of this ref's conflict-
+                #   region reads that were removed (0 = dominant, ~1 = minor)
+                # n_cluster_partners: how many other accessions share
+                #   regions with this one (more partners = more doubt)
+                #
+                # penalty: linearly scales from 1.0 (no extra penalty) down
+                #   to _cluster_min (e.g. 0.50) based on removal fraction
+                #   and partner count.
+                #
+                # Example: E. coli O104:H4 (winner, removal_frac=0.07) -
+                #   no cluster penalty applied (handled in winner branch).
+                #   Shigella (loser, removal_frac=0.85, 8 partners):
+                #     _partner_factor = min(1, 8/5) = 1.0
+                #     _raw_cluster_pen = 0.85 * 1.0 = 0.85
+                #     cluster_penalty = 1.0 - 0.50 * 0.85 = 0.575
+                #     scale *= 0.575 → stronger penalty
+                _cluster_penalty = 1.0
+                _cd = out[mk].get("cluster_dominance")
+                if _cd:
+                    _avg_removal_frac = _cd.get("cluster_removal_frac", 0)
+                    _max_partners = _cd.get("n_cluster_partners", 0)
+                    # More partners = more doubt.  Ramps from 0→1 over 1..5 partners.
+                    _partner_factor = min(1.0, _max_partners / 5.0) if _max_partners > 0 else 0.0
+                    _cluster_strength = 0.50  # max additional penalty
+                    _raw_cluster_pen = _avg_removal_frac * _partner_factor
+                    _cluster_penalty = 1.0 - _cluster_strength * _raw_cluster_pen
+                    _cluster_penalty = max(0.30, _cluster_penalty)  # hard floor
+
+                scale *= _cluster_penalty
+                out[mk]["cluster_region_penalty"] = _cluster_penalty
+
+                # ── Near-parity protection ────────────────────────────────
+                # When the loser's RPM share is a large fraction of the
+                # winner's, it is likely a genuine co-detected organism
+                # (e.g. Shigella flexneri with 5143 reads vs E. coli with
+                # 6564 reads → parity_ratio ≈ 0.78).  Penalising it to
+                # ~0.53 minhash when it has 26% coverage and 5k reads is
+                # incorrect.  Blend the scale toward a gentler floor as
+                # the loser approaches parity with the winner.
+                #
+                # parity_ratio = loser_rpm_share / winner_rpm_share
+                #   0.40 → no protection (clear false positive)
+                #   0.80 → ~full protection (near-tie, likely both real)
+                #
+                # protected_floor = 0.80: loser retains ≥ 80% of its
+                # minhash when parity_protection reaches 1.0.
+                #
+                # ── Coverage guard ────────────────────────────────────────
+                # Near-parity protection is only meaningful when the loser
+                # has real genome coverage.  A reference with 7% coverage
+                # is likely a cross-mapping false positive whose reads pile
+                # onto conserved regions, NOT a genuinely present organism.
+                # Scale the protection by how much breadth the loser has:
+                #   ≤ 10% coverage → 0 protection (suppress false positives)
+                #   ≥ 25% coverage → full protection (trust genuine co-detections)
+                #
+                # Example (O104:H4 vs Shigella case):
+                #   Shigella dysenteriae, coverage=7%, parity_ratio=0.46:
+                #     _cov_guard = max(0,(0.07-0.10)/0.15) = 0 → no protection
+                #     scale remains at loser formula value (~0.39) — correct.
+                #   Shigella flexneri, coverage=26%, parity_ratio=0.78:
+                #     _cov_guard = min(1,(0.26-0.10)/0.15) = 1.0 → full
+                #     protection preserved — also correct (genuine co-detection).
+                _winner_rpm_share = sorted_rpms[0][1] / total_rpm
+                _parity_ratio = rpm_share / max(_winner_rpm_share, 1e-9)
+                # Linear ramp: 0 at parity_ratio=0.40, 1 at parity_ratio=0.80
+                _parity_protection = min(1.0, max(0.0,
+                    (_parity_ratio - 0.40) / 0.40))
+                # Coverage guard: scales protection down for low-breadth losers
+                _loser_cov = _to_float(out[mk].get("coverage", 0))
+                _cov_guard = min(1.0, max(0.0, (_loser_cov - 0.10) / 0.15))
+                _parity_protection *= _cov_guard
+
+                # Dampen parity protection for large groups: in a 13-member
+                # cluster, near-parity with the winner doesn't signal genuine
+                # co-detection — it just means many genomes share reads.
+                #   2 members: 1.0  (full parity protection)
+                #   5 members: 0.40
+                #  10 members: 0.20
+                #  13 members: 0.15 → floored at 0.10
+                if _n_members > 2:
+                    _parity_protection *= max(0.10, 2.0 / _n_members)
+                _protected_floor = 0.80
+                scale = scale + _parity_protection * max(0.0, _protected_floor - scale)
+
+                scale = max(0.20, scale)  # hard floor: never below 20%
                 adjusted = raw_minhash * scale
 
             out[mk]["minhash_reduction"] = adjusted
@@ -1047,15 +1273,37 @@ def compute_scores_per(
         # composite minhash signal.
         lookup_key = str(data.get('subkey', data.get('accession', ''))).strip()
         if lookup_key in comparison_df.index:
-            c1 = float(comparison_df.loc[lookup_key, col_stat])
-            d_all = float(comparison_df.loc[lookup_key, col_stat2])
+            c1 = float(comparison_df.loc[lookup_key, col_stat])       # Δ^-1 Breadth
+            d_all = float(comparison_df.loc[lookup_key, col_stat2])   # Δ All%
 
-            k_sig = 0.90
-            x0 = -10.0
-            pen = 1.0 / (1.0 + math.exp(-k_sig * (d_all - x0)))
+            # ── Read-retention rate ──────────────────────────────────
+            # In high-ANI conflict groups (E. coli / Shigella) ALL
+            # organisms lose similar breadth proportions, so Δ^-1 Breadth
+            # alone produces ~identical minhash_score (e.g. 0.12 for
+            # every member).  Read retention (fraction of reads surviving
+            # conflict removal) differentiates much better: the dominant
+            # TP keeps most reads while FPs lose many.
+            #
+            # Example with 13-member E. coli + Shigella group:
+            #   O104:H4 (TP):  retention=0.85, c1=0.12  → 0.63
+            #   Shigella (FP): retention=0.30, c1=0.12  → 0.25
+            _total_r = 0.0
+            _pass_r  = 0.0
+            if 'Total Reads' in comparison_df.columns:
+                _total_r = float(comparison_df.loc[lookup_key, 'Total Reads'])
+            if 'Pass Filtered Reads' in comparison_df.columns:
+                _pass_r = float(comparison_df.loc[lookup_key, 'Pass Filtered Reads'])
+            else:
+                _pass_r = _total_r
 
-            comparison_value = min(1.0, c1 * pen)
+            _read_retention = _pass_r / _total_r if _total_r > 0 else 0.0
+
+            # Blend breadth-retention (still informative for solo organisms)
+            # with read-retention (key differentiator in conflict groups).
+            comparison_value = min(1.0, 0.30 * c1 + 0.70 * _read_retention)
             data['minhash_score'] = comparison_value
+            data['minhash_read_retention'] = _read_retention
+            data['minhash_breadth_ratio'] = c1
         else:
             data['minhash_score'] = rpm_weight * 0.5  # default to a moderate score if no comparison available
     # ── Confidence-gated minhash_reduction ─────────────────────────────
@@ -1089,6 +1337,41 @@ def compute_scores_per(
     minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
     minhash_confidence = min(1.0, max(0.0, minhash_confidence))  # sanity clamp
 
+    # ── MapQ-based confidence floor ──────────────────────────────────────
+    # When per-contig coverage is low due to read removal (not low abundance),
+    # a high mean mapQ is a strong signal that the organism is real.
+    # We apply a floor to minhash_confidence that scales with mapQ quality
+    # and the organism's cluster dominance signal.
+    #
+    # mapq_norm  = meanmapq / 60.0  (normalised, capped at MAPQ 60)
+    # cluster dominance (low removal_frac + high conflict mapq) from
+    # cluster_dominance metadata, propagated from conflict_regions.py.
+    #
+    # mapq_floor = mapq_norm * MAPQ_FLOOR_STRENGTH
+    #   MAPQ 60 → floor = 0.30  (confidence can't drop below 30%)
+    #   MAPQ 30 → floor = 0.15
+    #   MAPQ  0 → floor = 0.0   (no floor for unmapped / low-quality reads)
+    #
+    # Additionally, if cluster_dominance marks this contig as belonging to
+    # a dominant organism (low removal_frac), scale the floor up further
+    # (up to 2×) so truly dominant high-mapQ hits get strong protection.
+    MAPQ_FLOOR_STRENGTH = 0.30
+    _mapq = float(data.get('meanmapq', 0))
+    _mapq_norm = min(1.0, _mapq / 60.0)
+    _mapq_floor = _mapq_norm * MAPQ_FLOOR_STRENGTH
+
+    # Boost the floor for dominant conflict-cluster members
+    _cd = data.get('cluster_dominance')
+    if _cd:
+        _removal_frac = float(_cd.get('cluster_removal_frac', 0.5))
+        _conflict_mapq = float(_cd.get('mean_conflict_mapq', 0.0))
+        _conflict_mapq_norm = min(1.0, _conflict_mapq / 60.0)
+        _dom_strength = (1.0 - _removal_frac) * _conflict_mapq_norm
+        # Scale floor up to 2× for clear dominant (dom_strength=1)
+        _mapq_floor = min(1.0, _mapq_floor * (1.0 + _dom_strength))
+
+    minhash_confidence = max(minhash_confidence, _mapq_floor)
+
     # ── Low-read penalty ────────────────────────────────────────────────
     # Organisms with very few reads are more likely to be false positives.
     # Scale minhash_confidence by a read-count factor so that low-read
@@ -1108,7 +1391,14 @@ def compute_scores_per(
     # pulled down by the global read-fraction sigmoid.
     #   cov_conf=0.95 → penalty_w fades to 0.35*(1-0.95)=0.017 (nearly off)
     #   cov_conf=0.10 → penalty_w stays at 0.35*(1-0.10)=0.315 (nearly full)
-    _read_penalty_w = 0.35 * (1.0 - cov_conf)
+    #
+    # MapQ bypass: additionally fade penalty when mapQ is high.  A high-mapQ
+    # hit with few reads (e.g. rare pathogen in sterile site) should not be
+    # penalised as harshly as a low-mapQ scatter hit.
+    #   mapq_norm=1.0 → effective cov bypass adds 0.20 extra fade
+    _effective_cov_bypass = cov_conf + 0.20 * _mapq_norm
+    _effective_cov_bypass = min(1.0, _effective_cov_bypass)
+    _read_penalty_w = 0.35 * (1.0 - _effective_cov_bypass)
     minhash_confidence *= (1.0 - _read_penalty_w) + (_read_penalty_w * rpm_weight)
 
     data['minhash_reduction'] = minhash_confidence
@@ -1674,7 +1964,8 @@ def calculate_hmp_percentile(
                     )
                     break
         except Exception as e:
-            print(f"Error in taxid lookup for hmp: {e}")
+            # print(f"Error in taxid lookup for hmp: {e}")
+            continue
     # Use read fraction (0–1 scale) to match HMP distribution mean/std which are also fractions
     if total_reads > 0:
         fraction_observed = float(value.get('numreads', 0) or 0) / total_reads

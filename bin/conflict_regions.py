@@ -17,13 +17,16 @@ Notes:
 
 from __future__ import annotations
 
+import bisect
 import csv
 import itertools
 import re
 import math
 import os
 import random
+import shutil
 import statistics
+import tempfile
 import time
 from collections import defaultdict, Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -300,6 +303,147 @@ def create_signature_for_single_region(
 
 
 
+# -----------------------------
+# BAM-only region sketching (no FASTA) — single-pass per chromosome
+# -----------------------------
+
+def _sketch_bam_single_pass_chrom(args: Tuple) -> List[Tuple]:
+    """Worker: stream all reads for *one chromosome* and assign to regions.
+
+    Instead of calling bam.fetch(chrom, start, end) per region (N random I/O
+    lookups), we call bam.fetch(chrom) once and use binary search on the
+    sorted, non-overlapping region list to find which region(s) each read
+    overlaps.  This turns millions of index lookups into one sequential scan.
+
+    Returns list of (region_name, SourmashSignature) pairs.
+    """
+    chrom, sorted_regions, bam_path, kmer_size, scaled = args
+    # sorted_regions: list of (start, end) sorted by start — non-overlapping
+    n_regions = len(sorted_regions)
+    region_mhs = [MinHash(n=0, ksize=kmer_size, scaled=scaled) for _ in range(n_regions)]
+
+    # Pre-extract ends for bisect lookups
+    ends = [r[1] for r in sorted_regions]
+
+    bam = pysam.AlignmentFile(bam_path, "rb")
+    try:
+        for read in bam.fetch(chrom):
+            seq = read.query_sequence
+            if not seq or len(seq) < kmer_size:
+                continue
+            r_start = read.reference_start
+            r_end = read.reference_end
+            if r_end is None:
+                r_end = r_start + len(seq)
+
+            # First region whose end > r_start (could overlap the read)
+            lo = bisect.bisect_right(ends, r_start)
+            for i in range(lo, n_regions):
+                s, e = sorted_regions[i]
+                if s >= r_end:
+                    break  # all remaining regions are past the read
+                region_mhs[i].add_sequence(seq, force=True)
+    except ValueError:
+        pass
+    finally:
+        bam.close()
+
+    results: List[Tuple] = []
+    for i, (s, e) in enumerate(sorted_regions):
+        mh = region_mhs[i]
+        if mh.hashes:
+            name = f"{chrom}:{s}-{e}"
+            results.append((name, SourmashSignature(mh, name=name)))
+    return results
+
+
+def create_signatures_from_bam(
+    regions_df: pd.DataFrame,
+    bam_path: str,
+    kmer_size: int,
+    scaled: int,
+    num_workers: int = 1,
+) -> Dict[str, SourmashSignature]:
+    """Build signatures for merged regions using BAM read sequences only (no FASTA).
+
+    Optimised: one sequential BAM scan per chromosome with binary-search
+    assignment to regions, parallelised across chromosomes.
+    """
+    required = {"chrom", "start", "end"}
+    if not required.issubset(set(regions_df.columns)):
+        raise ValueError(f"regions_df must contain columns: {required}")
+
+    df = regions_df[["chrom", "start", "end"]].copy()
+    df["chrom"] = df["chrom"].astype(str)
+    df["start"] = df["start"].astype(int)
+    df["end"] = df["end"].astype(int)
+
+    # Group by chromosome; sort regions within each group
+    grouped = df.groupby("chrom", observed=True)
+    chrom_args: List[Tuple] = []
+    for chrom, grp in grouped:
+        sorted_regions = sorted(zip(grp["start"], grp["end"]))
+        chrom_args.append((str(chrom), sorted_regions, bam_path, kmer_size, scaled))
+
+    n_chroms = len(chrom_args)
+    n_rows = len(df)
+    sigs: Dict[str, SourmashSignature] = {}
+
+    if num_workers <= 1 or n_chroms <= 1:
+        for ca in tqdm(chrom_args, desc="Sketching chroms (BAM single-pass)", unit="chrom"):
+            for name, sig in _sketch_bam_single_pass_chrom(ca):
+                sigs[name] = sig
+    else:
+        actual_workers = min(num_workers, n_chroms)
+        print(f"  Sketching {n_rows} regions across {n_chroms} chrom(s) from BAM "
+              f"(single-pass, {actual_workers} workers)")
+        with ProcessPoolExecutor(max_workers=actual_workers) as pool:
+            futures = [pool.submit(_sketch_bam_single_pass_chrom, ca) for ca in chrom_args]
+            for fut in tqdm(as_completed(futures), total=len(futures),
+                            desc="Sketching chroms (BAM single-pass)", unit="chrom"):
+                for name, sig in fut.result():
+                    sigs[name] = sig
+
+    print(f"  Built {len(sigs)} region signature(s) from BAM reads "
+          f"({n_rows} input rows, {n_chroms} chrom(s))")
+    return sigs
+
+
+# -----------------------------
+# FASTA-based region sketching
+# -----------------------------
+
+def _sketch_region_batch(args: Tuple) -> List[Tuple]:
+    """Worker: fetch sequences from FASTA files and sketch a batch of regions.
+
+    Opens each FASTA file only once per batch.  Returns a list of
+    (region_name, hashes_tuple) so that the main process can reconstruct
+    SourmashSignature objects without sending unpicklable file handles.
+    """
+    batch, chrom_to_fasta_path, kmer_size, scaled = args
+    open_fastas: Dict[str, pysam.FastaFile] = {}
+    results: List[Tuple] = []
+    try:
+        for chrom, start, end in batch:
+            fp = chrom_to_fasta_path.get(chrom)
+            if fp is None:
+                continue
+            if fp not in open_fastas:
+                open_fastas[fp] = pysam.FastaFile(fp)
+            fa = open_fastas[fp]
+            seq = fa.fetch(chrom, start, end)
+            if not seq or len(seq) < kmer_size:
+                continue
+            mh = MinHash(n=0, ksize=kmer_size, scaled=scaled)
+            mh.add_sequence(seq, force=True)
+            if mh.hashes:
+                results.append((f"{chrom}:{start}-{end}", tuple(mh.hashes)))
+    finally:
+        for fa in open_fastas.values():
+            fa.close()
+    return results
+
+
 def create_signatures_for_regions(
     regions_df: pd.DataFrame,
     bam_path: str,
@@ -308,53 +452,80 @@ def create_signatures_for_regions(
     scaled: int,
     num_workers: int = 1,
 ) -> Dict[str, SourmashSignature]:
-    """
-    Build signatures for each merged region.
+    """Build signatures for each merged region.
 
-    If fasta_paths is non-empty, regions are sketched from the first FASTA that contains the contig.
-    Otherwise, uses BAM pileup sequence is NOT reconstructed here; it uses read.query_sequence concatenation
-    would be invalid for minhash. In this cleaned version, BAM-only mode is disabled unless FASTA is available.
+    Uses FASTA files for sequence retrieval.  Workers are parallelised across
+    batches of rows so that ``num_workers`` is actually honoured (previously
+    the function was entirely serial regardless of this parameter).
 
-    Practical: Provide FASTA for stable behavior.
+    A pre-built ``chrom → fasta_path`` dict replaces the O(N) linear scan of
+    ``fa.references`` that was previously done per-region, which caused
+    progressive slowdown as the reference list grew.
     """
     required = {"chrom", "start", "end"}
     if not required.issubset(set(regions_df.columns)):
         raise ValueError(f"regions_df must contain columns: {required}")
 
-    # normalize dtypes
-    df = regions_df.copy()
+    if not fasta_paths:
+        print("WARNING: No FASTA files provided; create_signatures_for_regions "
+              "cannot sketch regions without sequence. Returning empty dict.")
+        return {}
+
+    # ── pre-build O(1) chrom→fasta_path lookup ───────────────────────────
+    # Previously: `chrom in fa.references` was an O(len(references)) linear
+    # scan done for every region.  With 2.8M regions and 200+ references that
+    # adds up to hundreds of millions of string comparisons and causes the
+    # progressive slowdown seen toward the end of a large run.
+    chrom_to_fasta_path: Dict[str, str] = {}
+    for fp in fasta_paths:
+        fa = pysam.FastaFile(fp)
+        for ref in fa.references:
+            if ref not in chrom_to_fasta_path:
+                chrom_to_fasta_path[ref] = fp
+        fa.close()
+    print(f"  Region sketching: {len(chrom_to_fasta_path)} contig(s) across "
+          f"{len(fasta_paths)} FASTA file(s)")
+
+    # ── build row list once ───────────────────────────────────────────────
+    df = regions_df[["chrom", "start", "end"]].copy()
     df["chrom"] = df["chrom"].astype(str)
     df["start"] = df["start"].astype(int)
     df["end"] = df["end"].astype(int)
+    rows: List[Tuple] = list(df.itertuples(index=False, name=None))
+    n_rows = len(rows)
 
-    fastas = [pysam.FastaFile(fp) for fp in fasta_paths] if fasta_paths else []
+    # ── choose batch size: aim for ~4× more chunks than workers ──────────
+    # Small batches → good load balance; large batches → less IPC overhead.
+    # 2000 rows/batch is a good default; scale up for very large datasets.
+    batch_size = max(500, min(5000, n_rows // max(1, num_workers * 4)))
+    batches = [rows[i:i + batch_size] for i in range(0, n_rows, batch_size)]
+    args_list = [(b, chrom_to_fasta_path, kmer_size, scaled) for b in batches]
 
     sigs: Dict[str, SourmashSignature] = {}
-    it = df.itertuples(index=False)
 
-    for row in tqdm(list(it), total=df.shape[0], miniters=1000, desc="Sketching regions"):
-        chrom, start, end = str(row.chrom), int(row.start), int(row.end)
+    if num_workers <= 1:
+        # Serial path — simple loop, no IPC overhead
+        for batch_args in tqdm(args_list, desc="Sketching regions", unit="batch"):
+            for region_name, hashes in _sketch_region_batch(batch_args):
+                mh = MinHash(n=0, ksize=kmer_size, scaled=scaled)
+                mh.add_many(hashes)
+                sigs[region_name] = SourmashSignature(mh, name=region_name)
+    else:
+        # Parallel path: workers do FASTA fetch + MinHash, main process
+        # reconstructs SourmashSignature from hashes tuples (which are
+        # picklable, unlike FastaFile or MinHash objects).
+        print(f"  Sketching {n_rows} regions in {len(batches)} batch(es) "
+              f"across {num_workers} worker(s) (batch_size={batch_size})")
+        with ProcessPoolExecutor(max_workers=num_workers) as pool:
+            futures = [pool.submit(_sketch_region_batch, a) for a in args_list]
+            for fut in tqdm(as_completed(futures), total=len(futures),
+                            desc="Sketching regions", unit="batch"):
+                for region_name, hashes in fut.result():
+                    mh = MinHash(n=0, ksize=kmer_size, scaled=scaled)
+                    mh.add_many(hashes)
+                    sigs[region_name] = SourmashSignature(mh, name=region_name)
 
-        seq = None
-        for fa in fastas:
-            if chrom in fa.references:
-                seq = fa.fetch(chrom, start, end)
-                break
-
-        if not seq:
-            # If you truly need BAM-only, add a consensus builder; leaving out here for correctness.
-            continue
-        if len(seq) < kmer_size:
-            continue
-
-        region_name, sig = create_signature_for_single_region(
-            chrom, start, end, kmer_size, scaled, seq
-        )
-        sigs[region_name] = sig
-
-    for fa in fastas:
-        fa.close()
-
+    print(f"  Built {len(sigs)} region signature(s) from {n_rows} input rows")
     return sigs
 
 
@@ -388,6 +559,265 @@ def build_sbt_index(
         sbts[cluster_id].add_node(SigLeaf(region_name, sig))
 
     return sbts
+
+
+# ── Parallel SBT search ──────────────────────────────────────────────────────
+# Build SBT once (fast), save to a temp directory, then let N workers each
+# load their own copy from disk and search a chunk of queries in parallel.
+# This turns the sequential O(Q * search_cost) into O(Q * search_cost / N).
+
+_SBT_WORKER_TREE: Optional[SBT] = None
+_SBT_WORKER_KSIZE: int = 31
+_SBT_WORKER_SCALED: int = 100
+
+
+def _init_sbt_parallel_worker(sbt_path: str, ksize: int, scaled: int) -> None:
+    """Worker initializer: load SBT from disk once per worker process."""
+    global _SBT_WORKER_TREE, _SBT_WORKER_KSIZE, _SBT_WORKER_SCALED
+    _SBT_WORKER_TREE = SBT.load(sbt_path, leaf_loader=SigLeaf.load)
+    _SBT_WORKER_KSIZE = ksize
+    _SBT_WORKER_SCALED = scaled
+
+
+def _sbt_search_chunk(args: Tuple) -> List[Tuple]:
+    """Worker: search a chunk of query signatures against the pre-loaded SBT.
+
+    Reconstructs MinHash objects from serialised hash tuples so that nothing
+    unpicklable crosses the process boundary.
+    """
+    query_items, min_threshold = args
+    results: List[Tuple] = []
+    for region_name, q_hashes in query_items:
+        mh = MinHash(n=0, ksize=_SBT_WORKER_KSIZE, scaled=_SBT_WORKER_SCALED)
+        mh.add_many(q_hashes)
+        if not mh.hashes:
+            continue
+        sig = SourmashSignature(mh, name=region_name)
+        q_ref, q_s, q_e = parse_split(region_name)
+
+        for sr in _SBT_WORKER_TREE.search(sig, threshold=min_threshold, best_only=False):
+            m_name = sr.signature.name
+            m_ref, m_s, m_e = parse_split(m_name)
+            if m_ref == q_ref:
+                continue
+            j = float(sr.score)
+            # Compute containment from the underlying hashes
+            m_mh = sr.signature.minhash
+            n_shared = len(set(mh.hashes) & set(m_mh.hashes))
+            c12 = (n_shared / len(mh.hashes)) if mh.hashes else 0.0
+            c21 = (n_shared / len(m_mh.hashes)) if m_mh.hashes else 0.0
+            results.append((q_ref, q_s, q_e, m_ref, m_s, m_e, j, c12, c21))
+    return results
+
+
+def search_sbt_parallel(
+    sig_items: List[Tuple[str, SourmashSignature]],
+    output_csv: str,
+    min_threshold: float = 0.05,
+    n_jobs: int = 1,
+    kmer_size: int = 31,
+    scaled: int = 100,
+) -> Dict[str, List[dict]]:
+    """Build SBT, save to disk, and search in parallel across worker processes.
+
+    The SBT index is built once (fast) and serialised to a temp directory.
+    Each worker process loads its own copy of the tree from disk and searches
+    an independent chunk of query signatures.  This gives near-linear speedup
+    with the number of workers.
+    """
+    n_sigs = len(sig_items)
+    print(f"Building SBT index for {n_sigs} signatures (ksize={kmer_size}, scaled={scaled})...")
+    t0 = time.time()
+    # Build a single SBT containing all signatures
+    factory = GraphFactory(ksize=kmer_size, n_tables=1, starting_size=max(1, n_sigs))
+    sbt = SBT(factory)
+    for region_name, sig in tqdm(sig_items, miniters=1000, desc="Indexing SBT"):
+        sbt.add_node(SigLeaf(region_name, sig))
+    print(f"  SBT built in {time.time() - t0:.2f}s")
+
+    # Save SBT to temp directory for worker loading
+    tmp_dir = tempfile.mkdtemp(prefix="sbt_parallel_")
+    sbt_path = os.path.join(tmp_dir, "index.sbt.json")
+    sbt.save(sbt_path)
+    del sbt  # free memory in the main process
+    print(f"  SBT saved to {sbt_path}")
+
+    # Serialise queries as (name, hashes_tuple) for pickling
+    serialized = [(name, tuple(sig.minhash.hashes)) for name, sig in sig_items]
+
+    sum_comparisons: Dict[str, List[dict]] = defaultdict(list)
+
+    with open(output_csv, "w", newline="") as outfh:
+        w = csv.writer(outfh)
+        w.writerow(["reference1", "start1", "end1",
+                    "reference2", "start2", "end2",
+                    "jaccard", "containment_1_in_2", "containment_2_in_1"])
+
+        if n_sigs <= 200 or n_jobs <= 1:
+            # Serial path: load SBT once, search sequentially
+            _init_sbt_parallel_worker(sbt_path, kmer_size, scaled)
+            results = _sbt_search_chunk((serialized, min_threshold))
+            for (r1, s1, e1, r2, s2, e2, j, c12, c21) in results:
+                w.writerow([r1, s1, e1, r2, s2, e2,
+                            f"{j:.6f}", f"{c12:.6f}", f"{c21:.6f}"])
+                sum_comparisons[r1].append(dict(jaccard=j, to=r2, s1=s1, e1=e1, s2=s2, e2=e2))
+                sum_comparisons[r2].append(dict(jaccard=j, to=r1, s1=s2, e1=e2, s2=s1, e2=e1))
+        else:
+            # Parallel path: each worker loads its own SBT from disk
+            chunk_size = max(1, -(-n_sigs // (n_jobs * 4)))
+            chunks = [serialized[i:i + chunk_size]
+                      for i in range(0, n_sigs, chunk_size)]
+            actual_workers = min(n_jobs, len(chunks))
+            print(f"  Searching {n_sigs} signatures: {len(chunks)} chunk(s) "
+                  f"across {actual_workers} worker(s) (SBT loaded per worker)")
+            with ProcessPoolExecutor(
+                max_workers=actual_workers,
+                initializer=_init_sbt_parallel_worker,
+                initargs=(sbt_path, kmer_size, scaled),
+            ) as pool:
+                jobs = [pool.submit(_sbt_search_chunk, (chunk, min_threshold))
+                        for chunk in chunks]
+                for fut in tqdm(as_completed(jobs), total=len(jobs),
+                                desc="  SBT search", unit="chunk"):
+                    for (r1, s1, e1, r2, s2, e2, j, c12, c21) in fut.result():
+                        w.writerow([r1, s1, e1, r2, s2, e2,
+                                    f"{j:.6f}", f"{c12:.6f}", f"{c21:.6f}"])
+                        sum_comparisons[r1].append(
+                            dict(jaccard=j, to=r2, s1=s1, e1=e1, s2=s2, e2=e2))
+                        sum_comparisons[r2].append(
+                            dict(jaccard=j, to=r1, s1=s2, e1=e2, s2=s1, e2=e1))
+
+    # Clean up temp SBT files
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    print(f"  SBT search complete: {sum(len(v) for v in sum_comparisons.values()) // 2} "
+          f"cross-reference pairs found")
+    return sum_comparisons
+
+
+# ── Worker state for parallel region–region search ───────────────────────────
+# Mirrors the pattern used in report_shared_windows_across_fastas but keyed by
+# reference name instead of FASTA label so same-reference pairs are skipped O(1).
+_REGION_WORKER_TARGETS: Dict[str, List[Tuple]] = {}
+
+
+def _init_region_search_worker(serialized: List[Tuple]) -> None:
+    """Worker initializer: parse & group all region targets once per process.
+
+    Each entry in serialized is (region_name, hashes_tuple).
+    Targets are grouped by reference name (the part before the first ':') so
+    _search_region_chunk can skip entire same-reference groups in O(1).
+    """
+    global _REGION_WORKER_TARGETS
+    tgt: Dict[str, List[Tuple]] = defaultdict(list)
+    for region_name, hashes in serialized:
+        ref, s, e = parse_split(region_name)
+        m_set = frozenset(hashes)
+        if m_set:
+            tgt[ref].append((region_name, m_set, ref, s, e))
+    _REGION_WORKER_TARGETS = dict(tgt)
+
+
+def _search_region_chunk(args: Tuple) -> List[Tuple]:
+    """Worker: frozenset Jaccard between a query chunk and all pre-loaded targets.
+
+    Same-reference pairs are skipped in O(1) by iterating target groups keyed
+    by reference.  Only pairs sharing ≥1 hash are evaluated for full Jaccard.
+    Returns list of (r1,s1,e1, r2,s2,e2, jaccard) tuples.
+    """
+    query_items, min_threshold = args
+    results: List[Tuple] = []
+    for region_name, q_hashes in query_items:
+        q_ref, q_s, q_e = parse_split(region_name)
+        q_set = frozenset(q_hashes)
+        if not q_set:
+            continue
+        q_size = len(q_set)
+        hits = []
+        for t_ref, t_items in _REGION_WORKER_TARGETS.items():
+            if t_ref == q_ref:
+                continue  # skip same-reference group in O(1)
+            for m_name, m_set, m_ref, m_s, m_e in t_items:
+                n_shared = len(q_set & m_set)
+                if n_shared == 0:
+                    continue
+                n_union = q_size + len(m_set) - n_shared
+                j = n_shared / n_union
+                if j < min_threshold:
+                    continue
+                hits.append((j, m_ref, m_s, m_e, n_shared / q_size, n_shared / len(m_set)))
+        for j, m_ref, m_s, m_e, c12, c21 in hits:
+            results.append((q_ref, q_s, q_e, m_ref, m_s, m_e, j, c12, c21))
+    return results
+
+
+def compare_regions_parallel(
+    sig_items: List[Tuple[str, SourmashSignature]],
+    output_csv: str,
+    min_threshold: float = 0.05,
+    n_jobs: int = 1,
+) -> Dict[str, List[dict]]:
+    """Replace the SBT-based search with parallel frozenset Jaccard.
+
+    The sourmash SBT is not designed for 2M+ signatures: search time per query
+    grows with tree depth and the build itself exhausts memory.  This function
+    replicates the initializer-based pattern from report_shared_windows_across_fastas:
+
+    - Targets are serialised as (region_name, hashes_tuple) and loaded ONCE per
+      worker process at startup (not once per job).
+    - Same-reference pairs are skipped O(1) by grouping targets by reference name.
+    - Most inter-reference pairs share zero hashes → early-exit in one bitwise op.
+    - Fully parallelised across n_jobs workers.
+    """
+    # Serialise: drop full SourmashSignature objects, keep only hashes tuple
+    serialized = [(name, tuple(sig.minhash.hashes)) for name, sig in sig_items]
+    n_queries = len(serialized)
+
+    sum_comparisons: Dict[str, List[dict]] = defaultdict(list)
+
+    with open(output_csv, "w", newline="") as outfh:
+        w = csv.writer(outfh)
+        w.writerow(["reference1", "start1", "end1",
+                    "reference2", "start2", "end2",
+                    "jaccard", "containment_1_in_2", "containment_2_in_1"])
+
+        if n_queries <= 200 or n_jobs <= 1:
+            # Serial path
+            _init_region_search_worker(serialized)
+            results = _search_region_chunk((serialized, min_threshold))
+            for (r1, s1, e1, r2, s2, e2, j, c12, c21) in results:
+                w.writerow([r1, s1, e1, r2, s2, e2,
+                            f"{j:.6f}", f"{c12:.6f}", f"{c21:.6f}"])
+                sum_comparisons[r1].append(dict(jaccard=j, to=r2, s1=s1, e1=e1, s2=s2, e2=e2))
+                sum_comparisons[r2].append(dict(jaccard=j, to=r1, s1=s2, e1=e2, s2=s1, e2=e1))
+        else:
+            chunk_size = max(1, -(-n_queries // n_jobs))
+            chunks = [serialized[i:i + chunk_size]
+                      for i in range(0, n_queries, chunk_size)]
+            actual_workers = min(n_jobs, len(chunks))
+            print(f"  Searching {n_queries} regions: {len(chunks)} chunk(s) "
+                  f"across {actual_workers} worker(s) "
+                  f"(targets pre-loaded via initializer; no SBT)")
+            with ProcessPoolExecutor(
+                max_workers=actual_workers,
+                initializer=_init_region_search_worker,
+                initargs=(serialized,),
+            ) as pool:
+                jobs = [pool.submit(_search_region_chunk, (chunk, min_threshold))
+                        for chunk in chunks]
+                for fut in tqdm(as_completed(jobs), total=len(jobs),
+                                desc="  Region search", unit="chunk"):
+                    for (r1, s1, e1, r2, s2, e2, j, c12, c21) in fut.result():
+                        w.writerow([r1, s1, e1, r2, s2, e2,
+                                    f"{j:.6f}", f"{c12:.6f}", f"{c21:.6f}"])
+                        sum_comparisons[r1].append(
+                            dict(jaccard=j, to=r2, s1=s1, e1=e1, s2=s2, e2=e2))
+                        sum_comparisons[r2].append(
+                            dict(jaccard=j, to=r1, s1=s2, e1=e2, s2=s1, e2=e1))
+
+    print(f"  Region search complete: {sum(len(v) for v in sum_comparisons.values()) // 2} "
+          f"cross-reference pairs found")
+    return sum_comparisons
 
 
 def fast_mode_sbt(
@@ -665,12 +1095,22 @@ def _generate_sigs_for_fasta(args):
     When called from a ProcessPoolExecutor (multi-FASTA path), n_jobs_inner
     should be 1 to avoid nested pools.  When called from the serial path,
     n_jobs_inner enables intra-file parallelism.
+
+    aligned_refs (optional set/frozenset): when provided, only contigs whose
+    ID appears in this set are sketched.  Contigs with no aligned reads are
+    silently skipped, dramatically reducing work for large reference databases.
     """
-    fp, ksize, scaled, window, step, max_windows_per_fasta, n_jobs_inner = args
+    fp, ksize, scaled, window, step, max_windows_per_fasta, n_jobs_inner, aligned_refs = args
     label = os.path.basename(fp)
+    # Build the contig allowlist for this FASTA: only keep contigs present in
+    # aligned_refs so we don't spend time sketching zero-read references.
+    contigs_filter = None
+    if aligned_refs is not None:
+        contigs_filter = [c for c in aligned_refs]  # window_sigs_from_fasta expects a list
     sigs = window_sigs_from_fasta(
         fp, fasta_label=label, ksize=ksize, scaled=scaled,
         window=window, step=step, n_jobs=n_jobs_inner,
+        contigs=contigs_filter,
     )
     if max_windows_per_fasta is not None and len(sigs) > max_windows_per_fasta:
         sigs = dict(list(sigs.items())[:max_windows_per_fasta])
@@ -741,36 +1181,67 @@ def _search_chunk(args):
 
 
 # ── Worker-initializer state for fast pairwise search ───────────────────────
-# Populated once per worker process by _init_search_worker; keyed by FASTA label
-# so same-FASTA groups can be skipped in O(1) without touching the inner loop.
+# Populated once per worker process by _init_search_worker.
+#
+# _SEARCH_WORKER_TARGETS          — windows grouped by FASTA label (default path)
+#                                    lets same-FASTA groups be skipped in O(1)
+# _SEARCH_WORKER_TARGETS_BY_CONTIG — windows grouped by contig name (ANI-filter path)
+#                                    lets the worker jump directly to partner contigs
+# _SEARCH_WORKER_PARTNER_CONTIGS  — {contig_id: frozenset(partner_contig_ids)} from
+#                                    Pass 0 ANI pre-filter; None → no filtering
 _SEARCH_WORKER_TARGETS: Dict[str, List[Tuple]] = {}
+_SEARCH_WORKER_TARGETS_BY_CONTIG: Dict[str, List[Tuple]] = {}
+_SEARCH_WORKER_PARTNER_CONTIGS: Optional[Dict[str, frozenset]] = None
 
 
-def _init_search_worker(serialized: List[Tuple]) -> None:
+def _init_search_worker(
+    serialized: List[Tuple],
+    partner_contigs: Optional[Dict[str, frozenset]] = None,
+) -> None:
     """Worker initializer: parse & group all target windows once per process.
 
-    Stores frozenset(hashes) per window grouped by FASTA label so the worker
-    function can skip same-FASTA groups in O(1) and compute Jaccard directly
-    from set intersection without reconstructing MinHash objects.
+    Builds two indices from *serialized*:
+      - by FASTA label  (for the default full-scan path, O(1) same-FASTA skip)
+      - by contig name  (for the ANI-filtered path, O(1) partner lookup)
+
+    partner_contigs, when provided, restricts Phase 2 comparisons to windows
+    whose contig is a known high-ANI partner of the query contig.
     """
-    global _SEARCH_WORKER_TARGETS
-    tgt: Dict[str, List[Tuple]] = defaultdict(list)
+    global _SEARCH_WORKER_TARGETS, _SEARCH_WORKER_TARGETS_BY_CONTIG, _SEARCH_WORKER_PARTNER_CONTIGS
+    tgt_fa: Dict[str, List[Tuple]] = defaultdict(list)
+    tgt_contig: Dict[str, List[Tuple]] = defaultdict(list)
     for m_wid, m_hashes, _ksize, _scaled in serialized:
         m_fa, m_contig, m_s, m_e = parse_window_id(m_wid)
         m_set = frozenset(m_hashes)
         if m_set:
-            tgt[m_fa].append((m_wid, m_set, m_fa, m_contig, m_s, m_e))
-    _SEARCH_WORKER_TARGETS = dict(tgt)
+            entry = (m_wid, m_set, m_fa, m_contig, m_s, m_e)
+            tgt_fa[m_fa].append(entry)
+            tgt_contig[m_contig].append(entry)
+    _SEARCH_WORKER_TARGETS = dict(tgt_fa)
+    _SEARCH_WORKER_TARGETS_BY_CONTIG = dict(tgt_contig)
+    _SEARCH_WORKER_PARTNER_CONTIGS = partner_contigs
 
 
 def _search_query_chunk_np(args: Tuple) -> List[Tuple]:
-    """Worker: frozenset-based Jaccard against pre-loaded FASTA-grouped targets.
+    """Worker: frozenset-based Jaccard against pre-loaded targets.
 
-    Avoids MinHash reconstruction entirely.  Same-FASTA groups are skipped in
-    O(1).  Only pairs sharing ≥1 hash are evaluated for exact Jaccard.
+    Two execution paths, selected by whether _SEARCH_WORKER_PARTNER_CONTIGS is set:
+
+    Default path (no ANI pre-filter):
+        Iterates all targets grouped by FASTA label; same-FASTA groups are
+        skipped in O(1).  O(N_targets) per query window.
+
+    ANI-filtered path (partner_contigs provided at init):
+        For each query contig, looks up its pre-computed set of high-ANI partner
+        contigs and only iterates windows from those contigs.  If a query contig
+        has no partners (e.g. it is unique) it is skipped entirely.
+        O(n_partner_windows) per query window — typically << O(N_targets) in
+        large databases.
     """
     query_items, jaccard_threshold, max_hits_per_query, skip_same_fasta, skip_same_contig = args
     results: List[Tuple] = []
+    use_ani_filter = _SEARCH_WORKER_PARTNER_CONTIGS is not None
+
     for q_wid, q_hashes, _ksize, _scaled in query_items:
         q_fa, q_contig, q_s, q_e = parse_window_id(q_wid)
         q_set = frozenset(q_hashes)
@@ -778,29 +1249,140 @@ def _search_query_chunk_np(args: Tuple) -> List[Tuple]:
             continue
         q_size = len(q_set)
         hits = []
-        for t_fa, t_items in _SEARCH_WORKER_TARGETS.items():
-            if skip_same_fasta and t_fa == q_fa:
-                continue  # skip entire FASTA group — O(1)
-            for m_wid, m_set, m_fa, m_contig, m_s, m_e in t_items:
-                if m_wid == q_wid:
-                    continue
-                if skip_same_contig and m_fa == q_fa and m_contig == q_contig:
-                    continue
-                n_shared = len(q_set & m_set)
-                if n_shared == 0:
-                    continue  # early-exit before union math
-                n_union = q_size + len(m_set) - n_shared
-                j = n_shared / n_union
-                if j < jaccard_threshold:
-                    continue
-                hits.append((j, m_fa, m_contig, m_s, m_e,
-                              n_shared / q_size, n_shared / len(m_set)))
+
+        if use_ani_filter:
+            # ── ANI-filtered path ─────────────────────────────────────
+            # Look up partner contigs for this query contig.
+            # If this contig had no high-ANI partners in Pass 0 it won't
+            # appear in the dict at all — skip it entirely.
+            partner_contig_ids = _SEARCH_WORKER_PARTNER_CONTIGS.get(q_contig)
+            if not partner_contig_ids:
+                continue
+            for p_contig in partner_contig_ids:
+                for m_wid, m_set, m_fa, m_contig, m_s, m_e in \
+                        _SEARCH_WORKER_TARGETS_BY_CONTIG.get(p_contig, ()):
+                    if skip_same_fasta and m_fa == q_fa:
+                        continue
+                    # m_contig != q_contig by construction (Pass 0 skips same-FASTA)
+                    n_shared = len(q_set & m_set)
+                    if n_shared == 0:
+                        continue
+                    n_union = q_size + len(m_set) - n_shared
+                    j = n_shared / n_union
+                    if j < jaccard_threshold:
+                        continue
+                    hits.append((j, m_fa, m_contig, m_s, m_e,
+                                  n_shared / q_size, n_shared / len(m_set)))
+        else:
+            # ── Default full-scan path ────────────────────────────────
+            for t_fa, t_items in _SEARCH_WORKER_TARGETS.items():
+                if skip_same_fasta and t_fa == q_fa:
+                    continue  # skip entire FASTA group — O(1)
+                for m_wid, m_set, m_fa, m_contig, m_s, m_e in t_items:
+                    if m_wid == q_wid:
+                        continue
+                    if skip_same_contig and m_fa == q_fa and m_contig == q_contig:
+                        continue
+                    n_shared = len(q_set & m_set)
+                    if n_shared == 0:
+                        continue  # early-exit before union math
+                    n_union = q_size + len(m_set) - n_shared
+                    j = n_shared / n_union
+                    if j < jaccard_threshold:
+                        continue
+                    hits.append((j, m_fa, m_contig, m_s, m_e,
+                                  n_shared / q_size, n_shared / len(m_set)))
+
         if not hits:
             continue
         hits.sort(key=lambda x: x[0], reverse=True)
         for j, m_fa, m_contig, m_s, m_e, c1, c2 in hits[:max_hits_per_query]:
             results.append((q_fa, q_contig, q_s, q_e, m_fa, m_contig, m_s, m_e, j, c1, c2))
     return results
+
+
+def _find_high_ani_pairs(
+    fasta_files: List[str],
+    aligned_refs: Optional[set] = None,
+    *,
+    ksize: int = 21,
+    scaled: int = 200,
+    ani_threshold: float = 0.90,
+) -> Tuple[Dict[str, frozenset], List[Tuple]]:
+    """Pass 0: whole-genome MinHash pre-filter to find high-ANI contig pairs.
+
+    One sketch is built per contig (no windowing) at a coarse ksize/scaled that
+    is fast to compute and has good Jaccard sensitivity at the target ANI.  Then
+    all cross-FASTA contig pairs are tested; only pairs whose Jaccard ≥
+    ani_threshold^ksize / (2 - ani_threshold^ksize) are kept.
+
+    Returns
+    -------
+    partner_map : dict  {contig_id: frozenset(partner_contig_ids)}
+        Only contigs that have at least one high-ANI partner appear as keys.
+        Partners are always from a *different* FASTA file.
+    pair_records : list of (contig_a, fasta_label_a, contig_b, fasta_label_b, jaccard)
+        One entry per unique ordered pair (a < b by contig name).  Useful for
+        writing a lightweight shared_windows_report.csv without re-running Pass 0.
+    """
+    p_thresh = ani_threshold ** ksize
+    j_thresh = p_thresh / (2.0 - p_thresh)
+
+    # ── sketch each contig once (whole contig, no sliding window) ───────
+    # contig_id -> (frozenset_of_hashes, fasta_label)
+    contig_sigs: Dict[str, Tuple[frozenset, str]] = {}
+    for fp in fasta_files:
+        label = os.path.basename(fp)
+        try:
+            fa = pysam.FastaFile(fp)
+        except Exception as exc:
+            print(f"  [ANI pass0] WARNING: could not open {fp}: {exc}")
+            continue
+        for contig in fa.references:
+            if aligned_refs is not None and contig not in aligned_refs:
+                continue
+            seq = fa.fetch(contig)
+            mh = MinHash(n=0, ksize=ksize, scaled=scaled)
+            mh.add_sequence(seq, force=True)
+            if mh.hashes:
+                contig_sigs[contig] = (frozenset(mh.hashes), label)
+        fa.close()
+
+    n_contigs = len(contig_sigs)
+    print(f"  [ANI pass0] Sketched {n_contigs} contig(s) "
+          f"(ksize={ksize}, scaled={scaled}); "
+          f"ANI threshold={ani_threshold:.2f} → Jaccard threshold={j_thresh:.4f}")
+
+    if n_contigs == 0:
+        return {}
+
+    # ── all-vs-all Jaccard across different FASTAs ───────────────────────
+    partner_map: Dict[str, set] = defaultdict(set)
+    pair_records: List[Tuple] = []  # (contig_a, fa_a, contig_b, fa_b, jaccard)
+    contig_list = list(contig_sigs.items())
+    n_pairs_checked = 0
+    n_pairs_kept = 0
+    for i, (cid_a, (hashes_a, fa_a)) in enumerate(contig_list):
+        for cid_b, (hashes_b, fa_b) in contig_list[i + 1:]:
+            if fa_a == fa_b:
+                continue  # skip same-FASTA pairs (handled by skip_self_same_fasta)
+            n_pairs_checked += 1
+            n_shared = len(hashes_a & hashes_b)
+            if n_shared == 0:
+                continue
+            n_union = len(hashes_a) + len(hashes_b) - n_shared
+            j = n_shared / n_union
+            if j >= j_thresh:
+                partner_map[cid_a].add(cid_b)
+                partner_map[cid_b].add(cid_a)
+                pair_records.append((cid_a, fa_a, cid_b, fa_b, j))
+                n_pairs_kept += 1
+
+    print(f"  [ANI pass0] Checked {n_pairs_checked} cross-FASTA contig pair(s); "
+          f"kept {n_pairs_kept} high-ANI pair(s) "
+          f"({len(partner_map)} contig(s) have at least one partner)")
+
+    return {k: frozenset(v) for k, v in partner_map.items()}, pair_records
 
 
 def report_shared_windows_across_fastas(
@@ -817,6 +1399,8 @@ def report_shared_windows_across_fastas(
     skip_self_same_contig: bool = True,
     max_windows_per_fasta: Optional[int] = None,
     n_jobs: Optional[int] = None,
+    aligned_refs: Optional[set] = None,
+    ani_prefilter: Optional[float] = 0.90,
 ) -> None:
     """Sketch windows for each FASTA, then report cross-fasta hits (parallelized).
 
@@ -824,9 +1408,66 @@ def report_shared_windows_across_fastas(
     ----------
     n_jobs : int or None
         Number of parallel workers.  ``None`` (default) uses all available CPUs.
+    aligned_refs : set or None
+        When provided, only contigs whose IDs appear in this set are sketched.
+        Contigs absent from the set (i.e. no reads aligned to them) are silently
+        skipped.  For large reference databases this can reduce sketching time by
+        orders of magnitude — a 41k-reference DB where only 200 refs have reads
+        means ~99.5% of FASTA sequence is irrelevant and can be skipped.
+        Pass ``None`` (default) to sketch all contigs in all FASTAs.
+    ani_prefilter : float or None
+        When set to a float in (0, 1], a whole-genome sketch pass (Pass 0) is run
+        before window sketching.  Each contig is sketched once (no windowing) at
+        ksize=21/scaled=200, then all cross-FASTA contig pairs are tested.  Only
+        contigs that share a partner with Jaccard ≥ ani_threshold^21/(2-...) are
+        window-sketched and compared in Phases 1/2.  Contigs with no high-ANI
+        partner are silently skipped — in a 200-organism DB this can reduce Phase
+        2 work by 90%+ when only a handful of organisms are genuinely similar.
+        Pass ``None`` to disable the pre-filter and sketch+compare everything.
+        Default: 0.90 (skip contig pairs with estimated ANI < 90%).
     """
     if n_jobs is None:
         n_jobs = os.cpu_count() or 1
+
+    if aligned_refs is not None:
+        print(f"  aligned_refs filter active: will only sketch {len(aligned_refs)} "
+              f"contig(s) with BAM alignments (skipping all others)")
+
+    # ── Pass 0: whole-genome ANI pre-filter ─────────────────────────────
+    # Build one coarse sketch per contig (no windows) and find all cross-FASTA
+    # pairs with estimated ANI ≥ ani_prefilter.  Only those partner contigs are
+    # sketched in Phase 1 and compared in Phase 2.  Contigs with no high-ANI
+    # partner skip both phases entirely.
+    #
+    # In a 200-organism DB where only E. coli and Shigella are similar, this
+    # reduces Phase 2 work from O(all_windows²) to O(ecoli_windows × shigella_windows).
+    _partner_contigs: Optional[Dict[str, frozenset]] = None
+    if ani_prefilter is not None and len(fasta_files) > 1:
+        _partner_contigs, _ = _find_high_ani_pairs(
+            fasta_files,
+            aligned_refs=aligned_refs,
+            ani_threshold=ani_prefilter,
+        )
+        if not _partner_contigs:
+            print("  [ANI pass0] No high-ANI pairs found; "
+                  "falling back to full pairwise search.")
+            _partner_contigs = None
+        else:
+            # Restrict Phase 1 sketching to only contigs that have a partner.
+            # Build the union of (query contig IDs ∪ all their partner contig IDs)
+            # so that both sides of every high-ANI pair get window-sketched.
+            _ani_contig_allowlist: set = set()
+            for cid, partners in _partner_contigs.items():
+                _ani_contig_allowlist.add(cid)
+                _ani_contig_allowlist.update(partners)
+            # Intersect with aligned_refs if it was already provided
+            if aligned_refs is not None:
+                _ani_contig_allowlist &= aligned_refs
+            print(f"  [ANI pass0] Restricting Phase 1 sketching to "
+                  f"{len(_ani_contig_allowlist)} contig(s) "
+                  f"(down from {len(aligned_refs) if aligned_refs is not None else 'all'})")
+            # Override aligned_refs with the tighter ANI-based allowlist for Phase 1
+            aligned_refs = _ani_contig_allowlist
 
     _CSV_HEADER = [
         "query_fasta", "query_contig", "q_start", "q_end",
@@ -842,8 +1483,10 @@ def report_shared_windows_across_fastas(
     multi_fasta = len(fasta_files) > 1 and n_jobs > 1
     n_jobs_inner = 1 if multi_fasta else n_jobs
 
+    # Pass aligned_refs (frozenset for pickling safety) to each worker
+    _aligned_refs_frozen = frozenset(aligned_refs) if aligned_refs is not None else None
     worker_args = [
-        (fp, ksize, scaled, window, step, max_windows_per_fasta, n_jobs_inner)
+        (fp, ksize, scaled, window, step, max_windows_per_fasta, n_jobs_inner, _aligned_refs_frozen)
         for fp in fasta_files
     ]
 
@@ -867,6 +1510,44 @@ def report_shared_windows_across_fastas(
             csv.writer(out).writerow(_CSV_HEADER)
         return
 
+    # ── Scale max_hits_per_query with unique contig count ────────────────
+    # A fixed max_hits_per_query causes cross-genus hits (e.g. E. coli vs
+    # Shigella, Jaccard ~0.22 at ksize=51) to be silently evicted in large
+    # databases.  When a DB has 10+ E. coli strains, an E. coli query window's
+    # top-12 list fills entirely with intra-genus hits (Jaccard ~0.63), and
+    # Shigella never appears — even though it would have appeared in a 2-
+    # organism run because there was no intra-genus competition.
+    #
+    # Fix: derive an effective cap from the number of unique target contigs
+    # so that the cap grows proportionally with DB size.  The caller-supplied
+    # max_hits_per_query becomes a MINIMUM floor rather than an absolute cap.
+    #
+    #   n_unique_contigs = number of distinct reference sequences in the DB
+    #   effective_cap = max(max_hits_per_query, ceil(n_unique_contigs * 0.10))
+    #
+    # At 10% of contigs, a 2-organism DB (2 contigs) gives cap=max(N,1)≈N
+    # (unchanged), while a 200-organism DB with ~400 contigs gives cap≈40 —
+    # enough to surface cross-genus hits that would otherwise be crowded out.
+    # The 10% factor keeps memory and output size manageable even for large DBs.
+    _n_unique_contigs = len({
+        sig.split("::")[1] if "::" in sig else sig
+        for sig in (wid for wid, _, _, _ in (
+            # re-use the (wid, hashes, ksize, scaled) tuples we're about to build
+            (wid, None, None, None) for wid in (s.name if hasattr(s, "name") else k
+                                                  for k, s in all_sigs.items())
+        ))
+    }) if all_sigs else 0
+    # Simpler: count distinct contig names from the sig keys
+    _n_unique_contigs = len({
+        parse_window_id(wid)[1]          # index 1 = contig name
+        for wid in all_sigs.keys()
+    })
+    _effective_max_hits = max(max_hits_per_query, math.ceil(_n_unique_contigs * 0.10))
+    if _effective_max_hits != max_hits_per_query:
+        print(f"  Scaling max_hits_per_query: {max_hits_per_query} → {_effective_max_hits} "
+              f"({_n_unique_contigs} unique contigs × 10% floor)")
+    max_hits_per_query = _effective_max_hits
+
     # ── Phase 2: parallel pairwise search ───────────────────────────────
     # Serialize MinHash data as (wid, hashes, ksize, scaled) tuples for pickling.
     # We convert hashes to a compact tuple instead of list to save memory.
@@ -880,9 +1561,11 @@ def report_shared_windows_across_fastas(
 
     n_queries = len(serialized)
 
+    _filter_label = (f"ANI≥{ani_prefilter} pre-filter active"
+                     if _partner_contigs is not None else "full scan")
     if n_queries <= 50 or n_jobs <= 1:
         # Serial: initialise worker state in-process then run directly
-        _init_search_worker(serialized)
+        _init_search_worker(serialized, partner_contigs=_partner_contigs)
         all_results = _search_query_chunk_np((
             serialized, jaccard_threshold, max_hits_per_query,
             skip_self_same_fasta, skip_self_same_contig,
@@ -894,9 +1577,9 @@ def report_shared_windows_across_fastas(
         # query chunk.  This eliminates the O(N_tiles × target_data) IPC
         # overhead of the previous tiled approach.
         #
-        # Targets are stored as frozensets grouped by FASTA, so same-FASTA
-        # groups are skipped in O(1) and Jaccard is computed via set
-        # intersection without MinHash object reconstruction.
+        # partner_contigs (from Pass 0) is also passed to the initializer so
+        # each worker knows which target contigs are high-ANI partners.  When
+        # set, the worker skips all non-partner contigs in O(1) per query window.
         chunk_size = max(1, -(-n_queries // n_jobs))  # ceiling division
         query_chunks = [
             serialized[i:i + chunk_size]
@@ -904,13 +1587,14 @@ def report_shared_windows_across_fastas(
         ]
         actual_workers = min(n_jobs, len(query_chunks))
         print(f"  Searching {n_queries} windows: {len(query_chunks)} query chunks "
-              f"across {actual_workers} workers (targets pre-loaded via initializer)")
+              f"across {actual_workers} workers "
+              f"(targets pre-loaded via initializer; {_filter_label})")
 
         all_results = []
         with ProcessPoolExecutor(
             max_workers=actual_workers,
             initializer=_init_search_worker,
-            initargs=(serialized,),
+            initargs=(serialized, _partner_contigs),
         ) as pool:
             jobs = [
                 pool.submit(
@@ -1025,6 +1709,71 @@ def alignment_alt_contigs(shared_idx: Dict[str, List[SharedWindow]], contig: str
 
     alt_set.discard(contig)
     return alt_set, ovl_bp
+
+
+def _build_read_sharing_clusters(
+    bam_path: str,
+    aligned_refs: Optional[set] = None,
+    min_shared_reads: int = 1,
+) -> Tuple[Dict[str, frozenset], List[Tuple]]:
+    """Build cross-reference conflict clusters purely from BAM multi-mapping.
+
+    Any two references that share ≥ min_shared_reads multi-mapped reads are
+    considered to be competing for those reads and are placed in the same
+    conflict cluster.  No FASTA files are required.
+
+    Parameters
+    ----------
+    bam_path : str
+        Path to the indexed BAM file.
+    aligned_refs : set or None
+        When provided, only references in this set are considered.  Reads that
+        align exclusively to non-aligned refs are silently ignored.
+    min_shared_reads : int
+        Minimum number of shared reads for a pair to be kept (default 1).
+
+    Returns
+    -------
+    conflict_map : dict  {ref_id: frozenset(competing_ref_ids)}
+        Only refs with at least one competitor appear as keys.
+    pair_records : list of (ref_a, ref_b, shared_read_count)
+        One entry per unique pair; shared_read_count is the number of reads
+        that align to both.  Useful for writing shared_windows_report.csv.
+    """
+    bam = pysam.AlignmentFile(bam_path, "rb")
+
+    # collect every reference each read aligns to (primary + secondary)
+    read_to_refs: Dict[str, set] = defaultdict(set)
+    for r in bam:
+        if r.is_unmapped or not r.reference_name:
+            continue
+        ref = r.reference_name
+        if aligned_refs is not None and ref not in aligned_refs:
+            continue
+        read_to_refs[r.query_name].add(ref)
+    bam.close()
+
+    # count how many reads each (ref_a, ref_b) pair shares
+    pair_counts: Dict[Tuple[str, str], int] = defaultdict(int)
+    for refs in read_to_refs.values():
+        if len(refs) < 2:
+            continue  # singly-mapped read — no conflict
+        ref_list = sorted(refs)
+        for i, ra in enumerate(ref_list):
+            for rb in ref_list[i + 1:]:
+                pair_counts[(ra, rb)] += 1
+
+    # filter by min_shared_reads and build outputs
+    conflict_map: Dict[str, set] = defaultdict(set)
+    pair_records: List[Tuple] = []
+    for (ra, rb), count in pair_counts.items():
+        if count < min_shared_reads:
+            continue
+        conflict_map[ra].add(rb)
+        conflict_map[rb].add(ra)
+        pair_records.append((ra, rb, count))
+
+    return {k: frozenset(v) for k, v in conflict_map.items()}, pair_records
 
 
 def _count_reads_per_ref(bam_path: str) -> Dict[str, int]:
@@ -1481,7 +2230,7 @@ def tune_shared_window_params(
                 window=window,
                 step=step,
                 jaccard_threshold=min_jaccard,
-                max_hits_per_query=4,
+                max_hits_per_query=40,
                 skip_self_same_fasta=False,
                 skip_self_same_contig=True,
             )
@@ -1665,85 +2414,172 @@ def organism_ani_matrix_from_sigs(
 
     return mat
 
-def finalize_proportional_removal(conflict_groups, bam_fs, fetch_reads_in_region, remove_mode='random', random_seed=None):
+def finalize_proportional_removal(conflict_groups, bam_fs, fetch_reads_in_region, remove_mode='random', random_seed=None, dominance_protect_ratio: float = 3.0):
     """
-    For each conflict group, we:
-      1) Gather all sub-regions belonging to each reference in that group.
-      2) Sum coverage for each reference.
-      3) Let 'min_cov' be the smallest coverage among references in that group.
-      4) Remove exactly 'min_cov' reads from each reference's union of reads in that group
-         (or remove them all if coverage < min_cov).
+    Dominance-aware read removal across conflict groups.
 
-    remove_mode = 'random' or 'first'
-    random_seed can be set for reproducible removals.
+    For each conflict group the reference with the *most* reads (dominant) is
+    protected — fewer of its reads are removed.  References with fewer reads
+    (minor) lose proportionally more, reflecting the assumption that shared
+    regions in a minor genome are cross-mapped from the dominant one.
 
-    Returns:
-      removed_read_ids: a global set of read IDs that are removed from all conflict groups.
+    Removal budget per reference in a group:
+      base     = min_cov (smallest read count in the group — previous behaviour)
+      fraction = 1.0 - (ref_reads / max_reads)   # 0 for dominant, ~1 for minor
+      to_remove = base + int(fraction * (ref_reads - base))
 
-    Example:
-      If conflict group has:
-        - NC_003310.1 sub-regions total 5 reads
-        - NC_006998.1 sub-regions total 70 reads
-      => min_cov = 5
-      => remove 5 from NC_003310.1 (all) and 5 from NC_006998.1.
+    KEY CHANGE — dominant protection via read-count ratio:
+      When the dominant ref (most reads in the conflict region) has a clear
+      lead over the runner-up (dominance_ratio ≥ dominance_protect_ratio),
+      it is completely protected from the base removal so it does not bleed
+      reads across every conflict group it participates in.  This prevents
+      the accumulation of small-but-repeated base removals that artificially
+      depresses coverage of the true positive.
+
+      Dominance is determined purely by raw read count in the shared region.
+
+    Parameters
+    ----------
+    dominance_protect_ratio : float
+        Raw-read-count ratio (top / runner-up) above which the dominant
+        reference is fully exempt from the ``base = min_cov`` removal in each
+        conflict group.  3.0 means the dominant must have ≥3× the reads of
+        the runner-up to be fully protected.  Lower values protect more
+        aggressively; higher values are more conservative.  Pass via
+        ``--dominance_protect_ratio`` on the command line.
+
+    Returns
+    -------
+    removed_read_ids : dict[str, list[str]]
+        read_id → list of reference names where it is removed
+    cluster_dominance : dict[str, dict]
+        ref → {n_shared_regions, n_cluster_partners, read_rank,
+               cluster_removal_frac, mean_mapq_in_conflict}
+        Penalty metadata for downstream minhash scoring.
     """
+    # Alias so the rest of the function body stays readable
+    DOMINANCE_PROTECT_RATIO = dominance_protect_ratio
+
     if random_seed is not None:
         random.seed(random_seed)
     global global_bam
     removed_read_ids = defaultdict(list)
+
+    # Accumulate per-reference cluster stats across ALL groups
+    _ref_shared_regions: Dict[str, int] = defaultdict(int)
+    _ref_cluster_partners: Dict[str, set] = defaultdict(set)
+    _ref_total_cluster_reads: Dict[str, int] = defaultdict(int)
+    _ref_removed_cluster_reads: Dict[str, int] = defaultdict(int)
+    # Track mean mapq per ref across all conflict groups for diagnostic output
+    _ref_mapq_sum: Dict[str, float] = defaultdict(float)
+    _ref_mapq_count: Dict[str, int] = defaultdict(int)
+
     for group in conflict_groups:
         # 1) Group sub-regions by reference
-        #    Example: ref_subregions[ref] = [(ref, s, e), (ref, s2, e2), ...]
         ref_subregions = defaultdict(list)
         for (ref, s, e) in group:
             ref_subregions[ref].append((s, e))
 
-        # 2) For each reference, gather all reads from those sub-regions
-        #    Then sum coverage => coverage_by_ref[ref] = total #reads
+        # Track partner counts and shared-region counts
+        all_refs_in_group = set(ref_subregions.keys())
+        for ref in all_refs_in_group:
+            _ref_shared_regions[ref] += len(ref_subregions[ref])
+            _ref_cluster_partners[ref] |= (all_refs_in_group - {ref})
+
+        # 2) Gather reads per reference, collecting mapq alongside read IDs
         coverage_by_ref = {}
         reads_by_ref = {}
+        mapq_by_ref: Dict[str, float] = {}
         for ref, subregs in ref_subregions.items():
-            # unify all reads for these sub-regions
-            unified_reads = []
+            unified_reads = {}   # read_id → (read_id, ref, mapq)
             for (start, end) in subregs:
-                # region_reads = fetch_reads_in_region(reads_map, ref, start, end)
-                reads = bam_fs.fetch(ref, start, end)
-                region_reads = [(read.query_name, ref) for read in reads]
-                unified_reads.extend(region_reads)
-            # remove duplicates if the same read appears in multiple sub-regions
-            # using a dict or set keyed by read_id
-            unique_ids = {}
-            for (r_id, r_ref) in unified_reads:
-                if r_id not in unique_ids:
-                    unique_ids[r_id] = (r_id, r_ref)
-            final_reads = list(unique_ids.values())
+                for read in bam_fs.fetch(ref, start, end):
+                    rid = read.query_name
+                    if rid not in unified_reads:
+                        unified_reads[rid] = (rid, ref, int(read.mapping_quality))
+            final_reads_with_mapq = list(unified_reads.values())
+            # Strip mapq for the removal list (keeps downstream API unchanged)
+            final_reads = [(r_id, r_ref) for r_id, r_ref, _ in final_reads_with_mapq]
             coverage_by_ref[ref] = len(final_reads)
             reads_by_ref[ref] = final_reads
+            # Mean mapq of reads hitting this ref within conflict regions
+            mapqs = [mq for _, _, mq in final_reads_with_mapq]
+            mapq_by_ref[ref] = (sum(mapqs) / len(mapqs)) if mapqs else 0.0
+            # Accumulate for cluster_dominance metadata
+            _ref_mapq_sum[ref] += sum(mapqs)
+            _ref_mapq_count[ref] += len(mapqs)
         if not coverage_by_ref:
-            # no coverage in this group => skip
             continue
 
-        # 3) min_cov = smallest coverage among references
+        # 3) Read-count-based dominance
+        max_cov = max(coverage_by_ref.values())
         min_cov = min(coverage_by_ref.values())
 
-        # 4) For each reference, remove min_cov reads (or all if coverage < min_cov)
+        # Identify dominant ref and compute dominance ratio (top vs runner-up)
+        # using raw read counts only.
+        sorted_covs = sorted(coverage_by_ref.values(), reverse=True)
+        second_cov = sorted_covs[1] if len(sorted_covs) > 1 else 0
+        dominance_ratio = max_cov / max(second_cov, 1e-9)
+        dominant_ref = max(coverage_by_ref, key=coverage_by_ref.get)
+
         for ref, cov_count in coverage_by_ref.items():
-            # reads for this ref in the group
             rlist = reads_by_ref[ref]
-            if cov_count <= min_cov:
-                # remove them all
+            _ref_total_cluster_reads[ref] += cov_count
+
+            # Fraction of removal: how minor is this ref relative to the
+            # dominant?  0 for dominant, ~1 for clear minor.
+            if max_cov > 0:
+                fraction = 1.0 - (cov_count / max_cov)
+            else:
+                fraction = 0.0
+
+            # Base removal for the dominant ref.
+            # When dominance_ratio >= DOMINANCE_PROTECT_RATIO the dominant ref
+            # is fully protected (base=0), preventing accumulation of small
+            # per-group losses across many shared-region groups.
+            # Linearly interpolate: ratio=1 → full base; ratio≥threshold → 0.
+            if ref == dominant_ref and DOMINANCE_PROTECT_RATIO > 1.0:
+                protection = min(
+                    1.0,
+                    max(0.0, (dominance_ratio - 1.0) / (DOMINANCE_PROTECT_RATIO - 1.0))
+                )
+                base = int(min_cov * (1.0 - protection))
+            else:
+                base = min_cov
+
+            # Extra removal beyond base, proportional to how minor the ref is
+            extra = int(fraction * max(0, cov_count - base))
+            to_remove = min(cov_count, base + extra)
+
+            if to_remove >= cov_count:
                 for (read_id, r_ref) in rlist:
                     removed_read_ids[read_id].append(r_ref)
             else:
-                # remove exactly min_cov reads
                 if remove_mode == 'random':
-                    sampled = random.sample(rlist, min_cov)
+                    sampled = random.sample(rlist, to_remove)
                 else:
-                    # remove the first min_cov
-                    sampled = rlist[:min_cov]
+                    sampled = rlist[:to_remove]
                 for (read_id, r_ref) in sampled:
                     removed_read_ids[read_id].append(r_ref)
-    return removed_read_ids
+
+            _ref_removed_cluster_reads[ref] += to_remove
+
+    # Build cluster_dominance metadata for downstream minhash penalty
+    cluster_dominance: Dict[str, dict] = {}
+    for ref in set(_ref_shared_regions.keys()) | set(_ref_cluster_partners.keys()):
+        total = _ref_total_cluster_reads.get(ref, 0)
+        removed = _ref_removed_cluster_reads.get(ref, 0)
+        cnt = _ref_mapq_count.get(ref, 0)
+        cluster_dominance[ref] = {
+            "n_shared_regions": _ref_shared_regions.get(ref, 0),
+            "n_cluster_partners": len(_ref_cluster_partners.get(ref, set())),
+            "cluster_removal_frac": (removed / total) if total > 0 else 0.0,
+            # Mean mapQ of reads in conflict regions — used as a quality signal
+            # in optimize_weights to protect high-confidence true positives.
+            "mean_conflict_mapq": (_ref_mapq_sum[ref] / cnt) if cnt > 0 else 0.0,
+        }
+
+    return removed_read_ids, cluster_dominance
 
 
 def compare_organism_signatures_pairwise(
@@ -2005,6 +2841,7 @@ def determine_conflicts(
     taxid_removal_stats: bool = False,
     window_size: int = 5000,
     step_size: int = 2500,
+    dominance_protect_ratio: float = 3.0,
 ):
     # only raise error if bedfile is missing AND compare_to_reference_windows is not selected
     if output_dir is None or input_bam is None or (bedfile is None and not compare_to_reference_windows):
@@ -2033,6 +2870,27 @@ def determine_conflicts(
 
     t0 = time.time()
 
+    # ── Sketch-density sanity check ───────────────────────────────────────
+    # With scaled=5000 and window=100000 you get ~100000/5000 = 20 k-mers per
+    # sketch.  At 98% ANI (E. coli vs Shigella) the expected Jaccard is ~0.22
+    # at ksize=51.  With only 20 k-mers the Jaccard estimator's std deviation
+    # is sqrt(0.22*0.78/20) ≈ 0.09, making detection unreliable — and in a
+    # large DB, the noisy low-Jaccard estimate gets evicted by the max_hits_per_query
+    # cap before it can be reported.  Warn loudly so users know to reduce scaled
+    # or increase window_size.
+    _est_kmers_per_window = window_size / scaled
+    _MIN_SKETCH_KMERS = 100
+    if _est_kmers_per_window < _MIN_SKETCH_KMERS:
+        print(
+            f"WARNING: Estimated k-mers per window sketch = {_est_kmers_per_window:.0f} "
+            f"(window_size={window_size} / scaled={scaled}).  "
+            f"This is below the recommended minimum of {_MIN_SKETCH_KMERS} and will produce "
+            f"unreliable Jaccard estimates, especially for cross-genus pairs "
+            f"(e.g. E. coli vs Shigella, expected Jaccard ~0.22 at ksize=51).  "
+            f"Consider reducing --scaled (e.g. --scaled 500) or increasing --window_size "
+            f"so that window_size / scaled ≥ {_MIN_SKETCH_KMERS}."
+        )
+
 
     # Resolve the cached CSV path for the shared-window / region-comparison report.
     # Use sigfile as the path if it points to an existing CSV; otherwise fall back
@@ -2043,7 +2901,26 @@ def determine_conflicts(
         default_csv = os.path.join(output_dir, "region_comparisons.csv")
 
     if sigfile and sigfile.endswith(".csv"):
-        report_path = sigfile
+        # Guard against cross-mode contamination: a shared_windows_report.csv
+        # left over from a prior --compare_references run must not be used as
+        # the region_comparisons cache when running without --compare_references
+        # (the two formats have completely different columns and are not
+        # interchangeable).  Similarly, a region_comparisons.csv should not be
+        # accepted as the shared-window cache.
+        _sigfile_basename = os.path.basename(sigfile)
+        _expected_basename = (
+            "shared_windows_report.csv" if compare_to_reference_windows
+            else "region_comparisons.csv"
+        )
+        if _sigfile_basename == _expected_basename:
+            report_path = sigfile
+        else:
+            print(
+                f"WARNING: --sigfile '{sigfile}' is a '{_sigfile_basename}' but "
+                f"the current mode expects '{_expected_basename}'; "
+                f"ignoring sigfile as CSV cache and using default path."
+            )
+            report_path = default_csv
     else:
         report_path = default_csv
 
@@ -2051,6 +2928,64 @@ def determine_conflicts(
     shared_idx = None
     if sigfile and (not os.path.exists(sigfile) or os.path.getsize(sigfile) <= 0):
         sigfile = None  # only use sigfile if it points to an existing file; otherwise ignore it for signatures
+
+    # ── Pre-compute aligned reference set for FASTA sketch filtering ─────
+    # Only sketch FASTA contigs that actually have reads in the BAM.  For
+    # large reference databases (tens-of-thousands of references) this
+    # eliminates the vast majority of sketching work — e.g. a 41k-reference
+    # DB where only 200 references have reads means ~99.5% of sequence can
+    # be skipped.  _ref_counts_pre is reused later for ANI-weighted dominance.
+    _ref_counts_pre = _count_reads_per_ref(input_bam)
+    _aligned_refs = {r for r, c in _ref_counts_pre.items() if c > 0}
+    print(f"  BAM aligned refs: {len(_aligned_refs)} of {len(reflengths)} total "
+          f"references have ≥1 read — sketching only these contigs")
+
+    # ── Standalone read-sharing conflict-cluster pass (BAM only) ─────────
+    # When --compare_references is off the full FASTA window-sketch pipeline is
+    # skipped entirely, but we still want cross-genus conflict cluster IDs so
+    # that the winner/loser minhash adjustment in optimize_weights can group
+    # organisms like E. coli and Shigella into the same bucket.
+    #
+    # This block derives conflict clusters purely from the BAM: any two
+    # references that share ≥1 multi-mapped read are placed in the same cluster.
+    # No FASTA files are read.  The result is written as a minimal
+    # shared_windows_report.csv (window positions = 0; the union-find in
+    # match_paths.py only uses query_contig / match_contig).
+    #
+    # The file is cached — re-runs skip this step if the CSV already exists.
+    _sw_path = os.path.join(output_dir, "shared_windows_report.csv")
+    if (
+        not compare_to_reference_windows
+        and not (os.path.exists(_sw_path) and os.path.getsize(_sw_path) > 0)
+    ):
+        print("Building read-sharing conflict clusters from BAM "
+              "(no FASTA comparison; --compare_references is off)...")
+        _rs_map, _rs_pairs = _build_read_sharing_clusters(
+            input_bam,
+            aligned_refs=_aligned_refs,
+        )
+        if _rs_pairs:
+            _sw_header = [
+                "query_fasta", "query_contig", "q_start", "q_end",
+                "match_fasta", "match_contig", "m_start", "m_end",
+                "jaccard", "containment_q_in_m", "containment_m_in_q",
+            ]
+            with open(_sw_path, "w", newline="") as _sw_out:
+                _sw_writer = csv.writer(_sw_out)
+                _sw_writer.writerow(_sw_header)
+                for (ref_a, ref_b, shared_count) in _rs_pairs:
+                    # jaccard placeholder = shared / (total_a + total_b - shared)
+                    cnt_a = max(1, _ref_counts_pre.get(ref_a, 1))
+                    cnt_b = max(1, _ref_counts_pre.get(ref_b, 1))
+                    _j = shared_count / (cnt_a + cnt_b - shared_count)
+                    _sw_writer.writerow(["bam", ref_a, 0, 0, "bam", ref_b, 0, 0,
+                                         f"{_j:.6f}", f"{_j:.6f}", f"{_j:.6f}"])
+            print(f"  {len(_rs_pairs)} competing reference pair(s) from "
+                  f"{len(_rs_map)} reference(s) → {_sw_path}")
+        else:
+            print("  No multi-mapped reads found across references; "
+                  "shared_windows_report.csv not written.")
+
     if compare_to_reference_windows:
         print(f"Shared-window report path: {report_path}")
         if os.path.exists(report_path) and os.path.getsize(report_path) > 0:
@@ -2078,8 +3013,9 @@ def determine_conflicts(
                         window=best_params["window"],
                         step=best_params["step"],
                         jaccard_threshold=sim_ani_threshold,
-                        max_hits_per_query=4,
+                        max_hits_per_query=120,
                         skip_self_same_fasta=False,
+                        aligned_refs=_aligned_refs,
                     )
                 else:
                     report_shared_windows_across_fastas(
@@ -2090,26 +3026,32 @@ def determine_conflicts(
                         window=window_size,
                         step=step_size,
                         jaccard_threshold=sim_ani_threshold,
-                        max_hits_per_query=5,
+                        max_hits_per_query=120,
                         skip_self_same_fasta=False,
+                        aligned_refs=_aligned_refs,
                     )
             else:
                 print("Creating shared FASTA report from scratch")
-                sim_ani_threshold=0.2
-                # Previous defaults (ksize=51, scaled=5000, window=900k) were
-                # far too conservative for closely related organisms like
-                # E. coli / Shigella (98%+ ANI):
-                #   - ksize=51: a single SNP breaks the k-mer → almost no
-                #     matches at 98% ANI where ~1 in 50 bases differs
-                #   - scaled=5000: sketch too sparse to capture overlap
-                #   - window=900k: most contigs smaller → single window,
-                #     no positional resolution
+                # ── Split-threshold strategy ──────────────────────────────────
+                # We use two different Jaccard thresholds:
                 #
-                # New defaults: ksize=21 tolerates moderate divergence,
-                # scaled=500 gives reasonable sketch density, window=5000
-                # with step=2500 (50% overlap) captures local shared regions.
-                # The function-level kmer_size and scaled params override
-                # these defaults when passed from the CLI.
+                #   _write_j_thresh  (0.05) — written to the CSV.
+                #     Captures cross-genus pairs like E. coli O104:H4 vs Shigella
+                #     (ANI ≈ 95%, ksize=31 → J ≈ 0.11).  These pairs are used
+                #     ONLY for building the union-find conflict cluster IDs in
+                #     match_paths.py, NOT for actual read removal.
+                #
+                #   _removal_j_thresh (0.20) — used when loading shared_idx for
+                #     read-removal decisions.  Only strong window similarity
+                #     (intra-Shigella, intra-Klebsiella, etc.) drives removal;
+                #     weaker cross-genus links do not.
+                #
+                # Without this split, organisms separated by ~95% ANI were never
+                # placed in the same conflict cluster, so the winner/loser minhash
+                # adjustment in optimize_weights.py had no effect between them.
+                _write_j_thresh   = 0.05   # write threshold: capture cross-genus links
+                _removal_j_thresh = 0.20   # removal threshold: only strong similarity
+                sim_ani_threshold = _removal_j_thresh  # used below for shared_idx load
                 report_shared_windows_across_fastas(
                     fasta_files=fasta_files,
                     output_csv=report_path,
@@ -2117,17 +3059,83 @@ def determine_conflicts(
                     scaled=scaled,
                     window=window_size,
                     step=step_size,
-                    jaccard_threshold=sim_ani_threshold,
-                    max_hits_per_query=12,
+                    jaccard_threshold=_write_j_thresh,   # low threshold: write more pairs
+                    max_hits_per_query=120,
                     skip_self_same_fasta=False,
+                    aligned_refs=_aligned_refs,
                 )
+
+        # ── BAM supplement: append multi-mapper pairs to shared_windows_report ──
+        # Even after the FASTA window comparison, some cross-genus reference
+        # pairs may be missed if their window Jaccard falls below _write_j_thresh
+        # (e.g., pairs with ANI < 93%).  Reads that multi-map in the BAM provide
+        # ground-truth evidence of reference ambiguity.  We scan the BAM and
+        # append any new (ref_a, ref_b) pairs not already in the report — with
+        # nominal j=0.50 and positions=0 — so the union-find in match_paths.py
+        # can group them correctly.  These rows have no effect on read removal
+        # (which uses window positions from the FASTA comparison).
+        if os.path.exists(report_path) and os.path.getsize(report_path) > 0:
+            print("Supplementing shared-window report with BAM multi-mapper pairs...")
+            _bam_rs_map, _bam_rs_pairs = _build_read_sharing_clusters(
+                input_bam,
+                aligned_refs=_aligned_refs,
+            )
+            if _bam_rs_pairs:
+                # Load existing pairs to avoid duplicates
+                _existing_pairs: set = set()
+                try:
+                    with open(report_path, newline="") as _efp:
+                        _er = csv.DictReader(_efp)
+                        for _erow in _er:
+                            _qa = str(_erow.get("query_contig", ""))
+                            _ma = str(_erow.get("match_contig", ""))
+                            if _qa and _ma:
+                                _existing_pairs.add((_qa, _ma))
+                                _existing_pairs.add((_ma, _qa))
+                except Exception as _e_read:
+                    print(f"  Warning: could not pre-scan existing pairs: {_e_read}")
+
+                _new_pairs = [
+                    (ra, rb, cnt) for ra, rb, cnt in _bam_rs_pairs
+                    if (ra, rb) not in _existing_pairs
+                ]
+                if _new_pairs:
+                    _sw_header = [
+                        "query_fasta", "query_contig", "q_start", "q_end",
+                        "match_fasta", "match_contig", "m_start", "m_end",
+                        "jaccard", "containment_q_in_m", "containment_m_in_q",
+                    ]
+                    # Check if header row already exists
+                    _header_exists = os.path.getsize(report_path) > 0
+                    with open(report_path, "a", newline="") as _sw_app:
+                        _sw_writer = csv.writer(_sw_app)
+                        for (ref_a, ref_b, shared_count) in _new_pairs:
+                            cnt_a = max(1, _ref_counts_pre.get(ref_a, 1))
+                            cnt_b = max(1, _ref_counts_pre.get(ref_b, 1))
+                            _j = shared_count / (cnt_a + cnt_b - shared_count)
+                            # Use a nominal jaccard floor of 0.10 so these
+                            # rows pass any downstream min_jaccard filter.
+                            _j_out = max(0.10, _j)
+                            _sw_writer.writerow([
+                                "bam", ref_a, 0, 0,
+                                "bam", ref_b, 0, 0,
+                                f"{_j_out:.6f}", f"{_j_out:.6f}", f"{_j_out:.6f}",
+                            ])
+                    print(f"  Appended {len(_new_pairs)} BAM-derived pair(s) "
+                          f"to {report_path}")
+                else:
+                    print("  BAM multi-mapper pairs already present in report; "
+                          "no supplement needed.")
+            else:
+                print("  No BAM multi-mapper pairs found; supplement skipped.")
 
         shared_idx = load_shared_windows_csv(report_path, min_jaccard=sim_ani_threshold, skip_same_contig=True)
 
     # Removal plan
     if compare_to_reference_windows and shared_idx is not None:
         print("Building removal plan based on shared-window alignments...")
-        _ref_counts_pre = _count_reads_per_ref(input_bam)
+        # _ref_counts_pre already computed above for aligned_refs filtering;
+        # reuse it here for ANI-weighted dominance scoring.
         print(f"  Pre-counted reads for {len(_ref_counts_pre)} references (used for ANI-weighted dominance scoring)")
         removed_read_ids = build_removed_ids_best_alignment(
             bam_path=input_bam,
@@ -2169,15 +3177,14 @@ def determine_conflicts(
             sum_comparisons = load_region_comparisons_csv(output_csv)
         else:
             signatures = {}
-            # Signatures: load or generate
+            # Signatures: load or generate (BAM-only — no FASTA needed)
             if not sigfile or not os.path.exists(sigfile):
                 nworkers = cpu_count if cpu_count else max(1, int(os.cpu_count() / 2))
-                print(f"Sketching merged regions (workers={nworkers})")
+                print(f"Sketching merged regions from BAM only (workers={nworkers})")
                 t0 = time.time()
-                signatures = create_signatures_for_regions(
+                signatures = create_signatures_from_bam(
                     regions_df=merged_regions,
                     bam_path=input_bam,
-                    fasta_paths=fasta_files,
                     kmer_size=kmer_size,
                     scaled=scaled,
                     num_workers=nworkers,
@@ -2190,19 +3197,19 @@ def determine_conflicts(
             else:
                 print(f"Loading signatures from: {sigfile}")
                 signatures = rebuild_sig_dict(load_signatures_sourmash(sigfile))
-            # Clustering (kept minimal): compare all refs together by default
-            clusters = [set([x.split(":")[0] for x in signatures.keys()])]
 
-            # Compare signatures via SBT
+            # Search via parallel SBT (scales to millions of signatures)
             sig_items = list(signatures.items())
 
-            if FAST_MODE:
-                print("Building SBT index...")
-                sbt_index = build_sbt_index(sig_items, ksize=51, clusters=clusters)
-                print("Searching SBT...")
-                sum_comparisons = fast_mode_sbt(sig_items, sbt_index, output_csv, min_threshold, clusters)
-            else:
-                raise NotImplementedError("Slow mode removed in this cleaned version. Use FAST_MODE=True.")
+            nworkers = cpu_count if cpu_count else max(1, int(os.cpu_count() / 2))
+            print(f"Searching regions via parallel SBT (workers={nworkers})...")
+            sum_comparisons = search_sbt_parallel(
+                sig_items, output_csv,
+                min_threshold=min_threshold,
+                n_jobs=nworkers,
+                kmer_size=kmer_size,
+                scaled=scaled,
+            )
 
         # Build conflict groups
         print("Building conflict groups...")
@@ -2211,13 +3218,20 @@ def determine_conflicts(
         print(f"Conflict groups: {len(conflict_groups)}")
         print(f"Conflict groups length: {len(conflict_groups)} built in {time.time() - start_time:.2f} seconds. Next up is proportion removal")
         start_time = time.time()
-        # 2) For each group, remove 1 read from each region
-        removed_read_ids = finalize_proportional_removal(
+        # 2) For each group, dominance-aware read removal
+        removed_read_ids, cluster_dominance = finalize_proportional_removal(
             conflict_groups,
             bam_fs,
             fetch_reads_in_region,
-            remove_mode='random'
+            remove_mode='random',
+            dominance_protect_ratio=dominance_protect_ratio,
         )
+        # Write cluster_dominance JSON for downstream minhash penalty
+        import json as _json
+        _cd_path = os.path.join(output_dir, "cluster_dominance.json")
+        with open(_cd_path, "w") as _cd_fh:
+            _json.dump(cluster_dominance, _cd_fh, indent=2)
+        print(f"Wrote cluster dominance: {_cd_path} ({len(cluster_dominance)} references)")
 
     # Write removals table
     failed_path = os.path.join(output_dir, "failed_reads.txt")
@@ -2396,7 +3410,92 @@ def determine_conflicts(
         comparison_df = pd.concat([comparison_df, pd.DataFrame([total_row])], ignore_index=True)
         # put Total at Top of excel sheet
         comparison_df = pd.concat([comparison_df.tail(1), comparison_df.iloc[:-1]], ignore_index=True)
-        comparison_df.to_excel(out_xlsx, index=False)
+
+        # ── Build Conflict Groups sheet ───────────────────────────────────
+        # Summarise which accession pairs share windows and who won (most reads).
+        # This gives users an explicit view of which organisms competed for reads
+        # and how the minhash winner was determined, which the per-accession
+        # Removal Stats sheet alone cannot convey.
+        conflict_groups_rows = []
+        if shared_idx is not None and len(shared_idx) > 0:
+            # Build lookup: accession → organism name and read counts from comparison_df
+            _cdf_data = comparison_df[comparison_df["Reference"] != "Total"].set_index("Reference")
+            _seen_pairs: set = set()
+            group_id = 1
+
+            for ref_a, windows in shared_idx.items():
+                alt_contigs = {w.alt_contig for w in windows}
+                for ref_b in sorted(alt_contigs):
+                    pair_key = tuple(sorted([ref_a, ref_b]))
+                    if pair_key in _seen_pairs:
+                        continue
+                    _seen_pairs.add(pair_key)
+
+                    # Read counts from comparison_df (fall back to per_ref dict)
+                    def _reads(ref):
+                        if ref in _cdf_data.index:
+                            return int(_cdf_data.loc[ref, "Total Reads"] or 0)
+                        return int(per_ref.get(ref, {}).get("numreads", 0))
+
+                    def _org(ref):
+                        if ref in _cdf_data.index:
+                            return str(_cdf_data.loc[ref, "Organism"] or "")
+                        return ""
+
+                    def _delta(ref):
+                        if ref in _cdf_data.index:
+                            return int(_cdf_data.loc[ref, "Δ All"] or 0)
+                        return 0
+
+                    reads_a = _reads(ref_a)
+                    reads_b = _reads(ref_b)
+
+                    # Shared-window stats between this pair
+                    pair_windows = [w for w in windows if w.alt_contig == ref_b]
+                    n_shared = len(pair_windows)
+                    mean_jaccard = (sum(w.jaccard for w in pair_windows) / n_shared) if n_shared else 0.0
+                    max_jaccard  = max((w.jaccard for w in pair_windows), default=0.0)
+
+                    winner = ref_a if reads_a >= reads_b else ref_b
+                    loser  = ref_b if winner == ref_a else ref_a
+
+                    conflict_groups_rows.append({
+                        "Group ID":         group_id,
+                        "Winner Accession": winner,
+                        "Winner Organism":  _org(winner),
+                        "Winner Reads":     _reads(winner),
+                        "Winner Δ All":     _delta(winner),
+                        "Loser Accession":  loser,
+                        "Loser Organism":   _org(loser),
+                        "Loser Reads":      _reads(loser),
+                        "Loser Δ All":      _delta(loser),
+                        "Shared Windows":   n_shared,
+                        "Mean Jaccard (ANI proxy)": round(mean_jaccard, 4),
+                        "Max Jaccard":      round(max_jaccard, 4),
+                    })
+                    group_id += 1
+
+        conflict_groups_df = pd.DataFrame(conflict_groups_rows) if conflict_groups_rows else pd.DataFrame(
+            columns=["Group ID", "Winner Accession", "Winner Organism", "Winner Reads",
+                     "Winner Δ All", "Loser Accession", "Loser Organism", "Loser Reads",
+                     "Loser Δ All", "Shared Windows", "Mean Jaccard (ANI proxy)", "Max Jaccard"]
+        )
+        if conflict_groups_df.empty:
+            conflict_groups_df = pd.DataFrame([{
+                "Note": (
+                    "No shared-window pairs detected. This sheet is populated when FASTA files are "
+                    "provided (--fasta) so that sourmash window sketching can detect cross-accession "
+                    "sequence similarity. For BAM-level multi-mapper competition (e.g. E. coli vs "
+                    "Shigella) see the Removal Stats sheet: accessions with high Δ All% competed "
+                    "for reads even without shared windows being detected at the sketch level."
+                )
+            }])
+
+        # Write multi-sheet xlsx
+        with pd.ExcelWriter(out_xlsx, engine="openpyxl") as _xw:
+            comparison_df.to_excel(_xw, sheet_name="Removal Stats", index=False)
+            conflict_groups_df.to_excel(_xw, sheet_name="Conflict Groups", index=False)
+
         print(f"Wrote: {out_xlsx}")
         print(
             comparison_df[comparison_df["Δ All"] != 0][
