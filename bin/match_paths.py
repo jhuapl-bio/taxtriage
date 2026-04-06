@@ -556,11 +556,11 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.4,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.3,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
                          "Default: 2 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
-    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.4,
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.3,
                     help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
                          "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
                          "Default: 0.85. Set to 0 to disable.")
@@ -581,7 +581,7 @@ def parse_args(argv=None):
     parser.add_argument(
         '--dominance_protect_ratio',
         type=float,
-        default=3.0,
+        default=2.0,
         help="Read-count ratio (dominant / runner-up) within a conflict group above which the "
              "dominant reference is fully exempt from the base (min_cov) removal.  Dominance "
              "is determined by raw read count in the shared region.  Lower values protect more "
@@ -1075,7 +1075,7 @@ def main():
         "breadth_weight":              0.27,
         "minhash_weight":              0.31,
         "gini_weight":                 0.42,
-        "disparity_weight":            0.01,
+        "disparity_weight":            0.00,
         "hmp_weight":                  0.00,
         "plasmid_bonus_weight":        0.0,
         "abundance_confidence_weight": 0.0,
