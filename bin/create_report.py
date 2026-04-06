@@ -258,19 +258,23 @@ def build_subkey_display_lookup(species_group, args, min_conf, min_reads=1,
         )
         # Strains that are Primary-category but did NOT pass the threshold.
         # These are hidden from the main table but indicated via a warning badge.
+        # Only shown when no strain-level members are already visible above threshold.
         _visible_keys = {str(s.get('key', '')) for s in visible_strains}
         _visible_keys.add(sk)  # exclude the species-level key itself
-        below_threshold_primary = sorted(
-            [
-                s for s in get_all_strains(sk_grp)
-                if 'Primary' in str(s.get('microbial_category', '') or '')
-                and not passes_confidence_threshold(s, min_conf)
-                and str(s.get('key', '')) not in _visible_keys
-                and str(s.get('key', '')) == str(s.get('subkey', s.get('key', '')))
-            ],
-            key=lambda s: float(s.get('tass_score', 0) or 0),
-            reverse=True,
-        )
+        if visible_strains:
+            # A qualifying strain is already shown — suppress the below-threshold badge
+            below_threshold_primary = []
+        else:
+            below_threshold_primary = sorted(
+                [
+                    s for s in get_all_strains(sk_grp)
+                    if 'Primary' in str(s.get('microbial_category', '') or '')
+                    and not passes_confidence_threshold(s, min_conf)
+                    and str(s.get('key', '')) not in _visible_keys
+                ],
+                key=lambda s: float(s.get('tass_score', 0) or 0),
+                reverse=True,
+            )
 
         lookup[sk] = {
             'species_key': str(species_group.get('toplevelkey', species_group.get('key', 'unknown'))),
@@ -286,6 +290,7 @@ def build_subkey_display_lookup(species_group, args, min_conf, min_reads=1,
             'harmful_followup': has_harmful_followup_signal(visible_strains),
             'below_threshold_primary': below_threshold_primary,
         }
+
     return lookup
 
 
@@ -643,85 +648,76 @@ class ControlSparkBar(Flowable):
 
 
 class SubthresholdWarningFlowable(Flowable):
-    """Compact amber badge + inline strain list for below-threshold pathogenic strains.
+    """Compact amber badge showing the highest-scoring Primary strain that is
+    below the TASS threshold.
 
-    Draws a small ⚠ badge (e.g. '⚠ 2 primary strains below threshold') and,
-    directly below it, a muted gray list of strain names and TASS scores that
-    is always visible in every PDF viewer.
+    Displays: &#9830; {Name} (TASS: {score}, {reads} reads)
     """
-
-    _TEXT_FONT_SIZE = 6.0
-    _TEXT_LEADING = 7.5
-    _BADGE_GAP = 2  # vertical gap between badge bottom and text top
 
     def __init__(self, below_threshold_strains, badge_height=11):
         super().__init__()
+        # below_threshold_strains is already sorted descending by TASS; [0] is highest
         self.below_threshold_strains = below_threshold_strains
-        n = len(below_threshold_strains)
         self._badge_h = badge_height
-        self._label = (
-            f'{n} primary strain{"s" if n != 1 else ""} below threshold'
-        )
-        strain_text_h = n * self._TEXT_LEADING if n else 0
-        self.height = badge_height + (self._BADGE_GAP + strain_text_h if n else 0)
-        self.width = 0  # expands to content in draw()
+        if below_threshold_strains:
+            top = below_threshold_strains[0]
+            name = top.get('name', 'Unknown')
+            tass = float(top.get('tass_score', 0) or 0) * 100
+            reads = int(top.get('numreads', 0) or 0)
+            self._label = f'{name} (TASS: {tass:.1f}, {reads:,} reads) \u2014 highest below threshold'
+        else:
+            self._label = ''
+        self.height = badge_height if below_threshold_strains else 0
+        self.width = 0  # updated in wrap()
+        self._avail_w = None
+
+    def wrap(self, availWidth, availHeight):
+        if not self.below_threshold_strains:
+            self.width = 0
+            self.height = 0
+            return (0, 0)
+        self._avail_w = availWidth
+        self.width = availWidth
+        return (availWidth, self._badge_h)
 
     def draw(self):
         canv = self.canv
         if not self.below_threshold_strains:
             return
 
-        n = len(self.below_threshold_strains)
         bh = self._badge_h
-        tl = self._TEXT_LEADING
-        tf_size = self._TEXT_FONT_SIZE
-        strain_text_h = n * tl
-        badge_y = strain_text_h + self._BADGE_GAP  # badge sits above the text block
-
         font_size = 6.5
-        # Warning triangle dimensions (canvas-drawn, no font character needed)
-        tri_w = bh * 0.55
-        tri_h = tri_w * 0.866      # height of equilateral triangle
+        icon_size = font_size + 1.0
         x_off = 4                  # left padding
-        gap = 3                    # gap between triangle and label text
+        gap = 2                    # gap between icon and label text
 
         canv.saveState()
         canv.setFont('Helvetica-Bold', font_size)
-        text_w = canv.stringWidth(self._label, 'Helvetica-Bold', font_size)
-        bw = x_off + tri_w + gap + text_w + x_off
+        icon_w = canv.stringWidth('\u2757', 'Helvetica-Bold', icon_size)
+        max_text_w = (self._avail_w or 9999) - x_off - icon_w - gap - x_off
+
+        # Truncate label with ellipsis if it would overflow the available width
+        label = self._label
+        if canv.stringWidth(label, 'Helvetica-Bold', font_size) > max_text_w:
+            while label and canv.stringWidth(label + '\u2026', 'Helvetica-Bold', font_size) > max_text_w:
+                label = label[:-1]
+            label = label.rstrip() + '\u2026'
+
+        text_w = canv.stringWidth(label, 'Helvetica-Bold', font_size)
+        bw = min(x_off + icon_w + gap + text_w + x_off, self._avail_w or 9999)
 
         # Amber rounded badge background
         canv.setFillColorRGB(0.85, 0.42, 0.02)
-        canv.roundRect(0, badge_y, bw, bh, 2, fill=1, stroke=0)
+        canv.roundRect(0, 0, bw, bh, 2, fill=1, stroke=0)
 
-        # White equilateral warning triangle (pointing up)
-        ty = badge_y + (bh - tri_h) / 2
+        # White ⚠ icon
+        canv.setFont('Helvetica-Bold', icon_size)
         canv.setFillColorRGB(1, 1, 1)
-        tri_path = canv.beginPath()
-        tri_path.moveTo(x_off + tri_w / 2, ty + tri_h)
-        tri_path.lineTo(x_off,             ty)
-        tri_path.lineTo(x_off + tri_w,     ty)
-        tri_path.close()
-        canv.drawPath(tri_path, fill=1, stroke=0)
+        canv.drawString(x_off, (bh - icon_size) / 2 + 0.5, '\u2757')
 
-        # Amber '!' inside the triangle
-        canv.setFont('Helvetica-Bold', font_size - 1.0)
-        canv.setFillColorRGB(0.85, 0.42, 0.02)
-        canv.drawCentredString(x_off + tri_w / 2, ty + 1.5, '!')
-
-        # White label text after the triangle
+        # White label text after the icon
         canv.setFont('Helvetica-Bold', font_size)
-        canv.setFillColorRGB(1, 1, 1)
-        canv.drawString(x_off + tri_w + gap, badge_y + (bh - font_size) / 2 + 0.5, self._label)
-
-        # Strain list drawn below the badge in muted gray
-        canv.setFont('Helvetica', tf_size)
-        canv.setFillColorRGB(0.45, 0.45, 0.45)
-        for i, s in enumerate(self.below_threshold_strains):
-            name = s.get('name', 'Unknown')
-            tass = float(s.get('tass_score', 0) or 0) * 100
-            line_y = strain_text_h - (i + 1) * tl + (tl - tf_size) / 2
-            canv.drawString(x_off, line_y, f'\u2022 {name}  TASS: {tass:.1f}')
+        canv.drawString(x_off + icon_w + gap, (bh - font_size) / 2 + 0.5, label)
 
         canv.restoreState()
 
@@ -1508,13 +1504,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         'ANIStyle', parent=small_style, fontSize=6, leading=8,
         wordWrap='CJK')
     species_name_style = ParagraphStyle(
-        'SpeciesName', parent=small_style, fontSize=8.5, leading=9.5,
+        'SpeciesName', parent=small_style, fontSize=10.5, leading=11.5,
         fontName='Helvetica-Bold', leftIndent=6, wordWrap='CJK')
     species_name_style_small = ParagraphStyle(
-        'SpeciesNameSmall', parent=small_style, fontSize=7.5, leading=8.5,
+        'SpeciesNameSmall', parent=small_style, fontSize=9.5, leading=10.5,
         fontName='Helvetica-Bold', leftIndent=6, wordWrap='CJK')
     species_data_style = ParagraphStyle(
-        'SpeciesData', parent=small_style, fontSize=7.5, leading=8.5,
+        'SpeciesData', parent=small_style, fontSize=9.5, leading=10.5,
         wordWrap='CJK')
     child_strain_name_style = ParagraphStyle(
         'ChildStrainName', parent=small_style, fontSize=7.2, leading=8.2,
@@ -1526,7 +1522,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         'ChildStrainData', parent=small_style, fontSize=6.8, leading=7.8,
         wordWrap='CJK')
     group_header_style = ParagraphStyle(
-        'GroupHeader', parent=small_style, fontSize=10, leading=11,
+        'GroupHeader', parent=small_style, fontSize=12, leading=13,
         fontName='Helvetica-Bold', wordWrap='CJK')
     group_strain_summary_style = ParagraphStyle(
         'GroupStrainSummary', parent=small_style, fontSize=7, leading=9,
@@ -1793,23 +1789,19 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         high_ani_text = _build_high_ani_paragraph(species_record, row_ani_style)
 
         _below_primary = species_entry.get('below_threshold_primary', [])
-        _name_para = Paragraph(name_html, row_name_style)
         if _below_primary:
-            _inner_w = max(60, col_widths[1] - 18)
-            _warning_badge = SubthresholdWarningFlowable(_below_primary)
-            _name_cell = Table(
-                [[_name_para], [_warning_badge]],
-                colWidths=[_inner_w],
+            _bt = _below_primary[0]
+            _bt_name = _bt.get('name', 'Unknown')
+            _bt_tass = float(_bt.get('tass_score', 0) or 0) * 100
+            _bt_reads = int(_bt.get('numreads', 0) or 0)
+            name_html += (
+                f'<br/><font color="#808080" size="6">'
+                f'&nbsp;&nbsp;&nbsp;<font color="#8B0000">!</font> &nbsp;{_bt_name}</font>'
+                f'<br/><font color="#808080" size="5.5">'
+                f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'
+                f'TASS {_bt_tass:.1f}&nbsp;&nbsp;{_bt_reads:,} reads</font>'
             )
-            _name_cell.setStyle(TableStyle([
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-        else:
-            _name_cell = _name_para
+        _name_cell = Paragraph(name_html, row_name_style)
 
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
@@ -1833,8 +1825,15 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         flora_fade = _is_flora_on_sterile(species_record, species_record.get('normalized_sample_site', ''))
         flora_mult = 0.70 if flora_fade else 1.0
-        _SUMMARY_PRIMARY = colors.HexColor('#E8A0A0')   # light red for Species/Subkey Summary
         if 'Primary' in str(microbial_category):
+            # Use light red (#E8A0A0) ONLY when the species-level passes the threshold but
+            # ALL individual strains are below it (summary row represents an inferred call).
+            # Use dark red (#E85F50) when at least one qualifying strain also passes.
+            _species_above_strains_below = (
+                species_entry.get('species_passes') and not species_entry.get('visible_strains')
+            )
+            _primary_hex = '#E8A0A0' if _species_above_strains_below else '#E85F50'
+            _SUMMARY_PRIMARY = colors.HexColor(_primary_hex)
             if row_below_zscore:
                 ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.35 * flora_mult)
                 row_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.08 * flora_mult)
@@ -1887,7 +1886,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             )
         else:
             name_html = (
-                f'&#8627; {strain.get("name", "Unknown")} '
+                f'! {strain.get("name", "Unknown")} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>) '
                 f'<font color="#666666" size="6"><i>qualifying strain</i></font>'
@@ -1898,23 +1897,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
         rpm = strain.get('rpm', 0) or 0
 
-        _name_para_s = Paragraph(name_html, row_name_style)
-        if promoted and below_threshold_primary:
-            _inner_w_s = max(60, col_widths[1] - 18)
-            _warning_badge_s = SubthresholdWarningFlowable(below_threshold_primary)
-            _name_cell_s = Table(
-                [[_name_para_s], [_warning_badge_s]],
-                colWidths=[_inner_w_s],
-            )
-            _name_cell_s.setStyle(TableStyle([
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-        else:
-            _name_cell_s = _name_para_s
+        _name_cell_s = Paragraph(name_html, row_name_style)
 
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
@@ -1938,16 +1921,17 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         flora_fade = _is_flora_on_sterile(strain, strain.get('normalized_sample_site', ''))
         flora_mult = 0.70 if flora_fade else 1.0
-        _SUMMARY_PRIMARY = colors.HexColor('#E8A0A0')
         if promoted:
-            # Match species-summary-row visual weight exactly
+            # Promoted strains are always above the threshold (they come from visible_strains),
+            # so use dark red (#E85F50) for Primary — never the light summary shade (#E8A0A0).
             if 'Primary' in str(microbial_category):
+                _PROMOTED_PRIMARY = colors.HexColor('#E85F50')
                 if row_below_zscore:
-                    ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.35 * flora_mult)
-                    row_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.08 * flora_mult)
+                    ind_color = colors.Color(_PROMOTED_PRIMARY.red, _PROMOTED_PRIMARY.green, _PROMOTED_PRIMARY.blue, alpha=0.35 * flora_mult)
+                    row_color = colors.Color(_PROMOTED_PRIMARY.red, _PROMOTED_PRIMARY.green, _PROMOTED_PRIMARY.blue, alpha=0.08 * flora_mult)
                 else:
-                    ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=1.0 * flora_mult)
-                    row_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.20 * flora_mult)
+                    ind_color = colors.Color(_PROMOTED_PRIMARY.red, _PROMOTED_PRIMARY.green, _PROMOTED_PRIMARY.blue, alpha=1.0 * flora_mult)
+                    row_color = colors.Color(_PROMOTED_PRIMARY.red, _PROMOTED_PRIMARY.green, _PROMOTED_PRIMARY.blue, alpha=0.20 * flora_mult)
             else:
                 if row_below_zscore:
                     ind_color = get_category_color(microbial_category, ann_class, alpha=0.35 * flora_mult)
@@ -3689,8 +3673,8 @@ def create_pdf_template(output_path, samples_dict, args):
          Paragraph(f'The organism is directly detected according to <link href="{url}" color="blue">taxonomic id</link> or assembly name and is listed as being of importance in your sample type.', legend_text_style)],
         ['', Paragraph('Primary Pathogen', legend_text_style),
          Paragraph('It is directly detected according to taxonomic id or assembly name and is listed as being of importance in a different sample type.', legend_text_style)],
-        ['', Paragraph('Species/Subkey Summary', legend_text_style),
-         Paragraph(f'This row summarizes a qualifying species or subkey beneath each genus group. Its color reflects the most clinically significant annotation among the species itself and any qualifying child strains. Rows marked with {_WARN_SYMBOL_HTML} have qualifying harmful child strains and require follow-up.', legend_text_style)],
+        ['', Paragraph('Species/Subkey Summary (inferred)', legend_text_style),
+         Paragraph(f'! shown when the species-level aggregation passes the threshold but all individual strains are below it. Dark red is used when any qualifying strain also passes. Rows marked with {_WARN_SYMBOL_HTML} list the highest-scoring Primary strain that is below the defined TASS threshold.', legend_text_style)],
         ['', Paragraph('Commensal', legend_text_style), Paragraph('Normal flora / non-pathogenic', legend_text_style)],
         ['', Paragraph('Opportunistic', legend_text_style), Paragraph('May cause disease in certain conditions', legend_text_style)],
         ['', Paragraph('Potential', legend_text_style), Paragraph('Potential pathogen requiring further investigation', legend_text_style)],

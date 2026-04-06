@@ -1073,8 +1073,8 @@ def main():
     # the user DID explicitly supply so the JSON block never overwrites them.
     _WEIGHT_DEFAULTS = {
         "breadth_weight":              0.27,
-        "minhash_weight":              0.21,
-        "gini_weight":                 0.52,
+        "minhash_weight":              0.31,
+        "gini_weight":                 0.42,
         "disparity_weight":            0.01,
         "hmp_weight":                  0.00,
         "plasmid_bonus_weight":        0.0,
