@@ -398,6 +398,33 @@
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "mapq_gini_power": {
+                    "type": ["number", "null"],
+                    "description": "Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. Penalizes Gini score for organisms dominated by low-MAPQ reads. Default: 1.0. Set to 0 to disable.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "mapq_breadth_power": {
+                    "type": ["number", "null"],
+                    "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads → breadth scaled by 0.1).",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "auto_score_power": {
+                    "type": "boolean",
+                    "description": "Automatically compute score_power after optimization so that the mean TP TASS score hits the optimize_tp_target. Requires --optimize and --optimize_tp_target. Overrides score_power if both are set.",
+                    "default": false,
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "score_power": {
+                    "type": ["number", "null"],
+                    "description": "Power transform (gamma) applied to TASS scores. Values < 1 lift compressed scores (e.g. 0.09^0.5=0.30). Preserves monotonic ordering so thresholds still separate TP/FP. Default: no transform.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "depth_concentration_power": {
+                    "type": "number",
+                    "description": "Power exponent for depth-concentration penalty on Gini. Penalizes organisms where reads map to a tiny region of a large genome (high depth, negligible coverage). Set to 0 to disable.",
+                    "default": 0,
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "jump_threshold": {
                     "type": ["number", "null"],
                     "description": "Jump Threshold",
@@ -636,7 +663,7 @@
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
-                "loose": {
+                "fast": {
                     "type": "boolean",
                     "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
                     "fa_icon": "fas fa-file-signature"

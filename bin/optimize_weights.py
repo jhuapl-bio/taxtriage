@@ -414,6 +414,10 @@ def calculate_normalized_groups(
     reads_key: str = "numreads",
     sum_columns: Iterable[str] = (),
     mapq_breadth_power: float = 2.0,
+    mapq_gini_power: float = 1.0,
+    contig_penalty_power: float = 0.3,
+    depth_concentration_power: float = 0.3,
+    default_read_length: int = 150,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -433,6 +437,7 @@ def calculate_normalized_groups(
         # the combined coverage histogram at the group level (like breadth).
         "mapq_score", "rpm_confidence_weight", "read_fraction",
         "highmapq_fraction", "plasmid_score",
+        "abundance_confidence",  # low-abundance confidence sigmoid (log-RPM based)
     }
 
     def _to_float(x) -> float:
@@ -483,7 +488,9 @@ def calculate_normalized_groups(
         agg["name"] = entries[0].get("name") or entries[0].get("organism") or gval
         if "subkey" not in agg and "subkey" in entries[0]:
             agg["subkey"] = entries[0].get("subkey")
-            agg["subkeyname"] = entries[0].get("subkeyname", agg["name"])
+        # Always propagate subkeyname from the constituent entries
+        if "subkeyname" not in agg:
+            agg["subkeyname"] = entries[0].get("subkeyname") or agg["name"]
 
         # ---------- TOPLEVEL KEY + NAME ----------
         if group_field == "toplevelkey":
@@ -496,16 +503,24 @@ def calculate_normalized_groups(
         else:
             tk = None
             tn = None
+            cid = None
             for e in entries:
                 if tk is None:
                     tk = e.get("toplevelkey")
                 if tn is None:
                     tn = e.get("toplevelname")
-                if tk and tn:
+                # Propagate conflict_cluster_id: if ANY member of this group
+                # belongs to a cross-genus conflict cluster, carry that id up
+                # so the winner/loser parent_buckets logic can use it.
+                if cid is None:
+                    cid = e.get("conflict_cluster_id")
+                if tk and tn and cid:
                     break
 
             agg["toplevelkey"] = tk
             agg["toplevelname"] = tn
+            if cid is not None:
+                agg["conflict_cluster_id"] = cid
 
         # sums
         sums = {f: 0.0 for f in SUM_FIELDS}
@@ -533,6 +548,15 @@ def calculate_normalized_groups(
 
         # Propagate has_plasmid: true if ANY member has a plasmid
         agg['has_plasmid'] = any(bool(_e.get('has_plasmid', False)) for _e in entries)
+
+        # Propagate cluster_dominance from constituent entries (aggregate)
+        _cd_list = [e["cluster_dominance"] for e in entries if e.get("cluster_dominance")]
+        if _cd_list:
+            agg["cluster_dominance"] = {
+                "cluster_removal_frac": sum(cd.get("cluster_removal_frac", 0) for cd in _cd_list) / len(_cd_list),
+                "n_cluster_partners": max(cd.get("n_cluster_partners", 0) for cd in _cd_list),
+                "n_shared_regions": sum(cd.get("n_shared_regions", 0) for cd in _cd_list),
+            }
 
         # ========== RECALCULATE breadth_log_score from aggregated coverage ==========
         # This ensures plasmids don't skew the score.
@@ -565,24 +589,170 @@ def calculate_normalized_groups(
         # can recompute Gini from the full picture instead of averaging.
         agg['covered_regions'] = _combined_regions
 
-        # ========== REAPPLY minhash confidence gate at organism level ==========
+        # ========== MAPQ + CONTIG UTILIZATION PENALTY ON GINI ==========
+        # Problem: an organism with 2000 contigs but reads on only 2 can get
+        # an inflated Gini because the length-based scaling and dispersion
+        # factors in getGiniCoeff over-compensate for large genomes.
+        #
+        # Fix 1 — Contig utilization penalty:
+        #   If only 2/2000 contigs have any reads, coverage is extremely
+        #   concentrated and the Gini score should reflect that.
+        #   penalty = (covered_contigs / total_contigs) ^ contig_penalty_power
+        #   e.g. (2/2000)^0.3 ≈ 0.063 → Gini drops to ~6% of original
+        #        (50/100)^0.3  ≈ 0.81  → mild 19% penalty
+        #        (100/100)     = 1.0    → no penalty
+        #
+        # Fix 2 — MAPQ penalty (same pattern as breadth_log_score):
+        #   gini *= highmapq_fraction ^ mapq_gini_power
+        #   Organisms dominated by low-MAPQ reads get their Gini crushed
+        #   because the coverage is unreliable.
+        _n_total_contigs = len(entries)
+        _n_covered_contigs = sum(
+            1 for _e in entries
+            if _e.get('numreads', 0) > 0 or len(_e.get('covered_regions', [])) > 0
+        )
+        _contig_frac = (
+            _n_covered_contigs / _n_total_contigs
+            if _n_total_contigs > 0 else 1.0
+        )
+
+        # Only apply contig penalty when there are multiple contigs —
+        # single-contig organisms shouldn't be penalized for having 1/1.
+        if _n_total_contigs > 1 and contig_penalty_power > 0:
+            _contig_penalty = _contig_frac ** contig_penalty_power
+        else:
+            _contig_penalty = 1.0
+
+        # MAPQ penalty: same approach as breadth scaling
+        _hmf_gini = float(agg.get('highmapq_fraction', 1.0))
+        _mapq_gini_scale = _hmf_gini ** mapq_gini_power if mapq_gini_power > 0 else 1.0
+
+        # Fix 3 — Depth-concentration penalty:
+        #   Detects the "conserved human reads" pattern: many reads map to a
+        #   tiny region of a large genome → absurdly high depth but negligible
+        #   coverage.  Measures the ratio of actual coverage to expected coverage
+        #   given the read count and genome size.
+        #
+        #   coverage_efficiency = actual_coverage / expected_coverage
+        #   expected_coverage = (numreads * avg_read_length) / genome_length
+        #
+        #   e.g. Toxoplasma: 80K reads, 65Mbp genome, 0.15% actual coverage
+        #        expected ~18%, efficiency = 0.15/18 = 0.008 → penalty^0.3 = 0.22
+        #        Burkholderia: 575 reads, 15Mbp genome, 0.46% actual coverage
+        #        expected ~0.6%, efficiency = 0.46/0.6 = 0.77 → penalty^0.3 = 0.93
+        _depth_conc_penalty = 1.0
+        if depth_concentration_power > 0:
+            _total_numreads = float(agg.get('numreads', 0))
+            _genome_len = float(agg.get('length', 1))
+            _actual_cov = float(agg.get('coverage', 0))
+
+            # Estimate avg read length from entries (weighted by numreads)
+            _rl_num, _rl_den = 0.0, 0.0
+            for _e in entries:
+                _nr = _to_float(_e.get('numreads', 0))
+                _arl = _to_float(_e.get('avg_read_length', default_read_length))
+                if _nr > 0 and _arl > 0:
+                    _rl_num += _arl * _nr
+                    _rl_den += _nr
+            _avg_rl = _rl_num / _rl_den if _rl_den > 0 else float(default_read_length)
+
+            if _total_numreads > 0 and _genome_len > 0:
+                _expected_cov = (_total_numreads * _avg_rl) / _genome_len
+                _expected_cov = min(1.0, _expected_cov)  # cap at 100%
+
+                if _expected_cov > 0:
+                    _cov_efficiency = min(1.0, _actual_cov / _expected_cov)
+                    _depth_conc_penalty = _cov_efficiency ** depth_concentration_power
+                # else: no reads expected → no penalty
+
+        agg['gini_coefficient'] *= _contig_penalty * _mapq_gini_scale * _depth_conc_penalty
+        agg['gini_contig_frac'] = _contig_frac
+        agg['gini_contig_penalty'] = _contig_penalty
+        agg['gini_mapq_scale'] = _mapq_gini_scale
+        agg['gini_depth_conc_penalty'] = _depth_conc_penalty
+        agg['n_contigs_total'] = _n_total_contigs
+        agg['n_contigs_covered'] = _n_covered_contigs
+
+        # ========== COVERAGE-AWARE GATE ON MINHASH ==========
         # Per-contig confidence gating is defeated by weighted averaging:
         # contigs with 0 reads have minhash_reduction=0 but contribute
         # nothing to the average (weight=0), so a few high-coverage contigs
         # dominate.  E.g. Toxoplasma: 82K reads on 3/80 contigs → per-contig
         # weighted avg ≈ 0.99, but organism-level coverage is only 0.15%.
         #
-        # Fix: recompute the confidence gate from the organism-level coverage
-        # and gini (which were just recalculated above from the full genome).
-        _agg_cov = agg.get('coverage', 0)
-        _agg_gini = float(agg.get('gini_coefficient', 0))
-        _agg_cov_conf = breadth_score_sigmoid(_agg_cov)
-        _agg_mh_conf = 0.7 * _agg_cov_conf + 0.3 * _agg_gini
-        _agg_mh_conf = min(1.0, max(0.0, _agg_mh_conf))
-
+        # Fix: apply the depth-concentration penalty to minhash as well.
+        # This detects the "conserved human reads" pattern where many reads
+        # pile onto a tiny region of a large genome, producing high minhash
+        # uniqueness per-contig but negligible genome-wide coverage.
+        #
+        # The penalty reuses _depth_conc_penalty (already computed above for
+        # gini) and the contig utilization fraction.  Together they ensure
+        # that an organism like Toxoplasma (20K reads, 65Mb genome, 0.05%
+        # coverage, efficiency ~0.002) gets its minhash crushed:
+        #   minhash_confidence = depth_conc_penalty * contig_penalty
+        #   e.g. 0.22 * 0.063 ≈ 0.014 → minhash drops from 1.0 to ~0.01
+        #
+        # Well-covered organisms (efficiency ≈ 1.0, full contig utilization)
+        # are unaffected: penalty ≈ 1.0.
         _agg_raw_mh = float(agg.get('minhash_score', agg.get('minhash_reduction', 0)))
-        agg['minhash_reduction'] = _agg_raw_mh * _agg_mh_conf
-        agg['minhash_confidence'] = _agg_mh_conf
+
+        # Combine depth-concentration efficiency with contig utilization
+        # AND a direct breadth sigmoid so that organisms with near-zero
+        # genome coverage (< ~1%) have their minhash crushed regardless
+        # of the depth-concentration heuristic.
+        #
+        # breadth_gate uses a sigmoid centred at 1% coverage — same shape
+        # as breadth_log_score but without the MAPQ scaling so we don't
+        # double-penalise.  At 0.05% coverage → ~0.0;  at 2% → ~1.0.
+        #
+        # The three factors multiply so ALL must be healthy for the gate
+        # to pass:  coverage_efficiency * contig_utilisation * breadth_gate
+        _agg_cov = float(agg.get('coverage', 0))
+        _breadth_gate = breadth_score_sigmoid(_agg_cov, midpoint=0.01, steepness=12_000)
+        _mh_coverage_gate = _depth_conc_penalty * _contig_penalty * _breadth_gate
+
+        # ── Dominant-organism gate floor ─────────────────────────────────
+        # Problem: a true positive that participated in many conflict groups
+        # may have its coverage artificially depressed by the cumulative base
+        # removals, causing _breadth_gate (and therefore _mh_coverage_gate)
+        # to collapse even though the organism clearly owns those reads.
+        #
+        # Fix: when cluster_dominance shows this organism was the dominant
+        # ref in its conflict groups (low cluster_removal_frac + high
+        # mean_conflict_mapq), we raise the gate floor so the dominant
+        # true positive cannot be over-penalized by coverage lost to removal.
+        #
+        # Gate floor formula:
+        #   mapq_norm   = mean_conflict_mapq / 60.0  (0–1, capped at MAPQ 60)
+        #   dom_strength = (1 - removal_frac) * mapq_norm
+        #     → 1.0 when removal_frac=0 AND mapq is high (clear dominant)
+        #     → 0.0 when removal_frac=1  OR mapq=0       (clear loser/noise)
+        #   gate_floor  = dom_strength * MAX_DOMINANT_GATE_FLOOR
+        #   final_gate  = max(_mh_coverage_gate, gate_floor)
+        #
+        # MAX_DOMINANT_GATE_FLOOR = 0.70 means a dominant high-mapQ organism
+        # can never have its minhash gate fall below 0.70, regardless of how
+        # many reads were trimmed.  Losers (high removal_frac) get 0 floor.
+        MAX_DOMINANT_GATE_FLOOR = 0.70
+        _cd = agg.get("cluster_dominance")
+        _gate_floor = 0.0
+        if _cd:
+            _removal_frac = float(_cd.get("cluster_removal_frac", 0.5))
+            _conflict_mapq = float(_cd.get("mean_conflict_mapq", 0.0))
+            _mapq_norm = min(1.0, _conflict_mapq / 60.0)
+            # dom_strength is high only when both conditions hold:
+            # (a) organism lost few reads → it was dominant
+            # (b) mean mapq of those reads is high → alignments are trustworthy
+            _dom_strength = (1.0 - _removal_frac) * _mapq_norm
+            _gate_floor = _dom_strength * MAX_DOMINANT_GATE_FLOOR
+        _mh_coverage_gate = max(_mh_coverage_gate, _gate_floor)
+
+        agg['minhash_reduction'] = _agg_raw_mh * _mh_coverage_gate
+        agg['minhash_confidence'] = _mh_coverage_gate
+        agg['minhash_reduction_pre_gate'] = _agg_raw_mh
+        agg['minhash_coverage_gate'] = _mh_coverage_gate
+        agg['minhash_breadth_gate'] = _breadth_gate
+        agg['minhash_gate_floor'] = _gate_floor
 
         out[gval] = agg
 
@@ -600,11 +770,48 @@ def calculate_normalized_groups(
 
     _rpm_norm_floor = 0.3  # minimum scaling factor for lowest-RPM member
 
-    # 1) Bucket the output entries by their parent group
-    parent_buckets: Dict[str, List[str]] = {}
+    # 1) Bucket the output entries by their parent group.
+    # conflict_cluster_id (set upstream from shared_windows_report.csv) takes
+    # priority over toplevelkey so that cross-genus high-ANI groups (e.g.
+    # E. coli + Shigella) compete in the same winner/loser bucket instead of
+    # being scored as independent solo organisms in their own genus buckets.
+    #
+    # ── Giant-cluster guard ───────────────────────────────────────────
+    # The union-find that builds conflict clusters is transitive: if
+    # contig A shares windows with B, and B shares with C, all three
+    # land in one cluster.  In complex stool samples a single "bridge"
+    # contig can transitively link 1000+ organisms into one mega-cluster.
+    # Winner/loser logic breaks down completely in such clusters because
+    # every organism's RPM share ≈ 0 and all hit the loser floor.
+    #
+    # Fix: when a conflict_cluster has more than _MAX_CLUSTER_BUCKET
+    # members, fall back to toplevelkey sub-groups within the cluster.
+    # This preserves correct genus-level competition (9 E. coli strains
+    # compete, O104:H4 wins) while avoiding the 1388-member pathology.
+    # Organisms still carry their conflict_cluster_id for the
+    # cluster_region_penalty logic downstream.
+    _MAX_CLUSTER_BUCKET = 50
+
+    _raw_buckets: Dict[str, List[str]] = {}
     for gval, agg in out.items():
-        parent = agg.get("toplevelkey") or gval
-        parent_buckets.setdefault(str(parent), []).append(gval)
+        parent = agg.get("conflict_cluster_id") or agg.get("toplevelkey") or gval
+        _raw_buckets.setdefault(str(parent), []).append(gval)
+
+    parent_buckets: Dict[str, List[str]] = {}
+    for parent, members in _raw_buckets.items():
+        if len(members) <= _MAX_CLUSTER_BUCKET:
+            parent_buckets[parent] = members
+        else:
+            # Split oversized cluster into toplevelkey sub-groups.
+            # Each sub-group competes internally; the conflict metadata
+            # (cluster_dominance, cluster_region_penalty) is still applied.
+            _sub: Dict[str, List[str]] = {}
+            for gval in members:
+                _tlk = out[gval].get("toplevelkey") or gval
+                _sub.setdefault(str(_tlk), []).append(gval)
+            for _tlk, _sub_members in _sub.items():
+                _sub_key = f"{parent}__tlk_{_tlk}"
+                parent_buckets[_sub_key] = _sub_members
 
     # 2) For each parent group, compute RPM shares and adjust minhash_reduction
     _solo_boost_strength = 0.9  # max boost toward 1.0 for a solo organism
@@ -674,13 +881,212 @@ def calculate_normalized_groups(
         if total_rpm <= 0:
             continue
 
+        # Identify the dominant member (highest RPM in the group)
+        sorted_rpms = sorted(rpms, key=lambda x: x[1], reverse=True)
+        top_mk = sorted_rpms[0][0]
+
         for mk, r in rpms:
             rpm_share = r / total_rpm
-            # Scale: floor at _rpm_norm_floor, ceiling at 1.0
-            scale = _rpm_norm_floor + (1.0 - _rpm_norm_floor) * rpm_share
+            _mh_conf = _to_float(out[mk].get("minhash_confidence", 1.0))
             raw_minhash = _to_float(out[mk].get("minhash_reduction", 0))
             out[mk]["minhash_reduction_raw"] = raw_minhash
-            out[mk]["minhash_reduction"] = raw_minhash * scale
+
+            if mk == top_mk:
+                # ----------------------------------------------------------
+                # DOMINANT MEMBER: boost minhash toward the coverage-gate
+                # ceiling.  Uses a lead-margin formula so a clear winner
+                # (large gap over runner-up) gets a stronger boost than a
+                # near-tie winner, which prevents over-boosting ambiguous
+                # cases while decisively rewarding the true organism in
+                # high-ANI conflict groups (e.g. E. coli vs Shigella).
+                #
+                # dominance = rpm_share + 0.5 * lead_margin
+                #   lead_margin = rpm_share - runner_up_share
+                #   Capped at 1.0 so boost never exceeds gap.
+                #
+                # Example (clear winner): O104:H4 rpm_share=0.60, runner-up=0.15
+                #   lead_margin=0.45, dominance=min(1,0.60+0.225)=0.825
+                #   gap=0.05 → boost=0.041 → final=0.941  (was 0.930)
+                #
+                # Example (near-tie): A rpm_share=0.34, runner-up=0.33
+                #   lead_margin=0.01, dominance=0.345  (barely above rpm_share)
+                #   Avoids over-boosting ambiguous competition.
+                # ----------------------------------------------------------
+                _runner_up_share = sorted_rpms[1][1] / total_rpm if len(sorted_rpms) > 1 else 0.0
+                _lead_margin = rpm_share - _runner_up_share
+                # Stronger lead-margin weight (0.75 vs 0.5): a clear winner
+                # now gets a decisively larger boost than a near-tie winner.
+                dominance = min(1.0, rpm_share + _lead_margin * 0.75)
+                gap = max(0.0, _mh_conf - raw_minhash)
+                boost = gap * dominance
+                adjusted = min(_mh_conf, raw_minhash + boost)
+                scale = (adjusted / raw_minhash) if raw_minhash > 0 else 1.0
+                out[mk]["winner_dominance"] = dominance
+                out[mk]["winner_lead_margin"] = _lead_margin
+            else:
+                # ----------------------------------------------------------
+                # LOSER: apply a moderate penalty that preserves real signal.
+                #
+                # The previous formula multiplied two sub-1 factors together
+                # (base_scale * cov_scale), which compounded to crush minhash
+                # to ~10% of its original value even for organisms with
+                # meaningful read evidence — too aggressive when the loser is
+                # a genuine but less-abundant organism.
+                #
+                # New approach: weighted average of the two factors so neither
+                # dominates, plus higher floors so even a true loser keeps a
+                # reasonable fraction of its minhash signal.
+                #
+                # Base (RPM-share factor):
+                #   base_scale = floor + (1 - floor) * rpm_share
+                #   floor = 0.20  →  minimum retained even at rpm_share ≈ 0
+                #
+                # Coverage-ratio modifier:
+                #   cov_scale  = cov_floor + (1 - cov_floor) * cov_ratio
+                #   cov_floor  = 0.35  →  even 0% relative coverage → 35%
+                #
+                # Combined:
+                #   scale = 0.65 * base_scale + 0.35 * cov_scale
+                #   Hard minimum: max(0.20, scale) so no loser is ever
+                #   reduced below 20% of its raw minhash.
+                #
+                # Example (Shigella): rpm_share=0.21, cov_ratio=0.40
+                #   base_scale = 0.20 + 0.80*0.21 = 0.368
+                #   cov_scale  = 0.35 + 0.65*0.40 = 0.610
+                #   scale      = 0.65*0.368 + 0.35*0.610 = 0.453
+                #   (prev multiplicative formula gave 0.115 — 4× harsher)
+                # ----------------------------------------------------------
+                _loser_floor = 0.20
+                base_scale = _loser_floor + (1.0 - _loser_floor) * rpm_share
+
+                _top_cov = _to_float(out[top_mk].get("coverage", 0))
+                _my_cov  = _to_float(out[mk].get("coverage", 0))
+                if _top_cov > 0:
+                    _cov_ratio = min(1.0, _my_cov / _top_cov)
+                else:
+                    _cov_ratio = 1.0
+                _cov_floor = 0.35
+                _cov_scale = _cov_floor + (1.0 - _cov_floor) * _cov_ratio
+
+                # Weighted blend instead of product to avoid double-crushing
+                scale = 0.65 * base_scale + 0.35 * _cov_scale
+
+                # ── Group-size penalty ────────────────────────────────────
+                # In a 2-member group a "loser" might be a genuine co-
+                # detection.  In a 13-member group (e.g. 9 E. coli strains
+                # + 4 Shigella) almost every loser is cross-mapping noise
+                # from the dominant organism.  Scale the penalty inversely
+                # with group size to reflect this.
+                #
+                # Formula: group_penalty = 1 / (1 + 0.3 * (n - 2))
+                #   2 members: 1.0  (no extra penalty)
+                #   3 members: 0.77
+                #   5 members: 0.53
+                #  10 members: 0.29 → floored at 0.35
+                #  13 members: 0.23 → floored at 0.35
+                _n_members = len(member_keys)
+                _group_penalty = 1.0
+                if _n_members > 2:
+                    _group_penalty = max(0.35, 1.0 / (1.0 + 0.3 * (_n_members - 2)))
+                    scale *= _group_penalty
+                out[mk]["group_size_penalty"] = _group_penalty
+                out[mk]["n_group_members"] = _n_members
+
+                # ── Cluster-region penalty (shared-region amplifier) ──────
+                # When cluster_dominance metadata is available for this
+                # loser, organisms that share many regions with many
+                # partners get an extra minhash penalty.  The dominant
+                # organism (winner) is unaffected — only losers.
+                #
+                # cluster_removal_frac: fraction of this ref's conflict-
+                #   region reads that were removed (0 = dominant, ~1 = minor)
+                # n_cluster_partners: how many other accessions share
+                #   regions with this one (more partners = more doubt)
+                #
+                # penalty: linearly scales from 1.0 (no extra penalty) down
+                #   to _cluster_min (e.g. 0.50) based on removal fraction
+                #   and partner count.
+                #
+                # Example: E. coli O104:H4 (winner, removal_frac=0.07) -
+                #   no cluster penalty applied (handled in winner branch).
+                #   Shigella (loser, removal_frac=0.85, 8 partners):
+                #     _partner_factor = min(1, 8/5) = 1.0
+                #     _raw_cluster_pen = 0.85 * 1.0 = 0.85
+                #     cluster_penalty = 1.0 - 0.50 * 0.85 = 0.575
+                #     scale *= 0.575 → stronger penalty
+                _cluster_penalty = 1.0
+                _cd = out[mk].get("cluster_dominance")
+                if _cd:
+                    _avg_removal_frac = _cd.get("cluster_removal_frac", 0)
+                    _max_partners = _cd.get("n_cluster_partners", 0)
+                    # More partners = more doubt.  Ramps from 0→1 over 1..5 partners.
+                    _partner_factor = min(1.0, _max_partners / 5.0) if _max_partners > 0 else 0.0
+                    _cluster_strength = 0.50  # max additional penalty
+                    _raw_cluster_pen = _avg_removal_frac * _partner_factor
+                    _cluster_penalty = 1.0 - _cluster_strength * _raw_cluster_pen
+                    _cluster_penalty = max(0.30, _cluster_penalty)  # hard floor
+
+                scale *= _cluster_penalty
+                out[mk]["cluster_region_penalty"] = _cluster_penalty
+
+                # ── Near-parity protection ────────────────────────────────
+                # When the loser's RPM share is a large fraction of the
+                # winner's, it is likely a genuine co-detected organism
+                # (e.g. Shigella flexneri with 5143 reads vs E. coli with
+                # 6564 reads → parity_ratio ≈ 0.78).  Penalising it to
+                # ~0.53 minhash when it has 26% coverage and 5k reads is
+                # incorrect.  Blend the scale toward a gentler floor as
+                # the loser approaches parity with the winner.
+                #
+                # parity_ratio = loser_rpm_share / winner_rpm_share
+                #   0.40 → no protection (clear false positive)
+                #   0.80 → ~full protection (near-tie, likely both real)
+                #
+                # protected_floor = 0.80: loser retains ≥ 80% of its
+                # minhash when parity_protection reaches 1.0.
+                #
+                # ── Coverage guard ────────────────────────────────────────
+                # Near-parity protection is only meaningful when the loser
+                # has real genome coverage.  A reference with 7% coverage
+                # is likely a cross-mapping false positive whose reads pile
+                # onto conserved regions, NOT a genuinely present organism.
+                # Scale the protection by how much breadth the loser has:
+                #   ≤ 10% coverage → 0 protection (suppress false positives)
+                #   ≥ 25% coverage → full protection (trust genuine co-detections)
+                #
+                # Example (O104:H4 vs Shigella case):
+                #   Shigella dysenteriae, coverage=7%, parity_ratio=0.46:
+                #     _cov_guard = max(0,(0.07-0.10)/0.15) = 0 → no protection
+                #     scale remains at loser formula value (~0.39) — correct.
+                #   Shigella flexneri, coverage=26%, parity_ratio=0.78:
+                #     _cov_guard = min(1,(0.26-0.10)/0.15) = 1.0 → full
+                #     protection preserved — also correct (genuine co-detection).
+                _winner_rpm_share = sorted_rpms[0][1] / total_rpm
+                _parity_ratio = rpm_share / max(_winner_rpm_share, 1e-9)
+                # Linear ramp: 0 at parity_ratio=0.40, 1 at parity_ratio=0.80
+                _parity_protection = min(1.0, max(0.0,
+                    (_parity_ratio - 0.40) / 0.40))
+                # Coverage guard: scales protection down for low-breadth losers
+                _loser_cov = _to_float(out[mk].get("coverage", 0))
+                _cov_guard = min(1.0, max(0.0, (_loser_cov - 0.10) / 0.15))
+                _parity_protection *= _cov_guard
+
+                # Dampen parity protection for large groups: in a 13-member
+                # cluster, near-parity with the winner doesn't signal genuine
+                # co-detection — it just means many genomes share reads.
+                #   2 members: 1.0  (full parity protection)
+                #   5 members: 0.40
+                #  10 members: 0.20
+                #  13 members: 0.15 → floored at 0.10
+                if _n_members > 2:
+                    _parity_protection *= max(0.10, 2.0 / _n_members)
+                _protected_floor = 0.80
+                scale = scale + _parity_protection * max(0.0, _protected_floor - scale)
+
+                scale = max(0.20, scale)  # hard floor: never below 20%
+                adjusted = raw_minhash * scale
+
+            out[mk]["minhash_reduction"] = adjusted
             out[mk]["rpm_share_in_group"] = rpm_share
             out[mk]["rpm_norm_scale"] = scale
 
@@ -775,6 +1181,10 @@ def compute_scores_per(
     fallback_top = "Unknown",
     total_reads = 0,
     mapq_breadth_power = 2.0,
+    breadth_midpoint = 0.01,
+    breadth_steepness = 12_000,
+    abundance_rpm_midpoint = 5.0,
+    abundance_rpm_steepness = 2.0,
 ):
     data['_mapq_breadth_power'] = mapq_breadth_power
     if len(data.get('covered_regions', [])) > 0:
@@ -841,23 +1251,59 @@ def compute_scores_per(
     hmf = float(data.get('highmapq_fraction', 1.0))
     _mbp = float(data.get('_mapq_breadth_power', 2.0))
     mapq_scale = hmf ** _mbp  # e.g. 0.1^2 = 0.01 → breadth almost zeroed
-    data['breadth_log_score'] = breadth_score_sigmoid(coverage) * mapq_scale
+    data['breadth_log_score'] = breadth_score_sigmoid(
+        coverage, midpoint=breadth_midpoint, steepness=breadth_steepness
+    ) * mapq_scale
     data['highmapq_fraction'] = hmf
+
+    # ── Low-abundance confidence (sterile-site boost) ────────────────────
+    # Uses log-RPM sigmoid to score organisms that are meaningful even at
+    # low read counts.  Stored as a feature; actual weighting happens in
+    # compute_tass_score / compute_tass_score_from_metrics.
+    data['abundance_confidence'] = low_abundance_confidence(
+        numreads=data.get('numreads', 0),
+        total_reads=total_reads,
+        genome_length_bp=data.get('length', 1),
+        rpm_midpoint=abundance_rpm_midpoint,
+        rpm_steepness=abundance_rpm_steepness,
+    )
     if not comparison_df.empty:
         # Look up by subkey (species) — comparison_df is now aggregated to
         # the subkey level so all accessions in the same species share one
         # composite minhash signal.
         lookup_key = str(data.get('subkey', data.get('accession', ''))).strip()
         if lookup_key in comparison_df.index:
-            c1 = float(comparison_df.loc[lookup_key, col_stat])
-            d_all = float(comparison_df.loc[lookup_key, col_stat2])
+            c1 = float(comparison_df.loc[lookup_key, col_stat])       # Δ^-1 Breadth
+            d_all = float(comparison_df.loc[lookup_key, col_stat2])   # Δ All%
 
-            k_sig = 0.90
-            x0 = -10.0
-            pen = 1.0 / (1.0 + math.exp(-k_sig * (d_all - x0)))
+            # ── Read-retention rate ──────────────────────────────────
+            # In high-ANI conflict groups (E. coli / Shigella) ALL
+            # organisms lose similar breadth proportions, so Δ^-1 Breadth
+            # alone produces ~identical minhash_score (e.g. 0.12 for
+            # every member).  Read retention (fraction of reads surviving
+            # conflict removal) differentiates much better: the dominant
+            # TP keeps most reads while FPs lose many.
+            #
+            # Example with 13-member E. coli + Shigella group:
+            #   O104:H4 (TP):  retention=0.85, c1=0.12  → 0.63
+            #   Shigella (FP): retention=0.30, c1=0.12  → 0.25
+            _total_r = 0.0
+            _pass_r  = 0.0
+            if 'Total Reads' in comparison_df.columns:
+                _total_r = float(comparison_df.loc[lookup_key, 'Total Reads'])
+            if 'Pass Filtered Reads' in comparison_df.columns:
+                _pass_r = float(comparison_df.loc[lookup_key, 'Pass Filtered Reads'])
+            else:
+                _pass_r = _total_r
 
-            comparison_value = min(1.0, c1 * pen)
+            _read_retention = _pass_r / _total_r if _total_r > 0 else 0.0
+
+            # Blend breadth-retention (still informative for solo organisms)
+            # with read-retention (key differentiator in conflict groups).
+            comparison_value = min(1.0, 0.30 * c1 + 0.70 * _read_retention)
             data['minhash_score'] = comparison_value
+            data['minhash_read_retention'] = _read_retention
+            data['minhash_breadth_ratio'] = c1
         else:
             data['minhash_score'] = rpm_weight * 0.5  # default to a moderate score if no comparison available
     # ── Confidence-gated minhash_reduction ─────────────────────────────
@@ -881,16 +1327,80 @@ def compute_scores_per(
     # double-penalizing through mapq_scale, which is already captured in
     # the breadth_log_score component of TASS.
     raw_minhash = data.get('minhash_score', 1)
-    # cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
-    # gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
-
-    # _mcg_breadth_w = 0.7   # how much coverage evidence matters
-    # _mcg_gini_w    = 0.3   # how much distribution uniformity matters
-    # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
-    # minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
-
     # data['minhash_reduction'] = minhash_confidence * raw_minhash
-    minhash_confidence = min(1.0, max(0.0, raw_minhash))
+    # minhash_confidence = min(1.0, max(0.0, raw_minhash))
+
+    cov_conf = breadth_score_sigmoid(coverage)          # 0→1 based on coverage %
+    gini_val = float(data.get('gini_coefficient', 0))   # 0→1 uniformity
+    _mcg_breadth_w = 1   # how much coverage evidence matters
+    _mcg_gini_w    = 0.0   # how much distribution uniformity matters
+    minhash_confidence = (_mcg_breadth_w * cov_conf) + (_mcg_gini_w * gini_val)
+    minhash_confidence = min(1.0, max(0.0, minhash_confidence))  # sanity clamp
+
+    # ── MapQ-based confidence floor ──────────────────────────────────────
+    # When per-contig coverage is low due to read removal (not low abundance),
+    # a high mean mapQ is a strong signal that the organism is real.
+    # We apply a floor to minhash_confidence that scales with mapQ quality
+    # and the organism's cluster dominance signal.
+    #
+    # mapq_norm  = meanmapq / 60.0  (normalised, capped at MAPQ 60)
+    # cluster dominance (low removal_frac + high conflict mapq) from
+    # cluster_dominance metadata, propagated from conflict_regions.py.
+    #
+    # mapq_floor = mapq_norm * MAPQ_FLOOR_STRENGTH
+    #   MAPQ 60 → floor = 0.30  (confidence can't drop below 30%)
+    #   MAPQ 30 → floor = 0.15
+    #   MAPQ  0 → floor = 0.0   (no floor for unmapped / low-quality reads)
+    #
+    # Additionally, if cluster_dominance marks this contig as belonging to
+    # a dominant organism (low removal_frac), scale the floor up further
+    # (up to 2×) so truly dominant high-mapQ hits get strong protection.
+    MAPQ_FLOOR_STRENGTH = 0.30
+    _mapq = float(data.get('meanmapq', 0))
+    _mapq_norm = min(1.0, _mapq / 60.0)
+    _mapq_floor = _mapq_norm * MAPQ_FLOOR_STRENGTH
+
+    # Boost the floor for dominant conflict-cluster members
+    _cd = data.get('cluster_dominance')
+    if _cd:
+        _removal_frac = float(_cd.get('cluster_removal_frac', 0.5))
+        _conflict_mapq = float(_cd.get('mean_conflict_mapq', 0.0))
+        _conflict_mapq_norm = min(1.0, _conflict_mapq / 60.0)
+        _dom_strength = (1.0 - _removal_frac) * _conflict_mapq_norm
+        # Scale floor up to 2× for clear dominant (dom_strength=1)
+        _mapq_floor = min(1.0, _mapq_floor * (1.0 + _dom_strength))
+
+    minhash_confidence = max(minhash_confidence, _mapq_floor)
+
+    # ── Low-read penalty ────────────────────────────────────────────────
+    # Organisms with very few reads are more likely to be false positives.
+    # Scale minhash_confidence by a read-count factor so that low-read
+    # organisms get a harder reduction.  rpm_weight (sigmoid on
+    # read_fraction) is already computed above; we blend it in with a
+    # floor so we never completely zero out an organism that has decent
+    # coverage but happens to have few absolute reads.
+    #
+    # _read_penalty_w controls strength: 0.0 = no penalty, 1.0 = full
+    # penalty (minhash_confidence *= rpm_weight).  0.35 gives a moderate
+    # dampening: an organism at rpm_weight=0.1 sees confidence scaled by
+    # 0.65 + 0.35*0.1 = 0.685 (≈30% reduction).
+    #
+    # Coverage bypass: when cov_conf is high (organism has solid breadth),
+    # the low-read penalty is faded out proportionally.  This prevents
+    # a dominant high-coverage organism in a conflict group from being
+    # pulled down by the global read-fraction sigmoid.
+    #   cov_conf=0.95 → penalty_w fades to 0.35*(1-0.95)=0.017 (nearly off)
+    #   cov_conf=0.10 → penalty_w stays at 0.35*(1-0.10)=0.315 (nearly full)
+    #
+    # MapQ bypass: additionally fade penalty when mapQ is high.  A high-mapQ
+    # hit with few reads (e.g. rare pathogen in sterile site) should not be
+    # penalised as harshly as a low-mapQ scatter hit.
+    #   mapq_norm=1.0 → effective cov bypass adds 0.20 extra fade
+    _effective_cov_bypass = cov_conf + 0.20 * _mapq_norm
+    _effective_cov_bypass = min(1.0, _effective_cov_bypass)
+    _read_penalty_w = 0.35 * (1.0 - _effective_cov_bypass)
+    minhash_confidence *= (1.0 - _read_penalty_w) + (_read_penalty_w * rpm_weight)
+
     data['minhash_reduction'] = minhash_confidence
     data['minhash_confidence'] = minhash_confidence  # store for debugging/reporting
 
@@ -907,12 +1417,73 @@ def rpm_confidence_weight(read_fraction, k=50_000, midpoint=0.0001):
 
 
 def breadth_score_sigmoid(coverage, midpoint=0.01, steepness=12_000):
+        """Sigmoid mapping of genome coverage fraction → [0, 1].
+
+        Parameters
+        ----------
+        coverage : float
+            Fraction of the genome covered (0–1).
+        midpoint : float
+            Coverage fraction at which the sigmoid returns 0.5.
+            Lower values make the curve sensitive to very low coverage
+            (useful for sterile/blood sites).  Default 0.01 (1%).
+        steepness : float
+            Controls how sharply the sigmoid transitions.  When lowering
+            *midpoint*, increase *steepness* proportionally to keep the
+            curve tight (e.g. midpoint=0.001 → steepness≈120 000).
+        """
         x = steepness * (coverage - midpoint)
         if x >= 50:
             return 1.0
         if x <= -50:
             return 0.0
         return 1.0 / (1.0 + math.exp(-x))
+
+def low_abundance_confidence(numreads, total_reads, genome_length_bp,
+                              rpm_midpoint=5.0, rpm_steepness=2.0):
+    """Score that rewards organisms whose RPM is meaningful given sequencing
+    depth, even when absolute read counts are very low.
+
+    Operates in **log₁₀-RPM** space so the sigmoid is not crushed by the
+    huge dynamic range of metagenomic read counts.
+
+    Parameters
+    ----------
+    numreads : int
+        Reads mapped to this organism.
+    total_reads : int
+        Total reads in the sample (denominator for RPM).
+    genome_length_bp : int
+        Reference genome length in base-pairs (used for optional RPKM
+        awareness — currently kept simple with RPM only).
+    rpm_midpoint : float
+        RPM at which the sigmoid returns 0.5.  For sterile/blood sites
+        where even 5 RPM is significant, use 1.0–5.0.  For high-biomass
+        sites (gut, skin) where 50+ RPM is expected, use 50–200.
+    rpm_steepness : float
+        Steepness of the log₁₀-RPM sigmoid.  Default 2.0 gives a gentle
+        curve that reaches ~0.95 about one order of magnitude above
+        *rpm_midpoint*.
+
+    Returns
+    -------
+    float in [0, 1]
+    """
+    if total_reads <= 0 or numreads <= 0:
+        return 0.0
+
+    rpm = (numreads / total_reads) * 1e6
+    # Work in log-space so the sigmoid is not crushed by tiny fractions.
+    # log10(5) ≈ 0.70,  log10(50) ≈ 1.70
+    log_rpm = math.log10(max(rpm, 1e-3))
+    log_mid = math.log10(max(rpm_midpoint, 1e-3))
+
+    x = rpm_steepness * (log_rpm - log_mid)
+    if x >= 50:
+        return 1.0
+    if x <= -50:
+        return 0.0
+    return 1.0 / (1.0 + math.exp(-x))
 def calculate_mmbert_prob(
     mmbert_dict = {},
     taxid = None
@@ -1100,7 +1671,11 @@ def calculate_siblings_score (
 
 def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
                                     disparity_w=0.0, hmp_w=0.0, alpha=1.0,
-                                    plasmid_bonus_w=0.0):
+                                    plasmid_bonus_w=0.0,
+                                    abundance_confidence_w=0.0,
+                                    abundance_gate=False,
+                                    score_power=1.0,
+                                    tass_mode="additive"):
 
     b = metrics_df["breadth_log_score"].to_numpy(float)
     m = metrics_df["minhash_reduction"].to_numpy(float)
@@ -1108,6 +1683,73 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
     d = metrics_df["disparity_score"].to_numpy(float) if "disparity_score" in metrics_df else 0.0
     h = metrics_df["hmp_percentile"].to_numpy(float) if "hmp_percentile" in metrics_df else 0.0
 
+    if tass_mode == "penalized":
+        # ── PENALIZED MODE ────────────────────────────────────────────────
+        # Baseline 0.5; core metrics push score up (good signal) or down
+        # (poor signal).  Each metric in [0,1] contributes:
+        #   weight * (metric - 0.5)  →  range [-0.5*w, +0.5*w]
+        # The weighted sum of deviations is scaled by alpha and added to 0.5.
+        # This means an organism with ALL metrics at 0 gets penalized hard
+        # (score ≈ 0.0) and one with ALL metrics at 1 gets score ≈ 1.0.
+        # An organism with no signal (all zeros) scores:
+        #   0.5 + alpha * sum(w_i * (0 - 0.5)) = 0.5 - 0.5*alpha ≈ 0.0
+
+        core_signal = (breadth_w * (b - 0.5)
+                       + minhash_w * (m - 0.5)
+                       + gini_w * (g - 0.5)
+                       + disparity_w * (d - 0.5)
+                       + hmp_w * (h - 0.5))
+        core_signal = alpha * core_signal
+
+        # Raw core score (before bonuses): centered at 0.5
+        score = 0.5 + core_signal
+
+        # ── Abundance confidence: multiplicative scaler on deviation ──────
+        # Instead of adding a free bonus, AC scales how far the score can
+        # deviate from 0.5.  High AC (≈1) → full deviation preserved.
+        # Low AC (≈0) → score collapses back toward 0.5.
+        # This prevents organisms with bad core metrics from being inflated
+        # by high abundance confidence.  An organism with core=0.046 gets:
+        #   deviation = 0.046 - 0.5 = -0.454  (penalized)
+        #   with AC=0.84: deviation stays -0.454 (already penalized, AC keeps it)
+        # vs additive mode: 0.046 + 0.3*0.84 = 0.298 (inflated!)
+        if abundance_confidence_w > 0 and "abundance_confidence" in metrics_df.columns:
+            ac = metrics_df["abundance_confidence"].to_numpy(float)
+            # Scale the deviation by a blend of 1.0 and AC, controlled by weight.
+            # When abundance_confidence_w=0: deviation unchanged (blend=1.0)
+            # When abundance_confidence_w=1: deviation fully scaled by AC
+            # ac_scaler in [0, 1] range
+            ac_scaler = (1.0 - abundance_confidence_w) + abundance_confidence_w * ac
+            deviation = score - 0.5
+            score = 0.5 + deviation * ac_scaler
+
+        # ── Plasmid bonus: gated by core metric quality ───────────────────
+        # Only grant plasmid bonus if the organism has meaningful core signal.
+        # "Meaningful" = core weighted score (before centering) > 0.15.
+        # This prevents FP organisms with gini=0.04, minhash=0.004 from
+        # getting free plasmid boost.
+        if plasmid_bonus_w > 0 and "plasmid_score" in metrics_df.columns:
+            ps = metrics_df["plasmid_score"].to_numpy(float)
+            # Core quality = raw weighted sum (same as additive mode score)
+            core_quality = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
+            core_quality = alpha * core_quality
+            # Gate: only apply bonus where core quality > 0.15
+            plasmid_gate = np.where(core_quality > 0.15, 1.0, core_quality / 0.15)
+            score = score + plasmid_bonus_w * ps * plasmid_gate
+
+        # ── Multiplicative abundance gate (optional, same as additive) ────
+        if abundance_gate and "abundance_confidence" in metrics_df.columns:
+            gate = metrics_df["abundance_confidence"].to_numpy(float)
+            # In penalized mode, gate dampens deviation from 0.5
+            deviation = score - 0.5
+            score = 0.5 + deviation * gate
+
+        # No score_power in penalized mode — the baseline-centered approach
+        # naturally produces a well-distributed range.
+
+        return np.clip(score, 0.0, 1.0)
+
+    # ── ADDITIVE MODE (original behavior) ─────────────────────────────────
     score = breadth_w * b + minhash_w * m + gini_w * g + disparity_w * d + hmp_w * h
     score = alpha * score
 
@@ -1115,6 +1757,42 @@ def compute_tass_score_from_metrics(metrics_df, breadth_w, minhash_w, gini_w,
     if plasmid_bonus_w > 0 and "plasmid_score" in metrics_df.columns:
         ps = metrics_df["plasmid_score"].to_numpy(float)
         score = score + plasmid_bonus_w * ps
+
+    # Abundance confidence bonus: additive, outside normalized weights.
+    # Boosts organisms whose RPM is meaningful even at low absolute read
+    # counts (particularly useful for sterile/blood sites).
+    if abundance_confidence_w > 0 and "abundance_confidence" in metrics_df.columns:
+        ac = metrics_df["abundance_confidence"].to_numpy(float)
+        score = score + abundance_confidence_w * ac
+
+    # ── Multiplicative abundance gate ─────────────────────────────────────
+    # When enabled, multiply the entire score by the abundance_confidence
+    # sigmoid (0→1).  Crushes noise organisms with trivially low RPM while
+    # leaving real detections untouched.
+    if abundance_gate and "abundance_confidence" in metrics_df.columns:
+        gate = metrics_df["abundance_confidence"].to_numpy(float)
+        score = score * gate
+
+    # ── Power transform (score recalibration) ─────────────────────────────
+    # When score_power < 1, compresses high scores and lifts low scores:
+    #   score_power=0.5 → 0.09 becomes 0.30,  0.95 stays 0.97
+    #   score_power=0.3 → 0.09 becomes 0.52,  0.95 stays 0.98
+    # Preserves monotonic ordering so thresholds still separate TP/FP.
+    # score_power=1.0 (default) is a no-op.
+    #
+    # score_power_scale (per-organism, 0→1) modulates the strength of the
+    # transform.  Dominant organisms in their ANI/toplevelkey group get the
+    # full boost; minor siblings sharing reads with many close relatives
+    # get almost none.
+    #   effective_power = 1.0 - (1.0 - score_power) * score_power_scale
+    if score_power != 1.0 and score_power > 0:
+        score = np.clip(score, 0.0, 1.0)
+        if "score_power_scale" in metrics_df.columns:
+            sp_scale = metrics_df["score_power_scale"].to_numpy(float)
+            effective_power = 1.0 - (1.0 - score_power) * sp_scale
+            score = np.power(score, effective_power)
+        else:
+            score = np.power(score, score_power)
 
     return np.clip(score, 0.0, 1.0)
 
@@ -1129,11 +1807,79 @@ def compute_tass_score(data = {}, weights={}):
     }
     We apply the known formula for TASS Score using the provided weights.
     """
-    # normalize score of count to 0-1, min max range is 3, if larger than 3 set to 3 first
-    # convert z score to percentile
+    _tass_mode = weights.get('tass_mode', 'additive')
 
-    # Summation of each sub-score * weight
+    if _tass_mode == 'penalized':
+        # ── PENALIZED MODE ────────────────────────────────────────────────
+        # Baseline 0.5; core metrics push score up or down.
+        # Metric contribution: weight * (metric - 0.5)
 
+        _bw = float(weights.get('breadth_weight', 0))
+        _mw = float(weights.get('minhash_weight', 0))
+        _gw = float(weights.get('gini_weight', 0))
+        _dw = float(weights.get('disparity_weight', 0))
+        _hw = float(weights.get('hmp_weight', 0))
+
+        _b = float(data.get('breadth_log_score', 0))
+        _m = float(data.get('minhash_reduction', 0))
+        _g = float(data.get('gini_coefficient', 0))
+        _d = float(data.get('disparity', 0))
+        _h = float(data.get('hmp_percentile', 0))
+
+        core_signal = (_bw * (_b - 0.5)
+                       + _mw * (_m - 0.5)
+                       + _gw * (_g - 0.5)
+                       + _dw * (_d - 0.5)
+                       + _hw * (_h - 0.5))
+
+        # Also include minor metrics if they have weights
+        _mapq_w = float(weights.get('mapq_score', 0))
+        _mapq = float(data.get('mapq_score', 0))
+        if _mapq_w > 0:
+            core_signal += _mapq_w * (_mapq - 0.5)
+
+        _k2w = float(weights.get('k2_disparity_score_weight', 0))
+        _k2 = float(data.get('k2_disparity_score', 0))
+        if _k2w > 0:
+            core_signal += _k2w * (_k2 - 0.5)
+
+        _diw = float(weights.get('diamond_identity', 0))
+        _di = float(data.get('diamond', {}).get('identity', 0))
+        if _diw > 0:
+            core_signal += _diw * (_di - 0.5)
+
+        tass_score = 0.5 + core_signal
+
+        # ── Abundance confidence: multiplicative scaler on deviation ──────
+        _acw = float(weights.get('abundance_confidence_weight', 0))
+        _ac = float(data.get('abundance_confidence', 0))
+        if _acw > 0:
+            ac_scaler = (1.0 - _acw) + _acw * _ac
+            deviation = tass_score - 0.5
+            tass_score = 0.5 + deviation * ac_scaler
+
+        # ── Plasmid bonus: gated by core quality ─────────────────────────
+        _plasmid_score = float(data.get('plasmid_score', 0))
+        _plasmid_bonus_w = float(weights.get('plasmid_bonus_weight', 0))
+        if _plasmid_score > 0 and _plasmid_bonus_w > 0:
+            # Raw core quality = weighted sum without centering
+            core_quality = (_bw * _b + _mw * _m + _gw * _g
+                            + _dw * _d + _hw * _h)
+            # Gate: ramp from 0 at core_quality=0 to 1 at core_quality=0.15
+            plasmid_gate = min(1.0, core_quality / 0.15) if core_quality < 0.15 else 1.0
+            tass_score += _plasmid_score * _plasmid_bonus_w * plasmid_gate
+
+        # ── Multiplicative abundance gate (optional) ──────────────────────
+        if weights.get('abundance_gate', False):
+            gate = float(data.get('abundance_confidence', 0.0))
+            deviation = tass_score - 0.5
+            tass_score = 0.5 + deviation * gate
+
+        # No score_power in penalized mode
+
+        return min(1.0, max(0.0, tass_score))
+
+    # ── ADDITIVE MODE (original behavior) ─────────────────────────────────
     tass_score = sum([
         apply_weight(data.get('disparity', 0), weights.get('disparity_weight', 0)),
         apply_weight(data.get('minhash_reduction', 0),       weights.get('minhash_weight', 0)),
@@ -1143,16 +1889,39 @@ def compute_tass_score(data = {}, weights={}):
         apply_weight(data.get('mapq_score', 0),       weights.get('mapq_score', 0)),
         apply_weight(data.get('k2_disparity_score', 0),         weights.get('k2_disparity_score_weight', 0)),
         apply_weight(data.get('diamond', {}).get('identity', 0),
-                     weights.get('diamond_identity', 0))  ])
+                     weights.get('diamond_identity', 0)),
+        # Low-abundance confidence: boosts organisms meaningful at low read
+        # counts (sterile/blood sites).  Weight = 0 by default → no effect
+        # unless explicitly enabled via --abundance_confidence_weight.
+        apply_weight(data.get('abundance_confidence', 0),
+                     weights.get('abundance_confidence_weight', 0)),
+    ])
 
     # ── Plasmid bonus: additive boost outside normalized weight pool ──────
-    # If a strain has a plasmid with better coverage than sibling strains'
-    # plasmids (same subkey), plasmid_score is high (0–1).  The bonus is
-    # applied additively so it never reduces the base TASS.
     _plasmid_score = float(data.get('plasmid_score', 0))
     _plasmid_bonus_w = float(weights.get('plasmid_bonus_weight', 0))
     if _plasmid_score > 0 and _plasmid_bonus_w > 0:
         tass_score += _plasmid_score * _plasmid_bonus_w
+
+    # ── Multiplicative abundance gate ─────────────────────────────────────
+    if weights.get('abundance_gate', False):
+        gate = float(data.get('abundance_confidence', 0.0))
+        tass_score *= gate
+
+    # ── Power transform (score recalibration) ─────────────────────────────
+    # score_power_scale (0→1) modulates how much the power transform
+    # applies to this organism.  Dominant organisms in their ANI/toplevelkey
+    # group (proportion≈1) get the full boost; minor siblings sharing reads
+    # with many close relatives (proportion≈0.2) get almost no boost.
+    #   effective_power = 1.0 - (1.0 - score_power) * score_power_scale
+    # When score_power_scale=1: effective_power = score_power (full effect)
+    # When score_power_scale=0: effective_power = 1.0         (no-op)
+    _score_power = float(weights.get('score_power', 1.0))
+    if _score_power != 1.0 and _score_power > 0:
+        _sp_scale = float(data.get('score_power_scale', 1.0))
+        _effective_power = 1.0 - (1.0 - _score_power) * _sp_scale
+        tass_score = max(0.0, min(1.0, tass_score))
+        tass_score = tass_score ** _effective_power
 
     return min(1.0, max(0.0, tass_score))
 
@@ -1195,7 +1964,8 @@ def calculate_hmp_percentile(
                     )
                     break
         except Exception as e:
-            print(f"Error in taxid lookup for hmp: {e}")
+            # print(f"Error in taxid lookup for hmp: {e}")
+            continue
     # Use read fraction (0–1 scale) to match HMP distribution mean/std which are also fractions
     if total_reads > 0:
         fraction_observed = float(value.get('numreads', 0) or 0) / total_reads
@@ -1330,7 +2100,28 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
         # Not found in lineage either
         return None, None, None
     # if members is an attribute, and not empty then iterate through all of them
+    # Members may be subkey groups (which themselves have strain-level members)
+    # or flat strains.  Recursively classify nested members first.
     if "members" in rec and rec["members"]:
+        # Recursively classify nested members (subkey groups with their own members)
+        for member in rec["members"]:
+            if "members" in member and member["members"]:
+                _sub_result = calculate_classes(
+                    rec=member,
+                    ref=member.get("taxid") or member.get("key") or ref,
+                    pathogens=pathogens,
+                    sample_type=sample_type,
+                    taxdump=taxdump,
+                )
+                # Propagate classification fields back onto the member
+                for _field in ('high_cons', 'is_pathogen', 'microbial_category',
+                               'annClass', 'is_annotated', 'status', 'ref',
+                               'matched_taxid', 'matched_rank',
+                               'normalized_sample_site', 'commensal_sites',
+                               'pathogenic_sites', 'members'):
+                    if _field in _sub_result:
+                        member[_field] = _sub_result[_field]
+
         member_categories = []
         member_high_cons = []
         member_annotations = []
@@ -1343,6 +2134,20 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 or member.get("key")
                 or ref
             )
+
+            # If this member was already classified recursively, use those results
+            if member.get('is_annotated') is not None and member.get('microbial_category') is not None:
+                st_cat = member.get('microbial_category', 'Unknown')
+                st_hc = member.get('high_cons', False)
+                st_ann = member.get('annClass', 'Direct')
+                is_annotated = member.get('is_annotated', 'No')
+                status = member.get('status', '')
+                member_matched_info.append((member.get('matched_taxid'), member.get('matched_rank')))
+                member_categories.append(st_cat)
+                member_high_cons.append(st_hc)
+                member_annotations.append((st_ann, is_annotated))
+                member_statuses.append(status)
+                continue
 
             # Try to find pathogen info in lineage FOR EACH MEMBER
             # This searches: member_taxid → genus → family → ... until match found
@@ -1659,7 +2464,9 @@ def load_control_data(json_paths):
             if tlk:
                 index["by_toplevelkey"][tlk].append(grp_entry)
 
-            # Index individual members at key and subkey levels
+            # Index individual members at key and subkey levels.
+            # Supports both the 3-level hierarchy (members are subkey groups
+            # with their own 'members' of strains) and the legacy flat format.
             for member in grp.get("members", []):
                 m_key = str(member.get("key", ""))
                 m_subkey = str(member.get("subkey", member.get("key", "")))
@@ -1670,10 +2477,28 @@ def load_control_data(json_paths):
                     "source": source,
                     "name": m_name,
                 }
-                if m_key:
-                    index["by_key"][m_key].append(m_entry)
                 if m_subkey:
                     index["by_subkey"][m_subkey].append(m_entry)
+                # If this member has nested strain-level members, index those at key level
+                if "members" in member and member["members"]:
+                    for strain in member["members"]:
+                        s_key = str(strain.get("key", ""))
+                        s_subkey = str(strain.get("subkey", strain.get("key", "")))
+                        s_name = strain.get("name") or m_name
+                        s_entry = {
+                            "tass_score": float(strain.get("tass_score", 0) or 0),
+                            "numreads": float(strain.get("numreads", 0) or 0),
+                            "source": source,
+                            "name": s_name,
+                        }
+                        if s_key:
+                            index["by_key"][s_key].append(s_entry)
+                        if s_subkey and s_subkey not in index["by_subkey"]:
+                            index["by_subkey"][s_subkey].append(s_entry)
+                else:
+                    # Legacy flat structure: member IS a strain
+                    if m_key:
+                        index["by_key"][m_key].append(m_entry)
 
     return index
 
@@ -1882,13 +2707,19 @@ def find_missing_positive_controls(final_json, pos_index, levels=None):
         tlk = str(grp.get("toplevelkey", grp.get("key", "")))
         if tlk:
             sample_ids["toplevelkey"].add(tlk)
-        for m in grp.get("members", []):
-            mk = str(m.get("key", ""))
-            msk = str(m.get("subkey", m.get("key", "")))
-            if mk:
-                sample_ids["key"].add(mk)
-            if msk:
-                sample_ids["subkey"].add(msk)
+        for sk_m in grp.get("members", []):
+            # Subkey-level member
+            sk = str(sk_m.get("subkey", sk_m.get("key", "")))
+            if sk:
+                sample_ids["subkey"].add(sk)
+            # Strain-level members nested inside the subkey group
+            for strain in sk_m.get("members", []):
+                mk = str(strain.get("key", ""))
+                msk = str(strain.get("subkey", strain.get("key", "")))
+                if mk:
+                    sample_ids["key"].add(mk)
+                if msk:
+                    sample_ids["subkey"].add(msk)
 
     missing = []
     _seen_ids = set()  # org IDs already emitted (dedup across levels)

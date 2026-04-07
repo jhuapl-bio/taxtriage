@@ -196,14 +196,23 @@ workflow ALIGNMENT {
     )
     ch_versions = ch_versions.mix(SAMTOOLS_COVERAGE.out.versions)
     // Run the bedtools genomecoverage for downstream stats
-    BEDTOOLS_GENOMECOVERAGE(
+    // When compare_references is active (params.fast == false), the bedgraph
+    // is never consumed by conflict_regions.py — it uses sourmash shared-window
+    // sketches instead. Skip to save wallclock + I/O.
+    if (params.fast) {
+        BEDTOOLS_GENOMECOVERAGE(
+            sorted_bams_with_index.map{
+                m, bam, csi -> return [m, bam]
+            }
+        )
+        ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
+        BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
+    } else {
+        // Emit a placeholder NO_FILE bedgraph so downstream channel joins still work
         sorted_bams_with_index.map{
-            m, bam, csi -> return [m, bam]
-        }
-    )
-    ch_versions = ch_versions.mix(BEDTOOLS_GENOMECOVERAGE.out.versions)
-    // merge bedgraph on the same channel
-    BEDTOOLS_GENOMECOVERAGE.out.bedgraph.set{ ch_bedgraphs }
+            m, bam, csi -> return [m, file("$projectDir/assets/NO_FILE_bedgraph")]
+        }.set{ ch_bedgraphs }
+    }
 
     ch_stats = SAMTOOLS_COVERAGE.out.coverage
 
