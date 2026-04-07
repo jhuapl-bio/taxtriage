@@ -479,7 +479,7 @@ The conflict detection pipeline produces per-reference metrics at the species le
 - **`Δ⁻¹ Breadth`** ($B_r$): The ratio of post-removal breadth to pre-removal breadth. Think of it as "what fraction of genome coverage survived after we removed ambiguous reads?" A value of 1.0 means no breadth was lost (good — the signal was all unique). A value of 0.5 means half the coverage came from reads that could've belonged to a different organism (concerning).
 - **`Δ All%`** ($\Delta\%$): The percentage of total reads that were removed during conflict resolution. The Δ (delta) here means "change" — specifically how many reads changed (got removed).
 
-The raw minhash score blends two retention signals — breadth retention and read retention — to differentiate true positives from false positives, particularly within high-ANI conflict groups (e.g. *E. coli* vs *Shigella*) where $B_r$ alone is nearly identical for every member:
+The raw minhash score blends two retention signals — breadth retention and read retention — to differentiate true positives from false positives, particularly within high-ANI conflict groups (e.g. _E. coli_ vs _Shigella_) where $B_r$ alone is nearly identical for every member:
 
 - **`Δ⁻¹ Breadth`** ($B_r$): fraction of genome breadth surviving conflict removal (0–1).
 - **Read retention** ($R_r$): fraction of reads surviving conflict removal, i.e. `Pass Filtered Reads / Total Reads`.
