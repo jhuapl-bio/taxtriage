@@ -64,7 +64,6 @@ workflow ALIGNMENT {
                         // If the item is a list of files, return each file separately
                         def fasta = fastaItem[0]
                         def id = "${meta.id}.${fasta.getBaseName()}"
-                        // def mm = [id: id,  oid: meta.id, single_end: meta.single_end, platform: meta.platform   ]
                         def mm = meta.collectEntries{ k, v -> [k, v] }
                         mm.id = id
                         mm.oid = meta.id

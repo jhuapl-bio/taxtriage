@@ -38,7 +38,7 @@ process MINIMAP2_ALIGN {
     def cpu_limit = task.cpus > 1 ? (task.cpus / 2).round().toInteger() : 1
 
     // def minmapq = minmapq ? " -q ${minmapq} " :  ""
-    def I_value = "${(task.memory.toMega() * Math.min(0.7 / task.cpus, 0.7)).longValue()}M"
+    def I_value = "${(task.memory.toMega() * Math.min(0.6 / task.cpus, 0.6)).longValue()}M"
     def S_value = "${(task.memory.toMega() * Math.min(0.10 / task.cpus, 0.10)).longValue()}M"
     def bam_output = bam_format ? "-a | samtools sort -@ ${cpu_limit} -m $S_value | samtools view -@ ${cpu_limit} -b -h -o ${prefix}.bam" : "-o ${prefix}.paf"
     def cigar_paf = cigar_paf_format && !bam_format ? "-c" : ''
@@ -48,7 +48,7 @@ process MINIMAP2_ALIGN {
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? " -f ${params.mmap2_fraction_filter}" : ''
     // if it contains the substring "dnwld" in reference 
     // then download the reference and use it
-    def split_prefix  = params.split_prefix ? "--split-prefix ${meta.id}.prefix" : ''
+    def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
 
 
     """

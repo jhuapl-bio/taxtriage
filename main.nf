@@ -58,8 +58,10 @@ include { TAXTRIAGE } from './workflows/taxtriage'
 
 
 workflow NFCORE_TAXTRIAGE {
+
     TAXTRIAGE ()
 }
+
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -68,9 +70,7 @@ workflow NFCORE_TAXTRIAGE {
 */
 
 //
-// WORKFLOW: Execute a single named workflow for the pipeline
-// See: https://github.com/nf-core/rnaseq/issues/619
-//
+// WORKFLOW: Execute a single named workflow for the pipeline//
 
 workflow {
     NFCORE_TAXTRIAGE ()

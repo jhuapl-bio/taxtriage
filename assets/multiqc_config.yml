@@ -111,6 +111,11 @@ table_cond_formatting_rules:
       - le: 0.4
     fail:
       - lt: 0.1
+  All_Removed:
+    fail:
+      - s_eq: "YES"
+    pass:
+      - s_eq: "NO"
 table_cond_formatting_colours:
   - blue: "#337ab7"
   - lbue: "#5bc0de"
@@ -124,13 +129,13 @@ custom_data:
   confidences:
     section_name: "Confidence Metrics"
     plot_type: "table"
-    description: "Confidence values for all organisms.<br> ★ Indicates a high consequence pathogen."
+    description: "Confidence values for all organisms.<br>"
     helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary. "
     file_format: "tsv"
   # paths:
   #   section_name: "Confidence Metrics"
   #   plot_type: "general_stats"
-  #   description: "Confidence values for all organisms.<br> ★ Indicates a high consequence pathogen."
+  #   description: "Confidence values for all organisms.<br>"
   #   helptext: "Click the header to sort or shift + click to sort on multiple columns. This is the result of the define arguments in the multiqc summary. "
   #   file_format: "tsv"
   # krakenreport:
@@ -160,11 +165,18 @@ custom_data:
     #     ></iframe>
     #   </div>
 
+  host_removal_stats:
+    section_name: "Host Read Removal"
+    plot_type: "table"
+    description: "Per-sample host read removal statistics. Samples marked 'YES' under 'All Removed' had all reads classified as host and fell back to unfiltered reads."
+    file_format: "tsv"
   nf-core-taxtriage-summary:
     section_name: "Metadata"
     file: "table_explanation_mqc.yml"
 skip_generalstats: true
 sp:
+  host_removal_stats:
+    fn: "*host_removal_stats_mqc.tsv"
   krona:
     fn: "*combined_krona_kreports.html"
   confidences:
@@ -173,6 +185,7 @@ sp:
   #   fn: "*.organisms.report.txt"
 module_order:
   - confidences
+  - host_removal_stats
   - krakenreport
   - kraken
   - fastp
@@ -182,17 +195,19 @@ module_order:
 report_section_order:
   confidences:
     order: 9999
-  krakenreport:
+  host_removal_stats:
     order: 9998
-  kraken:
+  krakenreport:
     order: 9997
-  bcftools:
+  kraken:
     order: 9996
-  fastp:
+  bcftools:
     order: 9995
-  fastqc:
+  fastp:
     order: 9994
-  samtools:
+  fastqc:
     order: 9993
-  nf-core-taxtriage-summary:
+  samtools:
     order: 9992
+  nf-core-taxtriage-summary:
+    order: 9991

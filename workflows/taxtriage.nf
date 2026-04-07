@@ -180,6 +180,7 @@ include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
+include { INSILICO } from '../subworkflows/local/insilico'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -336,11 +337,17 @@ workflow TAXTRIAGE {
         DOWNLOAD_PATHOGENS()
         ch_reference_fasta = DOWNLOAD_PATHOGENS.out.fasta
     }
+
+
+
     ch_taxdump_dir = Channel.empty()
     ch_taxdump_nodes = Channel.empty()
     ch_taxdump_names = Channel.empty()
+    ch_taxdump_nodes = ch_empty_file
+    ch_taxdump_dir = ch_empty_file.parent
 
-    if (params.download_taxdump || (!params.taxdump && params.metaphlan)){
+    if (!params.taxdump && (params.download_taxdump || (!params.taxdump && params.metaphlan) ) ){
+        println "No taxdump provided, downloading the latest taxdump from NCBI"
         DOWNLOAD_TAXDUMP()
         ch_taxdump_nodes = DOWNLOAD_TAXDUMP.out.nodes
         ch_taxdump_dir = DOWNLOAD_TAXDUMP.out.nodes.parent
@@ -349,11 +356,8 @@ workflow TAXTRIAGE {
         // set ch_taxdump_nodes BUT add nodes.dmp to end as a file
         ch_taxdump_nodes = file("$params.taxdump/nodes.dmp", checkIfExists: true)
         ch_taxdump_dir = file(params.taxdump, checkIfExists: true)
-    } else {
-        // set to empty_file
-        ch_taxdump_nodes = ch_empty_file
-        ch_taxdump_dir = ch_empty_file.parent
     }
+
 
     // if the download_db params is called AND the --db is not existient as a path
     // then download the db
@@ -417,11 +421,28 @@ workflow TAXTRIAGE {
         workflow.repository = 'local'
     }
     println "Repository URL: ${workflow.repository}"
+
     // get the date and time of the run
     def date = new Date()
     println "Date: ${date}"
 
     ch_reads = INPUT_CHECK.out.reads
+
+    // Apply --positive / --negative CLI param overrides to force a sample as a control
+    if (params.negative || params.positive) {
+        ch_reads = ch_reads.map { meta, reads ->
+            if (params.negative && meta.id == params.negative) {
+                meta.control = true
+                meta.control_type = 'negative'
+            }
+            if (params.positive && meta.id == params.positive) {
+                meta.control = true
+                meta.control_type = 'positive'
+            }
+            [meta, reads]
+        }
+    }
+
     ch_pass_files = ch_reads.map{ meta, reads -> {
             return [ meta ]
         }
@@ -480,12 +501,15 @@ workflow TAXTRIAGE {
     COUNT_READS(ch_reads)
     readCountChannel = COUNT_READS.out.count
     // Update the meta with the read count by reading the file content
-    readCountChannel.map { meta, countFile, reads ->
-        def count = countFile.text.trim().toInteger()
-        // Update meta map by adding a new key 'read_count'
-        meta.read_count = count
-        return [meta, reads]
-    }.set{ ch_reads }
+    ch_reads = ch_reads
+        .map { meta, reads -> [meta.id, meta, reads] }
+        .join(readCountChannel.map { meta, countFile -> [meta.id, countFile] }, by: 0)
+        .map { id, meta, reads, countFile ->
+            def count = countFile.text.trim().toInteger()
+            meta.read_count = count
+            return [meta, reads]
+        }
+
 
     //////////////////// RUN PYCOQC on any seq summary file ////////////////////
 
@@ -509,6 +533,13 @@ workflow TAXTRIAGE {
     }
 
     //////////////////// RUN ALIGNEMNT to filter out host reads ////////////////////
+    // Force singleton removal when de novo assembly or diamond is enabled,
+    // as singletons can cause issues with assemblers
+    if ((params.use_denovo || params.use_diamond) && params.include_singletons_removal) {
+        println "WARNING: --include_singletons_removal has been overwritten to false because --use_denovo or --use_diamond was specified. Singletons will be removed from paired-end host-removed reads."
+        params.include_singletons_removal = false
+    }
+
     HOST_REMOVAL(
         ch_reads,
         params.genome
@@ -526,6 +557,7 @@ workflow TAXTRIAGE {
     }
     // test to make sure that fastq files are not empty files
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.stats_filtered)
+    ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.host_removal_stats)
 
     //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
     if (!params.skip_plots) {
@@ -604,6 +636,81 @@ workflow TAXTRIAGE {
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
 
+    ////////////////////////////// OPTIONAL: IN-SILICO READ SIMULATION //////////////////////////////
+    // Simulate reads (ISS for Illumina, NanoSim for ONT) from Kraken2 abundance profiles.
+    // Simulated reads are emitted as new samples tagged with insilico meta.  They are then
+    // injected into the normal ALIGNMENT → REPORT pipeline.  In REPORT, insilico samples are
+    // split out, processed through ALIGNMENT_PER_SAMPLE, and their JSONs are used as insilico
+    // controls for the real (non-control) samples.
+    ch_insilico_reads = Channel.empty()
+    if (params.generate_iss || params.generate_nanosim) {
+        // Extract merged_taxid map from REFERENCE_PREP prepped files (non-controls only)
+        ch_sim_merged_taxid = ch_preppedfiles
+            .filter { !it[0].control }
+            .map { meta, fastas, mergedmap, mergedids ->
+                [meta, mergedmap]
+            }
+
+        // Extract reference FASTAs from REFERENCE_PREP (non-controls only)
+        ch_sim_fastas = REFERENCE_PREP.out.fastas
+            .filter { !it[0].control }
+
+        // Top hits from CLASSIFIER (non-controls only)
+        ch_sim_tops = CLASSIFIER.out.ch_tops
+            .filter { !it[0].control }
+
+        INSILICO(
+            ch_sim_tops,
+            ch_sim_merged_taxid,
+            ch_sim_fastas
+        )
+        ch_versions = ch_versions.mix(INSILICO.out.versions)
+        ch_insilico_reads = INSILICO.out.insilico_reads
+
+        // ── Inject insilico reads as new samples into the pipeline channels ──
+        // Mix insilico reads into ch_reads so they flow through ALIGNMENT
+        ch_reads = ch_reads.mix(ch_insilico_reads)
+
+        // Create ch_preppedfiles entries for insilico samples by cloning the
+        // parent sample's reference prep data with the insilico meta.
+        // INSILICO.out.insilico_reads has tuple(insilico_meta, reads) where
+        // insilico_meta.parent_id == original sample id.
+        ch_insilico_prepfiles = ch_insilico_reads
+            .map { meta, reads -> [meta.parent_id, meta] }
+            .combine(
+                ch_preppedfiles.map { meta, fastas, map, gcfids -> [meta.id, fastas, map, gcfids] },
+                by: 0
+            )
+            .map { parent_id, insilico_meta, fastas, map, gcfids ->
+                [insilico_meta, fastas, map, gcfids]
+            }
+        ch_preppedfiles = ch_preppedfiles.mix(ch_insilico_prepfiles)
+
+        // Update ch_mapped_assemblies to include insilico entries
+        ch_mapped_assemblies = ch_mapped_assemblies.mix(
+            ch_insilico_prepfiles.map { meta, fastas, map, gcfids -> [meta, map] }
+        )
+
+        // Create placeholder ch_kraken2_report entries for insilico samples
+        ch_kraken2_report = ch_kraken2_report.mix(
+            ch_insilico_reads.map { meta, reads ->
+                [meta, file("$projectDir/assets/NO_FILE")]
+            }
+        )
+
+        // Add insilico entries to ch_fastas (REFERENCE_PREP.out.fastas)
+        ch_insilico_fastas = ch_insilico_reads
+            .map { meta, reads -> [meta.parent_id, meta] }
+            .combine(
+                REFERENCE_PREP.out.fastas.map { meta, fastas -> [meta.id, fastas] },
+                by: 0
+            )
+            .map { parent_id, insilico_meta, fastas ->
+                [insilico_meta, fastas]
+            }
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
         ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
@@ -640,11 +747,19 @@ workflow TAXTRIAGE {
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
         ch_fastas = REFERENCE_PREP.out.fastas
 
+        // Add insilico fastas if simulation was run
+        if (params.generate_iss || params.generate_nanosim) {
+            ch_fastas = ch_fastas.mix(ch_insilico_fastas)
+        }
+
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
             it[1]
         }
+        // Insilico samples will be naturally filtered out here because they
+        // don't have entries in ch_bedfiles, ch_reference_cds, etc.
+        // This is correct — insilico samples skip ASSEMBLY.
         ch_postalignmentfiles = ch_combined.map {
             meta, bam, bai, mapping ->  return [ meta, bam, bai, mapping ]
         }.filter{
@@ -670,6 +785,17 @@ workflow TAXTRIAGE {
         ch_versions = ch_versions.mix(ASSEMBLY.out.versions)
 
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
+
+        // Add placeholder assembly analysis entries for insilico samples so
+        // they are not filtered out by the inner join in input_alignment_files
+        if (params.generate_iss || params.generate_nanosim) {
+            ch_assembly_analysis = ch_assembly_analysis.mix(
+                ch_insilico_reads.map { meta, reads ->
+                    [meta, file("$projectDir/assets/NO_FILE2")]
+                }
+            )
+        }
+
         ch_assembly_analysis_opt = ch_assembly_analysis.ifEmpty {
             Channel.value(null)
         }
@@ -698,7 +824,7 @@ workflow TAXTRIAGE {
                 ch_pathogens,
                 distributions,
                 ch_assembly_txt,
-                ch_taxdump_nodes,
+                ch_taxdump_dir,
                 all_samples
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))

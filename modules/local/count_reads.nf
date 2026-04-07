@@ -14,7 +14,7 @@ process COUNT_READS {
 
     output:
         // Output the original metadata together with the count file
-        tuple val(meta), path("count.txt"), path(reads), emit: count
+        tuple val(meta), path("${meta.id}_count.txt"), emit: count
 
     script:
         // Loop over each file in the 'reads' variable (works for one or multiple files)
@@ -28,6 +28,6 @@ process COUNT_READS {
             fi
             total=\$(( total + cnt ))
         done
-        echo \$total > count.txt
+        echo \$total > ${meta.id}_count.txt
         """
 }

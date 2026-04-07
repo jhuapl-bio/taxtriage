@@ -41,24 +41,30 @@ workflow INPUT_CHECK {
             ]
         )
 
+
         GENERATE_SAMPLESHEET.out.csv
             .splitCsv(header: true, sep: ',')
             .map { create_fastq_channel(it) }
+            .toList()
+            .flatMap { resolve_control_types(it) }
             .set { reads }
         versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
         // Use the provided samplesheet
-        SAMPLESHEET_CHECK(file(params.input))
+        csvff = SAMPLESHEET_CHECK(file(params.input))
             .csv
             .splitCsv(header: true, sep: ',')
             .map { create_fastq_channel(it) }
+            .toList()
+
+        csvff
+            .flatMap { resolve_control_types(it) }
             .set { reads }
             versions = SAMPLESHEET_CHECK.out.versions
         }
     else {
         error "ERROR: Must specify either --input or --fastq_1"
     }
-
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
 }
@@ -72,6 +78,8 @@ def create_fastq_channel(LinkedHashMap row) {
 
     meta.id         = row.sample
     meta.platform = row.platform ? row.platform : 'ILLUMINA'
+    // capitalize the platform
+    meta.platform = meta.platform.toUpperCase()
     meta.fastq_1 = row.fastq_1
     // Check if 'fastq_2' exists in 'row'
     if (row.containsKey('fastq_2')) {
@@ -108,6 +116,14 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.type = row.type
     meta.directory = row.directory ?  row.directory.toBoolean() : null
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
+
+    // Control sample columns
+    meta.control = (row.control && row.control.toString().toUpperCase() == "TRUE") ? true : false
+    // Normalize spaces → underscores to match how check_samplesheet.py transforms sample names
+    meta.negative = (row.containsKey('negative') && row.negative) ? row.negative.trim().replaceAll(/\s+/, '_') : null
+    meta.positive = (row.containsKey('positive') && row.positive) ? row.positive.trim().replaceAll(/\s+/, '_') : null
+    meta.control_type = null  // resolved later in resolve_control_types()
+    // print meta for debugging
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
     if (meta.directory ){
@@ -131,4 +147,45 @@ def create_fastq_channel(LinkedHashMap row) {
     }
 
     return fastq_meta
+}
+
+// Second pass: infer which samples are controls by checking whether their
+// sample name appears in any other sample's negative or positive column.
+// Also honours an explicit control column if present in the samplesheet.
+def resolve_control_types(List all_samples) {
+    // Collect all sample names referenced as negative or positive controls.
+    // Normalize spaces → underscores to match check_samplesheet.py which
+    // converts spaces to underscores in the sample name column but not in
+    // the negative/positive reference columns.
+    def neg_names = all_samples.collect { it[0].negative }
+        .findAll { it }
+        .collect { it.replaceAll(/\s+/, '_') }
+        .toSet()
+    def pos_names = all_samples.collect { it[0].positive }
+        .findAll { it }
+        .collect { it.replaceAll(/\s+/, '_') }
+        .toSet()
+
+    all_samples.each { sample ->
+        def name = sample[0].id
+        // If this sample's name is referenced as a negative control by another sample
+        if (name in neg_names) {
+            sample[0].control = true
+            sample[0].control_type = 'negative'
+        }
+        // If this sample's name is referenced as a positive control by another sample
+        else if (name in pos_names) {
+            sample[0].control = true
+            sample[0].control_type = 'positive'
+        }
+        // Also honour explicit control column (if it was TRUE but not referenced)
+        // — this sample is a control but we can't determine type from references
+        // so leave control_type as null; it will still run in the controls branch
+        // but without --control_type flag
+    }
+    println "Final sample metadata after resolving control types:"
+    all_samples.each { sample ->
+        println "\t${sample[0].id}: control=${sample[0].control}, control_type=${sample[0].control_type}, negative=${sample[0].negative}, positive=${sample[0].positive}"
+    }
+    return all_samples
 }

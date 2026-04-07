@@ -27,7 +27,6 @@ process ORGANISM_MERGE_REPORT {
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)
     val(missing_samples)
-    path(nodes)
 
     output:
         path "versions.yml"           , emit: versions
@@ -44,7 +43,6 @@ process ORGANISM_MERGE_REPORT {
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     distribution_arg = ""
     def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""
-
     def missing_arg = ''
     if (missing_samples) {
         missing_arg = "-m \"${missing_samples.join(' ')}\""
@@ -52,7 +50,12 @@ process ORGANISM_MERGE_REPORT {
     def show_potentials = params.show_potentials ? " --show_potentials " : ""
     def show_commensals = params.show_commensals ? " --show_commensals " : ""
     def show_unidentified = params.show_unidentified ? " --show_unidentified " : ""
-    def taxdump = nodes.name != "NO_FILE" ? " --taxdump $nodes " : ""
+    def show_opportunistics = params.show_opportunistics ? " --show_opportunistic " : ""
+    // def taxdump = taxdump.name != "NO_FILE" ? " --taxdump $taxdump " : ""
+    def sort_alphabetical = params.sort_alphabetical ? " --sort_alphabetical " : ""
+    def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
+    def rank = params.rank ? " --rank $params.rank " : ""
+    def no_subkey = params.no_subkey ? " --no_subkey " : ""
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -60,13 +63,22 @@ process ORGANISM_MERGE_REPORT {
         $show_potentials \\
         $show_commensals \\
         $show_unidentified \\
+        $show_opportunistics \\
         $distribution_arg \\
-        $min_conf $taxdump \\
-        $missing_arg
+        $min_conf \\
+        $missing_arg \\
+        $sort_alphabetical \\
+        $integrate_strain_table \\
+        $rank \\
+        $no_subkey \\
 
     cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
+        "${task.process}":
         awk: \$(awk --version 2>&1)
+        pipeline_repo: "${workflow.repository}"
+        pipeline_revision: "${workflow.revision ?: 'NA'}"
+        pipeline_commit: "${workflow.commitId ?: 'NA'}"
+        nextflow_version: "${nextflow.version}"
     END_VERSIONS
 
     """
