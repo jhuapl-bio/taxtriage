@@ -348,6 +348,11 @@ def parse_args(argv=None):
     parser.add_argument("--optimize_tp_target_scope", type=str, default="taxa",
                     choices=["taxa", "reads", "hybrid"],
                     help="Which TP mean to target: taxa, reads, or hybrid.")
+    parser.add_argument("--optimize_mode", type=str, default="taxids",
+                    choices=["taxids", "reads", "hybrid"],
+                    help="Optimization objective mode. 'taxids' weights each organism equally, "
+                            "'reads' weights by read count, 'hybrid' blends both via --optimize_hybrid_lambda. "
+                            "Default: taxids.")
     parser.add_argument("--optimize_youden_weight", type=float, default=0.0,
                     help="Penalty weight to maximize Youden J (TP retention - FP retention). Higher values push FP down." )
     parser.add_argument("--optimize_fp_cutoff", type=float, default=None,
@@ -386,25 +391,77 @@ def parse_args(argv=None):
                              "level has a significantly lower loss. Also controls which "
                              "best_threshold from --thresholds_json is used for the TASS cutoff "
                              "in the report. Default: subkey.")
+    parser.add_argument("--optimize_hybrid_lambda", type=float, default=0.5,
+                        help="Blend factor when --optimize_mode hybrid. 1.0 = pure taxid-level, "
+                             "0.0 = pure read-level. Default: 0.5.")
+    parser.add_argument("--optimize_categories", nargs='+', default=None,
+                        choices=["Primary", "Potential", "Opportunistic", "Commensal", "Unknown"],
+                        help="Restrict weight optimization to only these microbial categories. "
+                             "Accepts one or more of: Primary, Potential, Opportunistic, Commensal, Unknown. "
+                             "If not set, all categories are included in the optimization objective.")
+    # ── Site-aware breadth sigmoid tuning ────────────────────────────────
+    parser.add_argument("--breadth_midpoint", type=float, default=0.0005,
+                        help="Breadth sigmoid midpoint (fraction of genome covered at 50%% score). "
+                             "Lower values make the sigmoid more sensitive to low-coverage organisms. "
+                             "For sterile/blood sites use 0.001 or 0.0001. Default: 0.0005 (0.05%% coverage).")
+    parser.add_argument("--breadth_steepness", type=float, default=50000,
+                        help="Breadth sigmoid steepness. Higher = sharper transition. "
+                             "When lowering --breadth_midpoint, increase steepness proportionally "
+                             "(e.g. midpoint=0.001 → steepness=120000). Default: 50000.")
+    # ── Low-abundance confidence (sterile-site boost) ────────────────────
+    parser.add_argument("--abundance_confidence_weight", type=float, default=None,
+                        help="Weight for the low-abundance confidence component in TASS score. "
+                             "This component uses log-RPM to boost organisms that are meaningful "
+                             "at low read counts (e.g. pathogens in sterile/blood sites). "
+                             "Recommended: 0.15-0.30 for sterile sites. 0 = disabled. Default: 0.20.")
+    parser.add_argument("--abundance_rpm_midpoint", type=float, default=5.0,
+                        help="Expected RPM for a meaningful detection in this site type. "
+                             "For sterile/blood: 1.0-5.0. For gut/skin: 50-200. Default: 5.0.")
+    parser.add_argument("--abundance_rpm_steepness", type=float, default=2.0,
+                        help="Steepness of the log-RPM sigmoid for abundance confidence. Default: 2.0.")
+    parser.add_argument("--abundance_gate", action="store_true", default=False,
+                        help="Use abundance_confidence as a multiplicative gate on the entire "
+                             "TASS score.  Organisms with trivially low RPM (e.g. 3 reads in a "
+                             "deep sample) get their score crushed toward 0, preventing noise "
+                             "from accumulating small metric contributions into inflated scores. "
+                             "The gate uses the same log-RPM sigmoid controlled by "
+                             "--abundance_rpm_midpoint and --abundance_rpm_steepness. "
+                             "Default: disabled.")
+    parser.add_argument("--score_power", type=float, default=None,
+                        help="Power transform (gamma) applied to TASS scores. "
+                             "Values < 1 lift compressed scores: 0.09^0.5=0.30, 0.09^0.3=0.52. "
+                             "Preserves monotonic ordering so thresholds still separate TP/FP. "
+                             "Default: 1.0 (no transform).")
+    parser.add_argument("--auto_score_power", action="store_true", default=False,
+                        help="Automatically compute score_power after optimization so that "
+                             "the mean TP TASS score hits --optimize_tp_target. "
+                             "Requires --optimize and --optimize_tp_target. "
+                             "Overrides --score_power if both are set.")
+    # ── Youden J minimum threshold floor ─────────────────────────────────
+    parser.add_argument("--youden_min_threshold", type=float, default=None,
+                        help="Minimum allowed TASS threshold for Youden J cutoff. "
+                             "Prevents the optimizer from selecting unreasonably low cutoffs "
+                             "for sterile sites. E.g. 0.05 means Youden J can never return "
+                             "a threshold below 0.05. Default: None (no floor).")
     parser.add_argument(
         '--breadth_weight',
         metavar="BREADTHSCORE",
         type=float,
-        default=0.26,
+        default=None,
         help="value of weight for breadth of coverage in final TASS Score",
     )
     parser.add_argument(
         "--minhash_weight",
         metavar="MINHASHSCORE",
         type=float,
-        default=0.29,
+        default=None,
         help="value of weight for minhash signature reduction in final TASS Score",
     )
     parser.add_argument(
         "--gini_weight",
         metavar="GINIWEIGHT",
         type=float,
-        default=0.45,
+        default=None,
         help="value of weight for gini coefficient in final TASS Score",
     )
     parser.add_argument(
@@ -414,7 +471,7 @@ def parse_args(argv=None):
         default=0.0,
         help="value of weight for disparity of k2 and alignment in final TASS Score",
     )
-    parser.add_argument("--disparity_weight", type=float, default=0.01,
+    parser.add_argument("--disparity_weight", type=float, default=None,
         help="Weight applied to disparity_score in tass_score (optimized if --optimize).")
     parser.add_argument(
         "--diamond_identity_weight",
@@ -427,13 +484,13 @@ def parse_args(argv=None):
         "--hmp_weight",
         metavar="HMPWEIGHT",
         type=float,
-        default=0.00,
+        default=None,
         help="value of weight for hmp abundance in final TASS Score",
     )
     parser.add_argument(
         "--plasmid_bonus_weight",
         type=float,
-        default=0.19,
+        default=None,
         help="Additive TASS bonus for strains with strong plasmid coverage "
              "relative to sibling strains in the same species. Applied outside "
              "the normalized weight pool. 0 = disabled. Default: 0.05",
@@ -466,19 +523,25 @@ def parse_args(argv=None):
         help="OPTIONAL: Microbert Predictions on downsampled dataset. Contains columns for each rank, e.g. superkingdom, phylum, class, order, family, genus, species and avg, median, and std probablity columns",
     )
     parser.add_argument("--only_filter", required=False, action='store_true', help="Stop after creating a filtered bamfile")
-    parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
     parser.add_argument("--matrix", required=False, help="A Matrix file for ANI in long format from fastANI")
     parser.add_argument("--enable_matrix", required=False, action='store_true', help="Enable loading the ANI matrix file")
     parser.add_argument(
         "--ani_threshold",
         type=float,
-        default=0.95,
-        help="ANI threshold above which two organisms are considered highly similar (default: 0.95). "
+        default=0.97,
+        help="ANI threshold above which two organisms are considered highly similar (default=0.97). "
              "Used to annotate each member in the output JSON with a 'high_ani_matches' list.",
     )
     parser.add_argument("--comparisons", required=False, help="Skip comparison metrics if present, can be either csv, tsv, or xlsx")
     parser.add_argument("--failed_reads", required=False, help="Load a 2 col tsv of reference   read_id that is to be the passed reads. Remove all others and update bedgraph and cov file(s)")
-    parser.add_argument("--scaled", type=int, default=2000, help="scaled factor for MinHash.")
+    parser.add_argument("--scaled", type=int, default=5000, help="scaled factor for MinHash.")
+    parser.add_argument("--kmer_size", type=int, default=51, help="k-mer size for MinHash.")
+    parser.add_argument("--window_size", type=int, default=900_000,
+                        help="Window size (bp) for shared-region sketching in conflict detection. "
+                             "Smaller values give finer positional resolution. Default: 500,000.")
+    parser.add_argument("--step_size", type=int, default=900_000,
+                        help="Step size (bp) between windows for shared-region sketching. "
+                             "Use window_size/2 for 50%% overlap. Default: 500,000.")
     parser.add_argument("--coverage_length", type=int, default=500, help="Length of each coverage chunk.")
     parser.add_argument("--coverage_spacing", type=int, default=4, help="Allowed gap of zero coverage in a chunk.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
@@ -493,10 +556,51 @@ def parse_args(argv=None):
     parser.add_argument('--minmapq', required=False, type=int, default=7,
                     help="MAPQ threshold for high-confidence reads. Reads with MAPQ >= this value "
                          "are counted as high-quality. The fraction of such reads scales breadth score.")
-    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=2.0,
+    parser.add_argument('--mapq_breadth_power', required=False, type=float, default=0.3,
                     help="Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. "
                          "Higher values penalize low-MAPQ organisms more aggressively. "
-                         "Default: 2.0 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.01).")
+                         "Default: 2 (e.g. 10%% high-MAPQ reads → breadth scaled by 0.1).")
+    parser.add_argument('--mapq_gini_power', required=False, type=float, default=0.3,
+                    help="Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. "
+                         "Penalizes Gini score for organisms dominated by low-MAPQ reads. "
+                         "Default: 0.85. Set to 0 to disable.")
+    parser.add_argument('--contig_penalty_power', required=False, type=float, default=0.3,
+                    help="Power exponent for contig utilization penalty on Gini. "
+                         "gini *= (covered_contigs/total_contigs)^power. "
+                         "Penalizes organisms where reads concentrate on few contigs "
+                         "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
+                         "Default: 0.3. Set to 0 to disable.")
+    parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
+                    help="Power exponent for depth-concentration penalty on Gini. "
+                         "Detects the conserved-human-reads pattern: many reads map to a "
+                         "tiny region of a large genome (high depth, negligible coverage). "
+                         "Measures actual_coverage / expected_coverage from read count. "
+                         "e.g. 80K reads on 65Mbp genome with 0.15%% coverage: "
+                         "efficiency=0.008, penalty^0.3=0.22 -> Gini crushed to 22%%. "
+                         "Default: 0.1. Set to 0 to disable.")
+    parser.add_argument(
+        '--dominance_protect_ratio',
+        type=float,
+        default=2.0,
+        help="Read-count ratio (dominant / runner-up) within a conflict group above which the "
+             "dominant reference is fully exempt from the base (min_cov) removal.  Dominance "
+             "is determined by raw read count in the shared region.  Lower values protect more "
+             "aggressively (e.g. 2.0 = full protection when winner has ≥2× reads).  Higher "
+             "values are more conservative (e.g. 5.0 requires a very lopsided group).  "
+             "Default: 3.0.  Set to 0 or a very large number (e.g. 999) to disable protection "
+             "and restore the original unconditional base-removal behaviour.",
+    )
+    parser.add_argument(
+        '--skip_read_removal_scoring',
+        action='store_true',
+        default=False,
+        help="When set, conflict detection still runs (and breadth-change stats are computed "
+             "and written to the removal_stats report), but the removed read IDs are NOT "
+             "applied when counting reads for scoring.  Coverage, Gini, numreads, and all "
+             "TASS-score inputs are derived from the full original read set, exactly as if "
+             "no reads had been removed.  Useful for comparing Gini/breadth behaviour with "
+             "and without removal applied to the scoring pipeline.",
+    )
     parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
@@ -534,6 +638,20 @@ def parse_args(argv=None):
         help="In addition to the standard removal_stats.xlsx, output a taxid-aggregated "
              "removal_stats_by_taxid.xlsx where accessions are grouped by their taxid. "
              "Requires --match to provide accession-to-taxid mappings."
+    )
+
+    # ── Description-based exclusion filters ─────────────────────────────────
+    parser.add_argument(
+        "--exclude_descriptions",
+        nargs="*",
+        default=None,
+        help="One or more regex patterns to match against reference descriptions "
+             "from the matchfile.  Any accession whose description matches ANY of "
+             "these patterns will be removed from the analysis (reads discarded).  "
+             "Useful for removing unplaced genomic scaffolds, mitochondrial sequences, "
+             "etc.  Example: --exclude_descriptions 'unplaced genomic scaffold' "
+             "'mitochondrion'.  If the flag is provided with no patterns, nothing is "
+             "filtered.  If the flag is omitted entirely, nothing is filtered.",
     )
 
     # ── Control sample arguments ────────────────────────────────────────────
@@ -950,6 +1068,27 @@ def main():
         disparity_w = args.disparity_score_weight
     if args.platform:
         args.platform = args.platform.lower()
+    # ── Three-layer param priority: defaults < thresholds_json < explicit CLI ─
+    # Params that are still None were not passed on the CLI; record which ones
+    # the user DID explicitly supply so the JSON block never overwrites them.
+    _WEIGHT_DEFAULTS = {
+        "breadth_weight":              0.27,
+        "minhash_weight":              0.31,
+        "gini_weight":                 0.42,
+        "disparity_weight":            0.00,
+        "hmp_weight":                  0.00,
+        "plasmid_bonus_weight":        0.0,
+        "abundance_confidence_weight": 0.0,
+        "score_power":                 0.7,
+    }
+    # Which of these did the user pass explicitly on the CLI?
+    _cli_provided = {p for p, _ in _WEIGHT_DEFAULTS.items()
+                     if getattr(args, p, None) is not None}
+    # Fill in defaults for everything not explicitly set
+    for _p, _v in _WEIGHT_DEFAULTS.items():
+        if getattr(args, _p, None) is None:
+            setattr(args, _p, _v)
+
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
     # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
     # Lookup order (first match wins):
@@ -1011,24 +1150,31 @@ def main():
               f"using thresholds key: '{_st_key}'")
 
         _best_w = thresholds_config[_st_key].get("best_weights", {})
-        # Override CLI weight defaults with JSON best weights
-        if "breadth_weight" in _best_w:
+        # Override defaults with JSON best weights — but never overwrite a param
+        # the user explicitly passed on the CLI (tracked in _cli_provided).
+        if "breadth_weight" in _best_w and "breadth_weight" not in _cli_provided:
             args.breadth_weight = _best_w["breadth_weight"]
-        if "gini_weight" in _best_w:
+        if "gini_weight" in _best_w and "gini_weight" not in _cli_provided:
             args.gini_weight = _best_w["gini_weight"]
-        if "minhash_weight" in _best_w:
+        if "minhash_weight" in _best_w and "minhash_weight" not in _cli_provided:
             args.minhash_weight = _best_w["minhash_weight"]
-        if "hmp_weight" in _best_w:
+        if "hmp_weight" in _best_w and "hmp_weight" not in _cli_provided:
             args.hmp_weight = _best_w["hmp_weight"]
-        if "disparity_weight" in _best_w:
+        if "disparity_weight" in _best_w and "disparity_weight" not in _cli_provided:
             disparity_w = _best_w["disparity_weight"]
             args.disparity_weight = disparity_w
-        if "plasmid_bonus_weight" in _best_w:
+        if "plasmid_bonus_weight" in _best_w and "plasmid_bonus_weight" not in _cli_provided:
             args.plasmid_bonus_weight = _best_w["plasmid_bonus_weight"]
+        if "abundance_confidence_weight" in _best_w and "abundance_confidence_weight" not in _cli_provided:
+            args.abundance_confidence_weight = _best_w["abundance_confidence_weight"]
+        if "score_power" in _best_w and "score_power" not in _cli_provided:
+            args.score_power = _best_w["score_power"]
         print(f"  Applied weights from JSON: breadth={args.breadth_weight:.6g}, "
               f"gini={args.gini_weight:.6g}, minhash={args.minhash_weight:.6g}, "
               f"hmp={args.hmp_weight:.6g}, disparity={disparity_w:.6g}, "
-              f"plasmid_bonus={args.plasmid_bonus_weight:.6g}")
+              f"plasmid_bonus={args.plasmid_bonus_weight:.6g}, "
+              f"abundance_conf={args.abundance_confidence_weight:.6g}, "
+              f"score_power={args.score_power:.6g}")
 
     weights = {
         'mapq_score': args.mapq_weight,
@@ -1046,6 +1192,16 @@ def main():
     # Plasmid bonus is additive — added AFTER normalization so it doesn't
     # dilute the core weights.  Set to 0 to disable.
     weights['plasmid_bonus_weight'] = args.plasmid_bonus_weight
+    # Abundance confidence is also additive (outside normalized pool).
+    # It boosts organisms meaningful at low read counts (sterile/blood).
+    weights['abundance_confidence_weight'] = args.abundance_confidence_weight
+    # Multiplicative abundance gate: when enabled, the abundance_confidence
+    # sigmoid is used as a multiplier on the entire TASS score, crushing
+    # noise organisms with trivially low RPM.
+    weights['abundance_gate'] = args.abundance_gate
+    # Score power transform: applied to TASS scores to lift compressed values.
+    # score_power < 1 expands the low-score range (0.09^0.5 = 0.30).
+    weights['score_power'] = args.score_power
     """
     # Final Score Calculation
 
@@ -1185,10 +1341,26 @@ def main():
                 jump_threshold = args.jump_threshold,
                 gap_allowance=args.gap_allowance,
                 compare_to_reference_windows=args.compare_references,
+                window_size=args.window_size,
+                step_size=args.step_size,
                 accession_to_taxid=early_acc_to_taxid if early_acc_to_taxid else None,
                 taxid_to_name=early_taxid_to_desc if early_taxid_to_desc else None,
                 taxid_removal_stats=args.taxid_removal_stats,
+                dominance_protect_ratio=args.dominance_protect_ratio,
             )
+            # ── Skip-removal-for-scoring mode ────────────────────────────────
+            # conflict detection + breadth-change stats are always computed and
+            # written to disk (removal_stats.xlsx, cluster_dominance.json, etc.).
+            # When --skip_read_removal_scoring is set we simply discard the
+            # removal dict so that count_reference_hits uses every read for
+            # numreads / coverage / gini, giving a clean baseline for comparison.
+            if getattr(args, 'skip_read_removal_scoring', False):
+                print(
+                    "[skip_read_removal_scoring] Conflict removal computed but NOT applied "
+                    "to scoring reads.  All original reads will be used for coverage, "
+                    "Gini, numreads, and TASS-score inputs."
+                )
+                alignments_to_remove = defaultdict(set)
             # import the file args.output_dir/region_comparisons.csv
         if args.failed_reads:
             alignments_to_remove = defaultdict(set)
@@ -1254,6 +1426,7 @@ def main():
                     except Exception as e:
                         print(f"Error in: {e}")
                 i+=1
+    print("Counting reference hits from BAM file…")
     reference_hits, _, total_reads = count_reference_hits(
         inputfile,
         alignments_to_remove=alignments_to_remove,
@@ -1263,6 +1436,7 @@ def main():
 
     mmbert_dict = dict()
     if args.microbert:
+        print("Loading MicroBERT data from", args.microbert)
         # import the tsv as a dictionary
         mmbert = pd.read_csv(args.microbert, sep='\t', header=0)
         # set the taxid col to str
@@ -1271,8 +1445,10 @@ def main():
 
     taxdump, taxdump_names = {}, {}
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+        print("Loading taxdump from", args.taxdump)
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
     if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+        print("Loading taxdump names from", args.taxdump)
         taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
 
     # When the matchfile lacks a name/description column (e.g. only
@@ -1280,12 +1456,14 @@ def main():
     # Back-fill from taxdump/names.dmp so downstream code has real
     # organism names even for minimal 2-column matchfiles.
     if taxdump_names and early_taxid_to_desc:
+        print("Backfilling taxid→description from taxdump names.dmp for taxa missing descriptions in the matchfile…")
         for _tid, _desc in early_taxid_to_desc.items():
             if not _desc and _tid in taxdump_names:
                 early_taxid_to_desc[_tid] = taxdump_names[_tid]
     # Also fill in any taxids from early_acc_to_taxid that aren't in
     # early_taxid_to_desc at all (shouldn't happen, but defensive).
     if taxdump_names and early_acc_to_taxid:
+        print("Backfilling taxid→description for taxids from early accession→taxid map that are missing from the early taxid→desc map…")
         for _acc, _tid in early_acc_to_taxid.items():
             if _tid not in early_taxid_to_desc and _tid in taxdump_names:
                 early_taxid_to_desc[_tid] = taxdump_names[_tid]
@@ -1293,6 +1471,7 @@ def main():
     pathogens = import_pathogens(pathogenfile)
 
     if args.match and os.path.exists(matcher):
+        print("Processing matchfile to enrich reference hits with taxid and description information…")
         accindex = args.accessioncol
         nameindex = args.namecol
         taxcol = args.taxcol
@@ -1408,6 +1587,7 @@ def main():
     # entries may still have name == accession.  Resolve them from
     # taxdump_names so downstream JSON has real organism names.
     if taxdump_names:
+        print("Resolving missing organism names from taxdump names.dmp for entries with taxids but no names in the matchfile…")
         _resolved_count = 0
         for _acc, _hit in reference_hits.items():
             _cur_name = _hit.get('name', _acc)
@@ -1421,6 +1601,26 @@ def main():
                     _resolved_count += 1
         if _resolved_count:
             print(f"Resolved {_resolved_count} organism names from names.dmp (matchfile had no name/org columns)")
+
+    # ── Exclude accessions whose description matches --exclude_descriptions ──
+    # Patterns are compiled as regex and matched case-insensitively against
+    # the 'description' (or fallback 'name') field populated from the matchfile.
+    if args.exclude_descriptions:
+        _exclude_patterns = [re.compile(p, re.IGNORECASE) for p in args.exclude_descriptions]
+        _excluded_accs = []
+        _excluded_reads = 0
+        for acc, hit in list(reference_hits.items()):
+            _desc = hit.get('description', '') or hit.get('name', '') or ''
+            for _pat in _exclude_patterns:
+                if _pat.search(_desc):
+                    _excluded_accs.append(acc)
+                    _excluded_reads += hit.get('numreads', 0)
+                    break
+        for acc in _excluded_accs:
+            del reference_hits[acc]
+        if _excluded_accs:
+            print(f"--exclude_descriptions: removed {len(_excluded_accs)} accessions "
+                  f"({_excluded_reads} reads) matching {len(_exclude_patterns)} pattern(s)")
 
     # ── Tag plasmid accessions from the description field ──────────────────
     # Use 'description' (raw mapfile name column) which preserves strings
@@ -1443,6 +1643,7 @@ def main():
     # get the ranks for taxid: 198214
     acc_to_parent = dict()
     if args.rank:
+        print(f"Resolving taxonomic ranks from taxdump for rank '{args.rank}' (subrank '{subrank}')…")
         wanted_rank = args.rank  # for example:  species
         for acc, hit in reference_hits.items():
             taxid = hit.get("taxid")
@@ -1498,8 +1699,8 @@ def main():
     aligned_reads_total = sum(all_readscounts)
     total_reads = aligned_reads_total
     print(f"Total aligned reads: {aligned_reads_total}")
-    variance_reads = calculate_var(all_readscounts)
-    print(f"\n\tVariance of reads: {variance_reads}")
+    # variance_reads = calculate_var(all_readscounts)
+    # print(f"\n\tVariance of reads: {variance_reads}")
     if args.sampletype:
         sampletype = body_site_map(args.sampletype.lower())
         # Also check via body_site_normalization for richer sterile detection
@@ -1534,6 +1735,7 @@ def main():
     # breadth ratios, so that a species with many contigs gets one composite score.
     subkey_comparison_df = pd.DataFrame()
     if comparison_df is not None and not comparison_df.empty:
+        print("Aggregating comparison_df to subkey level for minhash scoring…")
         _cdf = comparison_df.copy()
         _cdf['subkey'] = _cdf.index.map(lambda a: acc_to_subkey.get(a, a))
         # Weighted aggregation: weight by Total Reads per accession
@@ -1556,6 +1758,107 @@ def main():
         subkey_comparison_df = pd.concat([_sums, _wavg_df], axis=1)
         print(f"Aggregated comparison_df: {len(comparison_df)} accessions → {len(subkey_comparison_df)} subkeys")
 
+    # ── Build cross-genus conflict clusters from shared_windows_report.csv ──
+    # The standard minhash winner/loser logic groups organisms by toplevelkey
+    # (genus).  Highly similar organisms from different genera — e.g. E. coli
+    # (Escherichia) and Shigella — compete for the same reads but land in
+    # separate genus buckets and are scored as independent solos.  This causes
+    # the true winner to receive less boost than it deserves and the true loser
+    # to go unpenalised at the cross-genus level.
+    #
+    # If shared_windows_report.csv exists in the output dir, we use its pairwise
+    # window-match data to build a union-find conflict graph.  Every accession
+    # that shares ≥1 window with another (across any genus) is assigned a shared
+    # conflict_cluster_id.  This ID supersedes toplevelkey in the parent_buckets
+    # computation inside calculate_normalized_groups, so cross-genus competitors
+    # are grouped together for the winner/loser minhash adjustment.
+    #
+    # When FASTA files are not provided the shared_windows_report.csv will be
+    # absent or empty; in that case the fallback toplevelkey grouping applies.
+    _acc_to_conflict_cluster: dict = {}
+    _sw_cluster_dominance: dict = {}
+    _output_dir_for_sw = args.output_dir if args.output_dir else os.path.dirname(args.output)
+    _sw_report_path = os.path.join(_output_dir_for_sw, "shared_windows_report.csv")
+    if os.path.exists(_sw_report_path):
+        try:
+            _sw_df = pd.read_csv(_sw_report_path)
+            if not _sw_df.empty and "query_contig" in _sw_df.columns and "match_contig" in _sw_df.columns:
+                # Build union-find across (query_contig, match_contig) pairs
+                _uf_parent: dict = {}
+
+                def _uf_find(x):
+                    while _uf_parent.get(x, x) != x:
+                        _uf_parent[x] = _uf_parent.get(_uf_parent[x], _uf_parent[x])
+                        x = _uf_parent[x]
+                    return x
+
+                def _uf_union(a, b):
+                    ra, rb = _uf_find(a), _uf_find(b)
+                    if ra != rb:
+                        _uf_parent[ra] = rb
+
+                for _, row in _sw_df.iterrows():
+                    qa = str(row.get("query_contig", "")).strip()
+                    mb = str(row.get("match_contig", "")).strip()
+                    if qa and mb and qa != mb:
+                        _uf_union(qa, mb)
+
+                # Map each accession to its cluster root
+                _all_accs_in_sw = set(_sw_df["query_contig"].astype(str)) | set(_sw_df["match_contig"].astype(str))
+                for _acc in _all_accs_in_sw:
+                    _acc_to_conflict_cluster[_acc] = f"conflict_cluster_{_uf_find(_acc)}"
+
+                _n_clusters = len(set(_acc_to_conflict_cluster.values()))
+                print(f"Loaded shared_windows_report.csv: {len(_all_accs_in_sw)} accessions "
+                      f"→ {_n_clusters} cross-genus conflict clusters")
+
+                # Derive per-accession cluster_dominance from shared windows
+                # so the penalty works regardless of --compare_references mode.
+                _sw_partner_count: dict = defaultdict(set)
+                _sw_region_count: dict = defaultdict(int)
+                for _, _swr in _sw_df.iterrows():
+                    _qa = str(_swr.get("query_contig", "")).strip()
+                    _mb = str(_swr.get("match_contig", "")).strip()
+                    if _qa and _mb and _qa != _mb:
+                        _sw_partner_count[_qa].add(_mb)
+                        _sw_partner_count[_mb].add(_qa)
+                        _sw_region_count[_qa] += 1
+                        _sw_region_count[_mb] += 1
+                _sw_cluster_dominance: dict = {}
+                for _acc in _all_accs_in_sw:
+                    _sw_cluster_dominance[_acc] = {
+                        "n_shared_regions": _sw_region_count.get(_acc, 0),
+                        "n_cluster_partners": len(_sw_partner_count.get(_acc, set())),
+                        "cluster_removal_frac": 0.0,
+                    }
+        except Exception as _sw_err:
+            print(f"Warning: could not load shared_windows_report.csv for conflict clustering: {_sw_err}")
+
+    # Annotate each reference_hit with its conflict_cluster_id (if any)
+    _clustered_count = 0
+    for _acc, _data in reference_hits.items():
+        _cid = _acc_to_conflict_cluster.get(_acc)
+        if _cid:
+            _data["conflict_cluster_id"] = _cid
+            _clustered_count += 1
+    if _clustered_count:
+        print(f"Annotated {_clustered_count} accessions with cross-genus conflict_cluster_id")
+
+    # ── Load cluster_dominance.json for minhash penalty scaling ────────────
+    # Written by finalize_proportional_removal when compare_to_reference_windows
+    # is False.  Contains per-accession stats: n_shared_regions,
+    # n_cluster_partners, cluster_removal_frac.
+    _cluster_dominance: dict = {}
+    _cd_path = os.path.join(_output_dir_for_sw, "cluster_dominance.json")
+    if os.path.exists(_cd_path):
+        try:
+            import json as _json_cd
+            with open(_cd_path) as _cd_fh:
+                _cluster_dominance = _json_cd.load(_cd_fh)
+            print(f"Loaded cluster_dominance.json: {len(_cluster_dominance)} accessions")
+        except Exception as _cd_err:
+            print(f"Warning: could not load cluster_dominance.json: {_cd_err}")
+
     for acc, data in reference_hits.items():
         if not data.get('organism'):
             # try to get organism from taxdump names
@@ -1564,6 +1867,13 @@ def main():
                 data['organism'] = taxdump_names[taxid]
             else:
                 data['organism'] = data.get('name', acc)
+        # Annotate with cluster dominance stats.
+        # Prefer cluster_dominance.json (from False path — has removal_frac),
+        # fall back to shared_windows-derived counts (from True path).
+        if acc in _cluster_dominance:
+            data["cluster_dominance"] = _cluster_dominance[acc]
+        elif acc in _sw_cluster_dominance:
+            data["cluster_dominance"] = _sw_cluster_dominance[acc]
         top = data.get('key')
         species_to_all_accs[top].add(acc)
         data = compute_scores_per(
@@ -1575,12 +1885,19 @@ def main():
             fallback_top = top,
             total_reads = total_reads,
             mapq_breadth_power = args.mapq_breadth_power,
+            breadth_midpoint = args.breadth_midpoint,
+            breadth_steepness = args.breadth_steepness,
+            abundance_rpm_midpoint = args.abundance_rpm_midpoint,
+            abundance_rpm_steepness = args.abundance_rpm_steepness,
         )
     strain_summary = calculate_normalized_groups(
         hits=reference_hits,
         group_field="key",
         reads_key="numreads",
         mapq_breadth_power=args.mapq_breadth_power,
+        mapq_gini_power=args.mapq_gini_power,
+        contig_penalty_power=args.contig_penalty_power,
+        depth_concentration_power=args.depth_concentration_power,
     )
     # for k, v in strain_summary.items():
     #     if v.get('toplevelname') == "Toxoplasma":
@@ -1747,14 +2064,103 @@ def main():
             weight_prior = _weight_prior,
             weight_prior_lambda = args.optimize_weight_prior_lambda,
             plasmid_bonus_weight = args.plasmid_bonus_weight,
+            abundance_confidence_weight = args.abundance_confidence_weight,
+            youden_min_threshold = args.youden_min_threshold,
             prefer_granularity = args.optimize_granularity,
-            platform=args.platform
+            platform=args.platform,
+            abundance_gate = args.abundance_gate,
+            optimize_mode = args.optimize_mode,
+            hybrid_lambda = args.optimize_hybrid_lambda,
+            optimize_categories = args.optimize_categories,
+            score_power = args.score_power,
+            auto_score_power = args.auto_score_power,
         )
         best_weights = report_weights.get("best_weights") or {}
         weights.update(best_weights)
         print("Optimized weights changed: ")
         for k, v in weights.items():
             print(f"\t{k}: {v}")
+    # ── Pre-compute score_power_scale for each strain ────────────────────
+    # score_power_scale ∈ [0, 1] controls how much the power transform
+    # applies to each organism.  Dominant organisms in their group get the
+    # full boost (scale≈1); minor siblings sharing reads with many close
+    # relatives get almost none (scale→0).
+    #
+    # Grouping strategy:
+    #   1. If ani_data is available, group organisms that share ANI ≥
+    #      ani_threshold (transitive closure of pairwise edges).
+    #   2. Otherwise fall back to toplevelkey grouping.
+    #
+    # Within each group, score_power_scale = reads / group_total_reads,
+    # so the effective exponent becomes:
+    #   effective_power = 1.0 - (1.0 - score_power) * score_power_scale
+    # A sole organism (proportion=1) gets full score_power; one of five
+    # equal Shigella (proportion≈0.2) gets almost no boost.
+
+    def _build_ani_groups(strain_dict, ani_data, threshold):
+        """Build groups of taxa connected by ANI ≥ threshold (union-find)."""
+        parent = {}
+
+        def find(x):
+            while parent.get(x, x) != x:
+                parent[x] = parent.get(parent[x], parent[x])
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        taxids = set()
+        for _k, _d in strain_dict.items():
+            t = str(_d.get('key', _k))
+            taxids.add(t)
+
+        for t1 in taxids:
+            if t1 not in ani_data:
+                continue
+            for t2, ani_val in ani_data[t1].items():
+                if t2 in taxids and ani_val >= threshold:
+                    union(t1, t2)
+
+        # Collect groups: root -> list of taxids
+        groups = defaultdict(list)
+        for t in taxids:
+            groups[find(t)].append(t)
+        return groups
+
+    if ani_data:
+        _ani_groups = _build_ani_groups(strain_summary, ani_data, args.ani_threshold)
+        # Invert: taxid -> group root
+        _taxid_to_ani_group = {}
+        for root, members in _ani_groups.items():
+            for m in members:
+                _taxid_to_ani_group[m] = root
+
+    for _k, _d in strain_summary.items():
+        _taxid = str(_d.get('key', _k))
+        _reads = float(_d.get('numreads', 0))
+
+        if ani_data and _taxid in _taxid_to_ani_group:
+            # ANI-based grouping
+            _group_root = _taxid_to_ani_group[_taxid]
+            _group_total = sum(
+                float(_d2.get('numreads', 0))
+                for _d2 in strain_summary.values()
+                if _taxid_to_ani_group.get(str(_d2.get('key', ''))) == _group_root
+            )
+        else:
+            # Fallback: toplevelkey grouping
+            _tlk = _d.get('toplevelkey', '')
+            _group_total = sum(
+                float(_d2.get('numreads', 0))
+                for _d2 in strain_summary.values()
+                if _d2.get('toplevelkey', '') == _tlk
+            )
+
+        _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
+
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename
@@ -1805,22 +2211,101 @@ def main():
         }
         print(f"Filtered strains by min_reads_align={_min_ra}: {_before} → {len(strain_summary)}")
 
+    # ── Subkey (species) level aggregation ─────────────────────────────────
+    # Intermediate aggregation: strain → subkey (species).  Each subkey group
+    # aggregates all strains sharing the same species-level taxid and will
+    # later be nested *inside* the toplevelkey (genus) group.
+    subkey_summary = calculate_normalized_groups(
+        hits=strain_summary,
+        group_field="subkey",
+        reads_key="numreads",
+        mapq_breadth_power=args.mapq_breadth_power,
+        mapq_gini_power=args.mapq_gini_power,
+        contig_penalty_power=args.contig_penalty_power,
+        depth_concentration_power=args.depth_concentration_power,
+    )
+    # Attach strain-level members to each subkey group
+    for _, sk_data in subkey_summary.items():
+        sk_data['members'] = [
+            x for _, x in strain_summary.items()
+            if str(x.get('subkey', x.get('key', ''))) == str(sk_data.get('subkey', sk_data.get('key', '')))
+        ]
+        # Ensure subkey groups carry correct identity fields
+        sk_data['name'] = sk_data.get('subkeyname', sk_data.get('name', None))
+        sk_data['key'] = sk_data.get('subkey', sk_data.get('key', None))
+    print(f"Subkey (species) aggregation: {len(strain_summary)} strains → {len(subkey_summary)} subkeys")
+
     aggregate_dict = calculate_normalized_groups(
         hits=strain_summary,
         group_field="toplevelkey",
         reads_key="numreads",
         mapq_breadth_power=args.mapq_breadth_power,
+        mapq_gini_power=args.mapq_gini_power,
+        contig_penalty_power=args.contig_penalty_power,
+        depth_concentration_power=args.depth_concentration_power,
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():
         for acc in species_to_all_accs.get(k, []):
             acc_to_parent[acc] = k
 
+    # Pre-compute score_power_scale for aggregate (species-level) entries.
+    # At this level each entry IS a toplevelkey group, so default scale=1.0.
+    # But if ANI data links multiple toplevelkeys, compute proportion within
+    # the ANI super-group.
+    if ani_data:
+        _agg_ani_groups = _build_ani_groups(aggregate_dict, ani_data, args.ani_threshold)
+        _agg_taxid_to_ani_group = {}
+        for root, members in _agg_ani_groups.items():
+            for m in members:
+                _agg_taxid_to_ani_group[m] = root
+
+        for _k, _d in aggregate_dict.items():
+            _taxid = str(_d.get('toplevelkey', _k))
+            _reads = float(_d.get('numreads', 0))
+            if _taxid in _agg_taxid_to_ani_group:
+                _group_root = _agg_taxid_to_ani_group[_taxid]
+                _group_total = sum(
+                    float(_d2.get('numreads', 0))
+                    for _d2 in aggregate_dict.values()
+                    if _agg_taxid_to_ani_group.get(str(_d2.get('toplevelkey', ''))) == _group_root
+                )
+                _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
+            else:
+                _d['score_power_scale'] = 1.0
+    else:
+        for _k, _d in aggregate_dict.items():
+            _d['score_power_scale'] = 1.0  # no ANI info at species level, no penalty
+
+    # ── Compute TASS scores for subkey (species) groups ────────────────────
+    for _, sk_data in subkey_summary.items():
+        sk_data['sample_name'] = args.samplename
+        sk_group_reads = [
+            dict(reads=x['numreads'], key=x.get('key'))
+            for x in sk_data.get('members', [])
+        ]
+        calculate_aggregate_scores(
+            data=sk_data,
+            hmp_dists=dists,
+            body_sites=[sampletype],
+            k2_mapping=k2_mapping,
+            sampletype=sampletype,
+            mmbert_dict=mmbert_dict,
+            group_reads=sk_group_reads,
+            total_reads=total_reads,
+        )
+        sk_data['tass_score'] = compute_tass_score(
+            data=sk_data,
+            weights=weights,
+        )
+
     for _, data in aggregate_dict.items():
-        # add all the strains to the strains list from strain_summary if data['toplevelkey'] matches
+        # Nest subkey groups as members of the toplevelkey group.
+        # Each subkey group already contains its own 'members' list of strains.
+        tlk = str(data.get('toplevelkey', ''))
         data['members'] = [
-            x for _, x in strain_summary.items()
-            if x.get('toplevelkey') == data.get('toplevelkey')
+            sk_data for _, sk_data in subkey_summary.items()
+            if str(sk_data.get('toplevelkey', '')) == tlk
         ]
 
         data['name'] = data.get('toplevelname', None)
@@ -1883,20 +2368,36 @@ def main():
     # directly so it does not need to load or parse the ANI matrix itself.
     if ani_data:
         for group in final_json:
-            for member in group.get('members', []):
-                member_key = str(member.get('key', ''))
-                matches = []
-                if member_key in ani_data:
-                    for other_key, ani_val in ani_data[member_key].items():
-                        if other_key == member_key:
+            for subkey_member in group.get('members', []):
+                # ANI at the subkey (species) level
+                sk_key = str(subkey_member.get('key', subkey_member.get('subkey', '')))
+                sk_matches = []
+                if sk_key in ani_data:
+                    for other_key, ani_val in ani_data[sk_key].items():
+                        if other_key == sk_key:
                             continue
                         if ani_val >= args.ani_threshold:
-                            matches.append({
+                            sk_matches.append({
                                 'key': other_key,
                                 'ani_pct': round(float(ani_val) * 100, 2),
                             })
-                    matches.sort(key=lambda x: x['ani_pct'], reverse=True)
-                member['high_ani_matches'] = matches
+                    sk_matches.sort(key=lambda x: x['ani_pct'], reverse=True)
+                subkey_member['high_ani_matches'] = sk_matches
+                # ANI at the strain level (nested members)
+                for strain in subkey_member.get('members', []):
+                    strain_key = str(strain.get('key', ''))
+                    strain_matches = []
+                    if strain_key in ani_data:
+                        for other_key, ani_val in ani_data[strain_key].items():
+                            if other_key == strain_key:
+                                continue
+                            if ani_val >= args.ani_threshold:
+                                strain_matches.append({
+                                    'key': other_key,
+                                    'ani_pct': round(float(ani_val) * 100, 2),
+                                })
+                        strain_matches.sort(key=lambda x: x['ani_pct'], reverse=True)
+                    strain['high_ani_matches'] = strain_matches
 
     # for data in final_json:
     #     print(f"{data.get('name', 'N/A')} ({data.get('key', 'N/A')}):")
@@ -1944,33 +2445,46 @@ def main():
                 group['control_comparison'] = grp_ctrl
                 _ctrl_annotated += 1
 
-            # Member-level comparison (key and subkey)
-            for member in group.get('members', []):
-                # Compare at key level (strain)
-                m_ctrl_key = compute_control_comparison(
-                    data=member, neg_index=_neg, pos_index=_pos,
-                    fold_threshold=_ctrl_threshold, level="key",
-                )
+            # Subkey-level comparison (species) and strain-level (nested)
+            for subkey_member in group.get('members', []):
                 # Compare at subkey level (species)
-                m_ctrl_subkey = compute_control_comparison(
-                    data=member, neg_index=_neg, pos_index=_pos,
+                sk_ctrl_subkey = compute_control_comparison(
+                    data=subkey_member, neg_index=_neg, pos_index=_pos,
                     fold_threshold=_ctrl_threshold, level="subkey",
                 )
-                member['control_comparison'] = {}
-                if m_ctrl_key:
-                    member['control_comparison']['by_key'] = m_ctrl_key
-                if m_ctrl_subkey:
-                    member['control_comparison']['by_subkey'] = m_ctrl_subkey
-                # Also store a top-level summary using the key-level result
-                # (or subkey fallback) for easy access in the report
-                _best_ctrl = m_ctrl_key or m_ctrl_subkey
-                if _best_ctrl:
+                subkey_member['control_comparison'] = {}
+                if sk_ctrl_subkey:
+                    subkey_member['control_comparison']['by_subkey'] = sk_ctrl_subkey
                     for _f in ('neg_max_tass', 'neg_max_reads', 'tass_fold_over_neg',
                                'reads_fold_over_neg', 'tass_fold_over_pos',
                                'reads_fold_over_pos', 'control_flag',
                                'neg_control_values', 'pos_control_values',
                                'pos_min_tass', 'pos_min_reads'):
-                        member['control_comparison'][_f] = _best_ctrl.get(_f)
+                        subkey_member['control_comparison'][_f] = sk_ctrl_subkey.get(_f)
+
+                # Strain-level comparison (nested members of the subkey)
+                for strain in subkey_member.get('members', []):
+                    s_ctrl_key = compute_control_comparison(
+                        data=strain, neg_index=_neg, pos_index=_pos,
+                        fold_threshold=_ctrl_threshold, level="key",
+                    )
+                    s_ctrl_subkey = compute_control_comparison(
+                        data=strain, neg_index=_neg, pos_index=_pos,
+                        fold_threshold=_ctrl_threshold, level="subkey",
+                    )
+                    strain['control_comparison'] = {}
+                    if s_ctrl_key:
+                        strain['control_comparison']['by_key'] = s_ctrl_key
+                    if s_ctrl_subkey:
+                        strain['control_comparison']['by_subkey'] = s_ctrl_subkey
+                    _best_ctrl = s_ctrl_key or s_ctrl_subkey
+                    if _best_ctrl:
+                        for _f in ('neg_max_tass', 'neg_max_reads', 'tass_fold_over_neg',
+                                   'reads_fold_over_neg', 'tass_fold_over_pos',
+                                   'reads_fold_over_pos', 'control_flag',
+                                   'neg_control_values', 'pos_control_values',
+                                   'pos_min_tass', 'pos_min_reads'):
+                            strain['control_comparison'][_f] = _best_ctrl.get(_f)
 
         if _ctrl_annotated:
             print(f"Control comparison: annotated {_ctrl_annotated} species groups "
@@ -2031,31 +2545,49 @@ def main():
                 group['insilico_comparison'] = grp_isil
                 _insilico_annotated += 1
 
-            for member in group.get('members', []):
-                m_isil_key = compute_control_comparison(
-                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
-                    fold_threshold=args.control_fold_threshold, level="key",
-                )
-                m_isil_subkey = compute_control_comparison(
-                    data=member, neg_index=_empty_neg, pos_index=_insilico_index,
+            for subkey_member in group.get('members', []):
+                # Subkey-level insilico comparison
+                sk_isil = compute_control_comparison(
+                    data=subkey_member, neg_index=_empty_neg, pos_index=_insilico_index,
                     fold_threshold=args.control_fold_threshold, level="subkey",
                 )
-                member['insilico_comparison'] = {}
-                if m_isil_key:
-                    member['insilico_comparison']['by_key'] = m_isil_key
-                if m_isil_subkey:
-                    member['insilico_comparison']['by_subkey'] = m_isil_subkey
-                _best_isil = m_isil_key or m_isil_subkey
-                if _best_isil:
+                subkey_member['insilico_comparison'] = {}
+                if sk_isil:
+                    subkey_member['insilico_comparison']['by_subkey'] = sk_isil
                     for _f in ('pos_min_tass', 'pos_min_reads',
                                'tass_fold_over_pos', 'reads_fold_over_pos',
                                'pos_control_values'):
-                        member['insilico_comparison'][_f] = _best_isil.get(_f)
-                    # Rename for clarity: these are insilico values
-                    member['insilico_comparison']['insilico_tass'] = _best_isil.get('pos_min_tass')
-                    member['insilico_comparison']['insilico_reads'] = _best_isil.get('pos_min_reads')
-                    member['insilico_comparison']['tass_fold_over_insilico'] = _best_isil.get('tass_fold_over_pos')
-                    member['insilico_comparison']['reads_fold_over_insilico'] = _best_isil.get('reads_fold_over_pos')
+                        subkey_member['insilico_comparison'][_f] = sk_isil.get(_f)
+                    subkey_member['insilico_comparison']['insilico_tass'] = sk_isil.get('pos_min_tass')
+                    subkey_member['insilico_comparison']['insilico_reads'] = sk_isil.get('pos_min_reads')
+                    subkey_member['insilico_comparison']['tass_fold_over_insilico'] = sk_isil.get('tass_fold_over_pos')
+                    subkey_member['insilico_comparison']['reads_fold_over_insilico'] = sk_isil.get('reads_fold_over_pos')
+
+                # Strain-level insilico comparison (nested members)
+                for strain in subkey_member.get('members', []):
+                    s_isil_key = compute_control_comparison(
+                        data=strain, neg_index=_empty_neg, pos_index=_insilico_index,
+                        fold_threshold=args.control_fold_threshold, level="key",
+                    )
+                    s_isil_subkey = compute_control_comparison(
+                        data=strain, neg_index=_empty_neg, pos_index=_insilico_index,
+                        fold_threshold=args.control_fold_threshold, level="subkey",
+                    )
+                    strain['insilico_comparison'] = {}
+                    if s_isil_key:
+                        strain['insilico_comparison']['by_key'] = s_isil_key
+                    if s_isil_subkey:
+                        strain['insilico_comparison']['by_subkey'] = s_isil_subkey
+                    _best_isil = s_isil_key or s_isil_subkey
+                    if _best_isil:
+                        for _f in ('pos_min_tass', 'pos_min_reads',
+                                   'tass_fold_over_pos', 'reads_fold_over_pos',
+                                   'pos_control_values'):
+                            strain['insilico_comparison'][_f] = _best_isil.get(_f)
+                        strain['insilico_comparison']['insilico_tass'] = _best_isil.get('pos_min_tass')
+                        strain['insilico_comparison']['insilico_reads'] = _best_isil.get('pos_min_reads')
+                        strain['insilico_comparison']['tass_fold_over_insilico'] = _best_isil.get('tass_fold_over_pos')
+                        strain['insilico_comparison']['reads_fold_over_insilico'] = _best_isil.get('reads_fold_over_pos')
 
         if _insilico_annotated:
             print(f"In-silico comparison: annotated {_insilico_annotated} species groups "
@@ -2077,22 +2609,35 @@ def main():
                 )
                 if grp_isil_t:
                     group[_type_key] = grp_isil_t
-                for member in group.get('members', []):
-                    m_isil_t = compute_control_comparison(
-                        data=member, neg_index=_empty_neg, pos_index=_type_index,
-                        fold_threshold=args.control_fold_threshold, level="key",
-                    ) or compute_control_comparison(
-                        data=member, neg_index=_empty_neg, pos_index=_type_index,
+                for subkey_member in group.get('members', []):
+                    sk_isil_t = compute_control_comparison(
+                        data=subkey_member, neg_index=_empty_neg, pos_index=_type_index,
                         fold_threshold=args.control_fold_threshold, level="subkey",
                     )
-                    if m_isil_t:
-                        member[_type_key] = {
-                            'insilico_tass': m_isil_t.get('pos_min_tass'),
-                            'insilico_reads': m_isil_t.get('pos_min_reads'),
-                            'tass_fold_over_insilico': m_isil_t.get('tass_fold_over_pos'),
-                            'reads_fold_over_insilico': m_isil_t.get('reads_fold_over_pos'),
-                            'pos_control_values': m_isil_t.get('pos_control_values'),
+                    if sk_isil_t:
+                        subkey_member[_type_key] = {
+                            'insilico_tass': sk_isil_t.get('pos_min_tass'),
+                            'insilico_reads': sk_isil_t.get('pos_min_reads'),
+                            'tass_fold_over_insilico': sk_isil_t.get('tass_fold_over_pos'),
+                            'reads_fold_over_insilico': sk_isil_t.get('reads_fold_over_pos'),
+                            'pos_control_values': sk_isil_t.get('pos_control_values'),
                         }
+                    for strain in subkey_member.get('members', []):
+                        s_isil_t = compute_control_comparison(
+                            data=strain, neg_index=_empty_neg, pos_index=_type_index,
+                            fold_threshold=args.control_fold_threshold, level="key",
+                        ) or compute_control_comparison(
+                            data=strain, neg_index=_empty_neg, pos_index=_type_index,
+                            fold_threshold=args.control_fold_threshold, level="subkey",
+                        )
+                        if s_isil_t:
+                            strain[_type_key] = {
+                                'insilico_tass': s_isil_t.get('pos_min_tass'),
+                                'insilico_reads': s_isil_t.get('pos_min_reads'),
+                                'tass_fold_over_insilico': s_isil_t.get('tass_fold_over_pos'),
+                                'reads_fold_over_insilico': s_isil_t.get('reads_fold_over_pos'),
+                                'pos_control_values': s_isil_t.get('pos_control_values'),
+                            }
 
             # Per-type missing organisms
             _type_missing = find_missing_positive_controls(
@@ -2181,17 +2726,20 @@ def main():
     _total_organism_reads = 0
     for grp in final_json:
         _all_toplevelkeys.add(grp.get('toplevelkey', grp.get('key', '')))
-        for m in grp.get('members', []):
-            _all_keys.add(m.get('key', ''))
-            _all_subkeys.add(m.get('subkey', m.get('key', '')))
-            _total_organism_reads += float(m.get('numreads', 0))
+        for sk_m in grp.get('members', []):
+            _all_subkeys.add(sk_m.get('subkey', sk_m.get('key', '')))
+            for strain in sk_m.get('members', []):
+                _all_keys.add(strain.get('key', ''))
+                _total_organism_reads += float(strain.get('numreads', 0))
     # Strip covered_regions from JSON output — large and only needed internally
     import copy as _copy
     _json_out = _copy.deepcopy(final_json)
     for _grp in _json_out:
         _grp.pop('covered_regions', None)
-        for _m in _grp.get('members', []):
-            _m.pop('covered_regions', None)
+        for _sk_m in _grp.get('members', []):
+            _sk_m.pop('covered_regions', None)
+            for _strain in _sk_m.get('members', []):
+                _strain.pop('covered_regions', None)
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
     # them instead of its hard-coded sampletype defaults.
@@ -2498,7 +3046,7 @@ def write_to_tsv(output_path, final_scores, header):
             disparity_score = entry.get('disparity_score', 0)
             siblings_score = entry.get('siblings_score', 0)
             tass_score = entry.get('tass_score', 0)
-            minhash_score = entry.get('minhash_score', 0)
+            minhash_score = entry.get('minhash_reduction', entry.get('minhash_score', 0))
             listpathogensstrains = entry.get('listpathogensstrains', [])
             countreads = entry.get('reads_aligned', 0)
             breadth_of_coverage = entry.get('coverage', 0)
@@ -2532,7 +3080,7 @@ def write_to_tsv(output_path, final_scores, header):
                 print(f"\tK2 Disparity Score: {entry.get('k2_disparity', 0):.2f}")
                 print(f"\tCoverage (Mean%): {entry.get('meancoverage', 0):.2f}")
                 print(f"\tBreadth: {entry.get('coverage', 0):.2f}")
-                print(f"\tMinhash score: {entry.get('minhash_score', 0):.2f}")
+                print(f"\tMinhash score: {entry.get('minhash_reduction', entry.get('minhash_score', 0)):.2f}")
                 print(f"\tDepth (Mean): {entry.get('meandepth', 0):.2f}")
                 print(f"\tGT Coverage: {entry.get('gtcov', 0):.2f}")
                 print(f"\tFinal Score: {entry.get('tass_score', 0):.2f}")

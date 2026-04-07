@@ -18,14 +18,14 @@ The pipeline scripts that contribute to the TASS scoring mentioned below are ava
 
 ### Input Files
 
-| File Type                                    | What it's for                                                                                      |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **BAM** (`.bam`)                             | Aligned reads against the reference database; source of read counts, mapping quality, and coverage |
-| **BEDGRAPH / Depth** (`.bedgraph`, `.depth`) | Per-position coverage depth for each reference                                                     |
-| **FASTA** (`.fasta`, `.fa`)                  | Reference genome sequences; used to build k-mer signatures for conflict detection                  |
-| **Match file** (`.tsv`)                      | Maps accession IDs to taxonomy (taxid, organism name, description)                                 |
-| **Kraken2 report** (optional)                | Independent taxonomic classification for cross-checking                                            |
-| **HMP distributions** (optional)             | Human Microbiome Project abundance data for body-site context                                      |
+| File Type                                    | What it's for                                                                                                                                                     |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **BAM** (`.bam`)                             | Aligned reads against the reference database; source of read counts, mapping quality, and coverage                                                                |
+| **BEDGRAPH / Depth** (`.bedgraph`, `.depth`) | Per-position coverage depth for each reference. **Optional** when `--compare_references` is active (coverage is derived from the BAM index instead of a bedgraph) |
+| **FASTA** (`.fasta`, `.fa`)                  | Reference genome sequences; used to build k-mer signatures for conflict detection. Required when `--compare_references` is active                                 |
+| **Match file** (`.tsv`)                      | Maps accession IDs to taxonomy (taxid, organism name, description)                                                                                                |
+| **Kraken2 report** (optional)                | Independent taxonomic classification for cross-checking                                                                                                           |
+| **HMP distributions** (optional)             | Human Microbiome Project abundance data for body-site context                                                                                                     |
 
 ---
 
@@ -40,6 +40,8 @@ The BAM file is read using `pysam`. For each reference, we extract:
 - **`highmapq_fraction`** — Fraction of reads with MAPQ ≥ threshold (e.g., MAPQ ≥ 5)
 - **`covered_regions`** — List of `(start, end, depth)` from the bedgraph
 
+\*_Note:_ When `--compare_references` is active, coverage is estimated from BAM index statistics instead of a bedgraph file (see Section 3.8). Additionally, we will use the term _contig_ interchangeably with reference accessions be they scaffolds, plasmids, contigs, or full chromosomes.
+
 ### 2.2 Coverage from Depth/Bedgraph
 
 The bedgraph file is parsed into a table with columns `(chrom, start, end, depth)`. For each reference:
@@ -49,6 +51,8 @@ covered_bases = sum of (end - start + 1) for every region where depth > 0
 
 coverage = covered_bases / reference_length
 ```
+
+> **Bedgraph is optional when `--compare_references` is active.** In that mode the pipeline tiles fixed-size windows across the reference FASTAs directly and compares them via k-mer sketches (Section 3.8). Coverage for scoring is then estimated from the BAM index statistics rather than from an external bedgraph file. If no bedgraph is supplied without `--compare_references`, `determine_conflicts()` raises a `ValueError` immediately so the user is not left with a empty results file.
 
 ### 2.3 Abundance Metrics (RPM / RPKM)
 
@@ -125,34 +129,129 @@ Any pair of regions from _different_ references with Jaccard similarity ≥ `min
 
 Connected components (found via BFS — breadth-first search) define **conflict groups** clusters of regions across multiple organisms that share significant k-mer content and therefore could cause reads to be ambiguously assigned.
 
-### 3.6 Proportional Read Removal
+### 3.6 Best-Alignment Read Removal
 
-For each conflict group, `finalize_proportional_removal()` handles the cleanup:
+For each read with multi-reference alignments, `build_removed_ids_best_alignment()` keeps the alignment with the highest composite score and schedules the rest for removal. The score combines four terms:
 
-- Reads overlapping any region in the conflict group are collected
-- A proportional subset is randomly removed (mode: `'random'`) to reduce cross-mapping inflation
-- Removed read IDs are logged per reference
+```math
+\text{score} = \text{MAPQ}
+             + w_{AS} \cdot AS
+             - w_{pen} \cdot N_{\text{alt}}
+             + w_{ani} \cdot \Omega_{\text{ani}}
+```
+
+Where:
+
+- **MAPQ** — raw mapping quality reported by the aligner (0–60)
+- $w_{AS}$ — alignment-score weight (default `0.0`; AS tie-breaks only when enabled)
+- $N_{\text{alt}}$ — number of competing references that share at least one high-ANI window with this contig; $w_{pen} = 50.0$ by default
+- $\Omega_{\text{ani}}$ — **ANI dominance term** (see below); $w_{ani} = 10.0$ by default
+
+#### ANI Dominance Term $\Omega_{\text{ani}}$
+
+Before the BAM is scanned, `_count_reads_per_ref()` builds a fast index of the pre-removal read count for every reference from the BAM index statistics. For each competing reference that shares a high-ANI window with the current contig, we measure how much more (or less) support our contig has:
+
+```math
+\Omega_{\text{ani}} = \sum_{\text{alt} \in A} J_{\max}(\text{contig},\, \text{alt}) \cdot \log_2\!\left(\frac{N_{\text{contig}}}{N_{\text{alt}}}\right)
+```
+
+Where:
+
+- $A$ — the set of competing contigs that share at least one window with this contig
+- $J_{\max}(\text{contig}, \text{alt})$ — the maximum window-level Jaccard similarity observed between the contig and that competitor (from the shared-window index). Jaccard 1.0 = nearly identical sequence; 0.1 = only slightly similar
+- $N_{\text{contig}}$, $N_{\text{alt}}$ — pre-removal read counts for the respective references (minimum 1 to avoid log(0))
+- $\log_2(N_{\text{contig}} / N_{\text{alt}})$ — the log-ratio of read counts. This is positive when our reference has more reads than the competitor (reward) and negative when it has fewer (penalty)
+
+**Worked example — O104:H4 vs Shigella:** Suppose O104:H4 has 80,000 reads and a Shigella contig has 5,000, and they share a window with $J_{\max} = 0.95$:
+
+```
+ani_dominance  = 0.95 × log₂(80000 / 5000)
+               = 0.95 × log₂(16)
+               = 0.95 × 4.0 = 3.8
+
+score boost (w_ani=10) → +38 points for O104:H4 alignment
+score penalty          → −38 points for Shigella alignment
+```
+
+A single high-ANI window with a 16× read-count advantage adds ≈ 38 points, decisively overcoming any MAPQ noise between the two references. Reads that align equally well to both will therefore be assigned to O104:H4.
+
+#### Parameters
+
+The actual values passed to `build_removed_ids_best_alignment()` differ by mode:
+
+| Parameter          | `--compare_references` mode | Standard (bedgraph) mode | Effect                                                         |
+| ------------------ | --------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `penalize_weight`  | 0                           | 23.0                     | Penalty per competing contig in $N_{\text{alt}}$               |
+| `as_weight`        | 1.0                         | 0.0                      | Weight on the aligner AS tag                                   |
+| `ani_boost_weight` | 10.0                        | _(not used)_             | Scales $\Omega_{\text{ani}}$; raise to make dominance stronger |
+| `min_alt_count`    | 2                           | 1                        | Minimum competing alignments before removal applies            |
+
+In `--compare_references` mode the ANI dominance term ($\Omega_{\text{ani}}$) does all the heavy lifting, so `penalize_weight` is set to 0. In the standard bedgraph path, `as_weight` is disabled (0.0) and the competing-contig penalty is 23.0.
 
 ### 3.7 Comparison Metrics (Δ Breadth)
 
-After read removal, `compare_metrics()` calculates how much each reference changed:
+After read removal, `compare_metrics()` calculates how much each reference changed. The results are written to the conflict-comparison xlsx/csv. Each row represents one reference and includes:
 
-```
-Δ All     = total_reads - pass_filtered_reads          (number of reads removed)
-Δ All%    = 100 × (reads_removed / total_reads)        (% of reads removed)
-Δ⁻¹ Breadth = breadth_new / breadth_old               (how much breadth remained after removal)
-```
+**Core removal metrics** (always present):
 
-**`Δ⁻¹ Breadth`** and **`Δ All%`** are passed directly into the minhash score (see Section 7).
+| Column        | Formula                                            | Meaning                                          |
+| ------------- | -------------------------------------------------- | ------------------------------------------------ |
+| `Δ All`       | $N_{\text{total}} - N_{\text{pass}}$               | Number of reads removed                          |
+| `Δ All%`      | $100 \times N_{\text{removed}} / N_{\text{total}}$ | Percentage of reads removed                      |
+| `Δ⁻¹ Breadth` | $B_{\text{post}} / B_{\text{pre}}$                 | Fraction of genome breadth that survived removal |
 
-### 3.8 Shared-Window Mode (Optional)
+**Abundance metrics** (pre- and post-removal, so downstream scoring can see the delta):
 
-When `compare_to_reference_windows=True`, an alternative approach is used:
+| Column      | Formula                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| `RPKM Pre`  | $N_{\text{pre}} \;\big/\; \big(\tfrac{R_{\text{total}}}{10^6} \times \tfrac{L}{10^3}\big)$ |
+| `RPKM Post` | Same formula using $N_{\text{post}}$                                                       |
+| `RPM Pre`   | $N_{\text{pre}} \;\big/\; \big(R_{\text{total}} / 10^6\big)$                               |
+| `RPM Post`  | Same formula using $N_{\text{post}}$                                                       |
 
-1. Fixed-size windows (default: 2000 bp, step: 500 bp) are tiled across each reference FASTA
-2. Each window is sketched into a sourmash signature
-3. Windows are compared across all FASTAs to find shared regions
-4. A scoring heuristic determines which reads to drop per conflict
+Where $N_{\text{pre}}$ and $N_{\text{post}}$ are read counts before and after removal, $R_{\text{total}}$ is the total reads in the BAM, and $L$ is the reference length in bp.
+
+**Shared-window ANI summary** (populated when `--compare_references` is active; derived from `compute_shared_window_stats()`):
+
+| Column             | Meaning                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `Shared Windows`   | Number of tiled windows on this reference that overlap at least one window on another reference |
+| `Conflicting Refs` | Count of distinct other references sharing at least one window                                  |
+| `Mean Shared ANI`  | Average Jaccard similarity across all shared windows (proxy for ANI; 0→1)                       |
+| `Max Shared ANI`   | Highest single-window Jaccard seen for this reference — flags the most similar competitor       |
+| `Shared BP`        | Approximate total base-pairs covered by shared windows (windows may overlap)                    |
+
+`Δ⁻¹ Breadth` and `Δ All%` are passed directly into the minhash score (see Section 7). The ANI summary columns are informational in the xlsx but their per-window Jaccard values feed the ANI dominance term $\Omega_{\text{ani}}$ during read removal (Section 3.6).
+
+### 3.8 Shared-Window Mode (`--compare_references`)
+
+When `--compare_references` is passed to `match_paths.py`, an alternative — and more thorough — conflict detection approach is used. Rather than sketching merged bedgraph regions, the pipeline tiles fixed-size windows across every reference FASTA and compares them directly to find shared sequence.
+
+#### How it works
+
+1. **Tiling** — Each reference FASTA is divided into windows of `--window_size` bp (default: 900,000 bp) with a step of `--step_size` bp (default: 900,000 bp; set to `window_size/2` for 50% overlap). Windows with more than 5% N-bases are skipped.
+2. **Sketching** — Each window is converted to a MinHash signature (k-mer size 31, scaled 200 by default).
+3. **Pairwise search** — A `ProcessPoolExecutor` is used to compare all query windows against all target windows from other FASTAs. Pairs with Jaccard ≥ `jaccard_threshold` (default 0.10) are recorded as shared.
+
+#### Performance design
+
+`report_shared_windows_across_fastas()` is optimised to minimise inter-process communication overhead at scale:
+
+- **Worker initializer** — Target window hash-sets are sent to each worker process _once_ via the pool initializer (`_init_search_worker`). They are deserialized and stored in a module-level dict (`_SEARCH_WORKER_TARGETS`), keyed by FASTA label. Subsequent job submissions carry only the query chunk — no per-job target pickling.
+- **Frozenset Jaccard** — Similarity is computed with Python's native `frozenset &` intersection (C-level), not via `MinHash` objects. This avoids Python-object construction overhead on every comparison: $J = |A \cap B| / |A \cup B|$ where $A$ and $B$ are `frozenset`s of hash values. An early-exit is applied when $|A \cap B| = 0$.
+- **Intra-FASTA skip** — Same-FASTA comparisons are skipped in $O(1)$ by checking the FASTA label key before entering the inner loop.
+- **Job granularity** — One job per query chunk (chunk size = ceil(N_queries / n_workers)), compared to the earlier approach of N_tiles × chunk jobs. This reduces scheduler overhead for large databases.
+
+#### Parameters
+
+| CLI flag               | Default | Effect                                                        |
+| ---------------------- | ------- | ------------------------------------------------------------- |
+| `--window_size`        | 900,000 | Window width in bp                                            |
+| `--step_size`          | 900,000 | Step between window starts; `window_size/2` gives 50% overlap |
+| `--min_threshold`      | 0.4     | Jaccard threshold for the region-based (non-window) path      |
+| `--compare_references` | off     | Enable this mode                                              |
+
+> **Note:** The bedgraph (`-b`) is **not required** when `--compare_references` is active. The pipeline infers coverage from BAM index statistics instead. The FASTA files (`-f`) **are** required because windows are built from reference sequence.
 
 ### 3.9 ANI Matrix Generation
 
@@ -163,6 +262,26 @@ When `compare_to_reference_windows=True`, an alternative approach is used:
 3. The result is written to `organism_ani_matrix.csv` as a symmetric matrix
 
 ---
+
+### 3.10 Pre-Removal Read Count Index (`_count_reads_per_ref`)
+
+Before any reads are removed, `_count_reads_per_ref()` builds a dict of `{reference: read_count}` for every contig in the BAM. It uses the BAM index statistics (`pysam.AlignmentFile.get_index_statistics()`) which is an O(N_references) operation — no reads are iterated. If the index is unavailable, it falls back to a full single-pass scan.
+
+This index is what enables the $N_{\text{contig}} / N_{\text{alt}}$ ratio inside the ANI dominance term $\Omega_{\text{ani}}$ (Section 3.6).
+
+### 3.11 Shared-Window Conflict Summary (`compute_shared_window_stats`)
+
+After the shared-window search, `compute_shared_window_stats()` aggregates the per-window results into a per-reference summary that is stored in the comparison xlsx (Section 3.7). For each reference it computes:
+
+| Field                 | Computation                                                                      |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `n_shared_windows`    | `len(windows)` — count of tiled windows on this ref that have at least one match |
+| `n_conflicting_refs`  | `len({w.alt_contig for w in windows})` — distinct competitors                    |
+| `mean_window_jaccard` | `statistics.mean([w.jaccard for w in windows])`                                  |
+| `max_window_jaccard`  | `max(w.jaccard for w in windows)`                                                |
+| `shared_bp`           | `sum(w.end - w.start for w in windows)` (windows may overlap; approximate)       |
+
+`max_window_jaccard` is the value used as $J_{\max}$ in the ANI dominance formula, so it directly affects which organism "wins" when reads are ambiguous (Section 3.6).
 
 ## 4. Stage 3: Score Computation (`optimize_weights.py`)
 
@@ -360,20 +479,25 @@ The conflict detection pipeline produces per-reference metrics at the species le
 - **`Δ⁻¹ Breadth`** ($B_r$): The ratio of post-removal breadth to pre-removal breadth. Think of it as "what fraction of genome coverage survived after we removed ambiguous reads?" A value of 1.0 means no breadth was lost (good — the signal was all unique). A value of 0.5 means half the coverage came from reads that could've belonged to a different organism (concerning).
 - **`Δ All%`** ($\Delta\%$): The percentage of total reads that were removed during conflict resolution. The Δ (delta) here means "change" — specifically how many reads changed (got removed).
 
-The raw minhash score penalizes organisms that lost a lot of reads. It uses a sigmoid (S-curve) as a penalty function:
+The raw minhash score blends two retention signals — breadth retention and read retention — to differentiate true positives from false positives, particularly within high-ANI conflict groups (e.g. _E. coli_ vs _Shigella_) where $B_r$ alone is nearly identical for every member:
+
+- **`Δ⁻¹ Breadth`** ($B_r$): fraction of genome breadth surviving conflict removal (0–1).
+- **Read retention** ($R_r$): fraction of reads surviving conflict removal, i.e. `Pass Filtered Reads / Total Reads`.
 
 ```math
-\text{penalty} = \frac{1}{1 + e^{-k \cdot (\Delta\% - x_0)}}
-\qquad k = 0.90,\; x_0 = -10.0
+\text{minhash\_score} = \min\!\big(1.0,\;\; 0.30 \cdot B_r + 0.70 \cdot R_r\big)
 ```
 
-Here $k$ controls the steepness of the penalty curve and $x_0$ is the inflection point (at -10%, meaning the penalty kicks in when a meaningful fraction of reads are removed).
+Read retention is weighted more heavily (70%) because it differentiates conflict-group members much more cleanly: the dominant true-positive organism retains most of its reads during removal, while false-positive relatives lose the majority of theirs.
 
-```math
-\text{minhash\_score} = \min(1.0,\;\; B_r \times \text{penalty})
+**Example — O104:H4 vs Shigella in the same conflict group:**
+
+```
+O104:H4  (TP):  Br=0.12, read_retention=0.85  →  0.30×0.12 + 0.70×0.85 = 0.631
+Shigella (FP):  Br=0.12, read_retention=0.30  →  0.30×0.12 + 0.70×0.30 = 0.246
 ```
 
-The final minhash score is the breadth retention ratio multiplied by the penalty, capped at 1.0.
+Both organisms have the same $B_r$ (they share similar genome breadth reduction in the high-ANI group), but their read-retention scores clearly separate them.
 
 **Fallback (no comparison data available):**
 
@@ -404,6 +528,119 @@ Here $w_b$ and $w_g$ are weights that control how much the breadth sigmoid vs. t
 ```
 
 > **Note:** The value stored as `minhash_reduction` is the _confidence_ value, not the raw minhash score itself. This means the minhash component represents how confident we are that the organism's alignment signal is real — primarily driven by whether the organism has meaningful genome breadth.
+
+### 7.4 Low-Read Penalty with Coverage Bypass
+
+Organisms with very few reads relative to the total are more likely to be false positives, so their `minhash_confidence` is scaled down by a coverage-aware penalty. Rather than applying the penalty at full strength regardless of coverage evidence, it is **faded out when the organism has solid genome breadth** — preventing a well-covered dominant organism from being dragged down by the global read-fraction sigmoid:
+
+```math
+w_{\text{pen}} = 0.35 \times \bigl(1 - \min\!\bigl(1.0,\; \text{cov\_conf} + 0.20 \times \text{mapq\_norm}\bigr)\bigr)
+```
+
+where $\text{mapq\_norm} = \min(1.0, \text{meanmapq} / 60)$. The additional MapQ bypass term (`0.20 × mapq_norm`) fades the penalty further when reads are high-quality — a high-MAPQ organism with few reads (e.g. a rare pathogen in a sterile-site sample) should not be penalised as harshly as a low-MAPQ scatter hit.
+
+```math
+\text{minhash\_confidence} \mathrel{*}= \big(1 - w_{\text{pen}}\big) + \big(w_{\text{pen}} \times \text{rpm\_weight}\big)
+```
+
+Where `rpm_weight` is a steep sigmoid over the fraction of total reads:
+
+```math
+\text{rpm\_weight} = \frac{1}{1 + e^{-50000 \cdot (f_{\text{reads}} - 0.0001)}}
+```
+
+and `cov_conf = breadth_sigmoid(coverage)`.
+
+**Effect at different coverage levels (with mapq_norm = 0, i.e. low MAPQ):**
+
+| `cov_conf`          | $w_{\text{pen}}$ | Penalty at `rpm_weight=0.1` | Meaning                              |
+| ------------------- | ---------------- | --------------------------- | ------------------------------------ |
+| 0.95 (100% breadth) | 0.017            | ×0.998 (≈ none)             | Dominant organism — penalty bypassed |
+| 0.50 (moderate)     | 0.175            | ×0.843 (−16%)               | Moderate dampening                   |
+| 0.10 (sparse)       | 0.315            | ×0.717 (−28%)               | Full penalty applies                 |
+
+When `mapq_norm = 1.0` (MAPQ 60), the effective coverage bypass is raised by 0.20, reducing $w_{\text{pen}}$ further at every coverage level.
+
+This ensures that a high-confidence organism like O104:H4 — which spans the full genome — is never unfairly penalised simply because its read fraction is computed against total sample reads that include many other organisms.
+
+### 7.5 RPM-Normalised Minhash Reduction (Multi-Member Groups)
+
+Within each parent group (organisms sharing the same `toplevelkey` — i.e. the same species or taxid group), minhash scores are further adjusted based on each organism's share of total RPM within that group. This is the final normalisation step and runs _after_ the confidence gate and read-penalty.
+
+#### Solo organisms (only member in their group)
+
+A single organism in its group gets an **exclusivity boost**: the gap between its current `minhash_reduction` and the coverage-gate ceiling is partially filled, proportional to `rpm_confidence_weight`:
+
+```math
+\text{gap} = \max(0,\; \text{minhash\_confidence} - \text{raw\_minhash})
+\qquad
+\text{boost} = \text{gap} \times 0.9 \times \text{rpm\_weight}
+\qquad
+\text{adjusted} = \min(\text{minhash\_confidence},\; \text{raw\_minhash} + \text{boost})
+```
+
+The `minhash_confidence` ceiling ensures a low-coverage solo organism can't inflate itself beyond what its coverage evidence supports.
+
+#### Multi-member groups — dominant organism
+
+The member with the highest RPM in the group is **boosted toward its coverage-gate ceiling** rather than scaled down. This is the key change for high-ANI groups like O104:H4 vs Shigella:
+
+```math
+\text{gap} = \max(0,\; \text{minhash\_confidence} - \text{raw\_minhash})
+\qquad
+\text{boost} = \text{gap} \times \text{rpm\_share}
+\qquad
+\text{adjusted} = \min(\text{minhash\_confidence},\; \text{raw\_minhash} + \text{boost})
+```
+
+Where $\text{rpm\_share} = \text{rpm}_{\text{this}} / \sum_{\text{group}} \text{rpm}$.
+
+**Example:** O104:H4 has 60% of group RPM, $\text{raw\_minhash} = 0.90$, $\text{minhash\_confidence} = 0.95$:
+
+```
+gap     = 0.95 − 0.90 = 0.05
+boost   = 0.05 × 0.60 = 0.03
+adjusted = min(0.95, 0.90 + 0.03) = 0.93   ← was 0.72 before this change
+```
+
+#### Multi-member groups — losing organisms
+
+All non-dominant members are penalised using a two-part multiplicative scale:
+
+**Part 1 — RPM-share floor:**
+
+```math
+\text{base\_scale} = \underbrace{0.10}_{\text{floor}} + 0.90 \times \text{rpm\_share}
+```
+
+The floor of 0.10 (reduced from the previous 0.30) prevents partial false positives from retaining an inflated minhash score. With a 10% floor, Shigella at 8% RPM share gets a base scale of ≈ 0.17.
+
+**Part 2 — Coverage-ratio penalty:**
+
+```math
+r_{\text{cov}} = \min\!\Big(1.0,\; \frac{c_{\text{this}}}{c_{\text{dominant}}}\Big)
+\qquad
+\text{cov\_scale} = 0.25 + 0.75 \times r_{\text{cov}}
+\qquad
+\text{scale} = \text{base\_scale} \times \text{cov\_scale}
+```
+
+If the dominant organism has 20% genome coverage and this organism only has 4%, the coverage ratio is 0.20, giving `cov_scale = 0.25 + 0.75×0.20 = 0.40`. This extra penalty captures the case where a low-coverage organism has a similar RPM share simply because its reads all piled into one conserved region.
+
+**Full worked example — Shigella vs O104:H4:**
+
+```
+rpm_share  = 0.21   cov = 8%   top_cov = 20%
+
+base_scale = 0.10 + 0.90 × 0.21 = 0.289
+r_cov      = 8 / 20 = 0.40
+cov_scale  = 0.25 + 0.75 × 0.40 = 0.55
+scale      = 0.289 × 0.55 = 0.159
+
+adjusted   = 0.90 × 0.159 = 0.143   ← was 0.72× before
+```
+
+The combined effect is that in a high-ANI conflict group, the organism with the most reads and broadest coverage is strongly promoted, while relatives (Shigella, other E. coli strains) have their minhash contribution cut to a small fraction of its naive value.
 
 ---
 
@@ -526,17 +763,17 @@ Expanded:
 
 | Component              | Weight   | CLI Flag                      | Type     |
 | ---------------------- | -------- | ----------------------------- | -------- |
-| `breadth_log_score`    | **0.26** | `--breadth_weight`            | included |
-| `minhash_reduction`    | **0.29** | `--minhash_weight`            | included |
-| `gini_coefficient`     | **0.45** | `--gini_weight`               | included |
+| `breadth_log_score`    | **0.27** | `--breadth_weight`            | included |
+| `minhash_reduction`    | **0.31** | `--minhash_weight`            | included |
+| `gini_coefficient`     | **0.42** | `--gini_weight`               | included |
 | `hmp_percentile`       | 0.00     | `--hmp_weight`                | included |
 | `disparity`            | 0.00     | `--disparity_weight`          | included |
 | `mapq_score`           | 0.00     | `--mapq_score`                | included |
 | `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight` | included |
 | `diamond_identity`     | 0.00     | `--diamond_identity`          | included |
-| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      | bonus    |
+| `plasmid_bonus_weight` | 0.00     | `--plasmid_bonus_weight`      | bonus    |
 
-**What if all weights don't add up to 1.0?** If the three primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.0 when normalized, and plasmid adds another 0.19. This is intentional — the final score is clamped to $[0, 1]$ at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism presence is good/high.
+**What if all weights don't add up to 1.0?** The three active primary weights (breadth=0.27, minhash=0.31, gini=0.42) sum to 1.0, which is the intended normalization. The plasmid bonus and abundance confidence weights sit outside this normalized pool and are additive on top of the base sum. This is intentional — the final score is clamped to $[0, 1]$ at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism is strong.
 
 ### 9.3 Additive Modifiers
 
@@ -656,6 +893,8 @@ samtools index Miseq_Run_A.Miseq_Run_A.dwnld.references.bam
 bedtools genomecov -ibam Miseq_Run_A.Miseq_Run_A.dwnld.references.bam -bg > Miseq_Run_A.bedgraph
 ```
 
+> **Note:** The bedgraph is **not required** when using `--compare_references`. In that mode the pipeline tiles windows across the FASTA files directly and derives coverage from the BAM index. You can omit `-b` entirely from the command below if you are using `--compare_references`.
+
 4. The match file should be a TSV with columns: `accession`, `taxid`, `organism_name`, `description`. This can be generated from the reference FASTA headers and a taxonomy lookup. Example:
 
 | Acc         | Mapped_Value |
@@ -766,11 +1005,19 @@ Lastly, outside of the scope of this document, we've collected various clinical 
 \text{gini\_coefficient} = \min\!\Big(1,\; \alpha\sqrt{1-G} \;\times\; \big(1 + R\log_{10}\tfrac{L}{L_b}\big) \;\times\; (1+\beta D)\Big)
 ```
 
-### Minhash Reduction
+### Minhash Score (raw)
+
+```math
+\text{minhash\_score} = \min\!\big(1.0,\;\; 0.30 \cdot B_r + 0.70 \cdot R_r\big)
+```
+
+### Minhash Reduction (confidence-gated)
 
 ```math
 \text{minhash\_reduction} = \text{clamp}\!\big(w_b \cdot \text{breadth\_sigmoid}(c) + w_g \cdot G_{\text{score}},\; 0,\; 1\big)
 ```
+
+further adjusted by the low-read penalty (Section 7.4) using a MAPQ-aware coverage bypass.
 
 ### TASS Score
 

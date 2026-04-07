@@ -377,6 +377,7 @@ def optimize_weights(
     gini_weight=1/3,
     disparity_weight=0.0,
     hmp_weight=0.0,
+    abundance_confidence_weight=0.0,
     alpha=1.0,
     optimize_pos_weight=1.0,
     optimize_neg_weight=1.0,
@@ -406,11 +407,18 @@ def optimize_weights(
     weight_prior=None,
     weight_prior_lambda=0.0,
     plasmid_bonus_weight=0.05,
+    abundance_gate=False,
+    youden_min_threshold=None,
     prefer_granularity="subkey",
-    platform=None
+    platform=None,
+    optimize_categories=None,
+    score_power=1.0,
+    auto_score_power=False,
 ):
     import json
     import numpy as np
+
+    _abundance_gate = bool(abundance_gate)
 
     tp_fp_counts = compute_tp_fp_counts_by_taxid(
         input_bam,
@@ -418,6 +426,14 @@ def optimize_weights(
         debug_n=10,
     )
     metrics_df = build_metrics_df_from_final_json(final_json, tp_fp_counts)
+
+    # ── Category filter: restrict optimization to selected categories ────
+    if optimize_categories:
+        _allowed = set(optimize_categories)
+        _before = len(metrics_df)
+        metrics_df = metrics_df[metrics_df["category"].isin(_allowed)].reset_index(drop=True)
+        print(f"[optimize] Category filter {list(_allowed)}: "
+              f"{_before} → {len(metrics_df)} taxa retained")
     accession_col = "taxid"
 
     gran_tp_fp_counts = {"key": tp_fp_counts}
@@ -447,6 +463,7 @@ def optimize_weights(
         disparity_weight=float(disparity_weight),
         hmp_weight=float(hmp_weight),
         plasmid_bonus_weight=float(plasmid_bonus_weight),
+        abundance_confidence_weight=float(abundance_confidence_weight),
     )
 
     # ── Helper: run optimizer at a given granularity ─────────────────────────
@@ -484,6 +501,11 @@ def optimize_weights(
             weight_prior=weight_prior,
             weight_prior_lambda=float(weight_prior_lambda),
             plasmid_bonus_weight=float(plasmid_bonus_weight),
+            abundance_confidence_weight=float(abundance_confidence_weight),
+            abundance_gate=_abundance_gate,
+            youden_min_threshold=youden_min_threshold,
+            score_power=float(score_power),
+            auto_score_power=bool(auto_score_power),
         )
         print(f"[optimize:{label}] status: {res['status']}")
         if res["status"] == "ok":
@@ -525,7 +547,12 @@ def optimize_weights(
             "gini_coefficient": "max",
             "hmp_percentile": "max",
             "plasmid_score": "max",
+            "abundance_confidence": "max",
+            "score_power_scale": "first",
             "has_plasmid": "max",
+            "commensal_sites": "first",
+            "pathogenic_sites": "first",
+            "normalized_sample_site": "first",
             "tp_reads": "sum",
             "fp_reads": "sum",
             "total_reads": "sum",
@@ -557,46 +584,58 @@ def optimize_weights(
         gran_opt = _run_optimize(grouped, gran_counts, gran_field, gran_field)
         granularity_results[gran_field] = gran_opt
 
+        # Always build the per-organism report, even when optimization was
+        # skipped (e.g. only TP or only FP present).  When skipped we fall
+        # back to the start / default weights so the user still gets the
+        # full organism listing with scores and flora annotations.
         if gran_opt.get("status") == "ok":
             g_weights = gran_opt.get("weights") or {}
-            g_scores = compute_tass_score_from_metrics(
-                grouped,
-                breadth_w=float(g_weights.get("breadth_weight", breadth_weight)),
-                minhash_w=float(g_weights.get("minhash_weight", minhash_weight)),
-                gini_w=float(g_weights.get("gini_weight", gini_weight)),
-                disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
-                hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
-                alpha=float(alpha),
-                plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
-            )
-            g_scores = np.asarray(g_scores, dtype=float)
+        else:
+            g_weights = gran_opt.get("weights") or start_w
 
-            gran_rows = []
-            for i in range(len(grouped)):
-                gran_rows.append({
-                    "group": str(grouped.iloc[i][gran_field]),
-                    "name": str(grouped.iloc[i].get("name", "")),
-                    "key": str(grouped.iloc[i].get("key", "")),
-                    "subkey": str(grouped.iloc[i].get("subkey", "")),
-                    "toplevelkey": str(grouped.iloc[i].get("toplevelkey", "")),
-                    "microbial_category": str(grouped.iloc[i].get("category", "")),
-                    "tp_reads": int(grouped.iloc[i]["tp_reads"]),
-                    "fp_reads": int(grouped.iloc[i]["fp_reads"]),
-                    "total_reads": int(grouped.iloc[i]["total_reads"]),
-                    "fp_fraction": float(grouped.iloc[i]["fp_reads"] / grouped.iloc[i]["total_reads"]) if grouped.iloc[i]["total_reads"] else 0.0,
-                    "tass_score": float(g_scores[i]),
-                    "features": {
-                        "breadth_log_score": float(grouped.iloc[i].get("breadth_log_score", 0.0)),
-                        "minhash_reduction": float(grouped.iloc[i].get("minhash_reduction", 0.0)),
-                        "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
-                        "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
-                        "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
-                        "plasmid_score": float(grouped.iloc[i].get("plasmid_score", 0.0)),
-                        "has_plasmid": bool(grouped.iloc[i].get("has_plasmid", False)),
-                    },
-                })
-            gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
-            granularity_reports[gran_field] = gran_rows
+        g_scores = compute_tass_score_from_metrics(
+            grouped,
+            breadth_w=float(g_weights.get("breadth_weight", breadth_weight)),
+            minhash_w=float(g_weights.get("minhash_weight", minhash_weight)),
+            gini_w=float(g_weights.get("gini_weight", gini_weight)),
+            disparity_w=float(g_weights.get("disparity_weight", disparity_weight)),
+            hmp_w=float(g_weights.get("hmp_weight", hmp_weight)),
+            alpha=float(alpha),
+            plasmid_bonus_w=float(g_weights.get("plasmid_bonus_weight", plasmid_bonus_weight)),
+            abundance_confidence_w=float(g_weights.get("abundance_confidence_weight", abundance_confidence_weight)),
+            abundance_gate=_abundance_gate,
+        )
+        g_scores = np.asarray(g_scores, dtype=float)
+
+        gran_rows = []
+        for i in range(len(grouped)):
+            gran_rows.append({
+                "group": str(grouped.iloc[i][gran_field]),
+                "name": str(grouped.iloc[i].get("name", "")),
+                "key": str(grouped.iloc[i].get("key", "")),
+                "subkey": str(grouped.iloc[i].get("subkey", "")),
+                "toplevelkey": str(grouped.iloc[i].get("toplevelkey", "")),
+                "microbial_category": str(grouped.iloc[i].get("category", "")),
+                "normalized_sample_site": str(grouped.iloc[i].get("normalized_sample_site", "")),
+                "commensal_sites": grouped.iloc[i].get("commensal_sites", []),
+                "pathogenic_sites": grouped.iloc[i].get("pathogenic_sites", []),
+                "tp_reads": int(grouped.iloc[i]["tp_reads"]),
+                "fp_reads": int(grouped.iloc[i]["fp_reads"]),
+                "total_reads": int(grouped.iloc[i]["total_reads"]),
+                "fp_fraction": float(grouped.iloc[i]["fp_reads"] / grouped.iloc[i]["total_reads"]) if grouped.iloc[i]["total_reads"] else 0.0,
+                "tass_score": float(g_scores[i]),
+                "features": {
+                    "breadth_log_score": float(grouped.iloc[i].get("breadth_log_score", 0.0)),
+                    "minhash_reduction": float(grouped.iloc[i].get("minhash_reduction", 0.0)),
+                    "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
+                    "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
+                    "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
+                    "plasmid_score": float(grouped.iloc[i].get("plasmid_score", 0.0)),
+                    "has_plasmid": bool(grouped.iloc[i].get("has_plasmid", False)),
+                },
+            })
+        gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
+        granularity_reports[gran_field] = gran_rows
 
     # ── Select best overall result ───────────────────────────────────────────
     # Prefer the user-specified granularity if it succeeded; otherwise fall
@@ -634,6 +673,7 @@ def optimize_weights(
 
     if best_opt.get("status") != "ok":
         report_obj = {
+            "optimizer": best_opt,
             "status": best_opt.get("status", "failed"),
             "config": {
                 "alpha": float(alpha),
@@ -662,7 +702,6 @@ def optimize_weights(
                 "hybrid_lambda": float(hybrid_lambda),
                 "start_weights": start_w,
             },
-            "optimizer": best_opt,
             "best_weights": start_w,
             "best_granularity": best_label,
             "granularity_results": {
@@ -672,6 +711,60 @@ def optimize_weights(
             "granularity_reports": granularity_reports,
             "report": [],
         }
+
+        # Even when optimization was skipped, still build the per-organism
+        # report using start/default weights so the user gets full organism
+        # listings with scores and flora annotations.
+        if not metrics_df.empty:
+            _sw = start_w
+            _fallback_scores = compute_tass_score_from_metrics(
+                metrics_df,
+                breadth_w=float(_sw.get("breadth_weight", 0.0)),
+                minhash_w=float(_sw.get("minhash_weight", 0.0)),
+                gini_w=float(_sw.get("gini_weight", 0.0)),
+                disparity_w=float(_sw.get("disparity_weight", 0.0)),
+                hmp_w=float(_sw.get("hmp_weight", 0.0)),
+                alpha=float(alpha),
+                plasmid_bonus_w=float(_sw.get("plasmid_bonus_weight", plasmid_bonus_weight)),
+                abundance_confidence_w=float(abundance_confidence_weight),
+                abundance_gate=_abundance_gate,
+            )
+            _fallback_scores = np.asarray(_fallback_scores, dtype=float)
+            _fb_tp = metrics_df["tp_reads"].to_numpy(dtype=int)
+            _fb_fp = metrics_df["fp_reads"].to_numpy(dtype=int)
+            _fb_total = _fb_tp + _fb_fp
+
+            fallback_rows = []
+            for i in range(len(metrics_df)):
+                fallback_rows.append({
+                    "taxid": str(metrics_df.iloc[i]["taxid"]),
+                    "name": str(metrics_df.iloc[i].get("name", "")),
+                    "microbial_category": str(metrics_df.iloc[i].get("category", "")),
+                    "key": metrics_df.iloc[i].get("key"),
+                    "subkey": metrics_df.iloc[i].get("subkey"),
+                    "toplevelkey": metrics_df.iloc[i].get("toplevelkey"),
+                    "tp_reads": int(_fb_tp[i]),
+                    "fp_reads": int(_fb_fp[i]),
+                    "total_reads": int(_fb_total[i]),
+                    "fp_fraction": float(_fb_fp[i] / _fb_total[i]) if _fb_total[i] else 0.0,
+                    "tass_score": float(_fallback_scores[i]),
+                    "normalized_sample_site": str(metrics_df.iloc[i].get("normalized_sample_site", "")),
+                    "commensal_sites": metrics_df.iloc[i].get("commensal_sites", []),
+                    "pathogenic_sites": metrics_df.iloc[i].get("pathogenic_sites", []),
+                    "features": {
+                        "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
+                        "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
+                        "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
+                        "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
+                        "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
+                        "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
+                        "abundance_confidence": float(metrics_df.iloc[i].get("abundance_confidence", 0.0)),
+                        "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
+                    }
+                })
+            fallback_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
+            report_obj["report"] = fallback_rows
+
         if optimize_report:
             with open(optimize_report, "w") as f:
                 json.dump(report_obj, f, indent=2)
@@ -684,6 +777,7 @@ def optimize_weights(
     disparity_weight = best_w.get("disparity_weight", 0.0)
     hmp_weight = best_w.get("hmp_weight", 0.0)
     _best_pbw = float(best_w.get("plasmid_bonus_weight", plasmid_bonus_weight))
+    _best_score_power = float(best_w.get("score_power", score_power))
 
     scores = compute_tass_score_from_metrics(
         metrics_df,
@@ -694,6 +788,9 @@ def optimize_weights(
         hmp_w=float(hmp_weight),
         alpha=float(alpha),
         plasmid_bonus_w=_best_pbw,
+        abundance_confidence_w=float(abundance_confidence_weight),
+        abundance_gate=_abundance_gate,
+        score_power=_best_score_power,
     )
     scores = np.asarray(scores, dtype=float)
 
@@ -715,6 +812,9 @@ def optimize_weights(
             "total_reads": int(total[i]),
             "fp_fraction": float(fp[i] / total[i]) if total[i] else 0.0,
             "tass_score": float(scores[i]),
+            "normalized_sample_site": str(metrics_df.iloc[i].get("normalized_sample_site", "")),
+            "commensal_sites": metrics_df.iloc[i].get("commensal_sites", []),
+            "pathogenic_sites": metrics_df.iloc[i].get("pathogenic_sites", []),
             "features": {
                 "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
                 "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
@@ -722,6 +822,7 @@ def optimize_weights(
                 "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
                 "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
                 "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
+                "abundance_confidence": float(metrics_df.iloc[i].get("abundance_confidence", 0.0)),
                 "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
             }
         })
@@ -729,6 +830,7 @@ def optimize_weights(
     report_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
 
     report_obj = {
+        "optimizer": best_opt,
         "status": "ok",
         "config": {
             "alpha": float(alpha),
@@ -760,6 +862,8 @@ def optimize_weights(
             "disparity_weight": float(disparity_weight),
             "hmp_weight": float(hmp_weight),
             "plasmid_bonus_weight": _best_pbw,
+            "abundance_confidence_weight": float(abundance_confidence_weight),
+            "score_power": _best_score_power,
         },
         "best_granularity": best_label,
         "granularity_results": {
@@ -767,7 +871,6 @@ def optimize_weights(
             for k, v in all_opts.items()
         },
         "granularity_reports": granularity_reports,
-        "optimizer": best_opt,
         "report": report_rows,
     }
 
@@ -820,9 +923,24 @@ def optimize_weights_for_tp_fp(
     weight_prior: dict | None = None,
     weight_prior_lambda: float = 0.0,
     plasmid_bonus_weight: float = 0.0,
+    abundance_confidence_weight: float = 0.0,
+    abundance_gate: bool = False,
+    youden_min_threshold: float | None = None,
+    score_power: float = 1.0,
+    auto_score_power: bool = False,
 ):
     from scipy.optimize import differential_evolution, minimize
     import numpy as np
+
+    # Store the abundance_confidence_weight for use in score computations.
+    # It's additive (like plasmid_bonus_weight) — not on the simplex.
+    _acw = float(abundance_confidence_weight)
+    _abundance_gate = bool(abundance_gate)
+    _score_power = float(score_power)
+
+    # Minimum allowed Youden J threshold — prevents optimizer from picking
+    # unreasonably low cutoffs for sterile/blood sites.
+    _youden_min_t = float(youden_min_threshold) if youden_min_threshold is not None else None
 
     accessions = metrics_df[accession_col].astype(str).tolist()
     tp_raw = np.array([tp_fp_counts.get(a, (0, 0))[0] for a in accessions], dtype=float)
@@ -850,16 +968,29 @@ def optimize_weights_for_tp_fp(
     tp_total_taxa = float(y_pos.sum())
     fp_total_taxa = float(y_neg.sum())
 
-    # mode feasibility checks
+    # mode feasibility checks — only require TP signal; FP is optional.
+    # When no FP are present the neg_terms in loss_for_w() evaluate to 0.0
+    # (they are already guarded), so the optimizer simply maximises TP scores
+    # toward 1.0 without any separation objective.
+    _tp_only_mode = False
     if optimize_mode == "reads":
-        if tp_total_reads <= 0 or fp_total_reads <= 0:
-            return {"weights": start_weights, "status": "skipped (need both TP and FP reads)"}
+        if tp_total_reads <= 0:
+            return {"weights": start_weights, "status": "skipped (no TP reads)"}
+        if fp_total_reads <= 0:
+            _tp_only_mode = True
+            print("[optimize] No FP reads — running TP-maximisation optimisation only.")
     elif optimize_mode == "taxids":
-        if tp_total_taxa <= 0 or fp_total_taxa <= 0:
-            return {"weights": start_weights, "status": "skipped (need both TP and FP taxids)"}
+        if tp_total_taxa <= 0:
+            return {"weights": start_weights, "status": "skipped (no TP taxids)"}
+        if fp_total_taxa <= 0:
+            _tp_only_mode = True
+            print("[optimize] No FP taxids — running TP-maximisation optimisation only.")
     elif optimize_mode == "hybrid":
-        if (tp_total_reads <= 0 and tp_total_taxa <= 0) or (fp_total_reads <= 0 and fp_total_taxa <= 0):
-            return {"weights": start_weights, "status": "skipped (need TP/FP signal)"}
+        if tp_total_reads <= 0 and tp_total_taxa <= 0:
+            return {"weights": start_weights, "status": "skipped (no TP signal)"}
+        if fp_total_reads <= 0 and fp_total_taxa <= 0:
+            _tp_only_mode = True
+            print("[optimize] No FP signal — running TP-maximisation optimisation only.")
     else:
         raise ValueError(f"Unknown optimize_mode: {optimize_mode}")
 
@@ -937,7 +1068,15 @@ def optimize_weights_for_tp_fp(
         fp_ret = np.cumsum(fp_sorted) / (total_fp + 1e-12)
         J = tp_ret - fp_ret
 
-        best_idx = int(np.nanargmax(J))
+        # Apply minimum threshold floor if configured
+        if _youden_min_t is not None:
+            floor_mask = scores_sorted >= _youden_min_t
+            if floor_mask.any():
+                best_idx = int(np.where(floor_mask, J, -np.inf).argmax())
+            else:
+                best_idx = int(np.nanargmax(J))
+        else:
+            best_idx = int(np.nanargmax(J))
         t_min = float(scores_sorted.min())
         t_max = float(scores_sorted.max())
         norm_t = (float(scores_sorted[best_idx]) - t_min) / (t_max - t_min + 1e-12)
@@ -996,9 +1135,11 @@ def optimize_weights_for_tp_fp(
 
         return _at(y_pos, y_neg, tp_total_taxa, fp_total_taxa)
 
-    # Mutable container for the current plasmid bonus weight during optimization.
+    # Mutable containers for parameters optimized outside the simplex.
     # Updated by the outer DE/SLSQP loops so loss_for_w always sees the latest value.
     _current_pbw = [_pbw0]
+    _current_sp = [_score_power]          # score_power (optimized alongside weights)
+    _sp_min, _sp_max = 0.3, 1.0           # bounds for score_power search
 
     def loss_for_w(w: np.ndarray) -> float:
         # simplex + min-weight constraints (soft)
@@ -1016,6 +1157,9 @@ def optimize_weights_for_tp_fp(
             hmp_w=float(w[4]),
             alpha=alpha,
             plasmid_bonus_w=float(_current_pbw[0]),
+            abundance_confidence_w=_acw,
+            abundance_gate=_abundance_gate,
+            score_power=float(_current_sp[0]),
         )
         p = _clip01(np.asarray(scores, dtype=float))
 
@@ -1083,9 +1227,22 @@ def optimize_weights_for_tp_fp(
 
         youden_penalty = 0.0
         if youden_weight > 0:
-            tp_ret, fp_ret, _ = _retention_curves(p, curve_scope)
-            if tp_ret is not None:
-                best_j = float(np.nanmax(tp_ret - fp_ret))
+            tp_ret, fp_ret, s_sorted = _retention_curves(p, curve_scope)
+            if tp_ret is not None and s_sorted is not None:
+                j_vals = tp_ret - fp_ret
+                # Apply minimum threshold floor: mask out Youden J values
+                # at thresholds below the floor (if configured).  This
+                # prevents the optimizer from rewarding very low cutoffs
+                # that are impractical for sterile/blood sites.
+                if _youden_min_t is not None:
+                    floor_mask = s_sorted >= _youden_min_t
+                    if floor_mask.any():
+                        best_j = float(np.nanmax(j_vals[floor_mask]))
+                    else:
+                        # All thresholds below floor → penalize heavily
+                        best_j = 0.0
+                else:
+                    best_j = float(np.nanmax(j_vals))
                 youden_penalty = float(youden_weight) * (1.0 - best_j)
 
         fp_cutoff_penalty = 0.0
@@ -1152,36 +1309,47 @@ def optimize_weights_for_tp_fp(
             + prior_penalty
         )
 
-    # --- Global stage (DE) over 4 simplex vars + optional pbw ---
-    # x = [w_breadth, w_minhash, w_gini, w_disparity, (pbw)], w_hmp = 1 - sum(x[:4])
+    # --- Global stage (DE) over 4 simplex vars + optional pbw + score_power ---
+    # x = [w_breadth, w_minhash, w_gini, w_disparity, (pbw), (score_power)]
+    # w_hmp = 1 - sum(x[:4])
     _upper = 1.0 - (n_weights - 1) * _mw  # max any single weight can be
     _optimize_pbw = _has_plasmid_data  # only optimize pbw if plasmid data exists
     if _optimize_pbw:
         print(f"[optimize] Plasmid data detected — optimizing plasmid_bonus_weight (start={_pbw0:.4f}, max={_pbw_max})")
     else:
         print(f"[optimize] No plasmid data in metrics — plasmid_bonus_weight fixed at {_pbw0:.4f}")
+    print(f"[optimize] Optimizing score_power (start={_score_power:.4f}, bounds=[{_sp_min}, {_sp_max}])")
 
     def unpack_x(x: np.ndarray):
-        """Unpack DE vector into (5-weight array, pbw_value)."""
+        """Unpack DE vector into (5-weight array, pbw_value, sp_value)."""
         wb, wm, wg, wd = float(x[0]), float(x[1]), float(x[2]), float(x[3])
         wh = 1.0 - (wb + wm + wg + wd)
         w = np.array([wb, wm, wg, wd, wh], dtype=float)
         if _mw > 0:
             w = np.clip(w, _mw, _upper)
             w = w / w.sum()  # re-normalize after clipping
-        pbw_val = float(x[4]) if (_optimize_pbw and len(x) > 4) else _pbw0
-        return w, pbw_val
+        # Extra dimensions after the 4 simplex vars: pbw (optional), then score_power
+        _idx = 4
+        if _optimize_pbw:
+            pbw_val = float(x[_idx]) if len(x) > _idx else _pbw0
+            _idx += 1
+        else:
+            pbw_val = _pbw0
+        sp_val = float(x[_idx]) if len(x) > _idx else _score_power
+        return w, pbw_val, sp_val
 
     def loss_for_x(x: np.ndarray) -> float:
-        w, pbw_val = unpack_x(x)
+        w, pbw_val, sp_val = unpack_x(x)
         if np.any(w < 0.0) or np.any(w > 1.0):
             return 1e6 + 1e6 * max(0.0, -w.min())
         _current_pbw[0] = pbw_val
+        _current_sp[0] = sp_val
         return loss_for_w(w)
 
     bounds = [(_mw, _upper), (_mw, _upper), (_mw, _upper), (_mw, _upper)]
     if _optimize_pbw:
         bounds.append((0.0, _pbw_max))
+    bounds.append((_sp_min, _sp_max))  # score_power always optimized
     rng = np.random.RandomState(seed)
 
     de_res = differential_evolution(
@@ -1194,60 +1362,103 @@ def optimize_weights_for_tp_fp(
         workers=1,
     )
 
-    w_de, pbw_de = unpack_x(de_res.x)
+    w_de, pbw_de, sp_de = unpack_x(de_res.x)
     if np.any(w_de < 0) or abs(w_de.sum() - 1.0) > 1e-6:
         w_de = w0.copy()
         pbw_de = _pbw0
+        sp_de = _score_power
     else:
         w_de = np.clip(w_de, _mw, _upper)
         w_de = w_de / w_de.sum()
 
     _current_pbw[0] = pbw_de  # carry forward DE result
+    _current_sp[0] = sp_de    # carry forward DE result
 
-    # --- Local refinement (SLSQP) on 5 simplex vars + optional pbw ---
+    # --- Local refinement (SLSQP) on 5 simplex vars + extra params ---
+    # Build the extended vector: [w0..w4, (pbw), score_power]
+    # The simplex constraint only applies to the first 5 elements.
+    _extra_params = []   # (start_val, lo, hi) for each extra param after simplex
+    _extra_labels = []
     if _optimize_pbw:
-        # 6-variable vector: w[0:5] = simplex weights, w[5] = pbw
-        def loss_for_slsqp(x6):
-            w5 = x6[:5]
-            _current_pbw[0] = float(x6[5])
-            return loss_for_w(w5)
+        _extra_params.append((pbw_de, 0.0, _pbw_max))
+        _extra_labels.append("pbw")
+    _extra_params.append((sp_de, _sp_min, _sp_max))
+    _extra_labels.append("sp")
 
-        cons_slsqp = [{"type": "eq", "fun": lambda x6: np.sum(x6[:5]) - 1.0}]
-        bnds_slsqp = [(_mw, _upper)] * n_weights + [(0.0, _pbw_max)]
-        x0_slsqp = np.append(w_de, pbw_de)
+    def loss_for_slsqp(xn):
+        w5 = xn[:5]
+        _idx = 5
+        if _optimize_pbw:
+            _current_pbw[0] = float(xn[_idx]); _idx += 1
+        _current_sp[0] = float(xn[_idx])
+        return loss_for_w(w5)
 
-        local_res = minimize(
-            loss_for_slsqp,
-            x0=x0_slsqp,
-            method="SLSQP",
-            bounds=bnds_slsqp,
-            constraints=cons_slsqp,
-            options={"maxiter": maxiter_local, "ftol": 1e-9},
-        )
+    cons_slsqp = [{"type": "eq", "fun": lambda xn: np.sum(xn[:5]) - 1.0}]
+    bnds_slsqp = [(_mw, _upper)] * n_weights + [(lo, hi) for _, lo, hi in _extra_params]
+    x0_slsqp = np.concatenate([w_de, np.array([v for v, _, _ in _extra_params])])
 
-        w_best = np.clip(local_res.x[:5], _mw, _upper)
-        w_best = w_best / w_best.sum()
-        pbw_best = float(np.clip(local_res.x[5], 0.0, _pbw_max))
+    local_res = minimize(
+        loss_for_slsqp,
+        x0=x0_slsqp,
+        method="SLSQP",
+        bounds=bnds_slsqp,
+        constraints=cons_slsqp,
+        options={"maxiter": maxiter_local, "ftol": 1e-9},
+    )
+
+    w_best = np.clip(local_res.x[:5], _mw, _upper)
+    w_best = w_best / w_best.sum()
+    _idx = 5
+    if _optimize_pbw:
+        pbw_best = float(np.clip(local_res.x[_idx], 0.0, _pbw_max)); _idx += 1
     else:
-        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-        bnds = [(_mw, _upper)] * n_weights
-
-        local_res = minimize(
-            loss_for_w,
-            x0=w_de,
-            method="SLSQP",
-            bounds=bnds,
-            constraints=cons,
-            options={"maxiter": maxiter_local, "ftol": 1e-9},
-        )
-
-        w_best = np.clip(local_res.x, _mw, _upper)
-        w_best = w_best / w_best.sum()
-        pbw_best = _pbw0  # unchanged
+        pbw_best = _pbw0
+    sp_best = float(np.clip(local_res.x[_idx], _sp_min, _sp_max))
 
     _current_pbw[0] = pbw_best
+    _current_sp[0] = sp_best
     if _optimize_pbw:
         print(f"[optimize] Optimized plasmid_bonus_weight: {_pbw0:.4f} -> {pbw_best:.4f}")
+    print(f"[optimize] Optimized score_power: {_score_power:.4f} -> {sp_best:.4f}")
+
+    # ── Auto score_power: override the DE-optimized value if enabled ─────
+    # After weight optimization, if the raw TP mean is below tp_target,
+    # compute a power transform gamma that lifts it to the target:
+    #   gamma = log(target) / log(tp_mean)
+    # This post-hoc calibration overrides the DE-optimized score_power.
+    _final_score_power = sp_best
+    if auto_score_power and tp_target is not None and tp_target > 0:
+        # Compute raw scores (without power transform) to measure the gap
+        raw_scores = compute_tass_score_from_metrics(
+            metrics_df,
+            breadth_w=float(w_best[0]),
+            minhash_w=float(w_best[1]),
+            gini_w=float(w_best[2]),
+            disparity_w=float(w_best[3]),
+            hmp_w=float(w_best[4]),
+            alpha=alpha,
+            plasmid_bonus_w=float(pbw_best),
+            abundance_confidence_w=_acw,
+            abundance_gate=_abundance_gate,
+            score_power=1.0,  # raw scores, no power transform
+        )
+        raw_scores = np.asarray(raw_scores, dtype=float)
+        _raw_tp_mean = (
+            float(np.sum(y_pos * raw_scores) / tp_total_taxa)
+            if tp_total_taxa > 0 else 0.0
+        )
+
+        if 0 < _raw_tp_mean < float(tp_target):
+            import math
+            _auto_gamma = math.log(float(tp_target)) / math.log(_raw_tp_mean)
+            # Clamp to [0.15, 1.0] to avoid extreme transforms
+            _auto_gamma = max(0.15, min(1.0, _auto_gamma))
+            _final_score_power = _auto_gamma
+            print(f"[optimize] Auto score_power: raw tp_mean={_raw_tp_mean:.4f}, "
+                  f"target={tp_target}, computed gamma={_auto_gamma:.4f}")
+        else:
+            print(f"[optimize] Auto score_power: raw tp_mean={_raw_tp_mean:.4f} "
+                  f">= target={tp_target}, no power transform needed")
 
     # summaries (both read and taxid views)
     scores_best = compute_tass_score_from_metrics(
@@ -1259,6 +1470,9 @@ def optimize_weights_for_tp_fp(
         hmp_w=float(w_best[4]),
         alpha=alpha,
         plasmid_bonus_w=float(pbw_best),
+        abundance_confidence_w=_acw,
+        abundance_gate=_abundance_gate,
+        score_power=_final_score_power,
     )
     scores_best = np.asarray(scores_best, dtype=float)
 
@@ -1275,8 +1489,10 @@ def optimize_weights_for_tp_fp(
             "disparity_weight": float(w_best[3]),
             "hmp_weight": float(w_best[4]),
             "plasmid_bonus_weight": float(pbw_best),
+            "abundance_confidence_weight": _acw,
+            "score_power": float(_final_score_power),
         },
-        "status": "ok",
+        "status": "ok (tp_only)" if _tp_only_mode else "ok",
         "optimize_mode": optimize_mode,
         "hybrid_lambda": float(hybrid_lambda),
         "threshold_pref_lambda": float(threshold_pref_lambda),
@@ -1295,6 +1511,7 @@ def optimize_weights_for_tp_fp(
         "fp_mean_score_reads": fp_mean_reads,
         "tp_mean_score_taxa": tp_mean_taxa,
         "fp_mean_score_taxa": fp_mean_taxa,
+        "score_power": float(_final_score_power),
         "loss": float(loss_for_w(w_best)),
         "global_fun": float(de_res.fun),
         "local_success": bool(local_res.success),
@@ -1455,6 +1672,8 @@ def build_metrics_df_from_final_json(
         gini = float(stats.get("gini_coefficient", 0.0))
         hmp = float(stats.get("hmp_percentile", 0.0))
         plasmid_sc = float(stats.get("plasmid_score", 0.0))
+        abundance_conf = float(stats.get("abundance_confidence", 0.0))
+        sp_scale = float(stats.get("score_power_scale", 1.0))
 
         tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
         total = tp + fp
@@ -1473,7 +1692,12 @@ def build_metrics_df_from_final_json(
             "gini_coefficient": gini,
             "hmp_percentile": hmp,
             "plasmid_score": plasmid_sc,
+            "abundance_confidence": abundance_conf,
+            "score_power_scale": sp_scale,
             "has_plasmid": bool(stats.get("has_plasmid", False)),
+            "commensal_sites": stats.get("commensal_sites", []),
+            "pathogenic_sites": stats.get("pathogenic_sites", []),
+            "normalized_sample_site": stats.get("normalized_sample_site", ""),
             "tp_reads": int(tp),
             "fp_reads": int(fp),
             "total_reads": int(total),
@@ -1504,7 +1728,12 @@ def build_metrics_df_from_final_json(
         "gini_coefficient": "max",
         "hmp_percentile": "max",
         "plasmid_score": "max",
+        "abundance_confidence": "max",
+        "score_power_scale": "first",
         "has_plasmid": "max",
+        "commensal_sites": "first",
+        "pathogenic_sites": "first",
+        "normalized_sample_site": "first",
         "tp_reads": "sum",
         "fp_reads": "sum",
         "total_reads": "sum",

@@ -47,7 +47,11 @@ process ALIGNMENT_PER_SAMPLE {
     def mapq_weight = params.mapq_weight ? " --mapq_weight ${params.mapq_weight} " : " "
     def hmp_weight = params.hmp_weight ? " --hmp_weight ${params.hmp_weight} " : " "
     def disparity_score_weight = params.disparity_score_weight ? " --disparity_weight ${params.disparity_score_weight} " : " "
-
+    def auto_score_power = params.auto_score_power ? " --auto_score_power " : " "
+    def score_power = params.score_power != null ? " --score_power ${params.score_power} " : " "
+    def depth_concentration_power = params.depth_concentration_power != null ? " --depth_concentration_power ${params.depth_concentration_power} " : " "
+    def mapq_breadth_power = params.mapq_breadth_power != null ? " --mapq_breadth_power ${params.mapq_breadth_power} " : " "
+    def mapq_gini_power = params.mapq_gini_power != null ? " --mapq_gini_power ${params.mapq_gini_power} " : " "
     def output = "${meta.id}.paths.json"
     def id = meta.id
     def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
@@ -58,7 +62,7 @@ process ALIGNMENT_PER_SAMPLE {
     def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
     def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
-    def bedgraph = bedgraph.name != "NO_FILE" ? "-b $bedgraph" :  " "
+    def bedgraph = bedgraph.name != "NO_FILE_bedgraph" ? "-b $bedgraph" :  " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def output_dir = "search_results"
     def compress_species = params.rank ? " --rank ${params.rank} " : " "
@@ -67,7 +71,7 @@ process ALIGNMENT_PER_SAMPLE {
     def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
     def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
     def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
-    def loose = params.loose ? "  " : " --compare_references "
+    def fast = params.fast ? "  " : " --compare_references "
     def gap_allowance = params.gap_allowance ? " --gap_allowance ${params.gap_allowance} " : " "
     def jump_threshold = params.jump_threshold ? " --jump_threshold ${params.jump_threshold} " : " "
     def mbert_report = microbert_report.name != "NO_FILEmicrobert" ? " --microbert ${microbert_report} " : " "
@@ -86,7 +90,6 @@ process ALIGNMENT_PER_SAMPLE {
     def pos_ctrls = positive_control_jsons.name != "NO_FILE_pos_ctrl" ? " --positive_controls ${positive_control_jsons} " : " "
     def insilico_ctrls = insilico_control_jsons.name != "NO_FILE_insilico_ctrl" ? " --insilico_controls ${insilico_control_jsons} " : " "
 
-
     """
 
 
@@ -102,10 +105,12 @@ process ALIGNMENT_PER_SAMPLE {
         -p $pathogens_list  $mapping $k2 $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 --taxid_removal_stats \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
+        $auto_score_power $score_power $depth_concentration_power \\
         --fast \\
-        $min_reads_align $compress_species $mbert_report $minmapq $loose $taxonomy $enable_matrix $ani_threshold \\
+        $min_reads_align $compress_species $mbert_report $minmapq $fast $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
-        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls
+        $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
+        $mapq_breadth_power $mapq_gini_power
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true
