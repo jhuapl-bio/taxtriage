@@ -177,12 +177,16 @@ A single high-ANI window with a 16× read-count advantage adds ≈ 38 points, de
 
 #### Parameters
 
-| Parameter          | Default | Effect                                                         |
-| ------------------ | ------- | -------------------------------------------------------------- |
-| `penalize_weight`  | 50.0    | Penalty per competing contig in $N_{\text{alt}}$               |
-| `as_weight`        | 0.0     | Weight on the aligner AS tag (disabled by default)             |
-| `ani_boost_weight` | 10.0    | Scales $\Omega_{\text{ani}}$; raise to make dominance stronger |
-| `min_alt_count`    | 1       | Minimum number of competing alignments before removal applies  |
+The actual values passed to `build_removed_ids_best_alignment()` differ by mode:
+
+| Parameter          | `--compare_references` mode | Standard (bedgraph) mode | Effect                                                         |
+| ------------------ | --------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `penalize_weight`  | 0                           | 23.0                     | Penalty per competing contig in $N_{\text{alt}}$               |
+| `as_weight`        | 1.0                         | 0.0                      | Weight on the aligner AS tag                                   |
+| `ani_boost_weight` | 10.0                        | _(not used)_             | Scales $\Omega_{\text{ani}}$; raise to make dominance stronger |
+| `min_alt_count`    | 2                           | 1                        | Minimum competing alignments before removal applies            |
+
+In `--compare_references` mode the ANI dominance term ($\Omega_{\text{ani}}$) does all the heavy lifting, so `penalize_weight` is set to 0. In the standard bedgraph path, `as_weight` is disabled (0.0) and the competing-contig penalty is 23.0.
 
 ### 3.7 Comparison Metrics (Δ Breadth)
 
@@ -475,20 +479,25 @@ The conflict detection pipeline produces per-reference metrics at the species le
 - **`Δ⁻¹ Breadth`** ($B_r$): The ratio of post-removal breadth to pre-removal breadth. Think of it as "what fraction of genome coverage survived after we removed ambiguous reads?" A value of 1.0 means no breadth was lost (good — the signal was all unique). A value of 0.5 means half the coverage came from reads that could've belonged to a different organism (concerning).
 - **`Δ All%`** ($\Delta\%$): The percentage of total reads that were removed during conflict resolution. The Δ (delta) here means "change" — specifically how many reads changed (got removed).
 
-The raw minhash score penalizes organisms that lost a lot of reads. It uses a sigmoid (S-curve) as a penalty function:
+The raw minhash score blends two retention signals — breadth retention and read retention — to differentiate true positives from false positives, particularly within high-ANI conflict groups (e.g. *E. coli* vs *Shigella*) where $B_r$ alone is nearly identical for every member:
+
+- **`Δ⁻¹ Breadth`** ($B_r$): fraction of genome breadth surviving conflict removal (0–1).
+- **Read retention** ($R_r$): fraction of reads surviving conflict removal, i.e. `Pass Filtered Reads / Total Reads`.
 
 ```math
-\text{penalty} = \frac{1}{1 + e^{-k \cdot (\Delta\% - x_0)}}
-\qquad k = 0.90,\; x_0 = -10.0
+\text{minhash\_score} = \min\!\big(1.0,\;\; 0.30 \cdot B_r + 0.70 \cdot R_r\big)
 ```
 
-Here $k$ controls the steepness of the penalty curve and $x_0$ is the inflection point (at -10%, meaning the penalty kicks in when a meaningful fraction of reads are removed).
+Read retention is weighted more heavily (70%) because it differentiates conflict-group members much more cleanly: the dominant true-positive organism retains most of its reads during removal, while false-positive relatives lose the majority of theirs.
 
-```math
-\text{minhash\_score} = \min(1.0,\;\; B_r \times \text{penalty})
+**Example — O104:H4 vs Shigella in the same conflict group:**
+
+```
+O104:H4  (TP):  Br=0.12, read_retention=0.85  →  0.30×0.12 + 0.70×0.85 = 0.631
+Shigella (FP):  Br=0.12, read_retention=0.30  →  0.30×0.12 + 0.70×0.30 = 0.246
 ```
 
-The final minhash score is the breadth retention ratio multiplied by the penalty, capped at 1.0.
+Both organisms have the same $B_r$ (they share similar genome breadth reduction in the high-ANI group), but their read-retention scores clearly separate them.
 
 **Fallback (no comparison data available):**
 
@@ -525,8 +534,10 @@ Here $w_b$ and $w_g$ are weights that control how much the breadth sigmoid vs. t
 Organisms with very few reads relative to the total are more likely to be false positives, so their `minhash_confidence` is scaled down by a coverage-aware penalty. Rather than applying the penalty at full strength regardless of coverage evidence, it is **faded out when the organism has solid genome breadth** — preventing a well-covered dominant organism from being dragged down by the global read-fraction sigmoid:
 
 ```math
-w_{\text{pen}} = 0.35 \times (1 - \text{cov\_conf})
+w_{\text{pen}} = 0.35 \times \bigl(1 - \min\!\bigl(1.0,\; \text{cov\_conf} + 0.20 \times \text{mapq\_norm}\bigr)\bigr)
 ```
+
+where $\text{mapq\_norm} = \min(1.0, \text{meanmapq} / 60)$. The additional MapQ bypass term (`0.20 × mapq_norm`) fades the penalty further when reads are high-quality — a high-MAPQ organism with few reads (e.g. a rare pathogen in a sterile-site sample) should not be penalised as harshly as a low-MAPQ scatter hit.
 
 ```math
 \text{minhash\_confidence} \mathrel{*}= \big(1 - w_{\text{pen}}\big) + \big(w_{\text{pen}} \times \text{rpm\_weight}\big)
@@ -540,13 +551,15 @@ Where `rpm_weight` is a steep sigmoid over the fraction of total reads:
 
 and `cov_conf = breadth_sigmoid(coverage)`.
 
-**Effect at different coverage levels:**
+**Effect at different coverage levels (with mapq_norm = 0, i.e. low MAPQ):**
 
 | `cov_conf`          | $w_{\text{pen}}$ | Penalty at `rpm_weight=0.1` | Meaning                              |
 | ------------------- | ---------------- | --------------------------- | ------------------------------------ |
 | 0.95 (100% breadth) | 0.017            | ×0.998 (≈ none)             | Dominant organism — penalty bypassed |
 | 0.50 (moderate)     | 0.175            | ×0.843 (−16%)               | Moderate dampening                   |
 | 0.10 (sparse)       | 0.315            | ×0.717 (−28%)               | Full penalty applies                 |
+
+When `mapq_norm = 1.0` (MAPQ 60), the effective coverage bypass is raised by 0.20, reducing $w_{\text{pen}}$ further at every coverage level.
 
 This ensures that a high-confidence organism like O104:H4 — which spans the full genome — is never unfairly penalised simply because its read fraction is computed against total sample reads that include many other organisms.
 
@@ -750,17 +763,17 @@ Expanded:
 
 | Component              | Weight   | CLI Flag                      | Type     |
 | ---------------------- | -------- | ----------------------------- | -------- |
-| `breadth_log_score`    | **0.26** | `--breadth_weight`            | included |
-| `minhash_reduction`    | **0.29** | `--minhash_weight`            | included |
-| `gini_coefficient`     | **0.45** | `--gini_weight`               | included |
+| `breadth_log_score`    | **0.27** | `--breadth_weight`            | included |
+| `minhash_reduction`    | **0.31** | `--minhash_weight`            | included |
+| `gini_coefficient`     | **0.42** | `--gini_weight`               | included |
 | `hmp_percentile`       | 0.00     | `--hmp_weight`                | included |
 | `disparity`            | 0.00     | `--disparity_weight`          | included |
 | `mapq_score`           | 0.00     | `--mapq_score`                | included |
 | `k2_disparity_score`   | 0.00     | `--k2_disparity_score_weight` | included |
 | `diamond_identity`     | 0.00     | `--diamond_identity`          | included |
-| `plasmid_bonus_weight` | 0.19     | `--plasmid_bonus_weight`      | bonus    |
+| `plasmid_bonus_weight` | 0.00     | `--plasmid_bonus_weight`      | bonus    |
 
-**What if all weights don't add up to 1.0?** If the three primary weights (breadth=0.40, minhash=0.55, gini=0.15) sum to 1.0 when normalized, and plasmid adds another 0.19. This is intentional — the final score is clamped to $[0, 1]$ at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism presence is good/high.
+**What if all weights don't add up to 1.0?** The three active primary weights (breadth=0.27, minhash=0.31, gini=0.42) sum to 1.0, which is the intended normalization. The plasmid bonus and abundance confidence weights sit outside this normalized pool and are additive on top of the base sum. This is intentional — the final score is clamped to $[0, 1]$ at the end, so overshooting is fine. It allows components to reinforce each other when the support for an organism is strong.
 
 ### 9.3 Additive Modifiers
 
@@ -992,11 +1005,19 @@ Lastly, outside of the scope of this document, we've collected various clinical 
 \text{gini\_coefficient} = \min\!\Big(1,\; \alpha\sqrt{1-G} \;\times\; \big(1 + R\log_{10}\tfrac{L}{L_b}\big) \;\times\; (1+\beta D)\Big)
 ```
 
-### Minhash Reduction
+### Minhash Score (raw)
+
+```math
+\text{minhash\_score} = \min\!\big(1.0,\;\; 0.30 \cdot B_r + 0.70 \cdot R_r\big)
+```
+
+### Minhash Reduction (confidence-gated)
 
 ```math
 \text{minhash\_reduction} = \text{clamp}\!\big(w_b \cdot \text{breadth\_sigmoid}(c) + w_g \cdot G_{\text{score}},\; 0,\; 1\big)
 ```
+
+further adjusted by the low-read penalty (Section 7.4) using a MAPQ-aware coverage bypass.
 
 ### TASS Score
 
