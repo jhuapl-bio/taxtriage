@@ -181,6 +181,7 @@ include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
 include { INSILICO } from '../subworkflows/local/insilico'
+include { PROTEINS } from '../subworkflows/local/proteins'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -785,6 +786,12 @@ workflow TAXTRIAGE {
         ch_versions = ch_versions.mix(ASSEMBLY.out.versions)
 
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
+        ch_denovo = ASSEMBLY.out.ch_denovo_assembly
+        if (params.annotate_proteins){
+            PROTEINS(
+                ch_denovo
+            )
+        }
 
         // Add placeholder assembly analysis entries for insilico samples so
         // they are not filtered out by the inner join in input_alignment_files

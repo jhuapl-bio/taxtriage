@@ -1,8 +1,8 @@
 //
 // Annotate de novo assemblies with protein-level DIAMOND BLASTx
 //
-include { DIAMOND_MAKEDB } from '../../modules/nf-core/diamond/makedb/main'
-include { DIAMOND_BLASTX } from '../../modules/nf-core/diamond/blastx/main'
+include { DIAMOND_MAKEDB as ANNOTATE_DIAMOND_MAKEDB } from '../../modules/nf-core/diamond/makedb/main'
+include { DIAMOND_BLASTX as ANNOTATE_DIAMOND_BLASTX } from '../../modules/nf-core/diamond/blastx/main'
 
 workflow PROTEINS {
     take:
@@ -17,28 +17,28 @@ workflow PROTEINS {
             ch_proteins_fasta = Channel.fromPath(params.annotate_proteins, checkIfExists: true)
                 .map { fasta -> [ [id: 'annotate_proteins_db'], fasta ] }
 
-            DIAMOND_MAKEDB(
+            ANNOTATE_DIAMOND_MAKEDB(
                 ch_proteins_fasta,
                 [],
                 [],
                 [],
             )
-            ch_versions = ch_versions.mix(DIAMOND_MAKEDB.out.versions)
+            ch_versions = ch_versions.mix(ANNOTATE_DIAMOND_MAKEDB.out.versions)
 
             // Pair every assembly with the single DB file (drop the DB meta)
             ch_prep = ch_denovo.combine(
-                DIAMOND_MAKEDB.out.db.map { _meta, db -> db }
+                ANNOTATE_DIAMOND_MAKEDB.out.db.map { _meta, db -> db }
             )
             // ch_prep: [meta, fasta, db]
 
-            DIAMOND_BLASTX(
+            ANNOTATE_DIAMOND_BLASTX(
                 ch_prep.map { meta, fasta, db -> [meta, fasta] },
                 ch_prep.map { meta, fasta, db -> [[id: 'annotate_proteins_db'], db] },
                 'txt',
                 false,
             )
-            ch_versions      = ch_versions.mix(DIAMOND_BLASTX.out.versions)
-            ch_diamond_output = DIAMOND_BLASTX.out.txt
+            ch_versions      = ch_versions.mix(ANNOTATE_DIAMOND_BLASTX.out.versions)
+            ch_diamond_output = ANNOTATE_DIAMOND_BLASTX.out.txt
         }
 
     emit:
