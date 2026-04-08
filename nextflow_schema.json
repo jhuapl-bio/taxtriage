@@ -269,6 +269,16 @@
                     "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "annotate_proteins": {
+                    "type": ["string", "null"],
+                    "description": "A FASTA file of proteins to pull annotations for with DIAMOND BLASTX. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "annotate_meta": {
+                    "type": ["string", "null"],
+                    "description": "A metadata file that contains the headers of the proteins in the --annotate_proteins file and the relevant metadata you want to pull for those proteins. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "spades_hmm": {
                     "type": "string",
                     "description": "Use custom hmm from SPAdes for your reads",
