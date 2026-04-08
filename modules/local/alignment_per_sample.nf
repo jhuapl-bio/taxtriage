@@ -26,6 +26,7 @@ process ALIGNMENT_PER_SAMPLE {
     input:
     tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list), path(sampletype_thresholds_file)
     file assembly
+    path(annotate_report)
     val minmapq
     path(taxdump)
     path(negative_control_jsons)
@@ -83,6 +84,7 @@ process ALIGNMENT_PER_SAMPLE {
     def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
     def platform = meta.platform ? " --platform ${meta.platform} " : " "
     def sampletype_thresholds = sampletype_thresholds_file.name != "NO_FILE_thresholds" ? " --thresholds_json ${sampletype_thresholds_file} " : " "
+    def annotate_report_arg = annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${annotate_report} " : " "
 
     // Control sample arguments
     def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
@@ -110,7 +112,8 @@ process ALIGNMENT_PER_SAMPLE {
         $min_reads_align $compress_species $mbert_report $minmapq $fast $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
-        $mapq_breadth_power $mapq_gini_power
+        $mapq_breadth_power $mapq_gini_power \\
+        $annotate_report_arg
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

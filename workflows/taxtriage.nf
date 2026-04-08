@@ -787,10 +787,17 @@ workflow TAXTRIAGE {
 
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
         ch_denovo = ASSEMBLY.out.ch_denovo_assembly
+        ch_annotate_report_tsv = Channel.value(file("$projectDir/assets/NO_FILE_annotate_report"))
         if (params.annotate_proteins){
             PROTEINS(
                 ch_denovo
             )
+            if (params.annotate_meta) {
+                ch_annotate_report_tsv = PROTEINS.out.annotate_report
+                    .map { meta, tsv -> tsv }
+                    .collect()
+                    .map { tsvs -> tsvs.size() > 0 ? tsvs[0] : file("$projectDir/assets/NO_FILE_annotate_report") }
+            }
         }
 
         // Add placeholder assembly analysis entries for insilico samples so
@@ -832,7 +839,8 @@ workflow TAXTRIAGE {
                 distributions,
                 ch_assembly_txt,
                 ch_taxdump_dir,
-                all_samples
+                all_samples,
+                ch_annotate_report_tsv,
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }

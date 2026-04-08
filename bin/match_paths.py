@@ -159,6 +159,14 @@ def parse_args(argv=None):
         help="DIAMOND BLASTX Output file",
     )
     parser.add_argument(
+        "--annotate_report",
+        default=None,
+        type=str,
+        help="Annotation report TSV (merged DIAMOND hits + metadata from annotate_report.py). "
+             "Used to attach protein annotation data (gene names, classification, resistance info) "
+             "to each organism in the output JSON, matched by species_taxid to the subkey.",
+    )
+    parser.add_argument(
         "-c",
         "--capval",
         metavar="Cap val for depth for entropy calculation. Default: 15",
@@ -2718,6 +2726,112 @@ def main():
                     if 'insilico_comparison' not in group:
                         group['insilico_comparison'] = {}
                     group['insilico_comparison']['missing_from_insilico'] = True
+
+    # ── Protein annotation enrichment ─────────────────────────────────────────
+    # If an annotate_report TSV is provided (from annotate_report.py), load it
+    # and attach matching annotations to each organism group/member by
+    # species_taxid ↔ subkey.  Also try genus_taxid ↔ toplevelkey fallback.
+    if args.annotate_report and os.path.exists(args.annotate_report):
+        print(f"Loading protein annotation report from {args.annotate_report}")
+        if args.annotate_report.endswith('.xlsx') or args.annotate_report.endswith('.xls'):
+            _annot_df = pd.read_excel(args.annotate_report, dtype=str)
+        elif args.annotate_report.endswith('.csv'):
+            _annot_df = pd.read_csv(args.annotate_report, dtype=str)
+        else:
+            _annot_df = pd.read_csv(args.annotate_report, sep='\t', dtype=str)
+        _annot_df.columns = _annot_df.columns.str.strip()
+        # Build lookup: species_taxid → list of annotation dicts
+        _annot_by_species = defaultdict(list)
+        _annot_by_genus = defaultdict(list)
+        _annot_cols = [
+            'sseqid', 'pident', 'evalue', 'bitscore', 'source_id',
+            'gene_name', 'product', 'classification', 'antibiotics_class',
+            'antibiotics', 'organism', 'genus', 'species', 'property',
+            'source', 'level', 'host_name',
+        ]
+        _annot_numeric_cols = {'pident', 'evalue', 'bitscore'}
+        def _coerce(col, val):
+            if pd.isna(val):
+                return None
+            if col in _annot_numeric_cols:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return val
+            return val
+        _available_cols = [c for c in _annot_cols if c in _annot_df.columns]
+        for _, row in _annot_df.iterrows():
+            entry = {c: _coerce(c, row.get(c)) for c in _available_cols}
+            sp_taxid = str(row.get('species_taxid', '')).strip()
+            gn_taxid = str(row.get('genus_taxid', '')).strip()
+            if sp_taxid and sp_taxid != 'nan':
+                _annot_by_species[sp_taxid].append(entry)
+            if gn_taxid and gn_taxid != 'nan':
+                _annot_by_genus[gn_taxid].append(entry)
+
+        _annot_matched = 0
+        for group in final_json:
+            tlk = str(group.get('toplevelkey', group.get('key', '')))
+            # Attach at genus (toplevel) level
+            if tlk in _annot_by_genus:
+                # Deduplicate by gene_name
+                _seen_genes = set()
+                _unique = []
+                for a in _annot_by_genus[tlk]:
+                    gn = a.get('gene_name', '')
+                    if gn not in _seen_genes:
+                        _seen_genes.add(gn)
+                        _unique.append(a)
+                group['protein_annotations_genus'] = _unique
+
+            for subkey_member in group.get('members', []):
+                sk = str(subkey_member.get('subkey', subkey_member.get('key', '')))
+                if sk in _annot_by_species:
+                    _seen_genes = set()
+                    _unique = []
+                    for a in _annot_by_species[sk]:
+                        gn = a.get('gene_name', '')
+                        if gn not in _seen_genes:
+                            _seen_genes.add(gn)
+                            _unique.append(a)
+                    subkey_member['protein_annotations'] = _unique
+                    _annot_matched += 1
+
+                # Also propagate to individual strains via taxdump hierarchy
+                for strain in subkey_member.get('members', []):
+                    strain_key = str(strain.get('key', ''))
+                    # Try direct match first, then walk up to species via taxdump
+                    matched_annots = []
+                    if strain_key in _annot_by_species:
+                        matched_annots = _annot_by_species[strain_key]
+                    elif taxdump and strain_key in taxdump:
+                        # Walk up the taxonomy to find species-level match
+                        _current = strain_key
+                        _visited = set()
+                        while _current and _current not in _visited:
+                            _visited.add(_current)
+                            if _current in _annot_by_species:
+                                matched_annots = _annot_by_species[_current]
+                                break
+                            _parent = taxdump.get(_current, {}).get('parent', '')
+                            if _parent == _current:
+                                break
+                            _current = _parent
+                    if matched_annots:
+                        _seen_genes = set()
+                        _unique = []
+                        for a in matched_annots:
+                            gn = a.get('gene_name', '')
+                            if gn not in _seen_genes:
+                                _seen_genes.add(gn)
+                                _unique.append(a)
+                        strain['protein_annotations'] = _unique
+
+        print(f"Protein annotations: matched {_annot_matched} species/subkey groups, "
+              f"{len(_annot_by_species)} species taxids in annotation file, "
+              f"{len(_annot_by_genus)} genus taxids")
+    elif args.annotate_report:
+        print(f"WARNING: annotate_report file not found: {args.annotate_report}")
 
     # ── Build structured output with metadata ────────────────────────────────
     _all_keys = set()

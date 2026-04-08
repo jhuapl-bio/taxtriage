@@ -37,6 +37,7 @@ workflow REPORT {
         assemblyfile
         ch_taxdump_dir
         all_samples
+        ch_annotate_report   // TSV from ANNOTATE_REPORT (or NO_FILE placeholder)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -110,6 +111,7 @@ workflow REPORT {
                     .combine(pathogens_list)
                     .combine(ch_sampletype_thresholds),
                 assemblyfile,
+                ch_annotate_report,
                 params.minmapq,
                 ch_taxdump_dir,
                 ch_no_neg_ctrl,
@@ -123,6 +125,7 @@ workflow REPORT {
                     .combine(pathogens_list)
                     .combine(ch_sampletype_thresholds),
                 assemblyfile,
+                ch_annotate_report,
                 params.minmapq,
                 ch_taxdump_dir,
                 ch_no_neg_ctrl,
@@ -223,6 +226,7 @@ workflow REPORT {
             ALIGNMENT_PER_SAMPLE(
                 noncontrol_aln_input,
                 assemblyfile,
+                ch_annotate_report,
                 params.minmapq,
                 ch_taxdump_dir,
                 noncontrol_neg_json,
