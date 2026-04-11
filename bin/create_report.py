@@ -4811,7 +4811,9 @@ def create_pdf_template(output_path, samples_dict, args):
 def create_tabular_output(output_path, samples_dict, args):
     """
     Create a tabular output file (CSV/TSV/TXT/XLSX) with strain-level data.
-    Includes ALL strains (not filtered). A 'Subkey' column is included.
+    Includes ALL strains (not filtered).  Enriched with:
+      • Taxonomy ranks: Superkingdom, Phylum, Class, Order, Family, Genus
+      • Coverage depth: Covered Bases, Genome Length (bp), Breadth %, Mean Depth
     """
     file_ext = os.path.splitext(output_path)[1].lower()
 
@@ -4820,12 +4822,17 @@ def create_tabular_output(output_path, samples_dict, args):
         '% Reads', '# Reads Aligned', '% Aligned Reads', 'Coverage',
         'HHS Percentile', 'IsAnnotated', 'AnnClass', 'Microbial Category',
         'High Consequence', 'Taxonomic ID #', 'Status', 'Gini Coefficient',
-        'Mean BaseQ', 'Mean MapQ', 'Mean Depth', 'isSpecies',
+        'Mean BaseQ', 'Mean MapQ', 'Mean Depth',
+        # ── new depth/breadth columns ──
+        'Covered Bases', 'Genome Length (bp)', 'Breadth %',
+        'isSpecies',
         'Pathogenic Subsp/Strains', 'K2 Reads', 'RPKM', 'RPM',
         'Parent K2 Reads', 'MapQ Score', 'Disparity Score', 'Minhash Score',
         'Diamond Identity', 'K2 Disparity Score', 'Siblings score',
         'Breadth Weight Score', 'TASS Score', 'MicrobeRT Probability',
         'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey',
+        # ── new taxonomy rank columns ──
+        'Superkingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus',
         'Flora Sites', 'Passes Threshold'
     ]
 
@@ -4874,8 +4881,23 @@ def create_tabular_output(output_path, samples_dict, args):
                     _flora_sites_str = ', '.join(sorted(set(_sites_flat))) if _sites_flat else ''
                 else:
                     _flora_sites_str = ''
-                # ── Passes Threshold: does this strain meet the sample's TASS cutoff ──
+                # ── Passes Threshold ──
                 _passes_thresh = 'TRUE' if passes_confidence_threshold(strain, _mc) else 'FALSE'
+
+                # ── Breadth / depth fields ──
+                _covered_bases = int(strain.get('covered_bases', 0) or 0)
+                _genome_len    = int(strain.get('length', 0) or 0)
+                _breadth_pct   = round(_covered_bases / _genome_len * 100, 2) if _genome_len > 0 else 0.0
+                _meandepth     = round(float(strain.get('meandepth', 0) or 0), 2)
+
+                # ── Taxonomy lineage (stored by match_paths; fallback to empty) ──
+                _tax = strain.get('taxonomy', sg.get('taxonomy', {}))
+                _superkingdom = _tax.get('superkingdom', '')
+                _phylum       = _tax.get('phylum', '')
+                _class        = _tax.get('class', '')
+                _order        = _tax.get('order', '')
+                _family       = _tax.get('family', '')
+                _genus        = _tax.get('genus', sg.get('toplevelname', ''))
 
                 all_rows.append([
                     global_index, local_idx,
@@ -4891,7 +4913,9 @@ def create_tabular_output(output_path, samples_dict, args):
                     f"{(strain.get('gini_coefficient', 0) or 0):.2f}",
                     f"{(strain.get('meanbaseq', 0) or 0):.2f}",
                     f"{(strain.get('meanmapq', 0) or 0):.2f}",
-                    f"{(strain.get('meandepth', 0) or 0):.1f}",
+                    f"{_meandepth:.1f}",
+                    # depth / breadth
+                    _covered_bases, _genome_len, _breadth_pct,
                     'True' if strain.get('isSpecies', False) else 'False',
                     '',
                     int(strain.get('k2_reads', 0) or 0),
@@ -4911,6 +4935,8 @@ def create_tabular_output(output_path, samples_dict, args):
                     int(strain_reads),
                     group_key,
                     strain.get('subkey', strain.get('key', '')),
+                    # taxonomy ranks
+                    _superkingdom, _phylum, _class, _order, _family, _genus,
                     _flora_sites_str,
                     _passes_thresh,
                 ])
@@ -4925,8 +4951,58 @@ def create_tabular_output(output_path, samples_dict, args):
         df.to_csv(output_path, sep='\t', index=False)
         print(f"TSV output created: {output_path}")
     elif file_ext in ['.xlsx', '.xls']:
-        df.to_excel(output_path, index=False, engine='openpyxl')
-        print(f"Excel output created: {output_path}")
+        # Build contig-detail rows for a dedicated sheet
+        _contig_rows = []
+        for _s_name, _s_data in samples_dict.items():
+            for _grp in _s_data.get("organisms", []):
+                for _sk_m in _grp.get("members", []):
+                    for _strain in _sk_m.get("members", []):
+                        _org_name = _strain.get("name", "Unknown")
+                        _tax_key  = str(_strain.get("key", ""))
+                        for _ctg in _strain.get("contigs", []):
+                            _contig_rows.append({
+                                "Sample":          _s_name,
+                                "Organism":        _org_name,
+                                "Taxon ID":        _tax_key,
+                                "Contig":          _ctg.get("name", ""),
+                                "Length (bp)":     _ctg.get("length", 0),
+                                "Reads Aligned":   _ctg.get("reads", 0),
+                                "Mean Depth":      _ctg.get("mean_depth", 0),
+                                "Covered Bases":   _ctg.get("covered_bases", 0),
+                                "Coverage %":      round(_ctg.get("coverage", 0) * 100, 2),
+                            })
+        df_contigs = pd.DataFrame(_contig_rows) if _contig_rows else pd.DataFrame(
+            columns=["Sample","Organism","Taxon ID","Contig",
+                     "Length (bp)","Reads Aligned","Mean Depth","Covered Bases","Coverage %"])
+
+        # Depth histogram rows
+        _hist_rows = []
+        for _s_name, _s_data in samples_dict.items():
+            for _grp in _s_data.get("organisms", []):
+                for _sk_m in _grp.get("members", []):
+                    for _strain in _sk_m.get("members", []):
+                        _dhist = _strain.get("depth_histogram")
+                        if not _dhist:
+                            continue
+                        _hist_rows.append({
+                            "Sample":    _s_name,
+                            "Organism":  _strain.get("name", "Unknown"),
+                            "Taxon ID":  str(_strain.get("key", "")),
+                            "0x bases":       _dhist.get("0x", 0),
+                            "1-5x bases":     _dhist.get("1-5x", 0),
+                            "5-10x bases":    _dhist.get("5-10x", 0),
+                            "10-50x bases":   _dhist.get("10-50x", 0),
+                            ">50x bases":     _dhist.get(">50x", 0),
+                        })
+        df_hist = pd.DataFrame(_hist_rows) if _hist_rows else pd.DataFrame(
+            columns=["Sample","Organism","Taxon ID",
+                     "0x bases","1-5x bases","5-10x bases","10-50x bases",">50x bases"])
+
+        with pd.ExcelWriter(output_path, engine='openpyxl') as _writer:
+            df.to_excel(_writer, sheet_name="Organisms", index=False)
+            df_contigs.to_excel(_writer, sheet_name="Contig Details", index=False)
+            df_hist.to_excel(_writer, sheet_name="Depth Histograms", index=False)
+        print(f"Excel output created (3 sheets): {output_path}")
     else:
         df.to_csv(output_path, sep='\t', index=False)
         print(f"TSV output created (default): {output_path}")

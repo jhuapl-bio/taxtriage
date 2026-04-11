@@ -257,9 +257,22 @@ workflow REPORT {
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)
 
+            // ── Collect all per-sample JSON files for the comparison report ───────
+            // Use only non-control samples to avoid skewing the multi-run heatmap
+            ch_comparison_jsons = ALIGNMENT_PER_SAMPLE.out.txt
+                .map { meta, json -> json }
+                .collect()
+
+            // ── Protein annotation XLSX files (only from --annotate_proteins /
+            //    --annotate_meta; not from use_diamond or get_features) ──────────
+            ch_prot_annotations = ORGANISM_MERGE_REPORT.out.annot_xlsx
+                .collect()
+                .ifEmpty { file("$projectDir/assets/NO_FILE_prot") }
+
             CREATE_COMPARISON_REPORT(
-                ORGANISM_MERGE_REPORT.out.report,
-                ch_template
+                ch_comparison_jsons,
+                ch_template,
+                ch_prot_annotations
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

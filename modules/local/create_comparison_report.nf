@@ -21,25 +21,49 @@ process CREATE_COMPARISON_REPORT {
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'docker://quay.io/jhuaplbio/reportlab-pdf:4.0.8' :
-        'jhuaplbio/reportlab-pdf:4.0.8' }"
+        'docker://quay.io/jhuaplbio/reportlab-pdf:4.0.9' :
+        'jhuaplbio/reportlab-pdf:4.0.9' }"
 
     input:
-    file(report)
-    file(template)
+    // One or more .paths.json files from ALIGNMENT_PER_SAMPLE (collected across all samples)
+    path(json_files)
+    // HTML template (heatmap.html)
+    path(template)
+    // Optional protein-annotation XLSX files from ORGANISM_MERGE_REPORT --output_annot_xlsx
+    // Pass a NO_FILE placeholder when protein annotations are not available
+    path(protein_annotations)
 
     output:
         path "versions.yml"           , emit: versions
-        path("*html")    , optional: true, emit: html
+        path("*html")                 , optional: true, emit: html
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def output_html = "all.comparison.report.html"
+
+    // Build the list of JSON input files (filter out any NO_FILE placeholders)
+    def json_inputs = json_files instanceof List
+        ? json_files.findAll { it.name != 'NO_FILE' && it.name.endsWith('.json') }.join(' ')
+        : (json_files.name != 'NO_FILE' && json_files.name.endsWith('.json') ? json_files.toString() : '')
+
+    // Build optional protein annotations argument
+    def prot_arg = ''
+    if (protein_annotations) {
+        def prot_files = protein_annotations instanceof List
+            ? protein_annotations.findAll { it.name != 'NO_FILE' && !it.name.startsWith('NO_FILE') }.join(' ')
+            : (protein_annotations.name != 'NO_FILE' && !protein_annotations.name.startsWith('NO_FILE') ? protein_annotations.toString() : '')
+        if (prot_files) {
+            prot_arg = "-p ${prot_files}"
+        }
+    }
+
     """
-    make_report.py -i $report  -t $template \\
-        -o $output_html \\
+    make_report.py -i ${json_inputs} \\
+        -t ${template} \\
+        -o ${output_html} \\
+        ${prot_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

@@ -62,7 +62,7 @@ import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
 from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
-from map_taxid import load_taxdump, load_names
+from map_taxid import load_taxdump, load_names, get_root
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
 
@@ -2845,6 +2845,55 @@ def main():
             for strain in sk_m.get('members', []):
                 _all_keys.add(strain.get('key', ''))
                 _total_organism_reads += float(strain.get('numreads', 0))
+    # ── Build per-contig histogram data BEFORE stripping covered_regions ────────
+    # Collect per-accession (contig) stats grouped by strain key so the HTML
+    # report can render a per-contig reads/depth bar chart for each organism.
+    _contig_by_key   = defaultdict(list)
+    _depth_hist_by_key = defaultdict(lambda: {'0x': 0, '1-5x': 0, '5-10x': 0, '10-50x': 0, '>50x': 0})
+
+    def _build_depth_hist(covered_regions, genome_len):
+        """Return {bucket: base_count} from a list of (start, end, depth) tuples."""
+        _hist = {'0x': max(0, int(genome_len)), '1-5x': 0, '5-10x': 0, '10-50x': 0, '>50x': 0}
+        for _s, _e, _d in (covered_regions or []):
+            _b = max(0, _e - _s)
+            _hist['0x'] = max(0, _hist['0x'] - _b)
+            if _d <= 5:
+                _hist['1-5x'] += _b
+            elif _d <= 10:
+                _hist['5-10x'] += _b
+            elif _d <= 50:
+                _hist['10-50x'] += _b
+            else:
+                _hist['>50x'] += _b
+        return _hist
+
+    for _acc, _hit in reference_hits.items():
+        _skey = str(_hit.get('key', _acc))
+        _numreads  = int(_hit.get('numreads', 0) or 0)
+        _length    = int(_hit.get('length', 0) or 0)
+        _covered   = int(_hit.get('covered_bases', 0) or 0)
+        _depth     = float(_hit.get('meandepth', 0) or 0)
+        _cov       = round(_covered / max(1, _length), 5)
+        _contig_by_key[_skey].append({
+            'name':          _acc,
+            'length':        _length,
+            'reads':         _numreads,
+            'mean_depth':    round(_depth, 3),
+            'covered_bases': _covered,
+            'coverage':      _cov,
+        })
+        # Aggregate depth histogram across all contigs for this strain
+        _cov_regs = _hit.get('covered_regions', [])
+        if _cov_regs and _length > 0:
+            _acc_hist = _build_depth_hist(_cov_regs, _length)
+            for _bkt, _cnt in _acc_hist.items():
+                _depth_hist_by_key[_skey][_bkt] += _cnt
+
+    # Sort contigs by reads desc, cap at 100 per strain (prevent JSON bloat)
+    for _skey in _contig_by_key:
+        _contig_by_key[_skey].sort(key=lambda x: x['reads'], reverse=True)
+        _contig_by_key[_skey] = _contig_by_key[_skey][:100]
+
     # Strip covered_regions from JSON output — large and only needed internally
     import copy as _copy
     _json_out = _copy.deepcopy(final_json)
@@ -2854,6 +2903,61 @@ def main():
             _sk_m.pop('covered_regions', None)
             for _strain in _sk_m.get('members', []):
                 _strain.pop('covered_regions', None)
+
+    # ── Annotate taxonomy lineage into JSON output ────────────────────────────
+    # Store superkingdom/kingdom, phylum, class, order, family, genus names on
+    # every organism entry so downstream tools (make_report.py, heatmap.html)
+    # can group / colour by taxonomy without reloading the taxdump.
+    _TAX_RANKS = ['superkingdom', 'phylum', 'class', 'order', 'family', 'genus']
+
+    def _build_lineage(taxid_str):
+        """Return {rank: name} dict for the six major ranks above."""
+        if not taxdump or not taxdump_names:
+            return {}
+        lineage = {}
+        for _rank in _TAX_RANKS:
+            _rid = get_root(taxid_str, _rank, taxdump)
+            if _rid:
+                _name = taxdump_names.get(str(_rid), '')
+                if _name:
+                    lineage[_rank] = _name
+        return lineage
+
+    if taxdump and taxdump_names:
+        for _grp in _json_out:
+            # Use species-level subkey for best lineage resolution when available
+            _rep_taxid = None
+            for _sk_m in _grp.get('members', []):
+                _sk_id = str(_sk_m.get('subkey', _sk_m.get('key', '')))
+                if _sk_id:
+                    _rep_taxid = _sk_id
+                    break
+            if _rep_taxid is None:
+                _rep_taxid = str(_grp.get('toplevelkey', _grp.get('key', '')))
+            _grp_lineage = _build_lineage(_rep_taxid)
+            _grp['taxonomy'] = _grp_lineage
+
+            for _sk_m in _grp.get('members', []):
+                _sk_taxid = str(_sk_m.get('subkey', _sk_m.get('key', '')))
+                _sk_lineage = _build_lineage(_sk_taxid) if _sk_taxid else _grp_lineage
+                _sk_m['taxonomy'] = _sk_lineage
+                for _strain in _sk_m.get('members', []):
+                    _strain['taxonomy'] = _sk_lineage
+    # ── Attach per-contig histogram data to JSON strains ─────────────────────
+    for _grp in _json_out:
+        for _sk_m in _grp.get('members', []):
+            for _strain in _sk_m.get('members', []):
+                _skey = str(_strain.get('key', ''))
+                _contigs = _contig_by_key.get(_skey)
+                if _contigs:
+                    # Only include contigs with at least 1 read for compactness
+                    _covered_contigs = [c for c in _contigs if c['reads'] > 0]
+                    if _covered_contigs:
+                        _strain['contigs'] = _covered_contigs
+                _dhist = dict(_depth_hist_by_key.get(_skey, {}))
+                if _dhist and any(_dhist.values()):
+                    _strain['depth_histogram'] = _dhist
+
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
     # them instead of its hard-coded sampletype defaults.
