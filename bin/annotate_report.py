@@ -43,6 +43,7 @@ def parse_args():
     ap.add_argument("--meta", required=True, help="Annotation metadata TSV (must have source_id column)")
     ap.add_argument("--prefix", default="annotate_report", help="Output file prefix")
     ap.add_argument("--evalue-cutoff", type=float, default=1e-5, help="E-value cutoff for filtering hits")
+    ap.add_argument("--pident", type=float, default=90, help="Minimum percent identity (0-100 scale) for filtering hits")
     return ap.parse_args()
 
 
@@ -91,9 +92,14 @@ def main():
 
     diamond_df = load_diamond(args.diamond)
     meta_df = load_metadata(args.meta)
+    # drop the sequence_protein column if it exists since it's not needed and can cause confusion with sseqid
+    if "sequence_protein" in meta_df.columns:
+        meta_df = meta_df.drop(columns=["sequence_protein"])
 
     # Filter by e-value
     diamond_df = diamond_df[diamond_df["evalue"] <= args.evalue_cutoff].copy()
+    diamond_df = diamond_df[diamond_df["pident"] >= args.pident].copy()
+    # remove the sequence_protein columns
 
     if diamond_df.empty:
         print("WARNING: No DIAMOND hits passed the e-value cutoff. Writing empty report.")

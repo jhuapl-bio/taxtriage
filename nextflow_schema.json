@@ -274,6 +274,12 @@
                     "description": "A FASTA file of proteins to pull annotations for with DIAMOND BLASTX. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "pident": {
+                    "type": ["number", "null"],
+                    "description": "Minimum percent identity for DIAMOND BLASTX. Must be between 0 and 100. This is used in conjunction with --annotate_proteins.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 90
+                },
                 "annotate_meta": {
                     "type": ["string", "null"],
                     "description": "A metadata file that contains the headers of the proteins in the --annotate_proteins file and the relevant metadata you want to pull for those proteins. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",

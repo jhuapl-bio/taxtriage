@@ -183,6 +183,13 @@ def parse_args(argv=None):
         help="Which parent to match for k2 hierarchy of taxonomy for disparity across genus, family, etc calls",
     )
     parser.add_argument(
+        "--pident",
+        metavar="Minimum percent identity (0-100 scale)",
+        default=90,
+        type=float,
+        help="Filter rows where %id ÷ 100 ≥ this value (default is 90%)",
+    )
+    parser.add_argument(
         "-a",
         "--accessioncol",
         metavar="ACCCOL",
@@ -2764,6 +2771,12 @@ def main():
             entry = {c: _coerce(c, row.get(c)) for c in _available_cols}
             sp_taxid = str(row.get('species_taxid', '')).strip()
             gn_taxid = str(row.get('genus_taxid', '')).strip()
+            try:
+                pident = float(row.get('pident'))
+            except (ValueError, TypeError):
+                pident = None
+            if pident is not None and pident < args.pident:
+                continue  # skip annotations below identity threshold
             if sp_taxid and sp_taxid != 'nan':
                 _annot_by_species[sp_taxid].append(entry)
             if gn_taxid and gn_taxid != 'nan':

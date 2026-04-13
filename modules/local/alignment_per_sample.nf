@@ -67,6 +67,7 @@ process ALIGNMENT_PER_SAMPLE {
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def output_dir = "search_results"
     def compress_species = params.rank ? " --rank ${params.rank} " : " "
+    def pident = params.pident ? " --pident ${params.pident} " : " "
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
@@ -113,7 +114,7 @@ process ALIGNMENT_PER_SAMPLE {
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power \\
-        $annotate_report_arg
+        $annotate_report_arg $pident
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

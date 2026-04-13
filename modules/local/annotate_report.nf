@@ -21,11 +21,12 @@ process ANNOTATE_REPORT {
 
     script:
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def pident = params.pident ? " --pident ${params.pident} " : " "
     """
     annotate_report.py \\
         --diamond ${diamond_txt} \\
         --meta ${annotate_meta} \\
-        --prefix ${prefix}
+        --prefix ${prefix} $pident
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
