@@ -37,7 +37,6 @@ workflow REPORT {
         assemblyfile
         ch_taxdump_dir
         all_samples
-        ch_annotate_report   // TSV from ANNOTATE_REPORT (or NO_FILE placeholder)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -111,7 +110,6 @@ workflow REPORT {
                     .combine(pathogens_list)
                     .combine(ch_sampletype_thresholds),
                 assemblyfile,
-                ch_annotate_report,
                 params.minmapq,
                 ch_taxdump_dir,
                 ch_no_neg_ctrl,
@@ -125,7 +123,6 @@ workflow REPORT {
                     .combine(pathogens_list)
                     .combine(ch_sampletype_thresholds),
                 assemblyfile,
-                ch_annotate_report,
                 params.minmapq,
                 ch_taxdump_dir,
                 ch_no_neg_ctrl,
@@ -207,26 +204,24 @@ workflow REPORT {
                 }
 
                 // Return: alignment tuple + neg_json, pos_json, insilico_jsons (list)
-                def aln_tuple = items[0..11]
+                def aln_tuple = items[0..12]
                 return aln_tuple + [neg_json, pos_json, insilico_jsons]
             }
 
             // Split the resolved channel into the process inputs
-            noncontrol_aln_input = noncontrol_tuple.map { it[0..11] }
-            noncontrol_neg_json = noncontrol_tuple.map { it[12] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
-            noncontrol_pos_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_pos_ctrl") }
+            noncontrol_aln_input = noncontrol_tuple.map { it[0..12] }
+            noncontrol_neg_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
+            noncontrol_pos_json = noncontrol_tuple.map { it[14] ?: file("$projectDir/assets/NO_FILE_pos_ctrl") }
             noncontrol_insilico_json = noncontrol_tuple.map {
-                def jsons = it[14]
+                def jsons = it[15]
                 if (jsons instanceof List && jsons.size() > 0) {
                     return jsons
                 }
                 return file("$projectDir/assets/NO_FILE_insilico_ctrl")
             }
-
             ALIGNMENT_PER_SAMPLE(
                 noncontrol_aln_input,
                 assemblyfile,
-                ch_annotate_report,
                 params.minmapq,
                 ch_taxdump_dir,
                 noncontrol_neg_json,

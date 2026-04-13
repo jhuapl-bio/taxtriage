@@ -787,16 +787,23 @@ workflow TAXTRIAGE {
 
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
         ch_denovo = ASSEMBLY.out.ch_denovo_assembly
-        ch_annotate_report_tsv = Channel.value(file("$projectDir/assets/NO_FILE_annotate_report"))
-        if (params.annotate_proteins){
-            PROTEINS(
-                ch_denovo
-            )
+
+        // Seed a per-sample placeholder for EVERY sample coming out of ALIGNMENT
+        // (covers insilico and control samples that skip ASSEMBLY/PROTEINS)
+        ch_annotate_report_tsv = ALIGNMENT.out.bams.map { meta, bam, bai ->
+            [meta, file("$projectDir/assets/NO_FILE_annotate_report")]
+        }
+
+        if (params.annotate_proteins) {
+            PROTEINS(ch_denovo)
+
             if (params.annotate_meta) {
-                ch_annotate_report_tsv = PROTEINS.out.annotate_report
-                    .map { meta, tsv -> tsv }
-                    .collect()
-                    .map { tsvs -> tsvs.size() > 0 ? tsvs[0] : file("$projectDir/assets/NO_FILE_annotate_report") }
+                // Overlay the real per-sample xlsx where available; keep placeholder elsewhere
+                ch_annotate_report_tsv = ch_annotate_report_tsv
+                    .join(PROTEINS.out.annotate_report, remainder: true)
+                    .map { meta, placeholder, real_file ->
+                        [meta, real_file ?: placeholder]
+                    }
             }
         }
 
@@ -827,6 +834,7 @@ workflow TAXTRIAGE {
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
                 .join(ch_fastas)
+                .join(ch_annotate_report_tsv)
 
             ////////////////////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -839,8 +847,7 @@ workflow TAXTRIAGE {
                 distributions,
                 ch_assembly_txt,
                 ch_taxdump_dir,
-                all_samples,
-                ch_annotate_report_tsv,
+                all_samples
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }

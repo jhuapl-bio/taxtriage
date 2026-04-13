@@ -24,9 +24,20 @@ process ALIGNMENT_PER_SAMPLE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list), path(sampletype_thresholds_file)
+    tuple val(meta),
+        path(bamfiles),
+        path(bai),
+        path(mapping),
+        path(bedgraph),
+        path(covfile),
+        path(k2_report),
+        path(ch_diamond_analysis),
+        path(fastas),
+        path(ch_annotate_report),
+        path(microbert_report),
+        path(pathogens_list),
+        path(sampletype_thresholds_file)
     file assembly
-    path(annotate_report)
     val minmapq
     path(taxdump)
     path(negative_control_jsons)
@@ -85,7 +96,7 @@ process ALIGNMENT_PER_SAMPLE {
     def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
     def platform = meta.platform ? " --platform ${meta.platform} " : " "
     def sampletype_thresholds = sampletype_thresholds_file.name != "NO_FILE_thresholds" ? " --thresholds_json ${sampletype_thresholds_file} " : " "
-    def annotate_report_arg = annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${annotate_report} " : " "
+    def annotate_report_arg = ch_annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${ch_annotate_report} " : " "
 
     // Control sample arguments
     def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
