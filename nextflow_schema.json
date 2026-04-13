@@ -278,7 +278,7 @@
                     "type": ["number", "null"],
                     "description": "Minimum percent identity for DIAMOND BLASTX. Must be between 0 and 100. This is used in conjunction with --annotate_proteins.",
                     "fa_icon": "fas fa-file-signature",
-                    "default": 90
+                    "default": 75
                 },
                 "annotate_meta": {
                     "type": ["string", "null"],

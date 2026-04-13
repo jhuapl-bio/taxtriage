@@ -4613,46 +4613,46 @@ def create_pdf_template(output_path, samples_dict, args):
                 textColor=colors.Color(0.4, 0.4, 0.4))
 
             # ── Bubble chart: genus × category overview ───────────────────
-            _bubble_img = create_annotation_bubble_chart(
-                species_groups, available_width, min_pident=_annot_min_pident)
-            if _bubble_img:
-                story.append(Spacer(1, 0.12 * inch))
-                _annot_bm = f"annot_{sanitize_bookmark_name(sample_name)}"
-                story.append(AnchorFlowable(_annot_bm))
+            # _bubble_img = create_annotation_bubble_chart(
+                # species_groups, available_width, min_pident=_annot_min_pident)
+            # if _bubble_img:
+            #     story.append(Spacer(1, 0.12 * inch))
+            #     _annot_bm = f"annot_{sanitize_bookmark_name(sample_name)}"
+            #     story.append(AnchorFlowable(_annot_bm))
+            #     story.append(Paragraph(
+            #         'Specialty Gene Hits (DIAMOND BLASTx)',
+            #         _annot_hdr_style))
+            #     story.append(Spacer(1, 0.03 * inch))
+            #     story.append(Paragraph(
+            #         'Protein-level specialty gene matches from de novo assembly '
+            #         'DIAMOND BLASTx, grouped by detected genus and annotation '
+            #         'category.  Bubble size reflects the number of distinct gene '
+            #         'hits in each (genus, category) group; representative gene '
+            #         f'names are shown beneath each bubble '
+            #         f'(pident ≥ {_annot_min_pident:.0f}%).',
+            #         _annot_note_style))
+            #     story.append(Spacer(1, 0.06 * inch))
+            #     story.append(_bubble_img)
+
+            # ── Genus-card detail table ───────────────────────────────
+            _genus_cards = create_annotation_genus_cards(
+                species_groups, small_style, available_width,
+                min_pident=_annot_min_pident)
+            if _genus_cards:
+                story.append(Spacer(1, 0.10 * inch))
                 story.append(Paragraph(
-                    'Specialty Gene Hits (DIAMOND BLASTx)',
+                    'Specialty Gene Detail by Genus',
                     _annot_hdr_style))
                 story.append(Spacer(1, 0.03 * inch))
                 story.append(Paragraph(
-                    'Protein-level specialty gene matches from de novo assembly '
-                    'DIAMOND BLASTx, grouped by detected genus and annotation '
-                    'category.  Bubble size reflects the number of distinct gene '
-                    'hits in each (genus, category) group; representative gene '
-                    f'names are shown beneath each bubble '
-                    f'(pident ≥ {_annot_min_pident:.0f}%).',
+                    'Each genus block lists detected specialty genes grouped '
+                    'by category (AMR, Virulence, Drug Target, Transporter). '
+                    'Classification or mechanism is shown in parentheses where '
+                    'available.  Genes are sorted alphabetically; entries beyond '
+                    'the first 8 per category are summarised as "+N more".',
                     _annot_note_style))
                 story.append(Spacer(1, 0.06 * inch))
-                story.append(_bubble_img)
-
-                # ── Genus-card detail table ───────────────────────────────
-                _genus_cards = create_annotation_genus_cards(
-                    species_groups, small_style, available_width,
-                    min_pident=_annot_min_pident)
-                if _genus_cards:
-                    story.append(Spacer(1, 0.10 * inch))
-                    story.append(Paragraph(
-                        'Specialty Gene Detail by Genus',
-                        _annot_hdr_style))
-                    story.append(Spacer(1, 0.03 * inch))
-                    story.append(Paragraph(
-                        'Each genus block lists detected specialty genes grouped '
-                        'by category (AMR, Virulence, Drug Target, Transporter). '
-                        'Classification or mechanism is shown in parentheses where '
-                        'available.  Genes are sorted alphabetically; entries beyond '
-                        'the first 8 per category are summarised as "+N more".',
-                        _annot_note_style))
-                    story.append(Spacer(1, 0.06 * inch))
-                    story.append(_genus_cards)
+                story.append(_genus_cards)
 
         else:
             story.append(Paragraph(
