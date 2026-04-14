@@ -79,7 +79,7 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "-mc", "--microbial_category", nargs="+",
-        default=["Primary"],
+        default=["all"],
         metavar="CAT",
         help="Microbial category filter (default: Primary). "
              "Accepted values: Primary, Commensal, Opportunistic, Potential, Unknown. "

@@ -937,8 +937,53 @@
             "missing_insilico_by_type": null
           }
         },
-        "prot_data": { "genus_summary": [], "per_gene_hits": [], "sample_overview": [], "amr_genes": [] },
-        "has_prot": false,
+        "prot_data": {
+          "genus_summary": [
+            { "Genus": "Pseudomonas", "Property": "Virulence Factor", "# Hits": 5 },
+            { "Genus": "Pseudomonas", "Property": "Antibiotic Resistance", "# Hits": 3 },
+            { "Genus": "Neisseria",   "Property": "Virulence Factor", "# Hits": 4 },
+            { "Genus": "Neisseria",   "Property": "Antibiotic Resistance", "# Hits": 2 },
+            { "Genus": "Escherichia", "Property": "Virulence Factor", "# Hits": 3 },
+            { "Genus": "Escherichia", "Property": "Antibiotic Resistance", "# Hits": 4 },
+            { "Genus": "Listeria",    "Property": "Virulence Factor", "# Hits": 4 },
+            { "Genus": "Listeria",    "Property": "Drug Target", "# Hits": 1 }
+          ],
+          "per_gene_hits": [
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "exoS",  "Product": "Exoenzyme S",              "Property": "Virulence Factor",      "%id": 98.2, "Description": "Type III secretion effector", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "exoT",  "Product": "Exoenzyme T",              "Property": "Virulence Factor",      "%id": 97.4, "Description": "Type III secretion effector", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "lasB",  "Product": "Elastase LasB",            "Property": "Virulence Factor",      "%id": 99.1, "Description": "Zinc metalloprotease elastase", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "exoS",  "Product": "Exoenzyme S",              "Property": "Virulence Factor",      "%id": 97.8, "Description": "Type III secretion effector", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "algD",  "Product": "GDP-mannose dehydrogenase","Property": "Virulence Factor",      "%id": 96.3, "Description": "Alginate biosynthesis", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "pvdA",  "Product": "L-ornithine monooxygenase","Property": "Virulence Factor",      "%id": 95.7, "Description": "Pyoverdine biosynthesis siderophore", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Neisseria",   "Species": "Neisseria gonorrhoeae",  "Gene": "pilE",  "Product": "Pilin subunit PilE",       "Property": "Virulence Factor",      "%id": 94.6, "Description": "Type IV pili assembly", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Neisseria",   "Species": "Neisseria gonorrhoeae",  "Gene": "opa",   "Product": "Opacity protein Opa",      "Property": "Virulence Factor",      "%id": 91.2, "Description": "Epithelial cell invasion", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Neisseria",   "Species": "Neisseria gonorrhoeae",  "Gene": "mtrC",  "Product": "MtrC efflux pump",         "Property": "Antibiotic Resistance", "%id": 99.0, "Description": "MtrCDE efflux system; penicillin resistance", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Neisseria",   "Species": "Neisseria gonorrhoeae",  "Gene": "porB",  "Product": "Porin B",                  "Property": "Virulence Factor",      "%id": 88.4, "Description": "Outer membrane porin, immune evasion", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Neisseria",   "Species": "Neisseria gonorrhoeae",  "Gene": "mtrR",  "Product": "MtrR repressor",           "Property": "Antibiotic Resistance", "%id": 92.8, "Description": "Repressor of mtrCDE efflux genes", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Escherichia", "Species": "Escherichia coli",       "Gene": "hlyA",  "Product": "Alpha-hemolysin",          "Property": "Virulence Factor",      "%id": 96.5, "Description": "Pore-forming toxin", "Level": "BSL-1" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Escherichia", "Species": "Escherichia coli",       "Gene": "fimH",  "Product": "Fimbrial adhesin FimH",    "Property": "Virulence Factor",      "%id": 99.3, "Description": "Type 1 fimbriae mannose-binding adhesin", "Level": "BSL-1" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Escherichia", "Species": "Escherichia coli",       "Gene": "hlyA",  "Product": "Alpha-hemolysin",          "Property": "Virulence Factor",      "%id": 95.1, "Description": "Pore-forming toxin", "Level": "BSL-1" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Listeria",    "Species": "Listeria monocytogenes", "Gene": "hly",   "Product": "Listeriolysin O",          "Property": "Virulence Factor",      "%id": 99.8, "Description": "Pore-forming cytolysin essential for virulence", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Listeria",    "Species": "Listeria monocytogenes", "Gene": "inlA",  "Product": "Internalin A",             "Property": "Virulence Factor",      "%id": 98.6, "Description": "Surface protein mediating host invasion", "Level": "BSL-2" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Listeria",    "Species": "Listeria monocytogenes", "Gene": "inlB",  "Product": "Internalin B",             "Property": "Virulence Factor",      "%id": 97.9, "Description": "Surface protein mediating host invasion", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Listeria",    "Species": "Listeria monocytogenes", "Gene": "hly",   "Product": "Listeriolysin O",          "Property": "Virulence Factor",      "%id": 99.5, "Description": "Pore-forming cytolysin essential for virulence", "Level": "BSL-2" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Listeria",    "Species": "Listeria monocytogenes", "Gene": "plcA",  "Product": "Phosphatidylinositol-PLC", "Property": "Drug Target",           "%id": 96.2, "Description": "Phospholipase C; vacuolar escape", "Level": "BSL-2" }
+          ],
+          "sample_overview": [
+            { "Specimen ID": "Miseq_Run_A",    "Total Hits": 16, "Genera": 4, "VF Hits": 11, "AMR Hits": 5 },
+            { "Specimen ID": "Nanopore_Run_A", "Total Hits": 9,  "Genera": 4, "VF Hits":  8, "AMR Hits": 1 }
+          ],
+          "amr_genes": [
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "mexA",      "Product": "MexA efflux pump component", "Class": "Antibiotic Resistance", "%id": 98.7, "ARO": "ARO:3000676", "Drug Class": "Multidrug" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "OprM",      "Product": "Outer membrane factor OprM",  "Class": "Antibiotic Resistance", "%id": 97.3, "ARO": "ARO:3000497", "Drug Class": "Multidrug" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Pseudomonas", "Species": "Pseudomonas aeruginosa", "Gene": "mexA",      "Product": "MexA efflux pump component", "Class": "Antibiotic Resistance", "%id": 97.9, "ARO": "ARO:3000676", "Drug Class": "Multidrug" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Neisseria",   "Species": "Neisseria gonorrhoeae",  "Gene": "penA",      "Product": "Penicillin-binding protein 2","Class": "Antibiotic Resistance", "%id": 93.1, "ARO": "ARO:3003042", "Drug Class": "Beta-lactam" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Escherichia", "Species": "Escherichia coli",       "Gene": "blaTEM-1",  "Product": "TEM-1 beta-lactamase",        "Class": "Antibiotic Resistance", "%id": 100.0,"ARO": "ARO:3000078", "Drug Class": "Beta-lactam" },
+            { "Specimen ID": "Miseq_Run_A",    "Genus": "Escherichia", "Species": "Escherichia coli",       "Gene": "tetA",      "Product": "Tetracycline efflux pump",    "Class": "Antibiotic Resistance", "%id": 99.1, "ARO": "ARO:3000171", "Drug Class": "Tetracycline" },
+            { "Specimen ID": "Nanopore_Run_A", "Genus": "Escherichia", "Species": "Escherichia coli",       "Gene": "blaTEM-1",  "Product": "TEM-1 beta-lactamase",        "Class": "Antibiotic Resistance", "%id": 99.6, "ARO": "ARO:3000078", "Drug Class": "Beta-lactam" }
+          ]
+        },
+        "has_prot": true,
         "contig_data": [
           {
             "sample": "Nanopore_Run_A",
@@ -2243,6 +2288,10 @@
                 title="Filter rows where %id ÷ 100 ≥ this value (default 0.9 = 90%)"
               />
               <span id="prot-table-count" style="font-size: 0.78em; color: #888"></span>
+              <span id="prot-bar-filter-badge" style="display:none;align-items:center;gap:.3em;background:#e3f2fd;border:1px solid #1565c0;border-radius:4px;padding:.15em .5em;font-size:.78em;color:#1565c0">
+                <span id="prot-bar-filter-text"></span>
+                <button onclick="window._clearProtBarFilter()" style="background:none;border:none;cursor:pointer;color:#1565c0;font-size:.9em;padding:0 0 0 .3em;line-height:1" title="Clear bar filter">✕</button>
+              </span>
             </div>
             <div
               style="
@@ -2481,7 +2530,7 @@
           <label for="filter-hc">High Consequence only</label>
         </div>
         <div class="row">
-          <input type="checkbox" id="filter-pass" checked />
+          <input type="checkbox" id="filter-pass" />
           <label for="filter-pass">Passes Threshold only</label>
         </div>
         <label style="margin-top: 0.6em">Microbial Category</label>
@@ -4278,6 +4327,16 @@
               if (tassMode === "in" && !inTass) return false;
               if (tassMode === "out" && inTass) return false;
             }
+            // Bar chart click filter (sample × category)
+            if (window._protBarFilter) {
+              const bf = window._protBarFilter;
+              const rSample = r["Specimen ID"] || r["Sample"] || r["sample"] || r["specimen_id"] || "";
+              const rCat = r["Property"] || r["property"] || r["Category"] || r["category"] ||
+                           r["Class"] || r["class"] || r["Type"] || r["type"] ||
+                           r["Function"] || r["function"] || "";
+              if (bf.sample && rSample !== bf.sample) return false;
+              if (bf.cat && rCat !== bf.cat) return false;
+            }
             return true;
           });
           if (_protSortCol) {
@@ -4388,6 +4447,14 @@
 
         // Expose so drawProteins can call it
         window._initProtTable = _buildProtTable;
+        window._protBarFilter = null;
+        window._filterProtExternal = function () { _filterProt(); };
+        window._clearProtBarFilter = function () {
+          window._protBarFilter = null;
+          const badge = document.getElementById('prot-bar-filter-badge');
+          if (badge) badge.style.display = 'none';
+          _filterProt();
+        };
       })();
 
       function _showProtDetail(genus, organism, clickedRow) {
@@ -4663,7 +4730,7 @@
           const data = Object.entries(byS).sort((a, b) => b[1] - a[1]);
 
           const _maxLblGene = data.reduce((m, d) => Math.max(m, d[0].length), 0);
-          const mL = Math.max(50, Math.min(160, _maxLblGene * 6.2));
+          const mL = Math.max(80, Math.min(200, _maxLblGene * 7 + 10));
           const mT = 8,
             mR = 16,
             mB = 40;
@@ -4671,7 +4738,7 @@
           const iW = W - mL - mR;
           const xMax = d3.max(data, (d) => d[1]) || 1;
 
-          const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
+          const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
           const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
           const y = d3
             .scaleBand()
@@ -4772,7 +4839,7 @@
 
           // Dynamic left margin based on longest sample label
           const _maxLblOrg = samples.reduce((m, s) => Math.max(m, s.length), 0);
-          const mL = Math.max(50, Math.min(160, _maxLblOrg * 6.2));
+          const mL = Math.max(80, Math.min(200, _maxLblOrg * 7 + 10));
           // Legend in 2 columns below the chart
           const legendCols = 2;
           const legendRows = Math.ceil(cats.length / legendCols);
@@ -4784,7 +4851,7 @@
           const H = chartH + mT + mB;
           const iW = W - mL - mR;
 
-          const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
+          const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
           const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
           const y = d3.scaleBand().domain(samples).range([0, chartH]).padding(0.2);
           const x = d3.scaleLinear().domain([0, xMax]).range([0, iW]).nice();
@@ -4806,9 +4873,21 @@
               .attr("x", (d) => x(d[0]))
               .attr("width", (d) => x(d[1]) - x(d[0]))
               .attr("fill", col(layer.key))
-              .on("mouseover", (ev, d) => showTip(`<b>${d.data.sample}</b><br>${layer.key}: ${d[1] - d[0]}`, ev))
+              .style("cursor", "pointer")
+              .on("mouseover", (ev, d) => showTip(`<b>${d.data.sample}</b><br>${layer.key}: ${d[1] - d[0]}<br><small>Click to filter table</small>`, ev))
               .on("mousemove", moveTip)
-              .on("mouseout", hideTip);
+              .on("mouseout", hideTip)
+              .on("click", (ev, d) => {
+                ev.stopPropagation();
+                window._protBarFilter = { sample: d.data.sample, cat: layer.key };
+                const badge = document.getElementById('prot-bar-filter-badge');
+                const badgeText = document.getElementById('prot-bar-filter-text');
+                if (badge && badgeText) {
+                  badgeText.textContent = `${d.data.sample} \u00b7 ${layer.key}`;
+                  badge.style.display = 'inline-flex';
+                }
+                if (window._filterProtExternal) window._filterProtExternal();
+              });
           });
 
           // x-axis label
