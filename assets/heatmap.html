@@ -2530,8 +2530,8 @@
           <label for="filter-hc">High Consequence only</label>
         </div>
         <div class="row">
-          <input type="checkbox" id="filter-pass" />
-          <label for="filter-pass">Passes Threshold only</label>
+          <input type="checkbox" hidden id="filter-pass" />
+          <label for="filter-pass"></label>
         </div>
         <label style="margin-top: 0.6em">Microbial Category</label>
         <select
@@ -4527,9 +4527,47 @@
 
         let html = "";
 
-        // Organism stats from DATA
+        // 1) Gene categories bar chart placeholder — rendered first (top)
+        html += `<div id="prot-compare-wrap">
+    <div class="compare-title" id="prot-compare-title"></div>
+    <div id="prot-compare-svg"></div>
+  </div>`;
+
+        // 2) Gene hits table — middle
+        if (geneHits.length) {
+          const geneCols = geneHits.length
+            ? [...new Set(geneHits.flatMap((r) => Object.keys(r)).filter((k) => !k.startsWith("_")))]
+            : [];
+          html += `<div style="margin-top:.6em">
+      <div style="font-size:.78em;font-weight:700;color:#1565c0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35em">${
+        _clickedGeneName
+          ? `"${_clickedGeneName}" — all hits (${geneHits.length})`
+          : `Associated Genes / Annotations (${geneHits.length})`
+      }</div>
+      <div style="max-height:280px;overflow:auto">
+      <table style="border-collapse:collapse;width:100%;font-size:.76em">`;
+          html += `<tr>${geneCols
+            .map(
+              (c) =>
+                `<th style="background:#e8eaf6;padding:.22em .4em;text-align:left;border:1px solid #ddd;white-space:nowrap;position:sticky;top:0">${c}</th>`,
+            )
+            .join("")}</tr>`;
+          geneHits.forEach((r) => {
+            html += `<tr>${geneCols
+              .map(
+                (c) =>
+                  `<td style="padding:.22em .4em;border:1px solid #eee;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${
+                    r[c] !== undefined ? r[c] : ""
+                  }</td>`,
+              )
+              .join("")}</tr>`;
+          });
+          html += `</table></div></div>`;
+        }
+
+        // 3) TASS Detection Summary — bottom
         if (dataMatches.length) {
-          html += `<div style="margin-bottom:.8em">
+          html += `<div style="margin-top:.8em">
       <div style="font-size:.78em;font-weight:700;color:#1565c0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35em">Detection Summary (${
         dataMatches.length
       } sample${dataMatches.length > 1 ? "s" : ""})</div>`;
@@ -4566,47 +4604,12 @@
           html += `</table></div>`;
         }
 
-        // Gene hits table
-        if (geneHits.length) {
-          const geneCols = geneHits.length
-            ? [...new Set(geneHits.flatMap((r) => Object.keys(r)).filter((k) => !k.startsWith("_")))]
-            : [];
-          html += `<div style="margin-top:.6em">
-      <div style="font-size:.78em;font-weight:700;color:#1565c0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35em">${
-        _clickedGeneName
-          ? `"${_clickedGeneName}" — all hits (${geneHits.length})`
-          : `Associated Genes / Annotations (${geneHits.length})`
-      }</div>
-      <div style="max-height:280px;overflow:auto">
-      <table style="border-collapse:collapse;width:100%;font-size:.76em">`;
-          html += `<tr>${geneCols
-            .map(
-              (c) =>
-                `<th style="background:#e8eaf6;padding:.22em .4em;text-align:left;border:1px solid #ddd;white-space:nowrap;position:sticky;top:0">${c}</th>`,
-            )
-            .join("")}</tr>`;
-          geneHits.forEach((r) => {
-            html += `<tr>${geneCols
-              .map(
-                (c) =>
-                  `<td style="padding:.22em .4em;border:1px solid #eee;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${
-                    r[c] !== undefined ? r[c] : ""
-                  }</td>`,
-              )
-              .join("")}</tr>`;
-          });
-          html += `</table></div></div>`;
-        }
-
         if (!dataMatches.length && !geneHits.length) {
-          html = `<p style="color:#999;font-style:italic">No detailed data found for "${label}".</p>`;
-        }
-
-        // Add placeholder for the comparison chart
-        html += `<div id="prot-compare-wrap">
+          html = `<div id="prot-compare-wrap">
     <div class="compare-title" id="prot-compare-title"></div>
     <div id="prot-compare-svg"></div>
-  </div>`;
+  </div><p style="color:#999;font-style:italic">No detailed data found for "${label}".</p>`;
+        }
 
         body.innerHTML = html;
 
