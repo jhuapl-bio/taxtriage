@@ -759,6 +759,27 @@ function drawTassChart() {
     '#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'
   ];
 
+  // ── Global sync state (zoom path + search shared across all panels) ───
+  let _globalZoomPath = []; // node name path from root, e.g. ['Bacteria','Proteobacteria']
+  let _globalSearch   = '';
+
+  function _getZoomPath(node) {
+    if (!node || node.data.name === 'root') return [];
+    return node.ancestors().reverse().slice(1).map(n => n.data.name);
+  }
+
+  // Walk hroot following path; stop at deepest ancestor found in this hierarchy
+  function _findNodeByPath(hroot, path) {
+    let cur = hroot;
+    for (const name of path) {
+      if (!cur.children) return cur;
+      const child = cur.children.find(c => c.data.name === name);
+      if (!child) return cur;
+      cur = child;
+    }
+    return cur;
+  }
+
   // ── Color: zoom-aware — distinct color per direct child of focused node ──
   function _getNodeColor(st, d) {
     if (!st.colorScale) return '#999';
@@ -821,7 +842,8 @@ function drawTassChart() {
   function _populateSampleSel(st) {
     if (!st.sampleSel) return;
     const samples = uniq(filteredData().map(r => r['Specimen ID'] || '')).filter(Boolean).sort();
-    const prev = st.sampleSel.value;
+    const prev = st.sampleSel.value || st._defaultSample || '';
+    st._defaultSample = null; // consume one-time default
     st.sampleSel.innerHTML = '<option value="">All Samples</option>';
     samples.forEach(s => {
       const opt = document.createElement('option');
@@ -938,7 +960,7 @@ function drawTassChart() {
   }
 
   // ── Zoom to a node ────────────────────────────────────────────────────
-  function _zoomTo(st, node) {
+  function _zoomTo(st, node, skipBroadcast) {
     if (!st.paths || !st.xSc || !st.ySc || !st.arc) return;
     st.focusedNode = node;
     const { xSc, ySc, maxR, arc, hroot, paths } = st;
@@ -956,6 +978,8 @@ function drawTassChart() {
     }
     _updateList(st, node === hroot ? hroot : node);
     _updateLegend(st);
+    // Hide arc labels immediately — reappear correctly when transition ends
+    if (st.g) st.g.selectAll('text.arc-lbl').style('opacity', 0);
     // Apply new colors immediately before transition
     paths.attr('fill', d => _getNodeColor(st, d));
     paths.transition().duration(750).ease(d3.easeCubicInOut)
@@ -968,6 +992,16 @@ function drawTassChart() {
       .attrTween('d', function(d) { return () => arc(d); })
       .attr('fill-opacity', d => _opac(d, p, hroot))
       .on('end', () => _updateArcLabels(st));
+    // Broadcast zoom to all other panels (skip when already responding to a broadcast)
+    if (!skipBroadcast) {
+      _globalZoomPath = _getZoomPath((!node || node === hroot) ? null : node);
+      Object.keys(_panels).forEach(oid => {
+        const ost = _panels[Number(oid)];
+        if (!ost || ost === st || !ost.hroot || !ost.paths) return;
+        const target = _findNodeByPath(ost.hroot, _globalZoomPath);
+        _zoomTo(ost, target, true);
+      });
+    }
   }
 
   // ── Render one panel ──────────────────────────────────────────────────
@@ -1094,7 +1128,7 @@ function drawTassChart() {
   }
 
   // ── Create a new panel card ───────────────────────────────────────────
-  function _createPanel() {
+  function _createPanel(sampleValue) {
     const container = document.getElementById('sun-panels-container');
     if (!container) return;
     const id   = _nextId++;
@@ -1128,16 +1162,37 @@ function drawTassChart() {
       legendEl:  card.querySelector('.sun-legend-el'),
       listEl:    card.querySelector('.sun-list-el'),
       hroot: null, focusedNode: null, colorScale: null, _zoomColorScale: null,
+      _defaultSample: sampleValue || null,
       metric: null, maxR: null, paths: null, xSc: null, ySc: null, arc: null,
       svg: null, g: null,
     };
     _panels[id] = st;
-    st.resetBtn.addEventListener('click', () => { if (st.hroot) _zoomTo(st, st.hroot); });
+    st.resetBtn.addEventListener('click', () => { if (st.hroot) _zoomTo(st, st.hroot, false); });
     st.removeBtn.addEventListener('click', () => _removePanel(id));
     st.sampleSel.addEventListener('change', () => _renderPanel(id));
     let _deb;
     st.searchEl.addEventListener('input', () => {
-      clearTimeout(_deb); _deb = setTimeout(() => _renderPanel(id), 250);
+      clearTimeout(_deb);
+      _deb = setTimeout(() => {
+        _globalSearch = st.searchEl.value;
+        // Sync search text to all other panels
+        Object.keys(_panels).forEach(oid => {
+          const ost = _panels[Number(oid)];
+          if (ost && ost !== st && ost.searchEl) ost.searchEl.value = _globalSearch;
+        });
+        // Re-render all panels (search reshapes the hierarchy)
+        Object.keys(_panels).forEach(oid => _renderPanel(Number(oid)));
+        // Restore global zoom position in each panel after re-render
+        if (_globalZoomPath.length > 0) {
+          Object.keys(_panels).forEach(oid => {
+            const ost = _panels[Number(oid)];
+            if (ost && ost.hroot) {
+              const target = _findNodeByPath(ost.hroot, _globalZoomPath);
+              if (target && target !== ost.hroot) _zoomTo(ost, target, true);
+            }
+          });
+        }
+      }, 250);
     });
     _refreshRemoveBtns();
     _renderPanel(id);
@@ -1160,8 +1215,17 @@ function drawTassChart() {
 
   // ── Public: redraw all panels (called by global redraw()) ─────────────
   window.drawSunburst = function() {
-    if (Object.keys(_panels).length === 0) _createPanel();
-    else Object.keys(_panels).forEach(id => _renderPanel(Number(id)));
+    if (Object.keys(_panels).length === 0) {
+      // Auto-create one panel per sample; fall back to a single panel if no samples found
+      const samples = uniq(filteredData().map(r => r['Specimen ID'] || '')).filter(Boolean).sort();
+      if (samples.length > 0) {
+        samples.forEach(s => _createPanel(s));
+      } else {
+        _createPanel();
+      }
+    } else {
+      Object.keys(_panels).forEach(id => _renderPanel(Number(id)));
+    }
   };
 
   // ── Wire toolbar ──────────────────────────────────────────────────────
