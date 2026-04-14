@@ -32,6 +32,7 @@ import glob
 import json
 import math
 import os
+import re
 import sys
 
 import pandas as pd
@@ -358,7 +359,19 @@ def main():
     with open(args.template, "r", encoding="utf-8") as fh:
         tpl = fh.read()
 
-    html = tpl.replace("__BOOTSTRAP_JSON__", bootstrap_json)
+    # Replace whatever is currently inside <script id="BOOTSTRAP">…</script>
+    # (works whether the template has the __BOOTSTRAP_JSON__ placeholder or
+    #  pre-embedded dummy data from a previous development build).
+    html, n_replaced = re.subn(
+        r'(<script id="BOOTSTRAP" type="application/json">).*?(</script>)',
+        r'\g<1>' + bootstrap_json + r'\2',
+        tpl,
+        count=1,
+        flags=re.DOTALL,
+    )
+    if not n_replaced:
+        # Fallback: simple string replace for the original placeholder
+        html = tpl.replace("__BOOTSTRAP_JSON__", bootstrap_json)
 
     with open(args.output, "w", encoding="utf-8") as fh:
         fh.write(html)
