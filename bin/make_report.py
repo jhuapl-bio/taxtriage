@@ -65,9 +65,26 @@ def parse_args(argv=None):
         help="Input HTML template file (default: heatmap.html).",
     )
     parser.add_argument(
+        "-m", '--mintass', default=0.0, type=float,
+        help="Minimum TASS score (0-1) for inclusion in the report (default: 0.0, i.e. include all)."
+    )
+    parser.add_argument(
+        "-pident", '--pident', default=0.0, type=float,
+        help="Minimum percent identity (0-100) for inclusion in the report (default: 0.0, i.e. include all). Only used if you have VF/AMR results"
+    )
+    parser.add_argument(
         "-o", "--output",
         metavar="OUTPUT", default="all.comparison.report.html",
         help="Output HTML file.",
+    )
+    parser.add_argument(
+        "-mc", "--microbial_category", nargs="+",
+        default=["Primary"],
+        metavar="CAT",
+        help="Microbial category filter (default: Primary). "
+             "Accepted values: Primary, Commensal, Opportunistic, Potential, Unknown. "
+             "Use 'all' to include every category. "
+             "Multiple values are allowed, e.g. -mc Primary Potential",
     )
     return parser.parse_args(argv)
 
@@ -77,6 +94,35 @@ def parse_args(argv=None):
 # ──────────────────────────────────────────────────────────────────────────────
 
 _TAX_RANKS = ["superkingdom", "phylum", "class", "order", "family", "genus"]
+
+_VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Unknown"}
+
+
+def _resolve_microbial_cats(cat_args):
+    """Return a set of accepted microbial categories, or None to mean 'all'."""
+    if not cat_args:
+        return None
+    lowered = [c.strip().lower() for c in cat_args]
+    if "all" in lowered:
+        return None  # no filtering
+    result = set()
+    for raw in cat_args:
+        canon = raw.strip().capitalize()
+        # handle "opportunistic" -> "Opportunistic", title-case normalisation
+        # do a case-insensitive lookup against valid set
+        matched = next(
+            (v for v in _VALID_MICROBIAL_CATS if v.lower() == raw.strip().lower()),
+            None,
+        )
+        if matched:
+            result.add(matched)
+        else:
+            print(
+                f"[make_report] WARNING: --microbial_category value {raw!r} is not recognised "
+                f"(valid: {sorted(_VALID_MICROBIAL_CATS)} or 'all'); ignoring.",
+                file=sys.stderr,
+            )
+    return result or None  # if everything was invalid, fall back to no filter
 
 
 def _flatten_organism(org, sample_name, sample_type, total_reads):
@@ -134,25 +180,36 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
     }
 
 
-def _iter_organisms(json_data, sample_name):
-    """Yield flat organism dicts from a parsed paths JSON."""
+def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
+    """Yield flat organism dicts from a parsed paths JSON.
+
+    microbial_cats: set of accepted microbial_category strings, or None to allow all.
+    """
     meta = json_data.get("metadata", {})
     sample_type = meta.get("sample_type", "unknown")
     total_reads = int(meta.get("total_reads", 1) or 1)
 
+    def _cat_ok(org):
+        if microbial_cats is None:
+            return True
+        return org.get("microbial_category", "Unknown") in microbial_cats
+
     for grp in json_data.get("organisms", []):
         for sk_m in grp.get("members", []):
             for strain in sk_m.get("members", []):
-                yield _flatten_organism(strain, sample_name, sample_type, total_reads)
+                if float(strain.get("tass_score", 0) or 0) >= mintass and _cat_ok(strain):
+                    yield _flatten_organism(strain, sample_name, sample_type, total_reads)
             # if no nested members, use subkey level directly
             if not sk_m.get("members"):
-                yield _flatten_organism(sk_m, sample_name, sample_type, total_reads)
+                if float(sk_m.get("tass_score", 0) or 0) >= mintass and _cat_ok(sk_m):
+                    yield _flatten_organism(sk_m, sample_name, sample_type, total_reads)
         # if no members at all, use group level
         if not grp.get("members"):
-            yield _flatten_organism(grp, sample_name, sample_type, total_reads)
+            if float(grp.get("tass_score", 0) or 0) >= mintass and _cat_ok(grp):
+                yield _flatten_organism(grp, sample_name, sample_type, total_reads)
 
 
-def load_json_inputs(paths):
+def load_json_inputs(paths, mintass=0, microbial_cats=None):
     """Return flat organism rows, per-sample metadata, and per-organism contig data."""
     rows = []
     sample_meta = {}
@@ -168,7 +225,7 @@ def load_json_inputs(paths):
                 print(f"[make_report] WARNING: cannot find {path!r}, skipping", file=sys.stderr)
                 continue
             for p in expanded:
-                rows_, sm_, cd_ = load_json_inputs([p])
+                rows_, sm_, cd_ = load_json_inputs([p], mintass=mintass, microbial_cats=microbial_cats)
                 rows.extend(rows_)
                 sample_meta.update(sm_)
                 contig_data.update(cd_)
@@ -185,13 +242,22 @@ def load_json_inputs(paths):
         sample_name = meta.get("sample_name", os.path.basename(path).split(".")[0])
         sample_meta[sample_name] = meta
 
-        for row in _iter_organisms(data, sample_name):
+        for row in _iter_organisms(data, sample_name, mintass=mintass, microbial_cats=microbial_cats):
             rows.append(row)
 
         # Extract per-contig and depth-histogram data from each strain
+        _STRIP = {'members', 'subkey', 'key', 'toplevelkey'}
         for grp in data.get("organisms", []):
             for sk_m in grp.get("members", []):
+                if float(sk_m.get('tass_score', 0) or 0) < mintass:
+                    continue
+                if microbial_cats is not None and sk_m.get('microbial_category', 'Unknown') not in microbial_cats:
+                    continue
                 for strain in sk_m.get("members", []):
+                    if float(strain.get('tass_score', 0) or 0) < mintass:
+                        continue
+                    if microbial_cats is not None and strain.get('microbial_category', 'Unknown') not in microbial_cats:
+                        continue
                     _contigs = strain.get("contigs")
                     _dhist   = strain.get("depth_histogram")
                     if _contigs or _dhist:
@@ -200,7 +266,7 @@ def load_json_inputs(paths):
                             "sample":          sample_name,
                             "organism":        strain.get("name", "Unknown"),
                             "taxon_id":        str(strain.get("key", "")),
-                            "contigs":         _contigs or [],
+                            "contigs":         [{k: v for k, v in c.items() if k not in _STRIP} for c in (_contigs or [])],
                             "depth_histogram": _dhist or {},
                         }
 
@@ -211,13 +277,15 @@ def load_json_inputs(paths):
 # TSV / XLSX fallback ingestion
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_tabular_input(path):
+def load_tabular_input(path, mintass=0, microbial_cats=None):
     ext = os.path.splitext(path)[1].lower()
     if ext in (".xlsx", ".xls"):
         df = pd.read_excel(path, dtype=str)
     else:
         df = pd.read_csv(path, sep="\t", dtype=str)
-
+    df = df[df['TASS Score'].astype(float) >= mintass].copy()
+    if microbial_cats is not None and 'Microbial Category' in df.columns:
+        df = df[df['Microbial Category'].isin(microbial_cats)].copy()
     df.columns = df.columns.str.strip()
     if "Detected Organism" in df.columns:
         df["Detected Organism"] = df["Detected Organism"].str.replace("°", "", regex=False).str.strip()
@@ -233,7 +301,7 @@ def load_tabular_input(path):
 # Protein annotation ingestion  (only --annotate_proteins / --annotate_meta)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_protein_annotations(paths):
+def load_protein_annotations(paths, pident=0):
     """
     Read one or more protein-annotation XLSX files (sheets: Genus Summary,
     Per-Gene Hits, Sample Overview, AMR Genes) and return a dict:
@@ -270,6 +338,9 @@ def load_protein_annotations(paths):
         for sheet_name, key in sheet_map.items():
             if sheet_name in wb:
                 df = wb[sheet_name].where(pd.notnull(wb[sheet_name]), None)
+                # filter where %id is >= pident (if that column exists)
+                if '%id' in df.columns:
+                    df = df[df['%id'].astype(float) >= pident].copy()
                 out[key].extend(df.to_dict(orient="records"))
     return out
 
@@ -309,8 +380,16 @@ def main():
         if f.strip()
     )
 
+    microbial_cats = _resolve_microbial_cats(args.microbial_category)
+    if microbial_cats is None:
+        print("[make_report] Microbial category filter: all")
+    else:
+        print(f"[make_report] Microbial category filter: {sorted(microbial_cats)}")
+
     if is_json_mode:
-        rows, sample_meta, contig_data = load_json_inputs(args.input)
+        rows, sample_meta, contig_data = load_json_inputs(
+            args.input, mintass=args.mintass, microbial_cats=microbial_cats
+        )
         print(f"[make_report] Loaded {len(rows)} organism rows from "
               f"{len(args.input)} JSON file(s); {len(contig_data)} organisms have contig data")
     else:
@@ -318,7 +397,7 @@ def main():
         if len(args.input) > 1:
             print("[make_report] WARNING: multiple non-JSON inputs given; "
                   "using only the first.", file=sys.stderr)
-        rows, sample_meta = load_tabular_input(args.input[0])
+        rows, sample_meta = load_tabular_input(args.input[0], args.mintass, microbial_cats=microbial_cats)
         print(f"[make_report] Loaded {len(rows)} rows from tabular file "
               f"{args.input[0]!r}")
 
@@ -336,7 +415,7 @@ def main():
                 numeric_cols.append(col)
 
     # ── protein annotations ───────────────────────────────────────────────────
-    prot_data = load_protein_annotations(args.protein_annotations)
+    prot_data = load_protein_annotations(args.protein_annotations, pident=args.pident)
     has_prot = any(len(v) > 0 for v in prot_data.values())
     print(f"[make_report] Protein annotations loaded: {has_prot} "
           f"({sum(len(v) for v in prot_data.values())} total rows)")

@@ -254,15 +254,15 @@
           <label>Y axis</label>
           <select id="cov-y-sel">
             <option value="Breadth %">Breadth %</option>
-            <option value="Mean Depth" selected>Mean Depth</option>
-            <option value="TASS Score">TASS Score</option>
+            <option value="Mean Depth" >Mean Depth</option>
+            <option value="TASS Score" selected>TASS Score</option>
             <option value="# Reads Aligned"># Reads Aligned</option>
             <option value="K2 Reads">K2 Reads</option>
           </select>
           <label>Size by</label>
           <select id="cov-r-sel">
-            <option value="TASS Score" selected>TASS Score</option>
-            <option value="# Reads Aligned"># Reads Aligned</option>
+            <option value="TASS Score" >TASS Score</option>
+            <option value="# Reads Aligned" selected># Reads Aligned</option>
             <option value="K2 Reads">K2 Reads</option>
           </select>
         </div>
@@ -402,6 +402,15 @@
       <input type="checkbox" id="filter-pass" checked/>
       <label for="filter-pass">Passes Threshold only</label>
     </div>
+    <label style="margin-top:.6em">Microbial Category</label>
+    <select id="filter-mc" multiple size="5" title="Hold Ctrl/Cmd to select multiple; deselect all to show everything">
+      <option value="Primary" selected>Primary</option>
+      <option value="Commensal">Commensal</option>
+      <option value="Opportunistic">Opportunistic</option>
+      <option value="Potential">Potential</option>
+      <option value="Unknown">Unknown</option>
+    </select>
+    <div style="font-size:.72em;color:#888;margin-top:-.15em;margin-bottom:.35em">Ctrl/&#8984; click to multi-select; deselect all to show all</div>
 
     <h3>Samples</h3>
     <div id="sample-list"></div>
@@ -461,6 +470,8 @@ function filteredData() {
   const onlyHC= document.getElementById('filter-hc').checked;
   const onlyP = document.getElementById('filter-pass').checked;
   const rx    = txt ? new RegExp(txt, ic ? 'i' : '') : null;
+  const mcSel = Array.from(document.getElementById('filter-mc').selectedOptions).map(o => o.value);
+  const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
 
   return DATA.filter(r => {
     if (sampleHidden[r['Specimen ID']]) return false;
@@ -469,6 +480,7 @@ function filteredData() {
     if (!isNaN(tass) && tass < minV) return false;
     if (onlyHC && !isTruthy(r['High Consequence'])) return false;
     if (onlyP  && !isTruthy(r['Passes Threshold'])) return false;
+    if (mcFilter && !mcFilter.has(r['Microbial Category'] || 'Unknown')) return false;
     return true;
   });
 }
@@ -2471,6 +2483,7 @@ function redraw() {
 ['filter-ic','filter-hc','filter-pass','hm-show-vals'].forEach(id => {
   const el = document.getElementById(id); if (el) el.addEventListener('change', redraw);
 });
+document.getElementById('filter-mc').addEventListener('change', redraw);
 ['hm-value-col','hm-rank','tass-rank','sun-metric'].forEach(id => {
   const el = document.getElementById(id); if (el) el.addEventListener('change', redraw);
 });

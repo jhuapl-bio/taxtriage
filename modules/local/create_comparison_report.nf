@@ -58,12 +58,14 @@ process CREATE_COMPARISON_REPORT {
             prot_arg = "-p ${prot_files}"
         }
     }
+    def pident = params.pident ? " --pident ${params.pident} " : " "
+
 
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
-        ${prot_arg}
+        ${prot_arg} ${pident}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
