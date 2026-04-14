@@ -241,7 +241,32 @@
     <!-- COVERAGE -->
     <div class="pane" id="pane-coverage">
       <div class="chart-wrap">
-        <div class="chart-title">Breadth vs Depth of Coverage</div>
+        <div class="chart-title">Coverage Scatter</div>
+        <div class="tab-controls" style="flex-wrap:wrap;gap:.5em">
+          <label>X axis</label>
+          <select id="cov-x-sel">
+            <option value="Breadth %" selected>Breadth %</option>
+            <option value="Mean Depth">Mean Depth</option>
+            <option value="TASS Score">TASS Score</option>
+            <option value="# Reads Aligned"># Reads Aligned</option>
+            <option value="K2 Reads">K2 Reads</option>
+          </select>
+          <label>Y axis</label>
+          <select id="cov-y-sel">
+            <option value="Breadth %">Breadth %</option>
+            <option value="Mean Depth" selected>Mean Depth</option>
+            <option value="TASS Score">TASS Score</option>
+            <option value="# Reads Aligned"># Reads Aligned</option>
+            <option value="K2 Reads">K2 Reads</option>
+          </select>
+          <label>Size by</label>
+          <select id="cov-r-sel">
+            <option value="TASS Score" selected>TASS Score</option>
+            <option value="# Reads Aligned"># Reads Aligned</option>
+            <option value="K2 Reads">K2 Reads</option>
+          </select>
+        </div>
+        <div id="coverage-legend-wrap" style="display:flex;flex-wrap:wrap;gap:.4em 1.2em;margin:.5em 0 .2em;font-size:.82em;align-items:center"></div>
         <div id="coverage-svg-wrap"></div>
       </div>
     </div>
@@ -698,37 +723,82 @@ function drawTassChart() {
   const innerH = H - marginT - marginB;
 
   const svg = d3.select(wrap).append('svg').attr('width', W).attr('height', H);
-  const g   = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
+
+  // Clip bars to plot area
+  svg.append('defs').append('clipPath').attr('id','tass-clip')
+    .append('rect').attr('width', innerW).attr('height', innerH + 4);
+
+  const g = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
 
   const x0 = d3.scaleBand().domain(groupKeys).range([0, innerW]).paddingInner(0.15).paddingOuter(0.1);
   const x1 = d3.scaleBand().domain(samples).range([0, x0.bandwidth()]).padding(0.05);
   const y  = d3.scaleLinear().domain([0, 100]).range([innerH, 0]).nice();
 
-  // Axes
-  g.append('g').attr('class','axis').attr('transform',`translate(0,${innerH})`).call(d3.axisBottom(x0))
-    .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
-  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5).tickFormat(d => d + '%'));
-
-  // Gridlines
+  // Gridlines (static)
   g.append('g').attr('class','grid').selectAll('line').data(y.ticks(5)).enter().append('line')
     .attr('x1',0).attr('x2',innerW).attr('y1',d=>y(d)).attr('y2',d=>y(d))
     .attr('stroke','#e0e0e0').attr('stroke-dasharray','3,3');
 
-  // Bars
-  groupKeys.forEach(gk => {
-    const gData = grouped[gk] || {};
-    const gGroup = g.append('g').attr('transform', `translate(${x0(gk)},0)`);
-    samples.forEach(sp => {
-      const v = gData[sp] || 0;
-      const fill = sampleColors[sp] || '#90a4ae';
-      gGroup.append('rect')
-        .attr('x', x1(sp)).attr('width', x1.bandwidth())
-        .attr('y', y(v)).attr('height', innerH - y(v))
-        .attr('fill', fill).attr('rx', 2)
-        .on('mouseover', ev => showTip(`<b>${gk}</b> — ${sp}<br>TASS: <b>${v.toFixed(1)}</b>`, ev))
-        .on('mousemove', moveTip).on('mouseout', hideTip);
+  // Y axis (static)
+  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5).tickFormat(d => d + '%'));
+
+  // X axis group — updated on zoom
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${innerH})`);
+
+  // Zoom-capture rect (behind bars)
+  const zoomRect = g.append('rect')
+    .attr('width', innerW).attr('height', innerH)
+    .attr('fill', 'none').attr('pointer-events', 'all')
+    .attr('cursor', 'grab');
+
+  // Bars group (clipped)
+  const barsG = g.append('g').attr('clip-path','url(#tass-clip)');
+
+  function _drawBars(x0c, x1c) {
+    barsG.selectAll('g.tass-grp').remove();
+    groupKeys.forEach(gk => {
+      const gData = grouped[gk] || {};
+      const gg = barsG.append('g').attr('class','tass-grp')
+        .attr('transform', `translate(${x0c(gk)},0)`);
+      samples.forEach(sp => {
+        const v = gData[sp] || 0;
+        const fill = sampleColors[sp] || '#90a4ae';
+        gg.append('rect')
+          .attr('x', x1c(sp)).attr('width', Math.max(0, x1c.bandwidth()))
+          .attr('y', y(v)).attr('height', innerH - y(v))
+          .attr('fill', fill).attr('rx', 2)
+          .on('mouseover', ev => showTip(`<b>${gk}</b> — ${sp}<br>TASS: <b>${v.toFixed(1)}</b>`, ev))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      });
     });
-  });
+  }
+
+  function _updateXAxis(x0c) {
+    xAxisG.call(d3.axisBottom(x0c).tickSizeOuter(0))
+      .selectAll('text').attr('transform','rotate(-35)').style('text-anchor','end');
+  }
+
+  _updateXAxis(x0);
+  _drawBars(x0, x1);
+
+  // D3 zoom — rescale band x0 range
+  const zoom = d3.zoom().scaleExtent([1, 10])
+    .translateExtent([[0, 0], [innerW, innerH]])
+    .on('zoom', event => {
+      const t = event.transform;
+      x0.range([t.applyX(0), t.applyX(innerW)]);
+      x1.range([0, x0.bandwidth()]);
+      _updateXAxis(x0);
+      _drawBars(x0, x1);
+    });
+
+  zoomRect.call(zoom);
+
+  // Reset zoom button
+  svg.append('text').attr('x', marginL + innerW - 2).attr('y', marginT - 8)
+    .attr('text-anchor','end').attr('font-size', 10).attr('fill','#1565c0')
+    .style('cursor','pointer').text('⟳ Reset zoom')
+    .on('click', () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
   // Legend — above bars
   const legY = 4;
@@ -1244,21 +1314,40 @@ function drawCoverage() {
   wrap.innerHTML = '';
   const fd = filteredData();
 
+  // Wire axis selectors once
+  ['cov-x-sel','cov-y-sel','cov-r-sel'].forEach(sid => {
+    const el = document.getElementById(sid);
+    if (el && !el._wired) { el._wired = true; el.addEventListener('change', drawCoverage); }
+  });
+  const xField = (document.getElementById('cov-x-sel') || {}).value || 'Breadth %';
+  const yField = (document.getElementById('cov-y-sel') || {}).value || 'Mean Depth';
+  const rField = (document.getElementById('cov-r-sel') || {}).value || 'TASS Score';
+
+  // Legend — above SVG
+  const legWrap = document.getElementById('coverage-legend-wrap');
+  if (legWrap) {
+    const legSamples = uniq(fd.map(r => r['Specimen ID'])).filter(Boolean).sort();
+    legWrap.innerHTML = legSamples.map(sp => {
+      const col = sampleColors[sp] || '#90a4ae';
+      return `<span style="display:flex;align-items:center;gap:.35em"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="5" fill="${col}"/></svg><span>${sp}</span></span>`;
+    }).join('');
+  }
+
   if (!fd.length) { wrap.innerHTML = '<p style="color:#999;padding:1em">No data.</p>'; return; }
 
   const marginL = 65, marginT = 30, marginR = 40, marginB = 60;
   const W = Math.max(600, wrap.clientWidth || 900);
-  const H = 440;
+  const H = 420;
   const iW = W - marginL - marginR;
   const iH = H - marginT - marginB;
 
-  const xMax = d3.max(fd, r => num(r['Breadth %'])) || 100;
-  const yMax = d3.max(fd, r => num(r['Mean Depth'])) || 10;
+  const xMax = d3.max(fd, r => num(r[xField])) || 100;
+  const yMax = d3.max(fd, r => num(r[yField])) || 10;
+  const rMax = d3.max(fd, r => num(r[rField])) || 100;
 
   const x = d3.scaleLinear().domain([0, xMax]).range([0, iW]).nice();
   const y = d3.scaleLinear().domain([0, yMax]).range([iH, 0]).nice();
-  const tassMax = d3.max(fd, r => num(r['TASS Score'])) || 100;
-  const rScale  = d3.scaleSqrt().domain([0, tassMax]).range([3, 14]);
+  const rScale = d3.scaleSqrt().domain([0, rMax]).range([3, 14]);
 
   const svg = d3.select(wrap).append('svg').attr('width', W).attr('height', H);
 
@@ -1297,18 +1386,19 @@ function drawCoverage() {
   renderAxes(x, y);
 
   const circles = dotsG.selectAll('circle').data(fd).enter().append('circle')
-    .attr('cx', r => x(num(r['Breadth %'])))
-    .attr('cy', r => y(num(r['Mean Depth'])))
-    .attr('r',  r => rScale(num(r['TASS Score'])))
+    .attr('cx', r => x(num(r[xField])))
+    .attr('cy', r => y(num(r[yField])))
+    .attr('r',  r => rScale(num(r[rField])))
     .attr('fill', r => sampleColors[r['Specimen ID']] || '#90a4ae')
     .attr('opacity', 0.75)
     .attr('stroke','#fff').attr('stroke-width', 0.8)
     .style('cursor','pointer')
     .on('mouseover', (ev, r) => showTip(
       `<b>${r['Detected Organism']}</b><br>Sample: ${r['Specimen ID']}<br>` +
-      `Breadth: ${num(r['Breadth %']).toFixed(1)}% &nbsp; Depth: ${num(r['Mean Depth']).toFixed(2)}x<br>` +
+      `${xField}: ${num(r[xField]).toFixed(2)} &nbsp; ${yField}: ${num(r[yField]).toFixed(2)}<br>` +
+      `${rField}: ${num(r[rField]).toFixed(2)}<br>` +
       `Covered: ${r['Covered Bases']} bp &nbsp; Length: ${r['Genome Length (bp)']} bp<br>` +
-      `TASS: ${num(r['TASS Score']).toFixed(1)}  HC: ${isTruthy(r['High Consequence'])?'Yes':'No'}`, ev))
+      `HC: ${isTruthy(r['High Consequence'])?'Yes':'No'}`, ev))
     .on('mousemove', moveTip).on('mouseout', hideTip);
 
   // ── D3 zoom ─────────────────────────────────────────────────────────────
@@ -1321,8 +1411,8 @@ function drawCoverage() {
       const yt = event.transform.rescaleY(y);
       renderAxes(xt, yt);
       circles
-        .attr('cx', r => xt(num(r['Breadth %'])))
-        .attr('cy', r => yt(num(r['Mean Depth'])));
+        .attr('cx', r => xt(num(r[xField])))
+        .attr('cy', r => yt(num(r[yField])));
     });
 
   // Attach zoom behaviour to the behind-circles rect
@@ -1337,22 +1427,12 @@ function drawCoverage() {
 
   // Axes labels
   svg.append('text').attr('transform',`translate(${marginL+iW/2},${H-14})`)
-    .attr('text-anchor','middle').attr('font-size',12).text('Breadth of Coverage (%)');
+    .attr('text-anchor','middle').attr('font-size',12).text(xField);
   svg.append('text').attr('transform',`translate(14,${marginT+iH/2}) rotate(-90)`)
-    .attr('text-anchor','middle').attr('font-size',12).text('Mean Depth (×)');
+    .attr('text-anchor','middle').attr('font-size',12).text(yField);
   svg.append('text').attr('x', marginL + iW / 2).attr('y', marginT - 10)
     .attr('text-anchor','middle').attr('font-size', 9).attr('fill','#999')
     .text('Scroll to zoom · drag to pan');
-
-  // Legend
-  const samples = uniq(fd.map(r => r['Specimen ID'])).filter(Boolean).sort();
-  samples.forEach((sp, i) => {
-    const lx = marginL + i * 130, ly = H - 16;
-    svg.append('circle').attr('cx', lx + 6).attr('cy', ly - 5).attr('r', 5)
-      .attr('fill', sampleColors[sp] || '#90a4ae');
-    svg.append('text').attr('x', lx + 14).attr('y', ly - 1).attr('font-size', 11)
-      .text(sp.length > 16 ? sp.slice(0,15)+'…' : sp);
-  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1389,7 +1469,12 @@ function drawProtGenus() {
   const iH = H - marginT - marginB;
 
   const svg = d3.select(wrap).append('svg').attr('width', W).attr('height', H);
-  const g   = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
+
+  // Clip bars to plot area
+  svg.append('defs').append('clipPath').attr('id','pg-clip')
+    .append('rect').attr('width', iW).attr('height', iH + 4);
+
+  const g = svg.append('g').attr('transform', `translate(${marginL},${marginT})`);
 
   const x0    = d3.scaleBand().domain(genera).range([0, iW]).paddingInner(0.15).paddingOuter(0.1);
   const x1    = d3.scaleBand().domain(props).range([0, x0.bandwidth()]).padding(0.05);
@@ -1397,24 +1482,66 @@ function drawProtGenus() {
   const y     = d3.scaleLinear().domain([0, yMax]).range([iH, 0]).nice();
   const color = d3.scaleOrdinal(d3.schemePastel1).domain(props);
 
-  g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`).call(d3.axisBottom(x0))
-    .selectAll('text').attr('transform','rotate(-30)').style('text-anchor','end');
+  // Y axis (static)
   g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
 
-  genera.forEach(gn => {
-    const gg = g.append('g').attr('transform', `translate(${x0(gn)},0)`).style('cursor','pointer')
-      .on('click', () => _showProtDetail(gn, null));
-    props.forEach(p => {
-      const v = agg[gn][p] || 0;
-      if (!v) return;
-      gg.append('rect')
-        .attr('x', x1(p)).attr('width', x1.bandwidth())
-        .attr('y', y(v)).attr('height', iH - y(v))
-        .attr('fill', color(p)).attr('rx', 2)
-        .on('mouseover', ev => showTip(`<b>${gn}</b> — ${p}<br>Hits: <b>${v}</b><br><small>Click for details</small>`, ev))
-        .on('mousemove', moveTip).on('mouseout', hideTip);
+  // X axis group — updated on zoom
+  const xAxisG = g.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`);
+
+  // Zoom-capture rect (behind bars)
+  const zoomRect = g.append('rect')
+    .attr('width', iW).attr('height', iH)
+    .attr('fill', 'none').attr('pointer-events', 'all')
+    .attr('cursor', 'grab');
+
+  // Bars group (clipped)
+  const barsG = g.append('g').attr('clip-path','url(#pg-clip)');
+
+  function _drawBars(x0c, x1c) {
+    barsG.selectAll('g.pg-grp').remove();
+    genera.forEach(gn => {
+      const gg = barsG.append('g').attr('class','pg-grp')
+        .attr('transform', `translate(${x0c(gn)},0)`).style('cursor','pointer')
+        .on('click', () => _showProtDetail(gn, null));
+      props.forEach(p => {
+        const v = agg[gn][p] || 0;
+        if (!v) return;
+        gg.append('rect')
+          .attr('x', x1c(p)).attr('width', Math.max(0, x1c.bandwidth()))
+          .attr('y', y(v)).attr('height', iH - y(v))
+          .attr('fill', color(p)).attr('rx', 2)
+          .on('mouseover', ev => showTip(`<b>${gn}</b> — ${p}<br>Hits: <b>${v}</b><br><small>Click for details</small>`, ev))
+          .on('mousemove', moveTip).on('mouseout', hideTip);
+      });
     });
-  });
+  }
+
+  function _updateXAxis(x0c) {
+    xAxisG.call(d3.axisBottom(x0c).tickSizeOuter(0))
+      .selectAll('text').attr('transform','rotate(-30)').style('text-anchor','end');
+  }
+
+  _updateXAxis(x0);
+  _drawBars(x0, x1);
+
+  // D3 zoom — rescale band x0 range
+  const zoom = d3.zoom().scaleExtent([1, 10])
+    .translateExtent([[0, 0], [iW, iH]])
+    .on('zoom', event => {
+      const t = event.transform;
+      x0.range([t.applyX(0), t.applyX(iW)]);
+      x1.range([0, x0.bandwidth()]);
+      _updateXAxis(x0);
+      _drawBars(x0, x1);
+    });
+
+  zoomRect.call(zoom);
+
+  // Reset zoom button
+  svg.append('text').attr('x', marginL + iW - 2).attr('y', marginT - 8)
+    .attr('text-anchor','end').attr('font-size', 10).attr('fill','#1565c0')
+    .style('cursor','pointer').text('⟳ Reset zoom')
+    .on('click', () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
   // Legend — above bars
   props.forEach((p, i) => {
@@ -1550,10 +1677,12 @@ function _dedupRows(rows) {
     _protCols.forEach(c => {
       const th = document.createElement('th');
       th.textContent = c;
+      if (c === _protSortCol) th.classList.add(_protSortAsc ? 'sort-asc' : 'sort-desc');
       th.style.cssText = 'background:#e8eaf6;padding:.28em .5em;white-space:nowrap;cursor:pointer;position:sticky;top:0;z-index:2;font-size:.8em;border:1px solid #e0e0e0';
       th.addEventListener('click', () => {
         if (_protSortCol === c) _protSortAsc = !_protSortAsc;
         else { _protSortCol = c; _protSortAsc = true; }
+        _renderProtHeader();
         _filterProt();
       });
       hr.appendChild(th);
