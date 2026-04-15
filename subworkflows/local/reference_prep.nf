@@ -186,8 +186,13 @@ workflow  REFERENCE_PREP {
     // get the size of the ch_reports_to_download
     // if the size is greater than 0, then download the reports
     if ((!params.skip_refpull ) && (!params.skip_realignment && !(params.skip_kraken2 && (!params.organisms && !params.organisms_file)) ) ){
+        // Only pass samples that actually have top-hit files to download;
+        // samples whose top hits were filtered out (empty report list) are
+        // skipped here but kept in ch_mapped_assemblies via the left joins below.
+        ch_to_download = ch_reports_to_download.filter { meta, report -> report && !report.isEmpty() }
+
         DOWNLOAD_ASSEMBLY(
-            ch_reports_to_download.map {
+            ch_to_download.map {
                 meta, report ->  return [ meta, report ]
             },
             ch_assembly_txt
@@ -202,26 +207,30 @@ workflow  REFERENCE_PREP {
         } else {
             DOWNLOAD_ASSEMBLY.out.fasta.map{meta, fasta -> [meta, [fasta]] }.set { merged_index }
         }
-        // merge all the fasta outputs from the DOWNLOAD_ASSEMBLY process into ch_fastas on id meta
-        ch_fastas = ch_fastas.join(DOWNLOAD_ASSEMBLY.out.fasta)
+        // merge all the fasta outputs from the DOWNLOAD_ASSEMBLY process into ch_fastas on id meta.
+        // remainder:true keeps samples with no downloaded fasta (no top hits) in ch_fastas.
+        ch_fastas = ch_fastas.join(DOWNLOAD_ASSEMBLY.out.fasta, remainder: true)
             .map { meta, fastas, fasta -> {
-                fastas.add(fasta)
+                if (fasta != null) fastas.add(fasta)
                 return [meta, fastas]
             }
         }
 
-
-        ch_mapped_assemblies.join(merged_index)
-            .join(DOWNLOAD_ASSEMBLY.out.gcfids)
-            .join(DOWNLOAD_ASSEMBLY.out.mapfile).set{ ch_mapped_assemblies }
-
-        ch_mapped_assemblies.map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile -> {
-                listmaps.add(mapfile)
-                listids.add(gcfids)
-                fastas.add([fasta])
-                return [meta, fastas, listmaps, listids ]
+        // Use remainder:true (left joins) so that samples without a downloaded
+        // assembly (i.e. those whose top hits were all filtered out) are NOT
+        // silently dropped from ch_mapped_assemblies.  Their fasta/gcfids/mapfile
+        // elements will be null and are guarded below.
+        ch_mapped_assemblies = ch_mapped_assemblies
+            .join(merged_index, remainder: true)
+            .join(DOWNLOAD_ASSEMBLY.out.gcfids, remainder: true)
+            .join(DOWNLOAD_ASSEMBLY.out.mapfile, remainder: true)
+            .map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile -> {
+                if (mapfile != null) listmaps.add(mapfile)
+                if (gcfids  != null) listids.add(gcfids)
+                if (fasta   != null) fastas.add([fasta])
+                return [meta, fastas, listmaps, listids]
+            }
         }
-        }.set{ ch_mapped_assemblies }
     }
 
     COMBINE_MAPFILES(
