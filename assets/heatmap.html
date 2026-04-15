@@ -1705,6 +1705,7 @@
       let SAMPLE_META = BOOT.sample_meta || {};
       const PROT = BOOT.prot_data || {};
       let HAS_PROT = BOOT.has_prot || false;
+      const PROT_HIDDEN_PROPS = new Set();
       let CONTIG_DATA = BOOT.contig_data || []; // [{sample, organism, taxon_id, contigs, depth_histogram}]
       // best_cutoffs.subkey.best_threshold — 0–1 scale; convert to 0–100 for filter-min
       const BEST_TASS_THRESH = ((BOOT.best_cutoffs || {}).subkey || {}).best_threshold;
@@ -2387,6 +2388,12 @@
                 <option value="Family">Family</option>
                 <option value="Genus" selected>Genus</option>
                 <option value="Species">Species (organism)</option>
+              </select>
+              <label>Scale</label>
+              <select id="hm-scale">
+                <option value="linear" selected>Linear</option>
+                <option value="log">Log</option>
+                <option value="sqrt">Sqrt</option>
               </select>
               <label style="display: flex; align-items: center; gap: 0.3em">
                 <input type="checkbox" id="hm-show-vals" checked /> Show values
@@ -3197,7 +3204,17 @@
 
         const vals = fd.map((r) => num(r[col])).filter((v) => v > 0);
         const vmax = vals.length ? d3.max(vals) : 1;
-        const color = d3.scaleSequential(d3.interpolateBlues).domain([0, vmax]);
+        const scaleMode = (document.getElementById("hm-scale") || { value: "linear" }).value;
+        let color;
+        if (scaleMode === "log") {
+          color = d3
+            .scaleSequentialLog(d3.interpolateBlues)
+            .domain([Math.max(1, d3.min(vals) || 1), Math.max(1, vmax)]);
+        } else if (scaleMode === "sqrt") {
+          color = d3.scaleSequentialSqrt(d3.interpolateBlues).domain([0, vmax]);
+        } else {
+          color = d3.scaleSequential(d3.interpolateBlues).domain([0, vmax]);
+        }
 
         const xScale = d3
           .scaleBand()
@@ -3273,7 +3290,7 @@
             cell
               .on("mouseover", (ev) => {
                 if (!r) {
-                  showTip("No data", ev);
+                  showTip("Not detected", ev);
                   return;
                 }
                 const tass = num(r["TASS Score"]);
@@ -3342,6 +3359,15 @@
           .attr("text-anchor", "middle")
           .attr("font-size", 10)
           .text("0");
+
+        svg
+          .append("text")
+          .attr("x", cbX + cbW / 2)
+          .attr("y", cbY + cbH + 26)
+          .attr("text-anchor", "middle")
+          .attr("font-size", 9)
+          .attr("fill", "#666")
+          .text(`Scale: ${scaleMode}`);
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -3363,7 +3389,7 @@
 
         if (!groupKeys.length) {
           wrap.innerHTML =
-            '<p style="color:#999;padding:1em">No data (taxonomy ranks may not be populated; ensure taxdump is provided).</p>';
+            '<p style="color:#999;padding:1em">No detection (taxonomy ranks may not be populated; ensure taxdump is provided).</p>';
           return;
         }
 
@@ -4176,7 +4202,7 @@
         }
 
         if (!fd.length) {
-          wrap.innerHTML = '<p style="color:#999;padding:1em">No data.</p>';
+          wrap.innerHTML = '<p style="color:#999;padding:1em">No detection.</p>';
           return;
         }
 
@@ -4369,6 +4395,7 @@
         const props = uniq(rows.map((r) => r["Property"]))
           .filter(Boolean)
           .sort();
+        const activeProps = props.filter((p) => !PROT_HIDDEN_PROPS.has(p));
 
         const marginL = 130,
           marginT = 36,
@@ -4393,8 +4420,9 @@
         const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
 
         const x0 = d3.scaleBand().domain(genera).range([0, iW]).paddingInner(0.15).paddingOuter(0.1);
-        const x1 = d3.scaleBand().domain(props).range([0, x0.bandwidth()]).padding(0.05);
-        const yMax = d3.max(genera, (gn) => d3.sum(props, (p) => agg[gn][p] || 0)) || 10;
+        const x1 = d3.scaleBand().domain(activeProps).range([0, x0.bandwidth()]).padding(0.05);
+        const yMaxRaw = d3.max(genera, (gn) => d3.sum(activeProps, (p) => agg[gn][p] || 0)) || 0;
+        const yMax = yMaxRaw || 10;
         const y = d3.scaleLinear().domain([0, yMax]).range([iH, 0]).nice();
         const color = d3.scaleOrdinal(d3.schemePastel1).domain(props);
 
@@ -4425,7 +4453,7 @@
               .attr("transform", `translate(${x0c(gn)},0)`)
               .style("cursor", "pointer")
               .on("click", () => _showProtDetail(gn, null));
-            props.forEach((p) => {
+            activeProps.forEach((p) => {
               const v = agg[gn][p] || 0;
               if (!v) return;
               gg.append("rect")
@@ -4447,13 +4475,32 @@
         function _updateXAxis(x0c) {
           xAxisG
             .call(d3.axisBottom(x0c).tickSizeOuter(0))
+            .selectAll(".tick")
+            .each(function (d) {
+              const xPos = x0c(d) + x0c.bandwidth() / 2;
+              const outOfView = xPos < 0 || xPos > iW;
+              const hasHits = activeProps.some((p) => (agg[d] || {})[p] > 0);
+              const hide = outOfView || !hasHits || yMaxRaw <= 0;
+              d3.select(this).style("display", hide ? "none" : "");
+            })
             .selectAll("text")
             .attr("transform", "rotate(-30)")
             .style("text-anchor", "end");
         }
 
         _updateXAxis(x0);
-        _drawBars(x0, x1);
+        if (activeProps.length) {
+          _drawBars(x0, x1);
+        } else {
+          svg
+            .append("text")
+            .attr("x", marginL + iW / 2)
+            .attr("y", marginT + iH / 2)
+            .attr("text-anchor", "middle")
+            .attr("font-size", 12)
+            .attr("fill", "#888")
+            .text("All properties hidden — use legend to re-enable");
+        }
 
         // D3 zoom — rescale band x0 range
         const zoom = d3
@@ -4468,7 +4515,9 @@
             x0.range([t.applyX(0), t.applyX(iW)]);
             x1.range([0, x0.bandwidth()]);
             _updateXAxis(x0);
-            _drawBars(x0, x1);
+            if (activeProps.length) {
+              _drawBars(x0, x1);
+            }
           });
 
         zoomRect.call(zoom);
@@ -4485,23 +4534,44 @@
           .text("⟳ Reset zoom")
           .on("click", () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
-        // Legend — above bars
+        // Legend — above bars (toggleable)
+        const legendG = svg.append("g").attr("class", "pg-legend");
         props.forEach((p, i) => {
           const lx = marginL + i * 160;
-          svg
+          const isHidden = PROT_HIDDEN_PROPS.has(p);
+          const legItem = legendG
+            .append("g")
+            .attr("transform", `translate(${lx},0)`)
+            .style("cursor", "pointer")
+            .on("click", () => {
+              if (PROT_HIDDEN_PROPS.has(p)) PROT_HIDDEN_PROPS.delete(p);
+              else PROT_HIDDEN_PROPS.add(p);
+              drawProtGenus();
+              if (window._filterProtExternal) window._filterProtExternal();
+            })
+            .on("mouseover", (ev) => {
+              const action = PROT_HIDDEN_PROPS.has(p) ? "Enable" : "Disable";
+              showTip(`${action} ${p}<br><small>Click to ${action.toLowerCase()} in chart and table</small>`, ev);
+            })
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
+
+          legItem
             .append("rect")
-            .attr("x", lx)
+            .attr("x", 0)
             .attr("y", 4)
             .attr("width", 12)
             .attr("height", 12)
             .attr("fill", color(p))
-            .attr("rx", 2);
-          svg
+            .attr("rx", 2)
+            .attr("opacity", isHidden ? 0.25 : 1);
+          legItem
             .append("text")
-            .attr("x", lx + 16)
+            .attr("x", 16)
             .attr("y", 14)
             .attr("font-size", 11)
-            .text(p);
+            .attr("fill", isHidden ? "#aaa" : "#222")
+            .text(p + (isHidden ? " (hidden)" : ""));
         });
       }
 
@@ -4509,7 +4579,28 @@
         const wrap = document.getElementById("prot-prop-svg");
         wrap.innerHTML = "";
         const counts = PROT.metadata_counts || [];
-        const propRows = counts.filter((r) => r["field"] === "property");
+        let propRows = counts.filter((r) => r["field"] === "property");
+
+        const _allHits = [
+          ...(PROT.per_gene_hits || []),
+          ...(PROT.amr_genes || []).map((r) => ({ ...r, _source: "AMR" })),
+        ];
+        const _propGenus = {};
+        _allHits.forEach((r) => {
+          const prop = r["Property"] || r["Class"] || r["_source"] || "Other";
+          const gen = r["Genus"] || "Unknown";
+          if (!_propGenus[prop]) _propGenus[prop] = {};
+          _propGenus[prop][gen] = (_propGenus[prop][gen] || 0) + 1;
+        });
+
+        if (!propRows.length) {
+          const agg = {};
+          _allHits.forEach((r) => {
+            const prop = r["Property"] || r["Class"] || r["_source"] || "Other";
+            agg[prop] = (agg[prop] || 0) + 1;
+          });
+          propRows = Object.entries(agg).map(([value, count]) => ({ field: "property", value, count }));
+        }
         if (!propRows.length) {
           wrap.innerHTML = '<p style="color:#999">No property metadata.</p>';
           return;
@@ -4545,6 +4636,18 @@
 
         const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
 
+        // Zoom capture rect — inserted BEFORE bars so bars remain on top in z-order
+        // and receive mouse events; wheel/scroll events bubble through to the rect anyway
+        const zoomRect = g
+          .append("rect")
+          .attr("x", 0)
+          .attr("y", 0)
+          .attr("width", iW)
+          .attr("height", chartH)
+          .attr("fill", "none")
+          .attr("pointer-events", "all")
+          .attr("cursor", "grab");
+
         // Clipped group for bars + value labels
         const barG = g.append("g").attr("clip-path", "url(#prop-clip)");
 
@@ -4572,30 +4675,29 @@
 
         const color = d3.scaleOrdinal(d3.schemeTableau10);
         data.forEach((d, i) => {
+          const genusCounts = _propGenus[d.label] || {};
+          const topGenus = Object.entries(genusCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([g, c]) => `${g}: ${c}`)
+            .join("<br>");
+          const genusTip = topGenus ? `<br><small>${topGenus}</small>` : "";
           barG
             .append("rect")
-            .attr("x", 0)
+            .datum(d)
             .attr("width", x(d.value))
             .attr("y", y(d.label))
             .attr("height", y.bandwidth())
             .attr("fill", color(i))
             .attr("rx", 2)
-            .on("mouseover", (ev) => showTip(`<b>${d.label}</b>: ${d.value} hits`, ev))
+            .on("mouseover", (ev) => showTip(`<b>${d.label}</b>: ${d.value} hits${genusTip}`, ev))
             .on("mousemove", moveTip)
             .on("mouseout", hideTip);
-          barG
-            .append("text")
-            .attr("x", x(d.value) + 4)
-            .attr("y", y(d.label) + y.bandwidth() / 2 + 4)
-            .attr("font-size", 10)
-            .attr("fill", "#333")
-            .text(d.value);
         });
 
         // D3 zoom on X axis — scroll/pinch to zoom, double-click to reset
         const zoom = d3
           .zoom()
-          .scaleExtent([0.5, 10])
+          .scaleExtent([1, 10])
           .translateExtent([
             [0, 0],
             [iW, chartH],
@@ -4606,6 +4708,11 @@
           ])
           .on("zoom", (event) => {
             const newX = event.transform.rescaleX(x);
+            const dom = newX.domain();
+            if (dom[0] < 0) {
+              const span = dom[1] - dom[0];
+              newX.domain([0, span]);
+            }
             xAxisG.call(d3.axisBottom(newX).ticks(5));
             // Check for label overlap → rotate if needed
             const ticks = xAxisG.selectAll("text");
@@ -4625,18 +4732,9 @@
               .selectAll("rect")
               .attr("x", (d) => newX(0))
               .attr("width", (d) => Math.max(0, newX(d.value) - newX(0)));
-            barG.selectAll("text").attr("x", (d) => newX(d.value) + 4);
           });
 
-        svg
-          .append("rect")
-          .attr("x", marginL)
-          .attr("y", marginT)
-          .attr("width", iW)
-          .attr("height", chartH)
-          .attr("fill", "none")
-          .attr("pointer-events", "all")
-          .call(zoom);
+        zoomRect.call(zoom);
 
         // Reset on double-click
         svg.on("dblclick.zoom", () => {
@@ -4782,6 +4880,8 @@
           }
 
           let rows = _protAllRows.filter((r) => {
+            const rowProp = r["Property"] || r["Class"] || r["_source"] || "";
+            if (rowProp && PROT_HIDDEN_PROPS.has(rowProp)) return false;
             // %id threshold (data is 0–100; pidThresh is 0–1)
             if (pidThresh > 0) {
               const pid = parseFloat(r["%id"] || r["pident"] || r["%ID"] || r["identity"] || 0);
@@ -6843,7 +6943,7 @@
         if (el) el.addEventListener("change", redraw);
       });
       document.getElementById("filter-mc").addEventListener("change", redraw);
-      ["hm-value-col", "hm-rank", "tass-rank", "sun-metric"].forEach((id) => {
+      ["hm-value-col", "hm-rank", "hm-scale", "tass-rank", "sun-metric"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
