@@ -6259,11 +6259,14 @@
 
         const wrapW = wrap.clientWidth || 360;
         const SIZE = Math.max(280, Math.min(520, Math.floor(wrapW * 0.92)));
-        const SVGW = Math.max(wrapW, SIZE);
-        const cx = SVGW / 2,
-          cy = SIZE / 2,
-          R = SIZE * 0.36,
-          innerR = SIZE * 0.3;
+        const padX = 80;
+        const padY = 30;
+        const SVGW = Math.max(wrapW, SIZE + padX * 2);
+        const SVGH = SIZE + padY * 2;
+        const cx = SVGW / 2;
+        const cy = SVGH / 2;
+        const R = SIZE * 0.34;
+        const innerR = SIZE * 0.28;
         const pal20 = [
           "#4e79a7",
           "#f28e2b",
@@ -6296,7 +6299,7 @@
           .select(wrap)
           .append("svg")
           .attr("width", SVGW)
-          .attr("height", SIZE)
+          .attr("height", SVGH)
           .style("display", "block")
           .style("margin", "0 auto");
         const g = svg.append("g").attr("transform", `translate(${cx},${cy})`);
@@ -6324,7 +6327,8 @@
         const chOut = () => chTip.style("display", "none");
 
         // Arcs (outer ring)
-        g.append("g")
+        const arcSel = g
+          .append("g")
           .selectAll("path")
           .data(chord.groups)
           .join("path")
@@ -6341,29 +6345,70 @@
             g.selectAll(".chord-ribbon").attr("opacity", (ch) =>
               ch.source.index === d.index || ch.target.index === d.index ? 0.75 : 0.05,
             );
+            const connected = new Set([d.index]);
+            chord.forEach((ch) => {
+              if (ch.source.index === d.index || ch.target.index === d.index) {
+                connected.add(ch.source.index);
+                connected.add(ch.target.index);
+              }
+            });
+            arcSel.attr("opacity", (a) => (connected.has(a.index) ? 1 : 0.2));
+            labelSel.attr("opacity", (a) => (connected.has(a.d.index) ? 1 : 0.15));
           })
           .on("mousemove", chMove)
           .on("mouseout", () => {
             g.selectAll(".chord-ribbon").attr("opacity", 0.6);
+            arcSel.attr("opacity", 0.85);
+            labelSel.attr("opacity", 1);
             chOut();
           });
 
         // Arc labels
-        chord.groups.forEach((d) => {
-          const mid = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
-          const lx = (R + 10) * Math.cos(mid),
-            ly = (R + 10) * Math.sin(mid);
-          const anchor = lx > 0 ? "start" : "end";
-          const label = nodes[d.index];
-          g.append("text")
-            .attr("x", lx)
-            .attr("y", ly)
-            .attr("text-anchor", anchor)
-            .attr("dominant-baseline", "central")
-            .style("font-size", "9px")
-            .attr("fill", "#444")
-            .text(label.length > 14 ? label.slice(0, 13) + "…" : label);
+        const labelMinAngle = 0.18;
+        const labelGap = 0.16;
+        const labelR = R + 14;
+        const maxX = SVGW / 2 - 6;
+        const minX = -SVGW / 2 + 6;
+        const maxY = SVGH / 2 - 6;
+        const minY = -SVGH / 2 + 6;
+        const labelData = chord.groups
+          .map((d) => {
+            const mid = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
+            const span = d.endAngle - d.startAngle;
+            return { d, mid, span };
+          })
+          .filter((l) => l.span >= labelMinAngle)
+          .sort((a, b) => a.mid - b.mid);
+
+        const placed = [];
+        labelData.forEach((l) => {
+          const tooClose = placed.some((p) => Math.abs(p.mid - l.mid) < labelGap);
+          if (tooClose) return;
+          placed.push(l);
         });
+
+        const labelSel = g
+          .append("g")
+          .attr("class", "chord-labels")
+          .selectAll("text")
+          .data(placed)
+          .join("text")
+          .attr("x", (l) => {
+            const x = labelR * Math.cos(l.mid);
+            return Math.max(minX, Math.min(maxX, x));
+          })
+          .attr("y", (l) => {
+            const y = labelR * Math.sin(l.mid);
+            return Math.max(minY, Math.min(maxY, y));
+          })
+          .attr("text-anchor", (l) => (Math.cos(l.mid) > 0 ? "start" : "end"))
+          .attr("dominant-baseline", "central")
+          .style("font-size", "9px")
+          .attr("fill", "#444")
+          .text((l) => {
+            const label = nodes[l.d.index];
+            return label.length > 12 ? label.slice(0, 11) + "…" : label;
+          });
 
         // Ribbons (chords)
         g.append("g")
