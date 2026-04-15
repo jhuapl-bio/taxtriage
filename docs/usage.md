@@ -292,14 +292,19 @@ nextflow run main.nf -profile mce_seqera,docker -resume --fastq_1 examples/data/
 
 ## Annotation and Functional Analysis
 
-| Parameter              | Description                                                                                                                                                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--annotate`           | Default is false. Uses the files designated in `--annotate_proteins` and `--annotate_meta` to list VF, AMR, and transporter genes. Also runs de novo assembly prior.                                                 |
-| `--annotate_proteins`  | Default is `assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.faa`. Provide a FAA file for all proteins you want to generate a VF/AMR report for.                                                         |
-| `--annotate_meta`      | Default is `assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv`. Used in conjunction with `--annotate_proteins`. Contains metadata needed to map a gene/protein sequence to pathogenicity information. |
-| `--pident`             | Default is 75. Used with `--annotate_proteins`. Filters hits with less than the indicated value.                                                                                                                     |
-| `--microbert`          | Specify a MicroBERT directory to enable alignment clustering and AI/ML predictions.                                                                                                                                  |
-| `----microbert_maxlen` | Maximum length to chunk sequences for MicroBERT processing. Default is 2 kb.                                                                                                                                         |
+| Parameter             | Description                                                                                                                                                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--annotate`          | Default is false. Uses the files designated in `--annotate_proteins` and `--annotate_meta` to list VF, AMR, and transporter genes. Also runs de novo assembly prior.                                                 |
+| `--annotate_proteins` | Default is `assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.faa`. Provide a FAA file for all proteins you want to generate a VF/AMR report for.                                                         |
+| `--annotate_meta`     | Default is `assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv`. Used in conjunction with `--annotate_proteins`. Contains metadata needed to map a gene/protein sequence to pathogenicity information. |
+| `--pident`            | Default is 75. Used with `--annotate_proteins`. Filters hits with less than the indicated value.                                                                                                                     |
+
+## MicroBERT and AI/ML Predictions
+
+| Parameter | Description |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--microbert` | Specify a MicroBERT directory to enable alignment clustering and AI/ML predictions. |
+| `----microbert_maxlen` | Maximum length to chunk sequences for MicroBERT processing. Default is 2 kb. |
 
 ## Output, Reporting, and Visualization
 
