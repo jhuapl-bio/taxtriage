@@ -13,12 +13,13 @@ workflow PROTEINS {
         ch_versions        = Channel.empty()
         ch_diamond_output  = Channel.empty()
         ch_annotate_report = Channel.empty()
+        ch_proteins_fasta = params.annotate_proteins ? Channel.fromPath(params.annotate_proteins, checkIfExists: true) : Channel.fromPath("$projectDir/assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.faa", checkIfExists: true)
+            .map { fasta -> [ [id: 'annotate_proteins_db'], fasta ] }
+        ch_annotate_meta = params.annotate_meta ? Channel.fromPath(params.annotate_meta, checkIfExists: true) : Channel.empty()
+
 
         if (params.annotate_proteins) {
             // Build a single DIAMOND protein DB from the reference fasta
-            ch_proteins_fasta = Channel.fromPath(params.annotate_proteins, checkIfExists: true)
-                .map { fasta -> [ [id: 'annotate_proteins_db'], fasta ] }
-
             ANNOTATE_DIAMOND_MAKEDB(
                 ch_proteins_fasta,
                 [],
@@ -55,11 +56,10 @@ workflow PROTEINS {
 
             // ── Annotate matched hits against metadata and produce xlsx report ──
             if (params.annotate_meta) {
-                ch_meta = Channel.fromPath(params.annotate_meta, checkIfExists: true)
 
                 ANNOTATE_REPORT(
                     ANNOTATE_DIAMOND_BLASTX.out.txt,
-                    ch_meta.collect(),
+                    ch_annotate_meta.collect(),
                 )
                 ch_versions        = ch_versions.mix(ANNOTATE_REPORT.out.versions)
                 ch_annotate_report = ANNOTATE_REPORT.out.xlsx
