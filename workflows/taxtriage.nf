@@ -794,8 +794,11 @@ workflow TAXTRIAGE {
             [meta, file("$projectDir/assets/NO_FILE_annotate_report")]
         }
 
-        if (params.annotate && params.annotate_proteins) {
-            PROTEINS(ch_denovo)
+        if (params.annotate) {
+            // if params.annotate_proteins is null then set to 'assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.faa'
+            PROTEINS(
+                ch_denovo,
+            )
 
             if (params.annotate_meta) {
                 // Overlay the real per-sample xlsx where available; keep placeholder elsewhere
