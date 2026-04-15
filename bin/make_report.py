@@ -65,8 +65,16 @@ def parse_args(argv=None):
         help="Input HTML template file (default: heatmap.html).",
     )
     parser.add_argument(
-        "-m", '--mintass', default=0.0, type=float,
-        help="Minimum TASS score (0-1) for inclusion in the report (default: 0.0, i.e. include all)."
+        "-m", '--mintass', default=None, type=float,
+        help="Minimum TASS score (0-1) for inclusion in the report. "
+             "If omitted, the minimum best_threshold across all input JSON files is used "
+             "(derived from --cutoff_granularity; defaults to 0.0 if no threshold is found)."
+    )
+    parser.add_argument(
+        "--cutoff_granularity", default="subkey",
+        choices=["subkey", "key", "toplevelkey"],
+        help="Which best_cutoffs granularity level to read from each JSON when --mintass is not "
+             "supplied (default: subkey).",
     )
     parser.add_argument(
         "-pident", '--pident', default=0.0, type=float,
@@ -94,6 +102,28 @@ def parse_args(argv=None):
 # ──────────────────────────────────────────────────────────────────────────────
 
 _TAX_RANKS = ["superkingdom", "phylum", "class", "order", "family", "genus"]
+
+
+def _extract_best_threshold(paths, granularity="subkey"):
+    """Scan metadata of each JSON to find the minimum best_threshold across all files.
+
+    Returns the minimum value (0–1 scale) or None if no threshold is found.
+    """
+    thresholds = []
+    for path in paths:
+        path = path.strip()
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+        except Exception:
+            continue
+        bc = data.get("metadata", {}).get("best_cutoffs", {})
+        t = (bc.get(granularity) or {}).get("best_threshold")
+        if t is not None:
+            thresholds.append(float(t))
+    return min(thresholds) if thresholds else None
 
 _VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Unknown"}
 
@@ -386,9 +416,25 @@ def main():
     else:
         print(f"[make_report] Microbial category filter: {sorted(microbial_cats)}")
 
+    # ── resolve mintass ────────────────────────────────────────────────────────
+    if args.mintass is not None:
+        mintass = args.mintass
+        print(f"[make_report] TASS threshold: {mintass:.4f} (0–1) = {mintass*100:.1f} (from --mintass)")
+    elif is_json_mode:
+        mintass = _extract_best_threshold(args.input, granularity=args.cutoff_granularity)
+        if mintass is not None:
+            print(f"[make_report] TASS threshold: {mintass:.4f} (0–1) = {mintass*100:.1f} "
+                  f"(min best_threshold across JSONs, granularity={args.cutoff_granularity!r})")
+        else:
+            mintass = 0.0
+            print("[make_report] TASS threshold: 0.0 (no best_cutoffs found in JSON files)")
+    else:
+        mintass = 0.0
+        print("[make_report] TASS threshold: 0.0 (tabular input, no --mintass supplied)")
+
     if is_json_mode:
         rows, sample_meta, contig_data = load_json_inputs(
-            args.input, mintass=args.mintass, microbial_cats=microbial_cats
+            args.input, mintass=mintass, microbial_cats=microbial_cats
         )
         print(f"[make_report] Loaded {len(rows)} organism rows from "
               f"{len(args.input)} JSON file(s); {len(contig_data)} organisms have contig data")
@@ -397,7 +443,7 @@ def main():
         if len(args.input) > 1:
             print("[make_report] WARNING: multiple non-JSON inputs given; "
                   "using only the first.", file=sys.stderr)
-        rows, sample_meta = load_tabular_input(args.input[0], args.mintass, microbial_cats=microbial_cats)
+        rows, sample_meta = load_tabular_input(args.input[0], mintass, microbial_cats=microbial_cats)
         print(f"[make_report] Loaded {len(rows)} rows from tabular file "
               f"{args.input[0]!r}")
 
@@ -429,6 +475,7 @@ def main():
         "prot_data":        prot_data,
         "has_prot":         has_prot,
         "contig_data":      list(contig_data.values()),   # list of organism contig objects
+        "mintass":          round(mintass * 100, 1), # 0–100 scale for UI filter-min
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False)
