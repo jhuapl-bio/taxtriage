@@ -119,11 +119,16 @@ workflow CLASSIFIER {
                 ch_organisms = TOP_HITS.out.taxids
             }
             // mix ch_organisms_to_download with ch_organisms 2nd index list
+            // Use remainder:true (left join) so samples with no TOP_HITS output
+            // (e.g. positive/blood samples whose organisms were filtered out) are
+            // NOT silently dropped and still reach DOWNLOAD_ASSEMBLY.
             ch_organisms_to_download = ch_organisms_to_download.join(
-                ch_organisms
+                ch_organisms, remainder: true
             ).map{
                 meta, report, organisms -> {
-                    report.add(organisms)
+                    if (organisms != null) {
+                        report.add(organisms)
+                    }
                     return [meta, report]
                 }
             }
@@ -212,11 +217,16 @@ workflow CLASSIFIER {
                 ch_organisms = TOP_HITS.out.taxids
             }
             // mix ch_organisms_to_download with ch_organisms 2nd index list
+            // Use remainder:true (left join) so samples with no TOP_HITS output
+            // (e.g. positive/blood samples whose organisms were filtered out) are
+            // NOT silently dropped and still reach DOWNLOAD_ASSEMBLY.
             ch_organisms_to_download = ch_organisms_to_download.join(
-                ch_organisms
+                ch_organisms, remainder: true
             ).map{
                 meta, report, organisms -> {
-                    report.add(organisms)
+                    if (organisms != null) {
+                        report.add(organisms)
+                    }
                     return [meta, report]
                 }
             }
