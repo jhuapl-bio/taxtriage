@@ -215,7 +215,6 @@ nextflow run main.nf -profile mce_seqera,docker -resume --fastq_1 examples/data/
 | `--k2_confidence <numbers[]>`          | Minimum confidence to classify a read using Kraken2 only. See [here](https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#confidence-scoring) for more information.                                                                                                                                                                                                     |
 | `--skip_kraken2`                       | TRUE/FALSE, skip Kraken2. If you do not provide a `--reference_fasta` value and you enable this skip then your pipeline will fail.                                                                                                                                                                                                                                                         |
 | `--centrifuge`                         | Use Centrifuge DB (defined as `--db`) instead of Kraken2.                                                                                                                                                                                                                                                                                                                                  |
-| `--metaphlan`                          | Use Metaphlan. Must specify a database path that contains `.pkl` and `.btl2` (Bowtie2 index) files.                                                                                                                                                                                                                                                                                        |
 | `--organisms <numbers[] or strings[]>` | Organisms list (names or taxids) you want to pull from to get a reference. Used if you are skipping Kraken2 only. Separate by spaces like `"1254 573"`.                                                                                                                                                                                                                                    |
 | `--organisms_file <file>`              | A single file that contains the organisms (name or taxid) you want to pull. You can enable this if you are skipping Kraken2 as well.                                                                                                                                                                                                                                                       |
 | `--fuzzy`                              | TRUE/FALSE, match organism names by names rather than taxids.                                                                                                                                                                                                                                                                                                                              |
@@ -315,11 +314,12 @@ nextflow run main.nf -profile mce_seqera,docker -resume --fastq_1 examples/data/
 
 ## Deprecated
 
-| Parameter        | Description                                                                       |
-| ---------------- | --------------------------------------------------------------------------------- |
-| `--use_diamond`  | Uses DIAMOND on the features pulled from NCBI post denovo assembly                |
-| `--get_features` | Pull features (CDS) for each assembly present. Performs coverage on each feature. |
-|                  |                                                                                   |
+| Parameter        | Description                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------- |
+| `--metaphlan`    | Use Metaphlan. Must specify a database path that contains `.pkl` and `.btl2` (Bowtie2 index) files. |
+| `--use_diamond`  | Uses DIAMOND on the features pulled from NCBI post denovo assembly                                  |
+| `--get_features` | Pull features (CDS) for each assembly present. Performs coverage on each feature.                   |
+|                  |                                                                                                     |
 
 ⚠️ Please note that for the `--reference_fasta` parameter, you MUST use the designated header format from the FTP site that NCBI hosts for assemblies at [here](https://ftp.ncbi.nlm.nih.gov/genomes/all/). This format should looke like:
 
