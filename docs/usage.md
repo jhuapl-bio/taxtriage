@@ -390,7 +390,6 @@ Ultimately, the pipeline has several mandatory and optional steps that can be de
      - Contains all downstream-passed alignments and their classification in the first table (see example report in Figure 3)
      - Primary report to understand and perform reflex reponse on.
 
-
 <img src="images/pathogens.report.example.png" width="50%" height="50%"></img>
 
 <span>Figure 3</span>
