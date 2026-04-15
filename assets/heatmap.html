@@ -2067,7 +2067,7 @@
         z-index: 999;
       }
       .axis text {
-        font-size: 11px;
+        font-size: 9px;
       }
       .axis path,
       .axis line {
@@ -6349,7 +6349,7 @@
             if (d.index === gapIndex) return;
             chTip
               .style("display", "block")
-              .html(`<b>${nodes[d.index]}</b><br>Total ${valField}: ${d3.format(",.0f")(d.value)}`);
+              .html(`<b>${nodes[d.index]}</b><br>Sum (of Filtered) ${valField}: ${d3.format(",.0f")(d.value)}`);
             // Dim unrelated ribbons
             g.selectAll(".chord-ribbon").attr("opacity", (ch) =>
               ch.source.index === d.index || ch.target.index === d.index ? 0.75 : 0.05,
@@ -7070,6 +7070,18 @@
           buildHmValueSel();
           redraw();
 
+          // Update proteins tab visibility after upload merge
+          const hasProtData =
+            HAS_PROT &&
+            [PROT.genus_summary, PROT.per_gene_hits, PROT.sample_overview, PROT.amr_genes, PROT.genus_by_property].some(
+              (arr) => Array.isArray(arr) && arr.length > 0,
+            );
+          HAS_PROT = hasProtData;
+          const protBtn = document.getElementById("prot-tab-btn");
+          if (protBtn) {
+            protBtn.classList.toggle("hidden", !hasProtData);
+          }
+
           // Show histogram tab (always)
           const histBtn = document.getElementById("hist-tab-btn");
           if (histBtn) histBtn.classList.remove("hidden");
@@ -7247,8 +7259,15 @@
         }
 
         // Show proteins tab only if annotation data present
-        if (HAS_PROT) {
-          document.getElementById("prot-tab-btn").classList.remove("hidden");
+        const hasProtData =
+          HAS_PROT &&
+          [PROT.genus_summary, PROT.per_gene_hits, PROT.sample_overview, PROT.amr_genes, PROT.genus_by_property].some(
+            (arr) => Array.isArray(arr) && arr.length > 0,
+          );
+        HAS_PROT = hasProtData;
+        const protBtn = document.getElementById("prot-tab-btn");
+        if (protBtn) {
+          protBtn.classList.toggle("hidden", !hasProtData);
         }
 
         // Always show histogram tab (shows "no data" message gracefully when empty)
