@@ -794,7 +794,7 @@ workflow TAXTRIAGE {
             [meta, file("$projectDir/assets/NO_FILE_annotate_report")]
         }
 
-        if (params.annotate_proteins) {
+        if (!params.disable_annotate && params.annotate_proteins) {
             PROTEINS(ch_denovo)
 
             if (params.annotate_meta) {
