@@ -800,14 +800,14 @@ workflow TAXTRIAGE {
                 ch_denovo,
             )
 
-            if (params.annotate_meta) {
-                // Overlay the real per-sample xlsx where available; keep placeholder elsewhere
-                ch_annotate_report_tsv = ch_annotate_report_tsv
-                    .join(PROTEINS.out.annotate_report, remainder: true)
-                    .map { meta, placeholder, real_file ->
-                        [meta, real_file ?: placeholder]
-                    }
+
+            // Overlay the real per-sample xlsx where available; keep placeholder elsewhere
+            ch_annotate_report_tsv = ch_annotate_report_tsv
+                .join(PROTEINS.out.annotate_report, remainder: true)
+                .map { meta, placeholder, real_file ->
+                    [meta, real_file ?: placeholder]
             }
+
         }
 
         // Add placeholder assembly analysis entries for insilico samples so
