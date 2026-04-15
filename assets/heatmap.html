@@ -3362,8 +3362,10 @@
 
         svg
           .append("text")
-          .attr("x", cbX + cbW / 2)
-          .attr("y", cbY + cbH + 26)
+          .attr(
+            "transform",
+            `translate(${cbX + cbW + 12},${cbY + cbH / 2}) rotate(90)`
+          )
           .attr("text-anchor", "middle")
           .attr("font-size", 9)
           .attr("fill", "#666")
@@ -7352,10 +7354,17 @@
           if (fpEl) fpEl.checked = false;
         }
 
-        // Set min TASS score from best_cutoffs.subkey.best_threshold (0–1 → 0–100)
-        if (BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH)) {
+        // Set min TASS score: prefer mintass from report build args, fall back to best_cutoffs
+        {
           const minEl = document.getElementById("filter-min");
-          if (minEl) minEl.value = Math.round(BEST_TASS_THRESH * 100);
+          if (minEl) {
+            const fromMintass = (BOOT.mintass != null && BOOT.mintass > 0) ? BOOT.mintass : null;
+            const fromBestCutoff = (BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH))
+              ? Math.round(BEST_TASS_THRESH * 100)
+              : null;
+            const resolved = fromMintass ?? fromBestCutoff;
+            if (resolved != null) minEl.value = resolved;
+          }
         }
 
         // Show proteins tab only if annotation data present
