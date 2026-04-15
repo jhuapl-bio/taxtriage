@@ -6238,8 +6238,10 @@
         const cats = [...new Set(fd.map((r) => r[catField] || "Other"))].filter(Boolean).sort();
         if (!samples.length || !cats.length) return;
 
-        // Combined node list: samples first, then categories
-        const nodes = [...samples, ...cats];
+        // Combined node list: samples first, then a spacer gap, then categories
+        const GAP_KEY = "__gap__";
+        const nodes = [...samples, GAP_KEY, ...cats];
+        const gapIndex = samples.length;
         const n = nodes.length;
         const idxOf = (k) => nodes.indexOf(k);
 
@@ -6291,6 +6293,11 @@
         ];
         const colorOf = (i) => pal20[i % pal20.length];
 
+        // Add a small self-value to the gap node so it renders a subtle spacer
+        const totalFlow = mat.reduce((sum, row) => sum + row.reduce((s, v) => s + v, 0), 0);
+        const gapVal = Math.max(1, totalFlow * 0.03);
+        mat[gapIndex][gapIndex] = gapVal;
+
         const chord = d3.chord().padAngle(0.04).sortSubgroups(d3.descending)(mat);
         const arc = d3.arc().innerRadius(innerR).outerRadius(R);
         const ribbon = d3.ribbon().radius(innerR);
@@ -6327,10 +6334,11 @@
         const chOut = () => chTip.style("display", "none");
 
         // Arcs (outer ring)
+        let labelSel = null;
         const arcSel = g
           .append("g")
           .selectAll("path")
-          .data(chord.groups)
+          .data(chord.groups.filter((d) => d.index !== gapIndex))
           .join("path")
           .attr("d", arc)
           .attr("fill", (d) => colorOf(d.index))
@@ -6338,6 +6346,7 @@
           .attr("stroke-width", 0.5)
           .attr("opacity", 0.85)
           .on("mouseover", (ev, d) => {
+            if (d.index === gapIndex) return;
             chTip
               .style("display", "block")
               .html(`<b>${nodes[d.index]}</b><br>Total ${valField}: ${d3.format(",.0f")(d.value)}`);
@@ -6353,13 +6362,13 @@
               }
             });
             arcSel.attr("opacity", (a) => (connected.has(a.index) ? 1 : 0.2));
-            labelSel.attr("opacity", (a) => (connected.has(a.d.index) ? 1 : 0.15));
+            if (labelSel) labelSel.attr("opacity", (a) => (connected.has(a.d.index) ? 1 : 0.15));
           })
           .on("mousemove", chMove)
           .on("mouseout", () => {
             g.selectAll(".chord-ribbon").attr("opacity", 0.6);
             arcSel.attr("opacity", 0.85);
-            labelSel.attr("opacity", 1);
+            if (labelSel) labelSel.attr("opacity", 1);
             chOut();
           });
 
@@ -6377,7 +6386,7 @@
             const span = d.endAngle - d.startAngle;
             return { d, mid, span };
           })
-          .filter((l) => l.span >= labelMinAngle)
+          .filter((l) => l.span >= labelMinAngle && l.d.index !== gapIndex)
           .sort((a, b) => a.mid - b.mid);
 
         const placed = [];
@@ -6387,7 +6396,7 @@
           placed.push(l);
         });
 
-        const labelSel = g
+        labelSel = g
           .append("g")
           .attr("class", "chord-labels")
           .selectAll("text")
@@ -6434,15 +6443,48 @@
 
         // Legend
         if (legWrap) {
-          nodes.forEach((name, i) => {
+          const legBox = document.createElement("div");
+          legBox.style.cssText = "display:flex;gap:1em;align-items:flex-start";
+
+          const mkCol = (title) => {
+            const col = document.createElement("div");
+            col.style.cssText = "display:flex;flex-direction:column;gap:.2em;min-width:140px";
+            const hdr = document.createElement("div");
+            hdr.style.cssText = "font-size:.72em;color:#666;text-transform:uppercase;letter-spacing:.05em";
+            hdr.textContent = title;
+            col.appendChild(hdr);
+            return col;
+          };
+
+          const sampleCol = mkCol("Samples");
+          const groupCol = mkCol(groupBy === "genus" ? "Genera" : "Categories");
+          groupCol.style.borderLeft = "1px solid #e5e7eb";
+          groupCol.style.paddingLeft = "0.8em";
+
+          function addLegItem(col, name, idx) {
             const div = document.createElement("div");
-            div.style.cssText = "display:flex;align-items:center;gap:.4em;line-height:1.7";
+            div.style.cssText = "display:flex;align-items:center;gap:.4em;line-height:1.7;cursor:pointer";
             div.innerHTML =
               `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${colorOf(
-                i,
+                idx,
               )};flex-shrink:0"></span>` + `${name.length > 28 ? name.slice(0, 27) + "…" : name}`;
-            legWrap.appendChild(div);
-          });
+            div.addEventListener("mouseover", () => {
+              const arcData = chord.groups.find((g) => g.index === idx);
+              if (!arcData) return;
+              arcSel.filter((a) => a.index === idx).dispatch("mouseover", { detail: arcData });
+            });
+            div.addEventListener("mouseout", () => {
+              arcSel.filter((a) => a.index === idx).dispatch("mouseout", {});
+            });
+            col.appendChild(div);
+          }
+
+          samples.forEach((name, i) => addLegItem(sampleCol, name, i));
+          cats.forEach((name, i) => addLegItem(groupCol, name, i + gapIndex + 1));
+
+          legBox.appendChild(sampleCol);
+          legBox.appendChild(groupCol);
+          legWrap.appendChild(legBox);
         }
       }
 
