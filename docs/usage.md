@@ -301,10 +301,10 @@ nextflow run main.nf -profile mce_seqera,docker -resume --fastq_1 examples/data/
 
 ## MicroBERT and AI/ML Predictions
 
-| Parameter | Description |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--microbert` | Specify a MicroBERT directory to enable alignment clustering and AI/ML predictions. |
-| `----microbert_maxlen` | Maximum length to chunk sequences for MicroBERT processing. Default is 2 kb. |
+| Parameter              | Description                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `--microbert`          | Specify a MicroBERT directory to enable alignment clustering and AI/ML predictions. |
+| `----microbert_maxlen` | Maximum length to chunk sequences for MicroBERT processing. Default is 2 kb.        |
 
 ## Output, Reporting, and Visualization
 
