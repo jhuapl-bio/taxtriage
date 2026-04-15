@@ -29,6 +29,13 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
+                "annotate": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable annotation of VF and AMR and Transporter Genes.",
+                    "help_text": "Requires --annotate_proteins and --annotate_meta. If set to true, it will annotate the VF, AMR, and Transporter Genes that are present in the --annotate_proteins file. This is disabled by default because it adds a lot of time to the pipeline runtime. Not to be confused with get_features, which is a more general annotation of pulling metadata for any proteins in the --annotate_proteins file rather than just VF and AMR and Transporter Genes.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "metaphlan": {
                     "type": "string",
                     "fa_icon": "fas fa-book",
@@ -267,12 +274,6 @@
                 "use_megahit_longreads": {
                     "type": "boolean",
                     "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
-                    "fa_icon": "fas fa-file-signature"
-                },
-                "disable_annotate": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Disable annotation of VF and AMR and Transporter Genes.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "annotate_proteins": {
