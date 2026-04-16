@@ -3859,41 +3859,15 @@ def create_protein_annotation_xlsx(output_path, samples_dict, args):
 
     # ── Sheet 1: Sample Overview ──────────────────────────────────────────────
     # Created first (as the active/default sheet) so it is the tab that opens
-    # when the workbook is launched.  Data is drawn directly from samples_dict,
-    # NOT from protein-annotation rows, so this sheet is always populated even
-    # when annotation was disabled for the run and all_raw_rows is empty.
+    # when the workbook is launched.  Uses _build_tabular_dataframe() — the
+    # same function that writes the report.txt — so every column is present
+    # and the sheet is always populated even when annotation was disabled.
     ws_overview = wb.active
     ws_overview.title = 'Sample Overview'
-    _write_header(ws_overview, [
-        'Sample', 'Sample Type', 'Genus', 'Species/Subkey',
-        'Microbial Category', 'Ann Class', 'High Consequence',
-        'TASS Score', 'Reads', 'Coverage', 'RPM', 'RPKM',
-        'Minhash Score', 'Gini', 'Passes Threshold',
-    ])
-    _mc_map = getattr(args, '_sample_min_conf', {})
-    for sample_name, species_groups in sorted(samples_dict.items()):
-        _mc = _mc_map.get(sample_name, _DEFAULT_CONF)
-        for sg in species_groups:
-            stype = sg.get('sampletype', '')
-            for sk_m in sg.get('members', []):
-                passes = 'TRUE' if passes_confidence_threshold(sk_m, _mc) else 'FALSE'
-                ws_overview.append([
-                    sample_name,
-                    stype,
-                    sg.get('toplevelname', sg.get('name', '')),
-                    sk_m.get('subkeyname', sk_m.get('name', '')),
-                    sk_m.get('microbial_category', ''),
-                    sk_m.get('annClass', ''),
-                    'TRUE' if sk_m.get('high_cons', False) else 'FALSE',
-                    round(float(sk_m.get('tass_score', 0) or 0), 4),
-                    int(sk_m.get('numreads', 0) or 0),
-                    round(float(sk_m.get('coverage', 0) or 0), 4),
-                    round(float(sk_m.get('rpm', 0) or 0), 2),
-                    round(float(sk_m.get('rpkm', 0) or 0), 4),
-                    round(float(sk_m.get('minhash_score', 0) or 0), 4),
-                    round(float(sk_m.get('gini_coefficient', 0) or 0), 4),
-                    passes,
-                ])
+    _overview_df = _build_tabular_dataframe(samples_dict, args)
+    _write_header(ws_overview, list(_overview_df.columns))
+    for _row in _overview_df.itertuples(index=False, name=None):
+        ws_overview.append(list(_row))
     _style_rows(ws_overview)
     _autofit(ws_overview)
 
@@ -3920,8 +3894,8 @@ def create_protein_annotation_xlsx(output_path, samples_dict, args):
     # ── Sheet 3: Per-Gene Hits ────────────────────────────────────────────────
     ws_hits = wb.create_sheet('Per-Gene Hits')
     _write_header(ws_hits, [
-        'Sample', 'Genus', 'Species', 'Gene', 'Product', 'Property',
-        'Classification', 'Antibiotics Class', 'Antibiotics',
+        'Specimen ID', 'Genus', 'Species', 'Gene', 'Product', 'Property',
+        'Description', 'Antibiotics Class', 'Antibiotics',
         'Source', 'Source ID', '%id', 'E-value', 'Bitscore',
         'Reference Organism', 'Level',
     ])
@@ -4812,22 +4786,21 @@ def create_pdf_template(output_path, samples_dict, args):
     print(f"\nPDF created successfully: {output_path}")
 
 
-def create_tabular_output(output_path, samples_dict, args):
+def _build_tabular_dataframe(samples_dict, args):
     """
-    Create a tabular output file (CSV/TSV/TXT/XLSX) with strain-level data.
-    Includes ALL strains (not filtered).  Enriched with:
-      • Taxonomy ranks: Superkingdom, Phylum, Class, Order, Family, Genus
-      • Coverage depth: Covered Bases, Genome Length (bp), Breadth %, Mean Depth
-    """
-    file_ext = os.path.splitext(output_path)[1].lower()
+    Build and return the complete organism/strain DataFrame that backs both
+    the report.txt output and the Sample Overview sheet in the XLSX workbook.
 
+    Returns
+    -------
+    pd.DataFrame  with the full column set defined in `headers`.
+    """
     headers = [
         'Index', 'index', 'Detected Organism', 'Specimen ID', 'Sample Type',
         '% Reads', '# Reads Aligned', '% Aligned Reads', 'Coverage',
         'HHS Percentile', 'IsAnnotated', 'AnnClass', 'Microbial Category',
         'High Consequence', 'Taxonomic ID #', 'Status', 'Gini Coefficient',
         'Mean BaseQ', 'Mean MapQ', 'Mean Depth',
-        # ── new depth/breadth columns ──
         'Covered Bases', 'Genome Length (bp)', 'Breadth %',
         'isSpecies',
         'Pathogenic Subsp/Strains', 'K2 Reads', 'RPKM', 'RPM',
@@ -4835,9 +4808,8 @@ def create_tabular_output(output_path, samples_dict, args):
         'Diamond Identity', 'K2 Disparity Score', 'Siblings score',
         'Breadth Weight Score', 'TASS Score', 'MicrobeRT Probability',
         'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey',
-        # ── new taxonomy rank columns ──
         'Superkingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus',
-        'Flora Sites', 'Passes Threshold'
+        'Flora Sites', 'Passes Threshold',
     ]
 
     all_rows = []
@@ -4849,21 +4821,19 @@ def create_tabular_output(output_path, samples_dict, args):
         def _max_member_tass(sg):
             return max((m.get('tass_score', 0) for m in get_all_strains(sg)), default=0)
 
-        if args.sort_alphabetical:
+        if getattr(args, 'sort_alphabetical', False):
             sorted_groups = sorted(species_groups, key=lambda sg: sg.get('toplevelname', 'Unknown'))
         else:
             sorted_groups = sorted(species_groups, key=_max_member_tass, reverse=True)
 
-        # Use total reads from metadata (includes unaligned) when available;
-        # fall back to sum of aligned reads across species groups.
         _tab_smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
         _tab_meta_total = _tab_smeta.get('total_reads')
-        sample_total_reads = max(1, int(_tab_meta_total) if _tab_meta_total else sum(sg.get('numreads', 0) for sg in species_groups))
-        # Per-sample confidence threshold (used for Passes Threshold column)
+        sample_total_reads = max(1, int(_tab_meta_total) if _tab_meta_total else sum(
+            sg.get('numreads', 0) for sg in species_groups))
         _mc = getattr(args, '_sample_min_conf', {}).get(sample_name, _DEFAULT_CONF)
 
         for sg in sorted_groups:
-            group_key = sg.get('toplevelkey', sg.get('key', ''))
+            group_key  = sg.get('toplevelkey', sg.get('key', ''))
             sample_type = sg.get('sampletype', 'unknown')
             strains = sorted(get_all_strains(sg),
                              key=lambda s: s.get('tass_score', 0), reverse=True)
@@ -4872,12 +4842,11 @@ def create_tabular_output(output_path, samples_dict, args):
                 if not has_min_reads(strain, 1):
                     continue
                 strain_reads = float(strain.get('numreads', 0) or 0)
-                pct_reads = strain_reads / sample_total_reads * 100.0
+                pct_reads    = strain_reads / sample_total_reads * 100.0
 
-                # ── Flora Sites: commensal site tags for sterile sample types ──
                 _is_sterile_tab = sample_type.lower().strip() in _STERILE_TYPES
                 if _is_sterile_tab:
-                    _sites_raw = strain.get('commensal_sites', [])
+                    _sites_raw  = strain.get('commensal_sites', [])
                     _sites_flat = (
                         [s for s in _sites_raw if isinstance(s, str)]
                         + [item for s in _sites_raw if isinstance(s, list) for item in s]
@@ -4885,17 +4854,15 @@ def create_tabular_output(output_path, samples_dict, args):
                     _flora_sites_str = ', '.join(sorted(set(_sites_flat))) if _sites_flat else ''
                 else:
                     _flora_sites_str = ''
-                # ── Passes Threshold ──
+
                 _passes_thresh = 'TRUE' if passes_confidence_threshold(strain, _mc) else 'FALSE'
 
-                # ── Breadth / depth fields ──
                 _covered_bases = int(strain.get('covered_bases', 0) or 0)
                 _genome_len    = int(strain.get('length', 0) or 0)
                 _breadth_pct   = round(_covered_bases / _genome_len * 100, 2) if _genome_len > 0 else 0.0
                 _meandepth     = round(float(strain.get('meandepth', 0) or 0), 2)
 
-                # ── Taxonomy lineage (stored by match_paths; fallback to empty) ──
-                _tax = strain.get('taxonomy', sg.get('taxonomy', {}))
+                _tax          = strain.get('taxonomy', sg.get('taxonomy', {}))
                 _superkingdom = _tax.get('superkingdom', '')
                 _phylum       = _tax.get('phylum', '')
                 _class        = _tax.get('class', '')
@@ -4918,13 +4885,12 @@ def create_tabular_output(output_path, samples_dict, args):
                     f"{(strain.get('meanbaseq', 0) or 0):.2f}",
                     f"{(strain.get('meanmapq', 0) or 0):.2f}",
                     f"{_meandepth:.1f}",
-                    # depth / breadth
                     _covered_bases, _genome_len, _breadth_pct,
                     'True' if strain.get('isSpecies', False) else 'False',
                     '',
                     int(strain.get('k2_reads', 0) or 0),
-                    strain.get("rpkm", 0) or 0,
-                    strain.get("rpm", 0) or 0,
+                    strain.get('rpkm', 0) or 0,
+                    strain.get('rpm', 0) or 0,
                     int(strain.get('parent_k2_reads', 0) or 0),
                     f"{(strain.get('mapq_score', 0) or 0):.2f}",
                     f"{(strain.get('disparity', 0) or 0):.2f}",
@@ -4939,14 +4905,25 @@ def create_tabular_output(output_path, samples_dict, args):
                     int(strain_reads),
                     group_key,
                     strain.get('subkey', strain.get('key', '')),
-                    # taxonomy ranks
                     _superkingdom, _phylum, _class, _order, _family, _genus,
                     _flora_sites_str,
                     _passes_thresh,
                 ])
                 global_index += 1
 
-    df = pd.DataFrame(all_rows, columns=headers)
+    return pd.DataFrame(all_rows, columns=headers)
+
+
+def create_tabular_output(output_path, samples_dict, args):
+    """
+    Create a tabular output file (CSV/TSV/TXT/XLSX) with strain-level data.
+    Includes ALL strains (not filtered).  Enriched with:
+      • Taxonomy ranks: Superkingdom, Phylum, Class, Order, Family, Genus
+      • Coverage depth: Covered Bases, Genome Length (bp), Breadth %, Mean Depth
+    """
+    file_ext = os.path.splitext(output_path)[1].lower()
+
+    df = _build_tabular_dataframe(samples_dict, args)
 
     if file_ext == '.csv':
         df.to_csv(output_path, index=False)
@@ -5011,7 +4988,7 @@ def create_tabular_output(output_path, samples_dict, args):
         df.to_csv(output_path, sep='\t', index=False)
         print(f"TSV output created (default): {output_path}")
 
-    print(f"  Total strains in output: {len(all_rows)}")
+    print(f"  Total strains in output: {len(df)}")
     print(f"  Note: Output includes ALL strains (not filtered by category or confidence)")
 
 
