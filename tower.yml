@@ -1,16 +1,18 @@
 reports:
   multiqc_report.html:
     display: "MultiQC HTML report"
-  "**/report/*report.pdf":
+  "**/report/*odr.pdf":
     display: "Organism Discovery Report(s)"
-  "**/report/all.comparison.report.html":
+  "**/report/all.odr.html":
     display: "Organism Comparison Report"
-  "**/report/*report.txt":
-    display: "Organism Discovery Analysis"
+  "**/report/*.odr.txt":
+    display: "Organism Discovery Analysis Basic Table"
+  "**/report/all.odr.xlsx":
+    display: "Organism Discovery Analysis Excel Report"
   "**/convert/*merged.tsv":
     display: "Confidence Table"
-  "**/report/*.html":
-    display: "Krona Plots"
+  "**/report/combined_krona_kreports.html":
+    display: "Krona Plot(s)"
   "**/fastqc/*_fastqc.html":
     display: "FASTQC output (Illumina Only)"
   "**/nanoplot/*_NanoPlot-report.html":

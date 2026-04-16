@@ -35,13 +35,13 @@ process CREATE_COMPARISON_REPORT {
 
     output:
         path "versions.yml"           , emit: versions
-        path("*html")                 , optional: true, emit: html
+        path("*odr.html")                 , optional: true, emit: html
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
-    def output_html = "all.comparison.report.html"
+    def output_html = "all.odr.html"
 
     // Build the list of JSON input files (filter out any NO_FILE placeholders)
     def json_inputs = json_files instanceof List
