@@ -5,7 +5,7 @@ reports:
     display: "Organism Discovery Report(s)"
   "**/report/all.odr.html":
     display: "Organism Comparison Report"
-  "**/report/all.odr.txt":
+  "**/report/*.odr.txt":
     display: "Organism Discovery Analysis Basic Table"
   "**/report/all.odr.xlsx":
     display: "Organism Discovery Analysis Excel Report"
