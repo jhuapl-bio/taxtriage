@@ -181,6 +181,7 @@ include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
 include { INSILICO } from '../subworkflows/local/insilico'
+include { PROTEINS } from '../subworkflows/local/proteins'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -785,6 +786,29 @@ workflow TAXTRIAGE {
         ch_versions = ch_versions.mix(ASSEMBLY.out.versions)
 
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
+        ch_denovo = ASSEMBLY.out.ch_denovo_assembly
+
+        // Seed a per-sample placeholder for EVERY sample coming out of ALIGNMENT
+        // (covers insilico and control samples that skip ASSEMBLY/PROTEINS)
+        ch_annotate_report_tsv = ALIGNMENT.out.bams.map { meta, bam, bai ->
+            [meta, file("$projectDir/assets/NO_FILE_annotate_report")]
+        }
+
+        if (params.annotate) {
+            // if params.annotate_proteins is null then set to 'assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.faa'
+            PROTEINS(
+                ch_denovo,
+            )
+
+
+            // Overlay the real per-sample xlsx where available; keep placeholder elsewhere
+            ch_annotate_report_tsv = ch_annotate_report_tsv
+                .join(PROTEINS.out.annotate_report, remainder: true)
+                .map { meta, placeholder, real_file ->
+                    [meta, real_file ?: placeholder]
+            }
+
+        }
 
         // Add placeholder assembly analysis entries for insilico samples so
         // they are not filtered out by the inner join in input_alignment_files
@@ -813,6 +837,7 @@ workflow TAXTRIAGE {
                 .join(ch_kraken2_report)
                 .join(ch_assembly_analysis)
                 .join(ch_fastas)
+                .join(ch_annotate_report_tsv)
 
             ////////////////////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -830,26 +855,6 @@ workflow TAXTRIAGE {
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////
-
-        // if (!params.skip_confidence) {
-        //     METRIC_ALIGNMENT(
-        //         ch_combined
-        //     )
-
-        //     METRIC_MERGE(
-        //         METRIC_ALIGNMENT.out.tsv
-        //     )
-        //     CONVERT_METRICS(
-        //         METRIC_MERGE.out.metrics
-        //     )
-
-        //     MERGE_ALIGNMENT_MERGES(
-        //         CONVERT_METRICS.out.tsv.map {  file ->  file }.collect()
-        //     )
-
-        //     ch_mergedtsv = MERGE_ALIGNMENT_MERGES.out.metrics_report
-        //     ch_multiqc_files = ch_multiqc_files.mix(ch_mergedtsv.collect().ifEmpty([]))
-        // }
     }
     ch_collated_versions = ch_versions.unique().collectFile(name: 'all_mqc_versions.yml')
     ch_multiqc_files = ch_multiqc_files.mix(ch_collated_versions)

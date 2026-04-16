@@ -26,6 +26,7 @@ include { BEDTOOLS_COVERAGE } from '../../modules/nf-core/bedtools/coverage/main
 include { FEATURES_MAP } from '../../modules/local/features_map'
 include { MAP_PROT_ASSEMBLY } from '../../modules/local/map_prot_assembly'
 include { FLYE } from '../../modules/nf-core/flye/main'
+include { PATHOGENICITY } from './pathogenicity'
 
 workflow ASSEMBLY {
     take:
@@ -38,9 +39,10 @@ workflow ASSEMBLY {
         ch_diamond_analysis = Channel.empty()
         ch_assembly_alignment = Channel.empty()
         ch_versions = Channel.empty()
+        ch_assembled_files = Channel.empty()
 
         ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
-        if (params.use_denovo || params.use_diamond){
+        if (params.use_denovo || params.use_diamond || params.annotate){
             // branch long and short reads
             postalignmentfiles.branch {
                 shortreads: it[0].platform =~ 'ILLUMINA'
@@ -87,7 +89,13 @@ workflow ASSEMBLY {
                     ch_bedout
                 )
             }
+            if (params.pathogenicity){
 
+                PATHOGENICITY(
+                    ch_assembled_files
+                )
+                // ch_versions = ch_versions.mix(PATHOGENICITY.out.versions)}
+            }
             try {
                 valid_aligners  = postalignmentfiles.filter{
                     return it[5] != []
@@ -141,5 +149,6 @@ workflow ASSEMBLY {
     emit:
         ch_diamond_output
         ch_diamond_analysis
+        ch_denovo_assembly = ch_assembled_files
         versions = ch_versions
 }

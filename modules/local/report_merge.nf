@@ -21,17 +21,19 @@ process ORGANISM_MERGE_REPORT {
 
     conda (params.enable_conda ? "bioconda::pysam" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'docker://quay.io/jhuaplbio/reportlab-pdf:4.0.8' :
-        'jhuaplbio/reportlab-pdf:4.0.8' }"
+        'docker://quay.io/jhuaplbio/reportlab-pdf:4.0.9' :
+        'jhuaplbio/reportlab-pdf:4.0.9' }"
 
     input:
     tuple val(meta), file(files_of_pathogens), file(distributions)
     val(missing_samples)
+    // path(annotate_report)
 
     output:
         path "versions.yml"           , emit: versions
         path("*organisms.report.txt")    , optional: true, emit: report
         path("*organisms.report.pdf")    , optional: false, emit: pdf
+        path("*protein_annotations.xlsx") , optional: true, emit: annot_xlsx
 
     when:
     task.ext.when == null || task.ext.when
@@ -40,6 +42,8 @@ process ORGANISM_MERGE_REPORT {
 
     def output_txt = "${meta.id}.organisms.report.txt"
     def output_pdf = "${meta.id}.organisms.report.pdf"
+
+    def output_annot_xlsx = "${meta.id}.protein_annotations.xlsx"
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     distribution_arg = ""
     def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""
@@ -56,6 +60,7 @@ process ORGANISM_MERGE_REPORT {
     def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
     def no_subkey = params.no_subkey ? " --no_subkey " : ""
+    // def annotate_report_arg = annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${annotate_report} " : " "
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -71,6 +76,7 @@ process ORGANISM_MERGE_REPORT {
         $integrate_strain_table \\
         $rank \\
         $no_subkey \\
+        --output_annot_xlsx $output_annot_xlsx \\
 
     cat <<-END_VERSIONS > versions.yml
         "${task.process}":

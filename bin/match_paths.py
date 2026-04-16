@@ -62,7 +62,7 @@ import pysam
 import random
 from ground_truth import optimize_weights, compute_tp_fp_counts_by_taxid
 from optimize_weights import annotate_aggregate_dict, compute_scores_per, calculate_aggregate_scores, calculate_classes, calculate_normalized_groups, compute_tass_score, pathogen_label, normalize_category, breadth_score_sigmoid, getGiniCoeff, load_control_data, compute_control_comparison, find_missing_positive_controls
-from map_taxid import load_taxdump, load_names
+from map_taxid import load_taxdump, load_names, get_root
 from utils import taxid_to_rank, calculate_var, load_matchfile
 
 
@@ -159,6 +159,14 @@ def parse_args(argv=None):
         help="DIAMOND BLASTX Output file",
     )
     parser.add_argument(
+        "--annotate_report",
+        default=None,
+        type=str,
+        help="Annotation report TSV (merged DIAMOND hits + metadata from annotate_report.py). "
+             "Used to attach protein annotation data (gene names, classification, resistance info) "
+             "to each organism in the output JSON, matched by species_taxid to the subkey.",
+    )
+    parser.add_argument(
         "-c",
         "--capval",
         metavar="Cap val for depth for entropy calculation. Default: 15",
@@ -173,6 +181,13 @@ def parse_args(argv=None):
         type=str,
         choices=["G", "F", "O", "C", "P", "K", "D", "R"],
         help="Which parent to match for k2 hierarchy of taxonomy for disparity across genus, family, etc calls",
+    )
+    parser.add_argument(
+        "--pident",
+        metavar="Minimum percent identity (0-100 scale)",
+        default=90,
+        type=float,
+        help="Filter rows where %id ÷ 100 ≥ this value (default is 90%)",
     )
     parser.add_argument(
         "-a",
@@ -2719,6 +2734,118 @@ def main():
                         group['insilico_comparison'] = {}
                     group['insilico_comparison']['missing_from_insilico'] = True
 
+    # ── Protein annotation enrichment ─────────────────────────────────────────
+    # If an annotate_report TSV is provided (from annotate_report.py), load it
+    # and attach matching annotations to each organism group/member by
+    # species_taxid ↔ subkey.  Also try genus_taxid ↔ toplevelkey fallback.
+    if args.annotate_report and os.path.exists(args.annotate_report):
+        print(f"Loading protein annotation report from {args.annotate_report}")
+        if args.annotate_report.endswith('.xlsx') or args.annotate_report.endswith('.xls'):
+            _annot_df = pd.read_excel(args.annotate_report, dtype=str)
+        elif args.annotate_report.endswith('.csv'):
+            _annot_df = pd.read_csv(args.annotate_report, dtype=str)
+        else:
+            _annot_df = pd.read_csv(args.annotate_report, sep='\t', dtype=str)
+        _annot_df.columns = _annot_df.columns.str.strip()
+        # Build lookup: species_taxid → list of annotation dicts
+        _annot_by_species = defaultdict(list)
+        _annot_by_genus = defaultdict(list)
+        _annot_cols = [
+            'sseqid', 'pident', 'evalue', 'bitscore', 'source_id',
+            'gene_name', 'product', 'classification', 'antibiotics_class',
+            'antibiotics', 'organism', 'genus', 'species', 'property',
+            'source', 'level', 'host_name',
+        ]
+        _annot_numeric_cols = {'pident', 'evalue', 'bitscore'}
+        def _coerce(col, val):
+            if pd.isna(val):
+                return None
+            if col in _annot_numeric_cols:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return val
+            return val
+        _available_cols = [c for c in _annot_cols if c in _annot_df.columns]
+        for _, row in _annot_df.iterrows():
+            entry = {c: _coerce(c, row.get(c)) for c in _available_cols}
+            sp_taxid = str(row.get('species_taxid', '')).strip()
+            gn_taxid = str(row.get('genus_taxid', '')).strip()
+            try:
+                pident = float(row.get('pident'))
+            except (ValueError, TypeError):
+                pident = None
+            if pident is not None and pident < args.pident:
+                continue  # skip annotations below identity threshold
+            if sp_taxid and sp_taxid != 'nan':
+                _annot_by_species[sp_taxid].append(entry)
+            if gn_taxid and gn_taxid != 'nan':
+                _annot_by_genus[gn_taxid].append(entry)
+
+        _annot_matched = 0
+        for group in final_json:
+            tlk = str(group.get('toplevelkey', group.get('key', '')))
+            # Attach at genus (toplevel) level
+            if tlk in _annot_by_genus:
+                # Deduplicate by gene_name
+                _seen_genes = set()
+                _unique = []
+                for a in _annot_by_genus[tlk]:
+                    gn = a.get('gene_name', '')
+                    if gn not in _seen_genes:
+                        _seen_genes.add(gn)
+                        _unique.append(a)
+                group['protein_annotations_genus'] = _unique
+
+            for subkey_member in group.get('members', []):
+                sk = str(subkey_member.get('subkey', subkey_member.get('key', '')))
+                if sk in _annot_by_species:
+                    _seen_genes = set()
+                    _unique = []
+                    for a in _annot_by_species[sk]:
+                        gn = a.get('gene_name', '')
+                        if gn not in _seen_genes:
+                            _seen_genes.add(gn)
+                            _unique.append(a)
+                    subkey_member['protein_annotations'] = _unique
+                    _annot_matched += 1
+
+                # Also propagate to individual strains via taxdump hierarchy
+                for strain in subkey_member.get('members', []):
+                    strain_key = str(strain.get('key', ''))
+                    # Try direct match first, then walk up to species via taxdump
+                    matched_annots = []
+                    if strain_key in _annot_by_species:
+                        matched_annots = _annot_by_species[strain_key]
+                    elif taxdump and strain_key in taxdump:
+                        # Walk up the taxonomy to find species-level match
+                        _current = strain_key
+                        _visited = set()
+                        while _current and _current not in _visited:
+                            _visited.add(_current)
+                            if _current in _annot_by_species:
+                                matched_annots = _annot_by_species[_current]
+                                break
+                            _parent = taxdump.get(_current, {}).get('parent', '')
+                            if _parent == _current:
+                                break
+                            _current = _parent
+                    if matched_annots:
+                        _seen_genes = set()
+                        _unique = []
+                        for a in matched_annots:
+                            gn = a.get('gene_name', '')
+                            if gn not in _seen_genes:
+                                _seen_genes.add(gn)
+                                _unique.append(a)
+                        strain['protein_annotations'] = _unique
+
+        print(f"Protein annotations: matched {_annot_matched} species/subkey groups, "
+              f"{len(_annot_by_species)} species taxids in annotation file, "
+              f"{len(_annot_by_genus)} genus taxids")
+    elif args.annotate_report:
+        print(f"WARNING: annotate_report file not found: {args.annotate_report}")
+
     # ── Build structured output with metadata ────────────────────────────────
     _all_keys = set()
     _all_subkeys = set()
@@ -2731,6 +2858,55 @@ def main():
             for strain in sk_m.get('members', []):
                 _all_keys.add(strain.get('key', ''))
                 _total_organism_reads += float(strain.get('numreads', 0))
+    # ── Build per-contig histogram data BEFORE stripping covered_regions ────────
+    # Collect per-accession (contig) stats grouped by strain key so the HTML
+    # report can render a per-contig reads/depth bar chart for each organism.
+    _contig_by_key   = defaultdict(list)
+    _depth_hist_by_key = defaultdict(lambda: {'0x': 0, '1-5x': 0, '5-10x': 0, '10-50x': 0, '>50x': 0})
+
+    def _build_depth_hist(covered_regions, genome_len):
+        """Return {bucket: base_count} from a list of (start, end, depth) tuples."""
+        _hist = {'0x': max(0, int(genome_len)), '1-5x': 0, '5-10x': 0, '10-50x': 0, '>50x': 0}
+        for _s, _e, _d in (covered_regions or []):
+            _b = max(0, _e - _s)
+            _hist['0x'] = max(0, _hist['0x'] - _b)
+            if _d <= 5:
+                _hist['1-5x'] += _b
+            elif _d <= 10:
+                _hist['5-10x'] += _b
+            elif _d <= 50:
+                _hist['10-50x'] += _b
+            else:
+                _hist['>50x'] += _b
+        return _hist
+
+    for _acc, _hit in reference_hits.items():
+        _skey = str(_hit.get('key', _acc))
+        _numreads  = int(_hit.get('numreads', 0) or 0)
+        _length    = int(_hit.get('length', 0) or 0)
+        _covered   = int(_hit.get('covered_bases', 0) or 0)
+        _depth     = float(_hit.get('meandepth', 0) or 0)
+        _cov       = round(_covered / max(1, _length), 5)
+        _contig_by_key[_skey].append({
+            'name':          _acc,
+            'length':        _length,
+            'reads':         _numreads,
+            'mean_depth':    round(_depth, 3),
+            'covered_bases': _covered,
+            'coverage':      _cov,
+        })
+        # Aggregate depth histogram across all contigs for this strain
+        _cov_regs = _hit.get('covered_regions', [])
+        if _cov_regs and _length > 0:
+            _acc_hist = _build_depth_hist(_cov_regs, _length)
+            for _bkt, _cnt in _acc_hist.items():
+                _depth_hist_by_key[_skey][_bkt] += _cnt
+
+    # Sort contigs by reads desc, cap at 100 per strain (prevent JSON bloat)
+    for _skey in _contig_by_key:
+        _contig_by_key[_skey].sort(key=lambda x: x['reads'], reverse=True)
+        _contig_by_key[_skey] = _contig_by_key[_skey][:100]
+
     # Strip covered_regions from JSON output — large and only needed internally
     import copy as _copy
     _json_out = _copy.deepcopy(final_json)
@@ -2740,6 +2916,61 @@ def main():
             _sk_m.pop('covered_regions', None)
             for _strain in _sk_m.get('members', []):
                 _strain.pop('covered_regions', None)
+
+    # ── Annotate taxonomy lineage into JSON output ────────────────────────────
+    # Store superkingdom/kingdom, phylum, class, order, family, genus names on
+    # every organism entry so downstream tools (make_report.py, heatmap.html)
+    # can group / colour by taxonomy without reloading the taxdump.
+    _TAX_RANKS = ['superkingdom', 'phylum', 'class', 'order', 'family', 'genus']
+
+    def _build_lineage(taxid_str):
+        """Return {rank: name} dict for the six major ranks above."""
+        if not taxdump or not taxdump_names:
+            return {}
+        lineage = {}
+        for _rank in _TAX_RANKS:
+            _rid = get_root(taxid_str, _rank, taxdump)
+            if _rid:
+                _name = taxdump_names.get(str(_rid), '')
+                if _name:
+                    lineage[_rank] = _name
+        return lineage
+
+    if taxdump and taxdump_names:
+        for _grp in _json_out:
+            # Use species-level subkey for best lineage resolution when available
+            _rep_taxid = None
+            for _sk_m in _grp.get('members', []):
+                _sk_id = str(_sk_m.get('subkey', _sk_m.get('key', '')))
+                if _sk_id:
+                    _rep_taxid = _sk_id
+                    break
+            if _rep_taxid is None:
+                _rep_taxid = str(_grp.get('toplevelkey', _grp.get('key', '')))
+            _grp_lineage = _build_lineage(_rep_taxid)
+            _grp['taxonomy'] = _grp_lineage
+
+            for _sk_m in _grp.get('members', []):
+                _sk_taxid = str(_sk_m.get('subkey', _sk_m.get('key', '')))
+                _sk_lineage = _build_lineage(_sk_taxid) if _sk_taxid else _grp_lineage
+                _sk_m['taxonomy'] = _sk_lineage
+                for _strain in _sk_m.get('members', []):
+                    _strain['taxonomy'] = _sk_lineage
+    # ── Attach per-contig histogram data to JSON strains ─────────────────────
+    for _grp in _json_out:
+        for _sk_m in _grp.get('members', []):
+            for _strain in _sk_m.get('members', []):
+                _skey = str(_strain.get('key', ''))
+                _contigs = _contig_by_key.get(_skey)
+                if _contigs:
+                    # Only include contigs with at least 1 read for compactness
+                    _covered_contigs = [c for c in _contigs if c['reads'] > 0]
+                    if _covered_contigs:
+                        _strain['contigs'] = _covered_contigs
+                _dhist = dict(_depth_hist_by_key.get(_skey, {}))
+                if _dhist and any(_dhist.values()):
+                    _strain['depth_histogram'] = _dhist
+
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
     # them instead of its hard-coded sampletype defaults.

@@ -24,7 +24,19 @@ process ALIGNMENT_PER_SAMPLE {
         'jhuaplbio/taxtriage_confidence:2.1' }"
 
     input:
-    tuple val(meta), path(bamfiles), path(bai), path(mapping), path(bedgraph), path(covfile), path(k2_report), path(ch_diamond_analysis), path(fastas), path(microbert_report), path(pathogens_list), path(sampletype_thresholds_file)
+    tuple val(meta),
+        path(bamfiles),
+        path(bai),
+        path(mapping),
+        path(bedgraph),
+        path(covfile),
+        path(k2_report),
+        path(ch_diamond_analysis),
+        path(fastas),
+        path(ch_annotate_report),
+        path(microbert_report),
+        path(pathogens_list),
+        path(sampletype_thresholds_file)
     file assembly
     val minmapq
     path(taxdump)
@@ -66,6 +78,7 @@ process ALIGNMENT_PER_SAMPLE {
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def output_dir = "search_results"
     def compress_species = params.rank ? " --rank ${params.rank} " : " "
+    def pident = params.pident ? " --pident ${params.pident} " : " "
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
     def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
@@ -83,6 +96,7 @@ process ALIGNMENT_PER_SAMPLE {
     def commitID = workflow.commitId ? " --commit_id ${workflow.commitId} " : " --commit_id NA "
     def platform = meta.platform ? " --platform ${meta.platform} " : " "
     def sampletype_thresholds = sampletype_thresholds_file.name != "NO_FILE_thresholds" ? " --thresholds_json ${sampletype_thresholds_file} " : " "
+    def annotate_report_arg = ch_annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${ch_annotate_report} " : " "
 
     // Control sample arguments
     def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
@@ -110,7 +124,8 @@ process ALIGNMENT_PER_SAMPLE {
         $min_reads_align $compress_species $mbert_report $minmapq $fast $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
-        $mapq_breadth_power $mapq_gini_power
+        $mapq_breadth_power $mapq_gini_power \\
+        $annotate_report_arg $pident
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

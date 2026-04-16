@@ -3,7 +3,7 @@ reports:
     display: "MultiQC HTML report"
   "**/report/*report.pdf":
     display: "Organism Discovery Report(s)"
-  "**/report/*all.comparison.report.html":
+  "**/report/all.comparison.report.html":
     display: "Organism Comparison Report"
   "**/report/*report.txt":
     display: "Organism Discovery Analysis"

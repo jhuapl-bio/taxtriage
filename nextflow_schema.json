@@ -29,6 +29,13 @@
                     "format": "directory-path",
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
+                "annotate": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable annotation of VF and AMR and Transporter Genes.",
+                    "help_text": "Requires --annotate_proteins and --annotate_meta. If set to true, it will annotate the VF, AMR, and Transporter Genes that are present in the --annotate_proteins file. This is disabled by default because it adds a lot of time to the pipeline runtime. Not to be confused with get_features, which is a more general annotation of pulling metadata for any proteins in the --annotate_proteins file rather than just VF and AMR and Transporter Genes.",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "metaphlan": {
                     "type": "string",
                     "fa_icon": "fas fa-book",
@@ -268,6 +275,22 @@
                     "type": "boolean",
                     "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "annotate_proteins": {
+                    "type": ["string", "null"],
+                    "description": "A FASTA file of proteins to pull annotations for with DIAMOND BLASTX. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "annotate_meta": {
+                    "type": ["string", "null"],
+                    "description": "A metadata file that contains the headers of the proteins in the --annotate_proteins file and the relevant metadata you want to pull for those proteins. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "pident": {
+                    "type": ["number", "null"],
+                    "description": "Minimum percent identity for DIAMOND BLASTX. Must be between 0 and 100. This is used in conjunction with --annotate_proteins.",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 75
                 },
                 "spades_hmm": {
                     "type": "string",
@@ -646,6 +669,11 @@
                 "reference_assembly": {
                     "type": "boolean",
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "pathogenicity": {
+                    "type": "boolean",
+                    "description": "Align your assembly (denovo) to pathogen references for pathogenicity analysis. Returns a TSV set for both VFs and AMR hits",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "get_features": {

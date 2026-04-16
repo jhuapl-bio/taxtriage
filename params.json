@@ -15,6 +15,7 @@
     "remove_taxids": "9606",
     "profile": "docker",
     "bt2_indices": null,
+    "pathogenicity": false,
     "blastdb": null,
     "use_bt2": false,
     "distributions": null,

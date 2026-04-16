@@ -10,6 +10,8 @@
 # ---------------------------------------------------------------------------
 import os as _os
 import tempfile as _tempfile
+# import FONT
+import matplotlib.font_manager as _font_manager
 
 if not _os.environ.get("OPENSSL_CONF"):
     _os.environ["OPENSSL_CONF"] = "/dev/null"
@@ -26,12 +28,18 @@ if not _os.environ.get("XDG_CACHE_HOME"):
     _os.environ["XDG_CACHE_HOME"] = _tempfile.gettempdir()
 # ---------------------------------------------------------------------------
 
+import io
 import json
 import argparse
 import os
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import numpy as np
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.platypus.flowables import AnchorFlowable, Flowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
@@ -3003,6 +3011,953 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
     return story_items
 
 
+def _collect_protein_annotations(species_groups):
+    """
+    Walk the 3-level organism hierarchy and collect all protein_annotations
+    into a flat list of dicts.
+
+    Key design points
+    -----------------
+    * Each row is tagged with ``_organism_name`` (the *detected* genus/species
+      name from the sample) and ``_toplevel_name`` (the genus-level name).
+      Downstream visualisations must use ``_organism_name`` / ``_toplevel_name``
+      for grouping — NOT the ``genus`` field that comes from the reference
+      database metadata, which reflects the source organism of the matched
+      accession (e.g. a Salmonella CARD entry matched to an Escherichia contig
+      would still carry genus='Salmonella').
+    * Deduplication key now uses ``(gene_name or sseqid, taxid_scope)`` so that
+      accessions with no gene name (e.g. TCDB transporters with only an sseqid)
+      are not collapsed into a single placeholder per taxon.
+    """
+    rows = []
+    seen = set()
+    for sg in species_groups:
+        tlk     = str(sg.get('toplevelkey', sg.get('key', '')))
+        tl_name = sg.get('toplevelname', sg.get('name', ''))
+        # genus-level annotations
+        for annot in sg.get('protein_annotations_genus', []):
+            gene      = annot.get('gene_name') or annot.get('sseqid', '')
+            dedup_key = (gene, tlk)
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                rows.append({
+                    **annot,
+                    '_organism_name': tl_name,
+                    '_toplevel_name': tl_name,
+                    '_taxid':         tlk,
+                    '_level':         'genus',
+                })
+        # species/subkey level
+        for sk_m in sg.get('members', []):
+            sk      = str(sk_m.get('subkey', sk_m.get('key', '')))
+            sk_name = sk_m.get('subkeyname', sk_m.get('name', ''))
+            for annot in sk_m.get('protein_annotations', []):
+                gene      = annot.get('gene_name') or annot.get('sseqid', '')
+                dedup_key = (gene, sk)
+                if dedup_key not in seen:
+                    seen.add(dedup_key)
+                    rows.append({
+                        **annot,
+                        '_organism_name': sk_name,
+                        '_toplevel_name': tl_name,
+                        '_taxid':         sk,
+                        '_level':         'species',
+                    })
+            # strain level
+            for strain in sk_m.get('members', []):
+                for annot in strain.get('protein_annotations', []):
+                    gene      = annot.get('gene_name') or annot.get('sseqid', '')
+                    s_key     = str(strain.get('key', ''))
+                    dedup_key = (gene, sk)   # deduplicate at species level
+                    if dedup_key not in seen:
+                        seen.add(dedup_key)
+                        rows.append({
+                            **annot,
+                            '_organism_name': strain.get('name', sk_name),
+                            '_toplevel_name': tl_name,
+                            '_taxid':         s_key,
+                            '_level':         'strain',
+                        })
+    return rows
+
+
+def _filter_annot_rows_by_pident(rows, min_pident):
+    """Return only rows where pident >= min_pident (handles str/float/NaN)."""
+    filtered = []
+    for r in rows:
+        try:
+            pident_val = float(r.get('pident', 0) or 0)
+        except (ValueError, TypeError):
+            pident_val = 0.0
+        if pident_val >= min_pident:
+            filtered.append(r)
+    return filtered
+
+
+def create_protein_annotation_table(species_groups, small_style, available_width, min_pident=0.0):
+    """
+    Build a ReportLab Table collapsed to (genus, property) rows.
+    Each row lists all unique gene names comma-separated and shows
+    avg/median e-value across all hits in that bucket.
+    Rows with pident < min_pident are excluded when min_pident > 0.
+    Returns None if no annotations are present.
+    """
+    import statistics
+
+    rows = _collect_protein_annotations(species_groups)
+    if min_pident > 0:
+        rows = _filter_annot_rows_by_pident(rows, min_pident)
+    if not rows:
+        return None
+
+    # ── Collapse to (genus, property) buckets ────────────────────────────
+    # Each bucket accumulates: genes (set), evalues (list), best pident
+    buckets = {}  # (genus, property) -> {'genes': set, 'evalues': [], 'best_pident': float}
+    for r in rows:
+        genus = str(r.get('genus', '') or r.get('_organism_name', '') or '').strip()
+        prop  = str(r.get('property', '') or '').strip()
+        if not genus or not prop:
+            continue
+        key = (genus, prop)
+        if key not in buckets:
+            buckets[key] = {'genes': set(), 'evalues': [], 'best_pident': 0.0}
+        gene = str(r.get('gene_name', '') or r.get('sseqid', '') or '').strip()
+        if gene:
+            buckets[key]['genes'].add(gene)
+        try:
+            ev = float(r.get('evalue') or 0)
+            buckets[key]['evalues'].append(ev)
+        except (ValueError, TypeError):
+            pass
+        try:
+            pid = float(r.get('pident') or 0)
+            if pid > buckets[key]['best_pident']:
+                buckets[key]['best_pident'] = pid
+        except (ValueError, TypeError):
+            pass
+
+    if not buckets:
+        return None
+
+    # Sort by genus then property
+    sorted_keys = sorted(buckets.keys(), key=lambda k: (k[0], k[1]))
+
+    cell_font   = ParagraphStyle('AnnotCell',   parent=small_style, fontSize=6.5, leading=8)
+    header_style = ParagraphStyle('AnnotHeader', parent=small_style, fontSize=7,   leading=9,
+                                   fontName='Helvetica-Bold', textColor=colors.whitesmoke)
+
+    header = [
+        Paragraph('Genus',      header_style),
+        Paragraph('Property',   header_style),
+        Paragraph('Genes',      header_style),
+        Paragraph('# Hits',     header_style),
+        Paragraph('Best %id',   header_style),
+        Paragraph('Avg E-val',  header_style),
+        Paragraph('Med E-val',  header_style),
+    ]
+    table_data = [header]
+
+    for key in sorted_keys:
+        genus, prop = key
+        b = buckets[key]
+        genes_str = ', '.join(sorted(b['genes'])) if b['genes'] else '—'
+        n_hits    = len(b['evalues'])
+        best_pid  = f"{b['best_pident']:.1f}" if b['best_pident'] else ''
+        if b['evalues']:
+            avg_ev = statistics.mean(b['evalues'])
+            med_ev = statistics.median(b['evalues'])
+            avg_str = f"{avg_ev:.2e}"
+            med_str = f"{med_ev:.2e}"
+        else:
+            avg_str = med_str = ''
+
+        table_data.append([
+            Paragraph(genus,    cell_font),
+            Paragraph(prop,     cell_font),
+            Paragraph(genes_str, cell_font),
+            Paragraph(str(n_hits), cell_font),
+            Paragraph(best_pid, cell_font),
+            Paragraph(avg_str,  cell_font),
+            Paragraph(med_str,  cell_font),
+        ])
+
+    col_widths = [
+        available_width * 0.13,  # Genus
+        available_width * 0.16,  # Property
+        available_width * 0.42,  # Genes
+        available_width * 0.06,  # # Hits
+        available_width * 0.07,  # Best %id
+        available_width * 0.08,  # Avg E-val
+        available_width * 0.08,  # Med E-val
+    ]
+
+    tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
+    style_cmds = [
+        ('BACKGROUND',    (0, 0), (-1,  0), colors.HexColor('#2E7D32')),
+        ('TEXTCOLOR',     (0, 0), (-1,  0), colors.whitesmoke),
+        ('FONTNAME',      (0, 0), (-1,  0), 'Helvetica-Bold'),
+        ('FONTSIZE',      (0, 0), (-1,  0), 7),
+        ('BOTTOMPADDING', (0, 0), (-1,  0), 4),
+        ('TOPPADDING',    (0, 0), (-1,  0), 4),
+        ('GRID',          (0, 0), (-1, -1), 0.5, colors.Color(0.7, 0.7, 0.7)),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+        ('FONTSIZE',      (0, 1), (-1, -1), 6.5),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 3),
+        ('TOPPADDING',    (0, 1), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+    ]
+    # Alternate shading + green separator line between genera
+    prev_genus = None
+    for i, key in enumerate(sorted_keys, start=1):
+        if i % 2 == 0:
+            style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.Color(0.95, 0.97, 0.95)))
+        if prev_genus is not None and key[0] != prev_genus:
+            style_cmds.append(('LINEABOVE', (0, i), (-1, i), 0.8, colors.HexColor('#2E7D32')))
+        prev_genus = key[0]
+
+    tbl.setStyle(TableStyle(style_cmds))
+    return tbl
+
+
+def create_protein_annotation_heatmap(species_groups, available_width, min_pident=90.0):
+    """
+    Build a heatmap (as a ReportLab Image flowable) showing protein annotation
+    hit counts per (organism × classification) cell, filtered to rows where
+    pident >= min_pident.
+
+    X-axis: unique classification values.
+    Y-axis: unique organism names (from the 'organism' field in each annotation).
+    Cell value: number of distinct gene hits in that (organism, classification) bucket.
+
+    Returns None if no rows survive the pident filter.
+    """
+    rows = _collect_protein_annotations(species_groups)
+    if not rows:
+        return None
+
+    # ── Filter by pident ────────────────────────────────────────────────────
+    filtered = _filter_annot_rows_by_pident(rows, min_pident)
+
+    if not filtered:
+        return None
+
+    # ── Build pivot counts ──────────────────────────────────────────────────
+    # X-axis: genus; Y-axis: property (high-level category — Drug Target,
+    # Virulence Factor, Antibiotic Resistance, Transporter, etc.) which
+    # is far fewer rows than the raw classification field.
+    counts = {}  # (genus, property) -> set of gene_name
+    for r in filtered:
+        org = str(r.get('genus', '') or r.get('_organism_name', '') or '').strip()
+        prop = str(r.get('property', '') or '').strip()
+        gene = str(r.get('gene_name', '') or r.get('sseqid', '') or '').strip()
+        if not org or not prop:
+            continue
+        counts.setdefault((org, prop), set()).add(gene)
+
+    if not counts:
+        return None
+
+    # Convert to count integers
+    count_values = {k: len(v) for k, v in counts.items()}
+
+    # X-axis: genus; Y-axis: property (high-level grouping)
+    genera = sorted({k[0] for k in count_values})
+    properties = sorted({k[1] for k in count_values})
+
+    # Build matrix (rows=properties, cols=genera)
+    matrix = np.zeros((len(properties), len(genera)), dtype=float)
+    gen_idx = {g: i for i, g in enumerate(genera)}
+    prop_idx = {p: i for i, p in enumerate(properties)}
+    for (org, prop), cnt in count_values.items():
+        matrix[prop_idx[prop], gen_idx[org]] = cnt
+
+    # ── Draw with matplotlib ────────────────────────────────────────────────
+    n_rows = len(properties)
+    n_cols = len(genera)
+
+    cell_h = 0.45          # inches per row
+    cell_w = max(1.2, available_width / 72 / max(n_cols, 1))  # pts→inches
+    fig_h = max(3, n_rows * cell_h + 1.5)
+    fig_w = min(available_width / 72, n_cols * cell_w + 2.5)  # cap at page width
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+    cmap = plt.cm.YlOrRd
+    cmap.set_under('white')
+    im = ax.imshow(matrix, aspect='auto', cmap=cmap, vmin=0.5,
+                   vmax=max(1, matrix.max()))
+
+    ax.set_xticks(range(n_cols))
+    ax.set_xticklabels(genera, rotation=45, ha='right', fontsize=6.5)
+    ax.set_yticks(range(n_rows))
+    ax.set_yticklabels(properties, fontsize=7)
+    ax.set_xlabel('Genus', fontsize=8)
+    ax.set_ylabel('Property', fontsize=8)
+    ax.set_title(f'Protein Annotation Hits by Genus (pident ≥ {min_pident:.0f}%)', fontsize=9)
+
+    # Add gridlines
+    ax.set_xticks(np.arange(-0.5, n_cols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, n_rows, 1), minor=True)
+    ax.grid(which='minor', color='white', linewidth=0.5, alpha=0.25)
+    ax.tick_params(which='minor', bottom=False, left=False)
+
+    # Annotate cells with count
+    for i in range(n_rows):
+        for j in range(n_cols):
+            val = int(matrix[i, j])
+            if val > 0:
+                ax.text(j, i, str(val), ha='center', va='center',
+                        fontsize=6, color='black' if matrix[i, j] < matrix.max() * 0.7 else 'white')
+
+    cbar = fig.colorbar(im, ax=ax, shrink=0.6, pad=0.02)
+    cbar.set_label('# Gene Hits', fontsize=7)
+    cbar.ax.tick_params(labelsize=6)
+
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=130, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+
+    # Scale to fit available page width while respecting aspect ratio
+    img_w_pt = available_width
+    aspect = fig_h / fig_w
+    img_h_pt = img_w_pt * aspect
+
+    # Cap height to 90% of the usable page body (letter minus margins)
+    max_img_h_pt = (11 * 72) - (2 * 0.5 * 72) - (2 * 0.5 * 72)  # ~648 pt
+    if img_h_pt > max_img_h_pt:
+        scale = max_img_h_pt / img_h_pt
+        img_h_pt = max_img_h_pt
+        img_w_pt = img_w_pt * scale
+
+    return Image(buf, width=img_w_pt, height=img_h_pt)
+
+
+# ── Property category display config (shared by bubble chart + genus cards) ──
+_PROP_DISPLAY_ORDER = [
+    'Antibiotic Resistance',
+    'Virulence Factor',
+    'Drug Target',
+    'Transporter',
+]
+_PROP_LABELS = {
+    'Antibiotic Resistance': 'AMR',
+    'Virulence Factor':      'Virulence',
+    'Drug Target':           'Drug Target',
+    'Transporter':           'Transporter',
+}
+_PROP_MPL_COLORS = {
+    'Antibiotic Resistance': '#C62828',
+    'Virulence Factor':      '#E65100',
+    'Drug Target':           '#1565C0',
+    'Transporter':           '#2E7D32',
+}
+_PROP_RL_BADGE = {
+    'Antibiotic Resistance': '#C62828',
+    'Virulence Factor':      '#E65100',
+    'Drug Target':           '#1565C0',
+    'Transporter':           '#2E7D32',
+}
+_PROP_RL_ROW_BG = {
+    'Antibiotic Resistance': '#FFEBEE',
+    'Virulence Factor':      '#FFF3E0',
+    'Drug Target':           '#E3F2FD',
+    'Transporter':           '#E8F5E9',
+}
+
+
+def create_annotation_bubble_chart(species_groups, available_width, min_pident=0.0):
+    """
+    Bubble chart: Y = detected genus, X = property category, size ∝ unique gene count.
+
+    Grouping fix: uses ``_organism_name`` (the genus detected in this sample)
+    rather than the annotation's ``genus`` field (the reference-database source
+    organism), so cross-genus reference matches are attributed correctly.
+
+    Sizing fix: bubble radius is capped at a fixed maximum (28 pt) so the chart
+    does not over-zoom when only one or two genera are present.
+    """
+    rows = _collect_protein_annotations(species_groups)
+    if min_pident > 0:
+        rows = _filter_annot_rows_by_pident(rows, min_pident)
+    if not rows:
+        return None
+
+    # ── Collect (detected_genus, property) → gene set ───────────────────────
+    # Group at the genus (toplevel) level so species/strain sub-rows don't
+    # create separate duplicate entries.  Priority: _toplevel_name (always the
+    # genus detected in the sample) > _organism_name > annotation genus field.
+    buckets = {}
+    for r in rows:
+        genus = (
+            str(r.get('_toplevel_name') or r.get('_organism_name') or
+                r.get('genus', '') or '').strip()
+        )
+        prop  = str(r.get('property', '') or '').strip()
+        gene  = str(r.get('gene_name', '') or r.get('sseqid', '') or '').strip()
+        if not genus or not prop:
+            continue
+        buckets.setdefault((genus, prop), set()).add(gene or '—')
+
+    if not buckets:
+        return None
+
+    # ── Axes ────────────────────────────────────────────────────────────────
+    genus_totals = {}
+    for (genus, prop), genes in buckets.items():
+        genus_totals[genus] = genus_totals.get(genus, 0) + len(genes)
+    genera = sorted(genus_totals.keys(), key=lambda g: -genus_totals[g])
+
+    props_present = {k[1] for k in buckets}
+    properties = [p for p in _PROP_DISPLAY_ORDER if p in props_present]
+    for p in sorted(props_present):
+        if p not in properties:
+            properties.append(p)
+
+    n_genera = len(genera)
+    n_props  = len(properties)
+    gen_idx  = {g: i for i, g in enumerate(genera)}
+    prop_idx = {p: i for i, p in enumerate(properties)}
+
+    # ── Figure geometry ─────────────────────────────────────────────────────
+    # Use a fixed cell size so the chart doesn't balloon when there are few
+    # genera or properties.
+    CELL_W_IN  = 1.6   # inches per column — constant regardless of page width
+    CELL_H_IN  = 1.05  # inches per row (room for bubble + gene annotation text)
+    LEFT_PAD   = 1.4   # inches for y-axis labels
+    RIGHT_PAD  = 0.3
+    TOP_PAD    = 0.7
+    BOT_PAD    = 0.6
+
+    fig_w = min(available_width / 72,
+                n_props * CELL_W_IN + LEFT_PAD + RIGHT_PAD)
+    fig_h = n_genera * CELL_H_IN + TOP_PAD + BOT_PAD
+    fig_h = max(2.8, min(fig_h, (11 * 72 - 4 * 0.5 * 72) / 72))  # cap at page
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    ax.set_xlim(-0.6, n_props - 0.4)
+    ax.set_ylim(-0.6, n_genera - 0.4)
+    ax.set_facecolor('#FAFAFA')
+    fig.patch.set_facecolor('white')
+
+    for xi in range(n_props):
+        ax.axvline(xi, color='#E0E0E0', linewidth=0.5, zorder=0)
+    for yi in range(n_genera):
+        ax.axhline(yi, color='#E0E0E0', linewidth=0.5, zorder=0)
+
+    # ── Bubble sizing — hard cap prevents over-zoom with few data points ─────
+    MAX_RADIUS_PT = 28.0          # absolute cap in matplotlib scatter points
+    MIN_RADIUS_PT = 9.0
+    max_count = max(len(v) for v in buckets.values())
+
+    for (genus, prop), genes in buckets.items():
+        xi = prop_idx[prop]
+        yi = gen_idx[genus]
+        count = len(genes)
+        radius = MIN_RADIUS_PT + (MAX_RADIUS_PT - MIN_RADIUS_PT) * (count / max_count)
+        area   = np.pi * radius ** 2
+        color  = _PROP_MPL_COLORS.get(prop, '#9E9E9E')
+
+        ax.scatter(xi, yi, s=area, color=color, alpha=0.85, zorder=3,
+                   edgecolors='white', linewidths=0.9)
+
+        # Count inside bubble — scale font with bubble size
+        fs = max(6.5, min(10.0, 6.0 + 3.5 * (count / max_count)))
+        ax.text(xi, yi, str(count), ha='center', va='center',
+                fontsize=fs, color='white', fontweight='bold', zorder=4)
+
+        # Gene names below bubble (up to 3 + "+N more")
+        sorted_genes = sorted(g for g in genes if g and g != '—')
+        if sorted_genes:
+            shown = sorted_genes[:3]
+            rest  = len(sorted_genes) - 3
+            label = ', '.join(shown)
+            if rest > 0:
+                label += f'\n+{rest} more'
+            ax.text(xi, yi - 0.40, label, ha='center', va='top',
+                    fontsize=5.0, color='#424242', zorder=4,
+                    linespacing=1.3, style='italic')
+
+    # ── Axes formatting ─────────────────────────────────────────────────────
+    ax.set_xticks(range(n_props))
+    ax.set_xticklabels(
+        [_PROP_LABELS.get(p, p) for p in properties],
+        fontsize=8.5, fontweight='bold',
+    )
+    ax.set_yticks(range(n_genera))
+    ax.set_yticklabels(genera, fontsize=8, fontstyle='italic')
+    ax.set_title('Specialty Gene Hits by Genus and Category', fontsize=9, pad=8)
+    ax.tick_params(axis='both', which='both', length=0)
+    for sp in ['top', 'right']:
+        ax.spines[sp].set_visible(False)
+    for sp in ['left', 'bottom']:
+        ax.spines[sp].set_color('#BDBDBD')
+
+    # ── Legend ───────────────────────────────────────────────────────────────
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=_PROP_MPL_COLORS.get(p, '#9E9E9E'),
+              label=_PROP_LABELS.get(p, p), alpha=0.88)
+        for p in properties
+    ]
+    ax.legend(handles=legend_elements, loc='lower right', fontsize=6.5,
+              framealpha=0.92, edgecolor='#BDBDBD',
+              title='Category', title_fontsize=7.0)
+
+    plt.tight_layout(pad=0.5)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+
+    # Scale to page width, cap height at usable page body.
+    # Use available_width - 12 to account for ReportLab's 6pt frame padding
+    # on each side; img_w_pt must not exceed the frame's inner usable width.
+    max_w_pt = available_width - 12
+    img_w_pt = max_w_pt
+    aspect   = fig_h / fig_w
+    img_h_pt = img_w_pt * aspect
+    max_h_pt = (11 * 72) - 4 * 0.5 * 72
+    if img_h_pt > max_h_pt:
+        img_w_pt = img_w_pt * (max_h_pt / img_h_pt)
+        img_h_pt = max_h_pt
+
+    return Image(buf, width=img_w_pt, height=img_h_pt)
+
+
+def create_annotation_genus_cards(species_groups, small_style, available_width, min_pident=0.0):
+    """
+    Genus-card panel table: one coloured header per detected genus, then one
+    row per property category showing ALL gene hits with full classification
+    details (mechanism chain, source database, pident badge).
+
+    Layout per genus
+    ─────────────────────────────────────────────────────────────────────────
+    │ Escherichia  ·  14 hits                                               │
+    ├─────────────────┬─────────────────────────────────────────────────────┤
+    │ AMR / 1 gene    │ cysB  aminocoumarin resistance gene  [CARD 33.7%]   │
+    │ Virulence / 3   │ hlyB  Toxin · Membrane-damaging · RTX  [VFDB]       │
+    │                 │ mppA  [Victors]  ·  Z2207  [Victors]                │
+    │ Drug Tgt / 8    │ fdhF · fdnG · gor  …  +5 more  [DrugBank]           │
+    │ Transporter / 1 │ 3.A.1.5.1  [TCDB]                                   │
+    ─────────────────────────────────────────────────────────────────────────
+
+    Grouping uses ``_organism_name`` (detected sample genus), not the
+    annotation's ``genus`` field (reference-database origin).
+    """
+    rows = _collect_protein_annotations(species_groups)
+    if min_pident > 0:
+        rows = _filter_annot_rows_by_pident(rows, min_pident)
+    if not rows:
+        return None
+
+    # ── Collect (detected_genus, property) → annotation detail list ─────────
+    # Group at genus (toplevel) level — same priority rule as bubble chart.
+    buckets = {}
+    for r in rows:
+        genus = (
+            str(r.get('_toplevel_name') or r.get('_organism_name') or
+                r.get('genus', '') or '').strip()
+        )
+        prop  = str(r.get('property', '') or '').strip()
+        if not genus or not prop:
+            continue
+
+        gene    = str(r.get('gene_name', '') or r.get('sseqid', '') or '').strip() or '—'
+        raw_cl  = str(r.get('classification', '') or '').strip()
+        source  = str(r.get('source', '') or '').strip()
+        abx_cls = str(r.get('antibiotics_class', '') or '').strip()
+        pident  = float(r.get('pident', 0) or 0)
+
+        # Build classification chain — skip trivial/generic entries
+        _skip = {'Drug target', 'None', 'nan', ''}
+        classif_parts = [
+            c.strip() for c in raw_cl.split(';')
+            if c.strip() and c.strip() not in _skip
+        ] if raw_cl else []
+
+        buckets.setdefault((genus, prop), []).append({
+            'gene':        gene,
+            'classif':     classif_parts,
+            'source':      source,
+            'abx_cls':     abx_cls,
+            'pident':      pident,
+        })
+
+    if not buckets:
+        return None
+
+    # ── Genus order: most hits first ────────────────────────────────────────
+    genus_totals = {}
+    for (genus, prop), items in buckets.items():
+        genus_totals[genus] = genus_totals.get(genus, 0) + len(items)
+    genera = sorted(genus_totals.keys(), key=lambda g: -genus_totals[g])
+
+    # ── Paragraph styles ─────────────────────────────────────────────────────
+    genus_hdr_sty = ParagraphStyle(
+        'GCGenusHdr2', parent=small_style, fontSize=8.5, leading=11,
+        fontName='Helvetica-Bold', textColor=colors.whitesmoke)
+    badge_sty = ParagraphStyle(
+        'GCBadge2', parent=small_style, fontSize=6.5, leading=8.5,
+        fontName='Helvetica-Bold', textColor=colors.whitesmoke)
+    gene_sty = ParagraphStyle(
+        'GCGene2', parent=small_style, fontSize=6.2, leading=8.8,
+        textColor=colors.HexColor('#1A1A1A'))
+    spacer_sty = ParagraphStyle(
+        'GCSpacer2', parent=small_style, fontSize=2, leading=3)
+
+    table_rows = []
+    style_cmds = []
+    row_idx = 0
+
+    # Column widths are finalised at table-creation time using eff_w (see below)
+    # so these placeholders are overwritten; initialise to avoid NameError.
+    col_badge = (available_width - 12) * 0.155
+    col_genes = (available_width - 12) * 0.845
+
+    for genus in genera:
+        total = genus_totals[genus]
+
+        # ── Genus header (full-width span) ───────────────────────────────────
+        header_text = (
+            f'<b>{genus}</b>'
+            f'<font size="7" color="#A5D6A7">  ·  '
+            f'{total} specialty gene hit{"s" if total != 1 else ""}'
+            f'</font>'
+        )
+        table_rows.append([Paragraph(header_text, genus_hdr_sty), Paragraph('', genus_hdr_sty)])
+        style_cmds += [
+            ('BACKGROUND',    (0, row_idx), (-1, row_idx), colors.HexColor('#1B5E20')),
+            ('SPAN',          (0, row_idx), (-1, row_idx)),
+            ('TOPPADDING',    (0, row_idx), (-1, row_idx), 5),
+            ('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 5),
+            ('LEFTPADDING',   (0, row_idx), (-1, row_idx), 6),
+            ('RIGHTPADDING',  (0, row_idx), (-1, row_idx), 4),
+        ]
+        row_idx += 1
+
+        # ── Property sub-rows ────────────────────────────────────────────────
+        props_for_genus = [p for p in _PROP_DISPLAY_ORDER if (genus, p) in buckets]
+        for p in sorted(k[1] for k in buckets if k[0] == genus):
+            if p not in _PROP_DISPLAY_ORDER and (genus, p) not in [(g, pp) for g, pp in props_for_genus]:
+                props_for_genus.append(p)
+
+        for prop in props_for_genus:
+            items = buckets.get((genus, prop), [])
+            badge_bg = colors.HexColor(_PROP_RL_BADGE.get(prop, '#616161'))
+            row_bg   = colors.HexColor(_PROP_RL_ROW_BG.get(prop, '#F5F5F5'))
+            short_lbl = _PROP_LABELS.get(prop, prop)
+            n = len(items)
+
+            badge_cell = Paragraph(
+                f'<b>{short_lbl}</b><br/>'
+                f'<font size="5.5">{n} gene{"s" if n != 1 else ""}</font>',
+                badge_sty)
+
+            # ── Build gene detail entries ─────────────────────────────────────
+            # Sort by gene name; show up to 10, then "+N more"
+            sorted_items = sorted(items, key=lambda x: x['gene'].lower())
+            MAX_SHOWN = 10
+            shown = sorted_items[:MAX_SHOWN]
+            rest  = len(sorted_items) - MAX_SHOWN
+
+            # Collect unique sources for a summary badge at the end
+            all_sources = sorted({it['source'] for it in sorted_items if it['source']})
+
+            entry_parts = []
+            for it in shown:
+                gene   = it['gene']
+                cl     = it['classif']
+                abx    = it['abx_cls']
+                pid    = it['pident']
+                src    = it['source']
+
+                # Gene name (bold)
+                s = f'<b>{gene}</b>'
+
+                # Classification chain (italic, muted) — e.g. "Toxin · Pore-forming · RTX toxin"
+                if cl:
+                    cl_str = ' · '.join(cl[:4])  # cap at 4 segments to stay readable
+                    s += f' <font size="5.5" color="#5D4037"><i>{cl_str}</i></font>'
+
+                # Antibiotic class for AMR rows
+                if abx and prop == 'Antibiotic Resistance':
+                    s += f' <font size="5.2" color="#880000">[{abx}]</font>'
+
+                # Source DB + pident
+                pid_str = f' {pid:.0f}%' if pid > 0 else ''
+                if src:
+                    s += f' <font size="5.2" color="#757575">[{src}{pid_str}]</font>'
+
+                entry_parts.append(s)
+
+            if rest > 0:
+                entry_parts.append(
+                    f'<font color="#757575" size="5.5"><i>+{rest} more</i></font>')
+
+            # Source summary at end of row (deduplicated list)
+            gene_cell = Paragraph('  ·  '.join(entry_parts), gene_sty)
+
+            table_rows.append([badge_cell, gene_cell])
+            style_cmds += [
+                ('BACKGROUND',    (0, row_idx), (0, row_idx), badge_bg),
+                ('BACKGROUND',    (1, row_idx), (1, row_idx), row_bg),
+                ('TOPPADDING',    (0, row_idx), (-1, row_idx), 4),
+                ('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 4),
+                ('LEFTPADDING',   (0, row_idx), (0, row_idx), 5),
+                ('LEFTPADDING',   (1, row_idx), (1, row_idx), 6),
+                ('RIGHTPADDING',  (0, row_idx), (-1, row_idx), 4),
+                ('VALIGN',        (0, row_idx), (-1, row_idx), 'TOP'),
+            ]
+            row_idx += 1
+
+        # Thin spacer between genera
+        table_rows.append([Paragraph('', spacer_sty), Paragraph('', spacer_sty)])
+        style_cmds += [
+            ('BACKGROUND',    (0, row_idx), (-1, row_idx), colors.white),
+            ('TOPPADDING',    (0, row_idx), (-1, row_idx), 2),
+            ('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 2),
+        ]
+        row_idx += 1
+
+    if not table_rows:
+        return None
+
+    # Use available_width - 12 to stay within the frame's inner usable width
+    # (ReportLab frames have 6pt padding on each side by default).
+    eff_w     = available_width - 12
+    col_badge = eff_w * 0.155
+    col_genes = eff_w * 0.845
+
+    tbl = Table(table_rows, colWidths=[col_badge, col_genes])
+    style_cmds += [
+        ('GRID',   (0, 0), (-1, -1), 0.3, colors.Color(0.82, 0.82, 0.82)),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]
+    tbl.setStyle(TableStyle(style_cmds))
+    return tbl
+
+
+def create_protein_annotation_xlsx(output_path, samples_dict, args):
+    """
+    Write a multi-sheet Excel workbook with protein annotation data.
+
+    Sheets
+    ------
+    1. Genus Summary     — one row per (sample, genus, property); gene list, # hits,
+                           best pident, avg e-value, median e-value.
+    2. Per-Gene Hits     — one row per raw annotation hit (flat, same fields as JSON).
+    3. Sample Overview   — one row per detected organism with TASS score, reads, category.
+    4. AMR Genes         — filtered view: Antibiotic Resistance rows only, with
+                           antibiotics_class and antibiotics columns.
+    """
+    import statistics
+    try:
+        import openpyxl
+        from openpyxl.styles import (Font, PatternFill, Alignment,
+                                      Border, Side, numbers)
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        print("WARNING: openpyxl not installed — skipping annotation XLSX output.")
+        return
+
+    wb = openpyxl.Workbook()
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+    HDR_FILL   = PatternFill("solid", fgColor="2E7D32")
+    HDR_FONT   = Font(bold=True, color="FFFFFF", size=10)
+    ALT_FILL   = PatternFill("solid", fgColor="EDF7EE")
+    AMR_FILL   = PatternFill("solid", fgColor="FFF3E0")
+    AMR_HDR    = PatternFill("solid", fgColor="BF360C")
+    THIN       = Border(
+        left=Side(style='thin', color='BDBDBD'),
+        right=Side(style='thin', color='BDBDBD'),
+        top=Side(style='thin', color='BDBDBD'),
+        bottom=Side(style='thin', color='BDBDBD'),
+    )
+    CENTER = Alignment(horizontal='center', vertical='top', wrap_text=True)
+    LEFT   = Alignment(horizontal='left',   vertical='top', wrap_text=True)
+
+    def _write_header(ws, headers, fill=HDR_FILL):
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font     = HDR_FONT
+            cell.fill     = fill
+            cell.alignment = CENTER
+            cell.border   = THIN
+
+    def _autofit(ws, min_w=8, max_w=50):
+        for col_cells in ws.columns:
+            length = max(
+                (len(str(c.value or '')) for c in col_cells),
+                default=min_w
+            )
+            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = (
+                min(max_w, max(min_w, length + 2))
+            )
+
+    def _style_rows(ws, start=2, alt_fill=ALT_FILL):
+        for i, row in enumerate(ws.iter_rows(min_row=start), start=start):
+            for cell in row:
+                cell.border    = THIN
+                cell.alignment = LEFT
+                if i % 2 == 0:
+                    cell.fill = alt_fill
+
+    def _safe_float(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    all_raw_rows  = []   # for Sheet 2 (per-gene) and Sheet 4 (AMR filter)
+    genus_buckets = {}   # (sample, genus, property) -> {genes, evalues, pidents}
+
+    for sample_name, species_groups in sorted(samples_dict.items()):
+        rows = _collect_protein_annotations(species_groups)
+        for r in rows:
+            genus  = str(r.get('_toplevel_name') or r.get('genus', '') or '').strip()
+            prop   = str(r.get('property', '') or '').strip()
+            gene   = str(r.get('gene_name', '') or r.get('sseqid', '') or '').strip()
+            ev     = _safe_float(r.get('evalue'))
+            pid    = _safe_float(r.get('pident'))
+            bs     = _safe_float(r.get('bitscore'))
+
+            all_raw_rows.append({
+                'sample':            sample_name,
+                'genus':             genus,
+                'species':           str(r.get('species', '') or ''),
+                'gene_name':         gene,
+                'product':           str(r.get('product', '') or ''),
+                'property':          prop,
+                'classification':    str(r.get('classification', '') or ''),
+                'antibiotics_class': str(r.get('antibiotics_class', '') or ''),
+                'antibiotics':       str(r.get('antibiotics', '') or ''),
+                'source':            str(r.get('source', '') or ''),
+                'source_id':         str(r.get('source_id', '') or ''),
+                'pident':            pid,
+                'evalue':            ev,
+                'bitscore':          bs,
+                'organism':          str(r.get('organism', '') or ''),
+                'level':             str(r.get('level', '') or ''),
+            })
+
+            if genus and prop:
+                key = (sample_name, genus, prop)
+                if key not in genus_buckets:
+                    genus_buckets[key] = {'genes': set(), 'evalues': [], 'pidents': []}
+                if gene:
+                    genus_buckets[key]['genes'].add(gene)
+                if ev is not None:
+                    genus_buckets[key]['evalues'].append(ev)
+                if pid is not None:
+                    genus_buckets[key]['pidents'].append(pid)
+
+    # ── Sheet 1: Genus Summary ────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = 'Genus Summary'
+    _write_header(ws1, [
+        'Sample', 'Genus', 'Property', 'Genes', '# Hits',
+        'Best %id', 'Avg %id', 'Avg E-value', 'Median E-value',
+    ])
+    for (sample, genus, prop), b in sorted(genus_buckets.items()):
+        genes_str = ', '.join(sorted(b['genes']))
+        n         = len(b['evalues']) or len(b['genes'])
+        best_pid  = max(b['pidents']) if b['pidents'] else None
+        avg_pid   = statistics.mean(b['pidents']) if b['pidents'] else None
+        avg_ev    = statistics.mean(b['evalues']) if b['evalues'] else None
+        med_ev    = statistics.median(b['evalues']) if b['evalues'] else None
+        ws1.append([sample, genus, prop, genes_str, n,
+                    round(best_pid, 2) if best_pid is not None else '',
+                    round(avg_pid, 2)  if avg_pid  is not None else '',
+                    avg_ev, med_ev])
+    _style_rows(ws1)
+    _autofit(ws1)
+
+    # ── Sheet 2: Per-Gene Hits ────────────────────────────────────────────────
+    ws2 = wb.create_sheet('Per-Gene Hits')
+    _write_header(ws2, [
+        'Sample', 'Genus', 'Species', 'Gene', 'Product', 'Property',
+        'Classification', 'Antibiotics Class', 'Antibiotics',
+        'Source', 'Source ID', '%id', 'E-value', 'Bitscore',
+        'Reference Organism', 'Level',
+    ])
+    for r in all_raw_rows:
+        ws2.append([
+            r['sample'], r['genus'], r['species'], r['gene_name'],
+            r['product'], r['property'], r['classification'],
+            r['antibiotics_class'], r['antibiotics'],
+            r['source'], r['source_id'],
+            r['pident'], r['evalue'], r['bitscore'],
+            r['organism'], r['level'],
+        ])
+    _style_rows(ws2)
+    _autofit(ws2)
+
+    # ── Sheet 3: Sample Overview ──────────────────────────────────────────────
+    ws3 = wb.create_sheet('Sample Overview')
+    _write_header(ws3, [
+        'Sample', 'Sample Type', 'Genus', 'Species/Subkey',
+        'Microbial Category', 'Ann Class', 'High Consequence',
+        'TASS Score', 'Reads', 'Coverage', 'RPM', 'RPKM',
+        'Minhash Score', 'Gini', 'Passes Threshold',
+    ])
+    _mc_map = getattr(args, '_sample_min_conf', {})
+    for sample_name, species_groups in sorted(samples_dict.items()):
+        _mc = _mc_map.get(sample_name, _DEFAULT_CONF)
+        for sg in species_groups:
+            stype = sg.get('sampletype', '')
+            for sk_m in sg.get('members', []):
+                passes = 'TRUE' if passes_confidence_threshold(sk_m, _mc) else 'FALSE'
+                ws3.append([
+                    sample_name,
+                    stype,
+                    sg.get('toplevelname', sg.get('name', '')),
+                    sk_m.get('subkeyname', sk_m.get('name', '')),
+                    sk_m.get('microbial_category', ''),
+                    sk_m.get('annClass', ''),
+                    'TRUE' if sk_m.get('high_cons', False) else 'FALSE',
+                    round(float(sk_m.get('tass_score', 0) or 0), 4),
+                    int(sk_m.get('numreads', 0) or 0),
+                    round(float(sk_m.get('coverage', 0) or 0), 4),
+                    round(float(sk_m.get('rpm', 0) or 0), 2),
+                    round(float(sk_m.get('rpkm', 0) or 0), 4),
+                    round(float(sk_m.get('minhash_score', 0) or 0), 4),
+                    round(float(sk_m.get('gini_coefficient', 0) or 0), 4),
+                    passes,
+                ])
+    _style_rows(ws3)
+    _autofit(ws3)
+
+    # ── Sheet 4: AMR Genes ────────────────────────────────────────────────────
+    ws4 = wb.create_sheet('AMR Genes')
+    _write_header(ws4, [
+        'Sample', 'Genus', 'Species', 'Gene', 'Product',
+        'Antibiotics Class', 'Antibiotics', 'Classification',
+        'Source', 'Source ID', '%id', 'E-value', 'Bitscore',
+    ], fill=AMR_HDR)
+    amr_rows = [r for r in all_raw_rows if 'resist' in r['property'].lower() or
+                'amr' in r['property'].lower() or
+                r['antibiotics_class'] or r['antibiotics']]
+    for r in amr_rows:
+        ws4.append([
+            r['sample'], r['genus'], r['species'], r['gene_name'],
+            r['product'], r['antibiotics_class'], r['antibiotics'],
+            r['classification'], r['source'], r['source_id'],
+            r['pident'], r['evalue'], r['bitscore'],
+        ])
+    _style_rows(ws4, alt_fill=AMR_FILL)
+    _autofit(ws4)
+
+    wb.save(output_path)
+    print(f"Annotation XLSX written: {output_path}  "
+          f"({len(all_raw_rows)} gene hits, {len(genus_buckets)} genus-property buckets)")
+
+
 def create_pdf_template(output_path, samples_dict, args):
     """
     Create the full PDF report.
@@ -3646,6 +4601,59 @@ def create_pdf_template(output_path, samples_dict, args):
                             '; '.join(_so_parts) + '.',
                             _so_cell_style))
 
+            # ── Protein Annotation Hits (below main tables) ───────────────────
+            _annot_min_pident = getattr(args, 'annot_min_pident', 90.0)
+            _annot_hdr_style = ParagraphStyle(
+                'AnnotHdr', parent=small_style,
+                fontSize=9, leading=11, fontName='Helvetica-Bold',
+                textColor=colors.HexColor('#2E7D32'))
+            _annot_note_style = ParagraphStyle(
+                'AnnotNote', parent=small_style,
+                fontSize=6.5, leading=9,
+                textColor=colors.Color(0.4, 0.4, 0.4))
+
+            # ── Bubble chart: genus × category overview ───────────────────
+            # _bubble_img = create_annotation_bubble_chart(
+                # species_groups, available_width, min_pident=_annot_min_pident)
+            # if _bubble_img:
+            #     story.append(Spacer(1, 0.12 * inch))
+            #     _annot_bm = f"annot_{sanitize_bookmark_name(sample_name)}"
+            #     story.append(AnchorFlowable(_annot_bm))
+            #     story.append(Paragraph(
+            #         'Specialty Gene Hits (DIAMOND BLASTx)',
+            #         _annot_hdr_style))
+            #     story.append(Spacer(1, 0.03 * inch))
+            #     story.append(Paragraph(
+            #         'Protein-level specialty gene matches from de novo assembly '
+            #         'DIAMOND BLASTx, grouped by detected genus and annotation '
+            #         'category.  Bubble size reflects the number of distinct gene '
+            #         'hits in each (genus, category) group; representative gene '
+            #         f'names are shown beneath each bubble '
+            #         f'(pident ≥ {_annot_min_pident:.0f}%).',
+            #         _annot_note_style))
+            #     story.append(Spacer(1, 0.06 * inch))
+            #     story.append(_bubble_img)
+
+            # ── Genus-card detail table ───────────────────────────────
+            _genus_cards = create_annotation_genus_cards(
+                species_groups, small_style, available_width,
+                min_pident=_annot_min_pident)
+            if _genus_cards:
+                story.append(Spacer(1, 0.10 * inch))
+                story.append(Paragraph(
+                    'Specialty Gene Detail by Genus',
+                    _annot_hdr_style))
+                story.append(Spacer(1, 0.03 * inch))
+                story.append(Paragraph(
+                    'Each genus block lists detected specialty genes grouped '
+                    'by category (AMR, Virulence, Drug Target, Transporter). '
+                    'Classification or mechanism is shown in parentheses where '
+                    'available.  Genes are sorted alphabetically; entries beyond '
+                    'the first 8 per category are summarised as "+N more".',
+                    _annot_note_style))
+                story.append(Spacer(1, 0.06 * inch))
+                story.append(_genus_cards)
+
         else:
             story.append(Paragraph(
                 "<i>No data available for this sample above confidence threshold</i>",
@@ -3803,7 +4811,9 @@ def create_pdf_template(output_path, samples_dict, args):
 def create_tabular_output(output_path, samples_dict, args):
     """
     Create a tabular output file (CSV/TSV/TXT/XLSX) with strain-level data.
-    Includes ALL strains (not filtered). A 'Subkey' column is included.
+    Includes ALL strains (not filtered).  Enriched with:
+      • Taxonomy ranks: Superkingdom, Phylum, Class, Order, Family, Genus
+      • Coverage depth: Covered Bases, Genome Length (bp), Breadth %, Mean Depth
     """
     file_ext = os.path.splitext(output_path)[1].lower()
 
@@ -3812,12 +4822,17 @@ def create_tabular_output(output_path, samples_dict, args):
         '% Reads', '# Reads Aligned', '% Aligned Reads', 'Coverage',
         'HHS Percentile', 'IsAnnotated', 'AnnClass', 'Microbial Category',
         'High Consequence', 'Taxonomic ID #', 'Status', 'Gini Coefficient',
-        'Mean BaseQ', 'Mean MapQ', 'Mean Depth', 'isSpecies',
+        'Mean BaseQ', 'Mean MapQ', 'Mean Depth',
+        # ── new depth/breadth columns ──
+        'Covered Bases', 'Genome Length (bp)', 'Breadth %',
+        'isSpecies',
         'Pathogenic Subsp/Strains', 'K2 Reads', 'RPKM', 'RPM',
         'Parent K2 Reads', 'MapQ Score', 'Disparity Score', 'Minhash Score',
         'Diamond Identity', 'K2 Disparity Score', 'Siblings score',
         'Breadth Weight Score', 'TASS Score', 'MicrobeRT Probability',
         'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey',
+        # ── new taxonomy rank columns ──
+        'Superkingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus',
         'Flora Sites', 'Passes Threshold'
     ]
 
@@ -3866,8 +4881,23 @@ def create_tabular_output(output_path, samples_dict, args):
                     _flora_sites_str = ', '.join(sorted(set(_sites_flat))) if _sites_flat else ''
                 else:
                     _flora_sites_str = ''
-                # ── Passes Threshold: does this strain meet the sample's TASS cutoff ──
+                # ── Passes Threshold ──
                 _passes_thresh = 'TRUE' if passes_confidence_threshold(strain, _mc) else 'FALSE'
+
+                # ── Breadth / depth fields ──
+                _covered_bases = int(strain.get('covered_bases', 0) or 0)
+                _genome_len    = int(strain.get('length', 0) or 0)
+                _breadth_pct   = round(_covered_bases / _genome_len * 100, 2) if _genome_len > 0 else 0.0
+                _meandepth     = round(float(strain.get('meandepth', 0) or 0), 2)
+
+                # ── Taxonomy lineage (stored by match_paths; fallback to empty) ──
+                _tax = strain.get('taxonomy', sg.get('taxonomy', {}))
+                _superkingdom = _tax.get('superkingdom', '')
+                _phylum       = _tax.get('phylum', '')
+                _class        = _tax.get('class', '')
+                _order        = _tax.get('order', '')
+                _family       = _tax.get('family', '')
+                _genus        = _tax.get('genus', sg.get('toplevelname', ''))
 
                 all_rows.append([
                     global_index, local_idx,
@@ -3883,7 +4913,9 @@ def create_tabular_output(output_path, samples_dict, args):
                     f"{(strain.get('gini_coefficient', 0) or 0):.2f}",
                     f"{(strain.get('meanbaseq', 0) or 0):.2f}",
                     f"{(strain.get('meanmapq', 0) or 0):.2f}",
-                    f"{(strain.get('meandepth', 0) or 0):.1f}",
+                    f"{_meandepth:.1f}",
+                    # depth / breadth
+                    _covered_bases, _genome_len, _breadth_pct,
                     'True' if strain.get('isSpecies', False) else 'False',
                     '',
                     int(strain.get('k2_reads', 0) or 0),
@@ -3903,6 +4935,8 @@ def create_tabular_output(output_path, samples_dict, args):
                     int(strain_reads),
                     group_key,
                     strain.get('subkey', strain.get('key', '')),
+                    # taxonomy ranks
+                    _superkingdom, _phylum, _class, _order, _family, _genus,
                     _flora_sites_str,
                     _passes_thresh,
                 ])
@@ -3917,8 +4951,58 @@ def create_tabular_output(output_path, samples_dict, args):
         df.to_csv(output_path, sep='\t', index=False)
         print(f"TSV output created: {output_path}")
     elif file_ext in ['.xlsx', '.xls']:
-        df.to_excel(output_path, index=False, engine='openpyxl')
-        print(f"Excel output created: {output_path}")
+        # Build contig-detail rows for a dedicated sheet
+        _contig_rows = []
+        for _s_name, _s_data in samples_dict.items():
+            for _grp in _s_data.get("organisms", []):
+                for _sk_m in _grp.get("members", []):
+                    for _strain in _sk_m.get("members", []):
+                        _org_name = _strain.get("name", "Unknown")
+                        _tax_key  = str(_strain.get("key", ""))
+                        for _ctg in _strain.get("contigs", []):
+                            _contig_rows.append({
+                                "Sample":          _s_name,
+                                "Organism":        _org_name,
+                                "Taxon ID":        _tax_key,
+                                "Contig":          _ctg.get("name", ""),
+                                "Length (bp)":     _ctg.get("length", 0),
+                                "Reads Aligned":   _ctg.get("reads", 0),
+                                "Mean Depth":      _ctg.get("mean_depth", 0),
+                                "Covered Bases":   _ctg.get("covered_bases", 0),
+                                "Coverage %":      round(_ctg.get("coverage", 0) * 100, 2),
+                            })
+        df_contigs = pd.DataFrame(_contig_rows) if _contig_rows else pd.DataFrame(
+            columns=["Sample","Organism","Taxon ID","Contig",
+                     "Length (bp)","Reads Aligned","Mean Depth","Covered Bases","Coverage %"])
+
+        # Depth histogram rows
+        _hist_rows = []
+        for _s_name, _s_data in samples_dict.items():
+            for _grp in _s_data.get("organisms", []):
+                for _sk_m in _grp.get("members", []):
+                    for _strain in _sk_m.get("members", []):
+                        _dhist = _strain.get("depth_histogram")
+                        if not _dhist:
+                            continue
+                        _hist_rows.append({
+                            "Sample":    _s_name,
+                            "Organism":  _strain.get("name", "Unknown"),
+                            "Taxon ID":  str(_strain.get("key", "")),
+                            "0x bases":       _dhist.get("0x", 0),
+                            "1-5x bases":     _dhist.get("1-5x", 0),
+                            "5-10x bases":    _dhist.get("5-10x", 0),
+                            "10-50x bases":   _dhist.get("10-50x", 0),
+                            ">50x bases":     _dhist.get(">50x", 0),
+                        })
+        df_hist = pd.DataFrame(_hist_rows) if _hist_rows else pd.DataFrame(
+            columns=["Sample","Organism","Taxon ID",
+                     "0x bases","1-5x bases","5-10x bases","10-50x bases",">50x bases"])
+
+        with pd.ExcelWriter(output_path, engine='openpyxl') as _writer:
+            df.to_excel(_writer, sheet_name="Organisms", index=False)
+            df_contigs.to_excel(_writer, sheet_name="Contig Details", index=False)
+            df_hist.to_excel(_writer, sheet_name="Depth Histograms", index=False)
+        print(f"Excel output created (3 sheets): {output_path}")
     else:
         df.to_csv(output_path, sep='\t', index=False)
         print(f"TSV output created (default): {output_path}")
@@ -4017,6 +5101,11 @@ def parse_args():
         "-u", "--output_txt", metavar="OUTPUT_TXT", required=False, type=str,
         help="Path of tabular output file. Format determined by extension: .csv, .tsv, .txt (TSV), or .xlsx",
     )
+    parser.add_argument(
+        "--output_annot_xlsx", metavar="OUTPUT_ANNOT_XLSX", required=False, type=str,
+        help="Path for the protein annotation Excel workbook (.xlsx). "
+             "Writes four sheets: Genus Summary, Per-Gene Hits, Sample Overview, AMR Genes.",
+    )
     # ── subkey grouping control ──────────────────────────────────────────
     parser.add_argument(
         "--no_subkey",
@@ -4063,6 +5152,24 @@ def parse_args():
              "control but absent from the sample are shown as faded rows.",
     )
 
+    parser.add_argument(
+        "--annotate_report",
+        default=None,
+        type=str,
+        help="Annotation report TSV (from annotate_report.py) for rendering a "
+             "protein annotation summary table below the main organism tables. "
+             "If not provided, annotation data embedded in the JSON "
+             "(protein_annotations fields from match_paths.py) is used instead.",
+    )
+    parser.add_argument(
+        "--annot_min_pident",
+        default=50.0,
+        type=float,
+        metavar="PIDENT",
+        help="Minimum %% identity threshold for the protein annotation plots. "
+             "Annotations with pident below this value are excluded. Default: 96.0.",
+    )
+
     return parser.parse_args()
 
 
@@ -4086,6 +5193,47 @@ def main():
 
     sample_data, input_metadata = load_json_samples(args.input)
     print(f"Loaded {len(sample_data)} species groups from JSON file(s)")
+
+    # ── Inject protein annotations from standalone TSV if provided ────────
+    # This is a fallback for when match_paths.py didn't embed annotations.
+    if args.annotate_report and os.path.exists(args.annotate_report):
+        print(f"Loading standalone annotation report: {args.annotate_report}")
+        if args.annotate_report.endswith('.xlsx') or args.annotate_report.endswith('.xls'):
+            _annot_df = pd.read_excel(args.annotate_report, dtype=str)
+        else:
+            _annot_df = pd.read_csv(args.annotate_report, sep='\t', dtype=str)
+        _annot_df.columns = _annot_df.columns.str.strip()
+        _annot_by_species = {}
+        _annot_cols = [
+            'sseqid', 'pident', 'evalue', 'bitscore', 'source_id',
+            'gene_name', 'product', 'classification', 'antibiotics_class',
+            'antibiotics', 'organism', 'genus', 'species', 'property',
+            'source', 'level', 'host_name',
+        ]
+        _available_cols = [c for c in _annot_cols if c in _annot_df.columns]
+        for _, row in _annot_df.iterrows():
+            sp_taxid = str(row.get('species_taxid', '')).strip()
+            if sp_taxid and sp_taxid != 'nan':
+                entry = {c: row.get(c, '') for c in _available_cols}
+                _annot_by_species.setdefault(sp_taxid, []).append(entry)
+
+        _injected = 0
+        for sg in sample_data:
+            for sk_m in sg.get('members', []):
+                if sk_m.get('protein_annotations'):
+                    continue  # already has data from match_paths
+                sk = str(sk_m.get('subkey', sk_m.get('key', '')))
+                if sk in _annot_by_species:
+                    _seen = set()
+                    _unique = []
+                    for a in _annot_by_species[sk]:
+                        gn = a.get('gene_name', '')
+                        if gn not in _seen:
+                            _seen.add(gn)
+                            _unique.append(a)
+                    sk_m['protein_annotations'] = _unique
+                    _injected += 1
+        print(f"Injected protein annotations into {_injected} species groups from TSV")
 
     # Build per-sample metadata lookup from all input files
     # Key by sample_name from metadata; later accessible via args._input_metadata
@@ -4127,6 +5275,8 @@ def main():
     print(f"  Output PDF: {args.output}")
     if args.output_txt:
         print(f"  Output TXT: {args.output_txt}")
+    if getattr(args, 'output_annot_xlsx', None):
+        print(f"  Output Annotation XLSX: {args.output_annot_xlsx}")
     print(f"  Min Confidence: {args.min_conf if args.min_conf is not None else 'auto (per-sample)'}")
     print(f"  Show Potentials: {args.show_potentials}")
     print(f"  Show Unidentified: {args.show_unidentified}")
@@ -4138,6 +5288,9 @@ def main():
 
     if args.output_txt:
         create_tabular_output(args.output_txt, samples_dict, args)
+
+    if getattr(args, 'output_annot_xlsx', None):
+        create_protein_annotation_xlsx(args.output_annot_xlsx, samples_dict, args)
 
     return taxdump_dict, names_map, merged_tax_data, sample_data
 

@@ -204,22 +204,21 @@ workflow REPORT {
                 }
 
                 // Return: alignment tuple + neg_json, pos_json, insilico_jsons (list)
-                def aln_tuple = items[0..11]
+                def aln_tuple = items[0..12]
                 return aln_tuple + [neg_json, pos_json, insilico_jsons]
             }
 
             // Split the resolved channel into the process inputs
-            noncontrol_aln_input = noncontrol_tuple.map { it[0..11] }
-            noncontrol_neg_json = noncontrol_tuple.map { it[12] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
-            noncontrol_pos_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_pos_ctrl") }
+            noncontrol_aln_input = noncontrol_tuple.map { it[0..12] }
+            noncontrol_neg_json = noncontrol_tuple.map { it[13] ?: file("$projectDir/assets/NO_FILE_neg_ctrl") }
+            noncontrol_pos_json = noncontrol_tuple.map { it[14] ?: file("$projectDir/assets/NO_FILE_pos_ctrl") }
             noncontrol_insilico_json = noncontrol_tuple.map {
-                def jsons = it[14]
+                def jsons = it[15]
                 if (jsons instanceof List && jsons.size() > 0) {
                     return jsons
                 }
                 return file("$projectDir/assets/NO_FILE_insilico_ctrl")
             }
-
             ALIGNMENT_PER_SAMPLE(
                 noncontrol_aln_input,
                 assemblyfile,
@@ -253,9 +252,22 @@ workflow REPORT {
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)
 
+            // ── Collect all per-sample JSON files for the comparison report ───────
+            // Use only non-control samples to avoid skewing the multi-run heatmap
+            ch_comparison_jsons = ALIGNMENT_PER_SAMPLE.out.txt
+                .map { meta, json -> json }
+                .collect()
+
+            // ── Protein annotation XLSX files (only from --annotate_proteins /
+            //    --annotate_meta; not from use_diamond or get_features) ──────────
+            ch_prot_annotations = ORGANISM_MERGE_REPORT.out.annot_xlsx
+                .collect()
+                .ifEmpty { file("$projectDir/assets/NO_FILE_prot") }
+
             CREATE_COMPARISON_REPORT(
-                ORGANISM_MERGE_REPORT.out.report,
-                ch_template
+                ch_comparison_jsons,
+                ch_template,
+                ch_prot_annotations
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
