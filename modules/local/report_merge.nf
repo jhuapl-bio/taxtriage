@@ -31,19 +31,19 @@ process ORGANISM_MERGE_REPORT {
 
     output:
         path "versions.yml"           , emit: versions
-        path("*organisms.report.txt")    , optional: true, emit: report
-        path("*organisms.report.pdf")    , optional: false, emit: pdf
-        path("*protein_annotations.xlsx") , optional: true, emit: annot_xlsx
+        path("*odr.txt")    , optional: true, emit: report
+        path("*odr.pdf")    , optional: false, emit: pdf
+        path("*.odr.xlsx")              , optional: true, emit: annot_xlsx
 
     when:
     task.ext.when == null || task.ext.when
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
 
-    def output_txt = "${meta.id}.organisms.report.txt"
-    def output_pdf = "${meta.id}.organisms.report.pdf"
+    def output_txt = "${meta.id}.odr.txt"
+    def output_pdf = "${meta.id}.odr.pdf"
 
-    def output_annot_xlsx = "${meta.id}.protein_annotations.xlsx"
+    def output_annot_xlsx = "${meta.id}.odr.xlsx"
     def distribution_arg = distributions.name != "NO_FILE" ? " -d $distributions " : ""
     distribution_arg = ""
     def min_conf = params.min_conf || params.min_conf == 0 ? " -c $params.min_conf " : ""

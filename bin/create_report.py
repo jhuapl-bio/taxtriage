@@ -3857,50 +3857,14 @@ def create_protein_annotation_xlsx(output_path, samples_dict, args):
                 if pid is not None:
                     genus_buckets[key]['pidents'].append(pid)
 
-    # ── Sheet 1: Genus Summary ────────────────────────────────────────────────
-    ws1 = wb.active
-    ws1.title = 'Genus Summary'
-    _write_header(ws1, [
-        'Sample', 'Genus', 'Property', 'Genes', '# Hits',
-        'Best %id', 'Avg %id', 'Avg E-value', 'Median E-value',
-    ])
-    for (sample, genus, prop), b in sorted(genus_buckets.items()):
-        genes_str = ', '.join(sorted(b['genes']))
-        n         = len(b['evalues']) or len(b['genes'])
-        best_pid  = max(b['pidents']) if b['pidents'] else None
-        avg_pid   = statistics.mean(b['pidents']) if b['pidents'] else None
-        avg_ev    = statistics.mean(b['evalues']) if b['evalues'] else None
-        med_ev    = statistics.median(b['evalues']) if b['evalues'] else None
-        ws1.append([sample, genus, prop, genes_str, n,
-                    round(best_pid, 2) if best_pid is not None else '',
-                    round(avg_pid, 2)  if avg_pid  is not None else '',
-                    avg_ev, med_ev])
-    _style_rows(ws1)
-    _autofit(ws1)
-
-    # ── Sheet 2: Per-Gene Hits ────────────────────────────────────────────────
-    ws2 = wb.create_sheet('Per-Gene Hits')
-    _write_header(ws2, [
-        'Sample', 'Genus', 'Species', 'Gene', 'Product', 'Property',
-        'Classification', 'Antibiotics Class', 'Antibiotics',
-        'Source', 'Source ID', '%id', 'E-value', 'Bitscore',
-        'Reference Organism', 'Level',
-    ])
-    for r in all_raw_rows:
-        ws2.append([
-            r['sample'], r['genus'], r['species'], r['gene_name'],
-            r['product'], r['property'], r['classification'],
-            r['antibiotics_class'], r['antibiotics'],
-            r['source'], r['source_id'],
-            r['pident'], r['evalue'], r['bitscore'],
-            r['organism'], r['level'],
-        ])
-    _style_rows(ws2)
-    _autofit(ws2)
-
-    # ── Sheet 3: Sample Overview ──────────────────────────────────────────────
-    ws3 = wb.create_sheet('Sample Overview')
-    _write_header(ws3, [
+    # ── Sheet 1: Sample Overview ──────────────────────────────────────────────
+    # Created first (as the active/default sheet) so it is the tab that opens
+    # when the workbook is launched.  Data is drawn directly from samples_dict,
+    # NOT from protein-annotation rows, so this sheet is always populated even
+    # when annotation was disabled for the run and all_raw_rows is empty.
+    ws_overview = wb.active
+    ws_overview.title = 'Sample Overview'
+    _write_header(ws_overview, [
         'Sample', 'Sample Type', 'Genus', 'Species/Subkey',
         'Microbial Category', 'Ann Class', 'High Consequence',
         'TASS Score', 'Reads', 'Coverage', 'RPM', 'RPKM',
@@ -3913,7 +3877,7 @@ def create_protein_annotation_xlsx(output_path, samples_dict, args):
             stype = sg.get('sampletype', '')
             for sk_m in sg.get('members', []):
                 passes = 'TRUE' if passes_confidence_threshold(sk_m, _mc) else 'FALSE'
-                ws3.append([
+                ws_overview.append([
                     sample_name,
                     stype,
                     sg.get('toplevelname', sg.get('name', '')),
@@ -3930,12 +3894,52 @@ def create_protein_annotation_xlsx(output_path, samples_dict, args):
                     round(float(sk_m.get('gini_coefficient', 0) or 0), 4),
                     passes,
                 ])
-    _style_rows(ws3)
-    _autofit(ws3)
+    _style_rows(ws_overview)
+    _autofit(ws_overview)
+
+    # ── Sheet 2: Genus Summary ────────────────────────────────────────────────
+    ws_genus = wb.create_sheet('Genus Summary')
+    _write_header(ws_genus, [
+        'Sample', 'Genus', 'Property', 'Genes', '# Hits',
+        'Best %id', 'Avg %id', 'Avg E-value', 'Median E-value',
+    ])
+    for (sample, genus, prop), b in sorted(genus_buckets.items()):
+        genes_str = ', '.join(sorted(b['genes']))
+        n         = len(b['evalues']) or len(b['genes'])
+        best_pid  = max(b['pidents']) if b['pidents'] else None
+        avg_pid   = statistics.mean(b['pidents']) if b['pidents'] else None
+        avg_ev    = statistics.mean(b['evalues']) if b['evalues'] else None
+        med_ev    = statistics.median(b['evalues']) if b['evalues'] else None
+        ws_genus.append([sample, genus, prop, genes_str, n,
+                    round(best_pid, 2) if best_pid is not None else '',
+                    round(avg_pid, 2)  if avg_pid  is not None else '',
+                    avg_ev, med_ev])
+    _style_rows(ws_genus)
+    _autofit(ws_genus)
+
+    # ── Sheet 3: Per-Gene Hits ────────────────────────────────────────────────
+    ws_hits = wb.create_sheet('Per-Gene Hits')
+    _write_header(ws_hits, [
+        'Sample', 'Genus', 'Species', 'Gene', 'Product', 'Property',
+        'Classification', 'Antibiotics Class', 'Antibiotics',
+        'Source', 'Source ID', '%id', 'E-value', 'Bitscore',
+        'Reference Organism', 'Level',
+    ])
+    for r in all_raw_rows:
+        ws_hits.append([
+            r['sample'], r['genus'], r['species'], r['gene_name'],
+            r['product'], r['property'], r['classification'],
+            r['antibiotics_class'], r['antibiotics'],
+            r['source'], r['source_id'],
+            r['pident'], r['evalue'], r['bitscore'],
+            r['organism'], r['level'],
+        ])
+    _style_rows(ws_hits)
+    _autofit(ws_hits)
 
     # ── Sheet 4: AMR Genes ────────────────────────────────────────────────────
-    ws4 = wb.create_sheet('AMR Genes')
-    _write_header(ws4, [
+    ws_amr = wb.create_sheet('AMR Genes')
+    _write_header(ws_amr, [
         'Sample', 'Genus', 'Species', 'Gene', 'Product',
         'Antibiotics Class', 'Antibiotics', 'Classification',
         'Source', 'Source ID', '%id', 'E-value', 'Bitscore',
@@ -3944,14 +3948,14 @@ def create_protein_annotation_xlsx(output_path, samples_dict, args):
                 'amr' in r['property'].lower() or
                 r['antibiotics_class'] or r['antibiotics']]
     for r in amr_rows:
-        ws4.append([
+        ws_amr.append([
             r['sample'], r['genus'], r['species'], r['gene_name'],
             r['product'], r['antibiotics_class'], r['antibiotics'],
             r['classification'], r['source'], r['source_id'],
             r['pident'], r['evalue'], r['bitscore'],
         ])
-    _style_rows(ws4, alt_fill=AMR_FILL)
-    _autofit(ws4)
+    _style_rows(ws_amr, alt_fill=AMR_FILL)
+    _autofit(ws_amr)
 
     wb.save(output_path)
     print(f"Annotation XLSX written: {output_path}  "
