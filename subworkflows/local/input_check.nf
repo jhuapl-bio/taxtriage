@@ -123,6 +123,15 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.negative = (row.containsKey('negative') && row.negative) ? row.negative.trim().replaceAll(/\s+/, '_') : null
     meta.positive = (row.containsKey('positive') && row.positive) ? row.positive.trim().replaceAll(/\s+/, '_') : null
     meta.control_type = null  // resolved later in resolve_control_types()
+
+    // ── Run-level metadata (optional samplesheet columns) ────────────────────
+    meta.run_id          = (row.containsKey('run_id')          && row.run_id)          ? row.run_id.trim()          : null
+    meta.latitude        = (row.containsKey('latitude')        && row.latitude)        ? row.latitude.trim()        : null
+    meta.longitude       = (row.containsKey('longitude')       && row.longitude)       ? row.longitude.trim()       : null
+    meta.depth           = (row.containsKey('depth')           && row.depth)           ? row.depth.trim()           : null
+    meta.salinity        = (row.containsKey('salinity')        && row.salinity)        ? row.salinity.trim()        : null
+    meta.collection_time = (row.containsKey('collection_time') && row.collection_time) ? row.collection_time.trim() : null
+    meta.location        = (row.containsKey('location')        && row.location)        ? row.location.trim()        : null
     // print meta for debugging
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []

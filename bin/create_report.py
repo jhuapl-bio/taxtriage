@@ -3742,6 +3742,106 @@ def create_annotation_genus_cards(species_groups, small_style, available_width, 
     return tbl
 
 
+_RUN_META_FIELDS = [
+    ("run_id",          "Run ID"),
+    ("latitude",        "Latitude"),
+    ("longitude",       "Longitude"),
+    ("depth",           "Depth"),
+    ("salinity",        "Salinity"),
+    ("collection_time", "Collection Time"),
+    ("location",        "Location"),
+]
+
+
+def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
+    """Append a 'Metadata' sheet to an existing .odr.xlsx workbook.
+
+    Reads run-level metadata fields (run_id, latitude, longitude, depth,
+    salinity, collection_time, location) from the per-sample metadata dict
+    already stored in *_input_metadata* on args.  If no sample has any of
+    these fields populated the sheet is not added.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to the .odr.xlsx file already written by
+        ``create_protein_annotation_xlsx``.
+    per_sample_meta : dict
+        Mapping of sample_name → metadata-dict (from match_paths JSON).
+    """
+    if not per_sample_meta:
+        return
+
+    # Check if any sample has at least one run-metadata field
+    has_any = any(
+        meta.get(field_key)
+        for meta in per_sample_meta.values()
+        for field_key, _ in _RUN_META_FIELDS
+    )
+    if not has_any:
+        return
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        print("WARNING: openpyxl not installed — skipping Metadata sheet.")
+        return
+
+    try:
+        wb = openpyxl.load_workbook(output_path)
+    except Exception as exc:
+        print(f"WARNING: Could not open {output_path} to add Metadata sheet: {exc}")
+        return
+
+    # Remove existing sheet if re-running
+    if "Metadata" in wb.sheetnames:
+        del wb["Metadata"]
+
+    ws = wb.create_sheet("Metadata")
+
+    HDR_FILL = PatternFill("solid", fgColor="1565C0")
+    HDR_FONT = Font(bold=True, color="FFFFFF", size=10)
+    ALT_FILL = PatternFill("solid", fgColor="E3F2FD")
+    THIN = Border(
+        left=Side(style='thin', color='BDBDBD'),
+        right=Side(style='thin', color='BDBDBD'),
+        top=Side(style='thin', color='BDBDBD'),
+        bottom=Side(style='thin', color='BDBDBD'),
+    )
+    CENTER = Alignment(horizontal='center', vertical='top', wrap_text=True)
+    LEFT   = Alignment(horizontal='left',   vertical='top', wrap_text=True)
+
+    headers = ["Sample"] + [label for _, label in _RUN_META_FIELDS]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font      = HDR_FONT
+        cell.fill      = HDR_FILL
+        cell.alignment = CENTER
+        cell.border    = THIN
+
+    for i, (sample_name, meta) in enumerate(sorted(per_sample_meta.items()), start=2):
+        row_vals = [sample_name] + [meta.get(fk) for fk, _ in _RUN_META_FIELDS]
+        ws.append(row_vals)
+        for cell in ws[i]:
+            cell.border    = THIN
+            cell.alignment = LEFT
+            if i % 2 == 0:
+                cell.fill = ALT_FILL
+
+    # Auto-fit columns
+    for col_cells in ws.columns:
+        length = max((len(str(c.value or '')) for c in col_cells), default=8)
+        ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(50, max(10, length + 2))
+
+    try:
+        wb.save(output_path)
+        print(f"  Added 'Metadata' sheet to {output_path}")
+    except Exception as exc:
+        print(f"WARNING: Could not save Metadata sheet to {output_path}: {exc}")
+
+
 def create_protein_annotation_xlsx(output_path, samples_dict, args):
     """
     Write a multi-sheet Excel workbook with protein annotation data.
@@ -5272,6 +5372,7 @@ def main():
 
     if getattr(args, 'output_annot_xlsx', None):
         create_protein_annotation_xlsx(args.output_annot_xlsx, samples_dict, args)
+        _add_metadata_sheet_to_xlsx(args.output_annot_xlsx, getattr(args, '_input_metadata', {}))
 
     return taxdump_dict, names_map, merged_tax_data, sample_data
 

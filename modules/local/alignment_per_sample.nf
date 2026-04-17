@@ -98,6 +98,19 @@ process ALIGNMENT_PER_SAMPLE {
     def sampletype_thresholds = sampletype_thresholds_file.name != "NO_FILE_thresholds" ? " --thresholds_json ${sampletype_thresholds_file} " : " "
     def annotate_report_arg = ch_annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${ch_annotate_report} " : " "
 
+    // ── Run-level metadata (lat/lon/depth/salinity/etc.) ──────────────────────
+    // Build a compact JSON string so we don't need 7 individual CLI args.
+    // Fields that are null/empty are omitted from the JSON object.
+    def _rm_parts = []
+    if (meta.run_id)          _rm_parts << "\"run_id\":\"${meta.run_id}\""
+    if (meta.latitude)        _rm_parts << "\"latitude\":${meta.latitude}"
+    if (meta.longitude)       _rm_parts << "\"longitude\":${meta.longitude}"
+    if (meta.depth)           _rm_parts << "\"depth\":${meta.depth}"
+    if (meta.salinity)        _rm_parts << "\"salinity\":${meta.salinity}"
+    if (meta.collection_time) _rm_parts << "\"collection_time\":\"${meta.collection_time}\""
+    if (meta.location)        _rm_parts << "\"location\":\"${meta.location.replace('"', '\\"')}\""
+    def run_metadata_arg = _rm_parts ? " --run_metadata '{${_rm_parts.join(',')}}' " : " "
+
     // Control sample arguments
     def ctrl_type = meta.control_type ? " --control_type ${meta.control_type} " : " "
     def neg_ctrls = negative_control_jsons.name != "NO_FILE_neg_ctrl" ? " --negative_controls ${negative_control_jsons} " : " "
@@ -125,7 +138,8 @@ process ALIGNMENT_PER_SAMPLE {
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power \\
-        $annotate_report_arg $pident
+        $annotate_report_arg $pident \\
+        $run_metadata_arg
 
     cp search_results/removal_stats.xlsx "${meta.id}_removal_stats.xlsx" || true
     cp search_results/removal_stats_by_taxid.xlsx "${meta.id}_removal_stats_by_taxid.xlsx" || true

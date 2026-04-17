@@ -273,6 +273,17 @@ def parse_args(argv=None):
         help="Pipeline commit/version ID stored in output JSON metadata.",
     )
     parser.add_argument(
+        "--run_metadata",
+        type=str,
+        default=None,
+        help=(
+            "JSON string with run-level metadata fields to embed in output JSON. "
+            "Accepted keys: run_id, latitude, longitude, depth, salinity, "
+            "collection_time, location. "
+            "Example: '{\"run_id\":\"run_001\",\"latitude\":37.5,\"longitude\":-122.5}'"
+        ),
+    )
+    parser.add_argument(
         "-p",
         "--pathogens",
         metavar="PATHOGENS",
@@ -3004,6 +3015,25 @@ def main():
             for _gn, _gc in _best_cutoffs.items():
                 print(f"    {_gn}: best_threshold={_gc['best_threshold']}")
 
+    # ── Parse run-level metadata from --run_metadata JSON string ─────────────
+    _run_meta = {}
+    if args.run_metadata:
+        try:
+            _run_meta = _json.loads(args.run_metadata)
+            if not isinstance(_run_meta, dict):
+                print(f"WARNING: --run_metadata is not a JSON object, ignoring: {args.run_metadata}")
+                _run_meta = {}
+        except Exception as _e:
+            print(f"WARNING: Failed to parse --run_metadata: {_e}. Value was: {args.run_metadata}")
+
+    # Coerce numeric fields to float where possible
+    for _num_key in ('latitude', 'longitude', 'depth', 'salinity'):
+        if _num_key in _run_meta and _run_meta[_num_key] is not None:
+            try:
+                _run_meta[_num_key] = float(_run_meta[_num_key])
+            except (ValueError, TypeError):
+                pass  # leave as string if conversion fails
+
     output_json = {
         "metadata": {
             "sample_name": args.samplename,
@@ -3011,6 +3041,14 @@ def main():
             "platform": args.platform,
             "workflow_revision": args.workflow_revision,
             "commit_id": args.commit_id,
+            # ── Run-level metadata (from --meta CSV or samplesheet columns) ──
+            "run_id":          _run_meta.get("run_id"),
+            "latitude":        _run_meta.get("latitude"),
+            "longitude":       _run_meta.get("longitude"),
+            "depth":           _run_meta.get("depth"),
+            "salinity":        _run_meta.get("salinity"),
+            "collection_time": _run_meta.get("collection_time"),
+            "location":        _run_meta.get("location"),
             "total_reads": total_reads,
             "aligned_reads": aligned_reads_total,
             "total_organism_reads": int(_total_organism_reads),

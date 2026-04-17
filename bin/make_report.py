@@ -468,16 +468,34 @@ def main():
     print(f"[make_report] Protein annotations loaded: {has_prot} "
           f"({sum(len(v) for v in prot_data.values())} total rows)")
 
+    # ── extract run-level metadata for map / metadata panel ──────────────────
+    _RUN_META_KEYS = ("run_id", "latitude", "longitude", "depth", "salinity",
+                      "collection_time", "location")
+    run_metadata_records = []
+    for sname, smeta in sample_meta.items():
+        rec = {"sample_name": sname}
+        for k in _RUN_META_KEYS:
+            rec[k] = smeta.get(k)
+        if any(rec[k] is not None for k in _RUN_META_KEYS):
+            run_metadata_records.append(rec)
+
+    has_geo = any(
+        r.get("latitude") is not None and r.get("longitude") is not None
+        for r in run_metadata_records
+    )
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
-        "records":          rows,
-        "all_cols":         all_cols,
-        "numeric_cols":     numeric_cols,
-        "sample_meta":      sample_meta,
-        "prot_data":        prot_data,
-        "has_prot":         has_prot,
-        "contig_data":      list(contig_data.values()),   # list of organism contig objects
-        "mintass":          round(mintass * 100, 1), # 0–100 scale for UI filter-min
+        "records":               rows,
+        "all_cols":              all_cols,
+        "numeric_cols":          numeric_cols,
+        "sample_meta":           sample_meta,
+        "prot_data":             prot_data,
+        "has_prot":              has_prot,
+        "contig_data":           list(contig_data.values()),   # list of organism contig objects
+        "mintass":               round(mintass * 100, 1),      # 0–100 scale for UI filter-min
+        "run_metadata_records":  run_metadata_records,         # per-sample run metadata
+        "has_geo":               has_geo,                      # true if any sample has lat/lon
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False)
