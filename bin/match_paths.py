@@ -234,7 +234,7 @@ def parse_args(argv=None):
         "-k",  "--rank",  help="Specify the taxonomic rank to group all entries on (e.g., species, genus, family)",  default=None, type=str
     )
     parser.add_argument(
-        "--subrank",  help="Specify the taxonomic sub-rank to group all entries on. Default is species. Entries in the final report will have 1 species per row. If set to None or a non-standard ranking, then ignored. If the subrank and rank are equal, subrank is ignore as well.", choices=["phylum", "order", "class", "genus", "species", "strain", "none"], default="species", type=str
+        "--subrank",  help="Specify the taxonomic sub-rank to group all entries on. Default is species. Entries in the final report will have 1 species per row. If set to None or a non-standard ranking, then ignored. If the subrank and rank are equal, subrank is ignore as well.", choices=['domain', "kingdom", "phylum", "class", "order", "family", "genus", "species", "strain", "none"], default="species", type=str
     )
     parser.add_argument(
         "--sensitive", default=False,  help="Use sensitive mode to detect greater array of variants",  action='store_true'
@@ -2921,15 +2921,30 @@ def main():
     # Store superkingdom/kingdom, phylum, class, order, family, genus names on
     # every organism entry so downstream tools (make_report.py, heatmap.html)
     # can group / colour by taxonomy without reloading the taxdump.
-    _TAX_RANKS = ['superkingdom', 'phylum', 'class', 'order', 'family', 'genus']
+    _TAX_RANKS = ['domain', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus']
 
     def _build_lineage(taxid_str):
-        """Return {rank: name} dict for the six major ranks above."""
+        """Return {rank: name} dict for the six major ranks above.
+
+        'domain' is resolved with a three-way fallback:
+          1. rank == 'domain'
+          2. rank == 'superkingdom'  (NCBI uses this instead of domain)
+          3. rank == 'acellular root' (viruses / other rootless clades)
+        All three are stored under the 'domain' key so downstream code
+        has a consistent field regardless of which rank actually existed.
+        """
         if not taxdump or not taxdump_names:
             return {}
         lineage = {}
         for _rank in _TAX_RANKS:
-            _rid = get_root(taxid_str, _rank, taxdump)
+            if _rank == 'domain':
+                _rid = (
+                    get_root(taxid_str, 'domain', taxdump)
+                    or get_root(taxid_str, 'superkingdom', taxdump)
+                    or get_root(taxid_str, 'acellular root', taxdump)
+                )
+            else:
+                _rid = get_root(taxid_str, _rank, taxdump)
             if _rid:
                 _name = taxdump_names.get(str(_rid), '')
                 if _name:

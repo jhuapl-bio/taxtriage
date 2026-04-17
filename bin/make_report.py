@@ -101,7 +101,7 @@ def parse_args(argv=None):
 # JSON ingestion
 # ──────────────────────────────────────────────────────────────────────────────
 
-_TAX_RANKS = ["superkingdom", "phylum", "class", "order", "family", "genus"]
+_TAX_RANKS = ["domain", "kingdom", "phylum", "class", "order", "family", "genus"]
 
 
 def _extract_best_threshold(paths, granularity="subkey"):
@@ -201,6 +201,8 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "RPKM":                round(float(org.get("rpkm", 0) or 0), 4),
         "Passes Threshold":    bool(org.get("passes_threshold", False)),
         # taxonomy
+        "Kingdom":             tax.get("kingdom", ""),
+        "Domain":             tax.get("domain", ""),
         "Superkingdom":        tax.get("superkingdom", ""),
         "Phylum":              tax.get("phylum", ""),
         "Class":               tax.get("class", ""),
