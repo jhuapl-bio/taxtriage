@@ -6,6 +6,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+    <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script id="BOOTSTRAP" type="application/json">
       {
         "records": [
@@ -40,7 +43,7 @@
             "RPM": 50432.82,
             "RPKM": 10.8653,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Pseudomonadota",
             "Class": "Gammaproteobacteria",
             "Order": "Enterobacterales",
@@ -78,7 +81,7 @@
             "RPM": 3010.91,
             "RPKM": 0.4806,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Pseudomonadota",
             "Class": "Gammaproteobacteria",
             "Order": "Pseudomonadales",
@@ -116,7 +119,7 @@
             "RPM": 20806.56,
             "RPKM": 156.1156,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Pseudomonadota",
             "Class": "Gammaproteobacteria",
             "Order": "Enterobacterales",
@@ -154,7 +157,7 @@
             "RPM": 16919.67,
             "RPKM": 107.1104,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Lactobacillales",
@@ -192,7 +195,7 @@
             "RPM": 74896.5,
             "RPKM": 25.4358,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Bacillales",
@@ -230,7 +233,7 @@
             "RPM": 339104.25,
             "RPKM": 120.1917,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Bacillales",
@@ -268,7 +271,7 @@
             "RPM": 328566.05,
             "RPKM": 77.9404,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Bacillales",
@@ -306,7 +309,7 @@
             "RPM": 41400.08,
             "RPKM": 21.7256,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Lactobacillales",
@@ -344,7 +347,7 @@
             "RPM": 6037.78,
             "RPKM": 9.8746,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Eukaryota",
             "Phylum": "Ascomycota",
             "Class": "Saccharomycetes",
             "Order": "Saccharomycetales",
@@ -382,7 +385,7 @@
             "RPM": 259521.33,
             "RPKM": 55.9114,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Pseudomonadota",
             "Class": "Gammaproteobacteria",
             "Order": "Enterobacterales",
@@ -420,7 +423,7 @@
             "RPM": 370729.34,
             "RPKM": 59.1803,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Pseudomonadota",
             "Class": "Gammaproteobacteria",
             "Order": "Pseudomonadales",
@@ -458,7 +461,7 @@
             "RPM": 61021.0,
             "RPKM": 28.1514,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Pseudomonadota",
             "Class": "Betaproteobacteria",
             "Order": "Neisseriales",
@@ -496,7 +499,7 @@
             "RPM": 86860.75,
             "RPKM": 29.499,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Bacillales",
@@ -534,7 +537,7 @@
             "RPM": 83246.42,
             "RPKM": 29.5058,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Bacillales",
@@ -572,7 +575,7 @@
             "RPM": 124460.55,
             "RPKM": 29.5238,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Bacteria",
             "Phylum": "Bacillota",
             "Class": "Bacilli",
             "Order": "Bacillales",
@@ -610,7 +613,7 @@
             "RPM": 449.54,
             "RPKM": 29.5267,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Viruses",
             "Phylum": "Negarnaviricota",
             "Class": "Monjiviricetes",
             "Order": "Mononegavirales",
@@ -648,7 +651,7 @@
             "RPM": 1807.16,
             "RPKM": 118.9628,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Viruses",
             "Phylum": "Negarnaviricota",
             "Class": "Monjiviricetes",
             "Order": "Mononegavirales",
@@ -686,7 +689,7 @@
             "RPM": 11004.82,
             "RPKM": 55.9023,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Viruses",
             "Phylum": "Nucleocytoviricota",
             "Class": "Pokkesviricetes",
             "Order": "Chitovirales",
@@ -724,7 +727,7 @@
             "RPM": 899.09,
             "RPKM": 30.0668,
             "Passes Threshold": false,
-            "Superkingdom": "",
+            "Domain": "Viruses",
             "Phylum": "Pisuviricota",
             "Class": "Pisoniviricetes",
             "Order": "Nidovirales",
@@ -763,7 +766,8 @@
           "RPM",
           "RPKM",
           "Passes Threshold",
-          "Superkingdom",
+          "Domain",
+          "Kingdom",
           "Phylum",
           "Class",
           "Order",
@@ -802,6 +806,13 @@
             "platform": "oxford",
             "workflow_revision": "NA",
             "commit_id": "local",
+            "run_id": "ONT_SEA_2024A",
+            "latitude": 36.7928,
+            "longitude": -122.3945,
+            "depth": 15.5,
+            "salinity": 34.8,
+            "collection_time": "2024-03-12 09:45:00",
+            "location": "Monterey Bay, CA",
             "total_reads": 3000.0,
             "aligned_reads": 2657,
             "total_organism_reads": 2657,
@@ -858,6 +869,13 @@
             "platform": "illumina",
             "workflow_revision": "NA",
             "commit_id": "local",
+            "run_id": "MiSeq_CLINICAL_2024B",
+            "latitude": 39.2904,
+            "longitude": -76.6122,
+            "depth": null,
+            "salinity": null,
+            "collection_time": "2024-03-15 14:30:00",
+            "location": "Johns Hopkins Hospital, Baltimore, MD",
             "total_reads": 117322.0,
             "aligned_reads": 111224,
             "total_organism_reads": 111224,
@@ -1796,6 +1814,34 @@
             ],
             "depth_histogram": { "0x": 10708, "1-5x": 19195, "5-10x": 0, "10-50x": 0, ">50x": 0 }
           }
+        ],
+        "mintass": 70.0,
+        "has_geo": true,
+        "run_metadata_records": [
+          {
+            "sample_name": "ONT_Run",
+            "run_id": "ONT_2024A",
+            "latitude": 36.7928,
+            "longitude": -77.9945,
+            "depth": 15.5,
+            "altitude": 200,
+            "salinity": null,
+            "temperature": 12.3,
+            "collection_time": "2024-03-12 09:45:00",
+            "location": "Station B, VA"
+          },
+          {
+            "sample_name": "Miseq_Run",
+            "run_id": "MiSeq_CLINICAL_2024B",
+            "latitude": 39.2904,
+            "longitude": -76.4122,
+            "depth": null,
+            "salinity": null,
+            "temperature": 15.2,
+            "altitude": null,
+            "collection_time": "2024-03-15 14:30:00",
+            "location": "Location A, MD"
+          }
         ]
       }
     </script>
@@ -1812,6 +1858,9 @@
       let CONTIG_DATA = BOOT.contig_data || []; // [{sample, organism, taxon_id, contigs, depth_histogram}]
       // best_cutoffs.subkey.best_threshold — 0–1 scale; convert to 0–100 for filter-min
       const BEST_TASS_THRESH = ((BOOT.best_cutoffs || {}).subkey || {}).best_threshold;
+      // ── Run metadata ───────────────────────────────────────────────────────
+      const RUN_META = BOOT.run_metadata_records || []; // [{sample_name, run_id, latitude, longitude, ...}]
+      const HAS_GEO = BOOT.has_geo || false;
     </script>
     <style>
       * {
@@ -1985,6 +2034,11 @@
         background: #eaf3fb;
         border-color: #4a8ec2;
       }
+      #meta-upload-zone:hover,
+      #meta-upload-zone.drag-over {
+        background: #e8f0ff !important;
+        border-color: #1565c0 !important;
+      }
       .upload-btn,
       label.upload-btn {
         display: inline-block !important;
@@ -2118,6 +2172,62 @@
         background: #fff;
         border-radius: 6px;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      /* ── Run Metadata pane ── */
+      #runmeta-table-wrap {
+        overflow: auto;
+        background: #fff;
+        border-radius: 6px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        padding: 0.5em;
+      }
+      #runmeta-table th,
+      #runmeta-table td {
+        white-space: nowrap;
+      }
+
+      /* ── Map pane ── */
+      #map-split {
+        align-items: stretch;
+      }
+      #map-panel {
+        flex-direction: column;
+      }
+      /* Smooth slide-in for the panel */
+      #map-panel[style*="flex"] {
+        animation: slideInPanel 0.15s ease;
+      }
+      @keyframes slideInPanel {
+        from {
+          opacity: 0;
+          transform: translateX(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      /* All cells in the map panel table clip their content — no spill */
+      #map-panel-table td,
+      #map-panel-table th {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      /* Sortable column headers in map side panel */
+      th.sortable-col {
+        background: #f0f6ff;
+        transition: background 0.12s;
+      }
+      th.sortable-col:hover {
+        background: #dceaff !important;
+      }
+      th.sortable-col .sort-arrow {
+        display: inline-block;
+        min-width: 0.9em;
+        font-size: 0.8em;
+        opacity: 0.7;
       }
       table {
         border-collapse: collapse;
@@ -2466,6 +2576,12 @@
       </button>
       <button class="tab-btn" data-tab="explore"><i class="fas fa-magnifying-glass-chart"></i> Explore</button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
+      <button class="tab-btn hidden" id="map-tab-btn" data-tab="map">
+        <i class="fas fa-map-location-dot"></i> Map
+      </button>
+      <button class="tab-btn hidden" id="runmeta-tab-btn" data-tab="runmeta">
+        <i class="fas fa-tags"></i> Run Metadata
+      </button>
     </div>
 
     <div id="main">
@@ -2659,6 +2775,29 @@
                 style="width: 62px; padding: 0.3em 0.4em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82em"
                 title="Filter rows where %id ÷ 100 ≥ this value (default 0.9 = 90%)"
               />
+              <select
+                id="prot-keyword-group"
+                style="
+                  padding: 0.3em 0.5em;
+                  border: 1px solid #ccc;
+                  border-radius: 4px;
+                  font-size: 0.82em;
+                  max-width: 160px;
+                "
+                title="Filter by common pathogen keyword groups"
+              >
+                <option value="">All categories</option>
+                <option value="abx">🧬 Antibiotic Resistance</option>
+                <option value="toxin">☠️ Toxin</option>
+                <option value="vf">⚠️ Virulence Factor</option>
+                <option value="efflux">🔁 Efflux Pump</option>
+                <option value="adhesin">🔗 Adhesin / Invasion</option>
+                <option value="immune">🛡️ Immune Evasion</option>
+                <option value="iron">🧲 Iron Acquisition</option>
+                <option value="secretion">💉 Secretion System</option>
+                <option value="biofilm">🦠 Biofilm</option>
+                <option value="mobile">📦 Mobile Genetic Element</option>
+              </select>
               <span id="prot-table-count" style="font-size: 0.78em; color: #888"></span>
               <span
                 id="prot-bar-filter-badge"
@@ -3016,6 +3155,392 @@
             </table>
           </div>
         </div>
+
+        <!-- MAP PANE -->
+        <div class="pane" id="pane-map">
+          <div class="chart-wrap" style="padding-bottom: 0.5em">
+            <div class="chart-title"><i class="fas fa-map-location-dot"></i> Sample Collection Map</div>
+            <p style="margin: 0 0 0.3em; font-size: 0.85em; color: #555">
+              Sample locations plotted from latitude / longitude metadata. Click a marker to view organisms for that
+              sample (respects active sidebar filters).
+            </p>
+          </div>
+          <!-- map-split: map + resize-handle + side panel -->
+          <div id="map-split" style="display: flex; height: 560px; position: relative; overflow: hidden">
+            <!-- map fills all space; panel shares space when open -->
+            <div
+              id="map-container"
+              style="flex: 1; min-width: 120px; border-radius: 8px; overflow: hidden; border: 1px solid #ddd"
+            ></div>
+
+            <!-- drag handle — only visible when panel is open -->
+            <div
+              id="map-resize-handle"
+              title="Drag to resize"
+              style="
+                display: none;
+                width: 6px;
+                flex-shrink: 0;
+                cursor: col-resize;
+                background: linear-gradient(180deg, #c5d8f5, #e0ecff, #c5d8f5);
+                border: 1px solid #b8cfe8;
+                border-radius: 3px;
+                margin: 0 2px;
+                position: relative;
+                z-index: 10;
+                transition: background 0.15s;
+              "
+              onmouseenter="this.style.background='linear-gradient(180deg,#90b8e8,#b8d4f5,#90b8e8)'"
+              onmouseleave="this.style.background='linear-gradient(180deg,#c5d8f5,#e0ecff,#c5d8f5)'"
+            >
+              <div
+                style="
+                  position: absolute;
+                  top: 50%;
+                  left: 50%;
+                  transform: translate(-50%, -50%);
+                  display: flex;
+                  flex-direction: column;
+                  gap: 3px;
+                "
+              >
+                <div style="width: 2px; height: 12px; background: #7fa8d4; border-radius: 1px; opacity: 0.7"></div>
+              </div>
+            </div>
+
+            <!-- side panel — display:none until a dot is clicked -->
+            <div
+              id="map-panel"
+              style="
+                display: none;
+                width: 360px;
+                min-width: 200px;
+                max-width: 70%;
+                flex-shrink: 0;
+                background: #fff;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                flex-direction: column;
+                overflow: hidden;
+              "
+            >
+              <!-- header -->
+              <div
+                id="map-panel-header"
+                style="
+                  background: linear-gradient(90deg, #1565c0, #0288d1);
+                  color: #fff;
+                  padding: 0.5em 0.75em;
+                  display: flex;
+                  align-items: center;
+                  gap: 0.5em;
+                  flex-shrink: 0;
+                "
+              >
+                <i class="fas fa-map-pin" style="font-size: 0.85em; opacity: 0.8"></i>
+                <span
+                  id="map-panel-title"
+                  style="
+                    font-weight: 700;
+                    font-size: 0.92em;
+                    flex: 1;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                  "
+                ></span>
+                <button
+                  id="map-panel-view-btn"
+                  onclick="viewSampleInMetaTab()"
+                  style="
+                    display: none;
+                    background: rgba(255, 255, 255, 0.22);
+                    border: 1px solid rgba(255, 255, 255, 0.45);
+                    color: #fff;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    padding: 0.15em 0.6em;
+                    font-size: 0.78em;
+                    line-height: 1.4;
+                    white-space: nowrap;
+                  "
+                  title="View in Metadata table"
+                >
+                  <i class="fas fa-table" style="margin-right: 3px"></i>View
+                </button>
+                <button
+                  onclick="closeMapPanel()"
+                  style="
+                    background: rgba(255, 255, 255, 0.18);
+                    border: none;
+                    color: #fff;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    padding: 0.15em 0.55em;
+                    font-size: 0.85em;
+                    line-height: 1.4;
+                  "
+                  title="Close panel"
+                >
+                  ✕
+                </button>
+              </div>
+              <!-- run metadata strip -->
+              <div
+                id="map-panel-meta"
+                style="
+                  padding: 0.35em 0.75em;
+                  font-size: 0.76em;
+                  color: #555;
+                  border-bottom: 1px solid #eee;
+                  line-height: 1.7;
+                  flex-shrink: 0;
+                "
+              ></div>
+              <!-- search bar -->
+              <div style="padding: 0.35em 0.6em; border-bottom: 1px solid #eee; flex-shrink: 0">
+                <input
+                  id="map-panel-search"
+                  type="text"
+                  placeholder="🔍  Filter organisms…"
+                  oninput="_refreshMapPanelTable()"
+                  style="
+                    width: 100%;
+                    padding: 0.3em 0.6em;
+                    font-size: 0.8em;
+                    border: 1px solid #c5d8f5;
+                    border-radius: 5px;
+                    outline: none;
+                    background: #f5f9ff;
+                  "
+                />
+              </div>
+              <!-- scrollable table body -->
+              <div id="map-panel-body" style="flex: 1; overflow-y: auto; min-height: 0">
+                <table
+                  id="map-panel-table"
+                  style="width: 100%; border-collapse: collapse; font-size: 0.79em; table-layout: fixed"
+                >
+                  <colgroup>
+                    <col style="width: 40%" />
+                    <col style="width: 14%" />
+                    <col style="width: 13%" />
+                    <col style="width: 13%" />
+                    <col style="width: 20%" />
+                  </colgroup>
+                  <thead>
+                    <tr id="map-panel-thead" style="position: sticky; top: 0; background: #f0f6ff; z-index: 2">
+                      <th
+                        id="mph-organism"
+                        data-col="Detected Organism"
+                        data-num="0"
+                        class="mph sortable-col"
+                        style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
+                      >
+                        Organism <span class="sort-arrow"></span>
+                      </th>
+                      <th
+                        id="mph-tass"
+                        data-col="TASS Score"
+                        data-num="1"
+                        class="mph sortable-col"
+                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                      >
+                        TASS&nbsp;% <span class="sort-arrow">▼</span>
+                      </th>
+                      <th
+                        id="mph-reads"
+                        data-col="% Reads"
+                        data-num="1"
+                        class="mph sortable-col"
+                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                      >
+                        %&nbsp;Reads <span class="sort-arrow"></span>
+                      </th>
+                      <th
+                        id="mph-cov"
+                        data-col="Coverage"
+                        data-num="1"
+                        class="mph sortable-col"
+                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                      >
+                        Cov&nbsp;% <span class="sort-arrow"></span>
+                      </th>
+                      <th
+                        id="mph-cat"
+                        data-col="Microbial Category"
+                        data-num="0"
+                        class="mph sortable-col"
+                        style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
+                      >
+                        Category <span class="sort-arrow"></span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="map-panel-tbody"></tbody>
+                </table>
+                <p
+                  id="map-panel-empty"
+                  style="display: none; text-align: center; color: #999; padding: 1.8em 1em; font-size: 0.84em"
+                >
+                  <i
+                    class="fas fa-circle-xmark"
+                    style="display: block; font-size: 1.6em; margin-bottom: 0.4em; opacity: 0.35"
+                  ></i>
+                  No organisms pass the current filters.
+                </p>
+              </div>
+              <!-- footer -->
+              <div
+                id="map-panel-footer"
+                style="
+                  padding: 0.3em 0.75em;
+                  font-size: 0.71em;
+                  color: #aaa;
+                  border-top: 1px solid #eee;
+                  flex-shrink: 0;
+                  text-align: right;
+                "
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RUN METADATA PANE -->
+        <div class="pane" id="pane-runmeta">
+          <div class="chart-wrap" style="padding-bottom: 0.5em">
+            <div class="chart-title"><i class="fas fa-tags"></i> Run Metadata</div>
+          </div>
+          <div id="runmeta-table-wrap">
+            <table id="runmeta-table" style="width: 100%; border-collapse: collapse; font-size: 0.88em">
+              <thead>
+                <tr id="runmeta-header-row"></tr>
+              </thead>
+              <tbody id="runmeta-body"></tbody>
+            </table>
+          </div>
+
+          <!-- ── Longitudinal Analysis (only shown when collection_time data exists) ── -->
+          <div id="longi-section" style="display: none; margin-top: 2em">
+            <div style="border-top: 2px solid #e0e8f5; padding-top: 1.2em">
+              <div class="chart-title" style="margin-bottom: 1em">
+                <i class="fas fa-chart-line"></i> Longitudinal Analysis
+              </div>
+              <!-- Controls row -->
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em; min-width: 200px; flex: 2">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">
+                    Organisms
+                    <span id="longi-org-count" style="font-weight: 400; color: #888; font-size: 0.9em"></span>
+                  </label>
+                  <input
+                    id="longi-org-search"
+                    type="text"
+                    placeholder="Search organisms…"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      outline: none;
+                    "
+                  />
+                  <!-- Scrollable chip list — click to select/deselect -->
+                  <div
+                    id="longi-org-list"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      background: #fff;
+                      max-height: 110px;
+                      overflow-y: auto;
+                      padding: 4px 5px;
+                      display: flex;
+                      flex-wrap: wrap;
+                      gap: 4px;
+                      align-content: flex-start;
+                    "
+                  ></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Axis</label>
+                  <select
+                    id="longi-y-sel"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="TASS Score" selected>TASS Score</option>
+                    <option value="Coverage">Coverage (%)</option>
+                    <option value="Breadth %">Breadth (%)</option>
+                    <option value="# Reads Aligned"># Reads Aligned</option>
+                    <option value="Mean Depth">Mean Depth</option>
+                    <option value="Minhash Score">Minhash Score</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Y Scale</label>
+                  <select
+                    id="longi-scale-sel"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="linear" selected>Linear</option>
+                    <option value="log">Log</option>
+                    <option value="sqrt">Square Root</option>
+                  </select>
+                </div>
+              </div>
+              <!-- Chart + right sample panel -->
+              <div style="display: flex; gap: 0.8em; align-items: flex-start">
+                <div id="longi-chart-wrap" style="flex: 1; min-width: 0; position: relative; overflow: visible"></div>
+                <div
+                  id="longi-sample-panel"
+                  style="
+                    width: 155px;
+                    flex-shrink: 0;
+                    border: 1px solid #dce7f5;
+                    border-radius: 8px;
+                    padding: 0.65em;
+                    background: #f8fbff;
+                    max-height: 340px;
+                    overflow-y: auto;
+                  "
+                >
+                  <div
+                    style="
+                      font-size: 0.77em;
+                      font-weight: 700;
+                      color: #1565c0;
+                      margin-bottom: 0.45em;
+                      border-bottom: 1px solid #dce7f5;
+                      padding-bottom: 0.3em;
+                    "
+                  >
+                    Show / Hide
+                  </div>
+                  <div id="longi-sample-list"></div>
+                </div>
+              </div>
+              <div
+                id="longi-no-data"
+                style="display: none; text-align: center; padding: 2.5em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No data for this organism / metric in the visible samples.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- /content -->
 
@@ -3081,6 +3606,46 @@
         <div id="upload-status" style="font-size: 0.75em; color: #555; margin-top: 0.4em"></div>
         <button id="upload-clear-btn" class="upload-clear hidden" onclick="clearUploadedData()">
           &#10005; Clear uploaded data
+        </button>
+
+        <!-- ── Metadata CSV upload ── -->
+        <h3 style="margin-top: 1em">Upload Metadata CSV</h3>
+        <div
+          id="meta-upload-zone"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="handleMetaDrop(event)"
+          style="
+            border: 2px dashed #b0cce8;
+            border-radius: 8px;
+            padding: 0.8em 0.5em;
+            text-align: center;
+            cursor: pointer;
+            background: #f5f9ff;
+            transition: background 0.15s;
+          "
+        >
+          <i class="fas fa-map-pin" style="font-size: 1.2em; color: #1565c0; opacity: 0.7"></i>
+          <span style="display: block; font-size: 0.76em; margin: 0.25em 0 0.45em; color: #555">
+            Drop a metadata .csv or .xlsx here<br />
+            <span style="color: #888; font-size: 0.9em"
+              >columns: sample, run_id, latitude, longitude,<br />depth, salinity, collection_time, location</span
+            >
+          </span>
+          <label class="upload-btn" for="meta-upload-input" style="font-size: 0.78em; padding: 0.25em 0.7em"
+            >Browse CSV</label
+          >
+          <input
+            type="file"
+            id="meta-upload-input"
+            accept=".csv,.tsv,.txt,.xlsx,.xls"
+            style="display: none"
+            onchange="handleMetaFiles(this.files)"
+          />
+        </div>
+        <div id="meta-upload-status" style="font-size: 0.75em; color: #555; margin-top: 0.35em"></div>
+        <button id="meta-clear-btn" class="upload-clear hidden" onclick="clearMetaData()" style="margin-top: 0.3em">
+          &#10005; Clear metadata
         </button>
       </div>
       <!-- /sidebar -->
@@ -3810,7 +4375,7 @@
           if (sampleFilter) fd = fd.filter((r) => r["Specimen ID"] === sampleFilter);
           if (!fd.length) return null;
           const q = searchTerm ? searchTerm.trim().toLowerCase() : "";
-          const TAX_PATH = ["Superkingdom", "Phylum", "Class", "Genus"];
+          const TAX_PATH = ["Domain", "Phylum", "Class", "Genus"];
           const rootNode = { name: "root", children: {}, value: 0 };
           fd.forEach((r) => {
             const org = r["Detected Organism"] || "Unknown";
@@ -4969,6 +5534,157 @@
           return _catColors[prop] || "#90a4ae";
         }
 
+        // Keyword groups for the dropdown filter — matched against Property, Classification,
+        // Gene, Product, Description, and Annotation fields (case-insensitive substring).
+        const PROT_KEYWORD_GROUPS = {
+          abx: [
+            "antibiotic",
+            "antimicrobial",
+            "beta-lactam",
+            "carbapenem",
+            "tetracycline",
+            "aminoglycoside",
+            "macrolide",
+            "quinolone",
+            "fluoroquinolone",
+            "vancomycin",
+            "methicillin",
+            "oxacillin",
+            "rifampin",
+            "colistin",
+            "polymyxin",
+            "resistance",
+            "amr",
+            "drug resistance",
+          ],
+          toxin: [
+            "toxin",
+            "exotoxin",
+            "endotoxin",
+            "enterotoxin",
+            "cytotoxin",
+            "leukotoxin",
+            "hemolysin",
+            "hemolysis",
+            "cytolysin",
+            "stx",
+            "shiga",
+            "pertussis toxin",
+            "diphtheria",
+            "botulinum",
+            "clostridial",
+          ],
+          vf: ["virulence", "pathogenicity", "pathogenic", "virulence factor"],
+          efflux: [
+            "efflux",
+            "efflux pump",
+            "mdr",
+            "multidrug",
+            "ABC transporter",
+            "RND",
+            "MFS transporter",
+            "drug efflux",
+          ],
+          adhesin: [
+            "adhesin",
+            "invasion",
+            "invasin",
+            "fimbriae",
+            "fimbrial",
+            "pilus",
+            "pili",
+            "attachment",
+            "colonization",
+            "fim",
+            "type iv pili",
+          ],
+          immune: [
+            "immune evasion",
+            "immune",
+            "capsule",
+            "complement",
+            "serum resistance",
+            "phagocytosis",
+            "antiphagocytic",
+            "opsonization",
+            "IgA protease",
+            "type iii secretion effector",
+          ],
+          iron: [
+            "iron",
+            "siderophore",
+            "ferritin",
+            "ferric",
+            "fur",
+            "iuc",
+            "iut",
+            "enterobactin",
+            "aerobactin",
+            "yersiniabactin",
+            "catechol",
+          ],
+          secretion: [
+            "secretion system",
+            "type iii",
+            "type-iii",
+            "t3ss",
+            "t4ss",
+            "t6ss",
+            "type vi",
+            "type iv",
+            "type ii secretion",
+            "sec pathway",
+            "tat pathway",
+            "needle complex",
+          ],
+          biofilm: [
+            "biofilm",
+            "exopolysaccharide",
+            "eps",
+            "pellicle",
+            "quorum sensing",
+            "curli",
+            "cellulose",
+            "polysaccharide synthesis",
+          ],
+          mobile: [
+            "transposon",
+            "integron",
+            "plasmid",
+            "insertion sequence",
+            "IS element",
+            "mobile genetic",
+            "conjugation",
+            "horizontal gene transfer",
+            "integrase",
+            "recombinase",
+            "phage",
+          ],
+        };
+
+        // Fields to check when applying keyword group filter
+        const _KW_FIELDS = [
+          "Property",
+          "property",
+          "Classification",
+          "classification",
+          "Gene",
+          "gene",
+          "Gene Name",
+          "gene_name",
+          "Product",
+          "product",
+          "Antibiotics",
+          "Description",
+          "description",
+          "Annotation",
+          "annotation",
+          "Function",
+          "function",
+          "Class",
+          "class",
+        ];
+
         function _buildProtTable() {
           // Combine per_gene_hits with amr_genes, removing exact duplicates
           // Apply column rename map so field names are unified regardless of source
@@ -5011,6 +5727,8 @@
           if (tassFilter) tassFilter.addEventListener("change", _filterProt);
           const pidMinEl = document.getElementById("prot-pid-min");
           if (pidMinEl) pidMinEl.addEventListener("input", _filterProt);
+          const kwGroupEl = document.getElementById("prot-keyword-group");
+          if (kwGroupEl) kwGroupEl.addEventListener("change", _filterProt);
         }
 
         function _renderProtHeader() {
@@ -5055,6 +5773,10 @@
           const minPid = parseFloat((document.getElementById("prot-pid-min") || {}).value);
           // minPid is 0–1 scale; %id in data is 0–100 → compare as pct/100
           const pidThresh = !isNaN(minPid) ? minPid : 0;
+          // Keyword group filter
+          const kwGroup = (document.getElementById("prot-keyword-group") || {}).value || "";
+          const kwTerms =
+            kwGroup && PROT_KEYWORD_GROUPS[kwGroup] ? PROT_KEYWORD_GROUPS[kwGroup].map((t) => t.toLowerCase()) : null;
 
           // Use ALL data (not filtered) — organism is "in TASS" if found in ANY sample in this run
           const _allTassOrgs = DATA.map((r) => (r["Detected Organism"] || "").trim().toLowerCase()).filter(Boolean);
@@ -5071,6 +5793,11 @@
             if (pidThresh > 0) {
               const pid = parseFloat(r["%id"] || r["pident"] || r["%ID"] || r["identity"] || 0);
               if (!isNaN(pid) && pid / 100 < pidThresh) return false;
+            }
+            // Keyword group filter — row must match at least one term in any checked field
+            if (kwTerms) {
+              const haystack = _KW_FIELDS.map((f) => String(r[f] || "").toLowerCase()).join(" ");
+              if (!kwTerms.some((t) => haystack.includes(t))) return false;
             }
             // Text search
             if (q) {
@@ -6203,6 +6930,27 @@
           activeTab = btn.dataset.tab;
           document.getElementById(`pane-${activeTab}`).classList.add("active");
           redraw();
+
+          // ── Tab-specific init (runs after pane is visible) ──────────────
+          if (activeTab === "map") {
+            // Delay so the pane layout is computed before Leaflet measures the container
+            setTimeout(() => {
+              if (typeof L === "undefined") {
+                const c = document.getElementById("map-container");
+                if (c)
+                  c.innerHTML =
+                    '<p style="padding:2em;text-align:center;color:#888">' +
+                    '<i class="fas fa-triangle-exclamation" style="font-size:2em;display:block;margin-bottom:.5em;opacity:.4"></i>' +
+                    "Map requires an internet connection to load the Leaflet library.</p>";
+                return;
+              }
+              if (typeof _initMap === "function") _initMap();
+            }, 80);
+          } else if (activeTab === "runmeta") {
+            // Rebuild the metadata table each time the tab is activated
+            if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+          }
         });
       });
 
@@ -7109,6 +7857,90 @@
       document.getElementById("explore-lolli-multi")?.addEventListener("change", () => drawExplore());
       document.getElementById("explore-lolli-sample")?.addEventListener("change", () => drawExplore());
 
+      /* ── Map state — declared here so redraw() and init() can reference these
+         without hitting the Temporal Dead Zone (let/const vars aren't hoisted) ── */
+      let _leafletMap = null; // Leaflet map instance
+      let _markerLayer = null; // L.layerGroup holding all markers
+      let _selectedSample = null; // currently-selected sample name
+      let _markerObjects = {}; // sampleName → {marker, rec, color}
+      let _panelSortCol = "TASS Score";
+      let _panelSortAsc = false;
+      let _mapDrag = null; // drag-resize state
+      const _MAP_PALETTE = [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
+      ];
+      // Highlight state for "View" button — must live here so init() can call _buildRunMetaTable
+      let _runmetaHighlightSample = null;
+      // Category colour map — must live here so init() finishing doesn't leave it in TDZ
+      const _CAT_COLORS = {
+        Primary: "#c62828",
+        Commensal: "#1565c0",
+        Opportunistic: "#f57c00",
+        Potential: "#6a1b9a",
+        Unknown: "#555",
+      };
+      // Longitudinal analysis state — declared here (before init IIFE) to avoid TDZ
+      let _longiOrgList = [];
+      let _longiSelectedOrgs = new Set();
+      let _longiOrgColors = {};
+      let _longiHidden = {};
+      let _longiBuilt = false;
+      const _LONGI_ORG_PAL = [
+        "#1565c0",
+        "#c62828",
+        "#2e7d32",
+        "#f57c00",
+        "#6a1b9a",
+        "#00838f",
+        "#ad1457",
+        "#4527a0",
+        "#558b2f",
+        "#e65100",
+        "#0277bd",
+        "#d84315",
+        "#00695c",
+        "#4a148c",
+        "#827717",
+      ];
+
+      // ── Map panel drag-resize listeners ───────────────────────────────────
+      document.addEventListener("mousedown", (e) => {
+        if (e.target && e.target.id === "map-resize-handle") {
+          const panel = document.getElementById("map-panel");
+          if (!panel) return;
+          _mapDrag = { startX: e.clientX, startPanelW: panel.offsetWidth };
+          document.body.style.cursor = "ew-resize";
+          document.body.style.userSelect = "none";
+          e.preventDefault();
+        }
+      });
+      document.addEventListener("mousemove", (e) => {
+        if (!_mapDrag) return;
+        const dx = _mapDrag.startX - e.clientX;
+        const minW = 200,
+          maxW = window.innerWidth * 0.72;
+        const newW = Math.max(minW, Math.min(maxW, _mapDrag.startPanelW + dx));
+        const panel = document.getElementById("map-panel");
+        if (panel) panel.style.width = newW + "px";
+      });
+      document.addEventListener("mouseup", () => {
+        if (_mapDrag) {
+          _mapDrag = null;
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+          if (_leafletMap) setTimeout(() => _leafletMap.invalidateSize(), 50);
+        }
+      });
+
       function redraw() {
         // Always redraw all tabs so filter changes are reflected everywhere
         drawHeatmap();
@@ -7119,6 +7951,10 @@
         if (window.drawHistogram) window.drawHistogram();
         drawExplore();
         populateTable();
+        // Refresh map side-panel if one is currently open
+        if (_selectedSample) _refreshMapPanelTable();
+        // Rebuild longitudinal org chip list so filters are reflected there too
+        if (_longiBuilt) _buildLongitudinalSection();
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -7226,7 +8062,9 @@
             RPM: Math.round((parseFloat(org.rpm || 0) || 0) * 100) / 100,
             RPKM: Math.round((parseFloat(org.rpkm || 0) || 0) * 10000) / 10000,
             "Passes Threshold": !!org.passes_threshold,
+            Domain: tax.domain || "",
             Superkingdom: tax.superkingdom || "",
+            Kingdom: tax.kingdom || "",
             Phylum: tax.phylum || "",
             Class: tax["class"] || "",
             Order: tax.order || "",
@@ -7353,6 +8191,7 @@
         let _uploadedContigs = [];
         let _uploadedProtData = { genus_summary: [], per_gene_hits: [], sample_overview: [], amr_genes: [] };
         let _uploadedNames = [];
+        let _uploadedMetaRecords = []; // run metadata extracted from uploaded .paths.json files
 
         const _PROT_KEYS = ["genus_summary", "per_gene_hits", "sample_overview", "amr_genes"];
 
@@ -7366,6 +8205,11 @@
 
           // Merge contig data
           CONTIG_DATA = [...(BOOT.contig_data || []), ..._uploadedContigs];
+
+          // Merge run metadata from uploaded JSON files (only fields from the JSON)
+          if (_uploadedMetaRecords.length && window._applyMetaRecords) {
+            window._applyMetaRecords(_uploadedMetaRecords, false);
+          }
 
           // Merge protein annotation data into PROT
           _PROT_KEYS.forEach((k) => {
@@ -7499,6 +8343,27 @@
                     _uploadedProtData[k].push(...result.prot_data[k]);
                 });
               }
+              // Extract run metadata fields from the JSON's metadata block
+              if (result.meta && result.sampleName) {
+                const m = result.meta;
+                const _META_NUM = new Set(["latitude", "longitude", "depth", "salinity"]);
+                const metaRec = { sample_name: result.sampleName };
+                ["run_id", "latitude", "longitude", "depth", "salinity", "collection_time", "location"].forEach((k) => {
+                  const v = m[k];
+                  if (v === undefined || v === null || v === "") {
+                    metaRec[k] = null;
+                  } else if (_META_NUM.has(k)) {
+                    const n = parseFloat(v);
+                    metaRec[k] = isNaN(n) ? null : n;
+                  } else {
+                    metaRec[k] = String(v);
+                  }
+                });
+                // Only store if at least one field is non-null
+                if (Object.values(metaRec).some((v, i) => i > 0 && v != null)) {
+                  _uploadedMetaRecords.push(metaRec);
+                }
+              }
               _uploadedNames.push(file.name);
             } catch (err) {
               errors.push(err);
@@ -7537,6 +8402,7 @@
           _uploadedContigs = [];
           _uploadedProtData = { genus_summary: [], per_gene_hits: [], sample_overview: [], amr_genes: [] };
           _uploadedNames = [];
+          _uploadedMetaRecords = [];
           DATA = BOOT.records || [];
           ALL_COLS = BOOT.all_cols || [];
           NUMERIC = new Set(BOOT.numeric_cols || []);
@@ -7575,6 +8441,240 @@
           buildHmValueSel();
           if (window._resetHistSelectors) window._resetHistSelectors();
           redraw();
+          // Also restore RUN_META / SAMPLE_META to boot-time values
+          if (window._applyMetaRecords) window._applyMetaRecords(BOOT.run_metadata_records || [], /*fromBoot=*/ true);
+        };
+      })();
+
+      /* ══════════════════════════════════════════════════════════════════════
+         META CSV  — drag-and-drop metadata injection
+         CSV columns: sample (or sample_name), run_id, latitude, longitude,
+                      depth, salinity, collection_time, location
+      ══════════════════════════════════════════════════════════════════════ */
+      (function () {
+        const _META_NUM_FIELDS = new Set(["latitude", "longitude", "depth", "salinity"]);
+
+        // ── Parse a CSV/TSV string → array of objects ────────────────────────
+        function _parseCsvText(text, filename) {
+          const sep = (filename || "").toLowerCase().endsWith(".tsv") ? "\t" : ",";
+          const lines = text.split(/\r?\n/);
+          if (!lines.length) return [];
+          const headers = lines[0].split(sep).map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+          const rows = [];
+          for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            const vals = lines[i].split(sep).map((v) => v.trim().replace(/^"|"$/g, ""));
+            const row = {};
+            headers.forEach((h, j) => {
+              row[h] = vals[j] !== undefined ? vals[j] : "";
+            });
+            rows.push(row);
+          }
+          return rows;
+        }
+
+        // ── Convert a parsed CSV row → a RUN_META record (all columns kept) ──
+        function _rowToMetaRecord(row) {
+          // Accept "sample" or "sample_name" as the key column
+          const sampleName = (row["sample"] || row["sample_name"] || "").trim();
+          if (!sampleName) return null;
+          const rec = { sample_name: sampleName };
+          // Pass through EVERY column (except the sample key itself)
+          Object.entries(row).forEach(([k, v]) => {
+            if (k === "sample" || k === "sample_name") return;
+            const vs = typeof v === "string" ? v.trim() : String(v ?? "").trim();
+            if (vs === "" || vs.toLowerCase() === "null" || vs.toLowerCase() === "na") {
+              rec[k] = null;
+            } else if (_META_NUM_FIELDS.has(k)) {
+              const n = parseFloat(vs);
+              rec[k] = isNaN(n) ? null : n;
+            } else {
+              rec[k] = vs;
+            }
+          });
+          return rec;
+        }
+
+        // ── Apply an array of RUN_META records into the live globals ─────────
+        // fromBoot=true means we're restoring from BOOT (replaces everything)
+        // fromBoot=false means user-uploaded CSV (merges / overrides by sample_name)
+        window._applyMetaRecords = function (newRecords, fromBoot) {
+          if (fromBoot) {
+            // Full replace: restore to boot state
+            RUN_META.length = 0;
+            (newRecords || []).forEach((r) => RUN_META.push(r));
+            // Restore SAMPLE_META run fields from boot
+            Object.assign(SAMPLE_META, BOOT.sample_meta || {});
+          } else {
+            // Merge: upsert by sample_name
+            newRecords.forEach((rec) => {
+              if (!rec.sample_name) return;
+              // Update RUN_META
+              const existing = RUN_META.findIndex((r) => r.sample_name === rec.sample_name);
+              if (existing >= 0) {
+                Object.assign(RUN_META[existing], rec);
+              } else {
+                RUN_META.push(rec);
+              }
+              // Update SAMPLE_META — copy all keys from the meta record
+              if (!SAMPLE_META[rec.sample_name]) {
+                SAMPLE_META[rec.sample_name] = { sample_name: rec.sample_name };
+              }
+              Object.entries(rec).forEach(([k, v]) => {
+                if (k !== "sample_name") SAMPLE_META[rec.sample_name][k] = v;
+              });
+            });
+          }
+
+          // Recompute HAS_GEO and update tab visibility
+          const hasGeo = RUN_META.some((r) => r.latitude != null && r.longitude != null);
+          const mapBtn = document.getElementById("map-tab-btn");
+          const rmBtn = document.getElementById("runmeta-tab-btn");
+          if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
+          if (rmBtn) rmBtn.classList.toggle("hidden", RUN_META.length === 0);
+
+          // Rebuild metadata table
+          _buildRunMetaTable();
+
+          // Rebuild / refresh map if it was already initialized
+          if (_leafletMap) {
+            _markerLayer && _markerLayer.clearLayers();
+            _markerObjects = {};
+            _selectedSample = null;
+            closeMapPanel();
+            // Re-add markers
+            const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
+            const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
+            const colorMap = {};
+            sampleNames.forEach((n, i) => {
+              colorMap[n] = _MAP_PALETTE[i % _MAP_PALETTE.length];
+            });
+            const bounds = [];
+            geoRows.forEach((rec) => {
+              const lat = parseFloat(rec.latitude),
+                lon = parseFloat(rec.longitude);
+              if (isNaN(lat) || isNaN(lon)) return;
+              const col = colorMap[rec.sample_name] || "#1565C0";
+              const mk = L.marker([lat, lon], { icon: _svgDot(col, false) });
+              mk.on("click", () => {
+                if (_selectedSample && _markerObjects[_selectedSample]) {
+                  const prev = _markerObjects[_selectedSample];
+                  prev.marker.setIcon(_svgDot(prev.color, false));
+                }
+                _selectedSample = rec.sample_name;
+                mk.setIcon(_svgDot(col, true));
+                _renderMapPanel(rec);
+              });
+              mk.addTo(_markerLayer);
+              _markerObjects[rec.sample_name] = { marker: mk, rec, color: col };
+              bounds.push([lat, lon]);
+            });
+            if (bounds.length > 0) {
+              _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+            }
+            setTimeout(() => _leafletMap.invalidateSize(), 50);
+          } else if (hasGeo) {
+            // Map tab is now visible but not yet initialized — will init on tab click
+          }
+        };
+
+        // ── Status helpers ────────────────────────────────────────────────────
+        function _setMetaStatus(msg, isError) {
+          const el = document.getElementById("meta-upload-status");
+          if (el) {
+            el.textContent = msg;
+            el.style.color = isError ? "#b33" : "#2a7a2a";
+          }
+        }
+
+        // ── Process a single meta file (CSV, TSV, or XLSX) ───────────────────
+        function _processMetaFile(file) {
+          return new Promise((resolve, reject) => {
+            const name = file.name.toLowerCase();
+            const reader = new FileReader();
+
+            if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+              // Parse XLSX — SheetJS is already loaded
+              reader.onload = (e) => {
+                try {
+                  if (typeof XLSX === "undefined") throw new Error("SheetJS not loaded");
+                  const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+                  // Use first sheet, or one named "Metadata" / "metadata" if present
+                  const sheetName = wb.SheetNames.find((n) => /^metadata$/i.test(n)) || wb.SheetNames[0];
+                  const ws = wb.Sheets[sheetName];
+                  const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+                  // Normalise column names to lowercase
+                  const rows = rawRows.map((r) => {
+                    const out = {};
+                    Object.entries(r).forEach(([k, v]) => {
+                      out[k.toLowerCase().trim()] = String(v ?? "");
+                    });
+                    return out;
+                  });
+                  const records = rows.map(_rowToMetaRecord).filter(Boolean);
+                  resolve(records);
+                } catch (err) {
+                  reject(`${file.name}: ${err.message}`);
+                }
+              };
+              reader.onerror = () => reject(`${file.name}: could not read file`);
+              reader.readAsArrayBuffer(file);
+            } else {
+              // CSV / TSV / TXT
+              reader.onload = (e) => {
+                try {
+                  const rows = _parseCsvText(e.target.result, file.name);
+                  const records = rows.map(_rowToMetaRecord).filter(Boolean);
+                  resolve(records);
+                } catch (err) {
+                  reject(`${file.name}: ${err.message}`);
+                }
+              };
+              reader.onerror = () => reject(`${file.name}: could not read file`);
+              reader.readAsText(file);
+            }
+          });
+        }
+
+        // ── Public handlers ────────────────────────────────────────────────────
+        window.handleMetaFiles = async function (files) {
+          const fileArr = Array.from(files);
+          if (!fileArr.length) return;
+          _setMetaStatus(`Loading metadata…`, false);
+          try {
+            let allRecords = [];
+            for (const f of fileArr) {
+              const recs = await _processMetaFile(f);
+              allRecords = allRecords.concat(recs);
+            }
+            if (!allRecords.length) {
+              _setMetaStatus("No valid rows found in CSV.", true);
+              return;
+            }
+            window._applyMetaRecords(allRecords, false);
+            _setMetaStatus(`✓ Metadata loaded: ${allRecords.length} sample(s)`, false);
+            const clearBtn = document.getElementById("meta-clear-btn");
+            if (clearBtn) clearBtn.classList.remove("hidden");
+          } catch (err) {
+            _setMetaStatus(String(err), true);
+          }
+          const inp = document.getElementById("meta-upload-input");
+          if (inp) inp.value = "";
+        };
+
+        window.handleMetaDrop = function (event) {
+          event.preventDefault();
+          document.getElementById("meta-upload-zone").classList.remove("drag-over");
+          const files = event.dataTransfer.files;
+          if (files.length) window.handleMetaFiles(files);
+        };
+
+        window.clearMetaData = function () {
+          // Restore RUN_META to boot-time values
+          window._applyMetaRecords(BOOT.run_metadata_records || [], true);
+          _setMetaStatus("", false);
+          const clearBtn = document.getElementById("meta-clear-btn");
+          if (clearBtn) clearBtn.classList.add("hidden");
         };
       })();
 
@@ -7621,13 +8721,1308 @@
         const histBtn = document.getElementById("hist-tab-btn");
         if (histBtn) histBtn.classList.remove("hidden");
 
+        // Show Map / Run Metadata tabs — always derived from live RUN_META, never from
+        // the stale HAS_GEO constant, so real reports without metadata stay hidden.
+        const mapBtn = document.getElementById("map-tab-btn");
+        const runmetaBtn = document.getElementById("runmeta-tab-btn");
+        const _initHasGeo = RUN_META.some((r) => r.latitude != null && r.longitude != null);
+        if (mapBtn) mapBtn.classList.toggle("hidden", !_initHasGeo);
+        if (runmetaBtn) runmetaBtn.classList.toggle("hidden", RUN_META.length === 0);
+
         buildHmValueSel();
         buildSampleList();
         _computeBslLevels(); // inject BSL Level into DATA + ALL_COLS before table is built
         buildTable();
         renderTableHeaders();
         redraw();
+
+        // ── Build Run Metadata table + longitudinal section on init
+        _buildRunMetaTable();
+        _buildLongitudinalSection();
+
+        // ── Wire up sortable map-panel column headers ──────────────────────
+        _initPanelSortHeaders();
       })();
+
+      /* ══════════════════════════════════════════════════════════════════════
+         RUN METADATA TABLE
+      ══════════════════════════════════════════════════════════════════════ */
+      // Pretty-print a raw key name → display label
+      function _metaKeyLabel(k) {
+        const KNOWN = {
+          sample_name: "Sample",
+          run_id: "Run ID",
+          latitude: "Latitude",
+          longitude: "Longitude",
+          depth: "Depth (m)",
+          salinity: "Salinity (PSU)",
+          collection_time: "Collection Time",
+          location: "Location",
+        };
+        return KNOWN[k] || k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      /* ════════════════════════════════════════════════════════════════════════
+         LONGITUDINAL ANALYSIS  (Run Metadata tab)
+         – Line plot: X = collection_time, Y = selected metric
+         – Multi-organism: click chips to select/deselect; one line per organism
+         – Right panel: per-plot sample visibility (independent of main sampleHidden)
+         (State variables declared before init IIFE above to avoid TDZ errors)
+      ════════════════════════════════════════════════════════════════════════ */
+
+      function _parseLongiDate(s) {
+        if (!s) return null;
+        const str = String(s).trim();
+        // Try native Date parse first (handles ISO 8601 and many standard formats)
+        let d = new Date(str);
+        if (!isNaN(d)) return d;
+        // M/D/YY h:mm  or  M/D/YYYY h:mm
+        let m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/);
+        if (m) {
+          let yr = parseInt(m[3]);
+          if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[4]), parseInt(m[5]));
+          if (!isNaN(d)) return d;
+        }
+        // M/D/YY  or  M/D/YYYY  (date only)
+        m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (m) {
+          let yr = parseInt(m[3]);
+          if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1]) - 1, parseInt(m[2]));
+          if (!isNaN(d)) return d;
+        }
+        return null;
+      }
+
+      function _buildLongitudinalSection() {
+        const section = document.getElementById("longi-section");
+        if (!section) return;
+
+        // Build time map from live RUN_META
+        const timeMap = {};
+        (RUN_META || []).forEach((r) => {
+          const d = _parseLongiDate(r.collection_time);
+          if (d) timeMap[r.sample_name] = d;
+        });
+
+        const timedSamples = Object.keys(timeMap);
+        if (!timedSamples.length) {
+          section.style.display = "none";
+          return;
+        }
+        section.style.display = "block";
+
+        // Organisms that appear in at least one timed sample
+        const eligible = new Set(timedSamples);
+        const orgSet = new Set(
+          filteredData()
+            .filter((r) => eligible.has(r["Specimen ID"]))
+            .map((r) => r["Detected Organism"] || "")
+            .filter(Boolean),
+        );
+        _longiOrgList = [...orgSet].sort((a, b) => a.localeCompare(b));
+
+        // Assign stable colours to every organism
+        _longiOrgList.forEach((o, i) => {
+          if (!_longiOrgColors[o]) _longiOrgColors[o] = _LONGI_ORG_PAL[i % _LONGI_ORG_PAL.length];
+        });
+
+        // Default: select the first organism if nothing is selected yet
+        if (_longiSelectedOrgs.size === 0 && _longiOrgList.length > 0) {
+          _longiSelectedOrgs.add(_longiOrgList[0]);
+        }
+
+        _populateLongiOrgs(_longiOrgList);
+        _buildLongiSamplePanel(timedSamples);
+
+        // Wire events once
+        if (!_longiBuilt) {
+          _longiBuilt = true;
+          const orgSearch = document.getElementById("longi-org-search");
+          const ySel = document.getElementById("longi-y-sel");
+          const scaleSel = document.getElementById("longi-scale-sel");
+          if (ySel) ySel.addEventListener("change", _drawLongitudinalPlot);
+          if (scaleSel) scaleSel.addEventListener("change", _drawLongitudinalPlot);
+          if (orgSearch)
+            orgSearch.addEventListener("input", () => {
+              const q = (orgSearch.value || "").trim().toLowerCase();
+              _populateLongiOrgs(q ? _longiOrgList.filter((o) => o.toLowerCase().includes(q)) : _longiOrgList);
+            });
+        }
+
+        _drawLongitudinalPlot();
+      }
+
+      function _populateLongiOrgs(visibleOrgs) {
+        const container = document.getElementById("longi-org-list");
+        const counter = document.getElementById("longi-org-count");
+        if (!container) return;
+
+        container.innerHTML = "";
+        visibleOrgs.forEach((org) => {
+          const selected = _longiSelectedOrgs.has(org);
+          const color = _longiOrgColors[org] || "#1565c0";
+
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.title = org;
+          chip.style.cssText = [
+            "display:inline-flex;align-items:center;gap:5px",
+            "padding:3px 8px 3px 6px",
+            "border-radius:14px",
+            "font-size:0.76em",
+            "cursor:pointer",
+            "transition:all .12s",
+            "white-space:nowrap",
+            "max-width:190px",
+            selected
+              ? `background:${color};color:#fff;border:1.5px solid ${color};font-weight:600`
+              : "background:#f0f4f9;color:#455a64;border:1.5px solid #ccd6e8;font-weight:400",
+          ].join(";");
+
+          // Colour dot
+          const dot = document.createElement("span");
+          dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;
+            background:${selected ? "#fff" : color};border:1px solid rgba(0,0,0,.18)`;
+
+          // Label (truncated)
+          const lbl = document.createElement("span");
+          lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;max-width:160px;display:block";
+          lbl.textContent = org;
+
+          chip.appendChild(dot);
+          chip.appendChild(lbl);
+
+          chip.addEventListener("click", () => {
+            if (_longiSelectedOrgs.has(org)) {
+              _longiSelectedOrgs.delete(org);
+            } else {
+              _longiSelectedOrgs.add(org);
+            }
+            // Re-render chips (keeping search filter)
+            const q = (document.getElementById("longi-org-search") || {}).value || "";
+            _populateLongiOrgs(
+              q.trim() ? _longiOrgList.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase())) : _longiOrgList,
+            );
+            _drawLongitudinalPlot();
+          });
+
+          container.appendChild(chip);
+        });
+
+        // Update counter label
+        if (counter) {
+          const n = _longiSelectedOrgs.size;
+          counter.textContent = n ? `— ${n} selected` : "";
+        }
+      }
+
+      function _buildLongiSamplePanel(sampleNames) {
+        const list = document.getElementById("longi-sample-list");
+        if (!list) return;
+        list.innerHTML = "";
+        sampleNames
+          .slice()
+          .sort()
+          .forEach((id) => {
+            if (_longiHidden[id] === undefined) _longiHidden[id] = false;
+            const color = sampleColors[id] || "#1565c0";
+            const div = document.createElement("div");
+            div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
+
+            const swatch = document.createElement("span");
+            swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
+
+            const lbl = document.createElement("label");
+            lbl.style.cssText =
+              "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
+            lbl.title = id;
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = !_longiHidden[id];
+            cb.style.cssText = "flex-shrink:0;cursor:pointer";
+            cb.addEventListener("change", (e) => {
+              _longiHidden[id] = !e.target.checked;
+              _drawLongitudinalPlot();
+            });
+
+            const txt = document.createTextNode(id.length > 18 ? id.slice(0, 17) + "…" : id);
+            lbl.appendChild(cb);
+            lbl.appendChild(txt);
+            div.appendChild(swatch);
+            div.appendChild(lbl);
+            list.appendChild(div);
+          });
+      }
+
+      function _drawLongitudinalPlot() {
+        const wrap = document.getElementById("longi-chart-wrap");
+        const noData = document.getElementById("longi-no-data");
+        if (!wrap) return;
+
+        wrap.innerHTML = "";
+
+        const ySel = document.getElementById("longi-y-sel");
+        const yField = (ySel && ySel.value) || "TASS Score";
+
+        const selectedOrgs = [..._longiSelectedOrgs];
+        if (!selectedOrgs.length) {
+          if (noData) noData.style.display = "block";
+          return;
+        }
+
+        // Rebuild time map from live RUN_META
+        const timeMap = {};
+        (RUN_META || []).forEach((r) => {
+          const d = _parseLongiDate(r.collection_time);
+          if (d) timeMap[r.sample_name] = d;
+        });
+
+        // Build one series per selected organism: [{org, pts:[{sample,date,y}]}]
+        const series = selectedOrgs
+          .map((org) => {
+            const pts = filteredData()
+              .filter(
+                (r) =>
+                  (r["Detected Organism"] || "") === org &&
+                  timeMap[r["Specimen ID"]] &&
+                  !_longiHidden[r["Specimen ID"]],
+              )
+              .map((r) => ({
+                org: org,
+                sample: r["Specimen ID"] || "",
+                date: timeMap[r["Specimen ID"]],
+                y: parseFloat(r[yField]),
+              }))
+              .filter((p) => !isNaN(p.y))
+              .sort((a, b) => a.date - b.date);
+            return { org, color: _longiOrgColors[org] || "#1565c0", pts };
+          })
+          .filter((s) => s.pts.length > 0);
+
+        if (!series.length) {
+          if (noData) noData.style.display = "block";
+          return;
+        }
+        if (noData) noData.style.display = "none";
+
+        const allPts = series.flatMap((s) => s.pts);
+        const mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        // ── Legend (above chart) ──
+        const legendDiv = document.createElement("div");
+        legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
+        series.forEach((s) => {
+          const item = document.createElement("span");
+          item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
+          item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
+            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}</span>`;
+          legendDiv.appendChild(item);
+        });
+        wrap.appendChild(legendDiv);
+
+        // ── SVG chart ──
+        const W = Math.max(320, wrap.clientWidth || 520);
+        const H = 290;
+        const ML = 62,
+          MR = 20,
+          MT = 14,
+          MB = 68;
+        const iW = W - ML - MR;
+        const iH = H - MT - MB;
+
+        const svg = d3
+          .select(wrap)
+          .append("svg")
+          .attr("viewBox", `0 0 ${W} ${H}`)
+          .style("width", "100%")
+          .style("display", "block")
+          .style("overflow", "visible");
+
+        const g = svg.append("g").attr("transform", `translate(${ML},${MT})`);
+
+        // Scales (shared across all series)
+        const xExt = d3.extent(allPts, (p) => p.date);
+        const xPad = Math.max((xExt[1] - xExt[0]) * 0.08, 6 * 3600 * 1000);
+        const xSc = d3
+          .scaleTime()
+          .domain([new Date(+xExt[0] - xPad), new Date(+xExt[1] + xPad)])
+          .range([0, iW]);
+
+        const yMax = d3.max(allPts, (p) => p.y) || 1;
+        const scaleType = (document.getElementById("longi-scale-sel") || {}).value || "linear";
+        let ySc;
+        if (scaleType === "log") {
+          const yMinPos = Math.max(d3.min(allPts, (p) => p.y) || 0.001, 0.001);
+          ySc = d3
+            .scaleLog()
+            .domain([yMinPos * 0.9, yMax * 1.5])
+            .range([iH, 0])
+            .clamp(true);
+        } else if (scaleType === "sqrt") {
+          ySc = d3
+            .scaleSqrt()
+            .domain([0, yMax * 1.15])
+            .range([iH, 0])
+            .nice();
+        } else {
+          ySc = d3
+            .scaleLinear()
+            .domain([0, yMax * 1.15])
+            .range([iH, 0])
+            .nice();
+        }
+
+        // Horizontal grid
+        g.append("g")
+          .call(d3.axisLeft(ySc).tickSize(-iW).tickFormat("").ticks(5))
+          .call((ax) => ax.select(".domain").remove())
+          .call((ax) => ax.selectAll("line").attr("stroke", "#e5eaf2").attr("stroke-dasharray", "4,3"));
+
+        // X axis
+        g.append("g")
+          .attr("transform", `translate(0,${iH})`)
+          .call(
+            d3
+              .axisBottom(xSc)
+              .ticks(Math.min(allPts.length + 1, 7))
+              .tickFormat((d) => `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`),
+          )
+          .call((ax) =>
+            ax
+              .selectAll("text")
+              .attr("transform", "rotate(-35)")
+              .style("text-anchor", "end")
+              .style("font-size", "0.71em"),
+          )
+          .call((ax) => ax.select(".domain").attr("stroke", "#ccc"))
+          .call((ax) => ax.selectAll(".tick line").attr("stroke", "#ccc"));
+
+        // Y axis
+        const yAxis = scaleType === "log" ? d3.axisLeft(ySc).ticks(5, "~s") : d3.axisLeft(ySc).ticks(5);
+        g.append("g")
+          .call(yAxis)
+          .call((ax) => ax.selectAll("text").style("font-size", "0.71em"))
+          .call((ax) => ax.select(".domain").attr("stroke", "#ccc"))
+          .call((ax) => ax.selectAll(".tick line").attr("stroke", "#ccc"));
+
+        g.append("text")
+          .attr("transform", "rotate(-90)")
+          .attr("x", -iH / 2)
+          .attr("y", -ML + 14)
+          .attr("text-anchor", "middle")
+          .style("font-size", "0.74em")
+          .style("fill", "#555")
+          .text(yField);
+
+        // Tooltip
+        const tip = d3
+          .select(wrap)
+          .append("div")
+          .style("position", "absolute")
+          .style("background", "rgba(22,35,58,0.95)")
+          .style("color", "#fff")
+          .style("border-radius", "8px")
+          .style("padding", "8px 13px")
+          .style("font-size", "0.78em")
+          .style("pointer-events", "none")
+          .style("display", "none")
+          .style("white-space", "nowrap")
+          .style("z-index", "9999")
+          .style("box-shadow", "0 2px 10px rgba(0,0,0,.4)");
+
+        const lineGen = d3
+          .line()
+          .defined((p) => scaleType !== "log" || p.y > 0)
+          .x((p) => xSc(p.date))
+          .y((p) => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
+
+        // Draw one line + dots per organism
+        series.forEach((s) => {
+          // Line
+          if (s.pts.length > 1) {
+            g.append("path")
+              .datum(s.pts)
+              .attr("fill", "none")
+              .attr("stroke", s.color)
+              .attr("stroke-width", 2.2)
+              .attr("opacity", 0.75)
+              .attr("d", lineGen);
+          }
+
+          // Dots
+          g.selectAll(`.longi-dot-${s.pts[0] ? s.pts[0].org.replace(/\W/g, "_") : "x"}`)
+            .data(s.pts)
+            .enter()
+            .append("circle")
+            .attr("cx", (p) => xSc(p.date))
+            .attr("cy", (p) => ySc(p.y))
+            .attr("r", 7)
+            .attr("fill", s.color)
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 2)
+            .style("cursor", "pointer")
+            .style("filter", "drop-shadow(0 1px 3px rgba(0,0,0,.28))")
+            .on("mouseover", function (event, p) {
+              d3.select(this).transition().duration(80).attr("r", 10);
+              const dateStr = `${mo[p.date.getMonth()]} ${p.date.getDate()}, ${p.date.getFullYear()}`;
+              const fmt = (v) => (v % 1 === 0 ? v.toLocaleString() : v.toFixed(3));
+              tip
+                .html(
+                  `<span style="color:#90caf9;font-weight:700">${p.sample}</span><br>` +
+                    `<span style="color:#b0bec5;font-size:0.9em">${dateStr}</span><br>` +
+                    `<span style="color:#cfd8dc;font-size:0.88em">${
+                      p.org.length > 35 ? p.org.slice(0, 34) + "…" : p.org
+                    }</span><br>` +
+                    `<span style="color:#fff">${yField}:</span> <b>${fmt(p.y)}</b>`,
+                )
+                .style("display", "block");
+            })
+            .on("mousemove", function (event) {
+              const box = wrap.getBoundingClientRect();
+              const tipW = 200;
+              let lft = event.clientX - box.left + 14;
+              if (lft + tipW > box.width) lft = event.clientX - box.left - tipW - 10;
+              tip.style("left", lft + "px").style("top", event.clientY - box.top - 42 + "px");
+            })
+            .on("mouseout", function () {
+              d3.select(this).transition().duration(80).attr("r", 7);
+              tip.style("display", "none");
+            });
+        });
+
+        // Sample name labels — one per unique sample, above the topmost dot for that sample
+        const labelMap = new Map();
+        series.forEach((s) =>
+          s.pts.forEach((p) => {
+            const py = ySc(p.y);
+            if (!labelMap.has(p.sample) || py < labelMap.get(p.sample).topY) {
+              labelMap.set(p.sample, { date: p.date, topY: py });
+            }
+          }),
+        );
+        g.selectAll(".longi-lbl-sample")
+          .data([...labelMap.entries()].map(([sample, v]) => ({ sample, date: v.date, topY: v.topY })))
+          .enter()
+          .append("text")
+          .attr("x", (d) => xSc(d.date))
+          .attr("y", (d) => d.topY - 13)
+          .attr("text-anchor", "middle")
+          .style("font-size", "0.66em")
+          .style("fill", "#455a64")
+          .style("pointer-events", "none")
+          .text((d) => (d.sample.length > 16 ? d.sample.slice(0, 15) + "…" : d.sample));
+      }
+
+      /* ════════════════════════════════════════════════════════════════════════
+         LONGITUDINAL ANALYSIS  (Run Metadata tab)
+         – Line plot: X = collection_time, Y = selected metric
+         – Multi-organism: click chips to select/deselect; one line per organism
+         – Right panel: per-plot sample visibility (independent of main sampleHidden)
+         (State variables declared before init IIFE above to avoid TDZ errors)
+      ════════════════════════════════════════════════════════════════════════ */
+
+      function _parseLongiDate(s) {
+        if (!s) return null;
+        const str = String(s).trim();
+        // Try native Date parse first (handles ISO 8601 and many standard formats)
+        let d = new Date(str);
+        if (!isNaN(d)) return d;
+        // M/D/YY h:mm  or  M/D/YYYY h:mm
+        let m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/);
+        if (m) {
+          let yr = parseInt(m[3]);
+          if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[4]), parseInt(m[5]));
+          if (!isNaN(d)) return d;
+        }
+        // M/D/YY  or  M/D/YYYY  (date only)
+        m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (m) {
+          let yr = parseInt(m[3]);
+          if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1]) - 1, parseInt(m[2]));
+          if (!isNaN(d)) return d;
+        }
+        return null;
+      }
+
+      function _buildLongitudinalSection() {
+        const section = document.getElementById("longi-section");
+        if (!section) return;
+
+        // Build time map from live RUN_META
+        const timeMap = {};
+        (RUN_META || []).forEach((r) => {
+          const d = _parseLongiDate(r.collection_time);
+          if (d) timeMap[r.sample_name] = d;
+        });
+
+        const timedSamples = Object.keys(timeMap);
+        if (!timedSamples.length) {
+          section.style.display = "none";
+          return;
+        }
+        section.style.display = "block";
+
+        // Organisms that appear in at least one timed sample
+        const eligible = new Set(timedSamples);
+        const orgSet = new Set(
+          filteredData()
+            .filter((r) => eligible.has(r["Specimen ID"]))
+            .map((r) => r["Detected Organism"] || "")
+            .filter(Boolean),
+        );
+        _longiOrgList = [...orgSet].sort((a, b) => a.localeCompare(b));
+
+        // Assign stable colours to every organism
+        _longiOrgList.forEach((o, i) => {
+          if (!_longiOrgColors[o]) _longiOrgColors[o] = _LONGI_ORG_PAL[i % _LONGI_ORG_PAL.length];
+        });
+
+        // Default: select the first organism if nothing is selected yet
+        if (_longiSelectedOrgs.size === 0 && _longiOrgList.length > 0) {
+          _longiSelectedOrgs.add(_longiOrgList[0]);
+        }
+
+        _populateLongiOrgs(_longiOrgList);
+        _buildLongiSamplePanel(timedSamples);
+
+        // Wire events once
+        if (!_longiBuilt) {
+          _longiBuilt = true;
+          const orgSearch = document.getElementById("longi-org-search");
+          const ySel = document.getElementById("longi-y-sel");
+          const scaleSel = document.getElementById("longi-scale-sel");
+          if (ySel) ySel.addEventListener("change", _drawLongitudinalPlot);
+          if (scaleSel) scaleSel.addEventListener("change", _drawLongitudinalPlot);
+          if (orgSearch)
+            orgSearch.addEventListener("input", () => {
+              const q = (orgSearch.value || "").trim().toLowerCase();
+              _populateLongiOrgs(q ? _longiOrgList.filter((o) => o.toLowerCase().includes(q)) : _longiOrgList);
+            });
+        }
+
+        _drawLongitudinalPlot();
+      }
+
+      function _populateLongiOrgs(visibleOrgs) {
+        const container = document.getElementById("longi-org-list");
+        const counter = document.getElementById("longi-org-count");
+        if (!container) return;
+
+        container.innerHTML = "";
+        visibleOrgs.forEach((org) => {
+          const selected = _longiSelectedOrgs.has(org);
+          const color = _longiOrgColors[org] || "#1565c0";
+
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.title = org;
+          chip.style.cssText = [
+            "display:inline-flex;align-items:center;gap:5px",
+            "padding:3px 8px 3px 6px",
+            "border-radius:14px",
+            "font-size:0.76em",
+            "cursor:pointer",
+            "transition:all .12s",
+            "white-space:nowrap",
+            "max-width:190px",
+            selected
+              ? `background:${color};color:#fff;border:1.5px solid ${color};font-weight:600`
+              : "background:#f0f4f9;color:#455a64;border:1.5px solid #ccd6e8;font-weight:400",
+          ].join(";");
+
+          // Colour dot
+          const dot = document.createElement("span");
+          dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;
+            background:${selected ? "#fff" : color};border:1px solid rgba(0,0,0,.18)`;
+
+          // Label (truncated)
+          const lbl = document.createElement("span");
+          lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;max-width:160px;display:block";
+          lbl.textContent = org;
+
+          chip.appendChild(dot);
+          chip.appendChild(lbl);
+
+          chip.addEventListener("click", () => {
+            if (_longiSelectedOrgs.has(org)) {
+              _longiSelectedOrgs.delete(org);
+            } else {
+              _longiSelectedOrgs.add(org);
+            }
+            // Re-render chips (keeping search filter)
+            const q = (document.getElementById("longi-org-search") || {}).value || "";
+            _populateLongiOrgs(
+              q.trim() ? _longiOrgList.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase())) : _longiOrgList,
+            );
+            _drawLongitudinalPlot();
+          });
+
+          container.appendChild(chip);
+        });
+
+        // Update counter label
+        if (counter) {
+          const n = _longiSelectedOrgs.size;
+          counter.textContent = n ? `— ${n} selected` : "";
+        }
+      }
+
+      function _buildLongiSamplePanel(sampleNames) {
+        const list = document.getElementById("longi-sample-list");
+        if (!list) return;
+        list.innerHTML = "";
+        sampleNames
+          .slice()
+          .sort()
+          .forEach((id) => {
+            if (_longiHidden[id] === undefined) _longiHidden[id] = false;
+            const color = sampleColors[id] || "#1565c0";
+            const div = document.createElement("div");
+            div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
+
+            const swatch = document.createElement("span");
+            swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
+
+            const lbl = document.createElement("label");
+            lbl.style.cssText =
+              "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
+            lbl.title = id;
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = !_longiHidden[id];
+            cb.style.cssText = "flex-shrink:0;cursor:pointer";
+            cb.addEventListener("change", (e) => {
+              _longiHidden[id] = !e.target.checked;
+              _drawLongitudinalPlot();
+            });
+
+            const txt = document.createTextNode(id.length > 18 ? id.slice(0, 17) + "…" : id);
+            lbl.appendChild(cb);
+            lbl.appendChild(txt);
+            div.appendChild(swatch);
+            div.appendChild(lbl);
+            list.appendChild(div);
+          });
+      }
+
+      function _drawLongitudinalPlot() {
+        const wrap = document.getElementById("longi-chart-wrap");
+        const noData = document.getElementById("longi-no-data");
+        if (!wrap) return;
+
+        wrap.innerHTML = "";
+
+        const ySel = document.getElementById("longi-y-sel");
+        const yField = (ySel && ySel.value) || "TASS Score";
+
+        const selectedOrgs = [..._longiSelectedOrgs];
+        if (!selectedOrgs.length) {
+          if (noData) noData.style.display = "block";
+          return;
+        }
+
+        // Rebuild time map from live RUN_META
+        const timeMap = {};
+        (RUN_META || []).forEach((r) => {
+          const d = _parseLongiDate(r.collection_time);
+          if (d) timeMap[r.sample_name] = d;
+        });
+
+        // Build one series per selected organism: [{org, pts:[{sample,date,y}]}]
+        const series = selectedOrgs
+          .map((org) => {
+            const pts = filteredData()
+              .filter(
+                (r) =>
+                  (r["Detected Organism"] || "") === org &&
+                  timeMap[r["Specimen ID"]] &&
+                  !_longiHidden[r["Specimen ID"]],
+              )
+              .map((r) => ({
+                org: org,
+                sample: r["Specimen ID"] || "",
+                date: timeMap[r["Specimen ID"]],
+                y: parseFloat(r[yField]),
+              }))
+              .filter((p) => !isNaN(p.y))
+              .sort((a, b) => a.date - b.date);
+            return { org, color: _longiOrgColors[org] || "#1565c0", pts };
+          })
+          .filter((s) => s.pts.length > 0);
+
+        if (!series.length) {
+          if (noData) noData.style.display = "block";
+          return;
+        }
+        if (noData) noData.style.display = "none";
+
+        const allPts = series.flatMap((s) => s.pts);
+        const mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        // ── Legend (above chart) ──
+        const legendDiv = document.createElement("div");
+        legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
+        series.forEach((s) => {
+          const item = document.createElement("span");
+          item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
+          item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
+            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}</span>`;
+          legendDiv.appendChild(item);
+        });
+        wrap.appendChild(legendDiv);
+
+        // ── SVG chart ──
+        const W = Math.max(320, wrap.clientWidth || 520);
+        const H = 290;
+        const ML = 62,
+          MR = 20,
+          MT = 14,
+          MB = 68;
+        const iW = W - ML - MR;
+        const iH = H - MT - MB;
+
+        const svg = d3
+          .select(wrap)
+          .append("svg")
+          .attr("viewBox", `0 0 ${W} ${H}`)
+          .style("width", "100%")
+          .style("display", "block")
+          .style("overflow", "visible");
+
+        const g = svg.append("g").attr("transform", `translate(${ML},${MT})`);
+
+        // Scales (shared across all series)
+        const xExt = d3.extent(allPts, (p) => p.date);
+        const xPad = Math.max((xExt[1] - xExt[0]) * 0.08, 6 * 3600 * 1000);
+        const xSc = d3
+          .scaleTime()
+          .domain([new Date(+xExt[0] - xPad), new Date(+xExt[1] + xPad)])
+          .range([0, iW]);
+
+        const yMax = d3.max(allPts, (p) => p.y) || 1;
+        const scaleType = (document.getElementById("longi-scale-sel") || {}).value || "linear";
+        let ySc;
+        if (scaleType === "log") {
+          const yMinPos = Math.max(d3.min(allPts, (p) => p.y) || 0.001, 0.001);
+          ySc = d3
+            .scaleLog()
+            .domain([yMinPos * 0.9, yMax * 1.5])
+            .range([iH, 0])
+            .clamp(true);
+        } else if (scaleType === "sqrt") {
+          ySc = d3
+            .scaleSqrt()
+            .domain([0, yMax * 1.15])
+            .range([iH, 0])
+            .nice();
+        } else {
+          ySc = d3
+            .scaleLinear()
+            .domain([0, yMax * 1.15])
+            .range([iH, 0])
+            .nice();
+        }
+
+        // Horizontal grid
+        g.append("g")
+          .call(d3.axisLeft(ySc).tickSize(-iW).tickFormat("").ticks(5))
+          .call((ax) => ax.select(".domain").remove())
+          .call((ax) => ax.selectAll("line").attr("stroke", "#e5eaf2").attr("stroke-dasharray", "4,3"));
+
+        // X axis
+        g.append("g")
+          .attr("transform", `translate(0,${iH})`)
+          .call(
+            d3
+              .axisBottom(xSc)
+              .ticks(Math.min(allPts.length + 1, 7))
+              .tickFormat((d) => `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`),
+          )
+          .call((ax) =>
+            ax
+              .selectAll("text")
+              .attr("transform", "rotate(-35)")
+              .style("text-anchor", "end")
+              .style("font-size", "0.71em"),
+          )
+          .call((ax) => ax.select(".domain").attr("stroke", "#ccc"))
+          .call((ax) => ax.selectAll(".tick line").attr("stroke", "#ccc"));
+
+        // Y axis
+        const yAxis = scaleType === "log" ? d3.axisLeft(ySc).ticks(5, "~s") : d3.axisLeft(ySc).ticks(5);
+        g.append("g")
+          .call(yAxis)
+          .call((ax) => ax.selectAll("text").style("font-size", "0.71em"))
+          .call((ax) => ax.select(".domain").attr("stroke", "#ccc"))
+          .call((ax) => ax.selectAll(".tick line").attr("stroke", "#ccc"));
+
+        g.append("text")
+          .attr("transform", "rotate(-90)")
+          .attr("x", -iH / 2)
+          .attr("y", -ML + 14)
+          .attr("text-anchor", "middle")
+          .style("font-size", "0.74em")
+          .style("fill", "#555")
+          .text(yField);
+
+        // Tooltip
+        const tip = d3
+          .select(wrap)
+          .append("div")
+          .style("position", "absolute")
+          .style("background", "rgba(22,35,58,0.95)")
+          .style("color", "#fff")
+          .style("border-radius", "8px")
+          .style("padding", "8px 13px")
+          .style("font-size", "0.78em")
+          .style("pointer-events", "none")
+          .style("display", "none")
+          .style("white-space", "nowrap")
+          .style("z-index", "9999")
+          .style("box-shadow", "0 2px 10px rgba(0,0,0,.4)");
+
+        const lineGen = d3
+          .line()
+          .defined((p) => scaleType !== "log" || p.y > 0)
+          .x((p) => xSc(p.date))
+          .y((p) => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
+
+        // Draw one line + dots per organism
+        series.forEach((s) => {
+          // Line
+          if (s.pts.length > 1) {
+            g.append("path")
+              .datum(s.pts)
+              .attr("fill", "none")
+              .attr("stroke", s.color)
+              .attr("stroke-width", 2.2)
+              .attr("opacity", 0.75)
+              .attr("d", lineGen);
+          }
+
+          // Dots
+          g.selectAll(`.longi-dot-${s.pts[0] ? s.pts[0].org.replace(/\W/g, "_") : "x"}`)
+            .data(s.pts)
+            .enter()
+            .append("circle")
+            .attr("cx", (p) => xSc(p.date))
+            .attr("cy", (p) => ySc(p.y))
+            .attr("r", 7)
+            .attr("fill", s.color)
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 2)
+            .style("cursor", "pointer")
+            .style("filter", "drop-shadow(0 1px 3px rgba(0,0,0,.28))")
+            .on("mouseover", function (event, p) {
+              d3.select(this).transition().duration(80).attr("r", 10);
+              const dateStr = `${mo[p.date.getMonth()]} ${p.date.getDate()}, ${p.date.getFullYear()}`;
+              const fmt = (v) => (v % 1 === 0 ? v.toLocaleString() : v.toFixed(3));
+              tip
+                .html(
+                  `<span style="color:#90caf9;font-weight:700">${p.sample}</span><br>` +
+                    `<span style="color:#b0bec5;font-size:0.9em">${dateStr}</span><br>` +
+                    `<span style="color:#cfd8dc;font-size:0.88em">${
+                      p.org.length > 35 ? p.org.slice(0, 34) + "…" : p.org
+                    }</span><br>` +
+                    `<span style="color:#fff">${yField}:</span> <b>${fmt(p.y)}</b>`,
+                )
+                .style("display", "block");
+            })
+            .on("mousemove", function (event) {
+              const box = wrap.getBoundingClientRect();
+              const tipW = 200;
+              let lft = event.clientX - box.left + 14;
+              if (lft + tipW > box.width) lft = event.clientX - box.left - tipW - 10;
+              tip.style("left", lft + "px").style("top", event.clientY - box.top - 42 + "px");
+            })
+            .on("mouseout", function () {
+              d3.select(this).transition().duration(80).attr("r", 7);
+              tip.style("display", "none");
+            });
+        });
+
+        // Sample name labels — one per unique sample, above the topmost dot for that sample
+        const labelMap = new Map();
+        series.forEach((s) =>
+          s.pts.forEach((p) => {
+            const py = ySc(p.y);
+            if (!labelMap.has(p.sample) || py < labelMap.get(p.sample).topY) {
+              labelMap.set(p.sample, { date: p.date, topY: py });
+            }
+          }),
+        );
+        g.selectAll(".longi-lbl-sample")
+          .data([...labelMap.entries()].map(([sample, v]) => ({ sample, date: v.date, topY: v.topY })))
+          .enter()
+          .append("text")
+          .attr("x", (d) => xSc(d.date))
+          .attr("y", (d) => d.topY - 13)
+          .attr("text-anchor", "middle")
+          .style("font-size", "0.66em")
+          .style("fill", "#455a64")
+          .style("pointer-events", "none")
+          .text((d) => (d.sample.length > 16 ? d.sample.slice(0, 15) + "…" : d.sample));
+      }
+
+      function _buildRunMetaTable() {
+        if (!RUN_META || RUN_META.length === 0) return;
+        const hdrRow = document.getElementById("runmeta-header-row");
+        const tbody = document.getElementById("runmeta-body");
+        if (!hdrRow || !tbody) return;
+
+        // Discover all keys present across every record, keeping sample_name first
+        const keySet = new Set();
+        RUN_META.forEach((r) =>
+          Object.keys(r).forEach((k) => {
+            if (k !== "sample_name") keySet.add(k);
+          }),
+        );
+        // Preferred order for known fields, then any extras alphabetically
+        const KNOWN_ORDER = ["run_id", "latitude", "longitude", "depth", "salinity", "collection_time", "location"];
+        const ordered = [
+          "sample_name",
+          ...KNOWN_ORDER.filter((k) => keySet.has(k)),
+          ...[...keySet].filter((k) => !KNOWN_ORDER.includes(k)).sort(),
+        ];
+        // Only show columns that have at least one non-null value
+        const activeCols = ordered.filter((k) => RUN_META.some((r) => r[k] != null && r[k] !== ""));
+
+        hdrRow.innerHTML = activeCols
+          .map(
+            (k) =>
+              `<th style="background:#1565C0;color:#fff;padding:6px 10px;text-align:left;white-space:nowrap;font-weight:600">${_metaKeyLabel(
+                k,
+              )}</th>`,
+          )
+          .join("");
+
+        tbody.innerHTML = RUN_META.map((rec, i) => {
+          const isHighlighted = rec.sample_name === _runmetaHighlightSample;
+          const bg = isHighlighted ? "#fff9c4" : i % 2 === 0 ? "#f0f6ff" : "#fff";
+          const border = isHighlighted ? "2px solid #f9a825" : "none";
+          const cells = activeCols
+            .map((k) => {
+              const v = rec[k];
+              return `<td style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${
+                v != null ? String(v).replace(/"/g, "&quot;") : ""
+              }">${v != null ? v : "—"}</td>`;
+            })
+            .join("");
+          return `<tr id="runmeta-row-${CSS.escape(
+            rec.sample_name,
+          )}" style="background:${bg};outline:${border}">${cells}</tr>`;
+        }).join("");
+
+        // Scroll highlighted row into view
+        if (_runmetaHighlightSample) {
+          const row = document.getElementById(`runmeta-row-${CSS.escape(_runmetaHighlightSample)}`);
+          if (row) setTimeout(() => row.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         LEAFLET MAP  — CARTO Voyager tiles (no Referer restrictions)
+         Side-panel: click marker → filtered TASS table for that sample
+         (State variables and drag listeners are declared earlier, before
+          redraw(), to avoid the let Temporal Dead Zone.)
+      ══════════════════════════════════════════════════════════════════════ */
+      function _svgDot(color, selected) {
+        const r = selected ? 11 : 8;
+        const ring = selected
+          ? `<circle cx="${r + 5}" cy="${r + 5}" r="${
+              r + 3
+            }" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
+          : "";
+        return L.divIcon({
+          className: "",
+          html: `<svg xmlns="http://www.w3.org/2000/svg" width="${(r + 5) * 2}" height="${(r + 5) * 2}">
+            <circle cx="${r + 5}" cy="${r + 5}" r="${r}" fill="${color}"
+              stroke="rgba(255,255,255,.9)" stroke-width="${selected ? 2.5 : 1.5}"
+              filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"/>
+            ${ring}
+          </svg>`,
+          iconSize: [(r + 5) * 2, (r + 5) * 2],
+          iconAnchor: [r + 5, r + 5],
+        });
+      }
+
+      function _initMap() {
+        if (_leafletMap) {
+          _leafletMap.invalidateSize();
+          return;
+        }
+        _doInitMap();
+      }
+
+      function _doInitMap() {
+        const container = document.getElementById("map-container");
+        if (!container || _leafletMap) return;
+
+        // Guard: Leaflet must be loaded (requires internet for CDN)
+        if (typeof L === "undefined") {
+          container.innerHTML =
+            '<p style="padding:2em;text-align:center;color:#888">' +
+            '<i class="fas fa-triangle-exclamation" style="font-size:2em;display:block;margin-bottom:.5em;opacity:.4"></i>' +
+            "Map requires an internet connection to load the Leaflet library.<br>" +
+            "<small>Open this report from a web server or ensure internet access.</small></p>";
+          return;
+        }
+
+        const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
+        if (geoRows.length === 0) return; // no geo data
+
+        _leafletMap = L.map("map-container", { zoomControl: true });
+
+        // CARTO Voyager — no Referer/policy restrictions
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+          attribution:
+            '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: "abcd",
+          maxZoom: 19,
+        }).addTo(_leafletMap);
+
+        _markerLayer = L.layerGroup().addTo(_leafletMap);
+
+        // Assign colours
+        const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
+        const colorMap = {};
+        sampleNames.forEach((n, i) => {
+          colorMap[n] = _MAP_PALETTE[i % _MAP_PALETTE.length];
+        });
+
+        const bounds = [];
+        geoRows.forEach((rec) => {
+          const lat = parseFloat(rec.latitude);
+          const lon = parseFloat(rec.longitude);
+          if (isNaN(lat) || isNaN(lon)) return;
+
+          const col = colorMap[rec.sample_name] || "#1565C0";
+          const mk = L.marker([lat, lon], { icon: _svgDot(col, false) });
+
+          mk.on("click", () => {
+            // Deselect previous
+            if (_selectedSample && _markerObjects[_selectedSample]) {
+              const prev = _markerObjects[_selectedSample];
+              prev.marker.setIcon(_svgDot(prev.color, false));
+            }
+            _selectedSample = rec.sample_name;
+            mk.setIcon(_svgDot(col, true));
+            _renderMapPanel(rec);
+          });
+
+          mk.addTo(_markerLayer);
+          _markerObjects[rec.sample_name] = { marker: mk, rec, color: col };
+          bounds.push([lat, lon]);
+        });
+
+        if (bounds.length > 0) {
+          _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+        } else {
+          _leafletMap.setView([20, 0], 2);
+        }
+        // Force Leaflet to recalculate container size in case flex layout settled late
+        setTimeout(() => {
+          if (_leafletMap) _leafletMap.invalidateSize();
+        }, 150);
+      }
+
+      /* ── Map side panel ─────────────────────────────────────────────────── */
+
+      function _renderMapPanel(rec) {
+        const panel = document.getElementById("map-panel");
+        if (!panel) return;
+
+        // Make panel and resize handle visible
+        panel.style.display = "flex";
+        const handle = document.getElementById("map-resize-handle");
+        if (handle) handle.style.display = "block";
+
+        // Header: sample name
+        const title = document.getElementById("map-panel-title");
+        if (title) title.textContent = rec.sample_name;
+
+        // Show the "View in metadata table" button only if runmeta tab is available
+        const viewBtn = document.getElementById("map-panel-view-btn");
+        if (viewBtn) {
+          const hasRunMeta = RUN_META.length > 0;
+          viewBtn.style.display = hasRunMeta ? "inline-block" : "none";
+        }
+
+        // Meta info strip — show lat/lon first, then all other non-null fields dynamically
+        const metaEl = document.getElementById("map-panel-meta");
+        if (metaEl) {
+          const skip = new Set(["sample_name", "latitude", "longitude"]);
+          const lines = [];
+
+          // Lat/Lon always first (it's why the dot is on the map)
+          if (rec.latitude != null && rec.longitude != null) {
+            lines.push(
+              `<b>Lat/Lon:</b> ${parseFloat(rec.latitude).toFixed(4)}, ${parseFloat(rec.longitude).toFixed(4)}`,
+            );
+          }
+
+          // All remaining non-null fields in order
+          Object.entries(rec).forEach(([k, v]) => {
+            if (skip.has(k) || v == null || v === "") return;
+            lines.push(`<b>${_metaKeyLabel(k)}:</b> ${v}`);
+          });
+
+          metaEl.innerHTML = lines.length
+            ? lines.join(" &nbsp;·&nbsp; ")
+            : '<span style="color:#bbb">No additional metadata</span>';
+        }
+
+        _refreshMapPanelTable();
+      }
+
+      // Wire up sortable column headers (called once after init)
+      function _initPanelSortHeaders() {
+        document.querySelectorAll("th.sortable-col").forEach((th) => {
+          th.addEventListener("click", () => {
+            const col = th.getAttribute("data-col");
+            if (_panelSortCol === col) {
+              _panelSortAsc = !_panelSortAsc;
+            } else {
+              _panelSortCol = col;
+              _panelSortAsc = col === "Detected Organism" || col === "Microbial Category";
+            }
+            _refreshMapPanelTable();
+          });
+        });
+      }
+
+      function _refreshMapPanelTable() {
+        if (!_selectedSample) return;
+        const tbody = document.getElementById("map-panel-tbody");
+        const empty = document.getElementById("map-panel-empty");
+        const footer = document.getElementById("map-panel-footer");
+        if (!tbody) return;
+
+        // Search filter text
+        const searchVal = (document.getElementById("map-panel-search")?.value || "").trim().toLowerCase();
+
+        // Apply same filters as filteredData() but restrict to the selected sample
+        let rows = filteredData().filter((r) => r["Specimen ID"] === _selectedSample);
+
+        // Additional organism name search
+        if (searchVal) {
+          rows = rows.filter(
+            (r) =>
+              (r["Detected Organism"] || "").toLowerCase().includes(searchVal) ||
+              (r["Microbial Category"] || "").toLowerCase().includes(searchVal),
+          );
+        }
+
+        // Sort by _panelSortCol / _panelSortAsc
+        const isNum = !["Detected Organism", "Microbial Category"].includes(_panelSortCol);
+        rows = rows.slice().sort((a, b) => {
+          const av = isNum ? parseFloat(a[_panelSortCol] || 0) : a[_panelSortCol] || "";
+          const bv = isNum ? parseFloat(b[_panelSortCol] || 0) : b[_panelSortCol] || "";
+          const cmp = isNum ? av - bv : av.localeCompare(bv);
+          return _panelSortAsc ? cmp : -cmp;
+        });
+
+        // Update sort arrow indicators
+        document.querySelectorAll("th.sortable-col").forEach((th) => {
+          const arrowEl = th.querySelector(".sort-arrow");
+          if (!arrowEl) return;
+          if (th.getAttribute("data-col") === _panelSortCol) {
+            th.style.color = "#0d47a1";
+            arrowEl.textContent = _panelSortAsc ? "▲" : "▼";
+          } else {
+            th.style.color = "";
+            arrowEl.textContent = "";
+          }
+        });
+
+        if (rows.length === 0) {
+          tbody.innerHTML = "";
+          if (empty) empty.style.display = "block";
+          if (footer) footer.textContent = "No results";
+          return;
+        }
+        if (empty) empty.style.display = "none";
+
+        tbody.innerHTML = rows
+          .map((r, i) => {
+            const bg = i % 2 === 0 ? "#fafbff" : "#fff";
+            const cat = r["Microbial Category"] || "Unknown";
+            const catColor = _CAT_COLORS[cat] || "#555";
+            const tass = parseFloat(r["TASS Score"] || 0);
+            const bar = `<div style="display:inline-block;width:${Math.round(
+              tass * 0.5,
+            )}px;height:5px;background:${catColor};border-radius:3px;opacity:.6;margin-right:4px;vertical-align:middle"></div>`;
+            const org = r["Detected Organism"] || "";
+            return `<tr style="background:${bg}">
+            <td style="padding:4px 8px;border-bottom:1px solid #eef" title="${org.replace(/"/g, "&quot;")}">${org}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eef;text-align:right">${bar}${tass.toFixed(1)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eef;text-align:right">${parseFloat(
+              r["% Reads"] || 0,
+            ).toFixed(2)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eef;text-align:right">${parseFloat(
+              r["Coverage"] || 0,
+            ).toFixed(1)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eef"><span style="background:${catColor}22;color:${catColor};font-size:0.72em;font-weight:700;padding:1px 5px;border-radius:4px">${cat}</span></td>
+          </tr>`;
+          })
+          .join("");
+
+        const sortLabel =
+          _panelSortCol === "TASS Score"
+            ? "TASS"
+            : _panelSortCol === "% Reads"
+            ? "% Reads"
+            : _panelSortCol === "Coverage"
+            ? "Coverage"
+            : _panelSortCol === "Microbial Category"
+            ? "Category"
+            : "Organism";
+        const dirLabel = _panelSortAsc ? "↑" : "↓";
+        if (footer)
+          footer.textContent = `${rows.length} organism${
+            rows.length !== 1 ? "s" : ""
+          } · sorted by ${sortLabel} ${dirLabel}`;
+      }
+
+      function closeMapPanel() {
+        const panel = document.getElementById("map-panel");
+        const handle = document.getElementById("map-resize-handle");
+        if (panel) panel.style.display = "none";
+        if (handle) handle.style.display = "none";
+        // Clear search bar
+        const search = document.getElementById("map-panel-search");
+        if (search) search.value = "";
+        // Deselect marker
+        if (_selectedSample && _markerObjects[_selectedSample]) {
+          const obj = _markerObjects[_selectedSample];
+          obj.marker.setIcon(_svgDot(obj.color, false));
+        }
+        _selectedSample = null;
+        // Resize map to reclaim space
+        if (_leafletMap) setTimeout(() => _leafletMap.invalidateSize(), 50);
+      }
+
+      // "View" button: jump to Run Metadata tab and highlight this sample's row
+      function viewSampleInMetaTab() {
+        if (!_selectedSample) return;
+        _runmetaHighlightSample = _selectedSample;
+
+        // Switch to the runmeta tab programmatically
+        const rmBtn = document.getElementById("runmeta-tab-btn");
+        if (rmBtn) rmBtn.click();
+
+        // Rebuild table with highlight (click triggers _buildRunMetaTable via tab handler)
+        // But also call it directly in case the tab was already active
+        _buildRunMetaTable();
+      }
     </script>
   </body>
 </html>

@@ -9234,15 +9234,17 @@
         // M/D/YY h:mm  or  M/D/YYYY h:mm
         let m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/);
         if (m) {
-          let yr = parseInt(m[3]); if (yr < 100) yr += 2000;
-          d = new Date(yr, parseInt(m[1])-1, parseInt(m[2]), parseInt(m[4]), parseInt(m[5]));
+          let yr = parseInt(m[3]);
+          if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[4]), parseInt(m[5]));
           if (!isNaN(d)) return d;
         }
         // M/D/YY  or  M/D/YYYY  (date only)
         m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
         if (m) {
-          let yr = parseInt(m[3]); if (yr < 100) yr += 2000;
-          d = new Date(yr, parseInt(m[1])-1, parseInt(m[2]));
+          let yr = parseInt(m[3]);
+          if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1]) - 1, parseInt(m[2]));
           if (!isNaN(d)) return d;
         }
         return null;
@@ -9254,22 +9256,25 @@
 
         // Build time map from live RUN_META
         const timeMap = {};
-        (RUN_META || []).forEach(r => {
+        (RUN_META || []).forEach((r) => {
           const d = _parseLongiDate(r.collection_time);
           if (d) timeMap[r.sample_name] = d;
         });
 
         const timedSamples = Object.keys(timeMap);
-        if (!timedSamples.length) { section.style.display = "none"; return; }
+        if (!timedSamples.length) {
+          section.style.display = "none";
+          return;
+        }
         section.style.display = "block";
 
         // Organisms that appear in at least one timed sample
         const eligible = new Set(timedSamples);
         const orgSet = new Set(
           filteredData()
-            .filter(r => eligible.has(r["Specimen ID"]))
-            .map(r => r["Detected Organism"] || "")
-            .filter(Boolean)
+            .filter((r) => eligible.has(r["Specimen ID"]))
+            .map((r) => r["Detected Organism"] || "")
+            .filter(Boolean),
         );
         _longiOrgList = [...orgSet].sort((a, b) => a.localeCompare(b));
 
@@ -9290,16 +9295,15 @@
         if (!_longiBuilt) {
           _longiBuilt = true;
           const orgSearch = document.getElementById("longi-org-search");
-          const ySel      = document.getElementById("longi-y-sel");
-          const scaleSel  = document.getElementById("longi-scale-sel");
-          if (ySel)      ySel.addEventListener("change", _drawLongitudinalPlot);
-          if (scaleSel)  scaleSel.addEventListener("change", _drawLongitudinalPlot);
-          if (orgSearch) orgSearch.addEventListener("input", () => {
-            const q = (orgSearch.value || "").trim().toLowerCase();
-            _populateLongiOrgs(
-              q ? _longiOrgList.filter(o => o.toLowerCase().includes(q)) : _longiOrgList
-            );
-          });
+          const ySel = document.getElementById("longi-y-sel");
+          const scaleSel = document.getElementById("longi-scale-sel");
+          if (ySel) ySel.addEventListener("change", _drawLongitudinalPlot);
+          if (scaleSel) scaleSel.addEventListener("change", _drawLongitudinalPlot);
+          if (orgSearch)
+            orgSearch.addEventListener("input", () => {
+              const q = (orgSearch.value || "").trim().toLowerCase();
+              _populateLongiOrgs(q ? _longiOrgList.filter((o) => o.toLowerCase().includes(q)) : _longiOrgList);
+            });
         }
 
         _drawLongitudinalPlot();
@@ -9307,16 +9311,16 @@
 
       function _populateLongiOrgs(visibleOrgs) {
         const container = document.getElementById("longi-org-list");
-        const counter   = document.getElementById("longi-org-count");
+        const counter = document.getElementById("longi-org-count");
         if (!container) return;
 
         container.innerHTML = "";
-        visibleOrgs.forEach(org => {
+        visibleOrgs.forEach((org) => {
           const selected = _longiSelectedOrgs.has(org);
-          const color    = _longiOrgColors[org] || "#1565c0";
+          const color = _longiOrgColors[org] || "#1565c0";
 
           const chip = document.createElement("button");
-          chip.type  = "button";
+          chip.type = "button";
           chip.title = org;
           chip.style.cssText = [
             "display:inline-flex;align-items:center;gap:5px",
@@ -9354,7 +9358,7 @@
             // Re-render chips (keeping search filter)
             const q = (document.getElementById("longi-org-search") || {}).value || "";
             _populateLongiOrgs(
-              q.trim() ? _longiOrgList.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : _longiOrgList
+              q.trim() ? _longiOrgList.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase())) : _longiOrgList,
             );
             _drawLongitudinalPlot();
           });
@@ -9373,46 +9377,50 @@
         const list = document.getElementById("longi-sample-list");
         if (!list) return;
         list.innerHTML = "";
-        sampleNames.slice().sort().forEach(id => {
-          if (_longiHidden[id] === undefined) _longiHidden[id] = false;
-          const color = sampleColors[id] || "#1565c0";
-          const div   = document.createElement("div");
-          div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
+        sampleNames
+          .slice()
+          .sort()
+          .forEach((id) => {
+            if (_longiHidden[id] === undefined) _longiHidden[id] = false;
+            const color = sampleColors[id] || "#1565c0";
+            const div = document.createElement("div");
+            div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
 
-          const swatch = document.createElement("span");
-          swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
+            const swatch = document.createElement("span");
+            swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
             background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
 
-          const lbl = document.createElement("label");
-          lbl.style.cssText = "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
-          lbl.title = id;
+            const lbl = document.createElement("label");
+            lbl.style.cssText =
+              "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
+            lbl.title = id;
 
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
-          cb.checked = !_longiHidden[id];
-          cb.style.cssText = "flex-shrink:0;cursor:pointer";
-          cb.addEventListener("change", e => {
-            _longiHidden[id] = !e.target.checked;
-            _drawLongitudinalPlot();
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = !_longiHidden[id];
+            cb.style.cssText = "flex-shrink:0;cursor:pointer";
+            cb.addEventListener("change", (e) => {
+              _longiHidden[id] = !e.target.checked;
+              _drawLongitudinalPlot();
+            });
+
+            const txt = document.createTextNode(id.length > 18 ? id.slice(0, 17) + "…" : id);
+            lbl.appendChild(cb);
+            lbl.appendChild(txt);
+            div.appendChild(swatch);
+            div.appendChild(lbl);
+            list.appendChild(div);
           });
-
-          const txt = document.createTextNode(id.length > 18 ? id.slice(0,17) + "…" : id);
-          lbl.appendChild(cb);
-          lbl.appendChild(txt);
-          div.appendChild(swatch);
-          div.appendChild(lbl);
-          list.appendChild(div);
-        });
       }
 
       function _drawLongitudinalPlot() {
-        const wrap   = document.getElementById("longi-chart-wrap");
+        const wrap = document.getElementById("longi-chart-wrap");
         const noData = document.getElementById("longi-no-data");
         if (!wrap) return;
 
         wrap.innerHTML = "";
 
-        const ySel   = document.getElementById("longi-y-sel");
+        const ySel = document.getElementById("longi-y-sel");
         const yField = (ySel && ySel.value) || "TASS Score";
 
         const selectedOrgs = [..._longiSelectedOrgs];
@@ -9423,29 +9431,32 @@
 
         // Rebuild time map from live RUN_META
         const timeMap = {};
-        (RUN_META || []).forEach(r => {
+        (RUN_META || []).forEach((r) => {
           const d = _parseLongiDate(r.collection_time);
           if (d) timeMap[r.sample_name] = d;
         });
 
         // Build one series per selected organism: [{org, pts:[{sample,date,y}]}]
-        const series = selectedOrgs.map(org => {
-          const pts = filteredData()
-            .filter(r =>
-              (r["Detected Organism"] || "") === org &&
-              timeMap[r["Specimen ID"]] &&
-              !_longiHidden[r["Specimen ID"]]
-            )
-            .map(r => ({
-              org    : org,
-              sample : r["Specimen ID"] || "",
-              date   : timeMap[r["Specimen ID"]],
-              y      : parseFloat(r[yField]),
-            }))
-            .filter(p => !isNaN(p.y))
-            .sort((a, b) => a.date - b.date);
-          return { org, color: _longiOrgColors[org] || "#1565c0", pts };
-        }).filter(s => s.pts.length > 0);
+        const series = selectedOrgs
+          .map((org) => {
+            const pts = filteredData()
+              .filter(
+                (r) =>
+                  (r["Detected Organism"] || "") === org &&
+                  timeMap[r["Specimen ID"]] &&
+                  !_longiHidden[r["Specimen ID"]],
+              )
+              .map((r) => ({
+                org: org,
+                sample: r["Specimen ID"] || "",
+                date: timeMap[r["Specimen ID"]],
+                y: parseFloat(r[yField]),
+              }))
+              .filter((p) => !isNaN(p.y))
+              .sort((a, b) => a.date - b.date);
+            return { org, color: _longiOrgColors[org] || "#1565c0", pts };
+          })
+          .filter((s) => s.pts.length > 0);
 
         if (!series.length) {
           if (noData) noData.style.display = "block";
@@ -9453,13 +9464,13 @@
         }
         if (noData) noData.style.display = "none";
 
-        const allPts  = series.flatMap(s => s.pts);
-        const mo      = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        const allPts = series.flatMap((s) => s.pts);
+        const mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
         // ── Legend (above chart) ──
         const legendDiv = document.createElement("div");
         legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
-        series.forEach(s => {
+        series.forEach((s) => {
           const item = document.createElement("span");
           item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
           item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
@@ -9469,44 +9480,52 @@
         wrap.appendChild(legendDiv);
 
         // ── SVG chart ──
-        const W  = Math.max(320, wrap.clientWidth || 520);
-        const H  = 290;
-        const ML = 62, MR = 20, MT = 14, MB = 68;
+        const W = Math.max(320, wrap.clientWidth || 520);
+        const H = 290;
+        const ML = 62,
+          MR = 20,
+          MT = 14,
+          MB = 68;
         const iW = W - ML - MR;
         const iH = H - MT - MB;
 
-        const svg = d3.select(wrap)
+        const svg = d3
+          .select(wrap)
           .append("svg")
           .attr("viewBox", `0 0 ${W} ${H}`)
-          .style("width","100%")
-          .style("display","block")
-          .style("overflow","visible");
+          .style("width", "100%")
+          .style("display", "block")
+          .style("overflow", "visible");
 
         const g = svg.append("g").attr("transform", `translate(${ML},${MT})`);
 
         // Scales (shared across all series)
-        const xExt = d3.extent(allPts, p => p.date);
-        const xPad = Math.max((xExt[1]-xExt[0])*0.08, 6*3600*1000);
-        const xSc  = d3.scaleTime()
-          .domain([new Date(+xExt[0]-xPad), new Date(+xExt[1]+xPad)])
+        const xExt = d3.extent(allPts, (p) => p.date);
+        const xPad = Math.max((xExt[1] - xExt[0]) * 0.08, 6 * 3600 * 1000);
+        const xSc = d3
+          .scaleTime()
+          .domain([new Date(+xExt[0] - xPad), new Date(+xExt[1] + xPad)])
           .range([0, iW]);
 
-        const yMax = d3.max(allPts, p => p.y) || 1;
+        const yMax = d3.max(allPts, (p) => p.y) || 1;
         const scaleType = (document.getElementById("longi-scale-sel") || {}).value || "linear";
         let ySc;
         if (scaleType === "log") {
-          const yMinPos = Math.max(d3.min(allPts, p => p.y) || 0.001, 0.001);
-          ySc = d3.scaleLog()
+          const yMinPos = Math.max(d3.min(allPts, (p) => p.y) || 0.001, 0.001);
+          ySc = d3
+            .scaleLog()
             .domain([yMinPos * 0.9, yMax * 1.5])
             .range([iH, 0])
             .clamp(true);
         } else if (scaleType === "sqrt") {
-          ySc = d3.scaleSqrt()
+          ySc = d3
+            .scaleSqrt()
             .domain([0, yMax * 1.15])
             .range([iH, 0])
             .nice();
         } else {
-          ySc = d3.scaleLinear()
+          ySc = d3
+            .scaleLinear()
             .domain([0, yMax * 1.15])
             .range([iH, 0])
             .nice();
@@ -9515,69 +9534,74 @@
         // Horizontal grid
         g.append("g")
           .call(d3.axisLeft(ySc).tickSize(-iW).tickFormat("").ticks(5))
-          .call(ax => ax.select(".domain").remove())
-          .call(ax => ax.selectAll("line")
-          .attr("stroke","#e5eaf2").attr("stroke-dasharray","4,3"));
+          .call((ax) => ax.select(".domain").remove())
+          .call((ax) => ax.selectAll("line").attr("stroke", "#e5eaf2").attr("stroke-dasharray", "4,3"));
 
         // X axis
         g.append("g")
           .attr("transform", `translate(0,${iH})`)
           .call(
-            d3.axisBottom(xSc)
+            d3
+              .axisBottom(xSc)
               .ticks(Math.min(allPts.length + 1, 7))
-              .tickFormat(d => `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`)
+              .tickFormat((d) => `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`),
           )
-          .call(ax => ax.selectAll("text")
-            .attr("transform","rotate(-35)")
-            .style("text-anchor","end")
-            .style("font-size","0.71em"))
-          .call(ax => ax.select(".domain").attr("stroke","#ccc"))
-          .call(ax => ax.selectAll(".tick line").attr("stroke","#ccc"));
+          .call((ax) =>
+            ax
+              .selectAll("text")
+              .attr("transform", "rotate(-35)")
+              .style("text-anchor", "end")
+              .style("font-size", "0.71em"),
+          )
+          .call((ax) => ax.select(".domain").attr("stroke", "#ccc"))
+          .call((ax) => ax.selectAll(".tick line").attr("stroke", "#ccc"));
 
         // Y axis
-        const yAxis = scaleType === "log"
-          ? d3.axisLeft(ySc).ticks(5, "~s")
-          : d3.axisLeft(ySc).ticks(5);
+        const yAxis = scaleType === "log" ? d3.axisLeft(ySc).ticks(5, "~s") : d3.axisLeft(ySc).ticks(5);
         g.append("g")
           .call(yAxis)
-          .call(ax => ax.selectAll("text").style("font-size","0.71em"))
-          .call(ax => ax.select(".domain").attr("stroke","#ccc"))
-          .call(ax => ax.selectAll(".tick line").attr("stroke","#ccc"));
+          .call((ax) => ax.selectAll("text").style("font-size", "0.71em"))
+          .call((ax) => ax.select(".domain").attr("stroke", "#ccc"))
+          .call((ax) => ax.selectAll(".tick line").attr("stroke", "#ccc"));
 
         g.append("text")
-          .attr("transform","rotate(-90)")
-          .attr("x", -iH/2).attr("y", -ML+14)
-          .attr("text-anchor","middle")
-          .style("font-size","0.74em").style("fill","#555")
+          .attr("transform", "rotate(-90)")
+          .attr("x", -iH / 2)
+          .attr("y", -ML + 14)
+          .attr("text-anchor", "middle")
+          .style("font-size", "0.74em")
+          .style("fill", "#555")
           .text(yField);
 
         // Tooltip
-        const tip = d3.select(wrap)
+        const tip = d3
+          .select(wrap)
           .append("div")
-          .style("position","absolute")
-          .style("background","rgba(22,35,58,0.95)")
-          .style("color","#fff")
-          .style("border-radius","8px")
-          .style("padding","8px 13px")
-          .style("font-size","0.78em")
-          .style("pointer-events","none")
-          .style("display","none")
-          .style("white-space","nowrap")
-          .style("z-index","9999")
-          .style("box-shadow","0 2px 10px rgba(0,0,0,.4)");
+          .style("position", "absolute")
+          .style("background", "rgba(22,35,58,0.95)")
+          .style("color", "#fff")
+          .style("border-radius", "8px")
+          .style("padding", "8px 13px")
+          .style("font-size", "0.78em")
+          .style("pointer-events", "none")
+          .style("display", "none")
+          .style("white-space", "nowrap")
+          .style("z-index", "9999")
+          .style("box-shadow", "0 2px 10px rgba(0,0,0,.4)");
 
-        const lineGen = d3.line()
-          .defined(p => scaleType !== "log" || p.y > 0)
-          .x(p => xSc(p.date))
-          .y(p => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
+        const lineGen = d3
+          .line()
+          .defined((p) => scaleType !== "log" || p.y > 0)
+          .x((p) => xSc(p.date))
+          .y((p) => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
 
         // Draw one line + dots per organism
-        series.forEach(s => {
+        series.forEach((s) => {
           // Line
           if (s.pts.length > 1) {
             g.append("path")
               .datum(s.pts)
-              .attr("fill","none")
+              .attr("fill", "none")
               .attr("stroke", s.color)
               .attr("stroke-width", 2.2)
               .attr("opacity", 0.75)
@@ -9585,63 +9609,67 @@
           }
 
           // Dots
-          g.selectAll(`.longi-dot-${s.pts[0] ? s.pts[0].org.replace(/\W/g,"_") : "x"}`)
+          g.selectAll(`.longi-dot-${s.pts[0] ? s.pts[0].org.replace(/\W/g, "_") : "x"}`)
             .data(s.pts)
             .enter()
             .append("circle")
-            .attr("cx", p => xSc(p.date))
-            .attr("cy", p => ySc(p.y))
+            .attr("cx", (p) => xSc(p.date))
+            .attr("cy", (p) => ySc(p.y))
             .attr("r", 7)
             .attr("fill", s.color)
-            .attr("stroke","#fff")
+            .attr("stroke", "#fff")
             .attr("stroke-width", 2)
-            .style("cursor","pointer")
-            .style("filter","drop-shadow(0 1px 3px rgba(0,0,0,.28))")
-            .on("mouseover", function(event, p) {
-              d3.select(this).transition().duration(80).attr("r",10);
+            .style("cursor", "pointer")
+            .style("filter", "drop-shadow(0 1px 3px rgba(0,0,0,.28))")
+            .on("mouseover", function (event, p) {
+              d3.select(this).transition().duration(80).attr("r", 10);
               const dateStr = `${mo[p.date.getMonth()]} ${p.date.getDate()}, ${p.date.getFullYear()}`;
-              const fmt = v => (v % 1 === 0) ? v.toLocaleString() : v.toFixed(3);
-              tip.html(
-                `<span style="color:#90caf9;font-weight:700">${p.sample}</span><br>` +
-                `<span style="color:#b0bec5;font-size:0.9em">${dateStr}</span><br>` +
-                `<span style="color:#cfd8dc;font-size:0.88em">${p.org.length>35?p.org.slice(0,34)+"…":p.org}</span><br>` +
-                `<span style="color:#fff">${yField}:</span> <b>${fmt(p.y)}</b>`
-              ).style("display","block");
+              const fmt = (v) => (v % 1 === 0 ? v.toLocaleString() : v.toFixed(3));
+              tip
+                .html(
+                  `<span style="color:#90caf9;font-weight:700">${p.sample}</span><br>` +
+                    `<span style="color:#b0bec5;font-size:0.9em">${dateStr}</span><br>` +
+                    `<span style="color:#cfd8dc;font-size:0.88em">${
+                      p.org.length > 35 ? p.org.slice(0, 34) + "…" : p.org
+                    }</span><br>` +
+                    `<span style="color:#fff">${yField}:</span> <b>${fmt(p.y)}</b>`,
+                )
+                .style("display", "block");
             })
-            .on("mousemove", function(event) {
-              const box  = wrap.getBoundingClientRect();
+            .on("mousemove", function (event) {
+              const box = wrap.getBoundingClientRect();
               const tipW = 200;
               let lft = event.clientX - box.left + 14;
               if (lft + tipW > box.width) lft = event.clientX - box.left - tipW - 10;
-              tip.style("left", lft + "px")
-                 .style("top",  (event.clientY - box.top - 42) + "px");
+              tip.style("left", lft + "px").style("top", event.clientY - box.top - 42 + "px");
             })
-            .on("mouseout", function() {
-              d3.select(this).transition().duration(80).attr("r",7);
-              tip.style("display","none");
+            .on("mouseout", function () {
+              d3.select(this).transition().duration(80).attr("r", 7);
+              tip.style("display", "none");
             });
-
         });
 
         // Sample name labels — one per unique sample, above the topmost dot for that sample
         const labelMap = new Map();
-        series.forEach(s => s.pts.forEach(p => {
-          const py = ySc(p.y);
-          if (!labelMap.has(p.sample) || py < labelMap.get(p.sample).topY) {
-            labelMap.set(p.sample, { date: p.date, topY: py });
-          }
-        }));
+        series.forEach((s) =>
+          s.pts.forEach((p) => {
+            const py = ySc(p.y);
+            if (!labelMap.has(p.sample) || py < labelMap.get(p.sample).topY) {
+              labelMap.set(p.sample, { date: p.date, topY: py });
+            }
+          }),
+        );
         g.selectAll(".longi-lbl-sample")
           .data([...labelMap.entries()].map(([sample, v]) => ({ sample, date: v.date, topY: v.topY })))
           .enter()
           .append("text")
-          .attr("x", d => xSc(d.date))
-          .attr("y", d => d.topY - 13)
-          .attr("text-anchor","middle")
-          .style("font-size","0.66em")
-          .style("fill","#455a64")
-          .style("pointer-events","none")
-          .text(d => d.sample.length > 16 ? d.sample.slice(0,15)+"…" : d.sample);
+          .attr("x", (d) => xSc(d.date))
+          .attr("y", (d) => d.topY - 13)
+          .attr("text-anchor", "middle")
+          .style("font-size", "0.66em")
+          .style("fill", "#455a64")
+          .style("pointer-events", "none")
+          .text((d) => (d.sample.length > 16 ? d.sample.slice(0, 15) + "…" : d.sample));
       }
 
       function _buildRunMetaTable() {
