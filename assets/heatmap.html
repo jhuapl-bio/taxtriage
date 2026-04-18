@@ -2764,6 +2764,23 @@
                 style="width: 62px; padding: 0.3em 0.4em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82em"
                 title="Filter rows where %id ÷ 100 ≥ this value (default 0.9 = 90%)"
               />
+              <select
+                id="prot-keyword-group"
+                style="padding: 0.3em 0.5em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82em; max-width: 160px"
+                title="Filter by common pathogen keyword groups"
+              >
+                <option value="">All categories</option>
+                <option value="abx">🧬 Antibiotic Resistance</option>
+                <option value="toxin">☠️ Toxin</option>
+                <option value="vf">⚠️ Virulence Factor</option>
+                <option value="efflux">🔁 Efflux Pump</option>
+                <option value="adhesin">🔗 Adhesin / Invasion</option>
+                <option value="immune">🛡️ Immune Evasion</option>
+                <option value="iron">🧲 Iron Acquisition</option>
+                <option value="secretion">💉 Secretion System</option>
+                <option value="biofilm">🦠 Biofilm</option>
+                <option value="mobile">📦 Mobile Genetic Element</option>
+              </select>
               <span id="prot-table-count" style="font-size: 0.78em; color: #888"></span>
               <span
                 id="prot-bar-filter-badge"
@@ -5189,6 +5206,45 @@
           return _catColors[prop] || "#90a4ae";
         }
 
+        // Keyword groups for the dropdown filter — matched against Property, Classification,
+        // Gene, Product, Description, and Annotation fields (case-insensitive substring).
+        const PROT_KEYWORD_GROUPS = {
+          abx: ["antibiotic", "antimicrobial", "beta-lactam", "carbapenem", "tetracycline",
+                "aminoglycoside", "macrolide", "quinolone", "fluoroquinolone", "vancomycin",
+                "methicillin", "oxacillin", "rifampin", "colistin", "polymyxin",
+                "resistance", "amr", "drug resistance"],
+          toxin: ["toxin", "exotoxin", "endotoxin", "enterotoxin", "cytotoxin",
+                  "leukotoxin", "hemolysin", "hemolysis", "cytolysin", "stx", "shiga",
+                  "pertussis toxin", "diphtheria", "botulinum", "clostridial"],
+          vf: ["virulence", "pathogenicity", "pathogenic", "virulence factor"],
+          efflux: ["efflux", "efflux pump", "mdr", "multidrug", "ABC transporter",
+                   "RND", "MFS transporter", "drug efflux"],
+          adhesin: ["adhesin", "invasion", "invasin", "fimbriae", "fimbrial",
+                    "pilus", "pili", "attachment", "colonization", "fim", "type iv pili"],
+          immune: ["immune evasion", "immune", "capsule", "complement", "serum resistance",
+                   "phagocytosis", "antiphagocytic", "opsonization", "IgA protease",
+                   "type iii secretion effector"],
+          iron: ["iron", "siderophore", "ferritin", "ferric", "fur", "iuc", "iut",
+                 "enterobactin", "aerobactin", "yersiniabactin", "catechol"],
+          secretion: ["secretion system", "type iii", "type-iii", "t3ss", "t4ss", "t6ss",
+                      "type vi", "type iv", "type ii secretion", "sec pathway",
+                      "tat pathway", "needle complex"],
+          biofilm: ["biofilm", "exopolysaccharide", "eps", "pellicle", "quorum sensing",
+                    "curli", "cellulose", "polysaccharide synthesis"],
+          mobile: ["transposon", "integron", "plasmid", "insertion sequence", "IS element",
+                   "mobile genetic", "conjugation", "horizontal gene transfer",
+                   "integrase", "recombinase", "phage"],
+        };
+
+        // Fields to check when applying keyword group filter
+        const _KW_FIELDS = [
+          "Property", "property", "Classification", "classification",
+          "Gene", "gene", "Gene Name", "gene_name",
+          "Product", "product", "Antibiotics",
+          "Description", "description", "Annotation", "annotation",
+          "Function", "function", "Class", "class",
+        ];
+
         function _buildProtTable() {
           // Combine per_gene_hits with amr_genes, removing exact duplicates
           // Apply column rename map so field names are unified regardless of source
@@ -5231,6 +5287,8 @@
           if (tassFilter) tassFilter.addEventListener("change", _filterProt);
           const pidMinEl = document.getElementById("prot-pid-min");
           if (pidMinEl) pidMinEl.addEventListener("input", _filterProt);
+          const kwGroupEl = document.getElementById("prot-keyword-group");
+          if (kwGroupEl) kwGroupEl.addEventListener("change", _filterProt);
         }
 
         function _renderProtHeader() {
@@ -5275,6 +5333,11 @@
           const minPid = parseFloat((document.getElementById("prot-pid-min") || {}).value);
           // minPid is 0–1 scale; %id in data is 0–100 → compare as pct/100
           const pidThresh = !isNaN(minPid) ? minPid : 0;
+          // Keyword group filter
+          const kwGroup = (document.getElementById("prot-keyword-group") || {}).value || "";
+          const kwTerms = kwGroup && PROT_KEYWORD_GROUPS[kwGroup]
+            ? PROT_KEYWORD_GROUPS[kwGroup].map(t => t.toLowerCase())
+            : null;
 
           // Use ALL data (not filtered) — organism is "in TASS" if found in ANY sample in this run
           const _allTassOrgs = DATA.map((r) => (r["Detected Organism"] || "").trim().toLowerCase()).filter(Boolean);
@@ -5291,6 +5354,11 @@
             if (pidThresh > 0) {
               const pid = parseFloat(r["%id"] || r["pident"] || r["%ID"] || r["identity"] || 0);
               if (!isNaN(pid) && pid / 100 < pidThresh) return false;
+            }
+            // Keyword group filter — row must match at least one term in any checked field
+            if (kwTerms) {
+              const haystack = _KW_FIELDS.map(f => String(r[f] || "").toLowerCase()).join(" ");
+              if (!kwTerms.some(t => haystack.includes(t))) return false;
             }
             // Text search
             if (q) {
