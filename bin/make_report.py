@@ -469,14 +469,26 @@ def main():
           f"({sum(len(v) for v in prot_data.values())} total rows)")
 
     # ── extract run-level metadata for map / metadata panel ──────────────────
-    _RUN_META_KEYS = ("run_id", "latitude", "longitude", "depth", "salinity",
-                      "collection_time", "location")
+    # These fields are part of the fixed pipeline/sample identity — not run metadata.
+    _META_PIPELINE_KEYS = {
+        "sample_name", "sample_type", "platform", "workflow_revision", "commit_id",
+        "total_reads", "aligned_reads", "total_organism_reads", "num_species_groups",
+        "num_keys", "num_subkeys", "num_toplevelkeys", "minmapq", "mapq_breadth_power",
+        "weights", "min_conf_applied", "best_cutoffs", "best_cutoffs_source",
+        "preferred_granularity", "control_type", "negative_controls_used",
+        "positive_controls_used", "control_fold_threshold", "missing_positive_controls",
+        "insilico_controls_used", "insilico_simulator_types", "missing_insilico_controls",
+        "missing_insilico_by_type",
+    }
     run_metadata_records = []
     for sname, smeta in sample_meta.items():
         rec = {"sample_name": sname}
-        for k in _RUN_META_KEYS:
-            rec[k] = smeta.get(k)
-        if any(rec[k] is not None for k in _RUN_META_KEYS):
+        # Include ALL metadata fields that are not fixed pipeline/identity fields
+        for k, v in smeta.items():
+            if k not in _META_PIPELINE_KEYS and k != "sample_name":
+                rec[k] = v
+        # Only add to records if at least one field has a non-null, non-empty value
+        if any(v is not None and v != "" for k, v in rec.items() if k != "sample_name"):
             run_metadata_records.append(rec)
 
     has_geo = any(

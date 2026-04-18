@@ -37,6 +37,7 @@ workflow REPORT {
         assemblyfile
         ch_taxdump_dir
         all_samples
+        ch_meta_csv
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -115,6 +116,7 @@ workflow REPORT {
                 ch_no_neg_ctrl,
                 ch_no_pos_ctrl,
                 ch_no_insilico_ctrl,
+                ch_meta_csv,
             )
 
             // ── Step 1b: Run insilico samples (no controls for them) ────────────
@@ -128,6 +130,7 @@ workflow REPORT {
                 ch_no_neg_ctrl,
                 ch_no_pos_ctrl,
                 ch_no_insilico_ctrl,
+                ch_meta_csv,
             )
 
             // ── Step 2: Collect control JSON outputs into a value channel ──────
@@ -227,6 +230,7 @@ workflow REPORT {
                 noncontrol_neg_json,
                 noncontrol_pos_json,
                 noncontrol_insilico_json,
+                ch_meta_csv,
             )
 
             // ── Step 4: Merge outputs from control, insilico, and non-control runs ─

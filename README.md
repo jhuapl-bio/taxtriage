@@ -343,7 +343,7 @@ If you use this software, please cite doi: [10.1101/2025.07.16.664785](https://d
 
 ## Copyright
 
-Copyright 2022-2025 The Johns Hopkins University Applied Physics Laboratory LLC
+Copyright 2022-2026 The Johns Hopkins University Applied Physics Laboratory LLC
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this
 software and associated documentation files (the "Software"), to deal in the Software
