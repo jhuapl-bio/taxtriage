@@ -426,9 +426,9 @@ workflow TAXTRIAGE {
     // get the date and time of the run
     def date = new Date()
     println "Date: ${date}"
-
+    ch_meta = Channel.empty()
     ch_reads = INPUT_CHECK.out.reads
-
+    ch_meta = INPUT_CHECK.out.ch_meta
     // ── Run-level metadata: --meta CSV ───────────────────────────────────────
     // Supports two formats:
     //   a) CSV with 'sample' column → each row maps to one sample by name
@@ -437,51 +437,18 @@ workflow TAXTRIAGE {
     // Fields merged into meta: run_id, latitude, longitude, depth, salinity,
     //   collection_time, location.  Samplesheet columns (if present) are
     //   used as defaults; --meta CSV values override them.
+    // ── Meta CSV channel (passed directly to ALIGNMENT_PER_SAMPLE via REPORT) ─
+    // The CSV file is passed as a Nextflow file input to the process, where
+    // match_paths.py reads it directly — no Groovy channel-combination needed.
     if (params.meta) {
-        // Collect all meta-CSV rows as a list of [key, fields] pairs.
-        // Key is the sanitised sample name when 'sample' column present;
-        // otherwise '__run__<run_id>' for run-level matching.
-        ch_meta_lookup = Channel.fromPath(params.meta, checkIfExists: true)
-            .splitCsv(header: true, strip: true)
-            .map { row ->
-                def fields = [
-                    run_id:          (row.containsKey('run_id')          && row.run_id)          ? row.run_id.trim()          : null,
-                    latitude:        (row.containsKey('latitude')        && row.latitude)        ? row.latitude.trim()        : null,
-                    longitude:       (row.containsKey('longitude')       && row.longitude)       ? row.longitude.trim()       : null,
-                    depth:           (row.containsKey('depth')           && row.depth)           ? row.depth.trim()           : null,
-                    salinity:        (row.containsKey('salinity')        && row.salinity)        ? row.salinity.trim()        : null,
-                    collection_time: (row.containsKey('collection_time') && row.collection_time) ? row.collection_time.trim() : null,
-                    location:        (row.containsKey('location')        && row.location)        ? row.location.trim()        : null,
-                ]
-                // Prefer keying by sample name; fall back to run_id for run-level rows
-                def key = (row.containsKey('sample') && row.sample)
-                    ? row.sample.trim().replaceAll(/\s+/, '_')
-                    : ('__run__' + (row.containsKey('run_id') && row.run_id ? row.run_id.trim() : 'unknown'))
-                return [key, fields]
-            }
-            .toList()   // collect once so we can broadcast to every sample
-
-        ch_reads = ch_reads
-            .combine(ch_meta_lookup)   // [meta, reads, [[key,fields], ...]]
-            .map { meta, reads, lookup_list ->
-                // Try sample-name match first, then run_id match
-                def matched = lookup_list.find { entry -> entry[0] == meta.id }
-                if (!matched && meta.run_id) {
-                    matched = lookup_list.find { entry -> entry[0] == '__run__' + meta.run_id }
-                }
-                if (matched) {
-                    def f = matched[1]
-                    // --meta values override samplesheet values (non-null wins)
-                    if (f.run_id)          meta.run_id          = f.run_id
-                    if (f.latitude)        meta.latitude        = f.latitude
-                    if (f.longitude)       meta.longitude       = f.longitude
-                    if (f.depth)           meta.depth           = f.depth
-                    if (f.salinity)        meta.salinity        = f.salinity
-                    if (f.collection_time) meta.collection_time = f.collection_time
-                    if (f.location)        meta.location        = f.location
-                }
-                [meta, reads]
-            }
+        // Use .first() to convert the single-file queue channel into a value channel
+        // so it is broadcast to ALL ALIGNMENT_PER_SAMPLE invocations, not just one.
+        ch_meta_csv = Channel.fromPath(params.meta, checkIfExists: true).first()
+    } else {
+        // Use the meta channel emitted by INPUT_CHECK (from samplesheet extra columns)
+        // if it produced a file; otherwise fall back to the empty sentinel.
+        ch_meta_csv = ch_meta
+            .ifEmpty(file("$projectDir/assets/NO_FILE_meta_csv"))
     }
 
     // Apply --positive / --negative CLI param overrides to force a sample as a control
@@ -905,7 +872,8 @@ workflow TAXTRIAGE {
                 distributions,
                 ch_assembly_txt,
                 ch_taxdump_dir,
-                all_samples
+                all_samples,
+                ch_meta_csv
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }

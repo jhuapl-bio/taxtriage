@@ -25,6 +25,7 @@ workflow INPUT_CHECK {
 
 
     main:
+    ch_meta = file("$projectDir/assets/NO_FILE_meta_csv")
 
 
     if (params.fastq_1) {
@@ -48,6 +49,8 @@ workflow INPUT_CHECK {
             .toList()
             .flatMap { resolve_control_types(it) }
             .set { reads }
+        GENERATE_SAMPLESHEET.out.meta
+            .set { ch_meta }
         versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
         // Use the provided samplesheet
@@ -60,6 +63,8 @@ workflow INPUT_CHECK {
         csvff
             .flatMap { resolve_control_types(it) }
             .set { reads }
+            SAMPLESHEET_CHECK.out.meta
+                .set { ch_meta }
             versions = SAMPLESHEET_CHECK.out.versions
         }
     else {
@@ -67,6 +72,7 @@ workflow INPUT_CHECK {
     }
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
+        ch_meta
 }
 
 // Function to get list of [ meta, [ fastq_1, fastq_2 ] ]
@@ -132,7 +138,6 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.salinity        = (row.containsKey('salinity')        && row.salinity)        ? row.salinity.trim()        : null
     meta.collection_time = (row.containsKey('collection_time') && row.collection_time) ? row.collection_time.trim() : null
     meta.location        = (row.containsKey('location')        && row.location)        ? row.location.trim()        : null
-    // print meta for debugging
     // add path(s) of the fastq file(s) to the meta map
     def fastq_meta = []
     if (meta.directory ){

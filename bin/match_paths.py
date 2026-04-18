@@ -284,6 +284,17 @@ def parse_args(argv=None):
         ),
     )
     parser.add_argument(
+        "--meta_csv",
+        type=str,
+        default=None,
+        help=(
+            "Path to a CSV file with run-level metadata. Must have a 'sample' or "
+            "'sample_name' column whose value matches this sample's name (spaces and "
+            "underscores are treated as equivalent). Any other columns are embedded "
+            "in the output JSON metadata. Takes precedence over --run_metadata."
+        ),
+    )
+    parser.add_argument(
         "-p",
         "--pathogens",
         metavar="PATHOGENS",
@@ -3015,18 +3026,129 @@ def main():
             for _gn, _gc in _best_cutoffs.items():
                 print(f"    {_gn}: best_threshold={_gc['best_threshold']}")
 
-    # ── Parse run-level metadata from --run_metadata JSON string ─────────────
+    # ── Parse run-level metadata ─────────────────────────────────────────────
+    # Priority: --meta_csv (file-based, most reliable) > --run_metadata (JSON string)
     _run_meta = {}
-    if args.run_metadata:
+    # 1. Try --meta_csv / --meta_tsv / --meta_xlsx: read the table and find the row matching this sample
+    if getattr(args, 'meta_csv', None) and args.meta_csv:
+        import os as _os
+
+        _meta_path = args.meta_csv.strip()
+
+        # Ignore the NO_FILE placeholder (empty file passed by Nextflow)
+        if _meta_path and _os.path.exists(_meta_path) and _os.path.getsize(_meta_path) > 0:
+            try:
+                import csv as _csv_mod
+
+                def _norm(s):
+                    return str(s).strip().replace(' ', '_').lower() if s is not None else ''
+
+                def _clean_key(k):
+                    if k is None:
+                        return None
+                    k = str(k).strip().lstrip('\ufeff')
+                    return k if k else None
+
+                def _clean_val(v):
+                    if v is None:
+                        return ''
+                    return str(v).strip()
+
+                def _iter_rows_from_table(_path):
+                    _ext = _os.path.splitext(_path)[1].lower()
+
+                    # CSV / TSV
+                    if _ext in ('.csv', '.tsv', '.txt'):
+                        _delimiter = '\t' if _ext == '.tsv' else ','
+
+                        # utf-8-sig removes BOM automatically if present
+                        with open(_path, newline='', encoding='utf-8-sig') as _fh:
+                            _reader = _csv_mod.DictReader(_fh, delimiter=_delimiter)
+
+                            # Clean fieldnames
+                            if _reader.fieldnames:
+                                _reader.fieldnames = [
+                                    _clean_key(f) for f in _reader.fieldnames
+                                ]
+
+                            for _row in _reader:
+                                _cleaned = {}
+                                for _k, _v in _row.items():
+                                    _ck = _clean_key(_k)
+                                    if _ck is None:
+                                        continue
+                                    _cleaned[_ck] = _clean_val(_v)
+                                yield _cleaned
+
+                    # XLSX
+                    elif _ext == '.xlsx':
+                        try:
+                            from openpyxl import load_workbook
+                        except ImportError:
+                            raise ImportError("openpyxl is required to read .xlsx metadata files")
+
+                        _wb = load_workbook(_path, read_only=True, data_only=True)
+                        _ws = _wb.active
+
+                        _rows = _ws.iter_rows(values_only=True)
+                        _header = next(_rows, None)
+                        if _header is None:
+                            return
+
+                        _fieldnames = [_clean_key(h) for h in _header]
+
+                        for _row in _rows:
+                            _cleaned = {}
+                            for _k, _v in zip(_fieldnames, _row):
+                                if _k is None:
+                                    continue
+                                _cleaned[_k] = _clean_val(_v)
+                            yield _cleaned
+
+                    else:
+                        raise ValueError(f"Unsupported metadata file extension: {_ext}")
+
+                _sample_norm = _norm(args.samplename)
+                _matched = False
+
+                for _row in _iter_rows_from_table(_meta_path):
+                    print(_row.get('sample'), _row)
+
+                    _col = (
+                        _row.get('sample')
+                        or _row.get('sample_name')
+                        or _row.get('samplename')
+                        or ''
+                    )
+
+                    if _norm(_col) == _sample_norm:
+                        for _k, _v in _row.items():
+                            if _k in ('sample', 'sample_name', 'samplename'):
+                                continue
+                            if _v:
+                                _run_meta[_k] = _v
+
+                        print(f"[match_paths] Loaded run metadata from table for sample '{args.samplename}': {list(_run_meta.keys())}")
+                        _matched = True
+                        break
+
+                if not _matched:
+                    print(f"[match_paths] WARNING: sample '{args.samplename}' not found in metadata file '{_meta_path}'")
+
+            except Exception as _e:
+                print(f"[match_paths] WARNING: Failed to read metadata file '{_meta_path}': {_e}")
+    # 2. Fall back to --run_metadata JSON string if CSV lookup gave nothing
+    if not _run_meta and getattr(args, 'run_metadata', None) and args.run_metadata:
         try:
-            _run_meta = _json.loads(args.run_metadata)
-            if not isinstance(_run_meta, dict):
+            _parsed = _json.loads(args.run_metadata)
+            if isinstance(_parsed, dict):
+                _run_meta = _parsed
+            else:
                 print(f"WARNING: --run_metadata is not a JSON object, ignoring: {args.run_metadata}")
-                _run_meta = {}
         except Exception as _e:
             print(f"WARNING: Failed to parse --run_metadata: {_e}. Value was: {args.run_metadata}")
 
-    # Coerce numeric fields to float where possible
+    #  numeric fields to float where possible
     for _num_key in ('latitude', 'longitude', 'depth', 'salinity'):
         if _num_key in _run_meta and _run_meta[_num_key] is not None:
             try:
@@ -3034,52 +3156,59 @@ def main():
             except (ValueError, TypeError):
                 pass  # leave as string if conversion fails
 
+    # ── Build metadata dict: fixed fields first, then ALL run-meta fields ───────
+    # Known fixed fields (always present so make_report.py can rely on them)
+    _output_metadata = {
+        "sample_name":    args.samplename,
+        "sample_type":    sampletype,
+        "platform":       args.platform,
+        "workflow_revision": args.workflow_revision,
+        "commit_id":      args.commit_id,
+        # ── Run-level metadata: known fields first (backwards compat) ──────────
+        "run_id":          _run_meta.get("run_id"),
+        "latitude":        _run_meta.get("latitude"),
+        "longitude":       _run_meta.get("longitude"),
+        "depth":           _run_meta.get("depth"),
+        "salinity":        _run_meta.get("salinity"),
+        "collection_time": _run_meta.get("collection_time"),
+        "location":        _run_meta.get("location"),
+        # ── Any extra schema-agnostic fields from the --meta CSV ───────────────
+        **{k: v for k, v in _run_meta.items()
+           if k not in {"run_id", "latitude", "longitude", "depth",
+                        "salinity", "collection_time", "location"}},
+        "total_reads": total_reads,
+        "aligned_reads": aligned_reads_total,
+        "total_organism_reads": int(_total_organism_reads),
+        "num_species_groups": len(final_json),
+        "num_keys": len(_all_keys),
+        "num_subkeys": len(_all_subkeys),
+        "num_toplevelkeys": len(_all_toplevelkeys),
+        "minmapq": args.minmapq,
+        "mapq_breadth_power": args.mapq_breadth_power,
+        "weights": dict(weights),
+        "min_conf_applied": None,  # populated by create_report per-sample
+        "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
+        "best_cutoffs_source": _st_key if _best_cutoffs else None,
+        "preferred_granularity": args.optimize_granularity,
+        "control_type": args.control_type,  # "positive", "negative", or None
+        "negative_controls_used": [
+            os.path.basename(p) for p in (args.negative_controls or [])
+        ] or None,
+        "positive_controls_used": [
+            os.path.basename(p) for p in (args.positive_controls or [])
+        ] or None,
+        "control_fold_threshold": args.control_fold_threshold if (
+            args.negative_controls or args.positive_controls) else None,
+        "missing_positive_controls": _missing_pos if _missing_pos else None,
+        "insilico_controls_used": [
+            os.path.basename(p) for p in (args.insilico_controls or [])
+        ] or None,
+        "insilico_simulator_types": list(_isil_buckets.keys()) if _isil_buckets else None,
+        "missing_insilico_controls": _missing_insilico if _missing_insilico else None,
+        "missing_insilico_by_type": _per_type_missing if _per_type_missing else None,
+    }
     output_json = {
-        "metadata": {
-            "sample_name": args.samplename,
-            "sample_type": sampletype,
-            "platform": args.platform,
-            "workflow_revision": args.workflow_revision,
-            "commit_id": args.commit_id,
-            # ── Run-level metadata (from --meta CSV or samplesheet columns) ──
-            "run_id":          _run_meta.get("run_id"),
-            "latitude":        _run_meta.get("latitude"),
-            "longitude":       _run_meta.get("longitude"),
-            "depth":           _run_meta.get("depth"),
-            "salinity":        _run_meta.get("salinity"),
-            "collection_time": _run_meta.get("collection_time"),
-            "location":        _run_meta.get("location"),
-            "total_reads": total_reads,
-            "aligned_reads": aligned_reads_total,
-            "total_organism_reads": int(_total_organism_reads),
-            "num_species_groups": len(final_json),
-            "num_keys": len(_all_keys),
-            "num_subkeys": len(_all_subkeys),
-            "num_toplevelkeys": len(_all_toplevelkeys),
-            "minmapq": args.minmapq,
-            "mapq_breadth_power": args.mapq_breadth_power,
-            "weights": dict(weights),
-            "min_conf_applied": None,  # populated by create_report per-sample
-            "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
-            "best_cutoffs_source": _st_key if _best_cutoffs else None,
-            "preferred_granularity": args.optimize_granularity,
-            "control_type": args.control_type,  # "positive", "negative", or None
-            "negative_controls_used": [
-                os.path.basename(p) for p in (args.negative_controls or [])
-            ] or None,
-            "positive_controls_used": [
-                os.path.basename(p) for p in (args.positive_controls or [])
-            ] or None,
-            "control_fold_threshold": args.control_fold_threshold if (
-                args.negative_controls or args.positive_controls) else None,
-            "missing_positive_controls": _missing_pos if _missing_pos else None,
-            "insilico_controls_used": [
-                os.path.basename(p) for p in (args.insilico_controls or [])
-            ] or None,
-            "insilico_simulator_types": list(_isil_buckets.keys()) if _isil_buckets else None,
-            "missing_insilico_controls": _missing_insilico if _missing_insilico else None,
-            "missing_insilico_by_type": _per_type_missing if _per_type_missing else None,
-        },
+        "metadata": _output_metadata,
         "organisms": _json_out,
     }
     write_to_json(args.output.replace(".tsv", ".json"), output_json)

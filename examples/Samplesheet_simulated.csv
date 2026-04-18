@@ -1,5 +1,5 @@
-sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type,negative,positive
-Miseq Run A,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,nasal,Negative Control Miseq,Positive Control Miseq
-Nanopore Run A,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,stool,,
-Positive Control Miseq,ILLUMINA,examples/data/controls/positive/pos_R1.fastq.gz,examples/data/controls/positive/pos_R2.fastq.gz,,FALSE,nasal,,
-Negative Control Miseq,ILLUMINA,examples/data/controls/negative/neg_R1.fastq.gz,examples/data/controls/negative/neg_R2.fastq.gz,,FALSE,nasal,,
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type,negative,positive,run,latitude,longitude,depth,salinity,location,collection_time
+Miseq Run A,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,nasal,Negative Control Miseq,Positive Control Miseq,Run A,39.2904,-76.4122,1,,MD,3/19/24 9:45
+Nanopore Run A,OXFORD,examples/data/nanosim_metagenome.fastq.gz,,,FALSE,stool,,,Run A,36.7928,-77.9945,5,4.8,VA,3/12/24 9:45
+Positive Control Miseq,ILLUMINA,examples/data/controls/positive/pos_R1.fastq.gz,examples/data/controls/positive/pos_R2.fastq.gz,,FALSE,nasal,,,Run A,,,,,,
+Negative Control Miseq,ILLUMINA,examples/data/controls/negative/neg_R1.fastq.gz,examples/data/controls/negative/neg_R2.fastq.gz,,FALSE,nasal,,,Run A,,,,,,

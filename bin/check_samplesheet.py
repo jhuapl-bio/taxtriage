@@ -227,7 +227,12 @@ def sniff_format(handle):
     return dialect
 
 
-def check_samplesheet(file_in, file_out):
+# Columns that belong to the pipeline infrastructure, not sample metadata
+_PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive",
+                  "single_end", "directory", "needscompressing"}
+
+
+def check_samplesheet(file_in, file_out, file_meta=None):
     """
     Check that the tabular samplesheet has the structure expected by nf-core pipelines.
 
@@ -287,6 +292,23 @@ def check_samplesheet(file_in, file_out):
             row = {k: v for k, v in row.items() if k != ''}
             writer.writerow(row)
 
+    # Write metadata file if requested: sample + all non-pipeline input columns
+    if file_meta is not None:
+        input_cols = list(reader.fieldnames or [])
+        meta_cols = [c for c in input_cols if c not in _PIPELINE_COLS and c != '']
+        if "sample" not in meta_cols:
+            meta_cols.insert(0, "sample")
+        # Nothing to write if the only column is 'sample'
+        if meta_cols == ["sample"]:
+            return
+        Path(file_meta).parent.mkdir(parents=True, exist_ok=True)
+        with open(file_meta, mode="w", newline="") as meta_handle:
+            writer = csv.DictWriter(meta_handle, meta_cols, delimiter=",",
+                                    extrasaction="ignore")
+            writer.writeheader()
+            for row in checker.modified:
+                writer.writerow({k: row.get(k, "") for k in meta_cols})
+
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -313,6 +335,12 @@ def parse_args(argv=None):
         choices=("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"),
         default="WARNING",
     )
+    parser.add_argument(
+        "-m",
+        "--meta",
+        help="valid metadata csv with sample and appropriate columns",
+        default=None,
+    )
     return parser.parse_args(argv)
 
 
@@ -325,7 +353,8 @@ def main(argv=None):
         logger.error(f"The given input file {args.file_in} was not found!")
         sys.exit(2)
     args.file_out.parent.mkdir(parents=True, exist_ok=True)
-    check_samplesheet(args.file_in, args.file_out)
+    file_meta = Path(args.meta) if args.meta else None
+    check_samplesheet(args.file_in, args.file_out, file_meta=file_meta)
 
 
 if __name__ == "__main__":

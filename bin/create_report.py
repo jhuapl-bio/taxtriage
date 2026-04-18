@@ -3742,7 +3742,9 @@ def create_annotation_genus_cards(species_groups, small_style, available_width, 
     return tbl
 
 
-_RUN_META_FIELDS = [
+# Fixed known fields that appear first in the Metadata sheet (in order).
+# Any extra fields from --meta CSV are appended alphabetically after these.
+_RUN_META_KNOWN_FIELDS = [
     ("run_id",          "Run ID"),
     ("latitude",        "Latitude"),
     ("longitude",       "Longitude"),
@@ -3752,14 +3754,27 @@ _RUN_META_FIELDS = [
     ("location",        "Location"),
 ]
 
+# Pipeline-internal keys that should never appear as user-facing metadata columns.
+_META_PIPELINE_KEYS = {
+    "sample_name", "sample_type", "platform", "workflow_revision", "commit_id",
+    "total_reads", "aligned_reads", "total_organism_reads", "num_species_groups",
+    "num_keys", "num_subkeys", "num_toplevelkeys", "minmapq", "mapq_breadth_power",
+    "weights", "min_conf_applied", "best_cutoffs", "best_cutoffs_source",
+    "preferred_granularity", "control_type", "negative_controls_used",
+    "positive_controls_used", "control_fold_threshold", "missing_positive_controls",
+    "insilico_controls_used", "insilico_simulator_types", "missing_insilico_controls",
+    "missing_insilico_by_type",
+}
+
 
 def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
     """Append a 'Metadata' sheet to an existing .odr.xlsx workbook.
 
-    Reads run-level metadata fields (run_id, latitude, longitude, depth,
-    salinity, collection_time, location) from the per-sample metadata dict
-    already stored in *_input_metadata* on args.  If no sample has any of
-    these fields populated the sheet is not added.
+    Writes ALL run-level metadata fields present in per_sample_meta, not just
+    the 7 hardcoded fields.  Known fields (run_id, latitude, …) are listed
+    first for readability; any extra schema-agnostic fields from --meta CSV
+    are appended alphabetically.  If no sample has any metadata the sheet is
+    not added.
 
     Parameters
     ----------
@@ -3772,11 +3787,25 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
     if not per_sample_meta:
         return
 
-    # Check if any sample has at least one run-metadata field
+    # Collect the full set of metadata keys across all samples,
+    # excluding pipeline-internal keys.
+    known_keys = {fk for fk, _ in _RUN_META_KNOWN_FIELDS}
+    all_extra_keys = set()
+    for meta in per_sample_meta.values():
+        for k in meta:
+            if k not in _META_PIPELINE_KEYS and k not in known_keys:
+                all_extra_keys.add(k)
+
+    # Build the ordered column list: known fields first, then extras alphabetically
+    ordered_fields = list(_RUN_META_KNOWN_FIELDS)
+    for k in sorted(all_extra_keys):
+        ordered_fields.append((k, k.replace("_", " ").title()))
+
+    # Check if any sample has at least one populated metadata field
     has_any = any(
-        meta.get(field_key)
+        meta.get(fk)
         for meta in per_sample_meta.values()
-        for field_key, _ in _RUN_META_FIELDS
+        for fk, _ in ordered_fields
     )
     if not has_any:
         return
@@ -3813,7 +3842,7 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
     CENTER = Alignment(horizontal='center', vertical='top', wrap_text=True)
     LEFT   = Alignment(horizontal='left',   vertical='top', wrap_text=True)
 
-    headers = ["Sample"] + [label for _, label in _RUN_META_FIELDS]
+    headers = ["Sample"] + [label for _, label in ordered_fields]
     ws.append(headers)
     for cell in ws[1]:
         cell.font      = HDR_FONT
@@ -3822,7 +3851,7 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
         cell.border    = THIN
 
     for i, (sample_name, meta) in enumerate(sorted(per_sample_meta.items()), start=2):
-        row_vals = [sample_name] + [meta.get(fk) for fk, _ in _RUN_META_FIELDS]
+        row_vals = [sample_name] + [meta.get(fk) for fk, _ in ordered_fields]
         ws.append(row_vals)
         for cell in ws[i]:
             cell.border    = THIN

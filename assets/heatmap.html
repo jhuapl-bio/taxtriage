@@ -1821,14 +1821,14 @@
           {
             "sample_name": "ONT_Run",
             "run_id": "ONT_2024A",
-            "latitude": 34.7928,
-            "longitude": -120.3945,
+            "latitude": 36.7928,
+            "longitude": -77.9945,
             "depth": 15.5,
             "altitude": 200,
             "salinity": null,
             "temperature": 12.3,
             "collection_time": "2024-03-12 09:45:00",
-            "location": "Station B, CA"
+            "location": "Station B, VA"
           },
           {
             "sample_name": "Miseq_Run",
@@ -3224,6 +3224,72 @@
               <tbody id="runmeta-body"></tbody>
             </table>
           </div>
+
+          <!-- ── Longitudinal Analysis (only shown when collection_time data exists) ── -->
+          <div id="longi-section" style="display:none;margin-top:2em">
+            <div style="border-top:2px solid #e0e8f5;padding-top:1.2em">
+              <div class="chart-title" style="margin-bottom:1em">
+                <i class="fas fa-chart-line"></i> Longitudinal Analysis
+              </div>
+              <!-- Controls row -->
+              <div style="display:flex;flex-wrap:wrap;gap:0.9em;align-items:flex-end;margin-bottom:1em">
+                <div style="display:flex;flex-direction:column;gap:0.3em;min-width:200px;flex:2">
+                  <label style="font-size:0.81em;font-weight:600;color:#555">
+                    Organisms
+                    <span id="longi-org-count" style="font-weight:400;color:#888;font-size:0.9em"></span>
+                  </label>
+                  <input id="longi-org-search" type="text" placeholder="Search organisms…"
+                    style="border:1px solid #ccd6e8;border-radius:6px;padding:5px 9px;font-size:0.82em;outline:none"/>
+                  <!-- Scrollable chip list — click to select/deselect -->
+                  <div id="longi-org-list"
+                    style="border:1px solid #ccd6e8;border-radius:6px;background:#fff;
+                           max-height:110px;overflow-y:auto;padding:4px 5px;
+                           display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start">
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:0.3em">
+                  <label style="font-size:0.81em;font-weight:600;color:#555">Y Axis</label>
+                  <select id="longi-y-sel"
+                    style="border:1px solid #ccd6e8;border-radius:6px;padding:5px 9px;font-size:0.82em;background:#fff">
+                    <option value="TASS Score" selected>TASS Score</option>
+                    <option value="Coverage">Coverage (%)</option>
+                    <option value="Breadth %">Breadth (%)</option>
+                    <option value="# Reads Aligned"># Reads Aligned</option>
+                    <option value="Mean Depth">Mean Depth</option>
+                    <option value="Minhash Score">Minhash Score</option>
+                  </select>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:0.3em">
+                  <label style="font-size:0.81em;font-weight:600;color:#555">Y Scale</label>
+                  <select id="longi-scale-sel"
+                    style="border:1px solid #ccd6e8;border-radius:6px;padding:5px 9px;font-size:0.82em;background:#fff">
+                    <option value="linear" selected>Linear</option>
+                    <option value="log">Log</option>
+                    <option value="sqrt">Square Root</option>
+                  </select>
+                </div>
+              </div>
+              <!-- Chart + right sample panel -->
+              <div style="display:flex;gap:0.8em;align-items:flex-start">
+                <div id="longi-chart-wrap" style="flex:1;min-width:0;position:relative;overflow:visible"></div>
+                <div id="longi-sample-panel"
+                  style="width:155px;flex-shrink:0;border:1px solid #dce7f5;border-radius:8px;
+                         padding:0.65em;background:#f8fbff;max-height:340px;overflow-y:auto">
+                  <div style="font-size:0.77em;font-weight:700;color:#1565c0;margin-bottom:0.45em;
+                               border-bottom:1px solid #dce7f5;padding-bottom:0.3em">
+                    Show / Hide
+                  </div>
+                  <div id="longi-sample-list"></div>
+                </div>
+              </div>
+              <div id="longi-no-data"
+                style="display:none;text-align:center;padding:2.5em 1em;color:#999;font-size:0.88em">
+                <i class="fas fa-info-circle" style="margin-right:0.3em"></i>
+                No data for this organism / metric in the visible samples.
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
       <!-- /content -->
@@ -6507,7 +6573,8 @@
             }, 80);
           } else if (activeTab === "runmeta") {
             // Rebuild the metadata table each time the tab is activated
-            if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+            if (typeof _buildRunMetaTable       === "function") _buildRunMetaTable();
+            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
           }
         });
       });
@@ -7438,6 +7505,17 @@
         "Potential":     "#6a1b9a",
         "Unknown":       "#555",
       };
+      // Longitudinal analysis state — declared here (before init IIFE) to avoid TDZ
+      let _longiOrgList      = [];
+      let _longiSelectedOrgs = new Set();
+      let _longiOrgColors    = {};
+      let _longiHidden       = {};
+      let _longiBuilt        = false;
+      const _LONGI_ORG_PAL = [
+        "#1565c0","#c62828","#2e7d32","#f57c00","#6a1b9a",
+        "#00838f","#ad1457","#4527a0","#558b2f","#e65100",
+        "#0277bd","#d84315","#00695c","#4a148c","#827717",
+      ];
 
       // ── Map panel drag-resize listeners ───────────────────────────────────
       document.addEventListener("mousedown", (e) => {
@@ -7479,6 +7557,8 @@
         populateTable();
         // Refresh map side-panel if one is currently open
         if (_selectedSample) _refreshMapPanelTable();
+        // Rebuild longitudinal org chip list so filters are reflected there too
+        if (_longiBuilt) _buildLongitudinalSection();
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -8247,8 +8327,9 @@
         renderTableHeaders();
         redraw();
 
-        // ── Build Run Metadata table on init (also rebuilt on every tab click)
+        // ── Build Run Metadata table + longitudinal section on init
         _buildRunMetaTable();
+        _buildLongitudinalSection();
 
         // ── Wire up sortable map-panel column headers ──────────────────────
         _initPanelSortHeaders();
@@ -8266,6 +8347,433 @@
           collection_time: "Collection Time", location: "Location",
         };
         return KNOWN[k] || k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      }
+
+      /* ════════════════════════════════════════════════════════════════════════
+         LONGITUDINAL ANALYSIS  (Run Metadata tab)
+         – Line plot: X = collection_time, Y = selected metric
+         – Multi-organism: click chips to select/deselect; one line per organism
+         – Right panel: per-plot sample visibility (independent of main sampleHidden)
+         (State variables declared before init IIFE above to avoid TDZ errors)
+      ════════════════════════════════════════════════════════════════════════ */
+
+      function _parseLongiDate(s) {
+        if (!s) return null;
+        const str = String(s).trim();
+        // Try native Date parse first (handles ISO 8601 and many standard formats)
+        let d = new Date(str);
+        if (!isNaN(d)) return d;
+        // M/D/YY h:mm  or  M/D/YYYY h:mm
+        let m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/);
+        if (m) {
+          let yr = parseInt(m[3]); if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1])-1, parseInt(m[2]), parseInt(m[4]), parseInt(m[5]));
+          if (!isNaN(d)) return d;
+        }
+        // M/D/YY  or  M/D/YYYY  (date only)
+        m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (m) {
+          let yr = parseInt(m[3]); if (yr < 100) yr += 2000;
+          d = new Date(yr, parseInt(m[1])-1, parseInt(m[2]));
+          if (!isNaN(d)) return d;
+        }
+        return null;
+      }
+
+      function _buildLongitudinalSection() {
+        const section = document.getElementById("longi-section");
+        if (!section) return;
+
+        // Build time map from live RUN_META
+        const timeMap = {};
+        (RUN_META || []).forEach(r => {
+          const d = _parseLongiDate(r.collection_time);
+          if (d) timeMap[r.sample_name] = d;
+        });
+
+        const timedSamples = Object.keys(timeMap);
+        if (!timedSamples.length) { section.style.display = "none"; return; }
+        section.style.display = "block";
+
+        // Organisms that appear in at least one timed sample
+        const eligible = new Set(timedSamples);
+        const orgSet = new Set(
+          filteredData()
+            .filter(r => eligible.has(r["Specimen ID"]))
+            .map(r => r["Detected Organism"] || "")
+            .filter(Boolean)
+        );
+        _longiOrgList = [...orgSet].sort((a, b) => a.localeCompare(b));
+
+        // Assign stable colours to every organism
+        _longiOrgList.forEach((o, i) => {
+          if (!_longiOrgColors[o]) _longiOrgColors[o] = _LONGI_ORG_PAL[i % _LONGI_ORG_PAL.length];
+        });
+
+        // Default: select the first organism if nothing is selected yet
+        if (_longiSelectedOrgs.size === 0 && _longiOrgList.length > 0) {
+          _longiSelectedOrgs.add(_longiOrgList[0]);
+        }
+
+        _populateLongiOrgs(_longiOrgList);
+        _buildLongiSamplePanel(timedSamples);
+
+        // Wire events once
+        if (!_longiBuilt) {
+          _longiBuilt = true;
+          const orgSearch = document.getElementById("longi-org-search");
+          const ySel      = document.getElementById("longi-y-sel");
+          const scaleSel  = document.getElementById("longi-scale-sel");
+          if (ySel)      ySel.addEventListener("change", _drawLongitudinalPlot);
+          if (scaleSel)  scaleSel.addEventListener("change", _drawLongitudinalPlot);
+          if (orgSearch) orgSearch.addEventListener("input", () => {
+            const q = (orgSearch.value || "").trim().toLowerCase();
+            _populateLongiOrgs(
+              q ? _longiOrgList.filter(o => o.toLowerCase().includes(q)) : _longiOrgList
+            );
+          });
+        }
+
+        _drawLongitudinalPlot();
+      }
+
+      function _populateLongiOrgs(visibleOrgs) {
+        const container = document.getElementById("longi-org-list");
+        const counter   = document.getElementById("longi-org-count");
+        if (!container) return;
+
+        container.innerHTML = "";
+        visibleOrgs.forEach(org => {
+          const selected = _longiSelectedOrgs.has(org);
+          const color    = _longiOrgColors[org] || "#1565c0";
+
+          const chip = document.createElement("button");
+          chip.type  = "button";
+          chip.title = org;
+          chip.style.cssText = [
+            "display:inline-flex;align-items:center;gap:5px",
+            "padding:3px 8px 3px 6px",
+            "border-radius:14px",
+            "font-size:0.76em",
+            "cursor:pointer",
+            "transition:all .12s",
+            "white-space:nowrap",
+            "max-width:190px",
+            selected
+              ? `background:${color};color:#fff;border:1.5px solid ${color};font-weight:600`
+              : "background:#f0f4f9;color:#455a64;border:1.5px solid #ccd6e8;font-weight:400",
+          ].join(";");
+
+          // Colour dot
+          const dot = document.createElement("span");
+          dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;
+            background:${selected ? "#fff" : color};border:1px solid rgba(0,0,0,.18)`;
+
+          // Label (truncated)
+          const lbl = document.createElement("span");
+          lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;max-width:160px;display:block";
+          lbl.textContent = org;
+
+          chip.appendChild(dot);
+          chip.appendChild(lbl);
+
+          chip.addEventListener("click", () => {
+            if (_longiSelectedOrgs.has(org)) {
+              _longiSelectedOrgs.delete(org);
+            } else {
+              _longiSelectedOrgs.add(org);
+            }
+            // Re-render chips (keeping search filter)
+            const q = (document.getElementById("longi-org-search") || {}).value || "";
+            _populateLongiOrgs(
+              q.trim() ? _longiOrgList.filter(o => o.toLowerCase().includes(q.trim().toLowerCase())) : _longiOrgList
+            );
+            _drawLongitudinalPlot();
+          });
+
+          container.appendChild(chip);
+        });
+
+        // Update counter label
+        if (counter) {
+          const n = _longiSelectedOrgs.size;
+          counter.textContent = n ? `— ${n} selected` : "";
+        }
+      }
+
+      function _buildLongiSamplePanel(sampleNames) {
+        const list = document.getElementById("longi-sample-list");
+        if (!list) return;
+        list.innerHTML = "";
+        sampleNames.slice().sort().forEach(id => {
+          if (_longiHidden[id] === undefined) _longiHidden[id] = false;
+          const color = sampleColors[id] || "#1565c0";
+          const div   = document.createElement("div");
+          div.style.cssText = "display:flex;align-items:center;gap:5px;margin-bottom:5px";
+
+          const swatch = document.createElement("span");
+          swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${color};flex-shrink:0;border:1.5px solid rgba(0,0,0,.15)`;
+
+          const lbl = document.createElement("label");
+          lbl.style.cssText = "font-size:0.78em;cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px";
+          lbl.title = id;
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = !_longiHidden[id];
+          cb.style.cssText = "flex-shrink:0;cursor:pointer";
+          cb.addEventListener("change", e => {
+            _longiHidden[id] = !e.target.checked;
+            _drawLongitudinalPlot();
+          });
+
+          const txt = document.createTextNode(id.length > 18 ? id.slice(0,17) + "…" : id);
+          lbl.appendChild(cb);
+          lbl.appendChild(txt);
+          div.appendChild(swatch);
+          div.appendChild(lbl);
+          list.appendChild(div);
+        });
+      }
+
+      function _drawLongitudinalPlot() {
+        const wrap   = document.getElementById("longi-chart-wrap");
+        const noData = document.getElementById("longi-no-data");
+        if (!wrap) return;
+
+        wrap.innerHTML = "";
+
+        const ySel   = document.getElementById("longi-y-sel");
+        const yField = (ySel && ySel.value) || "TASS Score";
+
+        const selectedOrgs = [..._longiSelectedOrgs];
+        if (!selectedOrgs.length) {
+          if (noData) noData.style.display = "block";
+          return;
+        }
+
+        // Rebuild time map from live RUN_META
+        const timeMap = {};
+        (RUN_META || []).forEach(r => {
+          const d = _parseLongiDate(r.collection_time);
+          if (d) timeMap[r.sample_name] = d;
+        });
+
+        // Build one series per selected organism: [{org, pts:[{sample,date,y}]}]
+        const series = selectedOrgs.map(org => {
+          const pts = filteredData()
+            .filter(r =>
+              (r["Detected Organism"] || "") === org &&
+              timeMap[r["Specimen ID"]] &&
+              !_longiHidden[r["Specimen ID"]]
+            )
+            .map(r => ({
+              org    : org,
+              sample : r["Specimen ID"] || "",
+              date   : timeMap[r["Specimen ID"]],
+              y      : parseFloat(r[yField]),
+            }))
+            .filter(p => !isNaN(p.y))
+            .sort((a, b) => a.date - b.date);
+          return { org, color: _longiOrgColors[org] || "#1565c0", pts };
+        }).filter(s => s.pts.length > 0);
+
+        if (!series.length) {
+          if (noData) noData.style.display = "block";
+          return;
+        }
+        if (noData) noData.style.display = "none";
+
+        const allPts  = series.flatMap(s => s.pts);
+        const mo      = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+        // ── Legend (above chart) ──
+        const legendDiv = document.createElement("div");
+        legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
+        series.forEach(s => {
+          const item = document.createElement("span");
+          item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
+          item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
+            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}</span>`;
+          legendDiv.appendChild(item);
+        });
+        wrap.appendChild(legendDiv);
+
+        // ── SVG chart ──
+        const W  = Math.max(320, wrap.clientWidth || 520);
+        const H  = 290;
+        const ML = 62, MR = 20, MT = 14, MB = 68;
+        const iW = W - ML - MR;
+        const iH = H - MT - MB;
+
+        const svg = d3.select(wrap)
+          .append("svg")
+          .attr("viewBox", `0 0 ${W} ${H}`)
+          .style("width","100%")
+          .style("display","block")
+          .style("overflow","visible");
+
+        const g = svg.append("g").attr("transform", `translate(${ML},${MT})`);
+
+        // Scales (shared across all series)
+        const xExt = d3.extent(allPts, p => p.date);
+        const xPad = Math.max((xExt[1]-xExt[0])*0.08, 6*3600*1000);
+        const xSc  = d3.scaleTime()
+          .domain([new Date(+xExt[0]-xPad), new Date(+xExt[1]+xPad)])
+          .range([0, iW]);
+
+        const yMax = d3.max(allPts, p => p.y) || 1;
+        const scaleType = (document.getElementById("longi-scale-sel") || {}).value || "linear";
+        let ySc;
+        if (scaleType === "log") {
+          const yMinPos = Math.max(d3.min(allPts, p => p.y) || 0.001, 0.001);
+          ySc = d3.scaleLog()
+            .domain([yMinPos * 0.9, yMax * 1.5])
+            .range([iH, 0])
+            .clamp(true);
+        } else if (scaleType === "sqrt") {
+          ySc = d3.scaleSqrt()
+            .domain([0, yMax * 1.15])
+            .range([iH, 0])
+            .nice();
+        } else {
+          ySc = d3.scaleLinear()
+            .domain([0, yMax * 1.15])
+            .range([iH, 0])
+            .nice();
+        }
+
+        // Horizontal grid
+        g.append("g")
+          .call(d3.axisLeft(ySc).tickSize(-iW).tickFormat("").ticks(5))
+          .call(ax => ax.select(".domain").remove())
+          .call(ax => ax.selectAll("line")
+          .attr("stroke","#e5eaf2").attr("stroke-dasharray","4,3"));
+
+        // X axis
+        g.append("g")
+          .attr("transform", `translate(0,${iH})`)
+          .call(
+            d3.axisBottom(xSc)
+              .ticks(Math.min(allPts.length + 1, 7))
+              .tickFormat(d => `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`)
+          )
+          .call(ax => ax.selectAll("text")
+            .attr("transform","rotate(-35)")
+            .style("text-anchor","end")
+            .style("font-size","0.71em"))
+          .call(ax => ax.select(".domain").attr("stroke","#ccc"))
+          .call(ax => ax.selectAll(".tick line").attr("stroke","#ccc"));
+
+        // Y axis
+        const yAxis = scaleType === "log"
+          ? d3.axisLeft(ySc).ticks(5, "~s")
+          : d3.axisLeft(ySc).ticks(5);
+        g.append("g")
+          .call(yAxis)
+          .call(ax => ax.selectAll("text").style("font-size","0.71em"))
+          .call(ax => ax.select(".domain").attr("stroke","#ccc"))
+          .call(ax => ax.selectAll(".tick line").attr("stroke","#ccc"));
+
+        g.append("text")
+          .attr("transform","rotate(-90)")
+          .attr("x", -iH/2).attr("y", -ML+14)
+          .attr("text-anchor","middle")
+          .style("font-size","0.74em").style("fill","#555")
+          .text(yField);
+
+        // Tooltip
+        const tip = d3.select(wrap)
+          .append("div")
+          .style("position","absolute")
+          .style("background","rgba(22,35,58,0.95)")
+          .style("color","#fff")
+          .style("border-radius","8px")
+          .style("padding","8px 13px")
+          .style("font-size","0.78em")
+          .style("pointer-events","none")
+          .style("display","none")
+          .style("white-space","nowrap")
+          .style("z-index","9999")
+          .style("box-shadow","0 2px 10px rgba(0,0,0,.4)");
+
+        const lineGen = d3.line()
+          .defined(p => scaleType !== "log" || p.y > 0)
+          .x(p => xSc(p.date))
+          .y(p => ySc(scaleType === "log" ? Math.max(ySc.domain()[0], p.y) : p.y));
+
+        // Draw one line + dots per organism
+        series.forEach(s => {
+          // Line
+          if (s.pts.length > 1) {
+            g.append("path")
+              .datum(s.pts)
+              .attr("fill","none")
+              .attr("stroke", s.color)
+              .attr("stroke-width", 2.2)
+              .attr("opacity", 0.75)
+              .attr("d", lineGen);
+          }
+
+          // Dots
+          g.selectAll(`.longi-dot-${s.pts[0] ? s.pts[0].org.replace(/\W/g,"_") : "x"}`)
+            .data(s.pts)
+            .enter()
+            .append("circle")
+            .attr("cx", p => xSc(p.date))
+            .attr("cy", p => ySc(p.y))
+            .attr("r", 7)
+            .attr("fill", s.color)
+            .attr("stroke","#fff")
+            .attr("stroke-width", 2)
+            .style("cursor","pointer")
+            .style("filter","drop-shadow(0 1px 3px rgba(0,0,0,.28))")
+            .on("mouseover", function(event, p) {
+              d3.select(this).transition().duration(80).attr("r",10);
+              const dateStr = `${mo[p.date.getMonth()]} ${p.date.getDate()}, ${p.date.getFullYear()}`;
+              const fmt = v => (v % 1 === 0) ? v.toLocaleString() : v.toFixed(3);
+              tip.html(
+                `<span style="color:#90caf9;font-weight:700">${p.sample}</span><br>` +
+                `<span style="color:#b0bec5;font-size:0.9em">${dateStr}</span><br>` +
+                `<span style="color:#cfd8dc;font-size:0.88em">${p.org.length>35?p.org.slice(0,34)+"…":p.org}</span><br>` +
+                `<span style="color:#fff">${yField}:</span> <b>${fmt(p.y)}</b>`
+              ).style("display","block");
+            })
+            .on("mousemove", function(event) {
+              const box  = wrap.getBoundingClientRect();
+              const tipW = 200;
+              let lft = event.clientX - box.left + 14;
+              if (lft + tipW > box.width) lft = event.clientX - box.left - tipW - 10;
+              tip.style("left", lft + "px")
+                 .style("top",  (event.clientY - box.top - 42) + "px");
+            })
+            .on("mouseout", function() {
+              d3.select(this).transition().duration(80).attr("r",7);
+              tip.style("display","none");
+            });
+
+        });
+
+        // Sample name labels — one per unique sample, above the topmost dot for that sample
+        const labelMap = new Map();
+        series.forEach(s => s.pts.forEach(p => {
+          const py = ySc(p.y);
+          if (!labelMap.has(p.sample) || py < labelMap.get(p.sample).topY) {
+            labelMap.set(p.sample, { date: p.date, topY: py });
+          }
+        }));
+        g.selectAll(".longi-lbl-sample")
+          .data([...labelMap.entries()].map(([sample, v]) => ({ sample, date: v.date, topY: v.topY })))
+          .enter()
+          .append("text")
+          .attr("x", d => xSc(d.date))
+          .attr("y", d => d.topY - 13)
+          .attr("text-anchor","middle")
+          .style("font-size","0.66em")
+          .style("fill","#455a64")
+          .style("pointer-events","none")
+          .text(d => d.sample.length > 16 ? d.sample.slice(0,15)+"…" : d.sample);
       }
 
       function _buildRunMetaTable() {

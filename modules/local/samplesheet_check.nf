@@ -26,7 +26,8 @@ process SAMPLESHEET_CHECK {
     path samplesheet
 
     output:
-    path '*.csv'       , emit: csv
+    path '*.valid.csv'       , emit: csv
+    path '*.meta.csv'        , emit: meta, optional: true
     path "versions.yml", emit: versions
 
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
@@ -34,7 +35,7 @@ process SAMPLESHEET_CHECK {
 
     check_samplesheet.py \\
         $samplesheet \\
-        samplesheet.valid.csv
+        samplesheet.valid.csv -m samplesheet.meta.csv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
