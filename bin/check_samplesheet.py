@@ -47,7 +47,23 @@ class RowChecker:
         ".fastq.clean.gz",
         ".fq.clean.gz",
         ".fastq",
-        ".fq"
+        ".fq",
+        # FASTA formats — these inputs skip QC steps (fastp, fastqc, trimming, host removal)
+        ".fa",
+        ".fasta",
+        ".fna",
+        ".fa.gz",
+        ".fasta.gz",
+        ".fna.gz",
+    )
+
+    FASTA_FORMATS = (
+        ".fa",
+        ".fasta",
+        ".fna",
+        ".fa.gz",
+        ".fasta.gz",
+        ".fna.gz",
     )
 
     def __init__(
@@ -97,19 +113,72 @@ class RowChecker:
 
         """
         self._validate_sample(row)
-        # check if the path of row['fastq_1'] is a directory or file
-        # if directory, then row['fastq_1'] is the directory name
-        # if file, then row['fastq_1'] is the file name , check if the path is a directory too
-        if row['fastq_1'] and row['fastq_1'] != '' and not any(row['fastq_1'].endswith(extension) for extension in self.VALID_FORMATS):
+
+        # ── Multi-file support ────────────────────────────────────────────────
+        # fastq_1 may contain multiple file paths separated by ';', e.g.:
+        #   reads1.fa;reads2.fa;reads3.fa
+        # Each path is validated individually.  All paths must be the same type
+        # (all FASTA or all FASTQ); mixing raises an error.
+        # The normalised ';'-joined string is written back to the field so that
+        # downstream parsing in input_check.nf just needs to split on ';'.
+        # ─────────────────────────────────────────────────────────────────────
+        raw_value = row.get(self._first_col, '') or ''
+        raw_paths = [p.strip() for p in raw_value.split(';') if p.strip()]
+        is_multi = len(raw_paths) > 1
+
+        # Single path with no recognised extension → directory (ONT/ARTIC mode)
+        if (not is_multi and raw_paths
+                and not any(raw_paths[0].endswith(ext) for ext in self.VALID_FORMATS)):
             row[self._single_col] = True
             row[self._dir_col] = True
+            row['is_fasta'] = False
+            row[self._needscompressing] = None
             self._seen.add((row[self._sample_col], row[self._first_col]))
-        else:
+
+        elif raw_paths and all(any(p.endswith(ext) for ext in self.FASTA_FORMATS)
+                               for p in raw_paths):
+            # One or more FASTA files
             row[self._single_col] = True
             row[self._dir_col] = False
-            self._validate_first(row)
-            self._validate_second(row)
-            self._validate_pair(row)
+            row['is_fasta'] = True
+            row[self._needscompressing] = None
+            # FASTA inputs are always single-end; ignore fastq_2 if present
+            if row.get(self._second_col):
+                row[self._second_col] = None
+            row[self._first_col] = ';'.join(raw_paths)
+            self._seen.add((row[self._sample_col], row[self._first_col]))
+
+        elif raw_paths and any(any(p.endswith(ext) for ext in self.FASTA_FORMATS)
+                               for p in raw_paths):
+            # Mixed FASTA + FASTQ → not supported
+            raise AssertionError(
+                f"fastq_1 contains a mix of FASTA and FASTQ files, which is not "
+                f"supported: {raw_value}"
+            )
+
+        else:
+            # All FASTQ (single or multiple files)
+            row[self._single_col] = True
+            row[self._dir_col] = False
+            row['is_fasta'] = False
+            if is_multi:
+                # Multiple FASTQ files → validate each path individually.
+                # Force single_end and clear fastq_2 (pairing with a 2nd column
+                # is ambiguous when fastq_1 already contains multiple files).
+                needs_compress = False
+                for p in raw_paths:
+                    result = self._validate_fastq_format(p)
+                    if result:
+                        needs_compress = True
+                row[self._needscompressing] = True if needs_compress else None
+                row[self._first_col] = ';'.join(raw_paths)
+                if row.get(self._second_col):
+                    row[self._second_col] = None
+            else:
+                # Single FASTQ file — existing single/paired-end logic
+                self._validate_first(row)
+                self._validate_second(row)
+                self._validate_pair(row)
             self._seen.add((row[self._sample_col], row[self._first_col]))
         # for each attribute in row, strip spaces on either side
         for key in row:
@@ -229,7 +298,7 @@ def sniff_format(handle):
 
 # Columns that belong to the pipeline infrastructure, not sample metadata
 _PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive",
-                  "single_end", "directory", "needscompressing"}
+                  "single_end", "directory", "needscompressing", "is_fasta", "minimap2_preset"}
 
 
 def check_samplesheet(file_in, file_out, file_meta=None):
@@ -281,6 +350,8 @@ def check_samplesheet(file_in, file_out, file_meta=None):
     header.insert(1, "single_end")
     header.insert(1, "directory")
     header.insert(1, "needscompressing")
+    if "is_fasta" not in header:
+        header.insert(1, "is_fasta")
     # remove any header that is empty string
     header = [x for x in header if x != '']
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.

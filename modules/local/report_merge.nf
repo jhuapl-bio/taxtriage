@@ -60,6 +60,7 @@ process ORGANISM_MERGE_REPORT {
     def integrate_strain_table = params.integrate_strain_table ? " --show_strains_table " : ""
     def rank = params.rank ? " --rank $params.rank " : ""
     def no_subkey = params.no_subkey ? " --no_subkey " : ""
+    // removing the VF/AMR filed by removing --output_annot_xlsx , will address later
     // def annotate_report_arg = annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${annotate_report} " : " "
     """
 

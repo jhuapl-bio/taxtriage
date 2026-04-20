@@ -25,12 +25,23 @@ process MINIMAP2_ALIGN {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
 
+    // Resolve the minimap2 preset.
+    // Priority: meta.minimap2_preset (user-supplied per-sample) >
+    //           meta.platform-derived default.
+    // Valid preset names (passed without the leading -ax):
+    //   map-ont, map-pb, map-pb (CLR), map-hifi (HiFi/CCS), lr:hq (ONT Q20),
+    //   sr (short reads), splice (spliced long reads), splice:hq (Iso-seq),
+    //   splice:sr (short-read RNA-seq), asm5/asm10/asm20 (assembly alignment),
+    //   ava-pb, ava-ont (read overlap).
     def mapx = ''
-    if (meta.platform =~ /(?i)illumina/) {
+    if (meta.minimap2_preset) {
+        mapx = "-ax ${meta.minimap2_preset}"
+    } else if (meta.platform =~ /(?i)illumina/) {
         mapx = '-ax sr'
     } else if (meta.platform =~ /(?i)pacbio/) {
         mapx = '-ax map-hifi'
     } else {
+        // Default: Oxford Nanopore (also used for unspecified / FASTA inputs)
         mapx = '-ax map-ont'
     }
 
