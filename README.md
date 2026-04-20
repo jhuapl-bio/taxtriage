@@ -1,12 +1,11 @@
 [![DOI](https://img.shields.io/badge/doi-10.1093/bioinformatics/btag119-blue)](https://doi.org/10.1093/bioinformatics/btag119)
 [![Zenodo](https://img.shields.io/badge/doi-10.5281/zenodo.17081353-red)](https://doi.org/10.5281/zenodo.17081353)
+
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 [![Tutorial: install & run with docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![Tutorial: install & with singularityCE v4+](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
 
-[![Get nf-core help on Slack](http://img.shields.io/badge/slack-nf--core%20%23taxtriage-4A154B?labelColor=000000&logo=slack)](https://nfcore.slack.com/channels/taxtriage)
-[![Follow nf-core on Twitter](http://img.shields.io/badge/twitter-%40nf__core-1DA1F2?labelColor=000000&logo=twitter)](https://twitter.com/nf_core)
-[![Watch nf-core videos on YouTube](http://img.shields.io/badge/youtube-nf--core-FF0000?labelColor=000000&logo=youtube)](https://www.youtube.com/c/nf-core)
+[![Wiki](https://img.shields.io/badge/wiki-usage%20details-red)](https://github.com/jhuapl-bio/taxtriage/wiki)
 
 ## About
 
@@ -40,13 +39,9 @@ See collaborative efforts with groups outside JHU/APL [here](README.md#uw-madiso
 
 :warning: If you make changes to the code within a nextflow-pulled repo, a change can result in a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters. If you expect to make local changes frequently, you should just `git clone` and `git pull` manually and run the pipeline from the `main.nf` file. See [here](https://github.com/jhuapl-bio/taxtriage?tab=readme-ov-file#running-on-local-nf-files-test-config) for more info
 
-The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It uses Docker/Singularity containers making installation trivial and results highly reproducible. The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. Where possible, these processes have been submitted to and installed from [nf-core/modules](https://github.com/nf-core/modules) in order to make them available to all nf-core pipelines, and to everyone within the Nextflow community!
+The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It uses Docker/Singularity containers making installation trivial and results highly reproducible. The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. Where possible, these processes have been submitted to and installed from
 
-<!-- TODO nf-core: Add full-sized test dataset and amend the paragraph below if applicable -->
-
-On release, automated continuous integration tests run the pipeline on a full-sized dataset on the AWS cloud infrastructure. This ensures that the pipeline runs on AWS, has sensible resource allocation defaults set to run on real-world datasets, and permits the persistent storage of results to benchmark between pipeline releases and other analysis sources. The results obtained from the full-sized test can be viewed on the [nf-core website](https://nf-co.re/taxtriage/results).
-
-Tax Triage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable.
+TaxTriage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable.
 
 Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (_CE ONLY_ v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
 
@@ -241,7 +236,9 @@ Be aware that this skips the metagenomics portion of the pipeline and **only** d
 nextflow run ./main.nf -profile test,docker
 ```
 
-See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#nf-coretaxtriage-usage) for a full list of input parameters and options available based on your own needs
+A [wiki](https://github.com/jhuapl-bio/taxtriage/wiki) is available for detailed information on usage and configuration techniques.
+
+See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#taxtriage-usage) for a full list of input parameters and options available based on your own needs
 
 If you would like more information on the confidence metrics, view it [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring)
 
@@ -253,8 +250,6 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 - [flukraken2](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz)
 
 ## Pipeline summary
-
-<!-- TODO nf-core: Fill in short bullet-pointed list of the default steps in the pipeline -->
 
 1. Read QC ([`FastQC`](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/))
 2. Present QC for raw reads ([`MultiQC`](http://multiqc.info/))
@@ -274,13 +269,9 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
    Note that some form of configuration will be needed so that Nextflow knows how to fetch the required software. This is usually done in the form of a config profile (`YOURPROFILE` in the example command above). You can chain multiple config profiles in a comma-separated string.
 
    > - The pipeline comes with config profiles called `docker` or `singularity` which instruct the pipeline to use the named tool for software management. For example, `-profile test,docker`.
-   > - Please check [nf-core/configs](https://github.com/nf-core/configs#documentation) to see if a custom config file to run nf-core pipelines already exists for your Institute. If so, you can simply use `-profile <institute>` in your command. This will enable either `docker` or `singularity` and set the appropriate execution settings for your local compute environment.
    > - If you are using `singularity`, please use the [`nf-core download`](https://nf-co.re/tools/#downloading-pipelines-for-offline-use) command to download images first, before running the pipeline. Setting the [`NXF_SINGULARITY_CACHEDIR` or `singularity.cacheDir`](https://www.nextflow.io/docs/latest/singularity.html?#singularity-docker-hub) Nextflow options enables you to store and re-use the images from a central location for future pipeline runs.
 
 4. Start running your own analysis!
-
-   <!-- TODO nf-core: Update the example "typical command" below used to run the pipeline -->
-
    ```console
            nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest --outdir test_output -profile <local,docker/singularity>
    ```
@@ -292,7 +283,7 @@ Make sure to Download these databases to your `Desktop` or wherever you are the 
 2. QC Plotting part 1 (pycoQC – Oxford Nanopore)
 3. Trimming (Trimgalore – Illumina, Porechop – Oxford Nanopore)
 4. Filtering ( Kraken2 – Illlumina, Oxford Nanopore)
-5. QC Plotting part 2 (FastQC – Illlumina, Nanoplot – Oxford Nanopore)
+5. QC Plotting part 2 (FastQC – Illumina, Nanoplot – Oxford Nanopore)
 6. Classification ( Kraken2 – Illumina, Oxford Nanopore, Krona Plots)
 7. Alignment for Stats ( BWAMEM2 – Illumina, Minimap2 – Oxford Nanopore)
 
@@ -334,12 +325,6 @@ If you use this software, please cite doi: [10.1093/bioinformatics/btag119](http
   url     = {https://doi.org/10.1101/2025.07.16.664785}
 }
 ```
-
-> **The nf-core framework for community-curated bioinformatics pipelines.**
->
-> Philip Ewels, Alexander Peltzer, Sven Fillinger, Harshil Patel, Johannes Alneberg, Andreas Wilm, Maxime Ulysse Garcia, Paolo Di Tommaso & Sven Nahnsen.
->
-> _Nat Biotechnol._ 2020 Feb 13. doi: [10.1038/s41587-020-0439-x](https://dx.doi.org/10.1038/s41587-020-0439-x).
 
 ## Copyright
 
