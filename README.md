@@ -43,11 +43,11 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 
 TaxTriage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable.
 
-Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (_CE ONLY_ v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](docs/usage.md) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
+Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (_CE ONLY_ v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](https://github.com/jhuapl-bio/taxtriage/wiki/Quick-Start) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
 
-[See Here for full usage details](docs/usage.md)
+[See Here for full usage details](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules)
 
-[See Here for troubleshooting & FAQ](docs/troubleshooting.md)
+[See Here for troubleshooting & FAQ](https://github.com/jhuapl-bio/taxtriage/wiki/Troubleshooting)
 
 ## Installation
 
@@ -113,7 +113,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile te
 
 ### Cloud
 
-Follow the steps [here](docs/usage.md#aws-with-nextflow-tower)
+Follow the steps [here](https://github.com/jhuapl-bio/taxtriage/wiki/Cloud-and-Seqera)
 
 ### Offline Local Mode
 
@@ -238,9 +238,9 @@ nextflow run ./main.nf -profile test,docker
 
 A [wiki](https://github.com/jhuapl-bio/taxtriage/wiki) is available for detailed information on usage and configuration techniques.
 
-See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#taxtriage-usage) for a full list of input parameters and options available based on your own needs
+See [here](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters) for a full list of input parameters and options available based on your own needs
 
-If you would like more information on the confidence metrics, view it [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring)
+If you would like more information on the confidence metrics, view it [here](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring)
 
 If you want to download the databases from scratch, you can see them here
 Make sure to Download these databases to your `Desktop` or wherever you are the most comfortable. Remember the location and specify the `--db` parameter as the absolute path. For example `~/Desktop/flukraken2`. Also, remove the `--download-db` parameter
