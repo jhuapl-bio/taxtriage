@@ -77,7 +77,6 @@ process ORGANISM_MERGE_REPORT {
         $integrate_strain_table \\
         $rank \\
         $no_subkey \\
-        --output_annot_xlsx $output_annot_xlsx \\
 
     cat <<-END_VERSIONS > versions.yml
         "${task.process}":
