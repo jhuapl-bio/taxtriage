@@ -466,7 +466,20 @@ workflow TAXTRIAGE {
         }
     }
 
-    ch_pass_files = ch_reads.map{ meta, reads -> {
+    // ── FASTA inputs: branch off before any QC / trimming / host-removal ────────
+    // Samples whose fastq_1 column contains a FASTA file (.fa/.fasta/.fna or .gz
+    // variants) set meta.is_fasta = true in input_check.nf.  They skip every
+    // read-quality step and are rejoined into the pipeline just before the
+    // classifier so that Kraken2 and alignment still run on them normally.
+    ch_reads.branch {
+        fasta: it[0].is_fasta == true
+        fastq: !(it[0].is_fasta == true)
+    }.set { reads_by_type }
+    ch_fasta_reads = reads_by_type.fasta
+    ch_reads       = reads_by_type.fastq
+
+    // ch_pass_files tracks every sample (FASTQ + FASTA) through to REPORT
+    ch_pass_files = ch_reads.mix(ch_fasta_reads).map{ meta, reads -> {
             return [ meta ]
         }
     }
@@ -563,6 +576,18 @@ workflow TAXTRIAGE {
         params.include_singletons_removal = false
     }
 
+    // Re-join FASTA inputs into the main read channel now so they benefit from
+    // host removal.  minimap2 handles FASTA queries natively; if host removal
+    // runs, REMOVE_HOSTREADS converts them to FASTQ via samtools-fastq (dummy
+    // quality scores).  If host removal is not configured, FASTA files pass
+    // through unchanged.  Either way, meta.is_fasta stays true and gates the
+    // QC visualisation steps below.
+    ch_fasta_reads = ch_fasta_reads.map { meta, reads ->
+        meta.read_count = 0   // COUNT_READS was skipped for these samples
+        [meta, reads]
+    }
+    ch_reads = ch_reads.mix(ch_fasta_reads)
+
     HOST_REMOVAL(
         ch_reads,
         params.genome
@@ -583,17 +608,23 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(HOST_REMOVAL.out.host_removal_stats)
 
     //////////////////// RUN OPTIONAL FASTQC to get qc plots for multiqc  ////////////////////
+    // Skip QC plots for FASTA inputs: if host removal ran, those reads were
+    // converted to FASTQ with dummy quality scores by samtools-fastq, so the
+    // plots would be meaningless.  If host removal did not run, the files are
+    // still FASTA and FastQC / NanoPlot would error.
     if (!params.skip_plots) {
         FASTQC(
-            ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ }
+            ch_reads.filter { it[0].platform =~ /(?i)ILLUMINA/ && !it[0].is_fasta }
         )
         ch_versions = ch_versions.mix(FASTQC.out.versions.first())
         NANOPLOT(
-            ch_reads.filter { it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/ }
+            ch_reads.filter { (it[0].platform =~ /(?i)OXFORD/ || it[0].platform =~ /(?i)PACBIO/) && !it[0].is_fasta }
         )
         ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect { it[1] }.ifEmpty([]) )
         ch_multiqc_files = ch_multiqc_files.mix(NANOPLOT.out.txt.collect { it[1] }.ifEmpty([]) )
     }
+    // ch_reads now contains both processed FASTQ samples and FASTA samples
+    // (the latter having passed through host-removal but skipped all QC plots)
     ch_filtered_reads = ch_reads
     ch_profile = Channel.empty()
     ch_preppedfiles = Channel.empty()

@@ -106,12 +106,16 @@ def create_fastq_channel(LinkedHashMap row) {
     if (meta.aligner != 'minimap2' && meta.aligner != 'hisat2' && meta.aligner != 'bowtie2') {
         exit 1, "ERROR: Please check input samplesheet -> aligner is not specified as minimap2, hisat2, or bowtie2 \n${meta.sample}"
     }
-    // Check if fastq_1 exists if not then error out and print error
-    if (!file(meta.fastq_1).exists()) {
-        exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
+    // fastq_1 may be a ';'-delimited list of paths (multi-file input).
+    // Check every path individually.
+    meta.fastq_1.split(';').each { rawPath ->
+        def p = rawPath.trim()
+        if (p && !file(p).exists()) {
+            exit 1, "ERROR: Please check input samplesheet -> sequence file does not exist!\n${p}"
+        }
     }
-    if (!meta.single_end && !file(meta.fastq_2).exists()) {
-        exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
+    if (!meta.single_end && meta.fastq_2 && !file(meta.fastq_2).exists()) {
+        exit 1, "ERROR: Please check input samplesheet -> Read 2 sequence file (FASTQ) does not exist!\n${meta.fastq_2}"
     }
 
     if (row.trim && row.trim.toLowerCase() == "true"){
@@ -122,6 +126,15 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.type = row.type
     meta.directory = row.directory ?  row.directory.toBoolean() : null
     meta.sequencing_summary = row.sequencing_summary ? file(row.sequencing_summary) : null
+    // FASTA input flag: set by check_samplesheet.py when fastq_1 is a FASTA file.
+    // Samples with is_fasta=true bypass all QC/trimming steps but still run
+    // through host removal, Kraken2, and alignment.
+    meta.is_fasta = (row.containsKey('is_fasta') && row.is_fasta != null && row.is_fasta.toString().toLowerCase() == 'true') ? true : false
+    // Optional minimap2 preset override (e.g. map-ont, map-pb, map-hifi, lr:hq,
+    // sr, splice, splice:hq, asm5, ava-pb, ava-ont …).  When set, overrides the
+    // platform-derived default in the MINIMAP2_ALIGN module for BOTH host removal
+    // and the main alignment step.  Leave blank to keep the existing behaviour.
+    meta.minimap2_preset = (row.containsKey('minimap2_preset') && row.minimap2_preset) ? row.minimap2_preset.trim() : null
 
     // Control sample columns
     meta.control = (row.control && row.control.toString().toUpperCase() == "TRUE") ? true : false
@@ -138,25 +151,34 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.salinity        = (row.containsKey('salinity')        && row.salinity)        ? row.salinity.trim()        : null
     meta.collection_time = (row.containsKey('collection_time') && row.collection_time) ? row.collection_time.trim() : null
     meta.location        = (row.containsKey('location')        && row.location)        ? row.location.trim()        : null
-    // add path(s) of the fastq file(s) to the meta map
+    // Build the [meta, reads] tuple.
+    // fastq_1 may be a ';'-delimited list of file paths for multi-file inputs
+    // (e.g. multiple FASTA assemblies fed to a single minimap2 splice run).
     def fastq_meta = []
-    if (meta.directory ){
-        if (meta.platform == 'OXFORD' || meta.platform == "PACBIO"){
-            fastq_meta = [ meta, [ file(meta.fastq_1) ]  ]
+    if (meta.directory) {
+        if (meta.platform == 'OXFORD' || meta.platform == 'PACBIO') {
+            fastq_meta = [ meta, [ file(meta.fastq_1) ] ]
         } else {
             exit 1, "ERROR: Please check input samplesheet -> the platform is not specified as OXFORD or PACBIO \n${meta.sample}"
         }
     } else {
-        if (!file(meta.fastq_1).exists()) {
-            exit 1, "ERROR: Please check input samplesheet -> Read 1 FastQ file does not exist!\n${meta.fastq_1}"
-        }
-        if (meta.single_end) {
-            fastq_meta = [ meta, [ file(meta.fastq_1) ] ]
-        } else {
-            if (meta.fastq_2 && !file(meta.fastq_2).exists()) {
-                exit 1, "ERROR: Please check input samplesheet -> Read 2 FastQ file does not exist!\n${meta.fastq_2}"
+        // Resolve all paths listed in fastq_1 (single path or ';'-separated list)
+        def read1_files = meta.fastq_1.split(';').collect { it.trim() }.findAll { it }.collect { p ->
+            if (!file(p).exists()) {
+                exit 1, "ERROR: Please check input samplesheet -> sequence file does not exist!\n${p}"
             }
-            fastq_meta = [ meta, [ file(meta.fastq_1), file(meta.fastq_2) ] ]
+            file(p)
+        }
+
+        if (meta.single_end || read1_files.size() > 1) {
+            // Single-end OR multi-file: pass all read1 files as the reads list
+            fastq_meta = [ meta, read1_files ]
+        } else {
+            // Paired-end single file: combine read1 + read2
+            if (meta.fastq_2 && !file(meta.fastq_2).exists()) {
+                exit 1, "ERROR: Please check input samplesheet -> Read 2 sequence file (FASTQ) does not exist!\n${meta.fastq_2}"
+            }
+            fastq_meta = [ meta, [ read1_files[0], file(meta.fastq_2) ] ]
         }
     }
 

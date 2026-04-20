@@ -27,7 +27,7 @@ process KRAKEN2_KRAKEN2 {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def paired       = meta.single_end ? "" : "--paired"
-    // get basename of the db 
+    // get basename of the db
     def db_basename = db.getName()
 
     def classified   = meta.single_end ? "${prefix}.${db_basename}.classified.fastq"   : "${prefix}.${db_basename}.classified#.fastq"
@@ -38,21 +38,29 @@ process KRAKEN2_KRAKEN2 {
     def readclassification_command = save_reads_assignment ? "--output ${prefix}.kraken2.classifiedreads.txt" : ""
     def compress_reads_command = save_output_fastqs ? "pigz -p $task.cpus *.fastq" : ""
     def minimum_hit_groups = params.k2_minimum_hit_groups ? "--minimum-hit-groups ${params.k2_minimum_hit_groups}" : ""
-    
+
+    // Only pass --gzip-compressed when ALL input files are actually gzip-compressed.
+    // Plain FASTA inputs (.fa / .fasta / .fna) must NOT have this flag or Kraken2
+    // will try to decompress a non-compressed stream and fail.
+    // Gzipped FASTA (.fa.gz / .fasta.gz) and the usual .fastq.gz both need it.
+    def read_list  = reads instanceof List ? reads : [reads]
+    def is_gzipped = read_list.every { it.name.endsWith('.gz') }
+    def gzip_cmd   = is_gzipped ? '--gzip-compressed' : ''
+
     """
     kraken2 \\
         --db $db \\
         --threads $task.cpus \\
         --report ${prefix}.kraken2.report.txt \\
-        --gzip-compressed \\
+        $gzip_cmd \\
         $unclassified_command \\
         $classified_command \\
         $minimum_hit_groups \\
         $readclassification_command \\
         $paired $confidence \\
         $args  \\
-        $reads > /dev/null 
-        
+        $reads > /dev/null
+
     $compress_reads_command
 
     cat <<-END_VERSIONS > versions.yml
