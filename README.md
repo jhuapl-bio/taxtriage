@@ -1,4 +1,4 @@
-[![DOI](https://img.shields.io/badge/doi-10.1101/2025.07.16.664785-blue)](https://doi.org/10.1101/2025.07.16.664785)
+[![DOI](https://img.shields.io/badge/doi-10.1093/bioinformatics/btag119-blue)](https://doi.org/10.1093/bioinformatics/btag119)
 [![Zenodo](https://img.shields.io/badge/doi-10.5281/zenodo.17081353-red)](https://doi.org/10.5281/zenodo.17081353)
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 [![Tutorial: install & run with docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
@@ -322,7 +322,7 @@ If you would like to contribute to this pipeline, please see the [contributing g
 
 ## Citation
 
-If you use this software, please cite doi: [10.1101/2025.07.16.664785](https://doi.org/10.1101/2025.07.16.664785) or BibTeX
+If you use this software, please cite doi: [10.1093/bioinformatics/btag119](https://doi.org/10.1093/bioinformatics/btag119) or BibTeX
 
 ```bibtex
 @article{Merritt2025.07.16.664785,
