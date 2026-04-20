@@ -29,9 +29,9 @@ The TaxTriage pipeline aims to democratize metagenomic sequence analysis for ear
 
 For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. This component is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output formats include PDF and `HTML` which are highly interactive and distributable.
 
-See [Important output locations](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#important-output-locations) for information on where to get the most important output files from the pipeline.
+See [Important output locations](https://github.com/jhuapl-bio/taxtriage/wiki/Output) for information on where to get the most important output files from the pipeline.
 
-See [here](https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#top-hits-calculation) for information on how "top hits" is located
+See [here](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules#step-5-top-hits-assignment) for information on how "top hits" is located
 
 See collaborative efforts with groups outside JHU/APL [here](README.md#uw-madison--a-custom-geneious-prime-plugin-for-taxtriage)
 
