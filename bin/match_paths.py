@@ -581,6 +581,10 @@ def parse_args(argv=None):
                              "Use window_size/2 for 50%% overlap. Default: 500,000.")
     parser.add_argument("--coverage_length", type=int, default=500, help="Length of each coverage chunk.")
     parser.add_argument("--coverage_spacing", type=int, default=4, help="Allowed gap of zero coverage in a chunk.")
+    parser.add_argument("--breadth_bin_size", type=int, default=2000,
+                        help="Bin size (bp) for the positional breadth/depth histogram embedded in the JSON "
+                             "output and rendered as a coverage track in heatmap.html. Larger values reduce "
+                             "JSON size; 2000 bp is a good default for bacterial genomes. Set to 0 to disable.")
     parser.add_argument("--min_threshold", type=float, default=0.2, help="Min Jaccard similarity to report.")
     parser.add_argument("--abu_file", required=False, help="Path to ground truth coverage file (abu.txt).")
     parser.add_argument("--use_variance", required=False, action='store_true', help="Use variance instead of Gini index.")
@@ -2384,7 +2388,7 @@ def main():
     import json
     def write_to_json(output_path, obj):
         with open(output_path, "w") as f:
-            json.dump(obj, f, indent=2)
+            json.dump(obj, f, separators=(',', ':'))
     final_json = annotate_aggregate_dict(
         aggregate_dict=aggregate_dict,
         pathogens=pathogens,
@@ -2902,6 +2906,55 @@ def main():
                 _hist['>50x'] += _b
         return _hist
 
+    _breadth_bin_size = getattr(args, 'breadth_bin_size', 2000) or 0
+
+    def _build_positional_bins(covered_regions, genome_len, bin_size):
+        """Return a compact list of % covered values (0–100), one per genome bin.
+
+        Each bin covers ``bin_size`` bp.  The value for each bin is the
+        fraction of base-pairs in that bin that are covered by at least one
+        read, expressed as a percentage (0.0–100.0) and rounded to 1 decimal
+        place — matching the samtools coverage histogram convention.
+
+        ``covered_regions`` is a list of non-overlapping (start, end, depth)
+        tuples produced by the sweep-line in count_reference_hits(); because
+        they are non-overlapping we can sum the raw overlap lengths without
+        risk of double-counting.
+        """
+        _glen = int(genome_len)
+        if not _glen or not covered_regions or not bin_size:
+            return None
+        _n = (_glen + bin_size - 1) // bin_size
+        _covered_bp = [0.0] * _n       # total covered bp in each bin
+        for _s, _e, _d in covered_regions:
+            # _d > 0 guaranteed for all covered_regions entries
+            _bi0 = int(_s) // bin_size
+            _bi1 = min(_n - 1, (max(int(_s), int(_e) - 1)) // bin_size)
+            for _b in range(_bi0, _bi1 + 1):
+                _blo = _b * bin_size
+                _bhi = min((_b + 1) * bin_size, _glen)
+                _ov  = max(0, min(int(_e), _bhi) - max(int(_s), _blo))
+                _covered_bp[_b] += _ov
+        _pcts = []
+        for _b in range(_n):
+            _blo = _b * bin_size
+            _bhi = min((_b + 1) * bin_size, _glen)
+            _blen = _bhi - _blo
+            _pct = min(100.0, _covered_bp[_b] / _blen * 100) if _blen > 0 else 0.0
+            _pcts.append(round(_pct, 1))
+        return _pcts
+
+    # ── Breadth histogram: always exactly 100 bins per strain ─────────────────
+    # Pass 1 (inline, during the existing contig loop below): collect each
+    # accession's covered_regions offset into a per-strain coordinate space so
+    # that multi-contig organisms are treated as one continuous sequence.
+    # Pass 2 (after the loop): compute bin_size = total_len // 100 and build.
+    _N_BREADTH_BINS = 100
+    _breadth_regs_by_key   = {}   # skey -> list of (start, end, depth) in genome coords
+    _breadth_len_by_key    = {}   # skey -> total concatenated length
+    _breadth_breaks_by_key = {}   # skey -> list of base-coord offsets (one per contig)
+    _breadth_bins_by_key   = {}   # filled in pass 2
+
     for _acc, _hit in reference_hits.items():
         _skey = str(_hit.get('key', _acc))
         _numreads  = int(_hit.get('numreads', 0) or 0)
@@ -2923,6 +2976,33 @@ def main():
             _acc_hist = _build_depth_hist(_cov_regs, _length)
             for _bkt, _cnt in _acc_hist.items():
                 _depth_hist_by_key[_skey][_bkt] += _cnt
+            # Pass 1: offset this accession's regions into genome coordinates
+            if _breadth_bin_size >= 0:   # 0 still triggers 100-bin mode
+                _offset = _breadth_len_by_key.get(_skey, 0)
+                if _skey not in _breadth_regs_by_key:
+                    _breadth_regs_by_key[_skey]   = []
+                    _breadth_breaks_by_key[_skey]  = []
+                _breadth_breaks_by_key[_skey].append(_offset)
+                for (_s, _e, _d) in _cov_regs:
+                    _breadth_regs_by_key[_skey].append((_s + _offset, _e + _offset, _d))
+                _breadth_len_by_key[_skey] = _offset + _length
+
+    # Pass 2: one call to _build_positional_bins per strain with bin_size = total_len // 100
+    if _breadth_bin_size >= 0:
+        for _skey, _total_len in _breadth_len_by_key.items():
+            if not _total_len:
+                continue
+            _bsz  = max(1, (_total_len + _N_BREADTH_BINS - 1) // _N_BREADTH_BINS)
+            _bins = _build_positional_bins(_breadth_regs_by_key[_skey], _total_len, _bsz)
+            if _bins:
+                # Convert base-coord offsets to bin indices for the contig dividers
+                _brk_bins = [max(0, b // _bsz) for b in _breadth_breaks_by_key[_skey]]
+                _breadth_bins_by_key[_skey] = {
+                    'bin_size':  _bsz,
+                    'total_len': _total_len,
+                    'bins':      _bins,
+                    'breaks':    _brk_bins,
+                }
 
     # Sort contigs by reads desc, cap at 100 per strain (prevent JSON bloat)
     for _skey in _contig_by_key:
@@ -3007,6 +3087,18 @@ def main():
                 _dhist = dict(_depth_hist_by_key.get(_skey, {}))
                 if _dhist and any(_dhist.values()):
                     _strain['depth_histogram'] = _dhist
+                _bbins = _breadth_bins_by_key.get(_skey)
+                if _bbins and _bbins.get('bins'):
+                    import base64 as _b64
+                    _encoded = _b64.b64encode(
+                        bytes([min(255, round(v)) for v in _bbins['bins']])
+                    ).decode()
+                    _strain['breadth_histogram'] = {
+                        'bin_size':  _bbins['bin_size'],
+                        'total_len': _bbins['total_len'],
+                        'b64':       _encoded,
+                        'breaks':    _bbins['breaks'],
+                    }
 
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use

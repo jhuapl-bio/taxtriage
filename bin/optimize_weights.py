@@ -539,8 +539,11 @@ def calculate_normalized_groups(
 
 
         # derived coverage = covered_bases_sum / length_sum
+        # Clamp to 1.0: when multiple accessions are aggregated, covered_bases
+        # can be double-counted across overlapping regions, pushing the ratio
+        # above 1.0.  The true maximum meaningful value is 100 % coverage.
         total_length = agg["length"]
-        agg["coverage"] = (agg["covered_bases"] / total_length) if total_length > 0 else 0.0
+        agg["coverage"] = min(1.0, agg["covered_bases"] / total_length) if total_length > 0 else 0.0
 
         # weighted means
         for f in WAVG_FIELDS:

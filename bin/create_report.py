@@ -5018,7 +5018,7 @@ def _build_tabular_dataframe(samples_dict, args):
 
                 _covered_bases = int(strain.get('covered_bases', 0) or 0)
                 _genome_len    = int(strain.get('length', 0) or 0)
-                _breadth_pct   = round(_covered_bases / _genome_len * 100, 2) if _genome_len > 0 else 0.0
+                _breadth_pct   = round(min(100.0, _covered_bases / _genome_len * 100), 2) if _genome_len > 0 else 0.0
                 _meandepth     = round(float(strain.get('meandepth', 0) or 0), 2)
 
                 _tax          = strain.get('taxonomy', sg.get('taxonomy', {}))
@@ -5109,7 +5109,7 @@ def create_tabular_output(output_path, samples_dict, args):
                                 "Reads Aligned":   _ctg.get("reads", 0),
                                 "Mean Depth":      _ctg.get("mean_depth", 0),
                                 "Covered Bases":   _ctg.get("covered_bases", 0),
-                                "Coverage %":      round(_ctg.get("coverage", 0) * 100, 2),
+                                "Coverage %":      round(min(100.0, _ctg.get("coverage", 0) * 100), 2),
                             })
         df_contigs = pd.DataFrame(_contig_rows) if _contig_rows else pd.DataFrame(
             columns=["Sample","Organism","Taxon ID","Contig",
