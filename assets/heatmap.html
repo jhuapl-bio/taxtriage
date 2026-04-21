@@ -585,7 +585,7 @@
           {
             "Specimen ID": "Miseq_Run",
             "Sample Type": "nasal",
-            "Detected Organism": "human respiratory syncytial virus",
+            "Detected Organism": "Human respiratory syncytial virus B",
             "Taxonomic ID #": "11250",
             "Subkey": "3049954",
             "Microbial Category": "Primary",
@@ -3829,7 +3829,7 @@
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
-            >Drop .paths.json or .xlsx files here</span
+            >Drop .paths.json, .xlsx, .tsv, or .txt files here</span
           >
           <label class="upload-btn" for="file-upload-input">Browse Files</label>
           <input
@@ -3898,6 +3898,7 @@
 ═══════════════════════════════════════════════════════════════════════════ */
       const sampleColors = {};
       const sampleHidden = {};
+      const sampleRescale = {}; // per-sample flag: scale TASS Score + Coverage ×100
       let sortCol = null;
       let sortAsc = true;
       let visibleCols = [];
@@ -3944,7 +3945,7 @@
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
 
-        return DATA.filter((r) => {
+        return DATA.map(applyRescale).filter((r) => {
           if (sampleHidden[r["Specimen ID"]]) return false;
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
           const tass = parseFloat(r["TASS Score"]);
@@ -3954,6 +3955,19 @@
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
           return true;
         });
+      }
+
+      /* Return a shallow copy of row r with TASS Score + Coverage scaled ×100
+         when sampleRescale is enabled for that specimen. */
+      const _RESCALE_COLS = ["TASS Score", "Coverage", "Breadth %"];
+      function applyRescale(r) {
+        if (!sampleRescale[r["Specimen ID"]]) return r;
+        const copy = Object.assign({}, r);
+        for (const col of _RESCALE_COLS) {
+          const v = parseFloat(copy[col]);
+          if (!isNaN(v)) copy[col] = Math.round(v * 1000) / 10;
+        }
+        return copy;
       }
 
       function uniq(arr) {
@@ -3990,6 +4004,7 @@
         samples.forEach((id, i) => {
           if (!sampleColors[id]) sampleColors[id] = PALETTE[i % PALETTE.length];
           if (sampleHidden[id] === undefined) sampleHidden[id] = false;
+          if (sampleRescale[id] === undefined) sampleRescale[id] = false;
         });
         const cont = document.getElementById("sample-list");
         if (!cont) return;
@@ -4034,8 +4049,26 @@
           });
           btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
 
+          // ×100 rescale toggle
+          const rescaleBtn = document.createElement("button");
+          rescaleBtn.className = "eye-btn";
+          rescaleBtn.title = "Scale TASS Score & Coverage ×100 (use when values are on 0–1 scale)";
+          rescaleBtn.type = "button";
+          rescaleBtn.textContent = "×100";
+          rescaleBtn.style.fontSize = "0.68em";
+          rescaleBtn.style.padding = "0 3px";
+          rescaleBtn.style.opacity = sampleRescale[id] ? "1" : "0.3";
+          rescaleBtn.style.color = sampleRescale[id] ? "#c06000" : "inherit";
+          rescaleBtn.addEventListener("click", () => {
+            sampleRescale[id] = !sampleRescale[id];
+            rescaleBtn.style.opacity = sampleRescale[id] ? "1" : "0.3";
+            rescaleBtn.style.color = sampleRescale[id] ? "#c06000" : "inherit";
+            redraw();
+          });
+
           div.appendChild(colorIn);
           div.appendChild(span);
+          div.appendChild(rescaleBtn);
           div.appendChild(btn);
           cont.appendChild(div);
         });
@@ -8877,6 +8910,37 @@
           return { rows, contigs, prot_data, sampleName, meta };
         }
 
+        /* ── remap alternative-format column names to canonical names ──────────── */
+        // Some TXT/TSV exports (e.g. TASS Challenge reports) use slightly different
+        // column headers.  This map converts those names to the canonical ones the
+        // visualisations expect so every tab renders correctly.
+        const _ALT_COL_MAP = {
+          "AnnClass":               "Ann Class",
+          "Protein Identity Score": "Diamond Identity",
+        };
+
+        function _normalizeAltFormatRows(rows) {
+          if (!rows.length) return rows;
+          const firstKeys = Object.keys(rows[0]);
+          const needsRemap = firstKeys.some((k) => Object.prototype.hasOwnProperty.call(_ALT_COL_MAP, k));
+          // Also detect when "Breadth %" is absent but "Coverage" is present —
+          // in that case treat "Coverage" as the breadth percentage.
+          const hasBreadth = firstKeys.includes("Breadth %");
+          const hasCoverage = firstKeys.includes("Coverage");
+          const fillBreadth = !hasBreadth && hasCoverage;
+          if (!needsRemap && !fillBreadth) return rows;
+          return rows.map((row) => {
+            const out = {};
+            for (const [k, v] of Object.entries(row)) {
+              out[_ALT_COL_MAP[k] !== undefined ? _ALT_COL_MAP[k] : k] = v;
+            }
+            if (fillBreadth && out["Breadth %"] === undefined) {
+              out["Breadth %"] = out["Coverage"];
+            }
+            return out;
+          });
+        }
+
         /* ── parse an XLSX / TSV file using SheetJS ─────────────────────────────── */
         function _parseXlsx(ab, filename) {
           const wb = XLSX.read(ab, { type: "array" });
@@ -8917,7 +8981,7 @@
             }
           }
 
-          return { rows, contigs: [], prot_data };
+          return { rows: _normalizeAltFormatRows(rows), contigs: [], prot_data };
         }
 
         /* ── derive ALL_COLS and NUMERIC from rows ──────────────────────────────── */
@@ -9002,6 +9066,26 @@
           // Recompute BSL levels with merged data
           _computeBslLevels();
 
+          // ── Auto-detect V1/V2 (0–1 scale) Coverage for uploaded rows ───────────
+          // If every row for a sample has Coverage ≤ 1.05 it is almost certainly on the
+          // 0–1 fraction scale (V1/V2 pipeline).  Pre-enable ×100 rescaling so the
+          // Breadth % plot shows 0–100 % immediately without a manual button click.
+          // Only runs for samples not previously seen (sampleRescale still undefined).
+          if (_uploadedRows.length) {
+            const uploadedSids = new Set(_uploadedRows.map((r) => r["Specimen ID"]).filter(Boolean));
+            uploadedSids.forEach((sid) => {
+              if (sampleRescale[sid] !== undefined) return; // already explicitly toggled
+              const sidRows = _uploadedRows.filter((r) => r["Specimen ID"] === sid);
+              const covVals = sidRows
+                .map((r) => parseFloat(r["Coverage"] !== undefined ? r["Coverage"] : r["Breadth %"]))
+                .filter((v) => !isNaN(v));
+              if (!covVals.length) return;
+              const maxCov = Math.max(...covVals);
+              // V1/V2: all coverage fractions ≤ 1; V3: values like 17.1, 81.2 etc.
+              if (maxCov <= 1.05) sampleRescale[sid] = true;
+            });
+          }
+
           // Rebuild UI
           const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
           document.getElementById(
@@ -9078,7 +9162,7 @@
                     });
                     rows.push(row);
                   }
-                  resolve({ rows, contigs: [] });
+                  resolve({ rows: _normalizeAltFormatRows(rows), contigs: [] });
                 } catch (err) {
                   reject(`${file.name}: parse error – ${err.message}`);
                 }

@@ -1511,6 +1511,19 @@ def main():
 
     pathogens = import_pathogens(pathogenfile)
 
+    # Build taxid→preferred-name lookup from the pathogen annotation sheet.
+    # This supersedes matchfile and taxdump names everywhere they are set,
+    # so curated labels (e.g. "SARS-CoV-2", "RSV-B") take precedence over
+    # generic NCBI assembly names.  Entries are keyed by string taxid.
+    _pathogen_name_by_taxid = {}
+    for _pk, _pe in (pathogens or {}).items():
+        _pt = str(_pe.get('taxid', '') or '').strip()
+        _pn = (_pe.get('name', '') or '').strip()
+        if _pt and _pn:
+            _pathogen_name_by_taxid[_pt] = _pn
+    if _pathogen_name_by_taxid:
+        print(f"Pathogen-sheet preferred names loaded for {len(_pathogen_name_by_taxid)} taxid(s)")
+
     if args.match and os.path.exists(matcher):
         print("Processing matchfile to enrich reference hits with taxid and description information…")
         accindex = args.accessioncol
@@ -1643,6 +1656,30 @@ def main():
         if _resolved_count:
             print(f"Resolved {_resolved_count} organism names from names.dmp (matchfile had no name/org columns)")
 
+    # ── Pathogen-sheet name supersedes matchfile/taxdump name when taxid matches ──
+    # The pathogens annotation sheet often carries more specific names
+    # (e.g. "human respiratory syncytial virus (B)" vs the NCBI assembly-level
+    # name "human respiratory syncytial virus").  When a reference_hit's taxid
+    # is present in the pathogen sheet, use that name instead so the report
+    # reflects the curated pathogen label rather than the generic mapping name.
+    # Fallback order is unchanged for taxids NOT in the pathogen sheet.
+    if pathogens:
+        _pathogen_name_count = 0
+        for _acc, _hit in reference_hits.items():
+            _tid = str(_hit.get('taxid', '') or '')
+            if not _tid:
+                continue
+            _pentry = pathogens.get(_tid)
+            if _pentry and _pentry.get('name'):
+                _old = _hit.get('name', '')
+                _new = _pentry['name']
+                if _old != _new:
+                    _hit['name'] = _new
+                    _pathogen_name_count += 1
+        if _pathogen_name_count:
+            print(f"Pathogen-sheet name superseded matchfile/taxdump name for "
+                  f"{_pathogen_name_count} accession(s)")
+
     # ── Exclude accessions whose description matches --exclude_descriptions ──
     # Patterns are compiled as regex and matched case-insensitively against
     # the 'description' (or fallback 'name') field populated from the matchfile.
@@ -1703,8 +1740,8 @@ def main():
             hit["toplevelkey"] = top if top else taxid  # fallback to itself if rank not found
             hit["rank"] = wanted_rank  # optional: record what you tried
             hit['strainname'] = hit.get('name', '')
-            hit['name'] = taxdump_names.get(taxid, hit.get('name', ''))
-            hit["toplevelname"] = taxdump_names.get(top, hit.get("name", ""))
+            hit['name'] = _pathogen_name_by_taxid.get(str(taxid), taxdump_names.get(taxid, hit.get('name', '')))
+            hit["toplevelname"] = _pathogen_name_by_taxid.get(str(top), taxdump_names.get(top, hit.get("name", "")))
     else:
         for acc, hit in reference_hits.items():
             taxid = hit.get("taxid")
@@ -1721,7 +1758,8 @@ def main():
                 hit['subkey'] = acc
                 hit['subkeyname'] = hit.get('name', '')
             hit['strainname'] = hit.get('name', '')
-            hit["toplevelname"] = taxdump_names.get(hit['key'], hit.get("name", ""))
+            _top_key_str = str(hit['key']) if hit.get('key') else ''
+            hit["toplevelname"] = _pathogen_name_by_taxid.get(_top_key_str, taxdump_names.get(hit['key'], hit.get("name", "")))
 
     # Build per-accession mappings for optimization and metrics at different granularities.
     acc_to_key = {}
@@ -1905,9 +1943,10 @@ def main():
             # try to get organism from taxdump names
             taxid = data.get('taxid')
             if taxid and taxid in taxdump_names:
-                data['organism'] = taxdump_names[taxid]
+                data['organism'] = _pathogen_name_by_taxid.get(str(taxid), taxdump_names[taxid])
             else:
-                data['organism'] = data.get('name', acc)
+                taxid_str = str(taxid) if taxid else ''
+                data['organism'] = _pathogen_name_by_taxid.get(taxid_str, data.get('name', acc))
         # Annotate with cluster dominance stats.
         # Prefer cluster_dominance.json (from False path — has removal_frac),
         # fall back to shared_windows-derived counts (from True path).
@@ -2044,6 +2083,28 @@ def main():
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
     # This ensures optimize_weights() / build_metrics_df_from_final_json() can
     # read microbial_category for the debug JSON output.
+    _TAX_RANKS_OPT = ['domain', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus']
+
+    def _build_lineage_opt(taxid_str):
+        """Return {rank: name} for the major taxonomy ranks using taxdump."""
+        if not taxdump or not taxdump_names:
+            return {}
+        lineage = {}
+        for _rank in _TAX_RANKS_OPT:
+            if _rank == 'domain':
+                _rid = (
+                    get_root(taxid_str, 'domain', taxdump)
+                    or get_root(taxid_str, 'superkingdom', taxdump)
+                    or get_root(taxid_str, 'acellular root', taxdump)
+                )
+            else:
+                _rid = get_root(taxid_str, _rank, taxdump)
+            if _rid:
+                _name = taxdump_names.get(str(_rid), '')
+                if _name:
+                    lineage[_rank] = _name
+        return lineage
+
     for k, data in strain_summary.items():
         taxid = data.get('key') or data.get('taxid') or k
         pre_ann = calculate_classes(
@@ -2054,6 +2115,9 @@ def main():
             taxdump=taxdump,
         )
         data.update(pre_ann)
+        # Stamp taxonomy lineage so optimize_weights report has full taxonomy
+        if taxdump and taxdump_names:
+            data['taxonomy'] = _build_lineage_opt(str(taxid))
 
     if args.optimize:
         # Parse weight prior: accepts JSON string or file path
