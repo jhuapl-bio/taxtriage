@@ -164,7 +164,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
     pct = strain_reads / max(1, total_reads) * 100.0
     covered = int(org.get("covered_bases", 0) or 0)
     genome_len = int(org.get("length", 0) or 0)
-    breadth_pct = round(covered / genome_len * 100, 2) if genome_len > 0 else 0.0
+    breadth_pct = round(min(100.0, covered / genome_len * 100), 2) if genome_len > 0 else 0.0
     tass = float(org.get("tass_score", 0) or 0)
 
     tax = org.get("taxonomy", {})
@@ -183,7 +183,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "TASS Score":          round(tass * 100, 1),
         "# Reads Aligned":     int(strain_reads),
         "% Reads":             round(pct, 4),
-        "Coverage":            round((org.get("coverage", 0) or 0) * 100, 1),
+        "Coverage":            round(min(100.0, (org.get("coverage", 0) or 0) * 100), 1),
         "Covered Bases":       covered,
         "Genome Length (bp)":  genome_len,
         "Breadth %":           breadth_pct,
@@ -292,15 +292,19 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
                         continue
                     _contigs = strain.get("contigs")
                     _dhist   = strain.get("depth_histogram")
-                    if _contigs or _dhist:
+                    _bhist   = strain.get("breadth_histogram")
+                    if _contigs or _dhist or _bhist:
                         _key = f"{sample_name}||{strain.get('name','')}||{strain.get('key','')}"
-                        contig_data[_key] = {
+                        _cd_entry = {
                             "sample":          sample_name,
                             "organism":        strain.get("name", "Unknown"),
                             "taxon_id":        str(strain.get("key", "")),
                             "contigs":         [{k: v for k, v in c.items() if k not in _STRIP} for c in (_contigs or [])],
                             "depth_histogram": _dhist or {},
                         }
+                        if _bhist:
+                            _cd_entry["breadth_histogram"] = _bhist
+                        contig_data[_key] = _cd_entry
 
     return rows, sample_meta, contig_data
 
