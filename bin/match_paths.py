@@ -2388,7 +2388,7 @@ def main():
     import json
     def write_to_json(output_path, obj):
         with open(output_path, "w") as f:
-            json.dump(obj, f, separators=(',', ':'))
+            json.dump(obj, f, separators=(',', ':'), indent=4)
     final_json = annotate_aggregate_dict(
         aggregate_dict=aggregate_dict,
         pathogens=pathogens,
@@ -2953,6 +2953,7 @@ def main():
     _breadth_regs_by_key   = {}   # skey -> list of (start, end, depth) in genome coords
     _breadth_len_by_key    = {}   # skey -> total concatenated length
     _breadth_breaks_by_key = {}   # skey -> list of base-coord offsets (one per contig)
+    _breadth_names_by_key  = {}   # skey -> list of accession names in break order
     _breadth_bins_by_key   = {}   # filled in pass 2
 
     for _acc, _hit in reference_hits.items():
@@ -2962,16 +2963,9 @@ def main():
         _covered   = int(_hit.get('covered_bases', 0) or 0)
         _depth     = float(_hit.get('meandepth', 0) or 0)
         _cov       = round(_covered / max(1, _length), 5)
-        _contig_by_key[_skey].append({
-            'name':          _acc,
-            'length':        _length,
-            'reads':         _numreads,
-            'mean_depth':    round(_depth, 3),
-            'covered_bases': _covered,
-            'coverage':      _cov,
-        })
-        # Aggregate depth histogram across all contigs for this strain
+        # Compute per-contig depth histogram so the heatmap can filter by accession
         _cov_regs = _hit.get('covered_regions', [])
+        _acc_hist = {}
         if _cov_regs and _length > 0:
             _acc_hist = _build_depth_hist(_cov_regs, _length)
             for _bkt, _cnt in _acc_hist.items():
@@ -2980,28 +2974,45 @@ def main():
             if _breadth_bin_size >= 0:   # 0 still triggers 100-bin mode
                 _offset = _breadth_len_by_key.get(_skey, 0)
                 if _skey not in _breadth_regs_by_key:
-                    _breadth_regs_by_key[_skey]   = []
-                    _breadth_breaks_by_key[_skey]  = []
+                    _breadth_regs_by_key[_skey]  = []
+                    _breadth_breaks_by_key[_skey] = []
+                    _breadth_names_by_key[_skey]  = []
                 _breadth_breaks_by_key[_skey].append(_offset)
+                _breadth_names_by_key[_skey].append(_acc)
                 for (_s, _e, _d) in _cov_regs:
                     _breadth_regs_by_key[_skey].append((_s + _offset, _e + _offset, _d))
                 _breadth_len_by_key[_skey] = _offset + _length
+        _contig_entry = {
+            'name':          _acc,
+            'length':        _length,
+            'reads':         _numreads,
+            'mean_depth':    round(_depth, 3),
+            'covered_bases': _covered,
+            'coverage':      _cov,
+        }
+        if _acc_hist and any(_acc_hist.values()):
+            _contig_entry['depth_histogram'] = _acc_hist
+        _contig_by_key[_skey].append(_contig_entry)
 
-    # Pass 2: one call to _build_positional_bins per strain with bin_size = total_len // 100
+    # Pass 2: one call to _build_positional_bins per strain with adaptive bin size.
+    # Target bins = max(100, n_contigs * 5) so every contig gets at least 5 bins.
     if _breadth_bin_size >= 0:
         for _skey, _total_len in _breadth_len_by_key.items():
             if not _total_len:
                 continue
-            _bsz  = max(1, (_total_len + _N_BREADTH_BINS - 1) // _N_BREADTH_BINS)
+            _n_contigs = len(_breadth_breaks_by_key.get(_skey, []))
+            _n_target  = max(_N_BREADTH_BINS, _n_contigs * 5)
+            _bsz       = max(1, (_total_len + _n_target - 1) // _n_target)
             _bins = _build_positional_bins(_breadth_regs_by_key[_skey], _total_len, _bsz)
             if _bins:
                 # Convert base-coord offsets to bin indices for the contig dividers
                 _brk_bins = [max(0, b // _bsz) for b in _breadth_breaks_by_key[_skey]]
                 _breadth_bins_by_key[_skey] = {
-                    'bin_size':  _bsz,
-                    'total_len': _total_len,
-                    'bins':      _bins,
-                    'breaks':    _brk_bins,
+                    'bin_size':     _bsz,
+                    'total_len':    _total_len,
+                    'bins':         _bins,
+                    'breaks':       _brk_bins,
+                    'contig_names': _breadth_names_by_key.get(_skey, []),
                 }
 
     # Sort contigs by reads desc, cap at 100 per strain (prevent JSON bloat)
@@ -3094,10 +3105,11 @@ def main():
                         bytes([min(255, round(v)) for v in _bbins['bins']])
                     ).decode()
                     _strain['breadth_histogram'] = {
-                        'bin_size':  _bbins['bin_size'],
-                        'total_len': _bbins['total_len'],
-                        'b64':       _encoded,
-                        'breaks':    _bbins['breaks'],
+                        'bin_size':     _bbins['bin_size'],
+                        'total_len':    _bbins['total_len'],
+                        'b64':          _encoded,
+                        'breaks':       _bbins['breaks'],
+                        'contig_names': _bbins.get('contig_names', []),
                     }
 
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
