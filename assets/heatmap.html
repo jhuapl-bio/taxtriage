@@ -2817,8 +2817,8 @@
               </select>
               <label
                 style="font-size: 0.82em; color: #555; white-space: nowrap"
-                title="Minimum percent identity (0–1 scale)"
-                >Min %id</label
+                title="Minimum proportion identity (0–1 scale)"
+                >Min id proportion</label
               >
               <input
                 id="prot-pid-min"
@@ -7169,12 +7169,14 @@
               }
 
               // ── X axis ────────────────────────────────────────────────────────
+              const _xTickOffset = selIdx >= 0 ? xDomStart : 0;
+              const _xRefLen = selIdx >= 0 ? (selBinEnd - selBinStart) * binSz : totLen;
               const xAxis = d3.axisBottom(xSc)
                 .ticks(Math.min(10, visRange))
                 .tickFormat((d) => {
-                  const bp = d * binSz;
-                  if (totLen >= 1e6) return (bp / 1e6).toFixed(1) + "M";
-                  if (totLen >= 1e3) return (bp / 1e3).toFixed(0) + "K";
+                  const bp = (d - _xTickOffset) * binSz;
+                  if (_xRefLen >= 1e6) return (bp / 1e6).toFixed(1) + "M";
+                  if (_xRefLen >= 1e3) return (bp / 1e3).toFixed(0) + "K";
                   return bp;
                 });
               g.append("g").attr("transform", `translate(0,${iH})`)
@@ -8936,8 +8938,8 @@
 
         // ── Convert a parsed CSV row → a RUN_META record (all columns kept) ──
         function _rowToMetaRecord(row) {
-          // Accept "sample" or "sample_name" as the key column
-          const sampleName = (row["sample"] || row["sample_name"] || "").trim();
+          // Accept "sample" or "sample_name" as the key column; normalize spaces → underscores
+          const sampleName = (row["sample"] || row["sample_name"] || "").trim().replace(/\s+/g, "_");
           if (!sampleName) return null;
           const rec = { sample_name: sampleName };
           // Pass through EVERY column (except the sample key itself)
@@ -10420,11 +10422,11 @@
             const tass = parseFloat(r["TASS Score"] || 0);
             const bar = `<div style="display:inline-block;width:${Math.round(
               tass * 0.5,
-            )}px;height:5px;background:${catColor};border-radius:3px;opacity:.6;margin-right:4px;vertical-align:middle"></div>`;
+            )}px;height:5px;background:${catColor};border-radius:3px;opacity:.6;margin-left:4px;vertical-align:middle"></div>`;
             const org = r["Detected Organism"] || "";
             return `<tr style="background:${bg}">
             <td style="padding:4px 8px;border-bottom:1px solid #eef" title="${org.replace(/"/g, "&quot;")}">${org}</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #eef;text-align:right">${bar}${tass.toFixed(1)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #eef;text-align:right">${tass.toFixed(1)}${bar}</td>
             <td style="padding:4px 8px;border-bottom:1px solid #eef;text-align:right">${parseFloat(
               r["% Reads"] || 0,
             ).toFixed(2)}</td>
