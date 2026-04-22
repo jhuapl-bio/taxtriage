@@ -443,7 +443,7 @@ class ControlSparkBar(Flowable):
 
     The bar is rendered as a compact horizontal strip:
 
-    - Full bar represents the TASS range 0–1.
+    - Full bar represents the TASS range 0–100 (internally normalized to 0–1).
     - Red shaded zone: 0 → max(negative control TASS values).
     - Green shaded zone: min(positive control TASS) → 1.0  (if positives exist).
     - Small tick marks for each individual control value.
@@ -497,8 +497,15 @@ class ControlSparkBar(Flowable):
         c.setFillColor(colors.Color(0.93, 0.93, 0.93, 1))
         c.rect(0, by, w, bar_h, fill=1, stroke=0)
 
+        def _norm(v):
+            try:
+                fv = float(v or 0)
+            except (TypeError, ValueError):
+                return 0.0
+            return fv / 100.0 if fv > 1.0 else fv
+
         # ── Red zone (negative control range) ────────────────────────────
-        neg_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.neg_values]
+        neg_tass_vals = [_norm(v.get("tass_score", 0)) for v in self.neg_values]
         if neg_tass_vals:
             neg_max = max(neg_tass_vals)
             red_w = neg_max * w
@@ -513,7 +520,7 @@ class ControlSparkBar(Flowable):
                 c.line(x, by, x, by + bar_h)
 
         # ── Green zone (positive control range) ──────────────────────────
-        pos_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.pos_values]
+        pos_tass_vals = [_norm(v.get("tass_score", 0)) for v in self.pos_values]
         if pos_tass_vals:
             pos_min = min(pos_tass_vals)
             pos_max = max(pos_tass_vals)
@@ -532,7 +539,7 @@ class ControlSparkBar(Flowable):
                 c.line(x, by, x, by + bar_h)
 
         # ── Teal zone (in-silico control range) ─────────────────────────
-        isil_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.insilico_values]
+        isil_tass_vals = [_norm(v.get("tass_score", 0)) for v in self.insilico_values]
         if isil_tass_vals:
             isil_min = min(isil_tass_vals)
             isil_max = max(isil_tass_vals)
@@ -551,7 +558,7 @@ class ControlSparkBar(Flowable):
                 c.line(x, by, x, by + bar_h)
 
         # ── Sample marker (triangle) ─────────────────────────────────────
-        sx = self.sample_tass * w
+        sx = _norm(self.sample_tass) * w
         # Clamp to bar bounds
         sx = max(2, min(w - 2, sx))
         tri_h = bar_h * 0.7
@@ -610,7 +617,7 @@ class ControlSparkBar(Flowable):
             _current_row += 1
 
         # Positive control folds — green text, prefixed with "+"
-        pos_tass_vals = [float(v.get("tass_score", 0) or 0) for v in self.pos_values]
+        pos_tass_vals = [_norm(v.get("tass_score", 0)) for v in self.pos_values]
         if self._has_pos_label and pos_tass_vals:
             row_y = _current_row * self._row_h + 0.5
             pos_fold_txt = "+ " + _fold_str(self.pos_tass_fold)  # + prefix
@@ -4559,7 +4566,7 @@ def create_pdf_template(output_path, samples_dict, args):
                     return
                 story.append(Spacer(1, 0.08 * inch))
                 story.append(Paragraph(
-                    f'{sim_label} Metrics (TASS threshold: {_mc*100:.1f})',
+                    f'{sim_label} Metrics (TASS threshold: {_mc:.1f})',
                     _isil_hdr_style))
                 story.append(Spacer(1, 0.03 * inch))
                 story.append(_tbl)
@@ -4600,7 +4607,7 @@ def create_pdf_template(output_path, samples_dict, args):
                     _so_parts = []
                     for _so_name, _so_tass, _so_cat in _so_orgs:
                         _so_parts.append(
-                            f'<b>{_so_name}</b> (TASS: {_so_tass*100:.2f}, {_so_cat})')
+                            f'<b>{_so_name}</b> (TASS: {_so_tass:.2f}, {_so_cat})')
                     story.append(Spacer(1, 0.02 * inch))
                     story.append(Paragraph(
                         'These organisms are counted as FP in the metrics above: ' +
@@ -4623,7 +4630,7 @@ def create_pdf_template(output_path, samples_dict, args):
                 if _isil_tbl:
                     story.append(Spacer(1, 0.08 * inch))
                     story.append(Paragraph(
-                        f'In-Silico Simulation Metrics (TASS threshold: {_mc*100:.1f})',
+                        f'In-Silico Simulation Metrics (TASS threshold: {_mc:.1f})',
                         _isil_hdr_style))
                     story.append(Spacer(1, 0.03 * inch))
                     story.append(_isil_tbl)
@@ -4662,7 +4669,7 @@ def create_pdf_template(output_path, samples_dict, args):
                         _so_parts = []
                         for _so_name, _so_tass, _so_cat in _sample_only_orgs:
                             _so_parts.append(
-                                f'<b>{_so_name}</b> (TASS: {_so_tass*100:.2f}, {_so_cat})')
+                                f'<b>{_so_name}</b> (TASS: {_so_tass:.2f}, {_so_cat})')
                         story.append(Spacer(1, 0.02 * inch))
                         story.append(Paragraph(
                             'These organisms are counted as FP in the metrics above: ' +
@@ -4982,7 +4989,7 @@ def create_pdf_template(output_path, samples_dict, args):
             _sir_species_links.append(
                 f'{create_safe_link(_sp_name, _sp_bm, valid_bookmarks)} '
                 f'<font color="{_color_hex}">■</font> '
-                f'({_g_primary}, {_g_tass*100:.1f})'
+                f'({_g_primary}, {_g_tass:.1f})'
             )
         if _sir_has_more:
             _fh = _sir_visible[args.max_toc]

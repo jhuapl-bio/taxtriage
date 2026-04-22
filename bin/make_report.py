@@ -180,7 +180,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "IsAnnotated":         "Yes" if org.get("is_annotated", "No") == "Yes" else "No",
         "High Consequence":    bool(org.get("high_cons", False)),
         "Status":              org.get("status", ""),
-        "TASS Score":          round(tass * 100, 1),
+        "TASS Score":          round(tass, 100),  # 0–100 scale for display
         "# Reads Aligned":     int(strain_reads),
         "% Reads":             round(pct, 4),
         "Coverage":            round(min(100.0, (org.get("coverage", 0) or 0) * 100), 1),
@@ -425,11 +425,11 @@ def main():
     # ── resolve mintass ────────────────────────────────────────────────────────
     if args.mintass is not None:
         mintass = args.mintass
-        print(f"[make_report] TASS threshold: {mintass:.4f} (0–1) = {mintass*100:.1f} (from --mintass)")
+        print(f"[make_report] TASS threshold: {mintass:.4f} (0–100) = {mintass:.1f} (from --mintass)")
     elif is_json_mode:
         mintass = _extract_best_threshold(args.input, granularity=args.cutoff_granularity)
         if mintass is not None:
-            print(f"[make_report] TASS threshold: {mintass:.4f} (0–1) = {mintass*100:.1f} "
+            print(f"[make_report] TASS threshold: {mintass:.4f} (0–100) = {mintass:.1f} "
                   f"(min best_threshold across JSONs, granularity={args.cutoff_granularity!r})")
         else:
             mintass = 0.0
@@ -509,7 +509,7 @@ def main():
         "prot_data":             prot_data,
         "has_prot":              has_prot,
         "contig_data":           list(contig_data.values()),   # list of organism contig objects
-        "mintass":               round(mintass * 100, 1),      # 0–100 scale for UI filter-min
+        "mintass":               round(mintass, 100),      # 0–100 scale for UI filter-min
         "run_metadata_records":  run_metadata_records,         # per-sample run metadata
         "has_geo":               has_geo,                      # true if any sample has lat/lon
     })

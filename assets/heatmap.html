@@ -839,16 +839,16 @@
             },
             "min_conf_applied": null,
             "best_cutoffs": {
-              "key": { "best_threshold": 0.7, "fp_le_0_1pct": 0.6086956521739131, "tp_ge_99_5pct": 0.6220735785953178 },
+              "key": { "best_threshold": 70, "fp_le_0_1pct": 60.86956521739131, "tp_ge_99_5pct": 62.20735785953178 },
               "subkey": {
-                "best_threshold": 0.69,
-                "fp_le_0_1pct": 0.4983277591973244,
-                "tp_ge_99_5pct": 0.6387959866220736
+                "best_threshold": 69,
+                "fp_le_0_1pct": 49.83277591973244,
+                "tp_ge_99_5pct": 63.87959866220736
               },
               "toplevelkey": {
-                "best_threshold": 0.75,
-                "fp_le_0_1pct": 0.0033444816053511705,
-                "tp_ge_99_5pct": 0.7625418060200668
+                "best_threshold": 75,
+                "fp_le_0_1pct": 0.33444816053511705,
+                "tp_ge_99_5pct": 76.25418060200668
               }
             },
             "best_cutoffs_source": "stool|ont",
@@ -902,16 +902,16 @@
             },
             "min_conf_applied": null,
             "best_cutoffs": {
-              "key": { "best_threshold": 0.75, "fp_le_0_1pct": 0.5652173913043478, "tp_ge_99_5pct": 0.765886287625418 },
+              "key": { "best_threshold": 75, "fp_le_0_1pct": 56.52173913043478, "tp_ge_99_5pct": 76.5886287625418 },
               "subkey": {
-                "best_threshold": 0.75,
-                "fp_le_0_1pct": 0.5752508361204013,
-                "tp_ge_99_5pct": 0.7525083612040133
+                "best_threshold": 75,
+                "fp_le_0_1pct": 57.52508361204013,
+                "tp_ge_99_5pct": 75.25083612040133
               },
               "toplevelkey": {
-                "best_threshold": 0.75,
-                "fp_le_0_1pct": 0.5016722408026756,
-                "tp_ge_99_5pct": 0.8327759197324415
+                "best_threshold": 75,
+                "fp_le_0_1pct": 50.16722408026756,
+                "tp_ge_99_5pct": 83.27759197324415
               }
             },
             "best_cutoffs_source": "nasal|illumina",
@@ -925,7 +925,7 @@
                 "level": "toplevelkey",
                 "id": "590",
                 "name": "Salmonella",
-                "pos_tass_score": 0.702940249653478,
+                "pos_tass_score": 70.2940249653478,
                 "pos_numreads": 163.0,
                 "source": "Positive_Control_Miseq.paths.json",
                 "missing_control": true
@@ -934,7 +934,7 @@
                 "level": "toplevelkey",
                 "id": "1350",
                 "name": "Enterococcus",
-                "pos_tass_score": 0.5257317692221728,
+                "pos_tass_score": 52.57317692221728,
                 "pos_numreads": 94.0,
                 "source": "Positive_Control_Miseq.paths.json",
                 "missing_control": true
@@ -943,7 +943,7 @@
                 "level": "toplevelkey",
                 "id": "2742598",
                 "name": "Limosilactobacillus",
-                "pos_tass_score": 0.8999165302971256,
+                "pos_tass_score": 89.99165302971256,
                 "pos_numreads": 67.0,
                 "source": "Positive_Control_Miseq.paths.json",
                 "missing_control": true
@@ -2039,7 +2039,7 @@
           } catch (e) {}
         }
       });
-      // best_cutoffs.subkey.best_threshold — 0–1 scale; convert to 0–100 for filter-min
+      // best_cutoffs.subkey.best_threshold — stored as 0–100
       const BEST_TASS_THRESH = ((BOOT.best_cutoffs || {}).subkey || {}).best_threshold;
       // ── Run metadata ───────────────────────────────────────────────────────
       const RUN_META = BOOT.run_metadata_records || []; // [{sample_name, run_id, latitude, longitude, ...}]
@@ -3900,7 +3900,7 @@
 ═══════════════════════════════════════════════════════════════════════════ */
       const sampleColors = {};
       const sampleHidden = {};
-      const sampleRescale = {}; // per-sample flag: scale TASS Score + Coverage ×100
+      const sampleRescale = {}; // per-sample flag: scale legacy 0–1 TASS/Coverage ×100
       let sortCol = null;
       let sortAsc = true;
       let visibleCols = [];
@@ -3947,20 +3947,22 @@
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
 
-        return DATA.map(applyRescale).filter((r) => {
+        const filtered = DATA.filter((r) => {
           if (sampleHidden[r["Specimen ID"]]) return false;
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
           const tass = parseFloat(r["TASS Score"]);
-          if (!isNaN(tass) && tass < minV) return false;
+          const tassFilter = sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
+          if (!isNaN(tassFilter) && tassFilter < minV) return false;
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (onlyP && !isTruthy(r["Passes Threshold"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
           return true;
         });
+        return filtered.map(applyRescale);
       }
 
       /* Return a shallow copy of row r with TASS Score + Coverage scaled ×100
-         when sampleRescale is enabled for that specimen. */
+        when sampleRescale is enabled for legacy 0–1 data. */
       const _RESCALE_COLS = ["TASS Score", "Coverage", "Breadth %"];
       function applyRescale(r) {
         if (!sampleRescale[r["Specimen ID"]]) return r;
@@ -4051,10 +4053,10 @@
           });
           btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
 
-          // ×100 rescale toggle
+          // ×100 rescale toggle (legacy 0–1 data)
           const rescaleBtn = document.createElement("button");
           rescaleBtn.className = "eye-btn";
-          rescaleBtn.title = "Scale TASS Score & Coverage ×100 (use when values are on 0–1 scale)";
+          rescaleBtn.title = "Scale TASS Score & Coverage ×100 (legacy 0–1 files)";
           rescaleBtn.type = "button";
           rescaleBtn.textContent = "×100";
           rescaleBtn.style.fontSize = "0.68em";
@@ -5326,11 +5328,15 @@
         antibiotics_class: "Antibiotics Class",
         antibiotics: "Antibiotics",
         organism: "Reference Organism",
+        sample: "Specimen ID",
+        sample_name: "Specimen ID",
+        "sample name": "Specimen ID",
+        "sample id": "Specimen ID",
+        "specimen id": "Specimen ID",
       };
 
       window.PROT_COL_IGNORE = new Set([
         "reference organism",
-        "sample",
         "classification",
         "antibiotics class",
         "antibiotics_class",
@@ -8816,7 +8822,7 @@
             IsAnnotated: org.is_annotated === "Yes" ? "Yes" : "No",
             "High Consequence": !!org.high_cons,
             Status: org.status || "",
-            "TASS Score": Math.round(tass * 1000) / 10,
+            "TASS Score": Math.round(tass * 10) / 10,
             "# Reads Aligned": Math.round(strain_reads),
             "% Reads": Math.round(pct * 10000) / 10000,
             Coverage: Math.round((parseFloat(org.coverage || 0) || 0) * 1000) / 10,
@@ -8919,6 +8925,10 @@
         const _ALT_COL_MAP = {
           AnnClass: "Ann Class",
           "Protein Identity Score": "Diamond Identity",
+          "Sample ID": "Specimen ID",
+          SampleID: "Specimen ID",
+          "Sample Name": "Specimen ID",
+          Sample: "Specimen ID",
         };
 
         function _normalizeAltFormatRows(rows) {
@@ -8936,8 +8946,25 @@
             for (const [k, v] of Object.entries(row)) {
               out[_ALT_COL_MAP[k] !== undefined ? _ALT_COL_MAP[k] : k] = v;
             }
+            ["Coverage", "Breadth %", "% Reads"].forEach((k) => {
+              if (typeof out[k] === "string" && out[k].includes("%")) {
+                const n = parseFloat(out[k].replace(/%/g, ""));
+                out[k] = isNaN(n) ? out[k] : n;
+              }
+            });
+            if (out["Coverage"] === undefined && out["Mean Coverage"] !== undefined) {
+              out["Coverage"] = out["Mean Coverage"];
+            }
+            if (out["% Reads"] === undefined && out["% Reads Aligned"] !== undefined) {
+              out["% Reads"] = out["% Reads Aligned"];
+            }
             if (fillBreadth && out["Breadth %"] === undefined) {
               out["Breadth %"] = out["Coverage"];
+            }
+            if ((out["Genus"] === undefined || out["Genus"] === "") && out["Detected Organism"]) {
+              const org = String(out["Detected Organism"]).trim();
+              const first = org.split(/\s+/)[0] || "";
+              out["Genus"] = first;
             }
             return out;
           });
@@ -8956,14 +8983,44 @@
           };
           const PROT_SHEET_NAMES = new Set(Object.keys(PROT_SHEET_MAP));
 
-          // ── Find organism sheet (prefer "Organisms", else first non-prot sheet) ──
+          const HEADER_KEYS = ["Detected Organism", "Specimen ID", "TASS Score", "# Reads Aligned"];
+          function _scoreRows(rows) {
+            if (!rows.length) return 0;
+            let score = 0;
+            HEADER_KEYS.forEach((k) => {
+              if (rows[0][k] !== undefined) score += 1;
+            });
+            return score;
+          }
+          function _getRowsWithFallback(ws) {
+            const rows0 = XLSX.utils.sheet_to_json(ws, { defval: null });
+            const rows1 = XLSX.utils.sheet_to_json(ws, { defval: null, range: 1 });
+            return _scoreRows(rows1) > _scoreRows(rows0) ? rows1 : rows0;
+          }
+
+          // ── Find organism sheet (prefer header match, else "Organisms", else first non-prot sheet) ──
+          let bestSheetName = null;
+          let bestRows = [];
+          let bestScore = -1;
+          wb.SheetNames.forEach((name) => {
+            const ws = wb.Sheets[name];
+            const rows = _getRowsWithFallback(ws);
+            const score = _scoreRows(rows);
+            if (score > bestScore) {
+              bestScore = score;
+              bestRows = rows;
+              bestSheetName = name;
+            }
+          });
           const orgSheetName =
-            wb.SheetNames.find((n) => n === "Organisms") ||
-            wb.SheetNames.find((n) => !PROT_SHEET_NAMES.has(n)) ||
-            wb.SheetNames[0];
+            bestScore > 0
+              ? bestSheetName
+              : wb.SheetNames.find((n) => n === "Organisms") ||
+                wb.SheetNames.find((n) => !PROT_SHEET_NAMES.has(n)) ||
+                wb.SheetNames[0];
 
           const ws = wb.Sheets[orgSheetName];
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+          const rows = bestScore > 0 && bestSheetName === orgSheetName ? bestRows : _getRowsWithFallback(ws);
           if (rows.length && rows[0]["Detected Organism"] !== undefined) {
             // Fix degree symbol in organism names
             rows.forEach((r) => {
@@ -9068,26 +9125,6 @@
           // Recompute BSL levels with merged data
           _computeBslLevels();
 
-          // ── Auto-detect V1/V2 (0–1 scale) Coverage for uploaded rows ───────────
-          // If every row for a sample has Coverage ≤ 1.05 it is almost certainly on the
-          // 0–1 fraction scale (V1/V2 pipeline).  Pre-enable ×100 rescaling so the
-          // Breadth % plot shows 0–100 % immediately without a manual button click.
-          // Only runs for samples not previously seen (sampleRescale still undefined).
-          if (_uploadedRows.length) {
-            const uploadedSids = new Set(_uploadedRows.map((r) => r["Specimen ID"]).filter(Boolean));
-            uploadedSids.forEach((sid) => {
-              if (sampleRescale[sid] !== undefined) return; // already explicitly toggled
-              const sidRows = _uploadedRows.filter((r) => r["Specimen ID"] === sid);
-              const covVals = sidRows
-                .map((r) => parseFloat(r["Coverage"] !== undefined ? r["Coverage"] : r["Breadth %"]))
-                .filter((v) => !isNaN(v));
-              if (!covVals.length) return;
-              const maxCov = Math.max(...covVals);
-              // V1/V2: all coverage fractions ≤ 1; V3: values like 17.1, 81.2 etc.
-              if (maxCov <= 1.05) sampleRescale[sid] = true;
-            });
-          }
-
           // Rebuild UI
           const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
           document.getElementById(
@@ -9152,8 +9189,9 @@
               reader.onload = (e) => {
                 try {
                   const sep = name.endsWith(".csv") ? "," : "\t";
-                  const lines = e.target.result.split("\n");
+                  const lines = e.target.result.split(/\r\n|\n|\r/);
                   const headers = lines[0].split(sep).map((h) => h.trim().replace(/^"|"$/g, ""));
+                  if (headers.length && headers[0].charAt(0) === "\ufeff") headers[0] = headers[0].slice(1);
                   const rows = [];
                   for (let i = 1; i < lines.length; i++) {
                     if (!lines[i].trim()) continue;
@@ -9561,7 +9599,7 @@
           if (minEl) {
             const fromMintass = BOOT.mintass != null && BOOT.mintass > 0 ? BOOT.mintass : null;
             const fromBestCutoff =
-              BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Math.round(BEST_TASS_THRESH * 100) : null;
+              BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Math.round(BEST_TASS_THRESH) : null;
             const resolved = fromMintass ?? fromBestCutoff;
             if (resolved != null) minEl.value = resolved;
           }
@@ -10555,7 +10593,9 @@
           ...[...keySet].filter((k) => !KNOWN_ORDER.includes(k)).sort(),
         ];
         // Only show columns that have at least one non-null value and not an object
-        const activeCols = ordered.filter((k) => RUN_META.some((r) => r[k] != null && r[k] !== "" && typeof r[k] !== "object"));
+        const activeCols = ordered.filter((k) =>
+          RUN_META.some((r) => r[k] != null && r[k] !== "" && typeof r[k] !== "object"),
+        );
         hdrRow.innerHTML = activeCols
           .map(
             (k) =>

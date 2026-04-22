@@ -2303,6 +2303,15 @@ def main():
 
         _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
 
+    def _scale_tass_value(val):
+        if val is None:
+            return None
+        try:
+            fv = float(val)
+        except (TypeError, ValueError):
+            return val
+        return round(fv * 100, 4) if fv <= 1.0 else fv
+
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename
@@ -2334,10 +2343,10 @@ def main():
             dmnd = dmnd,
             total_reads = total_reads,
         )
-        data['tass_score'] = compute_tass_score(
+        data['tass_score'] = _scale_tass_value(compute_tass_score(
             data = data,
             weights = weights,
-        )
+        ))
     # : Define a function to calculate disparity for each organism
     i=0
 
@@ -2436,10 +2445,10 @@ def main():
             group_reads=sk_group_reads,
             total_reads=total_reads,
         )
-        sk_data['tass_score'] = compute_tass_score(
+        sk_data['tass_score'] = _scale_tass_value(compute_tass_score(
             data=sk_data,
             weights=weights,
-        )
+        ))
 
     for _, data in aggregate_dict.items():
         # Nest subkey groups as members of the toplevelkey group.
@@ -2469,10 +2478,10 @@ def main():
             group_reads = group_reads,
             total_reads = total_reads,
         )
-        data['tass_score'] = compute_tass_score(
+        data['tass_score'] = _scale_tass_value(compute_tass_score(
             data = data,
             weights = weights,
-        )
+        ))
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -3229,9 +3238,9 @@ def main():
         _gb = (config_entry or {}).get("groups", {})
         return {
             _gname: {
-                "best_threshold": _gdata.get("best_threshold"),
-                "fp_le_0_1pct":  _gdata.get("fp_le_0_1pct", {}).get("threshold"),
-                "tp_ge_99_5pct": _gdata.get("tp_ge_99_5pct", {}).get("threshold"),
+                "best_threshold": _scale_tass_value(_gdata.get("best_threshold")),
+                "fp_le_0_1pct":  _scale_tass_value(_gdata.get("fp_le_0_1pct", {}).get("threshold")),
+                "tp_ge_99_5pct": _scale_tass_value(_gdata.get("tp_ge_99_5pct", {}).get("threshold")),
             }
             for _gname, _gdata in _gb.items()
         }
@@ -3523,8 +3532,8 @@ def main():
         # At each TASS cutoff, what % of TPs pass and what % of FPs pass
         import numpy as np
         thresholds = sorted(set(
-            [round(x * 0.01, 2) for x in range(1, 100)] +
-            [round(x * 0.1, 1) for x in range(1, 10)]
+            [float(x) for x in range(1, 100)] +
+            [float(x * 10) for x in range(1, 10)]
         ))
         threshold_analysis = []
         for thresh in thresholds:
@@ -3729,7 +3738,7 @@ def write_to_tsv(output_path, final_scores, header):
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 99.0  :
                 print(f"Reference: {ref} - {formatname}, High Cons?: {high_conse}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")
