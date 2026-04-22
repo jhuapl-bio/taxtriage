@@ -62,6 +62,7 @@ process ORGANISM_MERGE_REPORT {
     def no_subkey = params.no_subkey ? " --no_subkey " : ""
     // removing the VF/AMR filed by removing --output_annot_xlsx , will address later
     // def annotate_report_arg = annotate_report.name != "NO_FILE_annotate_report" ? " --annotate_report ${annotate_report} " : " "
+
     """
 
     create_report.py -i $files_of_pathogens -u $output_txt  \\
@@ -77,6 +78,7 @@ process ORGANISM_MERGE_REPORT {
         $integrate_strain_table \\
         $rank \\
         $no_subkey \\
+        --output_annot_xlsx $output_annot_xlsx \\
 
     cat <<-END_VERSIONS > versions.yml
         "${task.process}":

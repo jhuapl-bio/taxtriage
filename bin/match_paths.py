@@ -1131,18 +1131,32 @@ def main():
             setattr(args, _p, _v)
 
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
-    # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
+    # Two key formats are supported, auto-detected from the JSON content:
+    #
+    #   2-key format:  "{sampletype}|{platform}"          e.g. "blood|illumina"
+    #   3-key format:  "{sampletype}|{platform}|{domain}" e.g. "blood|illumina|viruses"
+    #
+    # For the 2-key format, a single entry is selected and its best_weights are
+    # applied globally.  For the 3-key format the domain=all entry is used for
+    # global weights, and a per-domain threshold map is built so that downstream
+    # code can apply domain-specific TASS cutoffs to individual organisms.
+    #
     # Lookup order (first match wins):
-    #   1. {sampletype}|{platform}
-    #   2. {sampletype}|all
-    #   3. all|{platform}
-    #   4. all|all
+    #   1. {sampletype}|{platform}[|{domain}]
+    #   2. {sampletype}|all[|{domain}]
+    #   3. all|{platform}[|{domain}]
+    #   4. all|all[|{domain}]
     # Platform normalisation: pacbio → ont; default platform is "illumina".
 
     thresholds_config = None
+    _is_3key_thresholds = False          # True when JSON uses sampletype|platform|domain keys
+    _domain_thresholds_map = {}          # norm_domain → matching config entry  (3-key only)
     if args.thresholds_json:
         with open(args.thresholds_json, 'r') as _tf:
             thresholds_config = _json.load(_tf)
+
+        # Detect key format from the first key
+        _is_3key_thresholds = any(k.count('|') == 2 for k in thresholds_config)
 
         # ─ normalise sample type ─
         _norm_st = normalize_body_site(args.sampletype.lower()) if args.sampletype else "unknown"
@@ -1169,26 +1183,49 @@ def main():
         else:
             _norm_plat = _raw_plat            # pass through as-is
 
-        # ─ lookup with fallback chain ─
-        _candidates = [
-            f"{_norm_st}|{_norm_plat}",       # exact match
-            f"{_norm_st}|all",                 # any platform for this sampletype
-            f"all|{_norm_plat}",               # any sampletype for this platform
-            "all|all",                         # universal fallback
-        ]
-        _st_key = None
-        for _cand in _candidates:
-            if _cand in thresholds_config:
-                _st_key = _cand
-                break
-        if _st_key is None:
-            # Last resort: grab the first key in the JSON
-            _st_key = next(iter(thresholds_config))
-            print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+        def _find_threshold_key(norm_st, norm_plat, domain_suffix=""):
+            """Return the first matching key in thresholds_config for the given
+            sampletype/platform combination.  domain_suffix is either '' (2-key
+            format) or '|{domain}' (3-key format, e.g. '|viruses')."""
+            candidates = [
+                f"{norm_st}|{norm_plat}{domain_suffix}",
+                f"{norm_st}|all{domain_suffix}",
+                f"all|{norm_plat}{domain_suffix}",
+                f"all|all{domain_suffix}",
+            ]
+            for _c in candidates:
+                if _c in thresholds_config:
+                    return _c
+            return None
 
-        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
-              f"platform '{args.platform}' → '{_norm_plat}', "
-              f"using thresholds key: '{_st_key}'")
+        if _is_3key_thresholds:
+            # ── 3-key mode ──────────────────────────────────────────────────
+            # Global weights: use the domain=all entry for the resolved st/plat.
+            _st_key = _find_threshold_key(_norm_st, _norm_plat, "|all")
+            if _st_key is None:
+                _st_key = next(iter(thresholds_config))
+                print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+
+            # Build per-domain map: norm_domain → config entry
+            # Known taxonomy domains (case-insensitive match against taxdump names)
+            _known_domains = ["viruses", "bacteria", "eukaryota", "archaea"]
+            for _dom in _known_domains:
+                _dom_key = _find_threshold_key(_norm_st, _norm_plat, f"|{_dom}")
+                if _dom_key:
+                    _domain_thresholds_map[_dom] = thresholds_config[_dom_key]
+            print(f"Thresholds JSON (3-key) loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
+                  f"platform '{args.platform}' → '{_norm_plat}', "
+                  f"global weights key: '{_st_key}', "
+                  f"per-domain keys resolved for: {sorted(_domain_thresholds_map.keys())}")
+        else:
+            # ── 2-key mode (original behaviour) ────────────────────────────
+            _st_key = _find_threshold_key(_norm_st, _norm_plat)
+            if _st_key is None:
+                _st_key = next(iter(thresholds_config))
+                print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+            print(f"Thresholds JSON (2-key) loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
+                  f"platform '{args.platform}' → '{_norm_plat}', "
+                  f"using thresholds key: '{_st_key}'")
 
         _best_w = thresholds_config[_st_key].get("best_weights", {})
         # Override defaults with JSON best weights — but never overwrite a param
@@ -3179,20 +3216,68 @@ def main():
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
     # them instead of its hard-coded sampletype defaults.
+    #
+    # For 3-key (domain-aware) JSONs we also build:
+    #   _best_cutoffs_by_domain: {norm_domain: {granularity: {best_threshold, ...}}}
+    # and stamp per-organism threshold overrides directly onto each entry in
+    # _json_out so that make_report.py / create_report.py can apply the right
+    # cutoff without re-loading the JSON.
+
+    def _extract_groups_cutoffs(config_entry):
+        """Return {gran: {best_threshold, fp_le_0_1pct, tp_ge_99_5pct}} from a
+        thresholds config entry, or {} if the entry has no 'groups' block."""
+        _gb = (config_entry or {}).get("groups", {})
+        return {
+            _gname: {
+                "best_threshold": _gdata.get("best_threshold"),
+                "fp_le_0_1pct":  _gdata.get("fp_le_0_1pct", {}).get("threshold"),
+                "tp_ge_99_5pct": _gdata.get("tp_ge_99_5pct", {}).get("threshold"),
+            }
+            for _gname, _gdata in _gb.items()
+        }
+
     _best_cutoffs = None
+    _best_cutoffs_by_domain = {}   # norm_domain → {gran → cutoffs}  (3-key only)
+
     if thresholds_config and _st_key in thresholds_config:
-        _groups_block = thresholds_config[_st_key].get("groups", {})
-        if _groups_block:
-            _best_cutoffs = {}
-            for _gname, _gdata in _groups_block.items():
-                _best_cutoffs[_gname] = {
-                    "best_threshold": _gdata.get("best_threshold"),
-                    "fp_le_0_1pct": _gdata.get("fp_le_0_1pct", {}).get("threshold"),
-                    "tp_ge_99_5pct": _gdata.get("tp_ge_99_5pct", {}).get("threshold"),
-                }
+        _best_cutoffs = _extract_groups_cutoffs(thresholds_config[_st_key]) or None
+        if _best_cutoffs:
             print(f"  Best cutoffs from thresholds JSON ({_st_key}):")
             for _gn, _gc in _best_cutoffs.items():
                 print(f"    {_gn}: best_threshold={_gc['best_threshold']}")
+
+    if _is_3key_thresholds and _domain_thresholds_map:
+        for _dom, _dom_entry in _domain_thresholds_map.items():
+            _dom_cuts = _extract_groups_cutoffs(_dom_entry)
+            if _dom_cuts:
+                _best_cutoffs_by_domain[_dom] = _dom_cuts
+        if _best_cutoffs_by_domain:
+            print(f"  Per-domain cutoffs built for: {sorted(_best_cutoffs_by_domain.keys())}")
+
+    # ── Stamp per-organism threshold overrides into _json_out (3-key mode) ──
+    # Each group/subkey/strain gets a 'tass_thresholds' field whose values
+    # are drawn from the domain-specific entry, with a fallback to the global
+    # _best_cutoffs if no domain match is found.
+    if _best_cutoffs_by_domain:
+        def _domain_cutoffs_for(lineage_dict):
+            """Return the per-granularity cutoff dict for this organism's domain,
+            falling back to the global cutoffs if the domain is unknown."""
+            _dom_raw = (lineage_dict or {}).get('domain', '')
+            _dom_key = _dom_raw.strip().lower()
+            return _best_cutoffs_by_domain.get(_dom_key, _best_cutoffs or {})
+
+        for _grp in _json_out:
+            _grp_cuts = _domain_cutoffs_for(_grp.get('taxonomy', {}))
+            if _grp_cuts:
+                _grp['tass_thresholds'] = _grp_cuts
+            for _sk_m in _grp.get('members', []):
+                _sk_cuts = _domain_cutoffs_for(_sk_m.get('taxonomy', {}))
+                if _sk_cuts:
+                    _sk_m['tass_thresholds'] = _sk_cuts
+                for _strain in _sk_m.get('members', []):
+                    _strain_cuts = _domain_cutoffs_for(_strain.get('taxonomy', {}))
+                    if _strain_cuts:
+                        _strain['tass_thresholds'] = _strain_cuts
 
     # ── Parse run-level metadata ─────────────────────────────────────────────
     # Priority: --meta_csv (file-based, most reliable) > --run_metadata (JSON string)
@@ -3357,6 +3442,7 @@ def main():
         "min_conf_applied": None,  # populated by create_report per-sample
         "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
         "best_cutoffs_source": _st_key if _best_cutoffs else None,
+        "best_cutoffs_by_domain": _best_cutoffs_by_domain if _best_cutoffs_by_domain else None,
         "preferred_granularity": args.optimize_granularity,
         "control_type": args.control_type,  # "positive", "negative", or None
         "negative_controls_used": [

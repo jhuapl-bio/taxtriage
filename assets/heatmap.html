@@ -3826,6 +3826,7 @@
           ondragover="event.preventDefault();this.classList.add('drag-over')"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleUploadDrop(event)"
+          onclick="if(event.target.tagName!=='LABEL'&&event.target.tagName!=='INPUT')document.getElementById('file-upload-input').click()"
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
@@ -3853,6 +3854,7 @@
           ondragover="event.preventDefault();this.classList.add('drag-over')"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleMetaDrop(event)"
+          onclick="if(event.target.tagName!=='LABEL'&&event.target.tagName!=='INPUT')document.getElementById('meta-upload-input').click()"
           style="
             border: 2px dashed #b0cce8;
             border-radius: 8px;
@@ -8915,7 +8917,7 @@
         // column headers.  This map converts those names to the canonical ones the
         // visualisations expect so every tab renders correctly.
         const _ALT_COL_MAP = {
-          "AnnClass":               "Ann Class",
+          AnnClass: "Ann Class",
           "Protein Identity Score": "Diamond Identity",
         };
 
@@ -10552,9 +10554,8 @@
           ...KNOWN_ORDER.filter((k) => keySet.has(k)),
           ...[...keySet].filter((k) => !KNOWN_ORDER.includes(k)).sort(),
         ];
-        // Only show columns that have at least one non-null value
-        const activeCols = ordered.filter((k) => RUN_META.some((r) => r[k] != null && r[k] !== ""));
-
+        // Only show columns that have at least one non-null value and not an object
+        const activeCols = ordered.filter((k) => RUN_META.some((r) => r[k] != null && r[k] !== "" && typeof r[k] !== "object"));
         hdrRow.innerHTML = activeCols
           .map(
             (k) =>

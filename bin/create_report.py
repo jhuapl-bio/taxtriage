@@ -661,7 +661,7 @@ class SubthresholdWarningFlowable(Flowable):
         if below_threshold_strains:
             top = below_threshold_strains[0]
             name = top.get('name', 'Unknown')
-            tass = float(top.get('tass_score', 0) or 0) * 100
+            tass = float(top.get('tass_score', 0) or 0)
             reads = int(top.get('numreads', 0) or 0)
             self._label = f'{name} (TASS: {tass:.1f}, {reads:,} reads) \u2014 highest below threshold'
         else:
@@ -885,25 +885,23 @@ def should_include_strain(strain, args, sampletype=None):
 
 
 def passes_confidence_threshold(strain, threshold):
-    if threshold > 1.0:
-        threshold = threshold / 100.0
     tass_score = strain.get('tass_score', 0)
     return tass_score >= threshold
 
 
 # ── Per-sample-type confidence defaults ──────────────────────────────────────
 _SAMPLETYPE_CONF_MAP = {
-    'sterile': 0.1,
-    'blood':   0.1,
-    'csf':     0.1,
-    'stool':   0.5,
-    'oral':    0.45,
-    'nasal':   0.45,
-    'skin':    0.55,
-    'wound':   0.55,
-    "vaginal": 0.5,
+    'sterile': 10,
+    'blood':   10,
+    'csf':     10,
+    'stool':   50,
+    'oral':    45,
+    'nasal':   45,
+    'skin':    55,
+    'wound':   55,
+    "vaginal": 50,
 }
-_DEFAULT_CONF = 0.5
+_DEFAULT_CONF = 50
 
 
 def get_sample_min_conf(sample_name, species_groups, explicit_conf,
@@ -950,6 +948,20 @@ def get_sample_min_conf(sample_name, species_groups, explicit_conf,
     return conf, f"default for sample type '{norm_st}'"
 
 
+def _scale_tass_in_tree(nodes):
+    """Recursively scale tass_score and pos_tass_score from 0–1 → 0–100 in
+    the organism tree.  Only scales values currently ≤ 1.0 so the function is
+    safe to call on already-scaled data."""
+    for node in nodes:
+        for field in ('tass_score', 'pos_tass_score'):
+            v = node.get(field)
+            if v is not None:
+                fv = float(v)
+                if fv <= 1.0:
+                    node[field] = round(fv * 100, 4)
+        _scale_tass_in_tree(node.get('members', []))
+
+
 def load_json_samples(input_files):
     """Load organism data from one or more JSON files.
 
@@ -970,9 +982,12 @@ def load_json_samples(input_files):
         with open(input_file, 'r') as f:
             data = json.load(f)
         if isinstance(data, dict) and 'organisms' in data:
-            all_sample_data.extend(data['organisms'])
+            orgs = data['organisms']
+            _scale_tass_in_tree(orgs)
+            all_sample_data.extend(orgs)
             all_metadata.append(data.get('metadata', {}))
         elif isinstance(data, list):
+            _scale_tass_in_tree(data)
             all_sample_data.extend(data)
             all_metadata.append({})
         else:
@@ -1422,7 +1437,7 @@ def build_missing_insilico_detail_table(missing_insilico, available_width):
         cat = entry.get('microbial_category', 'Unknown')
         tass = entry.get('pos_tass_score', 0)
         reads = entry.get('pos_numreads', 0)
-        tass_str = f"{float(tass) * 100:.2f}" if tass else '-'
+        tass_str = f"{float(tass):.2f}" if tass else '-'
         reads_str = f"{float(reads):,.0f}" if reads else '-'
 
         row = [
@@ -1795,7 +1810,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         if _below_primary:
             _bt = _below_primary[0]
             _bt_name = _bt.get('name', 'Unknown')
-            _bt_tass = float(_bt.get('tass_score', 0) or 0) * 100
+            _bt_tass = float(_bt.get('tass_score', 0) or 0)
             _bt_reads = int(_bt.get('numreads', 0) or 0)
             name_html += (
                 f'<br/><font color="#808080" size="6">'
@@ -1809,7 +1824,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
             _name_cell,
-            Paragraph(f"{species_record.get('tass_score', 0)*100:.1f}", row_data_style),
+            Paragraph(f"{species_record.get('tass_score', 0):.1f}", row_data_style),
         ]
         if show_k2_column:
             row.append(Paragraph(f"{species_record.get('k2_reads', 0):,.0f}", row_data_style))
@@ -1905,7 +1920,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
             _name_cell_s,
-            Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", row_data_style),
+            Paragraph(f"{strain.get('tass_score', 0):.1f}", row_data_style),
         ]
         if show_k2_column:
             row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", row_data_style))
@@ -2092,7 +2107,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         row = [
             Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
             Paragraph(name_html, row_name_style),
-            Paragraph(f"{_display_tass*100:.1f}", row_data_style),
+            Paragraph(f"{_display_tass:.1f}", row_data_style),
         ]
         if show_k2_column:
             row.append(Paragraph(f"{best.get('k2_reads', 0):,.0f}", row_data_style))
@@ -2126,7 +2141,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                             f'color="blue">{m_name}</link>',
                             mini_style
                         ),
-                        Paragraph(f"{m.get('tass_score', 0)*100:.1f}", mini_style),
+                        Paragraph(f"{m.get('tass_score', 0):.1f}", mini_style),
                         Paragraph(f"{m_reads:,.0f} ({m_pct:.1f}%)", mini_style),
                     ])
                 mini_avail = right_w - 6
@@ -2530,7 +2545,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             row = [
                 Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
                 Paragraph(name_html, row_name_style),
-                Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", row_data_style),
+                Paragraph(f"{strain.get('tass_score', 0):.1f}", row_data_style),
             ]
             if show_k2_column:
                 row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", row_data_style))
@@ -2710,7 +2725,7 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
         row = [
             Paragraph(sample_name, strain_name_style),
             Paragraph(strain_name_text, strain_name_style),
-            Paragraph(f"{strain.get('tass_score', 0)*100:.1f}", data_style),
+            Paragraph(f"{strain.get('tass_score', 0):.1f}", data_style),
         ]
         if show_k2_column:
             row.append(Paragraph(f"{strain.get('k2_reads', 0):,.0f}", data_style))
@@ -2941,7 +2956,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             ))
             pct = strain_reads / sample_total * 100.0
 
-            tass_val = strain.get('tass_score', 0) * 100
+            tass_val = strain.get('tass_score', 0)
 
             row = [
                 indicator,
@@ -3846,7 +3861,11 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
         cell.border    = THIN
 
     for i, (sample_name, meta) in enumerate(sorted(per_sample_meta.items()), start=2):
-        row_vals = [sample_name] + [meta.get(fk) for fk, _ in ordered_fields]
+        def _cell_val(v):
+            if isinstance(v, (dict, list)):
+                return json.dumps(v)
+            return v
+        row_vals = [sample_name] + [_cell_val(meta.get(fk)) for fk, _ in ordered_fields]
         ws.append(row_vals)
         for cell in ws[i]:
             cell.border    = THIN
@@ -4210,20 +4229,68 @@ def create_pdf_template(output_path, samples_dict, args):
         # Sample metadata line: TASS cutoff + source + platform + read stats from input metadata
         _smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
         _conf_src = getattr(args, '_sample_conf_source', {}).get(sample_name, '')
-        _meta_parts = [f"TASS cutoff: <b>{_mc:.2f}</b>"]
-        if _conf_src:
-            _meta_parts.append(f"Source: {_conf_src}")
         _tr = _smeta.get('total_reads')
         _ar = _smeta.get('aligned_reads')
+        _nsg = _smeta.get('num_species_groups')
+
+        # ── Build read-stats bullet line ──────────────────────────────────
+        _meta_parts = []
         if _tr is not None:
             _meta_parts.append(f"Total reads: {int(_tr):,}")
         if _ar is not None:
             _meta_parts.append(f"Aligned: {int(_ar):,}")
-        _nsg = _smeta.get('num_species_groups')
         if _nsg is not None:
             _meta_parts.append(f"Species groups: {_nsg}")
-        story.append(Paragraph(
-            f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
+        if _meta_parts:
+            story.append(Paragraph(
+                f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
+
+        # ── Build TASS cutoff line(s) ────────────────────────────────────
+        # If domain-aware cutoffs are available, show one line per domain;
+        # otherwise fall back to the single global cutoff.
+        _pref_g = _smeta.get('preferred_granularity', 'subkey')
+        _gran_order_rpt = [_pref_g] + [
+            g for g in ('subkey', 'key', 'toplevelkey') if g != _pref_g
+        ]
+
+        def _pick_threshold(cutoffs_dict):
+            """Return best_threshold from the first available granularity level."""
+            for _g in _gran_order_rpt:
+                _e = (cutoffs_dict or {}).get(_g)
+                if isinstance(_e, dict) and _e.get('best_threshold') is not None:
+                    return float(_e['best_threshold']), _g
+            return None, None
+
+        _domain_cutoffs = _smeta.get('best_cutoffs_by_domain') or {}
+        if _domain_cutoffs:
+            _src_str = f" <font color='#888888'>({_conf_src})</font>" if _conf_src else ''
+            _cutoff_lines = [f"<b>TASS cutoffs</b>{_src_str}:"]
+            _domain_label_map = {
+                'viruses':   'Viruses',
+                'bacteria':  'Bacteria',
+                'eukaryota': 'Eukaryota',
+                'archaea':   'Archaea',
+            }
+            for _dom_key in ('bacteria', 'viruses', 'eukaryota', 'archaea'):
+                _dom_entry = _domain_cutoffs.get(_dom_key)
+                if not _dom_entry:
+                    continue
+                _bt, _g = _pick_threshold(_dom_entry)
+                if _bt is not None:
+                    _lbl = _domain_label_map.get(_dom_key, _dom_key.capitalize())
+                    _cutoff_lines.append(
+                        f"&nbsp;&nbsp;&nbsp;&nbsp;{_lbl}: <b>{_bt:.2f}</b>"
+                        f" <font color='#888888'>({_g})</font>"
+                    )
+            story.append(Paragraph(
+                "<i>" + "<br/>".join(_cutoff_lines) + "</i>", small_style))
+        else:
+            # Fallback: single global threshold (2-key JSON or no JSON)
+            _cutoff_parts = [f"TASS cutoff: <b>{_mc}</b>"]
+            if _conf_src:
+                _cutoff_parts.append(f"Source: {_conf_src}")
+            story.append(Paragraph(
+                f"<i>{' &bull; '.join(_cutoff_parts)}</i>", small_style))
         if sampletype in ['blood', 'csf', 'sterile', 'serum']:
             story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} sample likely leads to lower TASS scores due to relatively low read count or coverage of organisms. All pathogens are defaulted to primary pathogens.</font>", small_style))
             if sampletype != "blood":
@@ -4968,7 +5035,7 @@ def _build_tabular_dataframe(samples_dict, args):
         'Breadth Weight Score', 'TASS Score', 'MicrobeRT Probability',
         'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey',
         'Superkingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus',
-        'Flora Sites', 'Passes Threshold',
+        'Flora Sites', 'Passes Threshold', 'TASS Threshold',
     ]
 
     all_rows = []
@@ -4990,6 +5057,26 @@ def _build_tabular_dataframe(samples_dict, args):
         sample_total_reads = max(1, int(_tab_meta_total) if _tab_meta_total else sum(
             sg.get('numreads', 0) for sg in species_groups))
         _mc = getattr(args, '_sample_min_conf', {}).get(sample_name, _DEFAULT_CONF)
+        _pref_gran = _tab_smeta.get('preferred_granularity', 'subkey')
+        _gran_order = [_pref_gran] + [
+            g for g in ('subkey', 'key', 'toplevelkey') if g != _pref_gran
+        ]
+
+        def _strain_threshold(strain, fallback_group):
+            """Return the per-organism TASS threshold.
+
+            Checks for domain-aware thresholds stamped by match_paths.py on the
+            strain (or its parent group as fallback).  Falls back to the sample-
+            level min_conf (_mc) when no per-organism threshold is available.
+            """
+            _tcuts = strain.get('tass_thresholds') or fallback_group.get('tass_thresholds') or {}
+            for _g in _gran_order:
+                _entry = _tcuts.get(_g)
+                if isinstance(_entry, dict):
+                    _bt = _entry.get('best_threshold')
+                    if _bt is not None:
+                        return float(_bt)
+            return _mc
 
         for sg in sorted_groups:
             group_key  = sg.get('toplevelkey', sg.get('key', ''))
@@ -5014,7 +5101,8 @@ def _build_tabular_dataframe(samples_dict, args):
                 else:
                     _flora_sites_str = ''
 
-                _passes_thresh = 'TRUE' if passes_confidence_threshold(strain, _mc) else 'FALSE'
+                _org_threshold = _strain_threshold(strain, sg)
+                _passes_thresh = 'TRUE' if passes_confidence_threshold(strain, _org_threshold) else 'FALSE'
 
                 _covered_bases = int(strain.get('covered_bases', 0) or 0)
                 _genome_len    = int(strain.get('length', 0) or 0)
@@ -5058,7 +5146,7 @@ def _build_tabular_dataframe(samples_dict, args):
                     f"{(strain.get('k2_disparity_score', 0) or 0):.1f}",
                     f"{(strain.get('siblings_score', 0) or 0):.1f}",
                     f"{(strain.get('breadth_log_score', 0) or 0):.2f}",
-                    int((strain.get('tass_score', 0) or 0) * 100),
+                    int(strain.get('tass_score', 0) or 0),
                     f"{(strain.get('mmbert', 0) or 0):.4f}",
                     strain.get('mmbert_model', '') or '',
                     int(strain_reads),
@@ -5067,6 +5155,7 @@ def _build_tabular_dataframe(samples_dict, args):
                     _superkingdom, _phylum, _class, _order, _family, _genus,
                     _flora_sites_str,
                     _passes_thresh,
+                    round(_org_threshold, 6),
                 ])
                 global_index += 1
 
@@ -5175,8 +5264,8 @@ def parse_args():
     )
     parser.add_argument(
         "-c", "--min_conf", metavar="MINCONF", required=False, default=None, type=float,
-        help="TASS confidence threshold. If not set, auto-selects based on sample type: "
-             "sterile/blood/csf=0.3, stool=0.65, nasal=0.60, skin/wound=0.5, default=0.5.",
+        help="TASS confidence threshold (0–100 scale). If not set, auto-selects based on sample type: "
+             "sterile/blood/csf=10, stool=50, nasal=45, skin/wound=55, default=50.",
     )
     parser.add_argument(
         "-x", "--id_col", metavar="IDCOL", required=False, default="Detected Organism",
