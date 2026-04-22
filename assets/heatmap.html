@@ -3486,7 +3486,27 @@
                     overflow: hidden;
                     text-overflow: ellipsis;
                   "
+                  title="Double-click to rename"
+                  ondblclick="editSampleName()"
                 ></span>
+                <button
+                  id="map-panel-edit-btn"
+                  onclick="editSampleName()"
+                  style="
+                    background: rgba(255, 255, 255, 0.22);
+                    border: 1px solid rgba(255, 255, 255, 0.45);
+                    color: #fff;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    padding: 0.15em 0.4em;
+                    font-size: 0.78em;
+                    line-height: 1.4;
+                    white-space: nowrap;
+                  "
+                  title="Rename sample"
+                >
+                  <i class="fas fa-pen" style="margin-right: 3px"></i>Edit
+                </button>
                 <button
                   id="map-panel-view-btn"
                   onclick="viewSampleInMetaTab()"
@@ -4029,6 +4049,7 @@
           colorIn.title = id;
           colorIn.addEventListener("input", (e) => {
             sampleColors[id] = e.target.value;
+            _refreshMapMarkerColors();
             redraw();
           });
 
@@ -4036,6 +4057,8 @@
           const span = document.createElement("span");
           span.title = id;
           span.textContent = id;
+          span.style.cursor = "text";
+          span.addEventListener("dblclick", () => editSampleNameFromSidebar(id));
 
           // Eye toggle button
           const btn = document.createElement("button");
@@ -4070,8 +4093,17 @@
             redraw();
           });
 
+          // Rename button
+          const editBtn = document.createElement("button");
+          editBtn.className = "eye-btn";
+          editBtn.title = "Rename sample";
+          editBtn.type = "button";
+          editBtn.innerHTML = '<i class="fas fa-pen"></i>';
+          editBtn.addEventListener("click", () => editSampleNameFromSidebar(id));
+
           div.appendChild(colorIn);
           div.appendChild(span);
+          div.appendChild(editBtn);
           div.appendChild(rescaleBtn);
           div.appendChild(btn);
           cont.appendChild(div);
@@ -5980,12 +6012,15 @@
         function _buildProtTable() {
           // Combine per_gene_hits with amr_genes, removing exact duplicates
           // Apply column rename map so field names are unified regardless of source
+          const sampleSet = new Set(DATA.map((r) => r["Specimen ID"] || "").filter(Boolean));
           const geneRows = _applyProtColRemap(
-            (PROT.per_gene_hits || []).filter((r) => !sampleHidden[r["Specimen ID"]]),
+            (PROT.per_gene_hits || []).filter(
+              (r) => !sampleHidden[r["Specimen ID"]] && (!r["Specimen ID"] || sampleSet.has(r["Specimen ID"])),
+            ),
           );
           const amrRows = _applyProtColRemap(
             (PROT.amr_genes || [])
-              .filter((r) => !sampleHidden[r["Specimen ID"]])
+              .filter((r) => !sampleHidden[r["Specimen ID"]] && (!r["Specimen ID"] || sampleSet.has(r["Specimen ID"])))
               .map((r) => ({ ...r, _source: "AMR" })),
           );
           _protAllRows = _dedupRows([...geneRows, ...amrRows]);
@@ -8731,6 +8766,7 @@
         if (window.drawHistogram) window.drawHistogram();
         drawExplore();
         populateTable();
+        _refreshMapMarkerColors();
         // Refresh map side-panel if one is currently open
         if (_selectedSample) _refreshMapPanelTable();
         // Rebuild longitudinal org chip list so filters are reflected there too
@@ -9341,8 +9377,6 @@
           buildHmValueSel();
           if (window._resetHistSelectors) window._resetHistSelectors();
           redraw();
-          // Also restore RUN_META / SAMPLE_META to boot-time values
-          if (window._applyMetaRecords) window._applyMetaRecords(BOOT.run_metadata_records || [], /*fromBoot=*/ true);
         };
       })();
 
@@ -9445,16 +9479,15 @@
             // Re-add markers
             const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
             const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
-            const colorMap = {};
             sampleNames.forEach((n, i) => {
-              colorMap[n] = _MAP_PALETTE[i % _MAP_PALETTE.length];
+              if (!sampleColors[n]) sampleColors[n] = PALETTE[i % PALETTE.length];
             });
             const bounds = [];
             geoRows.forEach((rec) => {
               const lat = parseFloat(rec.latitude),
                 lon = parseFloat(rec.longitude);
               if (isNaN(lat) || isNaN(lon)) return;
-              const col = colorMap[rec.sample_name] || "#1565C0";
+              const col = sampleColors[rec.sample_name] || "#1565C0";
               const mk = L.marker([lat, lon], { icon: _svgDot(col, false) });
               mk.on("click", () => {
                 if (_selectedSample && _markerObjects[_selectedSample]) {
@@ -10655,6 +10688,16 @@
         });
       }
 
+      function _refreshMapMarkerColors() {
+        if (!_markerObjects || !_leafletMap) return;
+        Object.entries(_markerObjects).forEach(([name, obj]) => {
+          const color = sampleColors[name] || obj.color || "#1565C0";
+          obj.color = color;
+          const selected = _selectedSample === name;
+          if (obj.marker) obj.marker.setIcon(_svgDot(color, selected));
+        });
+      }
+
       function _initMap() {
         if (_leafletMap) {
           _leafletMap.invalidateSize();
@@ -10692,11 +10735,10 @@
 
         _markerLayer = L.layerGroup().addTo(_leafletMap);
 
-        // Assign colours
+        // Assign colours (prefer sidebar sample colors)
         const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
-        const colorMap = {};
         sampleNames.forEach((n, i) => {
-          colorMap[n] = _MAP_PALETTE[i % _MAP_PALETTE.length];
+          if (!sampleColors[n]) sampleColors[n] = PALETTE[i % PALETTE.length];
         });
 
         const bounds = [];
@@ -10705,7 +10747,7 @@
           const lon = parseFloat(rec.longitude);
           if (isNaN(lat) || isNaN(lon)) return;
 
-          const col = colorMap[rec.sample_name] || "#1565C0";
+          const col = sampleColors[rec.sample_name] || "#1565C0";
           const mk = L.marker([lat, lon], { icon: _svgDot(col, false) });
 
           mk.on("click", () => {
@@ -10782,6 +10824,86 @@
         }
 
         _refreshMapPanelTable();
+      }
+
+      function _renameSample(oldName, newName) {
+        if (!oldName || !newName || oldName === newName) return;
+
+        // Update DATA rows
+        DATA.forEach((r) => {
+          if (r["Specimen ID"] === oldName) r["Specimen ID"] = newName;
+        });
+
+        // Update protein rows
+        [PROT.genus_summary, PROT.per_gene_hits, PROT.sample_overview, PROT.amr_genes].forEach((arr) => {
+          if (!Array.isArray(arr)) return;
+          arr.forEach((r) => {
+            if (r["Specimen ID"] === oldName) r["Specimen ID"] = newName;
+          });
+        });
+
+        // Update run metadata
+        RUN_META.forEach((r) => {
+          if (r.sample_name === oldName) r.sample_name = newName;
+        });
+
+        // Update per-sample UI state
+        if (sampleColors[oldName] !== undefined) sampleColors[newName] = sampleColors[oldName];
+        if (sampleHidden[oldName] !== undefined) sampleHidden[newName] = sampleHidden[oldName];
+        if (sampleRescale[oldName] !== undefined) sampleRescale[newName] = sampleRescale[oldName];
+        delete sampleColors[oldName];
+        delete sampleHidden[oldName];
+        delete sampleRescale[oldName];
+
+        // Update map markers index
+        if (_markerObjects[oldName]) {
+          const obj = _markerObjects[oldName];
+          obj.rec.sample_name = newName;
+          _markerObjects[newName] = obj;
+          delete _markerObjects[oldName];
+        }
+
+        if (_selectedSample === oldName) _selectedSample = newName;
+
+        buildSampleList();
+        _computeBslLevels();
+        _buildRunMetaTable();
+        _buildLongitudinalSection();
+        redraw();
+
+        const rec = RUN_META.find((r) => r.sample_name === newName);
+        if (rec) _renderMapPanel(rec);
+      }
+
+      function editSampleName() {
+        if (!_selectedSample) return;
+        const current = _selectedSample;
+        const next = prompt("Rename sample", current);
+        if (next == null) return;
+        const trimmed = String(next).trim();
+        if (!trimmed) return;
+        if (trimmed === current) return;
+
+        const exists =
+          DATA.some((r) => r["Specimen ID"] === trimmed) || RUN_META.some((r) => r.sample_name === trimmed);
+        if (exists && !confirm(`Sample "${trimmed}" already exists. Merge under this name?`)) return;
+
+        _renameSample(current, trimmed);
+      }
+
+      function editSampleNameFromSidebar(current) {
+        if (!current) return;
+        const next = prompt("Rename sample", current);
+        if (next == null) return;
+        const trimmed = String(next).trim();
+        if (!trimmed) return;
+        if (trimmed === current) return;
+
+        const exists =
+          DATA.some((r) => r["Specimen ID"] === trimmed) || RUN_META.some((r) => r.sample_name === trimmed);
+        if (exists && !confirm(`Sample "${trimmed}" already exists. Merge under this name?`)) return;
+
+        _renameSample(current, trimmed);
       }
 
       // Wire up sortable column headers (called once after init)
