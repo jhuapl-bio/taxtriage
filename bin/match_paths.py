@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ##############################################################################################
-# Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
+# Copyright 2026 The Johns Hopkins University Applied Physics Laboratory LLC
 # All rights reserved.
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this
 # software and associated documentation files (the "Software"), to deal in the Software
@@ -787,6 +787,7 @@ def import_pathogens(pathogens_file):
                     high_cons = False
                 else:
                     high_cons = True
+            mol_type = row[16].strip().lower() if len(row) > 16 else ""
             # Store the data in the dictionary, keyed by pathogen name
             pathogens_dict[pathogen_name] = {
                 'taxid': taxid,
@@ -796,7 +797,8 @@ def import_pathogens(pathogens_file):
                 'commensal_sites': commensal_sites,
                 'status': status,
                 'pathology': pathology,
-                'high_cons': high_cons
+                'high_cons': high_cons,
+                'mol_type': mol_type,
             }
             pathogens_dict[taxid] = pathogens_dict[pathogen_name]
 

@@ -2121,7 +2121,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                                'annClass', 'is_annotated', 'status', 'ref',
                                'matched_taxid', 'matched_rank',
                                'normalized_sample_site', 'commensal_sites',
-                               'pathogenic_sites', 'members'):
+                               'pathogenic_sites', 'members', 'mol_type'):
                     if _field in _sub_result:
                         member[_field] = _sub_result[_field]
 
@@ -2130,6 +2130,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
         member_annotations = []
         member_statuses = []
         member_matched_info = []  # Store (matched_taxid, matched_rank) for each member
+        member_mol_types = []
 
         for member in rec["members"]:
             member_taxid = (
@@ -2150,6 +2151,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 member_high_cons.append(st_hc)
                 member_annotations.append((st_ann, is_annotated))
                 member_statuses.append(status)
+                member_mol_types.append(member.get('mol_type', ''))
                 continue
 
             # Try to find pathogen info in lineage FOR EACH MEMBER
@@ -2167,6 +2169,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 # Propagate body-site-specific flora info onto the member
                 member['commensal_sites'] = refpath.get('commensal_sites', [])
                 member['pathogenic_sites'] = refpath.get('pathogenic_sites', [])
+                member['mol_type'] = refpath.get('mol_type', '')
             else:
                 st_cat = "Unknown"
                 st_ann = "Direct"
@@ -2176,15 +2179,19 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
                 member_matched_info.append((None, None))
                 member['commensal_sites'] = []
                 member['pathogenic_sites'] = []
+                member['mol_type'] = ''
 
             member_categories.append(st_cat)
             member_high_cons.append(st_hc)
             member_annotations.append((st_ann, is_annotated))
             member_statuses.append(status)
+            member_mol_types.append(member.get('mol_type', ''))
 
         # Determine aggregate values based on priority
         # High cons: True if ANY member is high_cons
         st_hc = any(member_high_cons)
+        # mol_type: use the first non-empty value across members
+        st_mol_type = next((m for m in member_mol_types if m), '')
 
         # Category: highest priority among all members
         if member_categories:
@@ -2247,6 +2254,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
             status = refpath.get("status", "N/A")
             agg_commensal_sites = refpath.get("commensal_sites", [])
             agg_pathogenic_sites = refpath.get("pathogenic_sites", [])
+            st_mol_type = refpath.get('mol_type', '')
         else:
             st_cat = "Unknown"
             st_ann = "Direct"
@@ -2257,6 +2265,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
             matched_rank = None
             agg_commensal_sites = []
             agg_pathogenic_sites = []
+            st_mol_type = ''
 
     # make a shallow copy so we don't mutate the input record
     new_item = dict(rec)
@@ -2264,6 +2273,7 @@ def calculate_classes(rec, ref, pathogens, sample_type="Unknown", taxdump=None):
     # add ONLY the requested annotation fields
     new_item.update({
         "high_cons": st_hc,
+        "mol_type": st_mol_type,
         "is_pathogen": st_cat,
         "microbial_category": st_cat,
         "annClass": st_ann,

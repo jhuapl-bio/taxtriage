@@ -48,12 +48,21 @@ process CREATE_COMPARISON_REPORT {
         ? json_files.findAll { it.name != 'NO_FILE' && it.name.endsWith('.json') }.join(' ')
         : (json_files.name != 'NO_FILE' && json_files.name.endsWith('.json') ? json_files.toString() : '')
 
-    // Build optional protein annotations argument
+    // Build optional protein annotations argument.
+    // Filter out NO_FILE placeholders AND Nextflow conflict-rename artifacts
+    // (files staged as "~original_name" when two inputs share the same filename).
     def prot_arg = ''
     if (protein_annotations) {
-        def prot_files = protein_annotations instanceof List
-            ? protein_annotations.findAll { it.name != 'NO_FILE' && !it.name.startsWith('NO_FILE') }.join(' ')
-            : (protein_annotations.name != 'NO_FILE' && !protein_annotations.name.startsWith('NO_FILE') ? protein_annotations.toString() : '')
+        def prot_list = protein_annotations instanceof List ? protein_annotations : [protein_annotations]
+        def valid_prot = prot_list.findAll { f ->
+            !f.name.startsWith('NO_FILE') &&
+            f.name != 'NO_FILE' &&
+            !f.name.startsWith('~')   // drop Nextflow same-name conflict copies
+        }
+        // Deduplicate by basename to avoid passing the same XLSX twice
+        def seen_names = [] as Set
+        def deduped_prot = valid_prot.findAll { f -> seen_names.add(f.name) }
+        def prot_files = deduped_prot.join(' ')
         if (prot_files) {
             prot_arg = "-p ${prot_files}"
         }
