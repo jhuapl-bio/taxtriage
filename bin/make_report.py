@@ -112,7 +112,7 @@ def _collect_best_cutoffs(sample_meta):
             # Use the sample whose best_threshold is the minimum as the representative
             best_meta = min(
                 (m for m in sample_meta.values() if (m.get("best_cutoffs") or {}).get(level)),
-                key=lambda m: float((m.get("best_cutoffs", {}).get(level) or {}).get("best_threshold", 9999)),
+                key=lambda m: float((m.get("best_cutoffs", {}).get(level) or {}).get("best_threshold") or 9999),
             )
             aggregated[level] = dict((best_meta.get("best_cutoffs") or {}).get(level) or {})
             aggregated[level]["best_threshold"] = min(thresholds)
@@ -172,6 +172,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "Ann Class":           org.get("annClass", ""),
         "IsAnnotated":         "Yes" if org.get("is_annotated", "No") == "Yes" else "No",
         "High Consequence":    bool(org.get("high_cons", False)),
+        "Mol Type":            org.get("mol_type", ""),
         "Status":              org.get("status", ""),
         "TASS Score":          round(tass, 100),  # 0–100 scale for display
         "# Reads Aligned":     int(strain_reads),

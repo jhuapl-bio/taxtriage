@@ -1555,6 +1555,18 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     mini_style = ParagraphStyle(
         'MiniStyle', parent=small_style, fontSize=9, leading=9,
         wordWrap='CJK', alignment=TA_CENTER)
+
+    def _mol_type_tag(mol_type):
+        """Return a small ReportLab HTML symbol for the molecular type, or empty string.
+        Uses Unicode enclosed letters: Ⓓ (circled D) for DNA, Ⓡ (circled R) for RNA.
+        """
+        mt = (mol_type or '').strip().lower()
+        if mt == 'dna':
+            return ' <font color="#1565c0" size="8"><b>Ⓓ</b></font>'
+        if mt == 'rna':
+            return ' <font color="#6a1b9a" size="8"><b>Ⓡ</b></font>'
+        return ''
+
     mini_header_style = ParagraphStyle(
         'MiniHeaderStyle', parent=small_style, fontSize=9, leading=9,
         fontName='Helvetica-Bold', wordWrap='CJK', alignment=TA_CENTER)
@@ -1801,8 +1813,9 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         else:
             row_marker = ' <font color="#666666" size="7"><i>species from qualifying strains</i></font>'
         flora_tag = _commensal_site_tag(species_record, species_record.get('normalized_sample_site', ''))
+        _mt_tag = _mol_type_tag(species_record.get('mol_type'))
         name_html = (
-            f'{display_name} '
+            f'{display_name}{_mt_tag} '
             f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" '
             f'color="blue">{species_key}</link>)'
             f'{row_marker}{flora_tag}{zscore_sym}'
@@ -1897,13 +1910,14 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         row_ani_style = ani_style_small if row_below_zscore else ani_style
         strain_key = strain.get('key', '')
         flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
+        _mt_tag = _mol_type_tag(strain.get('mol_type'))
         if promoted:
             followup_symbol = ''
             if strain.get('harmful_followup'):
                 followup_symbol = f' {_WARN_SYMBOL_HTML}'
             name_html = (
                 f'{followup_symbol}'
-                f'{strain.get("name", "Unknown")} '
+                f'{strain.get("name", "Unknown")}{_mt_tag} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>)'
                 f' <font color="#666666" size="7"><i>strain</i></font>'
@@ -1911,7 +1925,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             )
         else:
             name_html = (
-                f'! {strain.get("name", "Unknown")} '
+                f'! {strain.get("name", "Unknown")}{_mt_tag} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>) '
                 f'<font color="#666666" size="6"><i>qualifying strain</i></font>'
@@ -1997,6 +2011,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         ann_class = _sk_grp_ann.get('annClass') or best.get('annClass', '')
         is_hc = _sk_grp_ann.get('high_cons', best.get('high_cons', False))
         indicator_text = '★' if is_hc else ''
+        _mt_tag = _mol_type_tag(_sk_grp_ann.get('mol_type') or best.get('mol_type'))
 
         _row_below_zscore = False
         if zscore_threshold is not None:
@@ -2061,7 +2076,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         _flora_tag = _commensal_site_tag(best, best.get('normalized_sample_site', ''))
         name_html_base = (
-            f'{display_name} '
+            f'{display_name}{_mt_tag} '
             f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={display_key}" '
             f'color="blue">{display_key}</link>){followup_symbol}{row_marker}{_flora_tag}{_zscore_sym}'
         )
@@ -2492,6 +2507,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
             indicator_text = '★' if is_hc else ''
+            _mt_tag = _mol_type_tag(strain.get('mol_type'))
 
             # ── Early per-row zscore check (flat mode) ────────────────────
             _row_below_zscore = False
@@ -2514,7 +2530,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 _zscore_sym = ''
             _flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
             name_html = (
-                f'{strain.get("name", "Unknown")} '
+                f'{strain.get("name", "Unknown")}{_mt_tag} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>){_flora_tag}{_zscore_sym}'
             )
@@ -4209,7 +4225,12 @@ def create_pdf_template(output_path, samples_dict, args):
             _commit_id = _cid
             break
     story.append(Spacer(1, 0.02*inch))
-    story.append(Paragraph("<b>★</b> = High Consequence Pathogen", small_style))
+    story.append(Paragraph(
+        "<b>★</b> = High Consequence Pathogen  |  "
+        "<font color=\"#1565c0\"><b>Ⓓ</b></font> = DNA pathogen  |  "
+        "<font color=\"#6a1b9a\"><b>Ⓡ</b></font> = RNA pathogen  "
+        "(no symbol = applies to both)",
+        small_style))
     story.append(Spacer(1, 0.02*inch))
 
 
@@ -5032,7 +5053,7 @@ def _build_tabular_dataframe(samples_dict, args):
         'Index', 'index', 'Detected Organism', 'Specimen ID', 'Sample Type',
         '% Reads', '# Reads Aligned', '% Aligned Reads', 'Coverage',
         'HHS Percentile', 'IsAnnotated', 'AnnClass', 'Microbial Category',
-        'High Consequence', 'Taxonomic ID #', 'Status', 'Gini Coefficient',
+        'High Consequence', 'Mol Type', 'Taxonomic ID #', 'Status', 'Gini Coefficient',
         'Mean BaseQ', 'Mean MapQ', 'Mean Depth',
         'Covered Bases', 'Genome Length (bp)', 'Breadth %',
         'isSpecies',
@@ -5134,6 +5155,7 @@ def _build_tabular_dataframe(samples_dict, args):
                     strain.get('annClass', ''),
                     strain.get('microbial_category', 'Unknown'),
                     'True' if strain.get('high_cons', False) else 'False',
+                    (strain.get('mol_type') or '').strip().lower(),
                     strain.get('key', ''), strain.get('status', ''),
                     f"{(strain.get('gini_coefficient', 0) or 0):.2f}",
                     f"{(strain.get('meanbaseq', 0) or 0):.2f}",

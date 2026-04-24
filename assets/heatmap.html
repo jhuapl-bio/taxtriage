@@ -1910,6 +1910,52 @@
           <input type="checkbox" hidden id="filter-pass" />
           <label for="filter-pass"></label>
         </div>
+        <label style="margin-top: 0.6em">Molecular Type</label>
+        <div class="row" style="gap: 0.5em; flex-wrap: wrap">
+          <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer">
+            <input type="checkbox" id="filter-mt-dna" checked />
+            <span
+              style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                background: #1565c0;
+                color: #fff;
+                font-size: 8px;
+                font-weight: 700;
+                line-height: 1;
+              "
+              >D</span
+            >
+            DNA
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer">
+            <input type="checkbox" id="filter-mt-rna" checked />
+            <span
+              style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                background: #6a1b9a;
+                color: #fff;
+                font-size: 8px;
+                font-weight: 700;
+                line-height: 1;
+              "
+              >R</span
+            >
+            RNA
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer">
+            <input type="checkbox" id="filter-mt-both" checked /> Both/Unspecified
+          </label>
+        </div>
         <label style="margin-top: 0.6em">Microbial Category</label>
         <select
           id="filter-mc"
@@ -2090,6 +2136,15 @@
         const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
+        const mtDNA = document.getElementById("filter-mt-dna")
+          ? document.getElementById("filter-mt-dna").checked
+          : true;
+        const mtRNA = document.getElementById("filter-mt-rna")
+          ? document.getElementById("filter-mt-rna").checked
+          : true;
+        const mtBoth = document.getElementById("filter-mt-both")
+          ? document.getElementById("filter-mt-both").checked
+          : true;
 
         const filtered = DATA.filter((r) => {
           if (sampleHidden[r["Specimen ID"]]) return false;
@@ -2100,6 +2155,10 @@
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (onlyP && !isTruthy(r["Passes Threshold"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
+          const mt = (r["Mol Type"] || "").toLowerCase();
+          if (mt === "dna" && !mtDNA) return false;
+          if (mt === "rna" && !mtRNA) return false;
+          if (mt !== "dna" && mt !== "rna" && !mtBoth) return false;
           return true;
         });
         return filtered.map(applyRescale);
@@ -2423,7 +2482,7 @@
         const marginL = Math.max(140, _maxLabelWidth + 20);
         const marginT = 110,
           marginB = 20,
-          marginR = 60;
+          marginR = 90; // wider: 28px for mol-type badge column + original 60 for colorbar
         const W = marginL + samples.length * cellW + marginR;
         const H = marginT + organisms.length * cellH + marginB;
 
@@ -2468,13 +2527,22 @@
 
         // Y axis — organism labels with rank prefix
         const yGroup = svg.append("g").attr("class", "axis").attr("transform", `translate(${marginL},0)`);
-        // Build high-consequence organism set from filtered data
+        // Build high-consequence organism set and mol_type map from filtered data
         const _hcOrgSet = new Set(fd.filter((r) => r["High Consequence"]).map((r) => r["Detected Organism"]));
+        const _orgMolType = {};
+        fd.forEach((r) => {
+          if (r["Mol Type"]) _orgMolType[r["Detected Organism"]] = r["Mol Type"];
+        });
+
+        // Right-side mol-type badge group (circle badges after last cell)
+        const mtBadgeGroup = svg.append("g").attr("class", "mt-badges");
+        const _mtBadgeX = marginL + samples.length * cellW + 10; // 10px gap after last cell
 
         organisms.forEach((org) => {
           const r0 = fd.find((r) => r["Detected Organism"] === org);
           const rankLabel = (r0 ? r0[rankField] : "") || "";
           const isHC = _hcOrgSet.has(org);
+          const mt = (_orgMolType[org] || "").toLowerCase();
           const y = yScale(org) + yScale.bandwidth() / 2 + 4;
           // rank label in muted colour
           if (rankField !== "Detected Organism" && rankLabel) {
@@ -2489,6 +2557,11 @@
           }
           const _nameX = rankField !== "Detected Organism" && rankLabel ? -(rankLabel.length * 6 + 14) : -6;
           const orgLabel = org.length > 32 ? org.slice(0, 31) + "…" : org;
+          const prefix = isHC ? "⚠ " : "";
+          const titleParts = [
+            isHC ? "High Consequence Pathogen" : null,
+            mt ? `Mol. type: ${mt.toUpperCase()}` : null,
+          ].filter(Boolean);
           yGroup
             .append("text")
             .attr("x", _nameX)
@@ -2497,8 +2570,29 @@
             .attr("font-size", 11)
             .attr("fill", isHC ? "#c62828" : "#333")
             .attr("font-weight", isHC ? "600" : "normal")
-            .attr("title", isHC ? "High Consequence Pathogen" : null)
-            .text(isHC ? "⚠ " + orgLabel : orgLabel);
+            .attr("title", titleParts.length ? titleParts.join(" | ") : null)
+            .text(prefix + orgLabel);
+
+          // Draw circle badge on the right if mol_type is set
+          if (mt === "dna" || mt === "rna") {
+            const cy = yScale(org) + yScale.bandwidth() / 2;
+            const badgeColor = mt === "dna" ? "#1565c0" : "#6a1b9a";
+            const badgeLetter = mt === "dna" ? "D" : "R";
+            const badgeG = mtBadgeGroup
+              .append("g")
+              .attr("transform", `translate(${_mtBadgeX + 7}, ${cy})`)
+              .attr("title", mt === "dna" ? "DNA pathogen" : "RNA pathogen");
+            badgeG.append("circle").attr("r", 7).attr("fill", badgeColor).attr("opacity", 0.9);
+            badgeG
+              .append("text")
+              .attr("text-anchor", "middle")
+              .attr("dominant-baseline", "central")
+              .attr("font-size", 7)
+              .attr("font-weight", "bold")
+              .attr("fill", "#fff")
+              .attr("pointer-events", "none")
+              .text(badgeLetter);
+          }
         });
 
         // Build lookup
@@ -2555,7 +2649,7 @@
         // Colour bar
         const cbW = 12,
           cbH = Math.min(160, H - marginT - marginB);
-        const cbX = W - marginR + 10,
+        const cbX = W - marginR + 10 + 30, // +30 to clear the mol-type badge column (28px wide)
           cbY = marginT;
         const cbGrad = svg
           .append("defs")
@@ -2636,10 +2730,12 @@
 
         const marginL = 130,
           marginT = 36,
-          marginR = 20,
-          marginB = 100;
+          marginR = 20;
+        // Dynamic bottom margin: enough room for rotated (-35°) x-axis labels
+        const _maxKeyLen = groupKeys.reduce((m, k) => Math.max(m, k.length), 0);
+        const marginB = Math.max(80, Math.min(260, Math.ceil(_maxKeyLen * 6.2 * Math.sin((35 * Math.PI) / 180)) + 30));
         const W = Math.max(600, wrap.clientWidth || 900);
-        const H = 420;
+        const H = 420 + Math.max(0, marginB - 100); // grow SVG height with labels
         const innerW = W - marginL - marginR;
         const innerH = H - marginT - marginB;
 
@@ -6034,14 +6130,32 @@
           visibleCols.forEach((c) => {
             const td = document.createElement("td");
             const val = row[c] != null ? row[c] : "";
-            if (c === "Detected Organism" && row["High Consequence"]) {
-              td.style.cssText = "color:#c62828;font-weight:600;white-space:nowrap";
-              const badge = document.createElement("span");
-              badge.textContent = "⚠ ";
-              badge.title = "High Consequence Pathogen";
-              badge.style.cssText = "color:#c62828;margin-right:2px";
-              td.appendChild(badge);
-              td.appendChild(document.createTextNode(val));
+            if (c === "Detected Organism") {
+              const isHC = row["High Consequence"];
+              const mt = (row["Mol Type"] || "").toLowerCase();
+              if (isHC || mt) {
+                if (isHC) td.style.cssText = "color:#c62828;font-weight:600;white-space:nowrap";
+                else td.style.cssText = "white-space:nowrap";
+                if (isHC) {
+                  const badge = document.createElement("span");
+                  badge.textContent = "⚠ ";
+                  badge.title = "High Consequence Pathogen";
+                  badge.style.cssText = "color:#c62828;margin-right:2px";
+                  td.appendChild(badge);
+                }
+                td.appendChild(document.createTextNode(val));
+                if (mt === "dna" || mt === "rna") {
+                  const mtBadge = document.createElement("span");
+                  mtBadge.textContent = mt === "dna" ? "D" : "R";
+                  mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
+                  mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
+                    mt === "dna" ? "#1565c0" : "#6a1b9a"
+                  };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
+                  td.appendChild(mtBadge);
+                }
+              } else {
+                td.textContent = val;
+              }
             } else {
               td.textContent = val;
             }
@@ -7109,7 +7223,15 @@
    FILTER LISTENERS
 ═══════════════════════════════════════════════════════════════════════════ */
       ["filter-text", "filter-min"].forEach((id) => document.getElementById(id).addEventListener("input", redraw));
-      ["filter-ic", "filter-hc", "filter-pass", "hm-show-vals"].forEach((id) => {
+      [
+        "filter-ic",
+        "filter-hc",
+        "filter-pass",
+        "hm-show-vals",
+        "filter-mt-dna",
+        "filter-mt-rna",
+        "filter-mt-both",
+      ].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
@@ -7192,6 +7314,7 @@
             "Ann Class": org.annClass || "",
             IsAnnotated: org.is_annotated === "Yes" ? "Yes" : "No",
             "High Consequence": !!org.high_cons,
+            "Mol Type": (org.mol_type || "").trim().toLowerCase(),
             Status: org.status || "",
             "TASS Score": Math.round(tass * 10) / 10,
             "# Reads Aligned": Math.round(strain_reads),
@@ -8301,6 +8424,12 @@
         // All visible samples that have a collection_time (used for zero-fill)
         const allTimedSamples = Object.keys(timeMap).filter((s) => !_longiHidden[s]);
 
+        // Build mol_type lookup for organisms
+        const _longiMolType = {};
+        filteredData().forEach((r) => {
+          if (r["Mol Type"]) _longiMolType[r["Detected Organism"]] = r["Mol Type"];
+        });
+
         // Build one series per selected organism: [{org, pts:[{sample,date,y,run,isZero}]}]
         const series = selectedOrgs
           .map((org) => {
@@ -8346,7 +8475,8 @@
             const pts = [...hitPts, ...zeroPts].sort(
               (a, b) => a.date - b.date || (a.run || "").localeCompare(b.run || ""),
             );
-            return { org, color: _longiOrgColors[org] || "#1565c0", pts };
+            const molType = (_longiMolType[org] || "").toLowerCase();
+            return { org, color: _longiOrgColors[org] || "#1565c0", pts, molType };
           })
           .filter((s) => s.pts.some((p) => !p.isZero)); // keep series only if it has ≥1 real hit
 
@@ -8364,10 +8494,16 @@
         const legendDiv = document.createElement("div");
         legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
         series.forEach((s) => {
+          const mtBadge =
+            s.molType === "dna"
+              ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#1565c0;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;line-height:1" title="DNA pathogen">D</span>'
+              : s.molType === "rna"
+              ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#6a1b9a;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;line-height:1" title="RNA pathogen">R</span>'
+              : "";
           const item = document.createElement("span");
           item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
           item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
-            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}</span>`;
+            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}${mtBadge}</span>`;
           legendDiv.appendChild(item);
         });
         wrap.appendChild(legendDiv);
@@ -8900,6 +9036,12 @@
         // All visible samples that have a collection_time (used for zero-fill)
         const allTimedSamples = Object.keys(timeMap).filter((s) => !_longiHidden[s]);
 
+        // Build mol_type lookup for organisms
+        const _longiMolType = {};
+        filteredData().forEach((r) => {
+          if (r["Mol Type"]) _longiMolType[r["Detected Organism"]] = r["Mol Type"];
+        });
+
         // Build one series per selected organism: [{org, pts:[{sample,date,y,run,isZero}]}]
         const series = selectedOrgs
           .map((org) => {
@@ -8945,7 +9087,8 @@
             const pts = [...hitPts, ...zeroPts].sort(
               (a, b) => a.date - b.date || (a.run || "").localeCompare(b.run || ""),
             );
-            return { org, color: _longiOrgColors[org] || "#1565c0", pts };
+            const molType = (_longiMolType[org] || "").toLowerCase();
+            return { org, color: _longiOrgColors[org] || "#1565c0", pts, molType };
           })
           .filter((s) => s.pts.some((p) => !p.isZero)); // keep series only if it has ≥1 real hit
 
@@ -8963,10 +9106,16 @@
         const legendDiv = document.createElement("div");
         legendDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:6px;font-size:0.76em";
         series.forEach((s) => {
+          const mtBadge =
+            s.molType === "dna"
+              ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#1565c0;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;line-height:1" title="DNA pathogen">D</span>'
+              : s.molType === "rna"
+              ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#6a1b9a;color:#fff;font-size:8px;font-weight:700;vertical-align:middle;line-height:1" title="RNA pathogen">R</span>'
+              : "";
           const item = document.createElement("span");
           item.style.cssText = "display:inline-flex;align-items:center;gap:4px;color:#333";
           item.innerHTML = `<span style="display:inline-block;width:18px;height:3px;background:${s.color};border-radius:2px;vertical-align:middle"></span>
-            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}</span>`;
+            <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.org}">${s.org}${mtBadge}</span>`;
           legendDiv.appendChild(item);
         });
         wrap.appendChild(legendDiv);
