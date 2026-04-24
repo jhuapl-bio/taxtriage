@@ -7,7 +7,6 @@ on:
       - "assets/pages.js"
       - "assets/heatmap_boot.js"
       - "assets/heatmap.html"
-      - "scripts/inline_boot_json.py"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +27,35 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build docs/index.html from heatmap.html + pages.js
-        run: python scripts/inline_boot_json.py
+        run: |
+          mkdir -p docs
+          node - <<'EOF'
+          const fs = require('fs');
+
+          // Extract JSON from pages.js (handles trailing-comma JS objects)
+          const src = fs.readFileSync('assets/pages.js', 'utf8');
+          const patched = src.replace('window.HEATMAP_BOOT', 'globalThis.HEATMAP_BOOT');
+          new Function(patched)();
+          const json = JSON.stringify(globalThis.HEATMAP_BOOT);
+
+          // Transform heatmap.html → docs/index.html
+          let html = fs.readFileSync('assets/heatmap.html', 'utf8');
+
+          // Replace heatmap_boot.js loader with inlined BOOTSTRAP block
+          html = html.replace(
+            /(?:<!--[^>]*-->\s*\n\s*)?<script src=["']heatmap_boot\.js["']><\/script>/,
+            `<script id="BOOTSTRAP" type="application/json">\n${json}\n    </script>`
+          );
+
+          // Swap window.HEATMAP_BOOT reader for JSON.parse
+          html = html.replace(
+            'const BOOT = window.HEATMAP_BOOT || {};',
+            'const BOOT = JSON.parse(document.getElementById("BOOTSTRAP").textContent);'
+          );
+
+          fs.writeFileSync('docs/index.html', html);
+          console.log(`✓ docs/index.html written (${(html.length/1024).toFixed(0)} KB)`);
+          EOF
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
