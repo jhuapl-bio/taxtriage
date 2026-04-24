@@ -65,18 +65,6 @@ def parse_args(argv=None):
         help="Input HTML template file (default: heatmap.html).",
     )
     parser.add_argument(
-        "-m", '--mintass', default=None, type=float,
-        help="Minimum TASS score (0-1) for inclusion in the report. "
-             "If omitted, the minimum best_threshold across all input JSON files is used "
-             "(derived from --cutoff_granularity; defaults to 0.0 if no threshold is found)."
-    )
-    parser.add_argument(
-        "--cutoff_granularity", default="subkey",
-        choices=["subkey", "key", "toplevelkey"],
-        help="Which best_cutoffs granularity level to read from each JSON when --mintass is not "
-             "supplied (default: subkey).",
-    )
-    parser.add_argument(
         "-pident", '--pident', default=0.0, type=float,
         help="Minimum percent identity (0-100) for inclusion in the report (default: 0.0, i.e. include all). Only used if you have VF/AMR results"
     )
@@ -104,26 +92,31 @@ def parse_args(argv=None):
 _TAX_RANKS = ["domain", "kingdom", "phylum", "class", "order", "family", "genus"]
 
 
-def _extract_best_threshold(paths, granularity="subkey"):
-    """Scan metadata of each JSON to find the minimum best_threshold across all files.
+def _collect_best_cutoffs(sample_meta):
+    """Aggregate best_cutoffs across all loaded samples.
 
-    Returns the minimum value (0–1 scale) or None if no threshold is found.
+    For each granularity level (key/subkey/toplevelkey), takes the minimum
+    best_threshold so the UI starts at the most conservative recommended cutoff.
+    Returns a dict in the same shape as a single sample's best_cutoffs, or None.
     """
-    thresholds = []
-    for path in paths:
-        path = path.strip()
-        if not os.path.isfile(path):
-            continue
-        try:
-            with open(path) as fh:
-                data = json.load(fh)
-        except Exception:
-            continue
-        bc = data.get("metadata", {}).get("best_cutoffs", {})
-        t = (bc.get(granularity) or {}).get("best_threshold")
-        if t is not None:
-            thresholds.append(float(t))
-    return min(thresholds) if thresholds else None
+    levels = ("key", "subkey", "toplevelkey")
+    aggregated = {}
+    for level in levels:
+        thresholds = []
+        for meta in sample_meta.values():
+            bc = meta.get("best_cutoffs") or {}
+            t = (bc.get(level) or {}).get("best_threshold")
+            if t is not None:
+                thresholds.append(float(t))
+        if thresholds:
+            # Use the sample whose best_threshold is the minimum as the representative
+            best_meta = min(
+                (m for m in sample_meta.values() if (m.get("best_cutoffs") or {}).get(level)),
+                key=lambda m: float((m.get("best_cutoffs", {}).get(level) or {}).get("best_threshold", 9999)),
+            )
+            aggregated[level] = dict((best_meta.get("best_cutoffs") or {}).get(level) or {})
+            aggregated[level]["best_threshold"] = min(thresholds)
+    return aggregated or None
 
 _VALID_MICROBIAL_CATS = {"Primary", "Commensal", "Opportunistic", "Potential", "Unknown"}
 
@@ -422,21 +415,10 @@ def main():
     else:
         print(f"[make_report] Microbial category filter: {sorted(microbial_cats)}")
 
-    # ── resolve mintass ────────────────────────────────────────────────────────
-    if args.mintass is not None:
-        mintass = args.mintass
-        print(f"[make_report] TASS threshold: {mintass:.4f} (0–100) = {mintass:.1f} (from --mintass)")
-    elif is_json_mode:
-        mintass = _extract_best_threshold(args.input, granularity=args.cutoff_granularity)
-        if mintass is not None:
-            print(f"[make_report] TASS threshold: {mintass:.4f} (0–100) = {mintass:.1f} "
-                  f"(min best_threshold across JSONs, granularity={args.cutoff_granularity!r})")
-        else:
-            mintass = 0.0
-            print("[make_report] TASS threshold: 0.0 (no best_cutoffs found in JSON files)")
-    else:
-        mintass = 0.0
-        print("[make_report] TASS threshold: 0.0 (tabular input, no --mintass supplied)")
+    # All organisms with TASS > 0 are always included; the UI pre-populates its
+    # filter slider from best_cutoffs baked into the BOOT payload at load time.
+    mintass = 0.0
+    print("[make_report] TASS threshold: 0.0 (all organisms included; UI filter set from best_cutoffs)")
 
     if is_json_mode:
         rows, sample_meta, contig_data = load_json_inputs(
@@ -500,6 +482,14 @@ def main():
         for r in run_metadata_records
     )
 
+    # ── collect best_cutoffs for UI pre-population ────────────────────────────
+    best_cutoffs_payload = _collect_best_cutoffs(sample_meta)
+    if best_cutoffs_payload:
+        thresh = (best_cutoffs_payload.get("subkey") or {}).get("best_threshold")
+        print(f"[make_report] UI will pre-set TASS filter to: {thresh} (from best_cutoffs.subkey)")
+    else:
+        print("[make_report] No best_cutoffs found; UI TASS filter will default to 0")
+
     # ── build bootstrap payload ───────────────────────────────────────────────
     payload = _sanitize({
         "records":               rows,
@@ -509,31 +499,42 @@ def main():
         "prot_data":             prot_data,
         "has_prot":              has_prot,
         "contig_data":           list(contig_data.values()),   # list of organism contig objects
-        "mintass":               round(mintass, 100),      # 0–100 scale for UI filter-min
+        "best_cutoffs":          best_cutoffs_payload,         # for UI filter pre-population
         "run_metadata_records":  run_metadata_records,         # per-sample run metadata
         "has_geo":               has_geo,                      # true if any sample has lat/lon
     })
 
-    bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False)
-    bootstrap_json = bootstrap_json.replace("</", "<\\/")
+    bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+
+    # Build inline JS instead of writing a separate heatmap_boot.js file
+    bootstrap_script = f"<script>\nwindow.HEATMAP_BOOT = {bootstrap_json};\n</script>"
 
     # ── render template ───────────────────────────────────────────────────────
     with open(args.template, "r", encoding="utf-8") as fh:
         tpl = fh.read()
 
-    # Replace whatever is currently inside <script id="BOOTSTRAP">…</script>
-    # (works whether the template has the __BOOTSTRAP_JSON__ placeholder or
-    #  pre-embedded dummy data from a previous development build).
+    # Option 1: replace an existing external script tag
     html, n_replaced = re.subn(
-        r'(<script id="BOOTSTRAP" type="application/json">).*?(</script>)',
-        r'\g<1>' + bootstrap_json + r'\2',
+        r'<script[^>]+src=["\']heatmap_boot\.js["\'][^>]*>\s*</script>',
+        bootstrap_script,
         tpl,
         count=1,
-        flags=re.DOTALL,
+        flags=re.IGNORECASE,
     )
+
     if not n_replaced:
-        # Fallback: simple string replace for the original placeholder
-        html = tpl.replace("__BOOTSTRAP_JSON__", bootstrap_json)
+        # Option 2: replace old inline BOOTSTRAP block if present
+        html, n_replaced = re.subn(
+            r'<script id="BOOTSTRAP"[^>]*>.*?</script>',
+            bootstrap_script,
+            tpl,
+            count=1,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+
+    if not n_replaced:
+        # Option 3: replace a placeholder if your template has one
+        html = tpl.replace("__BOOTSTRAP_SCRIPT__", bootstrap_script)
 
     with open(args.output, "w", encoding="utf-8") as fh:
         fh.write(html)
