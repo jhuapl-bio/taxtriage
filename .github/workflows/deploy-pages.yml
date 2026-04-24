@@ -2,11 +2,7 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "assets/pages.js"
-      - "assets/heatmap_boot.js"
-      - "assets/heatmap.html"
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -14,9 +10,8 @@ permissions:
   pages: write
   id-token: write
 
-# Only one deployment at a time; don't cancel in-progress runs.
 concurrency:
-  group: pages
+  group: "pages"
   cancel-in-progress: false
 
 jobs:
@@ -26,49 +21,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build docs/index.html from heatmap.html + pages.js
-        run: |
-          mkdir -p docs
-          node - <<'EOF'
-          const fs = require('fs');
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
-          // Extract JSON from pages.js (handles trailing-comma JS objects)
-          const src = fs.readFileSync('assets/pages.js', 'utf8');
-          const patched = src.replace('window.HEATMAP_BOOT', 'globalThis.HEATMAP_BOOT');
-          new Function(patched)();
-          const json = JSON.stringify(globalThis.HEATMAP_BOOT);
+      - name: Build _site/index.html from heatmap.html + pages.js
+        run: python scripts/inline_boot_json.py
 
-          // Transform heatmap.html → docs/index.html
-          let html = fs.readFileSync('assets/heatmap.html', 'utf8');
-
-          // Replace heatmap_boot.js loader with inlined BOOTSTRAP block
-          html = html.replace(
-            /(?:<!--[^>]*-->\s*\n\s*)?<script src=["']heatmap_boot\.js["']><\/script>/,
-            `<script id="BOOTSTRAP" type="application/json">\n${json}\n    </script>`
-          );
-
-          // Swap window.HEATMAP_BOOT reader for JSON.parse
-          html = html.replace(
-            'const BOOT = window.HEATMAP_BOOT || {};',
-            'const BOOT = JSON.parse(document.getElementById("BOOTSTRAP").textContent);'
-          );
-
-          fs.writeFileSync('docs/index.html', html);
-          console.log(`✓ docs/index.html written (${(html.length/1024).toFixed(0)} KB)`);
-          EOF
-
-      - name: Upload Pages artifact
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/
 
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

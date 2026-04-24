@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build docs/index.html for GitHub Pages deployment.
+Build _site/index.html for GitHub Pages deployment.
 
 Strategy
 --------
@@ -30,7 +30,7 @@ REPO_ROOT   = Path(__file__).resolve().parent.parent
 PAGES_JS    = REPO_ROOT / "assets" / "pages.js"
 BOOT_JS     = REPO_ROOT / "assets" / "heatmap_boot.js"
 TEMPLATE    = REPO_ROOT / "assets" / "heatmap.html"
-INDEX_HTML  = REPO_ROOT / "docs"   / "index.html"
+INDEX_HTML  = REPO_ROOT / "_site"  / "index.html"
 
 # Node snippet: evaluates a heatmap boot JS file and emits minified JSON.
 _NODE_SCRIPT = r"""
