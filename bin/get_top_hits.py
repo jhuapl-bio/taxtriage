@@ -403,6 +403,17 @@ def process_pathogens(args, body_sites, seen_taxids):
 
     Pathogen taxids that appear in the Kraken report (*seen_taxids*) are
     returned for force-inclusion — they bypass the --ranks filter entirely.
+
+    Body-site matching logic
+    ------------------------
+    1. If *body_sites* is non-empty, try to restrict the sheet to rows whose
+       ``pathogenic_sites`` field contains **any** of the requested sites
+       (comma-separated fields are split and checked individually).
+    2. If that site-specific filter returns **no rows** (e.g. the sample type
+       is "environmental" which has no specific site column in the sheet), fall
+       back to using ``general_classification`` alone — every organism marked
+       as a pathogen class is considered relevant regardless of body site.
+    3. If *body_sites* is empty, the same unfiltered fallback applies.
     """
     pathogen_taxids = []
     remove_taxids = []
@@ -424,10 +435,45 @@ def process_pathogens(args, body_sites, seen_taxids):
 
         # Filter to pathogens relevant for this body site
         if body_sites:
-            sheet = sheet[
-                sheet["pathogenic_sites"].str.lower().isin(body_sites)
-                | ("sterile" in body_sites)
-            ]
+            body_sites_set = set(body_sites)
+
+            def _any_site_matches(sites_str):
+                """Return True if any individual site in *sites_str* is in body_sites_set.
+
+                ``pathogenic_sites`` is a comma-separated, already-translated
+                string such as ``"nasal"`` or ``"blood, skin"``.  We split on
+                commas so that a multi-site entry like ``"blood, skin"`` matches
+                when the body site is ``"blood"``.
+                """
+                individual = {s.strip() for s in sites_str.lower().split(",") if s.strip()}
+                return bool(individual & body_sites_set)
+
+            if "sterile" in body_sites:
+                # Sterile-site samples: include everything (no exclusion by site)
+                site_filtered = sheet
+            else:
+                site_filtered = sheet[
+                    sheet["pathogenic_sites"].apply(_any_site_matches)
+                ]
+
+            if not site_filtered.empty:
+                # Happy path: the body site matched at least one pathogen entry
+                sheet = site_filtered
+                logger.info(
+                    "Body-site filter (%s) retained %d pathogen-sheet rows.",
+                    body_sites, len(sheet),
+                )
+            else:
+                # No site-specific matches (e.g. 'environmental' samples).
+                # Fall back to general_classification only — do NOT restrict
+                # the sheet further.  This mirrors the intent of "opting for
+                # the default microbial_category column" when the sample type
+                # has no matching pathogenic_sites column in the sheet.
+                logger.info(
+                    "Body site(s) %s produced no pathogen-sheet matches; "
+                    "falling back to general_classification without site restriction.",
+                    body_sites,
+                )
 
         pathogen_classes = {
             "primary", "opportunistic", "potential", "oportunistic",

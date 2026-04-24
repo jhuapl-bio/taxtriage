@@ -1131,18 +1131,32 @@ def main():
             setattr(args, _p, _v)
 
     # ── Load per-sample-type thresholds JSON if provided ─────────────────────
-    # Keys in the JSON are "{sampletype}|{platform}", e.g. "blood|illumina".
+    # Two key formats are supported, auto-detected from the JSON content:
+    #
+    #   2-key format:  "{sampletype}|{platform}"          e.g. "blood|illumina"
+    #   3-key format:  "{sampletype}|{platform}|{domain}" e.g. "blood|illumina|viruses"
+    #
+    # For the 2-key format, a single entry is selected and its best_weights are
+    # applied globally.  For the 3-key format the domain=all entry is used for
+    # global weights, and a per-domain threshold map is built so that downstream
+    # code can apply domain-specific TASS cutoffs to individual organisms.
+    #
     # Lookup order (first match wins):
-    #   1. {sampletype}|{platform}
-    #   2. {sampletype}|all
-    #   3. all|{platform}
-    #   4. all|all
+    #   1. {sampletype}|{platform}[|{domain}]
+    #   2. {sampletype}|all[|{domain}]
+    #   3. all|{platform}[|{domain}]
+    #   4. all|all[|{domain}]
     # Platform normalisation: pacbio → ont; default platform is "illumina".
 
     thresholds_config = None
+    _is_3key_thresholds = False          # True when JSON uses sampletype|platform|domain keys
+    _domain_thresholds_map = {}          # norm_domain → matching config entry  (3-key only)
     if args.thresholds_json:
         with open(args.thresholds_json, 'r') as _tf:
             thresholds_config = _json.load(_tf)
+
+        # Detect key format from the first key
+        _is_3key_thresholds = any(k.count('|') == 2 for k in thresholds_config)
 
         # ─ normalise sample type ─
         _norm_st = normalize_body_site(args.sampletype.lower()) if args.sampletype else "unknown"
@@ -1169,26 +1183,49 @@ def main():
         else:
             _norm_plat = _raw_plat            # pass through as-is
 
-        # ─ lookup with fallback chain ─
-        _candidates = [
-            f"{_norm_st}|{_norm_plat}",       # exact match
-            f"{_norm_st}|all",                 # any platform for this sampletype
-            f"all|{_norm_plat}",               # any sampletype for this platform
-            "all|all",                         # universal fallback
-        ]
-        _st_key = None
-        for _cand in _candidates:
-            if _cand in thresholds_config:
-                _st_key = _cand
-                break
-        if _st_key is None:
-            # Last resort: grab the first key in the JSON
-            _st_key = next(iter(thresholds_config))
-            print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+        def _find_threshold_key(norm_st, norm_plat, domain_suffix=""):
+            """Return the first matching key in thresholds_config for the given
+            sampletype/platform combination.  domain_suffix is either '' (2-key
+            format) or '|{domain}' (3-key format, e.g. '|viruses')."""
+            candidates = [
+                f"{norm_st}|{norm_plat}{domain_suffix}",
+                f"{norm_st}|all{domain_suffix}",
+                f"all|{norm_plat}{domain_suffix}",
+                f"all|all{domain_suffix}",
+            ]
+            for _c in candidates:
+                if _c in thresholds_config:
+                    return _c
+            return None
 
-        print(f"Thresholds JSON loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
-              f"platform '{args.platform}' → '{_norm_plat}', "
-              f"using thresholds key: '{_st_key}'")
+        if _is_3key_thresholds:
+            # ── 3-key mode ──────────────────────────────────────────────────
+            # Global weights: use the domain=all entry for the resolved st/plat.
+            _st_key = _find_threshold_key(_norm_st, _norm_plat, "|all")
+            if _st_key is None:
+                _st_key = next(iter(thresholds_config))
+                print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+
+            # Build per-domain map: norm_domain → config entry
+            # Known taxonomy domains (case-insensitive match against taxdump names)
+            _known_domains = ["viruses", "bacteria", "eukaryota", "archaea"]
+            for _dom in _known_domains:
+                _dom_key = _find_threshold_key(_norm_st, _norm_plat, f"|{_dom}")
+                if _dom_key:
+                    _domain_thresholds_map[_dom] = thresholds_config[_dom_key]
+            print(f"Thresholds JSON (3-key) loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
+                  f"platform '{args.platform}' → '{_norm_plat}', "
+                  f"global weights key: '{_st_key}', "
+                  f"per-domain keys resolved for: {sorted(_domain_thresholds_map.keys())}")
+        else:
+            # ── 2-key mode (original behaviour) ────────────────────────────
+            _st_key = _find_threshold_key(_norm_st, _norm_plat)
+            if _st_key is None:
+                _st_key = next(iter(thresholds_config))
+                print(f"WARNING: No matching thresholds key found; falling back to '{_st_key}'")
+            print(f"Thresholds JSON (2-key) loaded. Sample type '{args.sampletype}' → '{_norm_st}', "
+                  f"platform '{args.platform}' → '{_norm_plat}', "
+                  f"using thresholds key: '{_st_key}'")
 
         _best_w = thresholds_config[_st_key].get("best_weights", {})
         # Override defaults with JSON best weights — but never overwrite a param
@@ -1511,6 +1548,19 @@ def main():
 
     pathogens = import_pathogens(pathogenfile)
 
+    # Build taxid→preferred-name lookup from the pathogen annotation sheet.
+    # This supersedes matchfile and taxdump names everywhere they are set,
+    # so curated labels (e.g. "SARS-CoV-2", "RSV-B") take precedence over
+    # generic NCBI assembly names.  Entries are keyed by string taxid.
+    _pathogen_name_by_taxid = {}
+    for _pk, _pe in (pathogens or {}).items():
+        _pt = str(_pe.get('taxid', '') or '').strip()
+        _pn = (_pe.get('name', '') or '').strip()
+        if _pt and _pn:
+            _pathogen_name_by_taxid[_pt] = _pn
+    if _pathogen_name_by_taxid:
+        print(f"Pathogen-sheet preferred names loaded for {len(_pathogen_name_by_taxid)} taxid(s)")
+
     if args.match and os.path.exists(matcher):
         print("Processing matchfile to enrich reference hits with taxid and description information…")
         accindex = args.accessioncol
@@ -1643,6 +1693,30 @@ def main():
         if _resolved_count:
             print(f"Resolved {_resolved_count} organism names from names.dmp (matchfile had no name/org columns)")
 
+    # ── Pathogen-sheet name supersedes matchfile/taxdump name when taxid matches ──
+    # The pathogens annotation sheet often carries more specific names
+    # (e.g. "human respiratory syncytial virus (B)" vs the NCBI assembly-level
+    # name "human respiratory syncytial virus").  When a reference_hit's taxid
+    # is present in the pathogen sheet, use that name instead so the report
+    # reflects the curated pathogen label rather than the generic mapping name.
+    # Fallback order is unchanged for taxids NOT in the pathogen sheet.
+    if pathogens:
+        _pathogen_name_count = 0
+        for _acc, _hit in reference_hits.items():
+            _tid = str(_hit.get('taxid', '') or '')
+            if not _tid:
+                continue
+            _pentry = pathogens.get(_tid)
+            if _pentry and _pentry.get('name'):
+                _old = _hit.get('name', '')
+                _new = _pentry['name']
+                if _old != _new:
+                    _hit['name'] = _new
+                    _pathogen_name_count += 1
+        if _pathogen_name_count:
+            print(f"Pathogen-sheet name superseded matchfile/taxdump name for "
+                  f"{_pathogen_name_count} accession(s)")
+
     # ── Exclude accessions whose description matches --exclude_descriptions ──
     # Patterns are compiled as regex and matched case-insensitively against
     # the 'description' (or fallback 'name') field populated from the matchfile.
@@ -1703,8 +1777,8 @@ def main():
             hit["toplevelkey"] = top if top else taxid  # fallback to itself if rank not found
             hit["rank"] = wanted_rank  # optional: record what you tried
             hit['strainname'] = hit.get('name', '')
-            hit['name'] = taxdump_names.get(taxid, hit.get('name', ''))
-            hit["toplevelname"] = taxdump_names.get(top, hit.get("name", ""))
+            hit['name'] = _pathogen_name_by_taxid.get(str(taxid), taxdump_names.get(taxid, hit.get('name', '')))
+            hit["toplevelname"] = _pathogen_name_by_taxid.get(str(top), taxdump_names.get(top, hit.get("name", "")))
     else:
         for acc, hit in reference_hits.items():
             taxid = hit.get("taxid")
@@ -1721,7 +1795,8 @@ def main():
                 hit['subkey'] = acc
                 hit['subkeyname'] = hit.get('name', '')
             hit['strainname'] = hit.get('name', '')
-            hit["toplevelname"] = taxdump_names.get(hit['key'], hit.get("name", ""))
+            _top_key_str = str(hit['key']) if hit.get('key') else ''
+            hit["toplevelname"] = _pathogen_name_by_taxid.get(_top_key_str, taxdump_names.get(hit['key'], hit.get("name", "")))
 
     # Build per-accession mappings for optimization and metrics at different granularities.
     acc_to_key = {}
@@ -1905,9 +1980,10 @@ def main():
             # try to get organism from taxdump names
             taxid = data.get('taxid')
             if taxid and taxid in taxdump_names:
-                data['organism'] = taxdump_names[taxid]
+                data['organism'] = _pathogen_name_by_taxid.get(str(taxid), taxdump_names[taxid])
             else:
-                data['organism'] = data.get('name', acc)
+                taxid_str = str(taxid) if taxid else ''
+                data['organism'] = _pathogen_name_by_taxid.get(taxid_str, data.get('name', acc))
         # Annotate with cluster dominance stats.
         # Prefer cluster_dominance.json (from False path — has removal_frac),
         # fall back to shared_windows-derived counts (from True path).
@@ -2044,6 +2120,28 @@ def main():
     # ── Pre-annotate strain_summary with microbial_category BEFORE optimization ──
     # This ensures optimize_weights() / build_metrics_df_from_final_json() can
     # read microbial_category for the debug JSON output.
+    _TAX_RANKS_OPT = ['domain', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus']
+
+    def _build_lineage_opt(taxid_str):
+        """Return {rank: name} for the major taxonomy ranks using taxdump."""
+        if not taxdump or not taxdump_names:
+            return {}
+        lineage = {}
+        for _rank in _TAX_RANKS_OPT:
+            if _rank == 'domain':
+                _rid = (
+                    get_root(taxid_str, 'domain', taxdump)
+                    or get_root(taxid_str, 'superkingdom', taxdump)
+                    or get_root(taxid_str, 'acellular root', taxdump)
+                )
+            else:
+                _rid = get_root(taxid_str, _rank, taxdump)
+            if _rid:
+                _name = taxdump_names.get(str(_rid), '')
+                if _name:
+                    lineage[_rank] = _name
+        return lineage
+
     for k, data in strain_summary.items():
         taxid = data.get('key') or data.get('taxid') or k
         pre_ann = calculate_classes(
@@ -2054,6 +2152,9 @@ def main():
             taxdump=taxdump,
         )
         data.update(pre_ann)
+        # Stamp taxonomy lineage so optimize_weights report has full taxonomy
+        if taxdump and taxdump_names:
+            data['taxonomy'] = _build_lineage_opt(str(taxid))
 
     if args.optimize:
         # Parse weight prior: accepts JSON string or file path
@@ -2202,6 +2303,15 @@ def main():
 
         _d['score_power_scale'] = (_reads / _group_total) if _group_total > 0 else 1.0
 
+    def _scale_tass_value(val):
+        if val is None:
+            return None
+        try:
+            fv = float(val)
+        except (TypeError, ValueError):
+            return val
+        return round(fv * 100, 4) if fv <= 1.0 else fv
+
     # Add sample_name and pathogen annotations to each strain
     for k, data in strain_summary.items():
         data['sample_name'] = args.samplename
@@ -2233,10 +2343,10 @@ def main():
             dmnd = dmnd,
             total_reads = total_reads,
         )
-        data['tass_score'] = compute_tass_score(
+        data['tass_score'] = _scale_tass_value(compute_tass_score(
             data = data,
             weights = weights,
-        )
+        ))
     # : Define a function to calculate disparity for each organism
     i=0
 
@@ -2335,10 +2445,10 @@ def main():
             group_reads=sk_group_reads,
             total_reads=total_reads,
         )
-        sk_data['tass_score'] = compute_tass_score(
+        sk_data['tass_score'] = _scale_tass_value(compute_tass_score(
             data=sk_data,
             weights=weights,
-        )
+        ))
 
     for _, data in aggregate_dict.items():
         # Nest subkey groups as members of the toplevelkey group.
@@ -2368,10 +2478,10 @@ def main():
             group_reads = group_reads,
             total_reads = total_reads,
         )
-        data['tass_score'] = compute_tass_score(
+        data['tass_score'] = _scale_tass_value(compute_tass_score(
             data = data,
             weights = weights,
-        )
+        ))
     # for values of pathogens, klust the ones with high_cons != ''
     # Next go through the BAM file (inputfile) and see what pathogens match to the reference, use biopython
     # to do this
@@ -3115,20 +3225,68 @@ def main():
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use
     # them instead of its hard-coded sampletype defaults.
+    #
+    # For 3-key (domain-aware) JSONs we also build:
+    #   _best_cutoffs_by_domain: {norm_domain: {granularity: {best_threshold, ...}}}
+    # and stamp per-organism threshold overrides directly onto each entry in
+    # _json_out so that make_report.py / create_report.py can apply the right
+    # cutoff without re-loading the JSON.
+
+    def _extract_groups_cutoffs(config_entry):
+        """Return {gran: {best_threshold, fp_le_0_1pct, tp_ge_99_5pct}} from a
+        thresholds config entry, or {} if the entry has no 'groups' block."""
+        _gb = (config_entry or {}).get("groups", {})
+        return {
+            _gname: {
+                "best_threshold": _scale_tass_value(_gdata.get("best_threshold")),
+                "fp_le_0_1pct":  _scale_tass_value(_gdata.get("fp_le_0_1pct", {}).get("threshold")),
+                "tp_ge_99_5pct": _scale_tass_value(_gdata.get("tp_ge_99_5pct", {}).get("threshold")),
+            }
+            for _gname, _gdata in _gb.items()
+        }
+
     _best_cutoffs = None
+    _best_cutoffs_by_domain = {}   # norm_domain → {gran → cutoffs}  (3-key only)
+
     if thresholds_config and _st_key in thresholds_config:
-        _groups_block = thresholds_config[_st_key].get("groups", {})
-        if _groups_block:
-            _best_cutoffs = {}
-            for _gname, _gdata in _groups_block.items():
-                _best_cutoffs[_gname] = {
-                    "best_threshold": _gdata.get("best_threshold"),
-                    "fp_le_0_1pct": _gdata.get("fp_le_0_1pct", {}).get("threshold"),
-                    "tp_ge_99_5pct": _gdata.get("tp_ge_99_5pct", {}).get("threshold"),
-                }
+        _best_cutoffs = _extract_groups_cutoffs(thresholds_config[_st_key]) or None
+        if _best_cutoffs:
             print(f"  Best cutoffs from thresholds JSON ({_st_key}):")
             for _gn, _gc in _best_cutoffs.items():
                 print(f"    {_gn}: best_threshold={_gc['best_threshold']}")
+
+    if _is_3key_thresholds and _domain_thresholds_map:
+        for _dom, _dom_entry in _domain_thresholds_map.items():
+            _dom_cuts = _extract_groups_cutoffs(_dom_entry)
+            if _dom_cuts:
+                _best_cutoffs_by_domain[_dom] = _dom_cuts
+        if _best_cutoffs_by_domain:
+            print(f"  Per-domain cutoffs built for: {sorted(_best_cutoffs_by_domain.keys())}")
+
+    # ── Stamp per-organism threshold overrides into _json_out (3-key mode) ──
+    # Each group/subkey/strain gets a 'tass_thresholds' field whose values
+    # are drawn from the domain-specific entry, with a fallback to the global
+    # _best_cutoffs if no domain match is found.
+    if _best_cutoffs_by_domain:
+        def _domain_cutoffs_for(lineage_dict):
+            """Return the per-granularity cutoff dict for this organism's domain,
+            falling back to the global cutoffs if the domain is unknown."""
+            _dom_raw = (lineage_dict or {}).get('domain', '')
+            _dom_key = _dom_raw.strip().lower()
+            return _best_cutoffs_by_domain.get(_dom_key, _best_cutoffs or {})
+
+        for _grp in _json_out:
+            _grp_cuts = _domain_cutoffs_for(_grp.get('taxonomy', {}))
+            if _grp_cuts:
+                _grp['tass_thresholds'] = _grp_cuts
+            for _sk_m in _grp.get('members', []):
+                _sk_cuts = _domain_cutoffs_for(_sk_m.get('taxonomy', {}))
+                if _sk_cuts:
+                    _sk_m['tass_thresholds'] = _sk_cuts
+                for _strain in _sk_m.get('members', []):
+                    _strain_cuts = _domain_cutoffs_for(_strain.get('taxonomy', {}))
+                    if _strain_cuts:
+                        _strain['tass_thresholds'] = _strain_cuts
 
     # ── Parse run-level metadata ─────────────────────────────────────────────
     # Priority: --meta_csv (file-based, most reliable) > --run_metadata (JSON string)
@@ -3293,6 +3451,7 @@ def main():
         "min_conf_applied": None,  # populated by create_report per-sample
         "best_cutoffs": _best_cutoffs,  # from thresholds JSON; None if not available
         "best_cutoffs_source": _st_key if _best_cutoffs else None,
+        "best_cutoffs_by_domain": _best_cutoffs_by_domain if _best_cutoffs_by_domain else None,
         "preferred_granularity": args.optimize_granularity,
         "control_type": args.control_type,  # "positive", "negative", or None
         "negative_controls_used": [
@@ -3373,8 +3532,8 @@ def main():
         # At each TASS cutoff, what % of TPs pass and what % of FPs pass
         import numpy as np
         thresholds = sorted(set(
-            [round(x * 0.01, 2) for x in range(1, 100)] +
-            [round(x * 0.1, 1) for x in range(1, 10)]
+            [float(x) for x in range(1, 100)] +
+            [float(x * 10) for x in range(1, 10)]
         ))
         threshold_analysis = []
         for thresh in thresholds:
@@ -3579,7 +3738,7 @@ def write_to_tsv(output_path, final_scores, header):
             # if plasmid uper or lower case doesnt matter matches then skip
             if "plasmid" in formatname.lower():
                 continue
-            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 0.990  :
+            if  (is_pathogen == "Primary" or is_pathogen=="Potential" or is_pathogen=="Opportunistic") and tass_score >= 99.0  :
                 print(f"Reference: {ref} - {formatname}, High Cons?: {high_conse}")
                 print(f"\tIsPathogen: {is_pathogen}")
                 print(f"\tPathogenic Strains: {listpathogensstrains}")

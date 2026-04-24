@@ -556,6 +556,14 @@ def optimize_weights(
             "tp_reads": "sum",
             "fp_reads": "sum",
             "total_reads": "sum",
+            # Taxonomy lineage
+            "domain": "first",
+            "kingdom": "first",
+            "phylum": "first",
+            "class": "first",
+            "order": "first",
+            "family": "first",
+            "genus": "first",
         }
         # Only include columns that exist
         agg_spec = {k: v for k, v in agg_spec.items() if k in gran_df.columns}
@@ -609,29 +617,39 @@ def optimize_weights(
 
         gran_rows = []
         for i in range(len(grouped)):
+            _grow = grouped.iloc[i]
             gran_rows.append({
-                "group": str(grouped.iloc[i][gran_field]),
-                "name": str(grouped.iloc[i].get("name", "")),
-                "key": str(grouped.iloc[i].get("key", "")),
-                "subkey": str(grouped.iloc[i].get("subkey", "")),
-                "toplevelkey": str(grouped.iloc[i].get("toplevelkey", "")),
-                "microbial_category": str(grouped.iloc[i].get("category", "")),
-                "normalized_sample_site": str(grouped.iloc[i].get("normalized_sample_site", "")),
-                "commensal_sites": grouped.iloc[i].get("commensal_sites", []),
-                "pathogenic_sites": grouped.iloc[i].get("pathogenic_sites", []),
-                "tp_reads": int(grouped.iloc[i]["tp_reads"]),
-                "fp_reads": int(grouped.iloc[i]["fp_reads"]),
-                "total_reads": int(grouped.iloc[i]["total_reads"]),
-                "fp_fraction": float(grouped.iloc[i]["fp_reads"] / grouped.iloc[i]["total_reads"]) if grouped.iloc[i]["total_reads"] else 0.0,
-                "tass_score": float(g_scores[i]),
+                "group": str(_grow[gran_field]),
+                "name": str(_grow.get("name", "")),
+                "key": str(_grow.get("key", "")),
+                "subkey": str(_grow.get("subkey", "")),
+                "toplevelkey": str(_grow.get("toplevelkey", "")),
+                "microbial_category": str(_grow.get("category", "")),
+                "normalized_sample_site": str(_grow.get("normalized_sample_site", "")),
+                "commensal_sites": _grow.get("commensal_sites", []),
+                "pathogenic_sites": _grow.get("pathogenic_sites", []),
+                "tp_reads": int(_grow["tp_reads"]),
+                "fp_reads": int(_grow["fp_reads"]),
+                "total_reads": int(_grow["total_reads"]),
+                "fp_fraction": float(_grow["fp_reads"] / _grow["total_reads"]) if _grow["total_reads"] else 0.0,
+                "tass_score": float(g_scores[i]) * 100,
+                "taxonomy": {
+                    "domain": str(_grow.get("domain", "") or ""),
+                    "kingdom": str(_grow.get("kingdom", "") or ""),
+                    "phylum": str(_grow.get("phylum", "") or ""),
+                    "class": str(_grow.get("class", "") or ""),
+                    "order": str(_grow.get("order", "") or ""),
+                    "family": str(_grow.get("family", "") or ""),
+                    "genus": str(_grow.get("genus", "") or ""),
+                },
                 "features": {
-                    "breadth_log_score": float(grouped.iloc[i].get("breadth_log_score", 0.0)),
-                    "minhash_reduction": float(grouped.iloc[i].get("minhash_reduction", 0.0)),
-                    "disparity_score": float(grouped.iloc[i].get("disparity_score", 0.0)),
-                    "hmp_percentile": float(grouped.iloc[i].get("hmp_percentile", 0.0)),
-                    "gini_coefficient": float(grouped.iloc[i].get("gini_coefficient", 0.0)),
-                    "plasmid_score": float(grouped.iloc[i].get("plasmid_score", 0.0)),
-                    "has_plasmid": bool(grouped.iloc[i].get("has_plasmid", False)),
+                    "breadth_log_score": float(_grow.get("breadth_log_score", 0.0)),
+                    "minhash_reduction": float(_grow.get("minhash_reduction", 0.0)),
+                    "disparity_score": float(_grow.get("disparity_score", 0.0)),
+                    "hmp_percentile": float(_grow.get("hmp_percentile", 0.0)),
+                    "gini_coefficient": float(_grow.get("gini_coefficient", 0.0)),
+                    "plasmid_score": float(_grow.get("plasmid_score", 0.0)),
+                    "has_plasmid": bool(_grow.get("has_plasmid", False)),
                 },
             })
         gran_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
@@ -736,30 +754,40 @@ def optimize_weights(
 
             fallback_rows = []
             for i in range(len(metrics_df)):
+                _fbrow = metrics_df.iloc[i]
                 fallback_rows.append({
-                    "taxid": str(metrics_df.iloc[i]["taxid"]),
-                    "name": str(metrics_df.iloc[i].get("name", "")),
-                    "microbial_category": str(metrics_df.iloc[i].get("category", "")),
-                    "key": metrics_df.iloc[i].get("key"),
-                    "subkey": metrics_df.iloc[i].get("subkey"),
-                    "toplevelkey": metrics_df.iloc[i].get("toplevelkey"),
+                    "taxid": str(_fbrow["taxid"]),
+                    "name": str(_fbrow.get("name", "")),
+                    "microbial_category": str(_fbrow.get("category", "")),
+                    "key": _fbrow.get("key"),
+                    "subkey": _fbrow.get("subkey"),
+                    "toplevelkey": _fbrow.get("toplevelkey"),
                     "tp_reads": int(_fb_tp[i]),
                     "fp_reads": int(_fb_fp[i]),
                     "total_reads": int(_fb_total[i]),
                     "fp_fraction": float(_fb_fp[i] / _fb_total[i]) if _fb_total[i] else 0.0,
-                    "tass_score": float(_fallback_scores[i]),
-                    "normalized_sample_site": str(metrics_df.iloc[i].get("normalized_sample_site", "")),
-                    "commensal_sites": metrics_df.iloc[i].get("commensal_sites", []),
-                    "pathogenic_sites": metrics_df.iloc[i].get("pathogenic_sites", []),
+                    "tass_score": float(_fallback_scores[i]) * 100,
+                    "normalized_sample_site": str(_fbrow.get("normalized_sample_site", "")),
+                    "commensal_sites": _fbrow.get("commensal_sites", []),
+                    "pathogenic_sites": _fbrow.get("pathogenic_sites", []),
+                    "taxonomy": {
+                        "domain": str(_fbrow.get("domain", "") or ""),
+                        "kingdom": str(_fbrow.get("kingdom", "") or ""),
+                        "phylum": str(_fbrow.get("phylum", "") or ""),
+                        "class": str(_fbrow.get("class", "") or ""),
+                        "order": str(_fbrow.get("order", "") or ""),
+                        "family": str(_fbrow.get("family", "") or ""),
+                        "genus": str(_fbrow.get("genus", "") or ""),
+                    },
                     "features": {
-                        "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
-                        "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
-                        "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
-                        "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
-                        "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
-                        "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
-                        "abundance_confidence": float(metrics_df.iloc[i].get("abundance_confidence", 0.0)),
-                        "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
+                        "breadth_log_score": float(_fbrow.get("breadth_log_score", 0.0)),
+                        "minhash_reduction": float(_fbrow.get("minhash_reduction", 0.0)),
+                        "disparity_score": float(_fbrow.get("disparity_score", 0.0)),
+                        "hmp_percentile": float(_fbrow.get("hmp_percentile", 0.0)),
+                        "gini_coefficient": float(_fbrow.get("gini_coefficient", 0.0)),
+                        "plasmid_score": float(_fbrow.get("plasmid_score", 0.0)),
+                        "abundance_confidence": float(_fbrow.get("abundance_confidence", 0.0)),
+                        "has_plasmid": bool(_fbrow.get("has_plasmid", False)),
                     }
                 })
             fallback_rows.sort(key=lambda r: (r["fp_reads"], -r["tp_reads"], r["tass_score"]), reverse=True)
@@ -800,30 +828,40 @@ def optimize_weights(
 
     report_rows = []
     for i in range(len(metrics_df)):
+        _row = metrics_df.iloc[i]
         report_rows.append({
-            "taxid": str(metrics_df.iloc[i]["taxid"]),
-            "name": str(metrics_df.iloc[i].get("name", "")),
-            "microbial_category": str(metrics_df.iloc[i].get("category", "")),
-            "key": metrics_df.iloc[i].get("key"),
-            "subkey": metrics_df.iloc[i].get("subkey"),
-            "toplevelkey": metrics_df.iloc[i].get("toplevelkey"),
+            "taxid": str(_row["taxid"]),
+            "name": str(_row.get("name", "")),
+            "microbial_category": str(_row.get("category", "")),
+            "key": _row.get("key"),
+            "subkey": _row.get("subkey"),
+            "toplevelkey": _row.get("toplevelkey"),
             "tp_reads": int(tp[i]),
             "fp_reads": int(fp[i]),
             "total_reads": int(total[i]),
             "fp_fraction": float(fp[i] / total[i]) if total[i] else 0.0,
-            "tass_score": float(scores[i]),
-            "normalized_sample_site": str(metrics_df.iloc[i].get("normalized_sample_site", "")),
-            "commensal_sites": metrics_df.iloc[i].get("commensal_sites", []),
-            "pathogenic_sites": metrics_df.iloc[i].get("pathogenic_sites", []),
+            "tass_score": float(scores[i]) * 100,
+            "normalized_sample_site": str(_row.get("normalized_sample_site", "")),
+            "commensal_sites": _row.get("commensal_sites", []),
+            "pathogenic_sites": _row.get("pathogenic_sites", []),
+            "taxonomy": {
+                "domain": str(_row.get("domain", "") or ""),
+                "kingdom": str(_row.get("kingdom", "") or ""),
+                "phylum": str(_row.get("phylum", "") or ""),
+                "class": str(_row.get("class", "") or ""),
+                "order": str(_row.get("order", "") or ""),
+                "family": str(_row.get("family", "") or ""),
+                "genus": str(_row.get("genus", "") or ""),
+            },
             "features": {
-                "breadth_log_score": float(metrics_df.iloc[i].get("breadth_log_score", 0.0)),
-                "minhash_reduction": float(metrics_df.iloc[i].get("minhash_reduction", 0.0)),
-                "disparity_score": float(metrics_df.iloc[i].get("disparity_score", 0.0)),
-                "hmp_percentile": float(metrics_df.iloc[i].get("hmp_percentile", 0.0)),
-                "gini_coefficient": float(metrics_df.iloc[i].get("gini_coefficient", 0.0)),
-                "plasmid_score": float(metrics_df.iloc[i].get("plasmid_score", 0.0)),
-                "abundance_confidence": float(metrics_df.iloc[i].get("abundance_confidence", 0.0)),
-                "has_plasmid": bool(metrics_df.iloc[i].get("has_plasmid", False)),
+                "breadth_log_score": float(_row.get("breadth_log_score", 0.0)),
+                "minhash_reduction": float(_row.get("minhash_reduction", 0.0)),
+                "disparity_score": float(_row.get("disparity_score", 0.0)),
+                "hmp_percentile": float(_row.get("hmp_percentile", 0.0)),
+                "gini_coefficient": float(_row.get("gini_coefficient", 0.0)),
+                "plasmid_score": float(_row.get("plasmid_score", 0.0)),
+                "abundance_confidence": float(_row.get("abundance_confidence", 0.0)),
+                "has_plasmid": bool(_row.get("has_plasmid", False)),
             }
         })
 
@@ -1678,6 +1716,7 @@ def build_metrics_df_from_final_json(
         tp, fp = tp_fp_by_taxid.get(taxid, (0, 0))
         total = tp + fp
 
+        _taxonomy = stats.get("taxonomy") or {}
         rows.append({
             "taxid": taxid,
             "name": stats.get("name", ""),
@@ -1702,6 +1741,14 @@ def build_metrics_df_from_final_json(
             "fp_reads": int(fp),
             "total_reads": int(total),
             "fp_fraction": (fp / total) if total else 0.0,
+            # Taxonomy lineage fields
+            "domain": _taxonomy.get("domain", ""),
+            "kingdom": _taxonomy.get("kingdom", ""),
+            "phylum": _taxonomy.get("phylum", ""),
+            "class": _taxonomy.get("class", ""),
+            "order": _taxonomy.get("order", ""),
+            "family": _taxonomy.get("family", ""),
+            "genus": _taxonomy.get("genus", ""),
         })
 
     df = pd.DataFrame(rows)
@@ -1737,6 +1784,13 @@ def build_metrics_df_from_final_json(
         "tp_reads": "sum",
         "fp_reads": "sum",
         "total_reads": "sum",
+        "domain": "first",
+        "kingdom": "first",
+        "phylum": "first",
+        "class": "first",
+        "order": "first",
+        "family": "first",
+        "genus": "first",
     }
 
     df = df.groupby("taxid", as_index=False).agg(agg)
