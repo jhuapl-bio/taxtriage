@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/**"
       - "assets/pages.js"
       - "assets/heatmap_boot.js"
       - "assets/heatmap.html"
@@ -28,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inline bootstrap JSON into docs/index.html
+      - name: Build docs/index.html from heatmap.html + pages.js
         run: python scripts/inline_boot_json.py
 
       - name: Upload Pages artifact

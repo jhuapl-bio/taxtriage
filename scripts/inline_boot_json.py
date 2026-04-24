@@ -114,6 +114,7 @@ def build_index(template_path: Path, json_text: str, check_only: bool = False) -
     changed = html != existing
 
     if not check_only and changed:
+        INDEX_HTML.parent.mkdir(parents=True, exist_ok=True)
         INDEX_HTML.write_text(html, encoding="utf-8")
 
     return changed
