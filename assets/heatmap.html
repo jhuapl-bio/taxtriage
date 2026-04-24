@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="pages.js"></script>
-    <script src="heatmap_boot.js"></script>
+    <!-- <script src="heatmap_boot.js"></script> -->
 
     <script>
       const BOOT = window.HEATMAP_BOOT || {};
@@ -9360,22 +9360,48 @@
       }
 
       function _refreshMapMarkerColors() {
-        if (!_markerObjects || !_leafletMap) return;
+        if (!_markerObjects || !_leafletMap || !_markerLayer) return;
         const _groupNames = _selectedGroup ? new Set(_selectedGroup.map((r) => r.sample_name)) : null;
+
+        // Track which locKeys we've already processed (single-sample entries are indexed
+        // both by locKey and by sample_name — skip the duplicate sample_name entry)
+        const processed = new Set();
+
         Object.entries(_markerObjects).forEach(([key, obj]) => {
+          if (!obj.marker || !obj.recs) return;
+          // Skip duplicate sample_name aliases pointing to same obj as a locKey entry
+          const locKey =
+            obj.recs.length === 1
+              ? `${parseFloat(obj.recs[0].latitude).toFixed(3)}_${parseFloat(obj.recs[0].longitude).toFixed(3)}`
+              : null;
+          if (locKey && locKey !== key && processed.has(locKey)) return;
+          if (locKey) processed.add(locKey);
+
+          const visibleRecs = obj.recs.filter((r) => !sampleHidden[r.sample_name]);
+          const allHidden = visibleRecs.length === 0;
+
+          if (allHidden) {
+            // Remove marker from layer if present
+            if (_markerLayer.hasLayer(obj.marker)) _markerLayer.removeLayer(obj.marker);
+            return;
+          }
+
+          // Re-add to layer if it was previously removed
+          if (!_markerLayer.hasLayer(obj.marker)) obj.marker.addTo(_markerLayer);
+
+          const isSingle = visibleRecs.length === 1;
           let selected;
-          if (obj.recs && obj.recs.length > 1) {
-            // group marker — selected if it contains the selected sample, or if it IS the selected group
+          if (obj.recs.length > 1) {
             selected = _groupNames
-              ? obj.recs.some((r) => _groupNames.has(r.sample_name))
-              : obj.recs.some((r) => r.sample_name === _selectedSample);
-            const cols = obj.recs.map((r) => sampleColors[r.sample_name] || obj.color || "#1565C0");
-            if (obj.marker) obj.marker.setIcon(_pieSvg(cols, selected));
+              ? visibleRecs.some((r) => _groupNames.has(r.sample_name))
+              : visibleRecs.some((r) => r.sample_name === _selectedSample);
+            const cols = visibleRecs.map((r) => sampleColors[r.sample_name] || "#1565C0");
+            obj.marker.setIcon(isSingle ? _svgDot(cols[0], selected) : _pieSvg(cols, selected));
           } else {
-            selected = _selectedSample === key;
+            selected = _selectedSample === key || _selectedSample === obj.recs[0]?.sample_name;
             const color = sampleColors[key] || obj.color || "#1565C0";
             obj.color = color;
-            if (obj.marker) obj.marker.setIcon(_svgDot(color, selected));
+            obj.marker.setIcon(_svgDot(color, selected));
           }
         });
       }
