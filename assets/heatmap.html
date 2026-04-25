@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- <script src="pages.js"></script> -->
+    <!-- <script src="mce.js"></script> -->
     <script src="heatmap_boot.js"></script>
 
     <script>
@@ -124,11 +125,46 @@
       }
       #sidebar {
         width: 260px;
+        min-width: 200px;
+        max-width: 70vw;
         border-left: 1px solid #ddd;
         background: #fff;
         padding: 0.8em;
         overflow-y: auto;
         flex-shrink: 0;
+      }
+      /* Draggable splitter between #content and #sidebar — lets the user
+         widen / narrow the right panel. 5px wide hot zone, but visually
+         only the centre 1px shows so it doesn't compete with the border. */
+      #sidebar-resizer {
+        width: 5px;
+        cursor: col-resize;
+        background: transparent;
+        flex-shrink: 0;
+        position: relative;
+        z-index: 10;
+        user-select: none;
+      }
+      #sidebar-resizer::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 2px;
+        width: 1px;
+        background: #ddd;
+      }
+      #sidebar-resizer:hover::before,
+      #sidebar-resizer.dragging::before {
+        background: #1565c0;
+        width: 2px;
+      }
+      body.resizing-sidebar {
+        cursor: col-resize !important;
+        user-select: none !important;
+      }
+      body.resizing-sidebar * {
+        user-select: none !important;
       }
 
       /* ── sidebar controls ── */
@@ -856,6 +892,12 @@
                 <option value="Genus" selected>Genus</option>
                 <option value="Species">Species (organism)</option>
               </select>
+              <label>Y scale</label>
+              <select id="tass-scale">
+                <option value="log">Log</option>
+                <option value="linear" selected>Linear</option>
+                <option value="sqrt">Sqrt</option>
+              </select>
             </div>
             <div id="tass-svg-wrap"></div>
           </div>
@@ -918,6 +960,12 @@
                 <option value="TASS Score">TASS Score</option>
                 <option value="# Reads Aligned" selected># Reads Aligned</option>
                 <option value="K2 Reads">K2 Reads</option>
+              </select>
+              <label>Axis scale</label>
+              <select id="cov-scale">
+                <option value="log">Log</option>
+                <option value="linear" selected>Linear</option>
+                <option value="sqrt">Sqrt</option>
               </select>
             </div>
             <div
@@ -1339,6 +1387,12 @@
               <select id="explore-size-by" style="padding: 0.2em 0.4em; font-size: 0.82em">
                 <option value="reads"># Reads Aligned</option>
                 <option value="k2">K2 Reads</option>
+              </select>
+              <label>Axis scale</label>
+              <select id="explore-bubble-scale" style="padding: 0.2em 0.4em; font-size: 0.82em">
+                <option value="log">Log</option>
+                <option value="linear" selected>Linear</option>
+                <option value="sqrt">Sqrt</option>
               </select>
             </div>
           </div>
@@ -1892,6 +1946,8 @@
       </div>
       <!-- /content -->
 
+      <div id="sidebar-resizer" title="Drag to resize panel"></div>
+
       <div id="sidebar">
         <h3>Filters</h3>
         <label>Search (Sample / Organism)</label>
@@ -1975,26 +2031,46 @@
 
         <h3 style="display: flex; align-items: center; justify-content: space-between; gap: 0.4em">
           Samples
-          <button
-            id="remove-all-samples-btn"
-            title="Hide all samples from all charts and tables"
-            onclick="removeAllSamples()"
-            style="
-              font-size: 0.7em;
-              padding: 2px 8px;
-              border: 1px solid #d9534f;
-              border-radius: 4px;
-              background: #fff5f5;
-              color: #c0392b;
-              cursor: pointer;
-              white-space: nowrap;
-              font-weight: 600;
-              line-height: 1.5;
-              flex-shrink: 0;
-            "
-          >
-            &#10005; Remove All
-          </button>
+          <span style="display: flex; gap: 0.3em; flex-shrink: 0">
+            <button
+              id="toggle-all-samples-btn"
+              title="Hide or show every sample at once"
+              onclick="toggleAllSamples()"
+              style="
+                font-size: 0.7em;
+                padding: 2px 8px;
+                border: 1px solid #1565c0;
+                border-radius: 4px;
+                background: #f0f7ff;
+                color: #0d47a1;
+                cursor: pointer;
+                white-space: nowrap;
+                font-weight: 600;
+                line-height: 1.5;
+              "
+            >
+              <i class="fas fa-eye-slash"></i> Hide All
+            </button>
+            <button
+              id="remove-all-samples-btn"
+              title="Permanently delete all samples and their data"
+              onclick="removeAllSamples()"
+              style="
+                font-size: 0.7em;
+                padding: 2px 8px;
+                border: 1px solid #d9534f;
+                border-radius: 4px;
+                background: #fff5f5;
+                color: #c0392b;
+                cursor: pointer;
+                white-space: nowrap;
+                font-weight: 600;
+                line-height: 1.5;
+              "
+            >
+              &#10005; Remove All
+            </button>
+          </span>
         </h3>
         <div id="sample-list"></div>
 
@@ -2073,8 +2149,55 @@
     <div id="tooltip"></div>
 
     <script>
+      /* ----------------------------------------------------------------------------
+       -                                                                          -
+       -   TAXTRIAGE  HEATMAP REPORT  —  CLIENT-SIDE LOGIC                        -
+       -                                                                          -
+       -   ──────────────────  TABLE OF CONTENTS  ─────────────────────────────   -
+       -                                                                          -
+       -   FOUNDATIONS                                                            -
+       -     §  GLOBAL STATE                ... DATA / SHARED VARS          -
+       -     §  UTILITIES                   ... small helpers, tooltips     -
+       -     §  SAMPLE SIDEBAR              ... right-panel sample list     -
+       -     §  HELPERS                     ... rankLabel etc.              -
+       -                                                                          -
+       -   TABS  (one block per tab; ordered as they appear in the UI)            -
+       -     §  TAB: HEATMAP                ... main D3 heatmap grid        -
+       -     §  TAB: TASS COMPARISON        ... grouped bar chart           -
+       -     §  TAB: SUNBURST               ... taxonomy partition chart    -
+       -     §  TAB: COVERAGE               ... breadth/depth scatter       -
+       -     §  TAB: VF / AMR               ... protein annotation tables   -
+       -                                                  + per-organism compare  -
+       -     §  TAB: TABLE                  ... flat data table             -
+       -     §  TAB: HISTOGRAM              ... per-contig depth dist.      -
+       -     §  TAB: EXPLORE                ... bubble/radar/chord/loll.    -
+       -     §  TAB: RUN METADATA           ... metadata grid + longi.      -
+       -     §  TAB: MAP                    ... Leaflet sample map          -
+       -                                                                          -
+       -   ORCHESTRATION                                                          -
+       -     §  HEATMAP VALUE COL SELECTOR  ... static dropdown init        -
+       -     §  TAB SWITCHING               ... .tab-btn click handler      -
+       -     §  REDRAW DISPATCHER           ... _drawTab() + redraw()       -
+       -     §  FILTER LISTENERS            ... change/input → redraw       -
+       -     §  INIT                        ... initial bootstrap           -
+       -                                                                          -
+       -   UI CHROME                                                              -
+       -     §  RESIZABLE DETAIL PANEL      ... protein detail drag         -
+       -     §  RESIZABLE RIGHT SIDEBAR     ... sample sidebar drag         -
+       -                                                                          -
+       -   DATA INGEST                                                            -
+       -     §  FILE UPLOAD                 ... drag-drop xlsx / json       -
+       -     §  META CSV                    ... drag-drop metadata csv      -
+       -                                                                          -
+       -   Tip: jump by searching for "-  TAB:" or "-  §" to land on a banner.    -
+       -                                                                          -
+       ---------------------------------------------------------------------------- */
+
       /* ═══════════════════════════════════════════════════════════════════════════
-   GLOBAL STATE
+       -  §  GLOBAL STATE
+       -     Shared mutable state used across every tab: sample colors, the
+       -     hidden / rescale flags, custom sample order, and the global DATA
+       -     array (set by the page-level template).
 ═══════════════════════════════════════════════════════════════════════════ */
       const sampleColors = {};
       const sampleHidden = {};
@@ -2116,7 +2239,12 @@
       ];
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   UTILITIES
+       -  §  UTILITIES
+       -     Pure helpers (isTruthy / num / uniq), the memoized filteredData()
+       -     pipeline + cache invalidator, applyRescale(), and the shared
+       -     tooltip (showTip / moveTip / hideTip).
+       -     filteredData() is the hot path — every tab calls it to get the
+       -     current filtered, sample-hidden, rescaled view of DATA.
 ═══════════════════════════════════════════════════════════════════════════ */
       function isTruthy(v) {
         if (v === true || v === 1) return true;
@@ -2127,15 +2255,40 @@
         return false;
       }
 
+      /* ── filteredData() — memoized.
+         A single redraw triggers ~10 calls; with 14k rows this was the
+         dominant cost. We compute a cheap fingerprint of every input that
+         affects the result and reuse the previously computed array if the
+         fingerprint hasn't changed. The cache is invalidated automatically
+         (no manual bookkeeping needed) because every UI change alters at
+         least one of the inputs we hash. */
+      let _FD_CACHE = { key: null, value: null };
+      function _invalidateFilterCache() {
+        _FD_CACHE.key = null;
+        _FD_CACHE.value = null;
+      }
+      function _hasAnyRescale() {
+        for (const k in sampleRescale) if (sampleRescale[k]) return true;
+        return false;
+      }
+      function _hashHidden() {
+        // sampleHidden / sampleRescale typically have <50 entries — cheap.
+        const h = [];
+        for (const k in sampleHidden) if (sampleHidden[k]) h.push(k);
+        return h.sort().join("|");
+      }
+      function _hashRescale() {
+        const r = [];
+        for (const k in sampleRescale) if (sampleRescale[k]) r.push(k);
+        return r.sort().join("|");
+      }
       function filteredData() {
         const txt = document.getElementById("filter-text").value.trim();
         const ic = document.getElementById("filter-ic").checked;
         const minV = parseFloat(document.getElementById("filter-min").value) || 0;
         const onlyHC = document.getElementById("filter-hc").checked;
         const onlyP = document.getElementById("filter-pass").checked;
-        const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
-        const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
         const mtDNA = document.getElementById("filter-mt-dna")
           ? document.getElementById("filter-mt-dna").checked
           : true;
@@ -2146,11 +2299,34 @@
           ? document.getElementById("filter-mt-both").checked
           : true;
 
+        // Fingerprint everything that can change the result. Note: DATA.length
+        // covers most upload-driven changes; if you ever mutate DATA in place
+        // without changing length, call _invalidateFilterCache() afterwards.
+        const cacheKey = [
+          txt,
+          ic ? 1 : 0,
+          minV,
+          onlyHC ? 1 : 0,
+          onlyP ? 1 : 0,
+          mcSel.join(","),
+          mtDNA ? 1 : 0,
+          mtRNA ? 1 : 0,
+          mtBoth ? 1 : 0,
+          _hashHidden(),
+          _hashRescale(),
+          DATA.length,
+        ].join("\u0001");
+        if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
+
+        const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
+        const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
+        const anyRescale = _hasAnyRescale();
+
         const filtered = DATA.filter((r) => {
           if (sampleHidden[r["Specimen ID"]]) return false;
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
           const tass = parseFloat(r["TASS Score"]);
-          const tassFilter = sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
+          const tassFilter = anyRescale && sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
           if (!isNaN(tassFilter) && tassFilter < minV) return false;
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (onlyP && !isTruthy(r["Passes Threshold"])) return false;
@@ -2161,7 +2337,11 @@
           if (mt !== "dna" && mt !== "rna" && !mtBoth) return false;
           return true;
         });
-        return filtered.map(applyRescale);
+        // Skip the .map(applyRescale) allocation entirely when no sample is
+        // currently rescaled — saves a 14k-object copy on every filter pass.
+        const out = anyRescale ? filtered.map(applyRescale) : filtered;
+        _FD_CACHE = { key: cacheKey, value: out };
+        return out;
       }
 
       /* Return a shallow copy of row r with TASS Score + Coverage scaled ×100
@@ -2202,7 +2382,10 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   SAMPLE SIDEBAR
+       -  §  SAMPLE SIDEBAR  (right-side panel, visible on every tab)
+       -     Owns: per-sample row UI, hide/show/remove buttons, drag-to-reorder,
+       -     "Hide all / Show all" + "Remove all" bulk actions, sample-name
+       -     hover tooltip, and the inline rename flow.
 ═══════════════════════════════════════════════════════════════════════════ */
       function removeSample(id) {
         const n = DATA.filter((r) => r["Specimen ID"] === id).length;
@@ -2253,6 +2436,51 @@
         buildTable();
         _rebuildMapMarkers();
         redraw();
+      }
+
+      /* ── Hide / show every sample at once.
+         If any sample is currently visible, hide them all. Otherwise (all
+         already hidden, or no samples loaded) show them all. We mutate
+         sampleHidden in bulk and call redraw() ONCE — the per-sample eye
+         icons are refreshed by buildSampleList(). */
+      function toggleAllSamples() {
+        const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+        if (!samples.length) return;
+        const anyVisible = samples.some((id) => !sampleHidden[id]);
+        const next = anyVisible; // true = hide all; false = show all
+        samples.forEach((id) => {
+          sampleHidden[id] = next;
+        });
+        buildSampleList();
+        _syncToggleAllSamplesBtn();
+        redraw();
+      }
+
+      /* Keep the Hide All / Show All button label + icon in sync with the
+         current visibility state. Called from buildSampleList() so it
+         reflects single-sample eye toggles too. */
+      function _syncToggleAllSamplesBtn() {
+        const btn = document.getElementById("toggle-all-samples-btn");
+        if (!btn) return;
+        const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+        if (!samples.length) {
+          btn.disabled = true;
+          btn.style.opacity = "0.5";
+          btn.style.cursor = "not-allowed";
+          btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide All';
+          return;
+        }
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+        const anyVisible = samples.some((id) => !sampleHidden[id]);
+        if (anyVisible) {
+          btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide All';
+          btn.title = "Hide every sample from all charts and tables";
+        } else {
+          btn.innerHTML = '<i class="fas fa-eye"></i> Show All';
+          btn.title = "Show every sample again";
+        }
       }
 
       function buildSampleList() {
@@ -2346,7 +2574,6 @@
 
           // ── Label ──────────────────────────────────────────────────────
           const span = document.createElement("span");
-          span.title = id;
           span.textContent = id;
           span.style.cursor = "grab";
           span.style.flex = "1";
@@ -2354,6 +2581,12 @@
           span.style.textOverflow = "ellipsis";
           span.style.whiteSpace = "nowrap";
           span.style.userSelect = "none";
+          // Custom tooltip — shows the full sample name on hover. We use the
+          // app's own showTip()/moveTip()/hideTip() so it appears instantly
+          // (no native ~500ms delay) and matches the tooltip used elsewhere.
+          span.addEventListener("mouseover", (ev) => showTip(`<b>${id}</b>`, ev));
+          span.addEventListener("mousemove", moveTip);
+          span.addEventListener("mouseout", hideTip);
 
           // ── Eye toggle button ──────────────────────────────────────────
           const btn = document.createElement("button");
@@ -2367,6 +2600,7 @@
             sampleHidden[id] = !sampleHidden[id];
             icon.className = `fas ${sampleHidden[id] ? "fa-eye-slash" : "fa-eye"}`;
             btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
+            _syncToggleAllSamplesBtn();
             redraw();
           });
           btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
@@ -2421,10 +2655,15 @@
           div.appendChild(grip);
           cont.appendChild(div);
         });
+        // Keep the Hide All / Show All button label aligned with the
+        // current visibility state on every list rebuild.
+        _syncToggleAllSamplesBtn();
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   HELPERS
+       -  §  HELPERS  (cross-tab small functions)
+       -     rankLabel() — pull the right taxonomy field from a row given the
+       -     currently selected rank. Used by Heatmap, TASS, Sunburst, Coverage.
 ═══════════════════════════════════════════════════════════════════════════ */
       /** Return the rank label string for a row given the current rank setting. */
       function rankLabel(row, rank) {
@@ -2434,7 +2673,12 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   HEATMAP  (D3) — rows grouped/labelled by shared taxonomy rank
+       -  §  TAB: HEATMAP            (data-tab="heatmap"  —  the default tab)
+       -     drawHeatmap()  →  D3 heatmap grid. Rows are organisms grouped /
+       -     labelled by the chosen taxonomy rank, columns are samples.
+       -     Reads filter UI: rank, value column, color scale, search/min TASS.
+       -     Performance: uses an orgRepRow Map to avoid O(N²) fd.find() scans
+       -     during sort + label rendering.
 ═══════════════════════════════════════════════════════════════════════════ */
       function drawHeatmap() {
         const wrap = document.getElementById("heatmap-svg-wrap");
@@ -2451,15 +2695,22 @@
 
         // Row label = organism name; sort rows by taxonomy rank then organism name
         const rankField = rank === "Species" ? "Detected Organism" : rank;
-        const organisms = uniq(fd.map((r) => r["Detected Organism"]))
-          .filter(Boolean)
-          .sort((a, b) => {
-            const ra = fd.find((r) => r["Detected Organism"] === a);
-            const rb = fd.find((r) => r["Detected Organism"] === b);
-            const ga = (ra ? ra[rankField] : "") || "";
-            const gb = (rb ? rb[rankField] : "") || "";
-            return ga.localeCompare(gb) || a.localeCompare(b);
-          });
+
+        // Pre-build organism → representative-row map in a single pass over fd.
+        // Previously the sort comparator and the label loops below each called
+        // fd.find() per organism — with 14k organisms that's O(N²) ≈ 200M ops
+        // and was the dominant cost of drawHeatmap. With the map this becomes
+        // a single linear pass + O(1) lookups.
+        const orgRepRow = new Map();
+        for (let i = 0; i < fd.length; i++) {
+          const o = fd[i]["Detected Organism"];
+          if (o && !orgRepRow.has(o)) orgRepRow.set(o, fd[i]);
+        }
+        const organisms = Array.from(orgRepRow.keys()).sort((a, b) => {
+          const ga = (orgRepRow.get(a)[rankField] || "") + "";
+          const gb = (orgRepRow.get(b)[rankField] || "") + "";
+          return ga.localeCompare(gb) || a.localeCompare(b);
+        });
 
         if (!samples.length || !organisms.length) {
           wrap.innerHTML = '<p style="color:#999;padding:1em">No data to display.</p>';
@@ -2473,7 +2724,7 @@
         // small gap. Compute the max combined width across all organisms.
         let _maxLabelWidth = 0;
         organisms.forEach((org) => {
-          const r0 = fd.find((r) => r["Detected Organism"] === org);
+          const r0 = orgRepRow.get(org);
           const rl = (r0 ? r0[rankField] : "") || "";
           const orgTrunc = Math.min(32, org.length);
           const rankW = rankField !== "Detected Organism" && rl ? rl.length * 6 + 14 : 6;
@@ -2539,7 +2790,7 @@
         const _mtBadgeX = marginL + samples.length * cellW + 10; // 10px gap after last cell
 
         organisms.forEach((org) => {
-          const r0 = fd.find((r) => r["Detected Organism"] === org);
+          const r0 = orgRepRow.get(org);
           const rankLabel = (r0 ? r0[rankField] : "") || "";
           const isHC = _hcOrgSet.has(org);
           const mt = (_orgMolType[org] || "").toLowerCase();
@@ -2698,7 +2949,12 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   TASS COMPARISON BAR CHART  (D3 grouped bars, coloured per sample)
+       -  §  TAB: TASS COMPARISON    (data-tab="tass")
+       -     drawTassChart()  →  D3 grouped bar chart. One group per taxonomy
+       -     rank value, one bar per sample, height = max TASS Score.
+       -     UI controls: rank selector, Y-scale (linear / log / sqrt).
+       -     Sample legend is intentionally NOT drawn — colors are shown in
+       -     the right sidebar.
 ═══════════════════════════════════════════════════════════════════════════ */
       function drawTassChart() {
         const wrap = document.getElementById("tass-svg-wrap");
@@ -2729,7 +2985,7 @@
         });
 
         const marginL = 130,
-          marginT = 36,
+          marginT = 16,
           marginR = 20;
         // Dynamic bottom margin: enough room for rotated (-35°) x-axis labels
         const _maxKeyLen = groupKeys.reduce((m, k) => Math.max(m, k.length), 0);
@@ -2754,7 +3010,17 @@
 
         const x0 = d3.scaleBand().domain(groupKeys).range([0, innerW]).paddingInner(0.15).paddingOuter(0.1);
         const x1 = d3.scaleBand().domain(samples).range([0, x0.bandwidth()]).padding(0.05);
-        const y = d3.scaleLinear().domain([0, 100]).range([innerH, 0]).nice();
+        // Y-axis scale type — linear default; log clamps to a positive minimum
+        // since TASS scores can be 0 and log(0) is undefined.
+        const tassScaleType = (document.getElementById("tass-scale") || {}).value || "linear";
+        let y;
+        if (tassScaleType === "log") {
+          y = d3.scaleLog().domain([0.1, 100]).range([innerH, 0]).clamp(true);
+        } else if (tassScaleType === "sqrt") {
+          y = d3.scaleSqrt().domain([0, 100]).range([innerH, 0]).nice();
+        } else {
+          y = d3.scaleLinear().domain([0, 100]).range([innerH, 0]).nice();
+        }
 
         // Gridlines (static)
         g.append("g")
@@ -2770,15 +3036,19 @@
           .attr("stroke", "#e0e0e0")
           .attr("stroke-dasharray", "3,3");
 
-        // Y axis (static)
-        g.append("g")
-          .attr("class", "axis")
-          .call(
-            d3
-              .axisLeft(y)
-              .ticks(5)
-              .tickFormat((d) => d + "%"),
-          );
+        // Y axis (static) — use a SI-friendly tick format on log so we get
+        // 0.1, 1, 10, 100 rather than scientific notation.
+        const yAxisCall =
+          tassScaleType === "log"
+            ? d3
+                .axisLeft(y)
+                .ticks(5, "~s")
+                .tickFormat((d) => d + "%")
+            : d3
+                .axisLeft(y)
+                .ticks(5)
+                .tickFormat((d) => d + "%");
+        g.append("g").attr("class", "axis").call(yAxisCall);
 
         // X axis group — updated on zoom
         const xAxisG = g.append("g").attr("class", "axis").attr("transform", `translate(0,${innerH})`);
@@ -2861,25 +3131,7 @@
           .text("⟳ Reset zoom")
           .on("click", () => zoomRect.call(zoom.transform, d3.zoomIdentity));
 
-        // Legend — above bars
-        const legY = 4;
-        samples.forEach((sp, i) => {
-          const lx = marginL + i * 140;
-          svg
-            .append("rect")
-            .attr("x", lx)
-            .attr("y", legY)
-            .attr("width", 12)
-            .attr("height", 12)
-            .attr("fill", sampleColors[sp] || "#90a4ae")
-            .attr("rx", 2);
-          svg
-            .append("text")
-            .attr("x", lx + 16)
-            .attr("y", legY + 10)
-            .attr("font-size", 11)
-            .text(sp.length > 18 ? sp.slice(0, 17) + "…" : sp);
-        });
+        // (Legend removed — sample colors are already shown in the right panel.)
 
         // Y label
         svg
@@ -2891,7 +3143,12 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   SUNBURST  (D3 v7 half-dome partition — multi-panel, MBON Dashboard style)
+       -  §  TAB: SUNBURST           (data-tab="sunburst")
+       -     D3 v7 half-dome partition chart, MBON Dashboard style. Renders
+       -     ONE panel per visible sample inside an IIFE that registers panels
+       -     in a private `_panels` map keyed by id. Zoom path + search are
+       -     synced across all panels via shared globals.
+       -     Per-panel state: hroot, focusedNode, colorScale, legendEl, etc.
 ═══════════════════════════════════════════════════════════════════════════ */
       (function () {
         // ── Per-panel state registry ──────────────────────────────────────────
@@ -3491,7 +3748,11 @@
       })();
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   COVERAGE SCATTER  (breadth vs depth, zoomable, coloured by sample)
+       -  §  TAB: COVERAGE           (data-tab="coverage")
+       -     drawCoverage()  →  zoomable bubble scatter; X = breadth, Y = depth
+       -     by default, bubble size = TASS Score. Each axis (X, Y, R) and the
+       -     scale type (linear / log / sqrt) is user-selectable. Colored per
+       -     sample, with legend rendered above the SVG.
 ═══════════════════════════════════════════════════════════════════════════ */
       function drawCoverage() {
         const wrap = document.getElementById("coverage-svg-wrap");
@@ -3509,6 +3770,7 @@
         const xField = (document.getElementById("cov-x-sel") || {}).value || "Breadth %";
         const yField = (document.getElementById("cov-y-sel") || {}).value || "Mean Depth";
         const rField = (document.getElementById("cov-r-sel") || {}).value || "TASS Score";
+        const covScaleType = (document.getElementById("cov-scale") || {}).value || "linear";
 
         // Legend — above SVG
         const legWrap = document.getElementById("coverage-legend-wrap");
@@ -3540,8 +3802,21 @@
         const yMax = d3.max(fd, (r) => num(r[yField])) || 10;
         const rMax = d3.max(fd, (r) => num(r[rField])) || 100;
 
-        const x = d3.scaleLinear().domain([0, xMax]).range([0, iW]).nice();
-        const y = d3.scaleLinear().domain([0, yMax]).range([iH, 0]).nice();
+        // Build x/y scales according to the user-selected scale type. For
+        // log we clamp to a positive minimum so that zero-valued points
+        // collapse to the axis edge instead of erroring out.
+        function _buildAxisScale(type, max, range) {
+          if (type === "log")
+            return d3
+              .scaleLog()
+              .domain([0.01, Math.max(max, 0.02)])
+              .range(range)
+              .clamp(true);
+          if (type === "sqrt") return d3.scaleSqrt().domain([0, max]).range(range).nice();
+          return d3.scaleLinear().domain([0, max]).range(range).nice();
+        }
+        const x = _buildAxisScale(covScaleType, xMax, [0, iW]);
+        const y = _buildAxisScale(covScaleType, yMax, [iH, 0]);
         const rScale = d3.scaleSqrt().domain([0, rMax]).range([3, 14]);
 
         const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
@@ -3576,11 +3851,15 @@
         const dotsG = g.append("g").attr("clip-path", "url(#cov-clip)");
 
         function renderAxes(xt, yt) {
-          xAxisG.call(d3.axisBottom(xt).ticks(8));
-          yAxisG.call(d3.axisLeft(yt).ticks(8));
+          // Use compact SI tick format on log so values like 1k, 10k render
+          // cleanly instead of scientific notation.
+          const xAxis = covScaleType === "log" ? d3.axisBottom(xt).ticks(6, "~s") : d3.axisBottom(xt).ticks(8);
+          const yAxis = covScaleType === "log" ? d3.axisLeft(yt).ticks(6, "~s") : d3.axisLeft(yt).ticks(8);
+          xAxisG.call(xAxis);
+          yAxisG.call(yAxis);
           xGrid
             .selectAll("line")
-            .data(xt.ticks(8))
+            .data(xt.ticks(covScaleType === "log" ? 6 : 8))
             .join("line")
             .attr("x1", (d) => xt(d))
             .attr("x2", (d) => xt(d))
@@ -3590,7 +3869,7 @@
             .attr("stroke-dasharray", "3,3");
           yGrid
             .selectAll("line")
-            .data(yt.ticks(8))
+            .data(yt.ticks(covScaleType === "log" ? 6 : 8))
             .join("line")
             .attr("x1", 0)
             .attr("x2", iW)
@@ -3686,10 +3965,12 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   PROTEIN COLUMN RENAME MAP
-   Maps input column names (exact match, then case-insensitive) to standardised
-   display names.  Extend window.PROT_COL_REMAP at runtime to add more aliases.
-   Columns in PROT_COL_IGNORE (case-insensitive) are dropped entirely.
+       -  §  PROTEIN COLUMN RENAME MAP
+       -     Static lookup mapping the noisy upstream column names from VFDB /
+       -     CARD / RecPort exports to short, friendly labels used in the
+       -     VF/AMR tab UI. Lookup is exact first, then case-insensitive.
+       -     Columns in PROT_COL_IGNORE are dropped entirely. Extend
+       -     window.PROT_COL_REMAP at runtime to add more aliases.
 ═══════════════════════════════════════════════════════════════════════════ */
       window.PROT_COL_REMAP = {
         evalue: "E-value",
@@ -3740,8 +4021,49 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   VF / AMR / TRANSPORTER PLOTS  (protein annotation data)
+       -  §  TAB: VF / AMR           (data-tab="proteins"  —  hidden if no PROT)
+       -     Largest section in the file. Renders three side-by-side panels:
+       -        drawProtGenus()    — VF hits per genus (count rows)
+       -        drawProtProperty() — group-by-property bar chart
+       -        drawProteins()     — top-level dispatcher; calls both above
+       -     Click an organism row → _showProtDetail() opens a per-organism
+       -     detail view; that detail view internally builds a comparison
+       -     bubble plot via _drawProtCompare().
+       -     Hot path: _renderProtRows() / _filterProt() — both use the
+       -     memoized _getTassPrefixSet() Set for O(1) "is this organism in
+       -     TASS?" lookups (replaces a former O(N²) .some() scan).
+       -     _dedupRows() de-duplicates incoming protein rows with a fast
+       -     non-JSON.stringify key.
 ═══════════════════════════════════════════════════════════════════════════ */
+      /* ── Memoized "is this species present in the TASS report?" lookup.
+         The VF/AMR table did this per row by scanning all of DATA, which
+         with 14k rows × thousands of protein hits exploded to billions of
+         ops. Now we build (once per render) a Set of all whitespace- /
+         comma-bounded prefixes of every Detected Organism in DATA. Lookup
+         per row is then a single Set.has() call. Cache is invalidated when
+         DATA.length changes. */
+      let _TASS_PREFIX_CACHE = { len: -1, set: null };
+      function _getTassPrefixSet() {
+        if (_TASS_PREFIX_CACHE.len === DATA.length && _TASS_PREFIX_CACHE.set) {
+          return _TASS_PREFIX_CACHE.set;
+        }
+        const set = new Set();
+        for (let i = 0; i < DATA.length; i++) {
+          const o = (DATA[i]["Detected Organism"] || "").trim().toLowerCase();
+          if (!o) continue;
+          set.add(o);
+          // Add every whitespace- or comma-bounded leading prefix so that
+          // a species stem like "escherichia coli" matches a longer org
+          // string like "escherichia coli k-12" without needing startsWith.
+          for (let j = 0; j < o.length; j++) {
+            const ch = o.charCodeAt(j);
+            if (ch === 32 /* space */ || ch === 44 /* comma */) set.add(o.slice(0, j));
+          }
+        }
+        _TASS_PREFIX_CACHE = { len: DATA.length, set };
+        return set;
+      }
+
       function drawProteins() {
         drawProtGenus();
         drawProtProperty();
@@ -4195,23 +4517,28 @@
           .text("scroll/pinch to zoom x-axis · dbl-click to reset");
       }
 
-      // Deduplicate rows by all non-internal fields — shared by table, panel, and chart
+      // Deduplicate rows by all non-internal fields — shared by table, panel, and chart.
+      // Builds the dedup key by direct string concat instead of constructing a new
+      // object + JSON.stringify per row. With thousands of protein/AMR rows the old
+      // approach showed up as a measurable chunk of VF/AMR tab load time.
       function _dedupRows(rows) {
         const seen = new Set();
-        return rows.filter((r) => {
-          const key = JSON.stringify(
-            Object.keys(r)
-              .sort()
-              .filter((k) => !k.startsWith("_"))
-              .reduce((o, k) => {
-                o[k] = r[k];
-                return o;
-              }, {}),
-          );
-          if (seen.has(key)) return false;
+        const out = [];
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          const keys = Object.keys(r).sort();
+          let key = "";
+          for (let j = 0; j < keys.length; j++) {
+            const k = keys[j];
+            if (k.charCodeAt(0) === 95 /* '_' */) continue;
+            const v = r[k];
+            key += k + "\u0001" + (v == null ? "" : v) + "\u0002";
+          }
+          if (seen.has(key)) continue;
           seen.add(key);
-          return true;
-        });
+          out.push(r);
+        }
+        return out;
       }
 
       /* Protein annotation table with search */
@@ -4481,12 +4808,12 @@
           const kwTerms =
             kwGroup && PROT_KEYWORD_GROUPS[kwGroup] ? PROT_KEYWORD_GROUPS[kwGroup].map((t) => t.toLowerCase()) : null;
 
-          // Use ALL data (not filtered) — organism is "in TASS" if found in ANY sample in this run
-          const _allTassOrgs = DATA.map((r) => (r["Detected Organism"] || "").trim().toLowerCase()).filter(Boolean);
+          // Use ALL data (not filtered) — organism is "in TASS" if found in ANY sample in this run.
+          // Backed by a memoized prefix Set so this is O(1) per row instead of O(N).
+          const _tassPrefixSet = _getTassPrefixSet();
           function _speciesInTass(species) {
             if (!species) return false;
-            const sl = species.trim().toLowerCase();
-            return _allTassOrgs.some((org) => org === sl || org.startsWith(sl + " ") || org.startsWith(sl + ","));
+            return _tassPrefixSet.has(species.trim().toLowerCase());
           }
 
           let rows = _protAllRows.filter((r) => {
@@ -4576,6 +4903,14 @@
         function _renderProtRows(rows) {
           const tbody = document.getElementById("prot-table-body");
           tbody.innerHTML = "";
+          // Build the TASS-prefix Set ONCE per render rather than per row.
+          // Previously we ran DATA.map(...).filter(Boolean).some(...) inside
+          // the per-row loop; with 14k DATA entries × thousands of protein
+          // rows that was the dominant cost of opening the VF/AMR tab.
+          const _tassPrefixSet = _getTassPrefixSet();
+          // Use a DocumentFragment so we hit the live DOM exactly once at
+          // the end instead of N times during the loop.
+          const frag = document.createDocumentFragment();
           rows.forEach((r) => {
             const tr = document.createElement("tr");
             tr.style.cssText = "cursor:pointer;border-bottom:1px solid #f0f0f0";
@@ -4596,17 +4931,9 @@
             )};width:8px;min-width:8px;padding:0;border:1px solid #e0e0e0`;
             tr.appendChild(swTd);
 
-            // Col 2: TASS report indicator
-            // Recompute per-row using ALL data (not filtered)
-            const _rAllTassOrgs = DATA.map((r2) => (r2["Detected Organism"] || "").trim().toLowerCase()).filter(
-              Boolean,
-            );
+            // Col 2: TASS report indicator — O(1) lookup via prefix set.
             const _rSpecies = (r["Species"] || "").trim().toLowerCase();
-            const _rInTass = _rSpecies
-              ? _rAllTassOrgs.some(
-                  (org) => org === _rSpecies || org.startsWith(_rSpecies + " ") || org.startsWith(_rSpecies + ","),
-                )
-              : false;
+            const _rInTass = _rSpecies ? _tassPrefixSet.has(_rSpecies) : false;
             const tassTd = document.createElement("td");
             tassTd.style.cssText =
               "width:36px;text-align:center;padding:.2em .3em;border:1px solid #e0e0e0;white-space:nowrap;font-size:.72em;font-weight:600";
@@ -4645,8 +4972,10 @@
               }
               tr.appendChild(td);
             });
-            tbody.appendChild(tr);
+            frag.appendChild(tr);
           });
+          // Single DOM write — much faster than N append calls on the live tbody.
+          tbody.appendChild(frag);
           document.getElementById("prot-table-count").textContent = `${rows.length} rows`;
         }
 
@@ -5143,7 +5472,11 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   TABLE
+       -  §  TAB: TABLE              (data-tab="table")
+       -     buildTable() / populateTable() / renderTableHeaders().
+       -     Flat tabular view of the filtered DATA — sortable headers, BSL
+       -     level derivation (_computeBslLevels), supports CSV/XLSX export
+       -     buttons defined in the tab UI.
 ═══════════════════════════════════════════════════════════════════════════ */
       /* ─── BSL level derivation ───────────────────────────────────────────────── */
       function _computeBslLevels() {
@@ -5227,7 +5560,10 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   HISTOGRAM TAB  — per-contig read / depth distribution
+       -  §  TAB: HISTOGRAM          (data-tab="histogram"  —  hidden by default)
+       -     Per-contig read / depth distribution, one panel per organism,
+       -     wrapped in an IIFE that exposes its draw/clear callbacks. Driven
+       -     by genome-coverage histogram data attached to organism rows.
 ═══════════════════════════════════════════════════════════════════════════ */
       (function () {
         function _getOrgKey(cd) {
@@ -6172,7 +6508,10 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   HEATMAP VALUE COLUMN SELECTOR  (static — only read-count fields)
+       -  §  HEATMAP VALUE COLUMN SELECTOR
+       -     buildHmValueSel(). One-shot dropdown population: builds the
+       -     #hm-value-col options from a static allow-list of read-count
+       -     fields. Called once during INIT.
 ═══════════════════════════════════════════════════════════════════════════ */
       function buildHmValueSel() {
         // Selector is already statically rendered in the sidebar HTML.
@@ -6180,7 +6519,10 @@
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   TAB SWITCHING
+       -  §  TAB SWITCHING
+       -     Wires every .tab-btn click → toggles the .active class on the
+       -     button + matching .pane, then calls _drawTab(activeTab) only if
+       -     that tab is currently dirty (lazy render — see REDRAW DISPATCHER).
 ═══════════════════════════════════════════════════════════════════════════ */
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -6189,7 +6531,9 @@
           btn.classList.add("active");
           activeTab = btn.dataset.tab;
           document.getElementById(`pane-${activeTab}`).classList.add("active");
-          redraw();
+          // Only render the new tab if its data is stale; otherwise the
+          // previous render is still valid and we skip the work entirely.
+          if (_TAB_DIRTY[activeTab]) _drawTab(activeTab);
 
           // ── Tab-specific init (runs after pane is visible) ──────────────
           if (activeTab === "map") {
@@ -6215,11 +6559,29 @@
       });
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   REDRAW DISPATCHER
+       -  §  REDRAW DISPATCHER
+       -     _TAB_DIRTY  — { tab → bool } flags tracking which tabs need a
+       -                   re-render after state changes.
+       -     _drawTab()  — calls the right draw* function for a single tab.
+       -     redraw()    — invalidates filteredData() cache, marks ALL tabs
+       -                   dirty, then renders only the currently active tab.
+       -     This is what makes filter changes feel instant — hidden tabs are
+       -     not redrawn until the user switches to them.
 ═══════════════════════════════════════════════════════════════════════════ */
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   EXPLORE TAB — Bubble Scatter / Radar / Lollipop
+       -  §  TAB: EXPLORE            (data-tab="explore")
+       -     drawExplore() — top-level dispatcher; reads the explore-mode
+       -     selector (bubble / chord / radar / lollipop) and calls one of:
+       -        _drawExploreBubble()   — coverage % vs TASS scatter, sized by
+       -                                 reads aligned / k2 reads. Scale type
+       -                                 (linear / log / sqrt) shared by both
+       -                                 axes.
+       -        _drawExploreChord()    — sample × organism flow chart.
+       -        _drawExploreRadar()    — multi-axis polygon per sample.
+       -        _drawExploreLollipop() — top-N sticks comparing samples.
+       -     _exploreColorScale() centralizes the d3 color domain shared by
+       -     the four sub-plots.
 ═══════════════════════════════════════════════════════════════════════════ */
       function drawExplore() {
         const fd = filteredData();
@@ -6289,12 +6651,23 @@
           }))
           .filter((p) => !isNaN(p.x) && !isNaN(p.y));
 
-        const xBase = d3
-          .scaleLinear()
-          .domain([0, Math.max(d3.max(points, (p) => p.x) || 1, 1)])
-          .range([0, iW])
-          .nice();
-        const yBase = d3.scaleLinear().domain([0, 100]).range([iH, 0]);
+        // Axis scale type for both x (Coverage %) and y (TASS Score).
+        // Default linear; log/sqrt are available for spreading out the
+        // dense low-end common in metagenomics data.
+        const expScaleType = (document.getElementById("explore-bubble-scale") || {}).value || "linear";
+        const xDataMax = Math.max(d3.max(points, (p) => p.x) || 1, 1);
+        function _buildExpScale(type, max, range) {
+          if (type === "log")
+            return d3
+              .scaleLog()
+              .domain([0.01, Math.max(max, 0.02)])
+              .range(range)
+              .clamp(true);
+          if (type === "sqrt") return d3.scaleSqrt().domain([0, max]).range(range).nice();
+          return d3.scaleLinear().domain([0, max]).range(range).nice();
+        }
+        const xBase = _buildExpScale(expScaleType, xDataMax, [0, iW]);
+        const yBase = _buildExpScale(expScaleType, 100, [iH, 0]);
 
         const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
         const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
@@ -7202,27 +7575,85 @@
         }
       });
 
+      /* ── Tab-aware redraw.
+         Previously every filter change re-rendered every chart on every
+         tab. With 14k organisms × ~20 samples that meant the heatmap, TASS
+         chart, sunburst, coverage, table, etc. all redrew even though only
+         one is visible — this dominated the wall-clock cost.
+         Now: filter changes invalidate the cache, redraw the currently
+         visible tab immediately, and mark every other tab "dirty". When the
+         user switches tabs, the new tab is rendered only if dirty. */
+      const _TAB_DIRTY = {
+        heatmap: false,
+        tass: false,
+        sunburst: false,
+        coverage: false,
+        proteins: false,
+        histogram: false,
+        explore: false,
+        table: false,
+        map: false,
+        runmeta: false,
+      };
+      function _drawTab(tab) {
+        switch (tab) {
+          case "heatmap":
+            drawHeatmap();
+            break;
+          case "tass":
+            drawTassChart();
+            break;
+          case "sunburst":
+            if (window.drawSunburst) window.drawSunburst();
+            break;
+          case "coverage":
+            drawCoverage();
+            break;
+          case "proteins":
+            if (HAS_PROT) drawProteins();
+            break;
+          case "histogram":
+            if (window.drawHistogram) window.drawHistogram();
+            break;
+          case "explore":
+            drawExplore();
+            break;
+          case "table":
+            populateTable();
+            break;
+        }
+        _TAB_DIRTY[tab] = false;
+      }
       function redraw() {
-        // Always redraw all tabs so filter changes are reflected everywhere
-        drawHeatmap();
-        drawTassChart();
-        if (window.drawSunburst) window.drawSunburst();
-        drawCoverage();
-        if (HAS_PROT) drawProteins();
-        if (window.drawHistogram) window.drawHistogram();
-        drawExplore();
-        populateTable();
+        _invalidateFilterCache();
+        // Mark every tab dirty so switches re-render lazily.
+        for (const k in _TAB_DIRTY) _TAB_DIRTY[k] = true;
+        // Render the currently visible tab now.
+        _drawTab(activeTab);
+        // Cheap shared updates that must reflect filter state immediately.
         _refreshMapMarkerColors();
-        // Refresh map side-panel if one is currently open (single or group mode)
         if (_selectedSample || _selectedGroup) _refreshMapPanelTable();
-        // Rebuild longitudinal org chip list so filters are reflected there too
         if (_longiBuilt) _buildLongitudinalSection();
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   FILTER LISTENERS
+       -  §  FILTER LISTENERS
+       -     Wires every filter input on the page to redraw(). Text + numeric
+       -     inputs are debounced (180 ms via _redrawDebounced) so individual
+       -     keystrokes / arrow taps don't kick off a redraw on each event.
+       -     Add new filter UI element IDs to the IDs list here so they
+       -     trigger a redraw on `change`.
 ═══════════════════════════════════════════════════════════════════════════ */
-      ["filter-text", "filter-min"].forEach((id) => document.getElementById(id).addEventListener("input", redraw));
+      // Debounce text + numeric filter inputs so each keystroke / arrow tap
+      // doesn't trigger a full redraw on a 14k-row dataset.
+      let _redrawTimer = null;
+      function _redrawDebounced() {
+        clearTimeout(_redrawTimer);
+        _redrawTimer = setTimeout(redraw, 180);
+      }
+      ["filter-text", "filter-min"].forEach((id) =>
+        document.getElementById(id).addEventListener("input", _redrawDebounced),
+      );
       [
         "filter-ic",
         "filter-hc",
@@ -7236,7 +7667,16 @@
         if (el) el.addEventListener("change", redraw);
       });
       document.getElementById("filter-mc").addEventListener("change", redraw);
-      ["hm-value-col", "hm-rank", "hm-scale", "tass-rank", "sun-metric"].forEach((id) => {
+      [
+        "hm-value-col",
+        "hm-rank",
+        "hm-scale",
+        "tass-rank",
+        "tass-scale",
+        "sun-metric",
+        "cov-scale",
+        "explore-bubble-scale",
+      ].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
@@ -7249,10 +7689,15 @@
       });
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   INIT
+       -  §  INIT
+       -     (Empty in this file — initial page bootstrap is performed inline
+       -     at the very end of the script and via the (function init() IIFE
+       -     near the bottom; this banner is kept as a visual landmark.)
 ═══════════════════════════════════════════════════════════════════════════ */
       /* ═══════════════════════════════════════════════════════════════════════════
-   RESIZABLE DETAIL PANEL
+       -  §  RESIZABLE DETAIL PANEL
+       -     Drag handle for the inline VF/AMR per-organism detail panel.
+       -     Persists user-chosen height to localStorage.
 ═══════════════════════════════════════════════════════════════════════════ */
       (function () {
         // Use proper object (not boolean) so we can store panel ref without losing it
@@ -7292,7 +7737,79 @@
       })();
 
       /* ═══════════════════════════════════════════════════════════════════════════
-   FILE UPLOAD — client-side .paths.json / .xlsx / .tsv ingestion
+       -  §  RESIZABLE RIGHT SIDEBAR
+       -     Drag the splitter between #content and #sidebar to widen /
+       -     narrow the right panel. Width is clamped (200 px ↔ 70 vw) and
+       -     persisted across reloads via localStorage key
+       -     "taxtriage:sidebarWidth".
+═══════════════════════════════════════════════════════════════════════════ */
+      (function () {
+        const SIDEBAR_W_KEY = "taxtriage:sidebarWidth";
+        const sidebar = document.getElementById("sidebar");
+        const handle = document.getElementById("sidebar-resizer");
+        if (!sidebar || !handle) return;
+
+        // Restore last width if saved.
+        try {
+          const saved = parseInt(localStorage.getItem(SIDEBAR_W_KEY), 10);
+          if (!isNaN(saved) && saved >= 200) {
+            sidebar.style.width = Math.min(saved, Math.floor(window.innerWidth * 0.7)) + "px";
+          }
+        } catch (e) {
+          /* localStorage may be blocked — silently ignore */
+        }
+
+        let _sbDrag = null;
+        let _saveTimer = null;
+
+        handle.addEventListener("mousedown", (e) => {
+          _sbDrag = { startX: e.clientX, startW: sidebar.offsetWidth };
+          handle.classList.add("dragging");
+          document.body.classList.add("resizing-sidebar");
+          e.preventDefault();
+        });
+
+        document.addEventListener("mousemove", (e) => {
+          if (!_sbDrag) return;
+          // Sidebar is on the RIGHT, so dragging left grows it.
+          const dx = _sbDrag.startX - e.clientX;
+          const minW = 200;
+          const maxW = Math.floor(window.innerWidth * 0.7);
+          const newW = Math.max(minW, Math.min(maxW, _sbDrag.startW + dx));
+          sidebar.style.width = newW + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+          if (!_sbDrag) return;
+          _sbDrag = null;
+          handle.classList.remove("dragging");
+          document.body.classList.remove("resizing-sidebar");
+          // Persist (debounced so a flurry of mouseups doesn't hammer storage).
+          clearTimeout(_saveTimer);
+          _saveTimer = setTimeout(() => {
+            try {
+              localStorage.setItem(SIDEBAR_W_KEY, String(sidebar.offsetWidth));
+            } catch (e) {}
+          }, 100);
+          // Charts in the active tab read clientWidth — re-render so the
+          // visualisations expand / contract to match the new content area.
+          if (typeof redraw === "function") redraw();
+        });
+
+        // Re-clamp on window resize so the sidebar never exceeds 70vw.
+        window.addEventListener("resize", () => {
+          const maxW = Math.floor(window.innerWidth * 0.7);
+          if (sidebar.offsetWidth > maxW) sidebar.style.width = maxW + "px";
+        });
+      })();
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  FILE UPLOAD
+       -     Client-side ingestion of .paths.json / .xlsx / .tsv files via
+       -     drag-and-drop or the file picker. Mirrors the Python
+       -     _flatten_organism logic so fresh uploads go through the same
+       -     normalization that make_report.py applies on the server.
+       -     End result: appends rows to DATA, then calls redraw().
 ═══════════════════════════════════════════════════════════════════════════ */
       (function () {
         /* ── flatten one organism entry (mirrors Python _flatten_organism) ─────── */
@@ -7838,11 +8355,13 @@
         };
       })();
 
-      /* ══════════════════════════════════════════════════════════════════════
-         META CSV  — drag-and-drop metadata injection
-         CSV columns: sample (or sample_name), run_id, latitude, longitude,
-                      depth, salinity, collection_time, location
-      ══════════════════════════════════════════════════════════════════════ */
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  META CSV
+       -     Drag-and-drop metadata injection. Parses CSV/TSV with the
+       -     columns: sample (or sample_name), run_id, latitude, longitude,
+       -     depth, salinity, collection_time, location. Numeric fields are
+       -     coerced. Matched rows merge into existing DATA records by sample.
+═══════════════════════════════════════════════════════════════════════════ */
       (function () {
         const _META_NUM_FIELDS = new Set(["latitude", "longitude", "depth", "salinity"]);
 
@@ -8151,9 +8670,14 @@
         _initPanelSortHeaders();
       })();
 
-      /* ══════════════════════════════════════════════════════════════════════
-         RUN METADATA TABLE
-      ══════════════════════════════════════════════════════════════════════ */
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  TAB: RUN METADATA       (data-tab="runmeta"  —  hidden if no meta)
+       -     _buildRunMetaTable()  — renders the metadata grid (one row per
+       -     sample, columns from the union of metadata keys present in DATA).
+       -     _metaKeyLabel()       — pretty-prints raw keys for column headers.
+       -     The Run Metadata tab also hosts the longitudinal-analysis section
+       -     (next banner) when collection_time + run_id are present.
+═══════════════════════════════════════════════════════════════════════════ */
       // Pretty-print a raw key name → display label
       function _metaKeyLabel(k) {
         const KNOWN = {
@@ -8169,13 +8693,15 @@
         return KNOWN[k] || k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       }
 
-      /* ════════════════════════════════════════════════════════════════════════
-         LONGITUDINAL ANALYSIS  (Run Metadata tab)
-         – Line plot: X = collection_time, Y = selected metric
-         – Multi-organism: click chips to select/deselect; one line per organism
-         – Right panel: per-plot sample visibility (independent of main sampleHidden)
-         (State variables declared before init IIFE above to avoid TDZ errors)
-      ════════════════════════════════════════════════════════════════════════ */
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  LONGITUDINAL ANALYSIS  —  FIRST DEFINITION  (shadowed below)
+       -     This block is overridden by the second copy further down (~line
+       -     9290+); since both define the same function names, the later
+       -     definitions win. Keeping it as a visual landmark until somebody
+       -     dedupes.
+       -     Functions: _parseLongiDate, _buildLongitudinalSection,
+       -     _populateLongiOrgs, _buildLongiSamplePanel, _drawLongitudinalPlot.
+═══════════════════════════════════════════════════════════════════════════ */
 
       function _parseLongiDate(s) {
         if (!s) return null;
@@ -8781,13 +9307,19 @@
           .text((d) => (d.sample.length > 16 ? d.sample.slice(0, 15) + "…" : d.sample));
       }
 
-      /* ════════════════════════════════════════════════════════════════════════
-         LONGITUDINAL ANALYSIS  (Run Metadata tab)
-         – Line plot: X = collection_time, Y = selected metric
-         – Multi-organism: click chips to select/deselect; one line per organism
-         – Right panel: per-plot sample visibility (independent of main sampleHidden)
-         (State variables declared before init IIFE above to avoid TDZ errors)
-      ════════════════════════════════════════════════════════════════════════ */
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  LONGITUDINAL ANALYSIS  —  SECOND DEFINITION  (this is the active one)
+       -     Lives inside the Run Metadata tab. Renders a line plot:
+       -        – X axis: collection_time
+       -        – Y axis: user-selected metric
+       -        – One line per selected organism (chip selector)
+       -        – Per-plot sample visibility independent of the main sidebar
+       -          sampleHidden map.
+       -     Functions: _parseLongiDate, _buildLongitudinalSection,
+       -     _populateLongiOrgs, _buildLongiSamplePanel, _drawLongitudinalPlot.
+       -     State variables are declared above the init IIFE to avoid TDZ
+       -     errors when build is called during page bootstrap.
+═══════════════════════════════════════════════════════════════════════════ */
 
       function _parseLongiDate(s) {
         if (!s) return null;
@@ -9450,12 +9982,20 @@
         }
       }
 
-      /* ══════════════════════════════════════════════════════════════════════
-         LEAFLET MAP  — CARTO Voyager tiles (no Referer restrictions)
-         Side-panel: click marker → filtered TASS table for that sample
-         (State variables and drag listeners are declared earlier, before
-          redraw(), to avoid the let Temporal Dead Zone.)
-      ══════════════════════════════════════════════════════════════════════ */
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  TAB: MAP                (data-tab="map"  —  hidden if no lat/lon)
+       -     Leaflet map with CARTO Voyager tiles (no Referer restrictions).
+       -     Renders one marker per sample with lat/lon metadata; clicking a
+       -     marker opens a side-panel with a filtered TASS table for that
+       -     sample. Group mode (multi-marker selection) shows a combined
+       -     panel with sortable headers.
+       -     Key functions: _initMap / _doInitMap, _rebuildMapMarkers,
+       -     _refreshMapMarkerColors, _renderMapPanel / _renderMapGroupPanel,
+       -     _setMapPanelGroupMode, _refreshMapPanelTable, closeMapPanel,
+       -     viewSampleInMetaTab, editSampleNameFromSidebar / _renameSample.
+       -     State variables and drag listeners are declared earlier (before
+       -     redraw()) to avoid the `let` Temporal Dead Zone.
+═══════════════════════════════════════════════════════════════════════════ */
       function _svgDot(color, selected) {
         const r = selected ? 11 : 8;
         const ring = selected
