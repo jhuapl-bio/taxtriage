@@ -60,6 +60,13 @@ def parse_args(argv=None):
              "Do NOT pass files from use_diamond or get_features here.",
     )
     parser.add_argument(
+        "--mintass", default=10.0, type=float,
+        help="Minimum TASS score for inclusion in the report (default: 10.0, i.e. include all). "
+             "This is a hard filter; organisms below this threshold will be excluded entirely. "
+             "Note that the UI filter slider is pre-populated from best_cutoffs in the input data, "
+             "so you can use that to set a more conservative default while still allowing users to see all organisms if they wish."
+    )
+    parser.add_argument(
         "-t", "--template",
         metavar="TEMPLATE", default="heatmap.html",
         help="Input HTML template file (default: heatmap.html).",
@@ -418,7 +425,7 @@ def main():
 
     # All organisms with TASS > 0 are always included; the UI pre-populates its
     # filter slider from best_cutoffs baked into the BOOT payload at load time.
-    mintass = 0.0
+    mintass = args.mintass
     print("[make_report] TASS threshold: 0.0 (all organisms included; UI filter set from best_cutoffs)")
 
     if is_json_mode:
