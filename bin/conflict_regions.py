@@ -1354,7 +1354,7 @@ def _find_high_ani_pairs(
           f"ANI threshold={ani_threshold:.2f} → Jaccard threshold={j_thresh:.4f}")
 
     if n_contigs == 0:
-        return {}
+        return {}, []
 
     # ── all-vs-all Jaccard across different FASTAs ───────────────────────
     partner_map: Dict[str, set] = defaultdict(set)
