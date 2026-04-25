@@ -68,13 +68,14 @@ process CREATE_COMPARISON_REPORT {
         }
     }
     def pident = params.pident ? " --pident ${params.pident} " : " "
+    def mintass = params.mintass ? " --mintass ${params.mintass} " : " "
 
 
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
-        ${prot_arg} ${pident}
+        ${prot_arg} ${pident} ${mintass}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

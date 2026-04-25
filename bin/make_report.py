@@ -60,8 +60,8 @@ def parse_args(argv=None):
              "Do NOT pass files from use_diamond or get_features here.",
     )
     parser.add_argument(
-        "--mintass", default=10.0, type=float,
-        help="Minimum TASS score for inclusion in the report (default: 10.0, i.e. include all). "
+        "--mintass", default=1.0, type=float,
+        help="Minimum TASS score for inclusion in the report (default: 1.0, i.e. include all). "
              "This is a hard filter; organisms below this threshold will be excluded entirely. "
              "Note that the UI filter slider is pre-populated from best_cutoffs in the input data, "
              "so you can use that to set a more conservative default while still allowing users to see all organisms if they wish."

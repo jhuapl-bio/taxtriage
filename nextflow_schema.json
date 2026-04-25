@@ -737,6 +737,12 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": 0.95
                 },
+                "mintass": {
+                    "type": "number",
+                    "description": "Minimum TASS Score for reporting potential organisms in the final multi run analysis report (HTML, all.odr.html)",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 1.0
+                },
                 "integrate_strain_table": {
                     "type": "boolean",
                     "description": "Integrate the strain level table into the main table rather than as a separate table. This is the table that has all the strains that are above the ANI threshold for potential organisms. This is disabled by default because it can be very large and unwieldy if there are a lot of potential organisms.",
