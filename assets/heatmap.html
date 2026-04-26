@@ -2404,13 +2404,58 @@
         for (let i = RUN_META.length - 1; i >= 0; i--) {
           if (RUN_META[i].sample_name === id) RUN_META.splice(i, 1);
         }
+        // Prune CONTIG_DATA so the histogram tab loses this sample's bars
+        for (let i = CONTIG_DATA.length - 1; i >= 0; i--) {
+          if (CONTIG_DATA[i].sample === id) CONTIG_DATA.splice(i, 1);
+        }
+        // Prune PROT so VF/AMR loses this sample's hits
+        Object.keys(PROT || {}).forEach((k) => {
+          if (!Array.isArray(PROT[k])) return;
+          for (let i = PROT[k].length - 1; i >= 0; i--) {
+            if (PROT[k][i] && PROT[k][i]["Specimen ID"] === id) PROT[k].splice(i, 1);
+          }
+        });
+        // Prune BOOT in place — the source of resurrection on subsequent
+        // file drops if we don't filter it here.
+        if (BOOT) {
+          if (Array.isArray(BOOT.records)) {
+            for (let i = BOOT.records.length - 1; i >= 0; i--) {
+              if (BOOT.records[i]["Specimen ID"] === id) BOOT.records.splice(i, 1);
+            }
+          }
+          if (Array.isArray(BOOT.contig_data)) {
+            for (let i = BOOT.contig_data.length - 1; i >= 0; i--) {
+              if (BOOT.contig_data[i].sample === id) BOOT.contig_data.splice(i, 1);
+            }
+          }
+          if (BOOT.prot_data && typeof BOOT.prot_data === "object") {
+            Object.keys(BOOT.prot_data).forEach((k) => {
+              if (!Array.isArray(BOOT.prot_data[k])) return;
+              for (let i = BOOT.prot_data[k].length - 1; i >= 0; i--) {
+                if (BOOT.prot_data[k][i] && BOOT.prot_data[k][i]["Specimen ID"] === id) {
+                  BOOT.prot_data[k].splice(i, 1);
+                }
+              }
+            });
+          }
+        }
+        // Drop this sample from accumulated upload state too
+        if (window._pruneUploadBuffersForSample) window._pruneUploadBuffersForSample(id);
         delete sampleColors[id];
         delete sampleHidden[id];
         delete sampleRescale[id];
         _sampleOrder = _sampleOrder.filter((s) => s !== id);
+        // Re-evaluate VF/AMR tab visibility after the prune
+        HAS_PROT = Object.keys(PROT || {}).some((k) => Array.isArray(PROT[k]) && PROT[k].length > 0);
+        const protBtn = document.getElementById("prot-tab-btn");
+        if (protBtn) protBtn.classList.toggle("hidden", !HAS_PROT);
+        // Re-evaluate histogram tab visibility too
+        const histBtn = document.getElementById("hist-tab-btn");
+        if (histBtn) histBtn.classList.toggle("hidden", CONTIG_DATA.length === 0);
         buildSampleList();
         buildTable();
         _rebuildMapMarkers();
+        if (window._resetHistSelectors) window._resetHistSelectors();
         redraw();
       }
 
@@ -2423,9 +2468,35 @@
           } and their data?\n\nThis cannot be undone.`,
         );
         if (!ok) return;
-        // Batch delete — clear DATA and RUN_META in one pass, then rebuild once
+        // Batch delete — clear EVERY data source, including BOOT and the
+        // upload buffers. Without this, dropping a new JSON afterwards would
+        // re-merge BOOT.records (and any previously-uploaded rows) on top of
+        // the freshly-emptied dataset, resurrecting the samples the user
+        // just told us to delete.
         DATA.length = 0;
         RUN_META.length = 0;
+        CONTIG_DATA.length = 0;
+        // Reset BOOT in place so all references see the change.
+        if (BOOT) {
+          if (Array.isArray(BOOT.records)) BOOT.records.length = 0;
+          if (Array.isArray(BOOT.contig_data)) BOOT.contig_data.length = 0;
+          if (BOOT.prot_data && typeof BOOT.prot_data === "object") {
+            Object.keys(BOOT.prot_data).forEach((k) => {
+              if (Array.isArray(BOOT.prot_data[k])) BOOT.prot_data[k].length = 0;
+            });
+          }
+          BOOT.has_prot = false;
+        }
+        // Empty PROT in place, keep the same key set so the rest of the code
+        // that does `PROT.per_gene_hits` etc. still finds an array.
+        Object.keys(PROT || {}).forEach((k) => {
+          if (Array.isArray(PROT[k])) PROT[k].length = 0;
+        });
+        HAS_PROT = false;
+        const protBtn = document.getElementById("prot-tab-btn");
+        if (protBtn) protBtn.classList.add("hidden");
+        // Drop accumulated upload state so the next drop is a clean start.
+        if (window._clearUploadBuffers) window._clearUploadBuffers();
         samples.forEach((id) => {
           delete sampleColors[id];
           delete sampleHidden[id];
@@ -2435,6 +2506,10 @@
         buildSampleList();
         buildTable();
         _rebuildMapMarkers();
+        // Hide the histogram tab again (it was shown when contigs existed)
+        const histBtn = document.getElementById("hist-tab-btn");
+        if (histBtn) histBtn.classList.add("hidden");
+        if (window._resetHistSelectors) window._resetHistSelectors();
         redraw();
       }
 
@@ -5743,7 +5818,11 @@
               return ia - ib;
             });
           }
-          const showAll = !sample && entries.length > 1;
+          // Always show the sample name in chart titles when the dropdown is
+          // on "All samples" — even if just one entry matches. Previously this
+          // required `entries.length > 1`, which meant uploaded samples that
+          // were the sole match for an organism rendered with no name at all.
+          const showAll = !sample;
 
           if (!entries.length || entries.every((cd) => !cd.contigs || !cd.contigs.length)) {
             noData.style.display = "block";
@@ -8294,6 +8373,34 @@
           document.getElementById("upload-zone").classList.remove("drag-over");
           const files = event.dataTransfer.files;
           if (files.length) window.handleUploadFiles(files);
+        };
+
+        /* ── public: clear ONLY the upload buffers (no UI rebuild).
+           Called from removeAllSamples() so that the next file drop won't
+           re-merge previously-uploaded rows on top of a freshly-emptied
+           dataset. */
+        window._clearUploadBuffers = function () {
+          _uploadedRows = [];
+          _uploadedContigs = [];
+          _uploadedProtData = { genus_summary: [], per_gene_hits: [], sample_overview: [], amr_genes: [] };
+          _uploadedNames = [];
+          _uploadedMetaRecords = [];
+          const clearBtn = document.getElementById("upload-clear-btn");
+          if (clearBtn) clearBtn.classList.add("hidden");
+          const stat = document.getElementById("upload-status");
+          if (stat) stat.textContent = "";
+        };
+
+        /* ── public: prune upload buffers for a single sample id.
+           Called from _deleteSampleData(id) so the next file drop won't
+           resurrect a sample the user explicitly deleted. */
+        window._pruneUploadBuffersForSample = function (id) {
+          _uploadedRows = _uploadedRows.filter((r) => r["Specimen ID"] !== id);
+          _uploadedContigs = _uploadedContigs.filter((c) => c.sample !== id);
+          _PROT_KEYS.forEach((k) => {
+            _uploadedProtData[k] = (_uploadedProtData[k] || []).filter((r) => r["Specimen ID"] !== id);
+          });
+          _uploadedMetaRecords = _uploadedMetaRecords.filter((m) => m.sample_name !== id);
         };
 
         /* ── public: clear uploaded data ────────────────────────────────────────── */
