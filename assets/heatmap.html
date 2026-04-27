@@ -1479,6 +1479,51 @@
             </div>
             <div id="explore-lolli-wrap" style="overflow-x: auto; width: 100%"></div>
           </div>
+
+          <!-- Plot E: Correlogram -->
+          <div class="chart-wrap">
+            <div class="chart-title">
+              Metric Correlogram
+              <span style="font-size: 0.75em; color: #888; font-weight: 400">
+                — pairwise Pearson correlation across the filtered rows</span
+              >
+            </div>
+            <div class="tab-controls" style="flex-wrap: wrap; gap: 0.5em 0.8em">
+              <label>Metrics</label>
+              <select
+                id="explore-corr-metrics"
+                multiple
+                size="6"
+                style="min-width: 220px; font-size: 0.82em; padding: 0.2em"
+                aria-label="Metrics included in the correlogram"
+              >
+                <option value="TASS Score" selected>TASS Score</option>
+                <option value="# Reads Aligned" selected># Reads Aligned</option>
+                <option value="Breadth %" selected>Coverage (Breadth %)</option>
+                <option value="Mean Depth" selected>Mean Depth</option>
+                <option value="% Reads" selected>% Reads</option>
+                <option value="K2 Reads">K2 Reads</option>
+                <option value="Minhash Score">Minhash Score</option>
+                <option value="Gini Coefficient">Gini Coefficient</option>
+              </select>
+              <label
+                ><input type="checkbox" id="explore-corr-show-vals" checked style="margin-right: 0.3em" />Show
+                values</label
+              >
+              <label
+                ><input type="checkbox" id="explore-corr-log" style="margin-right: 0.3em" />log10 transform skewed
+                metrics</label
+              >
+            </div>
+            <div
+              id="explore-corr-wrap"
+              style="overflow: auto; width: 100%; display: flex; justify-content: center"
+            ></div>
+            <div id="explore-corr-empty" style="display: none; padding: 0.6em 0.4em; font-size: 0.82em; color: #777">
+              Not enough numeric data in the filtered rows to compute correlations. Try widening the filters or
+              selecting more metrics.
+            </div>
+          </div>
         </div>
 
         <!-- TABLE -->
@@ -1957,7 +2002,31 @@
           <label for="filter-ic">Case-insensitive</label>
         </div>
         <label>Min TASS Score (0–100)</label>
-        <input id="filter-min" type="number" value="70" min="0" max="100" step="5" />
+        <div
+          id="filter-min-wrap"
+          style="display: flex; align-items: center; gap: 0.4em; flex-wrap: wrap; margin-top: 0.15em"
+        >
+          <input
+            id="filter-min-range"
+            type="range"
+            value="70"
+            min="0"
+            max="100"
+            step="1"
+            style="flex: 1 1 100px; min-width: 100px; cursor: pointer"
+            aria-label="Min TASS Score slider"
+          />
+          <input
+            id="filter-min"
+            type="number"
+            value="70"
+            min="0"
+            max="100"
+            step="1"
+            style="width: 4.2em"
+            aria-label="Min TASS Score exact value"
+          />
+        </div>
         <div class="row" style="margin-top: 0.4em">
           <input type="checkbox" id="filter-hc" />
           <label for="filter-hc">High Consequence only</label>
@@ -2170,7 +2239,7 @@
        -                                                  + per-organism compare  -
        -     §  TAB: TABLE                  ... flat data table             -
        -     §  TAB: HISTOGRAM              ... per-contig depth dist.      -
-       -     §  TAB: EXPLORE                ... bubble/radar/chord/loll.    -
+       -     §  TAB: EXPLORE                ... bubble/radar/chord/loll/corr -
        -     §  TAB: RUN METADATA           ... metadata grid + longi.      -
        -     §  TAB: MAP                    ... Leaflet sample map          -
        -                                                                          -
@@ -6659,8 +6728,12 @@
        -        _drawExploreChord()    — sample × organism flow chart.
        -        _drawExploreRadar()    — multi-axis polygon per sample.
        -        _drawExploreLollipop() — top-N sticks comparing samples.
+       -        _drawExploreCorrelogram() — Pearson correlation grid across
+       -                                    user-picked numeric metrics; uses
+       -                                    the same `fd` so it auto-syncs to
+       -                                    sidebar filters and sample renames.
        -     _exploreColorScale() centralizes the d3 color domain shared by
-       -     the four sub-plots.
+       -     the sub-plots.
 ═══════════════════════════════════════════════════════════════════════════ */
       function drawExplore() {
         const fd = filteredData();
@@ -6669,6 +6742,7 @@
         _drawExploreRadar(fd);
         _drawExploreChord(fd);
         _drawExploreLollipop(fd);
+        _drawExploreCorrelogram(fd);
       }
 
       function _exploreColorScale(fd) {
@@ -7555,6 +7629,295 @@
         }
       }
 
+      /* ───────────────────────────────────────────────────────────────────────
+         _drawExploreCorrelogram(fd)
+           Pearson correlation matrix across user-selected numeric metrics, drawn
+           over the same `fd` rows that every other Explore plot uses — so it
+           is automatically synced to the sidebar filters, sample renames, and
+           hide/show toggles.
+
+           Each cell shows r ∈ [-1, +1] color-encoded with a diverging palette
+           (red = negative, white = zero, blue = positive). Diagonal cells are
+           marked self-correlation. Only pairs with ≥3 finite observations are
+           computed — sparser pairs render as a hatched "n/a" cell.
+
+           Optional log10 transform helps when a metric (e.g. read counts) spans
+           many orders of magnitude — we add 1 before log to swallow zeros.
+         ─────────────────────────────────────────────────────────────────── */
+      function _drawExploreCorrelogram(fd) {
+        const wrap = document.getElementById("explore-corr-wrap");
+        const empty = document.getElementById("explore-corr-empty");
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        if (empty) empty.style.display = "none";
+
+        // Which metric columns to include (multi-select).
+        const sel = document.getElementById("explore-corr-metrics");
+        let metrics = [];
+        if (sel) metrics = Array.from(sel.selectedOptions).map((o) => o.value);
+        if (!metrics.length) {
+          metrics = ["TASS Score", "# Reads Aligned", "Breadth %", "Mean Depth", "% Reads"];
+        }
+        const showVals = (document.getElementById("explore-corr-show-vals") || { checked: true }).checked;
+        const useLog = (document.getElementById("explore-corr-log") || { checked: false }).checked;
+
+        if (!fd || !fd.length || metrics.length < 2) {
+          if (empty) empty.style.display = "block";
+          return;
+        }
+
+        // Build vectors for each metric — coerce to finite numbers; non-numeric
+        // entries are kept as NaN and ignored pairwise. log10 is applied with a
+        // +1 offset for "read-like" metrics where 0 is meaningful.
+        const N = fd.length;
+        const cols = {};
+        const looksLogish = (m) =>
+          /reads|depth|count/i.test(m) || m === "# Reads Aligned" || m === "K2 Reads" || m === "Mean Depth";
+        metrics.forEach((m) => {
+          const v = new Array(N);
+          for (let i = 0; i < N; i++) {
+            const raw = fd[i] ? fd[i][m] : null;
+            const n = parseFloat(raw);
+            if (!isFinite(n)) {
+              v[i] = NaN;
+            } else if (useLog && looksLogish(m)) {
+              v[i] = Math.log10(Math.max(0, n) + 1);
+            } else {
+              v[i] = n;
+            }
+          }
+          cols[m] = v;
+        });
+
+        // Pearson correlation between two vectors, ignoring index pairs where
+        // either side is NaN. Returns null if fewer than 3 valid pairs or if
+        // one side has zero variance.
+        function _pearson(a, b) {
+          let n = 0,
+            sa = 0,
+            sb = 0,
+            saa = 0,
+            sbb = 0,
+            sab = 0;
+          const len = Math.min(a.length, b.length);
+          for (let i = 0; i < len; i++) {
+            const x = a[i],
+              y = b[i];
+            if (!isFinite(x) || !isFinite(y)) continue;
+            n++;
+            sa += x;
+            sb += y;
+            saa += x * x;
+            sbb += y * y;
+            sab += x * y;
+          }
+          if (n < 3) return { r: null, n };
+          const meanA = sa / n,
+            meanB = sb / n;
+          const varA = saa / n - meanA * meanA;
+          const varB = sbb / n - meanB * meanB;
+          const cov = sab / n - meanA * meanB;
+          if (varA <= 0 || varB <= 0) return { r: null, n };
+          const r = cov / Math.sqrt(varA * varB);
+          // Clamp tiny FP overshoot.
+          return { r: Math.max(-1, Math.min(1, r)), n };
+        }
+
+        // Compute the full matrix (symmetric; diagonal = 1).
+        const M = metrics.length;
+        const mat = []; // [{i,j,r,n}]
+        for (let i = 0; i < M; i++) {
+          for (let j = 0; j < M; j++) {
+            if (i === j) {
+              mat.push({ i, j, r: 1, n: cols[metrics[i]].filter(isFinite).length });
+            } else if (j < i) {
+              // mirror the upper-triangle entry already computed
+              const prior = mat.find((e) => e.i === j && e.j === i);
+              mat.push({ i, j, r: prior ? prior.r : null, n: prior ? prior.n : 0 });
+            } else {
+              const { r, n } = _pearson(cols[metrics[i]], cols[metrics[j]]);
+              mat.push({ i, j, r, n });
+            }
+          }
+        }
+
+        // Layout: square grid; size each cell so the whole thing fits the wrap.
+        const wrapW = wrap.clientWidth || 700;
+        const labelW = 130; // left + top label gutter
+        const cellMax = 56;
+        const cell = Math.max(28, Math.min(cellMax, Math.floor((wrapW - labelW - 40) / M)));
+        const W = labelW + cell * M + 60; // +60 for the colour-key strip
+        const H = labelW + cell * M + 30;
+
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
+        const gMat = svg.append("g").attr("transform", `translate(${labelW},${labelW})`);
+
+        // Diverging colour scale: r=-1 red → r=0 white → r=+1 blue.
+        const color = d3.scaleLinear().domain([-1, 0, 1]).range(["#c0392b", "#ffffff", "#1f4e79"]).clamp(true);
+
+        // Tooltip — re-uses the same styling as the bubble tip.
+        const tip = d3
+          .select("body")
+          .selectAll(".explore-corr-tip")
+          .data([1])
+          .join("div")
+          .attr("class", "explore-corr-tip")
+          .style("position", "fixed")
+          .style("background", "rgba(20,20,30,.88)")
+          .style("color", "#fff")
+          .style("padding", ".4em .7em")
+          .style("border-radius", "5px")
+          .style("font-size", "11.5px")
+          .style("pointer-events", "none")
+          .style("display", "none")
+          .style("max-width", "240px")
+          .style("line-height", "1.6")
+          .style("z-index", "9999")
+          .style("box-shadow", "0 2px 8px rgba(0,0,0,.35)");
+
+        // Cells.
+        gMat
+          .selectAll("rect.cell")
+          .data(mat)
+          .join("rect")
+          .attr("class", "cell")
+          .attr("x", (d) => d.j * cell)
+          .attr("y", (d) => d.i * cell)
+          .attr("width", cell - 1)
+          .attr("height", cell - 1)
+          .attr("fill", (d) => (d.r == null ? "#f1f1f1" : color(d.r)))
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 1)
+          .style("cursor", "crosshair")
+          .on("mouseover", (ev, d) => {
+            const a = metrics[d.i],
+              b = metrics[d.j];
+            const rTxt = d.r == null ? "n/a (insufficient data)" : d.r.toFixed(3);
+            tip
+              .style("display", "block")
+              .html(
+                `<b style="font-size:12px">${a}</b><br>` +
+                  `<span style="color:#adf">vs:</span> ${b}<br>` +
+                  `<span style="color:#adf">Pearson r:</span> ${rTxt}<br>` +
+                  `<span style="color:#adf">n:</span> ${d.n}` +
+                  (useLog && (looksLogish(a) || looksLogish(b))
+                    ? '<br><span style="color:#9bd">log10 transform applied</span>'
+                    : ""),
+              );
+          })
+          .on("mousemove", (ev) => tip.style("left", ev.clientX + 14 + "px").style("top", ev.clientY - 10 + "px"))
+          .on("mouseout", () => tip.style("display", "none"));
+
+        // Cell text — the r value (or "—" for n/a). Auto colour for legibility.
+        if (showVals) {
+          gMat
+            .selectAll("text.val")
+            .data(mat)
+            .join("text")
+            .attr("class", "val")
+            .attr("x", (d) => d.j * cell + cell / 2)
+            .attr("y", (d) => d.i * cell + cell / 2)
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "central")
+            .style("font-size", Math.max(8, Math.min(12, cell * 0.28)) + "px")
+            .style("pointer-events", "none")
+            .attr("fill", (d) => (d.r == null ? "#888" : Math.abs(d.r) > 0.55 ? "#fff" : "#222"))
+            .text((d) => (d.r == null ? "—" : d.r.toFixed(2)));
+        }
+
+        // Hatched overlay for "no data" cells.
+        const defs = svg.append("defs");
+        defs
+          .append("pattern")
+          .attr("id", "corr-hatch")
+          .attr("patternUnits", "userSpaceOnUse")
+          .attr("width", 6)
+          .attr("height", 6)
+          .append("path")
+          .attr("d", "M0,6 l6,-6")
+          .attr("stroke", "#bbb")
+          .attr("stroke-width", 1);
+        gMat
+          .selectAll("rect.nan")
+          .data(mat.filter((d) => d.r == null))
+          .join("rect")
+          .attr("class", "nan")
+          .attr("x", (d) => d.j * cell)
+          .attr("y", (d) => d.i * cell)
+          .attr("width", cell - 1)
+          .attr("height", cell - 1)
+          .attr("fill", "url(#corr-hatch)")
+          .attr("pointer-events", "none");
+
+        // Row + column labels.
+        svg
+          .append("g")
+          .attr("transform", `translate(${labelW - 6},${labelW})`)
+          .selectAll("text")
+          .data(metrics)
+          .join("text")
+          .attr("y", (_, i) => i * cell + cell / 2)
+          .attr("text-anchor", "end")
+          .attr("dominant-baseline", "central")
+          .style("font-size", "11px")
+          .style("fill", "#222")
+          .text((m) => m);
+        svg
+          .append("g")
+          .attr("transform", `translate(${labelW},${labelW - 6})`)
+          .selectAll("text")
+          .data(metrics)
+          .join("text")
+          .attr("transform", (_, j) => `translate(${j * cell + cell / 2},0) rotate(-40)`)
+          .attr("text-anchor", "start")
+          .attr("dominant-baseline", "alphabetic")
+          .style("font-size", "11px")
+          .style("fill", "#222")
+          .text((m) => m);
+
+        // Color-key strip on the right (vertical, -1 → +1).
+        const keyX = labelW + cell * M + 18;
+        const keyY = labelW;
+        const keyH = cell * M;
+        const keyW = 12;
+        const grad = defs
+          .append("linearGradient")
+          .attr("id", "corr-grad")
+          .attr("x1", "0")
+          .attr("x2", "0")
+          .attr("y1", "0")
+          .attr("y2", "1");
+        [
+          { o: 0, c: color(1) },
+          { o: 0.5, c: color(0) },
+          { o: 1, c: color(-1) },
+        ].forEach((s) => grad.append("stop").attr("offset", s.o).attr("stop-color", s.c));
+        svg
+          .append("rect")
+          .attr("x", keyX)
+          .attr("y", keyY)
+          .attr("width", keyW)
+          .attr("height", keyH)
+          .attr("fill", "url(#corr-grad)")
+          .attr("stroke", "#bbb");
+        const keyScale = d3.scaleLinear().domain([1, -1]).range([0, keyH]);
+        const keyAxis = d3.axisRight(keyScale).ticks(5).tickFormat(d3.format(".1f"));
+        svg
+          .append("g")
+          .attr("transform", `translate(${keyX + keyW},${keyY})`)
+          .call(keyAxis)
+          .selectAll("text")
+          .style("font-size", "10px");
+        svg
+          .append("text")
+          .attr("x", keyX + keyW / 2)
+          .attr("y", keyY - 6)
+          .attr("text-anchor", "middle")
+          .style("font-size", "10px")
+          .style("fill", "#444")
+          .text("Pearson r");
+      }
+
       /* ── Explore event listeners ─────────────────────────────────────────── */
       [
         "explore-color-by",
@@ -7562,12 +7925,15 @@
         "explore-lolli-metric",
         "explore-chord-group",
         "explore-chord-value",
+        "explore-corr-metrics",
       ].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", () => drawExplore());
       });
       document.getElementById("explore-lolli-multi")?.addEventListener("change", () => drawExplore());
       document.getElementById("explore-lolli-sample")?.addEventListener("change", () => drawExplore());
+      document.getElementById("explore-corr-show-vals")?.addEventListener("change", () => drawExplore());
+      document.getElementById("explore-corr-log")?.addEventListener("change", () => drawExplore());
 
       /* ── Map state — declared here so redraw() and init() can reference these
          without hitting the Temporal Dead Zone (let/const vars aren't hoisted) ── */
@@ -7733,6 +8099,34 @@
       ["filter-text", "filter-min"].forEach((id) =>
         document.getElementById(id).addEventListener("input", _redrawDebounced),
       );
+
+      // Min TASS: keep the range slider and the number input synchronized.
+      // Either control can be the source; we mirror the value to the other,
+      // clamp into [0,100], and trigger a debounced redraw.
+      (function () {
+        const num = document.getElementById("filter-min");
+        const range = document.getElementById("filter-min-range");
+        if (!num || !range) return;
+        function _clamp(v) {
+          const n = parseFloat(v);
+          if (isNaN(n)) return null;
+          return Math.max(0, Math.min(100, n));
+        }
+        // Slider drag → mirror into the number box (live, debounced redraw).
+        range.addEventListener("input", () => {
+          const v = _clamp(range.value);
+          if (v == null) return;
+          num.value = v;
+          _redrawDebounced();
+        });
+        // Number box → mirror into the slider. We don't trigger redraw here
+        // because the existing filter-min input listener above already does.
+        num.addEventListener("input", () => {
+          const v = _clamp(num.value);
+          if (v == null) return;
+          range.value = v;
+        });
+      })();
       [
         "filter-ic",
         "filter-hc",
@@ -8403,6 +8797,28 @@
           _uploadedMetaRecords = _uploadedMetaRecords.filter((m) => m.sample_name !== id);
         };
 
+        /* ── public: rename a sample id inside the upload buffers.
+           Called from _renameSample so a subsequent file drop (which
+           re-runs _mergeAndRedraw) doesn't resurrect the OLD name from
+           the accumulated buffers. */
+        window._renameInUploadBuffers = function (oldName, newName) {
+          if (!oldName || !newName || oldName === newName) return;
+          _uploadedRows.forEach((r) => {
+            if (r["Specimen ID"] === oldName) r["Specimen ID"] = newName;
+          });
+          _uploadedContigs.forEach((c) => {
+            if (c.sample === oldName) c.sample = newName;
+          });
+          _PROT_KEYS.forEach((k) => {
+            (_uploadedProtData[k] || []).forEach((r) => {
+              if (r["Specimen ID"] === oldName) r["Specimen ID"] = newName;
+            });
+          });
+          _uploadedMetaRecords.forEach((m) => {
+            if (m.sample_name === oldName) m.sample_name = newName;
+          });
+        };
+
         /* ── public: clear uploaded data ────────────────────────────────────────── */
         window.clearUploadedData = function () {
           _uploadedRows = [];
@@ -8728,13 +9144,26 @@
           if (fpEl) fpEl.checked = false;
         }
 
-        // Pre-populate min TASS filter from the recommended best_cutoffs threshold
+        // Pre-populate min TASS filter from the recommended best_cutoffs threshold.
+        // CRITICAL: also push the value into the paired range slider — otherwise the
+        // slider knob stays at its HTML default (70) while the number reads e.g. 20,
+        // and the very next drag snaps the number to wherever the knob is, which
+        // looks like the slider is producing random values.
         {
           const minEl = document.getElementById("filter-min");
+          const rangeEl = document.getElementById("filter-min-range");
           if (minEl) {
             const fromBestCutoff =
               BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Math.round(BEST_TASS_THRESH) : null;
-            if (fromBestCutoff != null) minEl.value = fromBestCutoff;
+            if (fromBestCutoff != null) {
+              const clamped = Math.max(0, Math.min(100, fromBestCutoff));
+              minEl.value = clamped;
+              if (rangeEl) rangeEl.value = clamped;
+            } else if (rangeEl) {
+              // No best_cutoff override — still keep the two controls in sync with whatever
+              // the number input was authored with in the HTML.
+              rangeEl.value = minEl.value;
+            }
           }
         }
 
@@ -10639,6 +11068,42 @@
           if (r.sample_name === oldName) r.sample_name = newName;
         });
 
+        // Update CONTIG_DATA — drives the histogram tab. Without this the
+        // histogram filter (visibleTaxa.has(`${cd.sample}||${cd.taxon_id}`))
+        // misses the renamed sample because cd.sample still has the old name
+        // while DATA's Specimen ID now has the new name.
+        CONTIG_DATA.forEach((cd) => {
+          if (cd && cd.sample === oldName) cd.sample = newName;
+        });
+
+        // Mirror the rename into BOOT so a later "Clear uploaded data" or
+        // any code path that re-reads BOOT doesn't bring the old name back.
+        if (BOOT) {
+          if (Array.isArray(BOOT.records)) {
+            BOOT.records.forEach((r) => {
+              if (r["Specimen ID"] === oldName) r["Specimen ID"] = newName;
+            });
+          }
+          if (Array.isArray(BOOT.contig_data)) {
+            BOOT.contig_data.forEach((cd) => {
+              if (cd && cd.sample === oldName) cd.sample = newName;
+            });
+          }
+          if (BOOT.prot_data && typeof BOOT.prot_data === "object") {
+            Object.keys(BOOT.prot_data).forEach((k) => {
+              if (!Array.isArray(BOOT.prot_data[k])) return;
+              BOOT.prot_data[k].forEach((r) => {
+                if (r && r["Specimen ID"] === oldName) r["Specimen ID"] = newName;
+              });
+            });
+          }
+        }
+
+        // Mirror the rename into the upload buffers so that the next file
+        // drop (which calls _mergeAndRedraw → DATA = BOOT + _uploadedRows)
+        // doesn't resurrect the OLD name from the buffers.
+        if (window._renameInUploadBuffers) window._renameInUploadBuffers(oldName, newName);
+
         // Update per-sample UI state
         if (sampleColors[oldName] !== undefined) sampleColors[newName] = sampleColors[oldName];
         if (sampleHidden[oldName] !== undefined) sampleHidden[newName] = sampleHidden[oldName];
@@ -10646,6 +11111,11 @@
         delete sampleColors[oldName];
         delete sampleHidden[oldName];
         delete sampleRescale[oldName];
+
+        // Keep custom sample order in sync
+        if (Array.isArray(_sampleOrder)) {
+          _sampleOrder = _sampleOrder.map((s) => (s === oldName ? newName : s));
+        }
 
         // Update map markers index
         if (_markerObjects[oldName]) {
@@ -10661,6 +11131,8 @@
         _computeBslLevels();
         _buildRunMetaTable();
         _buildLongitudinalSection();
+        // Rebuild histogram selectors so the rename is visible immediately
+        if (window._resetHistSelectors) window._resetHistSelectors();
         redraw();
 
         const rec = RUN_META.find((r) => r.sample_name === newName);
