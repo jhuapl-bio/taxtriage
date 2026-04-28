@@ -173,6 +173,7 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "Specimen ID":         sample_name,
         "Sample Type":         sample_type,
         "Detected Organism":   org.get("name", "Unknown"),
+        "TASS Score":          round(tass, 100),  # 4th col — 0–100 scale for display
         "Taxonomic ID #":      str(org.get("key", "")),
         "Subkey":              str(org.get("subkey", org.get("key", ""))),
         "Microbial Category":  org.get("microbial_category", "Unknown"),
@@ -181,7 +182,6 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "High Consequence":    bool(org.get("high_cons", False)),
         "Mol Type":            org.get("mol_type", ""),
         "Status":              org.get("status", ""),
-        "TASS Score":          round(tass, 100),  # 0–100 scale for display
         "# Reads Aligned":     int(strain_reads),
         "% Reads":             round(pct, 4),
         "Coverage":            round(min(100.0, (org.get("coverage", 0) or 0) * 100), 1),

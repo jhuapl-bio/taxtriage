@@ -6715,6 +6715,20 @@
             const fg = { 1: "#2e7d32", 2: "#b45309", 3: "#c2410c", 4: "#b91c1c" }[n] || "";
             td.style.cssText = `background:${bg};color:${fg};font-weight:700;text-align:center;white-space:nowrap`;
           }
+          // TASS Score: max 2 decimal places + linear background 0–100, low-alpha blue → green gradient
+          if (c === "TASS Score") {
+            const score = parseFloat(val);
+            if (!isNaN(score)) td.textContent = +score.toFixed(2);
+            if (!isNaN(score) && score > 0) {
+              const t = Math.min(1, Math.max(0, score / 100));
+              // interpolate hue 210 (blue) → 145 (green) as score rises
+              const hue = Math.round(210 - t * 65);
+              const alpha = (0.08 + t * 0.27).toFixed(3); // 0.08 @ 0 → 0.35 @ 100
+              td.style.background = `hsla(${hue},70%,45%,${alpha})`;
+            }
+            td.style.textAlign = "center";
+            td.style.fontWeight = "600";
+          }
           tr.appendChild(td);
         });
         return tr;
@@ -8479,6 +8493,7 @@
             "Specimen ID": sampleName,
             "Sample Type": sampleType || "unknown",
             "Detected Organism": org.name || "Unknown",
+            "TASS Score": Math.round(tass * 10) / 10, // 4th col
             "Taxonomic ID #": String(org.key || ""),
             Subkey: String(org.subkey || org.key || ""),
             "Microbial Category": org.microbial_category || "Unknown",
@@ -8487,7 +8502,6 @@
             "High Consequence": !!org.high_cons,
             "Mol Type": (org.mol_type || "").trim().toLowerCase(),
             Status: org.status || "",
-            "TASS Score": Math.round(tass * 10) / 10,
             "# Reads Aligned": Math.round(strain_reads),
             "% Reads": Math.round(pct * 10000) / 10000,
             Coverage: Math.round((parseFloat(org.coverage || 0) || 0) * 1000) / 10,
