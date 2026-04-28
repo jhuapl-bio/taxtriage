@@ -418,8 +418,29 @@
       #tbl-wrap {
         overflow: auto;
         background: #fff;
-        border-radius: 6px;
+        border-radius: 0 0 6px 6px;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+      }
+      #tbl-toolbar {
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+      }
+      .pg-btn {
+        padding: 0.15em 0.5em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 1em;
+        line-height: 1.4;
+        color: #1565c0;
+        transition: background 0.12s;
+      }
+      .pg-btn:hover:not(:disabled) {
+        background: #e3f2fd;
+      }
+      .pg-btn:disabled {
+        color: #bbb;
+        cursor: default;
       }
 
       /* ── Run Metadata pane ── */
@@ -1534,6 +1555,44 @@
               <select multiple id="col-toggle" style="flex: 1; min-height: 4.5em; font-size: 0.8em"></select>
             </div>
           </div>
+          <!-- row count + pagination controls -->
+          <div
+            id="tbl-toolbar"
+            style="
+              display: flex;
+              align-items: center;
+              gap: 0.6em;
+              flex-wrap: wrap;
+              padding: 0.35em 0.5em 0.35em;
+              font-size: 0.82em;
+              color: #444;
+              border-bottom: 1px solid #e0e0e0;
+              background: #fafafa;
+              border-radius: 6px 6px 0 0;
+            "
+          >
+            <span id="tbl-row-count" style="flex: 1; min-width: 120px"></span>
+            <label style="display: flex; align-items: center; gap: 0.3em; white-space: nowrap">
+              Rows per page:
+              <select
+                id="tbl-page-size"
+                style="padding: 0.15em 0.3em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em"
+              >
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="0">All</option>
+              </select>
+            </label>
+            <div id="tbl-pager" style="display: flex; align-items: center; gap: 0.3em">
+              <button id="tbl-first" class="pg-btn" title="First page">«</button>
+              <button id="tbl-prev" class="pg-btn" title="Previous page">‹</button>
+              <span id="tbl-page-label" style="min-width: 6em; text-align: center; white-space: nowrap"></span>
+              <button id="tbl-next" class="pg-btn" title="Next page">›</button>
+              <button id="tbl-last" class="pg-btn" title="Last page">»</button>
+            </div>
+          </div>
           <div id="tbl-wrap">
             <table id="data-table">
               <thead>
@@ -2521,10 +2580,14 @@
         // Re-evaluate histogram tab visibility too
         const histBtn = document.getElementById("hist-tab-btn");
         if (histBtn) histBtn.classList.toggle("hidden", CONTIG_DATA.length === 0);
+        // Prune SAMPLE_META so % classified drops the deleted sample's reads
+        delete SAMPLE_META[id];
+        if (BOOT && BOOT.sample_meta) delete BOOT.sample_meta[id];
         buildSampleList();
         buildTable();
         _rebuildMapMarkers();
         if (window._resetHistSelectors) window._resetHistSelectors();
+        document.getElementById("banner-sub").textContent = _buildBannerSub();
         redraw();
       }
 
@@ -2572,6 +2635,9 @@
           delete sampleRescale[id];
         });
         _sampleOrder = [];
+        // Clear SAMPLE_META so % classified resets to N/A with no data
+        Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
+        if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
         buildSampleList();
         buildTable();
         _rebuildMapMarkers();
@@ -2579,6 +2645,7 @@
         const histBtn = document.getElementById("hist-tab-btn");
         if (histBtn) histBtn.classList.add("hidden");
         if (window._resetHistSelectors) window._resetHistSelectors();
+        document.getElementById("banner-sub").textContent = _buildBannerSub();
         redraw();
       }
 
@@ -5696,6 +5763,7 @@
               sortCol = c;
               sortAsc = true;
             }
+            _tblResetPage();
             renderTableHeaders();
             populateTable();
           });
@@ -6593,6 +6661,79 @@
         };
       })();
 
+      /* ── Table pagination state ─────────────────────────────────────────────── */
+      let _tblPage = 0; // 0-based current page index
+
+      function _tblPageSize() {
+        const sel = document.getElementById("tbl-page-size");
+        return sel ? parseInt(sel.value) || 0 : 100;
+      }
+
+      /* Reset to page 0 — call whenever filters/sort change so the user
+         doesn't land on an empty page after narrowing results. */
+      function _tblResetPage() {
+        _tblPage = 0;
+      }
+
+      function _renderOneRow(row) {
+        const tr = document.createElement("tr");
+        visibleCols.forEach((c) => {
+          const td = document.createElement("td");
+          const val = row[c] != null ? row[c] : "";
+          if (c === "Detected Organism") {
+            const isHC = row["High Consequence"];
+            const mt = (row["Mol Type"] || "").toLowerCase();
+            if (isHC || mt) {
+              if (isHC) td.style.cssText = "color:#c62828;font-weight:600;white-space:nowrap";
+              else td.style.cssText = "white-space:nowrap";
+              if (isHC) {
+                const badge = document.createElement("span");
+                badge.textContent = "⚠ ";
+                badge.title = "High Consequence Pathogen";
+                badge.style.cssText = "color:#c62828;margin-right:2px";
+                td.appendChild(badge);
+              }
+              td.appendChild(document.createTextNode(val));
+              if (mt === "dna" || mt === "rna") {
+                const mtBadge = document.createElement("span");
+                mtBadge.textContent = mt === "dna" ? "D" : "R";
+                mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
+                mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
+                  mt === "dna" ? "#1565c0" : "#6a1b9a"
+                };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
+                td.appendChild(mtBadge);
+              }
+            } else {
+              td.textContent = val;
+            }
+          } else {
+            td.textContent = val;
+          }
+          if (c === "BSL Level" && val) {
+            const n = parseInt(val.replace("BSL-", "")) || 0;
+            const bg = { 1: "#e8f5e9", 2: "#fff9c4", 3: "#ffe0b2", 4: "#ffcdd2" }[n] || "";
+            const fg = { 1: "#2e7d32", 2: "#b45309", 3: "#c2410c", 4: "#b91c1c" }[n] || "";
+            td.style.cssText = `background:${bg};color:${fg};font-weight:700;text-align:center;white-space:nowrap`;
+          }
+          // TASS Score: max 2 decimal places + linear background 0–100, low-alpha blue → green gradient
+          if (c === "TASS Score") {
+            const score = parseFloat(val);
+            if (!isNaN(score)) td.textContent = +score.toFixed(2);
+            if (!isNaN(score) && score > 0) {
+              const t = Math.min(1, Math.max(0, score / 100));
+              // interpolate hue 210 (blue) → 145 (green) as score rises
+              const hue = Math.round(210 - t * 65);
+              const alpha = (0.08 + t * 0.27).toFixed(3); // 0.08 @ 0 → 0.35 @ 100
+              td.style.background = `hsla(${hue},70%,45%,${alpha})`;
+            }
+            td.style.textAlign = "center";
+            td.style.fontWeight = "600";
+          }
+          tr.appendChild(td);
+        });
+        return tr;
+      }
+
       function populateTable() {
         let fd = filteredData();
         if (sortCol) {
@@ -6607,53 +6748,77 @@
               : String(vb || "").localeCompare(String(va || ""));
           });
         }
+
+        const total = fd.length;
+        const pageSize = _tblPageSize();
+        const pages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+
+        // Clamp page index in case total shrank
+        _tblPage = Math.max(0, Math.min(_tblPage, pages - 1));
+
+        const start = pageSize > 0 ? _tblPage * pageSize : 0;
+        const end = pageSize > 0 ? Math.min(start + pageSize, total) : total;
+        const slice = pageSize > 0 ? fd.slice(start, end) : fd;
+
+        // ── render rows ──────────────────────────────────────────────────────
         const tbody = document.getElementById("table-body");
         tbody.innerHTML = "";
-        fd.forEach((row) => {
-          const tr = document.createElement("tr");
-          visibleCols.forEach((c) => {
-            const td = document.createElement("td");
-            const val = row[c] != null ? row[c] : "";
-            if (c === "Detected Organism") {
-              const isHC = row["High Consequence"];
-              const mt = (row["Mol Type"] || "").toLowerCase();
-              if (isHC || mt) {
-                if (isHC) td.style.cssText = "color:#c62828;font-weight:600;white-space:nowrap";
-                else td.style.cssText = "white-space:nowrap";
-                if (isHC) {
-                  const badge = document.createElement("span");
-                  badge.textContent = "⚠ ";
-                  badge.title = "High Consequence Pathogen";
-                  badge.style.cssText = "color:#c62828;margin-right:2px";
-                  td.appendChild(badge);
-                }
-                td.appendChild(document.createTextNode(val));
-                if (mt === "dna" || mt === "rna") {
-                  const mtBadge = document.createElement("span");
-                  mtBadge.textContent = mt === "dna" ? "D" : "R";
-                  mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
-                  mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
-                    mt === "dna" ? "#1565c0" : "#6a1b9a"
-                  };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
-                  td.appendChild(mtBadge);
-                }
-              } else {
-                td.textContent = val;
-              }
-            } else {
-              td.textContent = val;
-            }
-            if (c === "BSL Level" && val) {
-              const n = parseInt(val.replace("BSL-", "")) || 0;
-              const bg = { 1: "#e8f5e9", 2: "#fff9c4", 3: "#ffe0b2", 4: "#ffcdd2" }[n] || "";
-              const fg = { 1: "#2e7d32", 2: "#b45309", 3: "#c2410c", 4: "#b91c1c" }[n] || "";
-              td.style.cssText = `background:${bg};color:${fg};font-weight:700;text-align:center;white-space:nowrap`;
-            }
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        });
+        const frag = document.createDocumentFragment();
+        slice.forEach((row) => frag.appendChild(_renderOneRow(row)));
+        tbody.appendChild(frag);
+
+        // ── update toolbar ───────────────────────────────────────────────────
+        const countEl = document.getElementById("tbl-row-count");
+        if (countEl) {
+          if (total === 0) {
+            countEl.textContent = "No rows";
+          } else if (pageSize > 0 && pages > 1) {
+            countEl.textContent = `Rows ${start + 1}–${end} of ${total.toLocaleString()}`;
+          } else {
+            countEl.textContent = `${total.toLocaleString()} row${total !== 1 ? "s" : ""}`;
+          }
+        }
+
+        const labelEl = document.getElementById("tbl-page-label");
+        const firstBtn = document.getElementById("tbl-first");
+        const prevBtn = document.getElementById("tbl-prev");
+        const nextBtn = document.getElementById("tbl-next");
+        const lastBtn = document.getElementById("tbl-last");
+        const pager = document.getElementById("tbl-pager");
+
+        const showPager = pageSize > 0 && pages > 1;
+        if (pager) pager.style.display = showPager ? "flex" : "none";
+
+        if (showPager) {
+          if (labelEl) labelEl.textContent = `Page ${_tblPage + 1} of ${pages}`;
+          if (firstBtn) firstBtn.disabled = _tblPage === 0;
+          if (prevBtn) prevBtn.disabled = _tblPage === 0;
+          if (nextBtn) nextBtn.disabled = _tblPage >= pages - 1;
+          if (lastBtn) lastBtn.disabled = _tblPage >= pages - 1;
+        }
       }
+
+      /* ── Wire pagination controls (runs once after DOM is ready) ────────────── */
+      (function _initTablePagination() {
+        function _goPage(n) {
+          _tblPage = n;
+          populateTable();
+        }
+
+        document.getElementById("tbl-first").addEventListener("click", () => _goPage(0));
+        document.getElementById("tbl-prev").addEventListener("click", () => _goPage(_tblPage - 1));
+        document.getElementById("tbl-next").addEventListener("click", () => _goPage(_tblPage + 1));
+        document.getElementById("tbl-last").addEventListener("click", () => {
+          const total = filteredData().length;
+          const pageSize = _tblPageSize();
+          const pages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+          _goPage(pages - 1);
+        });
+        document.getElementById("tbl-page-size").addEventListener("change", () => {
+          _tblPage = 0;
+          populateTable();
+        });
+      })();
 
       /* ═══════════════════════════════════════════════════════════════════════════
        -  §  HEATMAP VALUE COLUMN SELECTOR
@@ -8071,6 +8236,9 @@
       }
       function redraw() {
         _invalidateFilterCache();
+        // Reset table to page 0 whenever filters change so the user
+        // doesn't land on an empty page after narrowing results.
+        _tblResetPage();
         // Mark every tab dirty so switches re-render lazily.
         for (const k in _TAB_DIRTY) _TAB_DIRTY[k] = true;
         // Render the currently visible tab now.
@@ -8276,6 +8444,33 @@
         });
       })();
 
+      /* ── Banner subtitle helper ─────────────────────────────────────────────────
+         Builds the "N samples × M organisms × X% reads classified" string from
+         the current DATA and SAMPLE_META globals.  Called from init() and from
+         the upload / clear handlers so all three stay in sync.
+      ────────────────────────────────────────────────────────────────────────── */
+      function _buildBannerSub() {
+        const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+
+        // Unique organisms: deduplicate on Taxonomic ID # (key), not subkey
+        const uniqueOrgs = new Set(DATA.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
+
+        // % reads classified = Σ(total_organism_reads from SAMPLE_META) / Σ(total_reads from SAMPLE_META)
+        // Uses per-sample metadata from the JSON. Falls back to summing "# Reads Aligned"
+        // from DATA rows if SAMPLE_META doesn't carry total_reads (e.g. plain TSV upload).
+        const totalInputReads = samples.reduce(
+          (s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0),
+          0,
+        );
+        const totalOrgReads =
+          samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
+          DATA.reduce((s, r) => s + (parseFloat(r["# Reads Aligned"]) || 0), 0);
+        let pctClass = totalInputReads > 0 ? ((totalOrgReads / totalInputReads) * 100).toFixed(1) + "%" : "N/A";
+        if (pctClass === "0.0%" && totalOrgReads > 0) pctClass = "<0.1%";
+
+        return `${samples.length} sample(s) \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified`;
+      }
+
       /* ═══════════════════════════════════════════════════════════════════════════
        -  §  FILE UPLOAD
        -     Client-side ingestion of .paths.json / .xlsx / .tsv files via
@@ -8298,6 +8493,7 @@
             "Specimen ID": sampleName,
             "Sample Type": sampleType || "unknown",
             "Detected Organism": org.name || "Unknown",
+            "TASS Score": Math.round(tass * 10) / 10, // 4th col
             "Taxonomic ID #": String(org.key || ""),
             Subkey: String(org.subkey || org.key || ""),
             "Microbial Category": org.microbial_category || "Unknown",
@@ -8306,7 +8502,6 @@
             "High Consequence": !!org.high_cons,
             "Mol Type": (org.mol_type || "").trim().toLowerCase(),
             Status: org.status || "",
-            "TASS Score": Math.round(tass * 10) / 10,
             "# Reads Aligned": Math.round(strain_reads),
             "% Reads": Math.round(pct * 10000) / 10000,
             Coverage: Math.round((parseFloat(org.coverage || 0) || 0) * 1000) / 10,
@@ -8611,9 +8806,7 @@
 
           // Rebuild UI
           const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
-          document.getElementById(
-            "banner-sub",
-          ).textContent = `${samples.length} sample(s) · ${DATA.length} organism entries`;
+          document.getElementById("banner-sub").textContent = _buildBannerSub();
 
           buildSampleList();
           // Reset column selector so buildTable() fully rebuilds with new columns + samples
@@ -8736,6 +8929,19 @@
                 if (Object.values(metaRec).some((v, i) => i > 0 && v != null)) {
                   _uploadedMetaRecords.push(metaRec);
                 }
+                // Always update SAMPLE_META with read-count fields so the
+                // banner % reads classified stays accurate after a JSON upload.
+                const existing = SAMPLE_META[result.sampleName] || {};
+                SAMPLE_META[result.sampleName] = Object.assign({}, existing, {
+                  sample_name: result.sampleName,
+                  total_reads: parseFloat(m.total_reads) || existing.total_reads || 0,
+                  aligned_reads: parseFloat(m.aligned_reads) || existing.aligned_reads || 0,
+                  total_organism_reads: parseFloat(m.total_organism_reads) || existing.total_organism_reads || 0,
+                });
+                // Mirror into BOOT.sample_meta so clear/restore also sees the value
+                if (BOOT && BOOT.sample_meta) {
+                  BOOT.sample_meta[result.sampleName] = SAMPLE_META[result.sampleName];
+                }
               }
               _uploadedNames.push(file.name);
             } catch (err) {
@@ -8854,9 +9060,7 @@
           if (fpEl) fpEl.checked = passCount > 0;
 
           const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
-          document.getElementById(
-            "banner-sub",
-          ).textContent = `${samples.length} sample(s) · ${DATA.length} organism entries`;
+          document.getElementById("banner-sub").textContent = _buildBannerSub();
 
           const clearBtn = document.getElementById("upload-clear-btn");
           if (clearBtn) clearBtn.classList.add("hidden");
@@ -9130,12 +9334,8 @@
       })();
 
       (function init() {
-        const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
-
         // Banner subtitle
-        document.getElementById(
-          "banner-sub",
-        ).textContent = `${samples.length} sample(s) · ${DATA.length} organism entries`;
+        document.getElementById("banner-sub").textContent = _buildBannerSub();
 
         // Auto-disable passes-threshold filter if it would show nothing
         const passCount = DATA.filter((r) => isTruthy(r["Passes Threshold"])).length;
