@@ -67,7 +67,8 @@ if (params.fastq_1) {
 } else if (params.input) {
     if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
 } else {
-    exit 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+    ex
+    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
 }
 
 if (params.minq) {

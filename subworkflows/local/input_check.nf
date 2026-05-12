@@ -49,8 +49,8 @@ workflow INPUT_CHECK {
             .toList()
             .flatMap { resolve_control_types(it) }
             .set { reads }
-        GENERATE_SAMPLESHEET.out.meta
-            .set { ch_meta }
+        // GENERATE_SAMPLESHEET has no meta output; ch_meta stays as the
+        // NO_FILE sentinel already set above when using --fastq_1 directly.
         versions = GENERATE_SAMPLESHEET.out.versions
     } else if (params.input) {
         // Use the provided samplesheet
