@@ -15,23 +15,24 @@ TaxTriage is a flexible, containerized bioinformatics pipeline designed to ident
 
 ### Description
 
-The TaxTriage pipeline aims to democratize metagenomic sequence analysis for early warning and outbreak investigations, both in public health and potentially clinical settings. To enable this capability, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from tissues (human or animal). The intent is to provide non-bioinformaticians a tool capable of generating species-level identifications of pathogens from raw metagenomic or targeted sequencing data. Specific modules are developed to consider sequencing chemistry and sample types (e.g. blood vs. saliva, etc.). Strain, variant, or clade-level distinction may be possible with specialized datasets, but it is anticipated that the level of granularity would require subsequent, specialized analyses.
+The TaxTriage pipeline aims to democratize metagenomic sequence analysis for early warning and outbreak investigations in public health and clinical diagnostics settings. To enable this capability, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from a range of human or animal sample types. The fully automated analysis process generates a variety of outputs, intended for both clincal specialists and skilled bioinformaticians, to enable species-level identification of pathogens from unprocessed metagenomics data. Flexibility has been built in to enable multiple sequencing chemistry and sample types (blood, saliva, stool, etc.). While strain, variant, or clade-level distinction may be possible, the quantity and quality of data determines the overall reporting granularity. 
 
 - Quality control steps
 - In-silico host depletion
 - Classification of reads
 - Mapping of reads to reference genomes found to be "top hits"
-- Confidence metric generation (e.g., depth/breadth of coverage, %nt ID)
-- Threshold mechanisms
+- Confidence metric generation (e.g., depth/breadth of coverage, percent nucleotide ID, etc.)
+- Thresholding mechanisms
 - De-novo assembly
 - Detailed MultiQC reports
-- Concise final report (intended to have all data fields required for use in clinical settings)
-
+- Concise final report (intended to have all data fields required for use in clinical laboratory settings)
+- Interactive exploratory dashboards
+  
 For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. This component is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output formats include PDF and `HTML` which are highly interactive and distributable.
 
-See [Important output locations](https://github.com/jhuapl-bio/taxtriage/wiki/Output) for information on where to get the most important output files from the pipeline.
+See [Important output locations](https://github.com/jhuapl-bio/taxtriage/wiki/Output) for information on where to get key output files from the pipeline.
 
-See [here](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules#step-5-top-hits-assignment) for information on how "top hits" is located
+See [here](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules#step-5-top-hits-assignment) for information on how "top hits" are identified
 
 See collaborative efforts with groups outside JHU/APL [here](README.md#uw-madison--a-custom-geneious-prime-plugin-for-taxtriage)
 
