@@ -9,9 +9,9 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="pages.js"></script>
-    <script src="mce.js"></script>
-    <!-- <script src="heatmap_boot.js"></script> -->
+    <!-- <script src="pages.js"></script> -->
+    <!-- <script src="mce.js"></script> -->
+    <script src="heatmap_boot.js"></script>
 
     <script>
       const BOOT = window.HEATMAP_BOOT || {};
@@ -2318,7 +2318,7 @@
           <input type="checkbox" id="filter-ic" checked />
           <label for="filter-ic">Case-insensitive</label>
         </div>
-        <label>Min TASS Score (0–100)</label>
+        <label id="filter-min-label">Min TASS Score (0–100)</label>
         <div
           id="filter-min-wrap"
           style="display: flex; align-items: center; gap: 0.4em; flex-wrap: wrap; margin-top: 0.15em"
@@ -2343,6 +2343,17 @@
             style="width: 4.2em"
             aria-label="Min TASS Score exact value"
           />
+        </div>
+        <!-- Per-sample-type TASS cutoffs — populated dynamically, replaces global slider -->
+        <div id="per-type-tass-wrap" style="display:none;margin-top:0.25em">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3em">
+            <label style="font-size:0.82em;color:#444;font-weight:600;margin:0">TASS by Sample Type</label>
+            <div style="display:flex;gap:0.3em">
+              <button id="per-type-reset-all-btn" title="Reset each type to its recommended default" style="font-size:0.72em;padding:2px 7px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer">Reset All</button>
+              <button id="per-type-set-all-btn" title="Set all types to the active type's current value" style="font-size:0.72em;padding:2px 7px;border:1px solid #90caf9;border-radius:4px;background:#e3f2fd;cursor:pointer;display:none">Set All</button>
+            </div>
+          </div>
+          <div id="per-type-tass-rows"></div>
         </div>
         <div class="row" style="margin-top: 0.4em">
           <input type="checkbox" id="filter-hc" />
@@ -2606,6 +2617,7 @@
       const sampleColors = {};
       const sampleHidden = {};
       const sampleRescale = {}; // per-sample flag: scale legacy 0–1 TASS/Coverage ×100
+      const perTypeTass = {};   // per-sample-type TASS override: { "stool": 65, "blood": 80, ... }
       let _sampleOrder = []; // custom display order for samples (index → id)
 
       /** Return arr sorted by _sampleOrder; unknowns go to the end. */
@@ -2686,6 +2698,13 @@
         for (const k in sampleRescale) if (sampleRescale[k]) r.push(k);
         return r.sort().join("|");
       }
+      function _hashPerTypeTass() {
+        return Object.entries(perTypeTass)
+          .filter(([, v]) => v != null)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, v]) => `${k}:${v}`)
+          .join("|");
+      }
       function filteredData() {
         const txt = document.getElementById("filter-text").value.trim();
         const ic = document.getElementById("filter-ic").checked;
@@ -2719,6 +2738,7 @@
           _hashHidden(),
           _hashRescale(),
           DATA.length,
+          _hashPerTypeTass(),
         ].join("\u0001");
         if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
@@ -2730,8 +2750,10 @@
           if (sampleHidden[r["Specimen ID"]]) return false;
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
           const tass = parseFloat(r["TASS Score"]);
+          const _st = (r["Sample Type"] || "").trim().toLowerCase();
+          const _typeMin = (_st && _st !== "unknown" && perTypeTass[_st] != null) ? perTypeTass[_st] : minV;
           const tassFilter = anyRescale && sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
-          if (!isNaN(tassFilter) && tassFilter < minV) return false;
+          if (!isNaN(tassFilter) && tassFilter < _typeMin) return false;
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (onlyP && !isTruthy(r["Passes Threshold"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
@@ -3147,6 +3169,289 @@
         // Keep the Hide All / Show All button label aligned with the
         // current visibility state on every list rebuild.
         _syncToggleAllSamplesBtn();
+        // Rebuild per-sample-type TASS cutoff UI
+        buildPerTypeTassUI();
+      }
+
+      /* ── Per-sample-type TASS helpers ────────────────────────────────────── */
+
+      /** Return the recommended TASS threshold for a given sample type by
+       *  inspecting SAMPLE_META entries that share the same type, then taking
+       *  the median of their per-sample best_cutoffs thresholds. */
+      function _defaultTassForType(sampleType) {
+        const t = (sampleType || "").toLowerCase().trim();
+        const vals = Object.values(SAMPLE_META)
+          .filter((m) => (m.sample_type || "").toLowerCase().trim() === t)
+          .map((m) => {
+            const gran = m.preferred_granularity || "subkey";
+            return ((m.best_cutoffs || {})[gran] || {}).best_threshold;
+          })
+          .filter((v) => v != null && !isNaN(v));
+        if (!vals.length) {
+          return BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH)
+            ? Math.round(BEST_TASS_THRESH)
+            : parseInt(document.getElementById("filter-min").value, 10) || 70;
+        }
+        vals.sort((a, b) => a - b);
+        const mid = Math.floor(vals.length / 2);
+        return Math.round(vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2);
+      }
+
+      /* ── Per-sample-type TASS cutoff UI ──────────────────────────────────── */
+      function buildPerTypeTassUI() {
+        const wrap = document.getElementById("per-type-tass-wrap");
+        const rowsEl = document.getElementById("per-type-tass-rows");
+        const resetAllBtn = document.getElementById("per-type-reset-all-btn");
+        const setAllBtn = document.getElementById("per-type-set-all-btn");
+        if (!wrap || !rowsEl) return;
+
+        const types = Array.from(
+          new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
+        ).sort();
+
+        if (!types.length) {
+          wrap.style.display = "none";
+          // Show global slider as normal fallback
+          const lbl = document.getElementById("filter-min-label");
+          const wrapEl = document.getElementById("filter-min-wrap");
+          if (lbl) lbl.style.display = "";
+          if (wrapEl) wrapEl.style.display = "";
+          return;
+        }
+
+        // Hide global slider — per-type controls replace it
+        const globalLbl = document.getElementById("filter-min-label");
+        const globalWrap = document.getElementById("filter-min-wrap");
+        if (globalLbl) globalLbl.style.display = "none";
+        if (globalWrap) globalWrap.style.display = "none";
+
+        wrap.style.display = "";
+        rowsEl.innerHTML = "";
+
+        // Initialise defaults on first build; preserve user overrides on rebuild
+        types.forEach((t) => {
+          if (perTypeTass[t] == null) perTypeTass[t] = _defaultTassForType(t);
+        });
+
+        const singleType = types.length === 1;
+        // which row is currently expanded (only for 2+ types)
+        let activeType = singleType ? types[0] : null;
+
+        // Hint for multi-type mode
+        if (!singleType) {
+          const hint = document.createElement("div");
+          hint.style.cssText = "font-size:0.73em;color:#888;margin-bottom:0.4em;display:flex;align-items:center;gap:4px";
+          hint.innerHTML = '<i class="fas fa-hand-pointer" style="font-size:0.9em"></i> Click a type to adjust its cutoff';
+          rowsEl.appendChild(hint);
+        }
+
+        // One row per type
+        types.forEach((t) => {
+          const defaultVal = _defaultTassForType(t);
+
+          /* ─ wrapper card ─ */
+          const card = document.createElement("div");
+          card.className = "pt-tass-card";
+          card.dataset.type = t;
+          card.style.cssText =
+            "border:1px solid transparent;border-radius:5px;margin-bottom:3px;overflow:hidden;transition:border-color 0.15s,background 0.1s";
+
+          /* ─ clickable header row ─ */
+          const hdr = document.createElement("div");
+          hdr.className = "pt-tass-hdr";
+          hdr.style.cssText =
+            "display:flex;align-items:center;gap:0.35em;padding:4px 7px;cursor:" +
+            (singleType ? "default" : "pointer") +
+            ";border-radius:5px;font-size:0.82em;transition:background 0.12s";
+
+          const iconEl = document.createElement("i");
+          iconEl.className = "fas fa-sliders";
+          iconEl.style.cssText =
+            "font-size:0.85em;color:#1565c0;opacity:" +
+            (singleType ? "0.7" : "0.35") +
+            ";transition:opacity 0.15s,transform 0.2s;flex-shrink:0;width:12px;text-align:center";
+
+          const lblEl = document.createElement("span");
+          lblEl.textContent = t;
+          lblEl.style.cssText =
+            "flex:1;text-transform:capitalize;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+
+          const valDisp = document.createElement("span");
+          valDisp.className = "pt-val-disp";
+          valDisp.textContent = (perTypeTass[t] ?? defaultVal).toFixed(0);
+          valDisp.style.cssText =
+            "font-size:0.9em;color:#1565c0;font-weight:600;min-width:2em;text-align:right;font-variant-numeric:tabular-nums";
+
+          hdr.appendChild(iconEl);
+          hdr.appendChild(lblEl);
+          hdr.appendChild(valDisp);
+          card.appendChild(hdr);
+
+          /* ─ expandable slider panel ─ */
+          const panel = document.createElement("div");
+          panel.className = "pt-tass-panel";
+          panel.style.cssText =
+            "padding:5px 8px 7px 8px;background:#f0f4fc;border-top:1px solid #d0daf0;display:" +
+            (singleType ? "block" : "none");
+
+          const sliderRow = document.createElement("div");
+          sliderRow.style.cssText = "display:flex;align-items:center;gap:0.4em";
+
+          const rangeEl = document.createElement("input");
+          rangeEl.type = "range";
+          rangeEl.min = "0";
+          rangeEl.max = "100";
+          rangeEl.step = "1";
+          rangeEl.value = perTypeTass[t] ?? defaultVal;
+          rangeEl.style.cssText = "flex:1;cursor:pointer;accent-color:#1565c0";
+
+          const numEl = document.createElement("input");
+          numEl.type = "number";
+          numEl.min = "0";
+          numEl.max = "100";
+          numEl.step = "1";
+          numEl.value = perTypeTass[t] ?? defaultVal;
+          numEl.style.cssText =
+            "width:3.6em;padding:0.1em 0.2em;border:1px solid #b0bec5;border-radius:4px;font-size:0.88em;text-align:right";
+
+          const resetBtn = document.createElement("button");
+          resetBtn.innerHTML = '<i class="fas fa-rotate-left"></i>';
+          resetBtn.title = `Reset to default (${defaultVal})`;
+          resetBtn.style.cssText =
+            "background:transparent;border:none;color:#90a4ae;cursor:pointer;font-size:0.95em;padding:0 2px;line-height:1;flex-shrink:0;transition:color 0.12s";
+          resetBtn.addEventListener("mouseenter", () => (resetBtn.style.color = "#1565c0"));
+          resetBtn.addEventListener("mouseleave", () => (resetBtn.style.color = "#90a4ae"));
+
+          // Default label below slider
+          const defLabel = document.createElement("div");
+          defLabel.style.cssText = "font-size:0.7em;color:#90a4ae;margin-top:2px;text-align:right";
+          defLabel.textContent = `default: ${defaultVal}`;
+
+          const applyVal = (v) => {
+            const clamped = Math.max(0, Math.min(100, Math.round(parseFloat(v))));
+            perTypeTass[t] = clamped;
+            rangeEl.value = clamped;
+            numEl.value = clamped;
+            valDisp.textContent = clamped.toFixed(0);
+            if (setAllBtn) {
+              setAllBtn.textContent = `Set All to ${clamped}`;
+              setAllBtn.style.display = "";
+            }
+            _invalidateFilterCache();
+            redraw();
+          };
+
+          rangeEl.addEventListener("input", () => applyVal(rangeEl.value));
+          numEl.addEventListener("input", () => { if (!isNaN(parseFloat(numEl.value))) applyVal(numEl.value); });
+          resetBtn.addEventListener("click", (e) => { e.stopPropagation(); applyVal(defaultVal); });
+
+          sliderRow.appendChild(rangeEl);
+          sliderRow.appendChild(numEl);
+          sliderRow.appendChild(resetBtn);
+          panel.appendChild(sliderRow);
+          panel.appendChild(defLabel);
+          card.appendChild(panel);
+          rowsEl.appendChild(card);
+
+          /* ─ hover + click behaviour (multi-type mode only) ─ */
+          if (!singleType) {
+            hdr.addEventListener("mouseenter", () => {
+              hdr.style.background = "#e8f0fe";
+              iconEl.style.opacity = "1";
+              iconEl.style.transform = "rotate(-25deg) scale(1.1)";
+            });
+            hdr.addEventListener("mouseleave", () => {
+              if (activeType !== t) {
+                hdr.style.background = "";
+                iconEl.style.opacity = "0.35";
+                iconEl.style.transform = "";
+              }
+            });
+            hdr.addEventListener("click", () => {
+              const isOpen = panel.style.display !== "none";
+              // Close all panels first
+              rowsEl.querySelectorAll(".pt-tass-card").forEach((c) => {
+                c.querySelector(".pt-tass-panel").style.display = "none";
+                c.style.borderColor = "transparent";
+                c.style.background = "";
+                const ic = c.querySelector(".pt-tass-hdr i");
+                if (ic) { ic.style.opacity = "0.35"; ic.style.transform = ""; }
+                c.querySelector(".pt-tass-hdr").style.background = "";
+              });
+              activeType = null;
+              if (setAllBtn) setAllBtn.style.display = "none";
+
+              if (!isOpen) {
+                // Open this panel
+                panel.style.display = "block";
+                card.style.borderColor = "#90caf9";
+                card.style.background = "#f7fbff";
+                hdr.style.background = "#e8f0fe";
+                iconEl.style.opacity = "1";
+                iconEl.style.transform = "rotate(-25deg) scale(1.1)";
+                activeType = t;
+                const curVal = perTypeTass[t] ?? defaultVal;
+                if (setAllBtn) {
+                  setAllBtn.textContent = `Set All to ${Math.round(curVal)}`;
+                  setAllBtn.style.display = "";
+                }
+              }
+            });
+          }
+        });
+
+        /* ─ Reset All button ─ */
+        if (resetAllBtn) {
+          // Re-attach to avoid duplicate listeners from rebuilds
+          const newReset = resetAllBtn.cloneNode(true);
+          resetAllBtn.parentNode.replaceChild(newReset, resetAllBtn);
+          newReset.addEventListener("click", () => {
+            types.forEach((t) => {
+              const def = _defaultTassForType(t);
+              perTypeTass[t] = def;
+              const card = rowsEl.querySelector(`[data-type="${t}"]`);
+              if (!card) return;
+              const vd = card.querySelector(".pt-val-disp");
+              if (vd) vd.textContent = def.toFixed(0);
+              const panel = card.querySelector(".pt-tass-panel");
+              if (panel) {
+                const r = panel.querySelector("input[type=range]");
+                const n = panel.querySelector("input[type=number]");
+                if (r) r.value = def;
+                if (n) n.value = def;
+              }
+            });
+            _invalidateFilterCache();
+            redraw();
+          });
+        }
+
+        /* ─ Set All button ─ */
+        if (setAllBtn) {
+          const newSetAll = setAllBtn.cloneNode(true);
+          setAllBtn.parentNode.replaceChild(newSetAll, setAllBtn);
+          newSetAll.style.display = "none";
+          newSetAll.addEventListener("click", () => {
+            if (!activeType || perTypeTass[activeType] == null) return;
+            const val = perTypeTass[activeType];
+            types.forEach((t) => {
+              perTypeTass[t] = val;
+              const card = rowsEl.querySelector(`[data-type="${t}"]`);
+              if (!card) return;
+              const vd = card.querySelector(".pt-val-disp");
+              if (vd) vd.textContent = val.toFixed(0);
+              const panel = card.querySelector(".pt-tass-panel");
+              if (panel) {
+                const r = panel.querySelector("input[type=range]");
+                const n = panel.querySelector("input[type=number]");
+                if (r) r.value = val;
+                if (n) n.value = val;
+              }
+            });
+            _invalidateFilterCache();
+            redraw();
+          });
+        }
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -7207,7 +7512,7 @@
           const org = r["Detected Organism"] || r["Taxonomic ID #"] || `Row ${i + 1}`;
           const sn  = r["Specimen ID"] || "";
           const isHC = isTruthy(r["High Consequence"]);
-          return `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;white-space:nowrap;min-width:140px;max-width:220px;border-bottom:2px solid #1565c0">
+          return `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;white-space:normal;word-break:break-word;min-width:140px;max-width:220px;border-bottom:2px solid #1565c0">
             ${isHC ? '<span style="color:#c62828;margin-right:3px">⚠</span>' : ""}
             <span style="font-weight:700;font-size:0.9em">${org}</span><br>
             <span style="font-weight:400;font-size:0.78em;color:#666">${sn}</span>
@@ -8935,12 +9240,35 @@
         const platforms = uniq(
           samples.map((sn) => (SAMPLE_META[sn] || {}).platform).filter((p) => p && p !== "unknown"),
         );
-        // Applied TASS cutoff: the live sidebar filter value (updates with filters).
-        const appliedCut = parseFloat((document.getElementById("filter-min") || {}).value);
-        const recCut =
-          BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH).toFixed(1) : null;
-        const cutVal = !isNaN(appliedCut) ? appliedCut.toFixed(1) : recCut || "—";
-        const cutSub = recCut != null ? `recommended ${recCut}` : "applied filter";
+        // Applied TASS cutoffs — per sample type when available, otherwise global fallback.
+        const _kpiTypes = Array.from(
+          new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
+        ).sort();
+        const _globalFallback = parseFloat((document.getElementById("filter-min") || {}).value) || 0;
+        const _recCut = BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH) : null;
+        let cutVal, cutSub, _typeVals;
+        if (_kpiTypes.length > 0) {
+          _typeVals = _kpiTypes.map((t) => ({
+            type: t,
+            applied: perTypeTass[t] != null ? perTypeTass[t] : _globalFallback,
+            def: _defaultTassForType(t),
+          }));
+          const _appliedVals = _typeVals.map((tv) => tv.applied);
+          const _allSame = _appliedVals.every((v) => v === _appliedVals[0]);
+          if (_allSame) {
+            cutVal = _appliedVals[0].toFixed(1);
+            cutSub = _kpiTypes.length === 1 ? _kpiTypes[0] : "all types";
+          } else {
+            const _mn = Math.min(..._appliedVals), _mx = Math.max(..._appliedVals);
+            cutVal = `${_mn.toFixed(0)}\u2013${_mx.toFixed(0)}`;
+            cutSub = "by sample type";
+          }
+        } else {
+          _typeVals = null;
+          const appliedCut = _globalFallback;
+          cutVal = appliedCut > 0 ? appliedCut.toFixed(1) : (_recCut != null ? _recCut.toFixed(1) : "—");
+          cutSub = _recCut != null ? `recommended ${_recCut.toFixed(1)}` : "applied filter";
+        }
 
         const tReads = _fmtBig(totalInput);
         const aReads = _fmtBig(totalOrg);
@@ -9080,14 +9408,37 @@
         // ── KPI tooltips: TASS Cutoff ──────────────────────────────────────
         const tassCard = document.getElementById("kpi-tip-tass");
         if (tassCard) {
-          const tassTip =
+          let tassTip =
             `<b style="color:#90caf9">TASS Cutoff</b><br>` +
-            `<span style="color:#ccc;font-size:0.88em">Taxonomic Assignment Scoring System (TASS) score threshold.<br>` +
-            `Rows at or above this score are shown; lower-confidence detections are filtered out.</span><br><br>` +
-            `<table style="border-collapse:collapse;font-size:0.88em">` +
-            `<tr><td style="color:#aaa;padding-right:8px">Applied cutoff</td><td style="color:#fff;font-weight:700">${cutVal}</td></tr>` +
-            (recCut != null ? `<tr><td style="color:#aaa;padding-right:8px">Recommended</td><td style="color:#90caf9;font-weight:700">${recCut}</td></tr>` : "") +
-            `</table>`;
+            `<span style="color:#ccc;font-size:0.88em">Taxonomic Assignment Scoring System threshold.<br>` +
+            `Detections below this score are hidden across all tabs.</span><br><br>`;
+          if (_typeVals && _typeVals.length > 0) {
+            tassTip +=
+              `<table style="border-collapse:collapse;font-size:0.88em;width:100%">` +
+              `<tr>` +
+              `<th style="color:#90caf9;font-weight:500;text-align:left;padding-bottom:4px;padding-right:12px">Type</th>` +
+              `<th style="color:#90caf9;font-weight:500;text-align:right;padding-bottom:4px;padding-right:12px">Applied</th>` +
+              `<th style="color:#90caf9;font-weight:500;text-align:right;padding-bottom:4px">Default</th>` +
+              `</tr>` +
+              _typeVals.map((tv) => {
+                const changed = Math.round(tv.applied) !== Math.round(tv.def);
+                return (
+                  `<tr>` +
+                  `<td style="color:#fff;text-transform:capitalize;padding-right:12px;padding-bottom:2px">${tv.type}</td>` +
+                  `<td style="color:${changed ? "#ffb74d" : "#a5d6a7"};font-weight:700;text-align:right;padding-right:12px">${tv.applied.toFixed(0)}</td>` +
+                  `<td style="color:#78909c;text-align:right">${tv.def.toFixed(0)}</td>` +
+                  `</tr>`
+                );
+              }).join("") +
+              `</table>` +
+              `<div style="margin-top:6px;font-size:0.78em;color:#607d8b">Orange = modified from default · Green = at default</div>`;
+          } else {
+            tassTip +=
+              `<table style="border-collapse:collapse;font-size:0.88em">` +
+              `<tr><td style="color:#aaa;padding-right:8px">Applied cutoff</td><td style="color:#fff;font-weight:700">${cutVal}</td></tr>` +
+              (_recCut != null ? `<tr><td style="color:#aaa;padding-right:8px">Recommended</td><td style="color:#90caf9;font-weight:700">${_recCut.toFixed(1)}</td></tr>` : "") +
+              `</table>`;
+          }
           tassCard.addEventListener("mouseover", (ev) => showTip(tassTip, ev));
           tassCard.addEventListener("mousemove", moveTip);
           tassCard.addEventListener("mouseout", hideTip);
