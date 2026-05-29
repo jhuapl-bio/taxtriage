@@ -9,9 +9,9 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- <script src="pages.js"></script> -->
-    <!-- <script src="mce.js"></script> -->
-    <script src="heatmap_boot.js"></script>
+    <script src="pages.js"></script>
+    <script src="mce.js"></script>
+    <!-- <script src="heatmap_boot.js"></script> -->
 
     <script>
       const BOOT = window.HEATMAP_BOOT || {};
@@ -124,8 +124,8 @@
         padding: 1em;
       }
       #sidebar {
-        width: 260px;
-        min-width: 200px;
+        width: 220px;
+        min-width: 180px;
         max-width: 70vw;
         border-left: 1px solid #ddd;
         background: #fff;
@@ -410,8 +410,171 @@
         margin-bottom: 0.6em;
         color: #1565c0;
       }
+      /* Table tab: high-consequence highlight + pin + group rows */
+      #data-table tbody tr.hc-row td {
+        background: #fff5f5;
+      }
+      #data-table tbody tr.hc-row:hover td {
+        background: #ffe3e3;
+      }
+      #data-table tbody tr.row-pinned td {
+        background: #fff3cd !important;
+        box-shadow: inset 3px 0 0 #f59f00;
+      }
+      #data-table tbody tr.grp-row td {
+        background: #eef3fb;
+        font-weight: 700;
+        color: #1565c0;
+        border-top: 2px solid #d6e0f0;
+      }
       svg text {
         font-family: system-ui, sans-serif;
+      }
+      /* ── summary tab cards ── */
+      .summary-kpi-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.7em;
+        margin-bottom: 1em;
+      }
+      .kpi-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        padding: 0.8em 0.9em;
+        border-left: 4px solid #1565c0;
+      }
+      .kpi-card .kpi-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: #6c757d;
+        font-weight: 600;
+        margin-bottom: 0.25em;
+      }
+      .kpi-card .kpi-value {
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: #1f2d3d;
+        line-height: 1.1;
+        font-variant-numeric: tabular-nums;
+      }
+      .kpi-card .kpi-sub {
+        font-size: 0.72rem;
+        color: #888;
+        margin-top: 0.2em;
+      }
+      #summary-top-wrap table,
+      #summary-annot-genus table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.82em;
+      }
+      #summary-top-wrap th,
+      #summary-top-wrap td,
+      #summary-annot-genus th,
+      #summary-annot-genus td {
+        padding: 5px 8px;
+        text-align: left;
+        border-bottom: 1px solid #eef1f5;
+        white-space: nowrap;
+      }
+      #summary-top-wrap th,
+      #summary-annot-genus th {
+        background: #f4f6f9;
+        color: #555;
+        position: sticky;
+        top: 0;
+        font-weight: 600;
+      }
+      #summary-top-wrap tr:hover td,
+      #summary-annot-genus tr:hover td {
+        background: #f9fbfd;
+      }
+      /* sortable headers (shared look with the Table tab) */
+      #summary-top-wrap th.sortable {
+        cursor: pointer;
+        user-select: none;
+      }
+      #summary-top-wrap th.sortable:hover {
+        background: #e9eef5;
+      }
+      #summary-top-wrap th .sort-ind {
+        font-size: 0.75em;
+        color: #1565c0;
+        margin-left: 3px;
+      }
+      /* high-consequence row emphasis */
+      #summary-top-wrap tr.hc-row td {
+        background: #fff5f5;
+      }
+      #summary-top-wrap tr.hc-row:hover td {
+        background: #ffe3e3;
+      }
+      #summary-top-wrap tr.row-pinned td {
+        background: #fff3cd !important;
+        box-shadow: inset 3px 0 0 #f59f00;
+      }
+      /* group header rows */
+      #summary-top-wrap tr.grp-row td {
+        background: #eef3fb;
+        font-weight: 700;
+        color: #1565c0;
+        border-top: 2px solid #d6e0f0;
+      }
+      /* per-row keyword chips */
+      .kw-chip {
+        display: inline-block;
+        font-size: 0.66rem;
+        line-height: 1.5;
+        padding: 0 6px;
+        margin: 1px 2px 1px 0;
+        border-radius: 10px;
+        background: #eef1f5;
+        color: #555;
+        white-space: nowrap;
+      }
+      .kw-chip.kw-hc { background: #ffe0e0; color: #c62828; }
+      .kw-chip.kw-amr { background: #ffe8cc; color: #d9480f; }
+      .kw-chip.kw-annot { background: #e6fcf5; color: #0ca678; }
+      .kw-chip.kw-cat { background: #e7f5ff; color: #1565c0; }
+      .kw-chip.kw-bsl { background: #fff3bf; color: #b45309; }
+      /* depth-histogram sparkline */
+      .spark {
+        display: inline-flex;
+        align-items: flex-end;
+        gap: 1px;
+        height: 16px;
+        cursor: help;
+      }
+      .spark i {
+        width: 4px;
+        background: #4dabf7;
+        display: inline-block;
+        border-radius: 1px 1px 0 0;
+      }
+      .spark.spark-pos i {
+        width: 3px;
+        border-radius: 0;
+      }
+      .ncbi-link {
+        color: #1565c0;
+        font-size: 0.78em;
+        text-decoration: none;
+        opacity: 0.55;
+      }
+      .ncbi-link:hover {
+        opacity: 1;
+      }
+      /* summary table toolbar / pager */
+      .summary-tbl-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+        flex-wrap: wrap;
+        font-size: 0.8em;
+        color: #444;
+        margin-bottom: 0.4em;
       }
 
       /* ── table ── */
@@ -528,11 +691,16 @@
         content: " ▼";
         font-size: 0.75em;
       }
-      tr:nth-child(even) {
+      table:not(#tooltip table) tr:nth-child(even),
+      tr:nth-child(even):not(#tooltip tr) {
         background: #f5f5f5;
       }
-      tr:hover {
+      table:not(#tooltip table) tr:hover,
+      tr:hover:not(#tooltip tr) {
         background: #e3f2fd;
+      }
+      #tooltip tr {
+        background: transparent !important;
       }
 
       /* ── heatmap tooltip ── */
@@ -546,7 +714,7 @@
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.1s;
-        max-width: 320px;
+        max-width: 480px;
         z-index: 999;
       }
       .axis text {
@@ -840,7 +1008,8 @@
     </div>
 
     <div id="tabbar">
-      <button class="tab-btn active" data-tab="heatmap"><i class="fas fa-th"></i> Heatmap</button>
+      <button class="tab-btn active" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary</button>
+      <button class="tab-btn" data-tab="heatmap"><i class="fas fa-th"></i> Heatmap</button>
       <button class="tab-btn" data-tab="tass"><i class="fas fa-chart-bar"></i> TASS Comparison</button>
       <button class="tab-btn" data-tab="sunburst"><i class="fas fa-circle-nodes"></i> Sunburst</button>
       <button class="tab-btn" data-tab="coverage"><i class="fas fa-layer-group"></i> Coverage</button>
@@ -860,8 +1029,82 @@
 
     <div id="main">
       <div id="content">
+        <!-- SUMMARY (default first tab — overall run overview) -->
+        <div class="pane active" id="pane-summary">
+          <div id="summary-kpi-row" class="summary-kpi-row"></div>
+
+          <div class="chart-wrap">
+            <div class="chart-title"><i class="fas fa-triangle-exclamation"></i> Detections</div>
+            <div style="font-size:0.75rem;color:#6c757d;margin-bottom:0.5em">
+              Organisms across the run (respects sidebar filters). Click a column header to sort · click a row to pin it ·
+              ★ = high-consequence pathogen · <span style="color:#1565c0;font-weight:600">Ⓓ</span>/<span style="color:#6a1b9a;font-weight:600">Ⓡ</span> = DNA / RNA ·
+              hover the <i class="fas fa-chart-column" style="color:#4dabf7"></i> spark for a coverage-depth preview.
+            </div>
+            <div class="summary-tbl-toolbar">
+              <span id="summary-row-count" style="flex:1;min-width:110px"></span>
+              <label style="display:flex;align-items:center;gap:0.3em">
+                <input type="checkbox" id="summary-group-sample" checked /> Group by Sample
+              </label>
+              <label style="display:flex;align-items:center;gap:0.3em;white-space:nowrap">
+                Rows per page:
+                <select id="summary-page-size" style="padding:0.1em 0.3em;border:1px solid #ccc;border-radius:4px">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="0">All</option>
+                </select>
+              </label>
+              <div id="summary-pager" style="display:flex;align-items:center;gap:0.3em">
+                <button id="summary-first" class="pg-btn" title="First page">«</button>
+                <button id="summary-prev" class="pg-btn" title="Previous page">‹</button>
+                <span id="summary-page-label" style="min-width:6em;text-align:center;white-space:nowrap"></span>
+                <button id="summary-next" class="pg-btn" title="Next page">›</button>
+                <button id="summary-last" class="pg-btn" title="Last page">»</button>
+              </div>
+            </div>
+            <!-- summary pin actions bar -->
+            <div id="sum-pin-bar" style="display:none;align-items:center;gap:0.5em;padding:0.3em 0.6em;background:#fffbea;border-bottom:2px solid #f59f00;font-size:0.82em;flex-wrap:wrap">
+              <i class="fas fa-map-pin" style="color:#f59f00"></i>
+              <span id="sum-pin-bar-count" style="font-weight:700;color:#555"></span>
+              <button id="sum-compare-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #1565c0;border-radius:5px;background:#fff;color:#1565c0;font-size:1em;font-weight:600;cursor:pointer;white-space:nowrap">
+                <i class="fas fa-table-columns"></i> Compare
+              </button>
+              <button id="sum-unpin-all-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #aaa;border-radius:5px;background:#fff;color:#666;font-size:1em;cursor:pointer;white-space:nowrap">
+                <i class="fas fa-times"></i> Unpin All
+              </button>
+            </div>
+            <div id="summary-top-wrap" style="overflow:auto"></div>
+          </div>
+
+          <div class="chart-wrap">
+            <div class="chart-title"><i class="fas fa-chart-bar"></i> Genera Comparison Across Samples</div>
+            <div class="tab-controls">
+              <label>Metric</label>
+              <select id="summary-genus-metric">
+                <option value="# Reads Aligned" selected># Reads Aligned</option>
+                <option value="TASS Score">Max TASS Score</option>
+                <option value="count"># Organisms</option>
+              </select>
+              <label>Top</label>
+              <select id="summary-genus-topn">
+                <option value="10">10</option>
+                <option value="15" selected>15</option>
+                <option value="25">25</option>
+              </select>
+            </div>
+            <div id="summary-genus-wrap"></div>
+          </div>
+
+          <div class="chart-wrap" id="summary-annot-wrap" style="display:none">
+            <div class="chart-title"><i class="fas fa-dna"></i> Annotation Summary (VF / AMR)</div>
+            <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom:0.8em"></div>
+            <div id="summary-annot-genus" style="overflow:auto"></div>
+          </div>
+        </div>
+
         <!-- HEATMAP -->
-        <div class="pane active" id="pane-heatmap">
+        <div class="pane" id="pane-heatmap">
           <div class="chart-wrap">
             <div class="chart-title">Sample × Organism — value heat</div>
             <div class="tab-controls">
@@ -1418,7 +1661,7 @@
             </div>
           </div>
 
-          <!-- Plot A: Bubble Scatter -->
+          <!-- Plot A: Bubble Scatter — REMOVED (redundant with the Coverage tab).
           <div class="chart-wrap">
             <div class="chart-title">
               Organism Coverage vs TASS Score
@@ -1426,6 +1669,7 @@
             </div>
             <div id="explore-bubble-wrap" style="overflow: hidden; width: 100%"></div>
           </div>
+          -->
 
           <!-- Plot B: Radar -->
           <div class="chart-wrap">
@@ -1573,6 +1817,9 @@
           >
             <span id="tbl-row-count" style="flex: 1; min-width: 120px"></span>
             <label style="display: flex; align-items: center; gap: 0.3em; white-space: nowrap">
+              <input type="checkbox" id="tbl-group-sample" checked /> Group by Sample
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.3em; white-space: nowrap">
               Rows per page:
               <select
                 id="tbl-page-size"
@@ -1592,6 +1839,17 @@
               <button id="tbl-next" class="pg-btn" title="Next page">›</button>
               <button id="tbl-last" class="pg-btn" title="Last page">»</button>
             </div>
+          </div>
+          <!-- pin actions bar — shown only when rows are pinned -->
+          <div id="tbl-pin-bar" style="display:none;align-items:center;gap:0.5em;padding:0.3em 0.6em;background:#fffbea;border-bottom:2px solid #f59f00;font-size:0.82em;flex-wrap:wrap">
+            <i class="fas fa-map-pin" style="color:#f59f00"></i>
+            <span id="tbl-pin-bar-count" style="font-weight:700;color:#555"></span>
+            <button id="compare-pinned-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #1565c0;border-radius:5px;background:#fff;color:#1565c0;font-size:1em;font-weight:600;cursor:pointer;white-space:nowrap">
+              <i class="fas fa-table-columns"></i> Compare
+            </button>
+            <button id="tbl-unpin-all-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #aaa;border-radius:5px;background:#fff;color:#666;font-size:1em;cursor:pointer;white-space:nowrap">
+              <i class="fas fa-times"></i> Unpin All
+            </button>
           </div>
           <div id="tbl-wrap">
             <table id="data-table">
@@ -2276,6 +2534,24 @@
 
     <div id="tooltip"></div>
 
+    <!-- ── Pinned-row comparison modal ── -->
+    <div id="compare-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;align-items:center;justify-content:center">
+      <div id="compare-modal" style="background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.28);width:min(96vw,1100px);max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:0.6em;padding:0.75em 1.1em;background:#1565c0;color:#fff;flex-shrink:0">
+          <i class="fas fa-map-pin" style="font-size:1em;opacity:0.85"></i>
+          <span style="font-weight:700;font-size:1em;flex:1">Pinned Row Comparison</span>
+          <button id="compare-close-btn" style="background:transparent;border:none;color:#fff;font-size:1.3em;cursor:pointer;line-height:1;padding:0 0.2em" title="Close">×</button>
+        </div>
+        <div id="compare-body" style="overflow:auto;padding:1em 1.1em;flex:1"></div>
+        <div style="padding:0.6em 1.1em;border-top:1px solid #e0e0e0;display:flex;gap:0.6em;flex-shrink:0">
+          <button id="compare-unpin-all-btn" style="padding:0.35em 0.9em;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;font-size:0.85em;color:#555">
+            <i class="fas fa-times"></i> Unpin All
+          </button>
+          <button id="compare-close-btn2" style="margin-left:auto;padding:0.35em 0.9em;border:none;border-radius:5px;background:#1565c0;color:#fff;cursor:pointer;font-size:0.85em">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       /* ----------------------------------------------------------------------------
        -                                                                          -
@@ -2345,7 +2621,7 @@
       let sortCol = null;
       let sortAsc = true;
       let visibleCols = [];
-      let activeTab = "heatmap";
+      let activeTab = "summary";
 
       // Palette for samples
       const PALETTE = [
@@ -2502,7 +2778,7 @@
       function moveTip(event) {
         const x = event.clientX + 12,
           y = event.clientY - 28;
-        tooltip.style.left = Math.min(x, window.innerWidth - 330) + "px";
+        tooltip.style.left = Math.min(x, window.innerWidth - 490) + "px";
         tooltip.style.top = Math.max(y, 4) + "px";
       }
       function hideTip() {
@@ -2536,6 +2812,7 @@
         for (let i = CONTIG_DATA.length - 1; i >= 0; i--) {
           if (CONTIG_DATA[i].sample === id) CONTIG_DATA.splice(i, 1);
         }
+        if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
         // Prune PROT so VF/AMR loses this sample's hits
         Object.keys(PROT || {}).forEach((k) => {
           if (!Array.isArray(PROT[k])) return;
@@ -2608,6 +2885,7 @@
         DATA.length = 0;
         RUN_META.length = 0;
         CONTIG_DATA.length = 0;
+        if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
         // Reset BOOT in place so all references see the change.
         if (BOOT) {
           if (Array.isArray(BOOT.records)) BOOT.records.length = 0;
@@ -6675,8 +6953,25 @@
         _tblPage = 0;
       }
 
+      const _tblPinned = new Set();
+      function _tblRowKey(row) {
+        return `${row["Specimen ID"]}||${row["Detected Organism"]}||${row["Taxonomic ID #"]}`;
+      }
       function _renderOneRow(row) {
         const tr = document.createElement("tr");
+        if (isTruthy(row["High Consequence"])) tr.classList.add("hc-row");
+        const _rk = _tblRowKey(row);
+        if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
+        tr.addEventListener("click", () => {
+          if (_tblPinned.has(_rk)) {
+            _tblPinned.delete(_rk);
+            tr.classList.remove("row-pinned");
+          } else {
+            _tblPinned.add(_rk);
+            tr.classList.add("row-pinned");
+          }
+          _updateComparePinnedBtn();
+        });
         visibleCols.forEach((c) => {
           const td = document.createElement("td");
           const val = row[c] != null ? row[c] : "";
@@ -6709,6 +7004,20 @@
           } else {
             td.textContent = val;
           }
+          // Taxonomic ID #: link out to the NCBI Taxonomy browser.
+          if (c === "Taxonomic ID #" && /^\d+$/.test(String(val).trim())) {
+            const tid = String(val).trim();
+            td.textContent = "";
+            const a = document.createElement("a");
+            a.href = `https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${tid}`;
+            a.target = "_blank";
+            a.rel = "noopener";
+            a.textContent = tid;
+            a.title = `View taxon ${tid} on NCBI`;
+            a.style.color = "#1565c0";
+            a.addEventListener("click", (e) => e.stopPropagation());
+            td.appendChild(a);
+          }
           if (c === "BSL Level" && val) {
             const n = parseInt(val.replace("BSL-", "")) || 0;
             const bg = { 1: "#e8f5e9", 2: "#fff9c4", 3: "#ffe0b2", 4: "#ffcdd2" }[n] || "";
@@ -6736,7 +7045,22 @@
 
       function populateTable() {
         let fd = filteredData();
-        if (sortCol) {
+        const _tblGrouped = document.getElementById("tbl-group-sample")?.checked;
+        if (_tblGrouped) {
+          // Group by Sample: primary sort on Specimen ID, secondary on the
+          // active sort column (or TASS desc by default) within each sample.
+          const sc = sortCol || "TASS Score";
+          fd = [...fd].sort((a, b) => {
+            const sd = String(a["Specimen ID"] || "").localeCompare(String(b["Specimen ID"] || ""));
+            if (sd !== 0) return sd;
+            const na = parseFloat(a[sc]),
+              nb = parseFloat(b[sc]);
+            if (!isNaN(na) && !isNaN(nb)) return sortCol ? (sortAsc ? na - nb : nb - na) : nb - na;
+            return sortAsc
+              ? String(a[sc] || "").localeCompare(String(b[sc] || ""))
+              : String(b[sc] || "").localeCompare(String(a[sc] || ""));
+          });
+        } else if (sortCol) {
           fd = [...fd].sort((a, b) => {
             const va = a[sortCol],
               vb = b[sortCol];
@@ -6764,7 +7088,20 @@
         const tbody = document.getElementById("table-body");
         tbody.innerHTML = "";
         const frag = document.createDocumentFragment();
-        slice.forEach((row) => frag.appendChild(_renderOneRow(row)));
+        let _lastGrp = null;
+        slice.forEach((row) => {
+          if (_tblGrouped && row["Specimen ID"] !== _lastGrp) {
+            _lastGrp = row["Specimen ID"];
+            const gr = document.createElement("tr");
+            gr.className = "grp-row";
+            const gtd = document.createElement("td");
+            gtd.colSpan = visibleCols.length;
+            gtd.innerHTML = `<i class="fas fa-vial"></i> ${_lastGrp}`;
+            gr.appendChild(gtd);
+            frag.appendChild(gr);
+          }
+          frag.appendChild(_renderOneRow(row));
+        });
         tbody.appendChild(frag);
 
         // ── update toolbar ───────────────────────────────────────────────────
@@ -6817,6 +7154,154 @@
         document.getElementById("tbl-page-size").addEventListener("change", () => {
           _tblPage = 0;
           populateTable();
+        });
+        const _tblGrpEl = document.getElementById("tbl-group-sample");
+        if (_tblGrpEl) _tblGrpEl.addEventListener("change", () => {
+          _tblPage = 0;
+          populateTable();
+        });
+      })();
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  PINNED ROW COMPARISON
+       -     _updateComparePinnedBtn() — refreshes the badge count and
+       -     visibility of the Compare button.
+       -     _openCompareModal()      — renders and shows the comparison popup.
+═══════════════════════════════════════════════════════════════════════════ */
+      function _updateComparePinnedBtn() {
+        const bar = document.getElementById("tbl-pin-bar");
+        const countEl = document.getElementById("tbl-pin-bar-count");
+        if (!bar) return;
+        const n = _tblPinned.size;
+        bar.style.display = n > 0 ? "flex" : "none";
+        if (countEl) countEl.textContent = `${n} row${n === 1 ? "" : "s"} pinned`;
+      }
+
+      function _openCompareModal() {
+        // Gather all DATA rows that match tbl-tab pinned keys
+        const pinnedRows = DATA.filter((r) => _tblPinned.has(_tblRowKey(r)));
+        if (!pinnedRows.length) return;
+        _openCompareModalForRows(pinnedRows);
+      }
+
+      function _openCompareModalForRows(pinnedRows) {
+        const METRICS = [
+          { key: "Specimen ID",        label: "Sample" },
+          { key: "Detected Organism",  label: "Organism" },
+          { key: "Taxonomic ID #",     label: "Taxon ID" },
+          { key: "TASS Score",         label: "TASS Score" },
+          { key: "# Reads Aligned",    label: "Reads Aligned" },
+          { key: "Genome Coverage %",  label: "Genome Coverage %" },
+          { key: "Microbial Category", label: "Category" },
+          { key: "Genus",              label: "Genus" },
+          { key: "BSL Level",          label: "BSL" },
+          { key: "High Consequence",   label: "High Consequence" },
+          { key: "Mol Type",           label: "Mol Type" },
+        ].filter((m) => pinnedRows.some((r) => r[m.key] != null && r[m.key] !== ""));
+
+        // Build transposed table: rows = metrics, cols = pinned organisms
+        const bslColor = { "BSL-1": "#2e7d32", "BSL-2": "#b45309", "BSL-3": "#c2410c", "BSL-4": "#b91c1c" };
+        const bslBg   = { "BSL-1": "#e8f5e9", "BSL-2": "#fff9c4", "BSL-3": "#ffe0b2", "BSL-4": "#ffcdd2" };
+
+        const colHeaders = pinnedRows.map((r, i) => {
+          const org = r["Detected Organism"] || r["Taxonomic ID #"] || `Row ${i + 1}`;
+          const sn  = r["Specimen ID"] || "";
+          const isHC = isTruthy(r["High Consequence"]);
+          return `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;white-space:nowrap;min-width:140px;max-width:220px;border-bottom:2px solid #1565c0">
+            ${isHC ? '<span style="color:#c62828;margin-right:3px">⚠</span>' : ""}
+            <span style="font-weight:700;font-size:0.9em">${org}</span><br>
+            <span style="font-weight:400;font-size:0.78em;color:#666">${sn}</span>
+          </th>`;
+        }).join("");
+
+        const bodyRows = METRICS.map((m) => {
+          const cells = pinnedRows.map((r) => {
+            let raw = r[m.key] != null ? r[m.key] : "—";
+            let style = "padding:6px 10px;white-space:nowrap;border-bottom:1px solid #eee";
+            if (m.key === "TASS Score") {
+              const sc = parseFloat(raw);
+              if (!isNaN(sc) && sc > 0) {
+                const t = Math.min(1, sc / 100);
+                const hue = Math.round(210 - t * 65);
+                const alpha = (0.1 + t * 0.3).toFixed(2);
+                style += `;background:hsla(${hue},70%,45%,${alpha});font-weight:700;text-align:right`;
+                raw = sc.toFixed(2);
+              } else {
+                style += ";text-align:right";
+              }
+            } else if (m.key === "# Reads Aligned") {
+              const n = parseFloat(raw);
+              if (!isNaN(n)) {
+                style += ";text-align:right";
+                raw = _fmtBig(n).short;
+              }
+            } else if (m.key === "BSL Level") {
+              const bg = bslBg[raw] || "";
+              const fg = bslColor[raw] || "";
+              if (bg) style += `;background:${bg};color:${fg};font-weight:700;text-align:center`;
+            } else if (m.key === "High Consequence") {
+              const hc = isTruthy(raw);
+              style += ";text-align:center";
+              raw = hc ? '<span style="color:#c62828;font-weight:700">⚠ Yes</span>' : '<span style="color:#888">No</span>';
+            } else if (m.key === "Genome Coverage %") {
+              const n = parseFloat(raw);
+              if (!isNaN(n)) {
+                style += ";text-align:right";
+                raw = n.toFixed(1) + "%";
+              }
+            }
+            return `<td style="${style}">${raw}</td>`;
+          }).join("");
+
+          return `<tr>
+            <td style="padding:6px 10px;font-size:0.8em;color:#6c757d;font-weight:600;white-space:nowrap;background:#fafafa;border-bottom:1px solid #eee;border-right:2px solid #e0e0e0;text-transform:uppercase;letter-spacing:0.02em">${m.label}</td>
+            ${cells}
+          </tr>`;
+        }).join("");
+
+        // Summary row: highest TASS per organism
+        const maxTass = pinnedRows.map((r) => parseFloat(r["TASS Score"]) || 0);
+        const maxIdx = maxTass.indexOf(Math.max(...maxTass));
+
+        const body = document.getElementById("compare-body");
+        body.innerHTML =
+          `<p style="font-size:0.82em;color:#888;margin-bottom:0.6em">${pinnedRows.length} pinned row${pinnedRows.length !== 1 ? "s" : ""} — click any row in the table to toggle pinning</p>` +
+          `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:0.85em">` +
+          `<thead><tr>` +
+          `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;border-bottom:2px solid #1565c0;width:130px;font-size:0.78em;color:#555;text-transform:uppercase;letter-spacing:0.02em">Target</th>` +
+          colHeaders +
+          `</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+
+        const overlay = document.getElementById("compare-overlay");
+        overlay.style.display = "flex";
+      }
+
+      // Wire up compare button and modal close
+      (function _initCompare() {
+        const btn = document.getElementById("compare-pinned-btn");
+        if (btn) btn.addEventListener("click", _openCompareModal);
+
+        // Toolbar "Unpin All" button
+        const unpinBarBtn = document.getElementById("tbl-unpin-all-btn");
+        if (unpinBarBtn) unpinBarBtn.addEventListener("click", () => {
+          _tblPinned.clear();
+          populateTable();
+          _updateComparePinnedBtn();
+        });
+
+        const overlay = document.getElementById("compare-overlay");
+        const closeModal = () => { overlay.style.display = "none"; };
+        document.getElementById("compare-close-btn").addEventListener("click", closeModal);
+        document.getElementById("compare-close-btn2").addEventListener("click", closeModal);
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+        document.addEventListener("keydown", (e) => { if (e.key === "Escape" && overlay.style.display !== "none") closeModal(); });
+
+        // Modal "Unpin All" button
+        document.getElementById("compare-unpin-all-btn").addEventListener("click", () => {
+          _tblPinned.clear();
+          populateTable();
+          _updateComparePinnedBtn();
+          closeModal();
         });
       })();
 
@@ -8194,6 +8679,7 @@
          visible tab immediately, and mark every other tab "dirty". When the
          user switches tabs, the new tab is rendered only if dirty. */
       const _TAB_DIRTY = {
+        summary: false,
         heatmap: false,
         tass: false,
         sunburst: false,
@@ -8205,8 +8691,919 @@
         map: false,
         runmeta: false,
       };
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  TAB: SUMMARY            (data-tab="summary"  —  the default tab)
+       -     drawSummary() — overall run overview. Mirrors the high-level
+       -     features of the ODR PDF: run-level KPIs, the highest-TASS / high-
+       -     consequence detections, a cross-sample genera comparison bar chart,
+       -     and (only when protein/VF-AMR annotation is enabled) an annotation
+       -     summary. All derived client-side from the same filteredData() view
+       -     every other tab uses, so it respects the sidebar filters.
+═══════════════════════════════════════════════════════════════════════════ */
+      function _fmtInt(n) {
+        n = Math.round(num(n));
+        return n.toLocaleString();
+      }
+      // Scientific-notation for large counts (>= 1e5); returns {short, full}.
+      function _fmtBig(n) {
+        n = num(n);
+        const full = Math.round(n).toLocaleString();
+        if (n >= 1e5) {
+          // e.g. 1.23e7 — superscript-free, compact
+          const exp = Math.floor(Math.log10(n));
+          const mant = n / Math.pow(10, exp);
+          return { short: `${mant.toFixed(2)}×10${_sup(exp)}`, full };
+        }
+        return { short: full, full };
+      }
+      function _sup(n) {
+        const map = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+        return String(n).split("").map((c) => map[c] || c).join("");
+      }
+      function _orgBadges(r) {
+        // ★ high consequence, Ⓓ/Ⓡ molecule type
+        let s = "";
+        if (isTruthy(r["High Consequence"])) s += '<span title="High consequence" style="color:#c62828">★</span> ';
+        const mt = String(r["Mol Type"] || "").toLowerCase();
+        if (mt === "dna") s += '<span title="DNA" style="color:#1565c0;font-weight:700">Ⓓ</span> ';
+        else if (mt === "rna") s += '<span title="RNA" style="color:#6a1b9a;font-weight:700">Ⓡ</span> ';
+        return s;
+      }
+
+      // External link to the NCBI Taxonomy page for a detection row's taxon id.
+      function _ncbiLink(r) {
+        const tid = String(r["Taxonomic ID #"] || "").trim();
+        if (!tid || !/^\d+$/.test(tid)) return "";
+        const url = `https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${tid}`;
+        return (
+          ` <a href="${url}" target="_blank" rel="noopener" class="ncbi-link" title="View taxon ${tid} on NCBI"` +
+          ` onclick="event.stopPropagation()"><i class="fas fa-up-right-from-square"></i></a>`
+        );
+      }
+
+      // Keyword chips for a detection row, drawn from category/status, flags,
+      // taxonomy, and BSL level.
+      function _rowKeywords(r) {
+        const chips = [];
+        const cat = r["Microbial Category"];
+        if (cat && cat !== "Unknown") chips.push({ t: cat, c: "kw-cat" });
+        const status = r["Status"];
+        if (status) chips.push({ t: status, c: "" });
+        const annClass = r["Ann Class"];
+        if (annClass) chips.push({ t: annClass, c: "" });
+        if (isTruthy(r["High Consequence"])) chips.push({ t: "high-consequence", c: "kw-hc" });
+        if (isTruthy(r["IsAnnotated"])) chips.push({ t: "annotated", c: "kw-annot" });
+        if (_orgHasAmr(r)) chips.push({ t: "AMR", c: "kw-amr" });
+        const mt = String(r["Mol Type"] || "").toLowerCase();
+        if (mt === "dna" || mt === "rna") chips.push({ t: mt.toUpperCase(), c: "" });
+        const genus = r["Genus"];
+        if (genus) chips.push({ t: genus, c: "" });
+        const fam = r["Family"];
+        if (fam && fam !== genus) chips.push({ t: fam, c: "" });
+        const bsl = r["BSL Level"];
+        if (bsl) chips.push({ t: bsl, c: "kw-bsl" });
+        return chips
+          .map((ch) => `<span class="kw-chip ${ch.c}">${String(ch.t)}</span>`)
+          .join("");
+      }
+
+      // Build a Map of full CONTIG_DATA entries keyed by sample||organism||taxon.
+      let _SUM_HIST_MAP = null;
+      function _histMap() {
+        if (_SUM_HIST_MAP) return _SUM_HIST_MAP;
+        _SUM_HIST_MAP = new Map();
+        (CONTIG_DATA || []).forEach((cd) => {
+          const k = `${cd.sample}||${cd.organism}||${cd.taxon_id}`;
+          if (cd.depth_histogram || cd.breadth_histogram) _SUM_HIST_MAP.set(k, cd);
+        });
+        return _SUM_HIST_MAP;
+      }
+      function _invalidateSummaryHistMap() {
+        _SUM_HIST_MAP = null;
+      }
+      const _DEPTH_BINS = ["0x", "1-5x", "5-10x", "10-50x", ">50x"];
+      const _DEPTH_COLORS = ["#dee2e6", "#a5d8ff", "#74c0fc", "#4dabf7", "#1c7ed6"];
+      function _histFor(r) {
+        return _histMap().get(`${r["Specimen ID"]}||${r["Detected Organism"]}||${r["Taxonomic ID #"]}`);
+      }
+      // Per-position coverage profile from a CONTIG_DATA entry's breadth histogram.
+      // Returns an array of 0–100 % values (one per genomic bin), or null.
+      function _posBins(cd) {
+        const bh = cd && cd.breadth_histogram;
+        if (bh && Array.isArray(bh.bins) && bh.bins.length) return bh.bins.map((v) => num(v));
+        return null;
+      }
+      // Sparkline: per-position coverage profile when available, else depth-bin bars.
+      function _sparkHtml(cd) {
+        const pos = _posBins(cd);
+        if (pos && pos.length) {
+          // Downsample to ~24 columns for a compact inline profile.
+          const N = 24;
+          const step = Math.max(1, Math.ceil(pos.length / N));
+          const cols = [];
+          for (let i = 0; i < pos.length; i += step) {
+            const seg = pos.slice(i, i + step);
+            cols.push(seg.reduce((s, v) => s + v, 0) / seg.length);
+          }
+          return (
+            '<span class="spark spark-pos">' +
+            cols
+              .map((v) => {
+                const h = Math.max(1, Math.round((Math.min(100, v) / 100) * 16));
+                const c = v >= 50 ? "#1c7ed6" : v > 0 ? "#74c0fc" : "#dee2e6";
+                return `<i style="height:${h}px;background:${c}"></i>`;
+              })
+              .join("") +
+            "</span>"
+          );
+        }
+        const hist = (cd && cd.depth_histogram) || {};
+        const vals = _DEPTH_BINS.map((b) => num(hist[b]));
+        const max = Math.max(1, ...vals);
+        return (
+          '<span class="spark">' +
+          vals
+            .map((v, i) => `<i style="height:${Math.max(2, Math.round((v / max) * 16))}px;background:${_DEPTH_COLORS[i]}"></i>`)
+            .join("") +
+          "</span>"
+        );
+      }
+      function _histPreviewHtml(r, cd) {
+        const pos = _posBins(cd);
+        const head =
+          `<b><i>${r["Detected Organism"]}</i></b><br><span style="color:#aaa">${r["Specimen ID"]}</span><br>`;
+        if (pos && pos.length) {
+          const W = 180,
+            H = 56;
+          const n = pos.length;
+          const path = pos
+            .map((v, i) => {
+              const x = (i / Math.max(1, n - 1)) * W;
+              const y = H - (Math.min(100, v) / 100) * H;
+              return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+            })
+            .join(" ");
+          const area = `${path} L${W},${H} L0,${H} Z`;
+          return (
+            head +
+            `<span style="color:#aaa;font-size:0.85em">coverage across genome positions</span><br>` +
+            `<svg width="${W}" height="${H + 12}">` +
+            `<path d="${area}" fill="#d0ebff"></path>` +
+            `<path d="${path}" fill="none" stroke="#1c7ed6" stroke-width="1"></path>` +
+            `<text x="0" y="${H + 10}" font-size="7" fill="#666">0</text>` +
+            `<text x="${W}" y="${H + 10}" font-size="7" text-anchor="end" fill="#666">end</text>` +
+            `</svg><br><span style="color:#888;font-size:0.78em">click to open in Histogram tab</span>`
+          );
+        }
+        const hist = (cd && cd.depth_histogram) || {};
+        const vals = _DEPTH_BINS.map((b) => num(hist[b]));
+        const max = Math.max(1, ...vals);
+        const bw = 24,
+          gap = 4,
+          H = 60;
+        let bars = "";
+        vals.forEach((v, i) => {
+          const h = Math.max(1, Math.round((v / max) * H));
+          const x = i * (bw + gap);
+          bars +=
+            `<rect x="${x}" y="${H - h}" width="${bw}" height="${h}" fill="${_DEPTH_COLORS[i]}"></rect>` +
+            `<text x="${x + bw / 2}" y="${H + 10}" font-size="7" text-anchor="middle" fill="#666">${_DEPTH_BINS[i]}</text>`;
+        });
+        return (
+          head +
+          `<span style="color:#aaa;font-size:0.85em">coverage-depth distribution (positions)</span><br>` +
+          `<svg width="${(bw + gap) * 5}" height="${H + 14}">${bars}</svg>` +
+          `<br><span style="color:#888;font-size:0.78em">click to open in Histogram tab</span>`
+        );
+      }
+
+      // Jump to the Histogram tab and pre-select a given organism + sample.
+      function _jumpToHistogram(organism, taxonId, sample) {
+        const btn = document.getElementById("hist-tab-btn") || document.querySelector('.tab-btn[data-tab="histogram"]');
+        if (!btn || btn.classList.contains("hidden")) return;
+        btn.click();
+        setTimeout(() => {
+          const orgSel = document.getElementById("hist-org-sel");
+          const sampleSel = document.getElementById("hist-sample-sel");
+          const orgKey = `${organism}||${taxonId}`;
+          if (orgSel && Array.from(orgSel.options).some((o) => o.value === orgKey)) {
+            orgSel.value = orgKey;
+            orgSel.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          setTimeout(() => {
+            if (sampleSel && sample && Array.from(sampleSel.options).some((o) => o.value === sample)) {
+              sampleSel.value = sample;
+              sampleSel.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            if (window.drawHistogram) window.drawHistogram();
+          }, 40);
+        }, 60);
+      }
+
+      // Summary detection-table state
+      // Group-by-Sample is on by default, so default-sort by sample for clean grouping.
+      let _sumSortCol = "Specimen ID";
+      let _sumSortAsc = true;
+      let _sumPage = 0;
+      const _sumPinned = new Set();
+      function _sumPageSize() {
+        const sel = document.getElementById("summary-page-size");
+        return sel ? parseInt(sel.value) || 0 : 25;
+      }
+      function _sumRowKey(r) {
+        return `${r["Specimen ID"]}||${r["Detected Organism"]}||${r["Taxonomic ID #"]}`;
+      }
+
+      function drawSummary() {
+        const fd = filteredData();
+        const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+
+        // ── KPI cards ──────────────────────────────────────────────────────
+        const totalInput = samples.reduce(
+          (s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
+        const totalOrg =
+          samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
+          fd.reduce((s, r) => s + num(r["# Reads Aligned"]), 0);
+        let pctClass = totalInput > 0 ? ((totalOrg / totalInput) * 100).toFixed(1) + "%" : "N/A";
+        if (pctClass === "0.0%" && totalOrg > 0) pctClass = "<0.1%";
+
+        const uniqOrgs = new Set(fd.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
+        const uniqGenera = new Set(fd.map((r) => r["Genus"]).filter(Boolean)).size;
+        const hcCount = new Set(
+          fd.filter((r) => isTruthy(r["High Consequence"])).map((r) => r["Taxonomic ID #"] || r["Detected Organism"]),
+        ).size;
+        const platforms = uniq(
+          samples.map((sn) => (SAMPLE_META[sn] || {}).platform).filter((p) => p && p !== "unknown"),
+        );
+        // Applied TASS cutoff: the live sidebar filter value (updates with filters).
+        const appliedCut = parseFloat((document.getElementById("filter-min") || {}).value);
+        const recCut =
+          BEST_TASS_THRESH != null && !isNaN(BEST_TASS_THRESH) ? Number(BEST_TASS_THRESH).toFixed(1) : null;
+        const cutVal = !isNaN(appliedCut) ? appliedCut.toFixed(1) : recCut || "—";
+        const cutSub = recCut != null ? `recommended ${recCut}` : "applied filter";
+
+        const tReads = _fmtBig(totalInput);
+        const aReads = _fmtBig(totalOrg);
+        const cards = [
+          { label: "Samples", value: samples.length, sub: platforms.length ? platforms.join(", ") : "", tipId: "kpi-tip-samples" },
+          { label: "Total Reads", value: totalInput > 0 ? tReads.short : "N/A", full: tReads.full, sub: "input reads", tipId: "kpi-tip-reads" },
+          { label: "% Classified", value: pctClass, sub: aReads.short + " aligned", subFull: aReads.full, tipId: "kpi-tip-pct" },
+          { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
+          { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
+          { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged pathogens" },
+          { label: "TASS Cutoff", value: cutVal, sub: cutSub, tipId: "kpi-tip-tass" },
+        ];
+        const hcColor = hcCount > 0 ? "#c62828" : "#1565c0";
+        const kpiRow = document.getElementById("summary-kpi-row");
+        const infoIcon = `<i class="fas fa-circle-info" style="font-size:0.7em;opacity:0.45;margin-left:4px;vertical-align:middle"></i>`;
+        kpiRow.innerHTML = cards
+          .map(
+            (c) =>
+              `<div class="kpi-card${c.label === "High Consequence" && hcCount > 0 ? " kpi-hc" : ""}"${c.label === "High Consequence" ? ` style="border-left-color:${hcColor}"` : ""}${c.tipId ? ` id="${c.tipId}" style="cursor:help"` : ""}>` +
+              `<div class="kpi-label">${c.label}${c.tipId || c.label === "High Consequence" ? infoIcon : ""}</div>` +
+              `<div class="kpi-value"${c.full ? ` title="${c.full}"` : ""}>${c.value}</div>` +
+              (c.sub ? `<div class="kpi-sub"${c.subFull ? ` title="${c.subFull}"` : ""}>${c.sub}</div>` : "") +
+              `</div>`,
+          )
+          .join("");
+
+        // High-consequence KPI hover: keep this compact so it cannot cover the
+        // top of the summary page when many samples have flagged detections.
+        const hcCard = kpiRow.querySelector(".kpi-hc");
+        if (hcCard) {
+          const byOrg = new Map();
+          const hcSamples = new Set();
+          fd.filter((r) => isTruthy(r["High Consequence"])).forEach((r) => {
+            const org = r["Detected Organism"] || r["Taxonomic ID #"] || "Unknown";
+            if (!byOrg.has(org)) byOrg.set(org, { samples: new Set(), maxTass: 0 });
+            const entry = byOrg.get(org);
+            if (r["Specimen ID"]) {
+              entry.samples.add(r["Specimen ID"]);
+              hcSamples.add(r["Specimen ID"]);
+            }
+            const tass = parseFloat(r["TASS Score"]) || 0;
+            if (tass > entry.maxTass) entry.maxTass = tass;
+          });
+          // Sort organisms by descending sample count
+          const orgRows = Array.from(byOrg.entries())
+            .sort((a, b) => b[1].samples.size - a[1].samples.size)
+            .map(
+              ([org, entry]) =>
+                `<tr>` +
+                `<td style="text-align:right;padding-right:6px;font-weight:600;color:#ffb3b3">${entry.samples.size}</td>` +
+                `<td style="text-align:left;padding-right:10px">${org}</td>` +
+                `<td style="text-align:right;color:#ffd580;font-weight:600;white-space:nowrap">${entry.maxTass > 0 ? entry.maxTass.toFixed(1) : "—"}</td>` +
+                `</tr>`,
+            )
+            .join("");
+          const tip =
+            `<b style="color:#ffb3b3">High-consequence detections</b><br>` +
+            `<span style="font-size:0.85em;color:#ccc">${_fmtInt(byOrg.size)} unique organism${byOrg.size === 1 ? "" : "s"} &nbsp;·&nbsp; ${_fmtInt(hcSamples.size)} sample${hcSamples.size === 1 ? "" : "s"}</span>` +
+            `<table style="margin-top:6px;border-collapse:collapse;width:100%">` +
+            `<tr style="color:#aaa;font-size:0.8em"><td style="text-align:right;padding-right:6px"># Samples</td><td style="padding-right:10px">Organism</td><td style="text-align:right">Max TASS</td></tr>` +
+            orgRows +
+            `</table>`;
+          hcCard.style.cursor = "help";
+          hcCard.addEventListener("mouseover", (ev) => showTip(tip, ev));
+          hcCard.addEventListener("mousemove", moveTip);
+          hcCard.addEventListener("mouseout", hideTip);
+        }
+
+        // ── KPI tooltips: Samples ──────────────────────────────────────────
+        const sampCard = document.getElementById("kpi-tip-samples");
+        if (sampCard) {
+          const sampRows = samples
+            .map((sn) => {
+              const m = SAMPLE_META[sn] || {};
+              const reads = m.total_reads ? _fmtBig(m.total_reads).short : "—";
+              const plat  = m.platform && m.platform !== "unknown" ? m.platform : "";
+              return `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                     `<td style="padding:2px 8px 2px 0;text-align:right;color:#90caf9">${reads}</td>` +
+                     `<td style="padding:2px 0;color:#aaa;font-size:0.85em">${plat}</td></tr>`;
+            }).join("");
+          const sampTip =
+            `<b style="color:#90caf9">Samples in view</b> <span style="color:#aaa;font-size:0.85em">(${samples.length})</span><br>` +
+            `<table style="margin-top:5px;border-collapse:collapse">` +
+            `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Name</td><td style="padding-right:8px;text-align:right">Reads</td><td>Platform</td></tr>` +
+            sampRows + `</table>`;
+          sampCard.addEventListener("mouseover", (ev) => showTip(sampTip, ev));
+          sampCard.addEventListener("mousemove", moveTip);
+          sampCard.addEventListener("mouseout", hideTip);
+        }
+
+        // ── KPI tooltips: Total Reads ──────────────────────────────────────
+        const readsCard = document.getElementById("kpi-tip-reads");
+        if (readsCard && totalInput > 0) {
+          const rRows = samples
+            .map((sn) => {
+              const r = parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0;
+              const pct = totalInput > 0 ? ((r / totalInput) * 100).toFixed(1) + "%" : "—";
+              return `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                     `<td style="padding:2px 4px;text-align:right;color:#90caf9">${_fmtBig(r).short}</td>` +
+                     `<td style="padding:2px 0;color:#aaa;text-align:right">${pct}</td></tr>`;
+            }).join("");
+          const readsTip =
+            `<b style="color:#90caf9">Total input reads</b><br>` +
+            `<span style="color:#aaa;font-size:0.85em">Full count: ${tReads.full}</span><br>` +
+            `<table style="margin-top:5px;border-collapse:collapse">` +
+            `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">Reads</td><td style="text-align:right">Share</td></tr>` +
+            rRows + `</table>`;
+          readsCard.addEventListener("mouseover", (ev) => showTip(readsTip, ev));
+          readsCard.addEventListener("mousemove", moveTip);
+          readsCard.addEventListener("mouseout", hideTip);
+        }
+
+        // ── KPI tooltips: % Classified ─────────────────────────────────────
+        const pctCard = document.getElementById("kpi-tip-pct");
+        if (pctCard) {
+          const pctRows = samples
+            .map((sn) => {
+              const m = SAMPLE_META[sn] || {};
+              const inp = parseFloat(m.total_reads) || 0;
+              const aln = parseFloat(m.total_organism_reads) || 0;
+              const p = inp > 0 ? ((aln / inp) * 100).toFixed(1) + "%" : "—";
+              return `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                     `<td style="padding:2px 4px;text-align:right;color:#90caf9">${p}</td>` +
+                     `<td style="padding:2px 0;color:#aaa;text-align:right;font-size:0.85em">${_fmtBig(aln).short} / ${_fmtBig(inp).short}</td></tr>`;
+            }).join("");
+          const pctTip =
+            `<b style="color:#90caf9">% Classified</b><br>` +
+            `<span style="color:#aaa;font-size:0.85em">Reads assigned to any organism ÷ total input reads</span><br>` +
+            `<table style="margin-top:5px;border-collapse:collapse">` +
+            `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">% Class.</td><td style="text-align:right">Aligned / Total</td></tr>` +
+            pctRows + `</table>`;
+          pctCard.addEventListener("mouseover", (ev) => showTip(pctTip, ev));
+          pctCard.addEventListener("mousemove", moveTip);
+          pctCard.addEventListener("mouseout", hideTip);
+        }
+
+        // ── KPI tooltips: TASS Cutoff ──────────────────────────────────────
+        const tassCard = document.getElementById("kpi-tip-tass");
+        if (tassCard) {
+          const tassTip =
+            `<b style="color:#90caf9">TASS Cutoff</b><br>` +
+            `<span style="color:#ccc;font-size:0.88em">Taxonomic Assignment Scoring System (TASS) score threshold.<br>` +
+            `Rows at or above this score are shown; lower-confidence detections are filtered out.</span><br><br>` +
+            `<table style="border-collapse:collapse;font-size:0.88em">` +
+            `<tr><td style="color:#aaa;padding-right:8px">Applied cutoff</td><td style="color:#fff;font-weight:700">${cutVal}</td></tr>` +
+            (recCut != null ? `<tr><td style="color:#aaa;padding-right:8px">Recommended</td><td style="color:#90caf9;font-weight:700">${recCut}</td></tr>` : "") +
+            `</table>`;
+          tassCard.addEventListener("mouseover", (ev) => showTip(tassTip, ev));
+          tassCard.addEventListener("mousemove", moveTip);
+          tassCard.addEventListener("mouseout", hideTip);
+        }
+
+        // ── Detections table (sortable / paginated / groupable) ────────────
+        _renderSummaryTable(fd);
+
+        // ── Genera comparison stacked bar chart ────────────────────────────
+        _drawSummaryGenera(fd, samples);
+
+        // ── Annotation summary (only if protein/VF-AMR enabled) ────────────
+        _drawSummaryAnnotation(fd);
+      }
+
+      const _SUM_COLS = [
+        { key: "Detected Organism", label: "Organism", align: "left" },
+        { key: "_spark", label: "Depth", align: "center", nosort: true },
+        { key: "Specimen ID", label: "Sample", align: "left" },
+        { key: "Microbial Category", label: "Category", align: "left" },
+        { key: "TASS Score", label: "TASS", align: "right", num: true },
+        { key: "% Reads", label: "% Reads", align: "right", num: true },
+        { key: "# Reads Aligned", label: "Reads", align: "right", num: true },
+        { key: "Breadth %", label: "Breadth %", align: "right", num: true },
+        { key: "Sample Type", label: "Sample Type", align: "left" },
+        { key: "_kw", label: "Keywords", align: "left", nosort: true },
+      ];
+
+      function _renderSummaryTable(fd) {
+        const wrap = document.getElementById("summary-top-wrap");
+        if (!fd.length) {
+          wrap.innerHTML = '<p style="color:#888;padding:1em">No organisms match the current filters.</p>';
+          _updateSummaryPager(0, 0, 0, 0);
+          return;
+        }
+        const grouped = document.getElementById("summary-group-sample")?.checked;
+
+        // Sort
+        const rows = [...fd];
+        const col = _sumSortCol;
+        const isNum = (_SUM_COLS.find((c) => c.key === col) || {}).num;
+        const cmp = (a, b) => {
+          if (isNum) {
+            const d = num(a[col]) - num(b[col]);
+            return _sumSortAsc ? d : -d;
+          }
+          const d = String(a[col] || "").localeCompare(String(b[col] || ""));
+          return _sumSortAsc ? d : -d;
+        };
+        rows.sort((a, b) => {
+          // When grouping, keep samples together (primary) then TASS desc within.
+          if (grouped) {
+            const sd = String(a["Specimen ID"] || "").localeCompare(String(b["Specimen ID"] || ""));
+            if (sd !== 0) return sd;
+            if (col !== "Specimen ID") return cmp(a, b);
+            return num(b["TASS Score"]) - num(a["TASS Score"]);
+          }
+          return cmp(a, b);
+        });
+
+        // Pagination over the (optionally grouped) row list
+        const pageSize = _sumPageSize();
+        const total = rows.length;
+        const pages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+        _sumPage = Math.max(0, Math.min(_sumPage, pages - 1));
+        const start = pageSize > 0 ? _sumPage * pageSize : 0;
+        const end = pageSize > 0 ? Math.min(start + pageSize, total) : total;
+        const slice = rows.slice(start, end);
+
+        // Header
+        let html = "<table><thead><tr>";
+        _SUM_COLS.forEach((c) => {
+          const sortable = !c.nosort;
+          const ind = c.key === _sumSortCol ? `<span class="sort-ind">${_sumSortAsc ? "▲" : "▼"}</span>` : "";
+          html += `<th class="${sortable ? "sortable" : ""}" data-col="${c.key}" style="text-align:${c.align}">${c.label}${ind}</th>`;
+        });
+        html += "</tr></thead><tbody>";
+
+        let lastSample = null;
+        slice.forEach((r) => {
+          if (grouped && r["Specimen ID"] !== lastSample) {
+            lastSample = r["Specimen ID"];
+            html += `<tr class="grp-row"><td colspan="${_SUM_COLS.length}"><i class="fas fa-vial"></i> ${lastSample}</td></tr>`;
+          }
+          const cat = r["Microbial Category"] || "Unknown";
+          const cc = _CAT_COLORS[cat] || "#555";
+          const hc = isTruthy(r["High Consequence"]);
+          const key = _sumRowKey(r);
+          const hist = _histFor(r);
+          html +=
+            `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_sumPinned.has(key) ? " row-pinned" : ""}">` +
+            `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}</td>` +
+            `<td style="text-align:center">${hist ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>` : '<span style="color:#ccc">—</span>'}</td>` +
+            `<td>${r["Specimen ID"] || ""}</td>` +
+            `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
+            `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
+            `<td style="text-align:right">${num(r["% Reads"]).toFixed(2)}</td>` +
+            `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${_fmtBig(r["# Reads Aligned"]).short}</td>` +
+            `<td style="text-align:right">${num(r["Breadth %"]).toFixed(1)}</td>` +
+            `<td>${r["Sample Type"] && r["Sample Type"] !== "unknown" ? r["Sample Type"] : '<span style="color:#ccc">—</span>'}</td>` +
+            `<td>${_rowKeywords(r)}</td>` +
+            "</tr>";
+        });
+        html += "</tbody></table>";
+        wrap.innerHTML = html;
+
+        // Wire header sort
+        wrap.querySelectorAll("th.sortable").forEach((th) => {
+          th.addEventListener("click", () => {
+            const c = th.dataset.col;
+            if (_sumSortCol === c) _sumSortAsc = !_sumSortAsc;
+            else {
+              _sumSortCol = c;
+              _sumSortAsc = false;
+            }
+            _sumPage = 0;
+            _renderSummaryTable(filteredData());
+          });
+        });
+        // Wire row pin (click) — ignore clicks on the spark or group rows
+        wrap.querySelectorAll("tbody tr[data-key]").forEach((tr) => {
+          tr.addEventListener("click", (e) => {
+            if (e.target.closest(".spark") || e.target.closest("[data-spark]") || e.target.closest("a")) return;
+            const k = tr.dataset.key;
+            if (_sumPinned.has(k)) {
+              _sumPinned.delete(k);
+              tr.classList.remove("row-pinned");
+            } else {
+              _sumPinned.add(k);
+              tr.classList.add("row-pinned");
+            }
+            _updateSumPinBar();
+          });
+        });
+        // Wire spark hover preview + click-to-open in Histogram tab
+        wrap.querySelectorAll("[data-spark]").forEach((sp) => {
+          const key = sp.dataset.spark;
+          const cd = _histMap().get(key);
+          if (!cd) return;
+          const parts = key.split("||");
+          const r = { "Detected Organism": parts[1], "Specimen ID": parts[0], "Taxonomic ID #": parts[2] };
+          sp.style.cursor = "pointer";
+          sp.addEventListener("mouseover", (ev) => showTip(_histPreviewHtml(r, cd), ev));
+          sp.addEventListener("mousemove", moveTip);
+          sp.addEventListener("mouseout", hideTip);
+          sp.addEventListener("click", (e) => {
+            e.stopPropagation();
+            hideTip();
+            _jumpToHistogram(parts[1], parts[2], parts[0]);
+          });
+        });
+
+        _updateSummaryPager(total, start, end, pages);
+      }
+
+      function _updateSummaryPager(total, start, end, pages) {
+        const countEl = document.getElementById("summary-row-count");
+        if (countEl) {
+          if (!total) countEl.textContent = "No rows";
+          else if (pages > 1) countEl.textContent = `Rows ${start + 1}–${end} of ${total.toLocaleString()}`;
+          else countEl.textContent = `${total.toLocaleString()} row${total !== 1 ? "s" : ""}`;
+        }
+        const pager = document.getElementById("summary-pager");
+        const show = pages > 1;
+        if (pager) pager.style.display = show ? "flex" : "none";
+        if (show) {
+          const lbl = document.getElementById("summary-page-label");
+          if (lbl) lbl.textContent = `Page ${_sumPage + 1} of ${pages}`;
+          document.getElementById("summary-first").disabled = _sumPage === 0;
+          document.getElementById("summary-prev").disabled = _sumPage === 0;
+          document.getElementById("summary-next").disabled = _sumPage >= pages - 1;
+          document.getElementById("summary-last").disabled = _sumPage >= pages - 1;
+        }
+      }
+
+      // Memoized set of genera (lowercased) that have AMR gene hits anywhere.
+      let _AMR_GENERA = null;
+      function _orgHasAmr(r) {
+        if (!HAS_PROT) return false;
+        if (!_AMR_GENERA) {
+          _AMR_GENERA = new Set(
+            (PROT.amr_genes || []).map((a) => String(a.Genus || a.genus || "").trim().toLowerCase()).filter(Boolean),
+          );
+        }
+        const g = String(r["Genus"] || "").trim().toLowerCase();
+        return g && _AMR_GENERA.has(g);
+      }
+
+      // Wire summary detection-table controls (pager + group + page-size).
+      (function _initSummaryTableControls() {
+        function _go(n) {
+          _sumPage = n;
+          _renderSummaryTable(filteredData());
+        }
+        const ids = {
+          first: () => _go(0),
+          prev: () => _go(_sumPage - 1),
+          next: () => _go(_sumPage + 1),
+          last: () => {
+            const total = filteredData().length;
+            const ps = _sumPageSize();
+            _go(ps > 0 ? Math.max(0, Math.ceil(total / ps) - 1) : 0);
+          },
+        };
+        Object.entries(ids).forEach(([k, fn]) => {
+          const el = document.getElementById("summary-" + k);
+          if (el) el.addEventListener("click", fn);
+        });
+        const ps = document.getElementById("summary-page-size");
+        if (ps)
+          ps.addEventListener("change", () => {
+            _sumPage = 0;
+            _renderSummaryTable(filteredData());
+          });
+        const grp = document.getElementById("summary-group-sample");
+        if (grp)
+          grp.addEventListener("change", () => {
+            // grouping reads best when sorted by sample; force that when enabled
+            if (grp.checked) {
+              _sumSortCol = "Specimen ID";
+              _sumSortAsc = true;
+            }
+            _sumPage = 0;
+            _renderSummaryTable(filteredData());
+          });
+      })();
+
+      /* ── Summary tab pin-bar ─────────────────────────────────────────────── */
+      function _updateSumPinBar() {
+        const bar = document.getElementById("sum-pin-bar");
+        const countEl = document.getElementById("sum-pin-bar-count");
+        if (!bar) return;
+        const n = _sumPinned.size;
+        bar.style.display = n > 0 ? "flex" : "none";
+        if (countEl) countEl.textContent = `${n} row${n === 1 ? "" : "s"} pinned`;
+      }
+
+      (function _initSumPinBar() {
+        const compareBtn = document.getElementById("sum-compare-btn");
+        if (compareBtn) compareBtn.addEventListener("click", () => {
+          // Gather rows matching sumPinned keys from full DATA
+          const pinnedRows = DATA.filter((r) => _sumPinned.has(_sumRowKey(r)));
+          if (!pinnedRows.length) return;
+          _openCompareModalForRows(pinnedRows);
+        });
+        const unpinBtn = document.getElementById("sum-unpin-all-btn");
+        if (unpinBtn) unpinBtn.addEventListener("click", () => {
+          _sumPinned.clear();
+          _updateSumPinBar();
+          _renderSummaryTable(filteredData());
+        });
+      })();
+
+      function _drawSummaryGenera(fd, samples) {
+        const wrap = document.getElementById("summary-genus-wrap");
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        const metric = (document.getElementById("summary-genus-metric") || {}).value || "# Reads Aligned";
+        const topN = parseInt((document.getElementById("summary-genus-topn") || {}).value || "15", 10);
+
+        const rows = fd.filter((r) => r["Genus"]);
+        if (!rows.length) {
+          wrap.innerHTML = '<p style="color:#888;padding:1em">No genus-level data for the current filters.</p>';
+          return;
+        }
+        // genus -> {total, perSample: {sample: val}}
+        const genera = {};
+        rows.forEach((r) => {
+          const g = r["Genus"];
+          const sn = r["Specimen ID"] || "Unknown";
+          let v;
+          if (metric === "count") v = 1;
+          else if (metric === "TASS Score") v = num(r["TASS Score"]);
+          else v = num(r["# Reads Aligned"]);
+          if (!genera[g]) genera[g] = { total: 0, perSample: {} };
+          if (metric === "TASS Score") {
+            genera[g].perSample[sn] = Math.max(genera[g].perSample[sn] || 0, v);
+            genera[g].total = Math.max(genera[g].total, v);
+          } else {
+            genera[g].perSample[sn] = (genera[g].perSample[sn] || 0) + v;
+            genera[g].total += v;
+          }
+        });
+        const ordered = Object.entries(genera)
+          .sort((a, b) => b[1].total - a[1].total)
+          .slice(0, topN);
+        const sampleList = _orderedSamples(samples.filter((sn) => sn));
+        const color = d3.scaleOrdinal().domain(sampleList).range(PALETTE);
+
+        const W = wrap.clientWidth || 700;
+        const rowH = 26,
+          mT = 10,
+          mB = 28,
+          mL = 150,
+          mR = 130;
+        const H = ordered.length * rowH + mT + mB;
+        const iW = Math.max(120, W - mL - mR);
+        const maxTotal = d3.max(ordered, (d) => d[1].total) || 1;
+        const x = d3.scaleLinear().domain([0, maxTotal]).range([0, iW]);
+
+        const svg = d3
+          .select(wrap)
+          .append("svg")
+          .attr("width", W)
+          .attr("height", H)
+          .attr("viewBox", `0 0 ${W} ${H}`);
+        const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
+
+        // tooltip uses the shared showTip/moveTip/hideTip helpers
+        ordered.forEach((entry, i) => {
+          const [genus, info] = entry;
+          const y = i * rowH;
+          // genus label
+          svg
+            .append("text")
+            .attr("x", mL - 8)
+            .attr("y", mT + y + rowH / 2)
+            .attr("text-anchor", "end")
+            .attr("dominant-baseline", "middle")
+            .style("font-size", "11px")
+            .style("font-style", "italic")
+            .style("fill", "#333")
+            .text(genus.length > 22 ? genus.slice(0, 21) + "…" : genus);
+
+          let xacc = 0;
+          const segs = (metric === "TASS Score" ? sampleList.map((sn) => [sn, info.perSample[sn] || 0]) : sampleList
+            .map((sn) => [sn, info.perSample[sn] || 0]))
+            .filter((s) => s[1] > 0);
+          segs.forEach(([sn, val]) => {
+            g.append("rect")
+              .attr("x", x(xacc))
+              .attr("y", y + 3)
+              .attr("width", Math.max(0, x(xacc + val) - x(xacc)))
+              .attr("height", rowH - 6)
+              .attr("fill", color(sn))
+              .attr("stroke", "#fff")
+              .on("mouseover", (ev) =>
+                showTip(`<b>${genus}</b><br>${sn}<br>${metric === "count" ? val + " organism(s)" : _fmtInt(val)}`, ev),
+              )
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+            xacc += val;
+          });
+          // total label
+          g.append("text")
+            .attr("x", x(info.total) + 6)
+            .attr("y", y + rowH / 2)
+            .attr("dominant-baseline", "middle")
+            .style("font-size", "10px")
+            .style("fill", "#666")
+            .text(metric === "TASS Score" ? info.total.toFixed(1) : _fmtInt(info.total));
+        });
+
+        // simple legend
+        const legend = svg.append("g").attr("transform", `translate(${mL},${H - mB + 14})`);
+        let lx = 0;
+        sampleList.slice(0, 8).forEach((sn) => {
+          const grp = legend.append("g").attr("transform", `translate(${lx},0)`);
+          grp.append("rect").attr("width", 9).attr("height", 9).attr("y", -8).attr("fill", color(sn));
+          const t = grp
+            .append("text")
+            .attr("x", 12)
+            .attr("y", 0)
+            .style("font-size", "9px")
+            .style("fill", "#555")
+            .text(sn.length > 14 ? sn.slice(0, 13) + "…" : sn);
+          lx += 24 + (t.node().getComputedTextLength() || 40);
+        });
+      }
+
+      function _drawSummaryAnnotation(fd) {
+        const wrap = document.getElementById("summary-annot-wrap");
+        if (!wrap) return;
+        if (!HAS_PROT) {
+          wrap.style.display = "none";
+          return;
+        }
+        wrap.style.display = "";
+        const genusRows = PROT.genus_summary || [];
+        const geneHits = PROT.per_gene_hits || [];
+        const amrRows = PROT.amr_genes || [];
+        const annotOrgs = new Set(
+          fd.filter((r) => isTruthy(r["IsAnnotated"])).map((r) => r["Taxonomic ID #"] || r["Detected Organism"]),
+        ).size;
+
+        const cards = [
+          { label: "Annotated Organisms", value: _fmtInt(annotOrgs) },
+          { label: "Gene Hits", value: _fmtInt(geneHits.length) },
+          { label: "Genera w/ Hits", value: _fmtInt(new Set(genusRows.map((r) => r.Genus || r.genus)).size) },
+          { label: "AMR Gene Hits", value: _fmtInt(amrRows.length) },
+        ];
+        document.getElementById("summary-annot-cards").innerHTML = cards
+          .map(
+            (c) =>
+              `<div class="kpi-card" style="border-left-color:#2e7d32">` +
+              `<div class="kpi-label">${c.label}</div>` +
+              `<div class="kpi-value">${c.value}</div></div>`,
+          )
+          .join("");
+
+        // Helper: best available gene/product label for an annotation row.
+        const _geneLabel = (r) =>
+          r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+
+        // Top genera by # hits
+        const byGenus = {};
+        const _ensure = (g) => {
+          if (!byGenus[g]) byGenus[g] = { hits: 0, samples: new Set(), amr: 0, geneNames: new Map(), amrNames: new Map() };
+          return byGenus[g];
+        };
+        genusRows.forEach((r) => {
+          const g = r.Genus || r.genus || "Unknown";
+          const n = num(r["# Hits"] || r["# hits"] || 0);
+          const e = _ensure(g);
+          e.hits += n;
+          if (r.Sample || r.sample) e.samples.add(r.Sample || r.sample);
+        });
+        // Collect individual gene-hit names per genus (for the # Gene Hits tooltip).
+        geneHits.forEach((r) => {
+          const g = r.Genus || r.genus || "Unknown";
+          const e = _ensure(g);
+          const lbl = _geneLabel(r);
+          if (lbl) e.geneNames.set(lbl, (e.geneNames.get(lbl) || 0) + 1);
+          if (r.Sample || r.sample) e.samples.add(r.Sample || r.sample);
+        });
+        amrRows.forEach((r) => {
+          const g = r.Genus || r.genus || "Unknown";
+          const e = _ensure(g);
+          e.amr += 1;
+          const lbl = _geneLabel(r);
+          if (lbl) e.amrNames.set(lbl, (e.amrNames.get(lbl) || 0) + 1);
+        });
+        const ordered = Object.entries(byGenus)
+          .sort((a, b) => b[1].hits - a[1].hits)
+          .slice(0, 12);
+        const cont = document.getElementById("summary-annot-genus");
+        if (!ordered.length) {
+          cont.innerHTML = '<p style="color:#888;padding:0.5em">No genus-level annotation hits.</p>';
+          return;
+        }
+        let html =
+          '<p style="font-size:0.74rem;color:#6c757d;margin:0 0 0.4em">Click a genus to open it in the VF / AMR tab.</p>' +
+          "<table><thead><tr>" +
+          ["Genus", "# Gene Hits", "AMR Hits", "Samples", ""].map((h) => `<th>${h}</th>`).join("") +
+          "</tr></thead><tbody>";
+        // Tooltip HTML from a name→count Map of gene/AMR hits.
+        const _hitsTip = (title, m) => {
+          const items = Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+          if (!items.length) return "";
+          let t = `<b>${title}</b><br>`;
+          items.slice(0, 15).forEach(([name, n]) => {
+            t += `<div><i>${name}</i>${n > 1 ? ` <span style="color:#aaa">×${n}</span>` : ""}</div>`;
+          });
+          if (items.length > 15) t += `<div style="color:#aaa">…and ${items.length - 15} more</div>`;
+          return t;
+        };
+        const _tipStore = {};
+        ordered.forEach(([g, info], gi) => {
+          const geneTip = _hitsTip(`${g} — gene hits`, info.geneNames);
+          const amrTip = _hitsTip(`${g} — AMR genes`, info.amrNames);
+          _tipStore[gi] = { gene: geneTip, amr: amrTip };
+          html +=
+            `<tr class="annot-genus-row" data-genus="${g}" data-gi="${gi}" style="cursor:pointer">` +
+            `<td><i style="color:#1565c0;text-decoration:underline">${g}</i></td>` +
+            `<td class="annot-gene-cell" style="text-align:right${geneTip ? ";cursor:help;text-decoration:underline dotted" : ""}">${_fmtInt(info.hits)}</td>` +
+            `<td class="annot-amr-cell" style="text-align:right${amrTip ? ";cursor:help;text-decoration:underline dotted" : ""}">${info.amr ? _fmtInt(info.amr) : "—"}</td>` +
+            `<td style="text-align:right">${info.samples.size || "—"}</td>` +
+            `<td style="text-align:right;color:#1565c0"><i class="fas fa-arrow-up-right-from-square" title="Open in VF / AMR tab"></i></td>` +
+            "</tr>";
+        });
+        html += "</tbody></table>";
+        cont.innerHTML = html;
+        cont.querySelectorAll(".annot-genus-row").forEach((tr) => {
+          const gi = tr.dataset.gi;
+          const store = _tipStore[gi] || {};
+          tr.addEventListener("click", () => _jumpToProteins(tr.dataset.genus));
+          const wire = (cell, tip) => {
+            if (!cell || !tip) return;
+            cell.addEventListener("mouseover", (ev) => {
+              ev.stopPropagation();
+              showTip(tip, ev);
+            });
+            cell.addEventListener("mousemove", moveTip);
+            cell.addEventListener("mouseout", hideTip);
+          };
+          wire(tr.querySelector(".annot-gene-cell"), store.gene);
+          wire(tr.querySelector(".annot-amr-cell"), store.amr);
+        });
+      }
+
+      // Switch to the VF / AMR (proteins) tab and pre-filter it by genus.
+      function _jumpToProteins(genus) {
+        const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
+        if (!btn || btn.classList.contains("hidden")) return;
+        btn.click();
+        // After the pane is visible, set the protein search to the genus column.
+        setTimeout(() => {
+          const colSel = document.getElementById("prot-search-col");
+          const search = document.getElementById("prot-search");
+          if (colSel) {
+            // pick a Genus column if present, else search all columns
+            const opt = Array.from(colSel.options).find((o) => /genus/i.test(o.value));
+            colSel.value = opt ? opt.value : "";
+          }
+          if (search) {
+            search.value = genus;
+            search.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }, 60);
+      }
+
       function _drawTab(tab) {
         switch (tab) {
+          case "summary":
+            drawSummary();
+            break;
           case "heatmap":
             drawHeatmap();
             break;
@@ -8320,6 +9717,13 @@
       ].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
+      });
+      // Summary tab genera-comparison controls
+      ["summary-genus-metric", "summary-genus-topn"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener("change", () => {
+          if (typeof drawSummary === "function") drawSummary();
+        });
       });
       // VF/AMR genus chart scale selector
       const _protScaleEl = document.getElementById("prot-genus-scale");
@@ -8772,6 +10176,7 @@
               } catch (e) {}
             }
           });
+          if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
 
           // Merge run metadata from uploaded JSON files (only fields from the JSON)
           if (_uploadedMetaRecords.length && window._applyMetaRecords) {
@@ -9047,6 +10452,7 @@
               } catch (e) {}
             }
           });
+          if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
           // Restore PROT to boot-time data
           _PROT_KEYS.forEach((k) => {
             PROT[k] = (BOOT.prot_data || {})[k] || [];
@@ -11275,6 +12681,7 @@
         CONTIG_DATA.forEach((cd) => {
           if (cd && cd.sample === oldName) cd.sample = newName;
         });
+        if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
 
         // Mirror the rename into BOOT so a later "Clear uploaded data" or
         // any code path that re-reads BOOT doesn't bring the old name back.
