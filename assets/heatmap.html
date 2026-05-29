@@ -534,11 +534,26 @@
         color: #555;
         white-space: nowrap;
       }
-      .kw-chip.kw-hc { background: #ffe0e0; color: #c62828; }
-      .kw-chip.kw-amr { background: #ffe8cc; color: #d9480f; }
-      .kw-chip.kw-annot { background: #e6fcf5; color: #0ca678; }
-      .kw-chip.kw-cat { background: #e7f5ff; color: #1565c0; }
-      .kw-chip.kw-bsl { background: #fff3bf; color: #b45309; }
+      .kw-chip.kw-hc {
+        background: #ffe0e0;
+        color: #c62828;
+      }
+      .kw-chip.kw-amr {
+        background: #ffe8cc;
+        color: #d9480f;
+      }
+      .kw-chip.kw-annot {
+        background: #e6fcf5;
+        color: #0ca678;
+      }
+      .kw-chip.kw-cat {
+        background: #e7f5ff;
+        color: #1565c0;
+      }
+      .kw-chip.kw-bsl {
+        background: #fff3bf;
+        color: #b45309;
+      }
       /* depth-histogram sparkline */
       .spark {
         display: inline-flex;
@@ -1035,19 +1050,23 @@
 
           <div class="chart-wrap">
             <div class="chart-title"><i class="fas fa-triangle-exclamation"></i> Detections</div>
-            <div style="font-size:0.75rem;color:#6c757d;margin-bottom:0.5em">
-              Organisms across the run (respects sidebar filters). Click a column header to sort · click a row to pin it ·
-              ★ = high-consequence pathogen · <span style="color:#1565c0;font-weight:600">Ⓓ</span>/<span style="color:#6a1b9a;font-weight:600">Ⓡ</span> = DNA / RNA ·
-              hover the <i class="fas fa-chart-column" style="color:#4dabf7"></i> spark for a coverage-depth preview.
+            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5em">
+              Organisms across the run (respects sidebar filters). Click a column header to sort · click a row to pin it
+              · ★ = high-consequence pathogen · <span style="color: #1565c0; font-weight: 600">Ⓓ</span>/<span
+                style="color: #6a1b9a; font-weight: 600"
+                >Ⓡ</span
+              >
+              = DNA / RNA · hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark for a
+              coverage-depth preview.
             </div>
             <div class="summary-tbl-toolbar">
-              <span id="summary-row-count" style="flex:1;min-width:110px"></span>
-              <label style="display:flex;align-items:center;gap:0.3em">
+              <span id="summary-row-count" style="flex: 1; min-width: 110px"></span>
+              <label style="display: flex; align-items: center; gap: 0.3em">
                 <input type="checkbox" id="summary-group-sample" checked /> Group by Sample
               </label>
-              <label style="display:flex;align-items:center;gap:0.3em;white-space:nowrap">
+              <label style="display: flex; align-items: center; gap: 0.3em; white-space: nowrap">
                 Rows per page:
-                <select id="summary-page-size" style="padding:0.1em 0.3em;border:1px solid #ccc;border-radius:4px">
+                <select id="summary-page-size" style="padding: 0.1em 0.3em; border: 1px solid #ccc; border-radius: 4px">
                   <option value="10">10</option>
                   <option value="25" selected>25</option>
                   <option value="50">50</option>
@@ -1055,26 +1074,69 @@
                   <option value="0">All</option>
                 </select>
               </label>
-              <div id="summary-pager" style="display:flex;align-items:center;gap:0.3em">
+              <div id="summary-pager" style="display: flex; align-items: center; gap: 0.3em">
                 <button id="summary-first" class="pg-btn" title="First page">«</button>
                 <button id="summary-prev" class="pg-btn" title="Previous page">‹</button>
-                <span id="summary-page-label" style="min-width:6em;text-align:center;white-space:nowrap"></span>
+                <span id="summary-page-label" style="min-width: 6em; text-align: center; white-space: nowrap"></span>
                 <button id="summary-next" class="pg-btn" title="Next page">›</button>
                 <button id="summary-last" class="pg-btn" title="Last page">»</button>
               </div>
             </div>
             <!-- summary pin actions bar -->
-            <div id="sum-pin-bar" style="display:none;align-items:center;gap:0.5em;padding:0.3em 0.6em;background:#fffbea;border-bottom:2px solid #f59f00;font-size:0.82em;flex-wrap:wrap">
-              <i class="fas fa-map-pin" style="color:#f59f00"></i>
-              <span id="sum-pin-bar-count" style="font-weight:700;color:#555"></span>
-              <button id="sum-compare-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #1565c0;border-radius:5px;background:#fff;color:#1565c0;font-size:1em;font-weight:600;cursor:pointer;white-space:nowrap">
+            <div
+              id="sum-pin-bar"
+              style="
+                display: none;
+                align-items: center;
+                gap: 0.5em;
+                padding: 0.3em 0.6em;
+                background: #fffbea;
+                border-bottom: 2px solid #f59f00;
+                font-size: 0.82em;
+                flex-wrap: wrap;
+              "
+            >
+              <i class="fas fa-map-pin" style="color: #f59f00"></i>
+              <span id="sum-pin-bar-count" style="font-weight: 700; color: #555"></span>
+              <button
+                id="sum-compare-btn"
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 0.35em;
+                  padding: 0.25em 0.75em;
+                  border: 1.5px solid #1565c0;
+                  border-radius: 5px;
+                  background: #fff;
+                  color: #1565c0;
+                  font-size: 1em;
+                  font-weight: 600;
+                  cursor: pointer;
+                  white-space: nowrap;
+                "
+              >
                 <i class="fas fa-table-columns"></i> Compare
               </button>
-              <button id="sum-unpin-all-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #aaa;border-radius:5px;background:#fff;color:#666;font-size:1em;cursor:pointer;white-space:nowrap">
+              <button
+                id="sum-unpin-all-btn"
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 0.35em;
+                  padding: 0.25em 0.75em;
+                  border: 1.5px solid #aaa;
+                  border-radius: 5px;
+                  background: #fff;
+                  color: #666;
+                  font-size: 1em;
+                  cursor: pointer;
+                  white-space: nowrap;
+                "
+              >
                 <i class="fas fa-times"></i> Unpin All
               </button>
             </div>
-            <div id="summary-top-wrap" style="overflow:auto"></div>
+            <div id="summary-top-wrap" style="overflow: auto"></div>
           </div>
 
           <div class="chart-wrap">
@@ -1096,10 +1158,10 @@
             <div id="summary-genus-wrap"></div>
           </div>
 
-          <div class="chart-wrap" id="summary-annot-wrap" style="display:none">
+          <div class="chart-wrap" id="summary-annot-wrap" style="display: none">
             <div class="chart-title"><i class="fas fa-dna"></i> Annotation Summary (VF / AMR)</div>
-            <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom:0.8em"></div>
-            <div id="summary-annot-genus" style="overflow:auto"></div>
+            <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom: 0.8em"></div>
+            <div id="summary-annot-genus" style="overflow: auto"></div>
           </div>
         </div>
 
@@ -1841,13 +1903,56 @@
             </div>
           </div>
           <!-- pin actions bar — shown only when rows are pinned -->
-          <div id="tbl-pin-bar" style="display:none;align-items:center;gap:0.5em;padding:0.3em 0.6em;background:#fffbea;border-bottom:2px solid #f59f00;font-size:0.82em;flex-wrap:wrap">
-            <i class="fas fa-map-pin" style="color:#f59f00"></i>
-            <span id="tbl-pin-bar-count" style="font-weight:700;color:#555"></span>
-            <button id="compare-pinned-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #1565c0;border-radius:5px;background:#fff;color:#1565c0;font-size:1em;font-weight:600;cursor:pointer;white-space:nowrap">
+          <div
+            id="tbl-pin-bar"
+            style="
+              display: none;
+              align-items: center;
+              gap: 0.5em;
+              padding: 0.3em 0.6em;
+              background: #fffbea;
+              border-bottom: 2px solid #f59f00;
+              font-size: 0.82em;
+              flex-wrap: wrap;
+            "
+          >
+            <i class="fas fa-map-pin" style="color: #f59f00"></i>
+            <span id="tbl-pin-bar-count" style="font-weight: 700; color: #555"></span>
+            <button
+              id="compare-pinned-btn"
+              style="
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35em;
+                padding: 0.25em 0.75em;
+                border: 1.5px solid #1565c0;
+                border-radius: 5px;
+                background: #fff;
+                color: #1565c0;
+                font-size: 1em;
+                font-weight: 600;
+                cursor: pointer;
+                white-space: nowrap;
+              "
+            >
               <i class="fas fa-table-columns"></i> Compare
             </button>
-            <button id="tbl-unpin-all-btn" style="display:inline-flex;align-items:center;gap:0.35em;padding:0.25em 0.75em;border:1.5px solid #aaa;border-radius:5px;background:#fff;color:#666;font-size:1em;cursor:pointer;white-space:nowrap">
+            <button
+              id="tbl-unpin-all-btn"
+              style="
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35em;
+                padding: 0.25em 0.75em;
+                border: 1.5px solid #aaa;
+                border-radius: 5px;
+                background: #fff;
+                color: #666;
+                font-size: 1em;
+                cursor: pointer;
+                white-space: nowrap;
+              "
+            >
               <i class="fas fa-times"></i> Unpin All
             </button>
           </div>
@@ -2345,12 +2450,39 @@
           />
         </div>
         <!-- Per-sample-type TASS cutoffs — populated dynamically, replaces global slider -->
-        <div id="per-type-tass-wrap" style="display:none;margin-top:0.25em">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3em">
-            <label style="font-size:0.82em;color:#444;font-weight:600;margin:0">TASS by Sample Type</label>
-            <div style="display:flex;gap:0.3em">
-              <button id="per-type-reset-all-btn" title="Reset each type to its recommended default" style="font-size:0.72em;padding:2px 7px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer">Reset All</button>
-              <button id="per-type-set-all-btn" title="Set all types to the active type's current value" style="font-size:0.72em;padding:2px 7px;border:1px solid #90caf9;border-radius:4px;background:#e3f2fd;cursor:pointer;display:none">Set All</button>
+        <div id="per-type-tass-wrap" style="display: none; margin-top: 0.25em">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3em">
+            <label style="font-size: 0.82em; color: #444; font-weight: 600; margin: 0">TASS by Sample Type</label>
+            <div style="display: flex; gap: 0.3em">
+              <button
+                id="per-type-reset-all-btn"
+                title="Reset each type to its recommended default"
+                style="
+                  font-size: 0.72em;
+                  padding: 2px 7px;
+                  border: 1px solid #ccc;
+                  border-radius: 4px;
+                  background: #f5f5f5;
+                  cursor: pointer;
+                "
+              >
+                Reset All
+              </button>
+              <button
+                id="per-type-set-all-btn"
+                title="Set all types to the active type's current value"
+                style="
+                  font-size: 0.72em;
+                  padding: 2px 7px;
+                  border: 1px solid #90caf9;
+                  border-radius: 4px;
+                  background: #e3f2fd;
+                  cursor: pointer;
+                  display: none;
+                "
+              >
+                Set All
+              </button>
             </div>
           </div>
           <div id="per-type-tass-rows"></div>
@@ -2546,19 +2678,91 @@
     <div id="tooltip"></div>
 
     <!-- ── Pinned-row comparison modal ── -->
-    <div id="compare-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;align-items:center;justify-content:center">
-      <div id="compare-modal" style="background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.28);width:min(96vw,1100px);max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
-        <div style="display:flex;align-items:center;gap:0.6em;padding:0.75em 1.1em;background:#1565c0;color:#fff;flex-shrink:0">
-          <i class="fas fa-map-pin" style="font-size:1em;opacity:0.85"></i>
-          <span style="font-weight:700;font-size:1em;flex:1">Pinned Row Comparison</span>
-          <button id="compare-close-btn" style="background:transparent;border:none;color:#fff;font-size:1.3em;cursor:pointer;line-height:1;padding:0 0.2em" title="Close">×</button>
+    <div
+      id="compare-overlay"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 1100;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        id="compare-modal"
+        style="
+          background: #fff;
+          border-radius: 10px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+          width: min(96vw, 1100px);
+          max-height: 88vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 0.6em;
+            padding: 0.75em 1.1em;
+            background: #1565c0;
+            color: #fff;
+            flex-shrink: 0;
+          "
+        >
+          <i class="fas fa-map-pin" style="font-size: 1em; opacity: 0.85"></i>
+          <span style="font-weight: 700; font-size: 1em; flex: 1">Pinned Row Comparison</span>
+          <button
+            id="compare-close-btn"
+            style="
+              background: transparent;
+              border: none;
+              color: #fff;
+              font-size: 1.3em;
+              cursor: pointer;
+              line-height: 1;
+              padding: 0 0.2em;
+            "
+            title="Close"
+          >
+            ×
+          </button>
         </div>
-        <div id="compare-body" style="overflow:auto;padding:1em 1.1em;flex:1"></div>
-        <div style="padding:0.6em 1.1em;border-top:1px solid #e0e0e0;display:flex;gap:0.6em;flex-shrink:0">
-          <button id="compare-unpin-all-btn" style="padding:0.35em 0.9em;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;font-size:0.85em;color:#555">
+        <div id="compare-body" style="overflow: auto; padding: 1em 1.1em; flex: 1"></div>
+        <div style="padding: 0.6em 1.1em; border-top: 1px solid #e0e0e0; display: flex; gap: 0.6em; flex-shrink: 0">
+          <button
+            id="compare-unpin-all-btn"
+            style="
+              padding: 0.35em 0.9em;
+              border: 1px solid #ccc;
+              border-radius: 5px;
+              background: #fff;
+              cursor: pointer;
+              font-size: 0.85em;
+              color: #555;
+            "
+          >
             <i class="fas fa-times"></i> Unpin All
           </button>
-          <button id="compare-close-btn2" style="margin-left:auto;padding:0.35em 0.9em;border:none;border-radius:5px;background:#1565c0;color:#fff;cursor:pointer;font-size:0.85em">Close</button>
+          <button
+            id="compare-close-btn2"
+            style="
+              margin-left: auto;
+              padding: 0.35em 0.9em;
+              border: none;
+              border-radius: 5px;
+              background: #1565c0;
+              color: #fff;
+              cursor: pointer;
+              font-size: 0.85em;
+            "
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -2617,7 +2821,7 @@
       const sampleColors = {};
       const sampleHidden = {};
       const sampleRescale = {}; // per-sample flag: scale legacy 0–1 TASS/Coverage ×100
-      const perTypeTass = {};   // per-sample-type TASS override: { "stool": 65, "blood": 80, ... }
+      const perTypeTass = {}; // per-sample-type TASS override: { "stool": 65, "blood": 80, ... }
       let _sampleOrder = []; // custom display order for samples (index → id)
 
       /** Return arr sorted by _sampleOrder; unknowns go to the end. */
@@ -2751,7 +2955,7 @@
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
           const tass = parseFloat(r["TASS Score"]);
           const _st = (r["Sample Type"] || "").trim().toLowerCase();
-          const _typeMin = (_st && _st !== "unknown" && perTypeTass[_st] != null) ? perTypeTass[_st] : minV;
+          const _typeMin = _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
           const tassFilter = anyRescale && sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
           if (!isNaN(tassFilter) && tassFilter < _typeMin) return false;
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
@@ -3240,8 +3444,10 @@
         // Hint for multi-type mode
         if (!singleType) {
           const hint = document.createElement("div");
-          hint.style.cssText = "font-size:0.73em;color:#888;margin-bottom:0.4em;display:flex;align-items:center;gap:4px";
-          hint.innerHTML = '<i class="fas fa-hand-pointer" style="font-size:0.9em"></i> Click a type to adjust its cutoff';
+          hint.style.cssText =
+            "font-size:0.73em;color:#888;margin-bottom:0.4em;display:flex;align-items:center;gap:4px";
+          hint.innerHTML =
+            '<i class="fas fa-hand-pointer" style="font-size:0.9em"></i> Click a type to adjust its cutoff';
           rowsEl.appendChild(hint);
         }
 
@@ -3342,8 +3548,13 @@
           };
 
           rangeEl.addEventListener("input", () => applyVal(rangeEl.value));
-          numEl.addEventListener("input", () => { if (!isNaN(parseFloat(numEl.value))) applyVal(numEl.value); });
-          resetBtn.addEventListener("click", (e) => { e.stopPropagation(); applyVal(defaultVal); });
+          numEl.addEventListener("input", () => {
+            if (!isNaN(parseFloat(numEl.value))) applyVal(numEl.value);
+          });
+          resetBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            applyVal(defaultVal);
+          });
 
           sliderRow.appendChild(rangeEl);
           sliderRow.appendChild(numEl);
@@ -3375,7 +3586,10 @@
                 c.style.borderColor = "transparent";
                 c.style.background = "";
                 const ic = c.querySelector(".pt-tass-hdr i");
-                if (ic) { ic.style.opacity = "0.35"; ic.style.transform = ""; }
+                if (ic) {
+                  ic.style.opacity = "0.35";
+                  ic.style.transform = "";
+                }
                 c.querySelector(".pt-tass-hdr").style.background = "";
               });
               activeType = null;
@@ -7461,10 +7675,11 @@
           populateTable();
         });
         const _tblGrpEl = document.getElementById("tbl-group-sample");
-        if (_tblGrpEl) _tblGrpEl.addEventListener("change", () => {
-          _tblPage = 0;
-          populateTable();
-        });
+        if (_tblGrpEl)
+          _tblGrpEl.addEventListener("change", () => {
+            _tblPage = 0;
+            populateTable();
+          });
       })();
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -7491,72 +7706,78 @@
 
       function _openCompareModalForRows(pinnedRows) {
         const METRICS = [
-          { key: "Specimen ID",        label: "Sample" },
-          { key: "Detected Organism",  label: "Organism" },
-          { key: "Taxonomic ID #",     label: "Taxon ID" },
-          { key: "TASS Score",         label: "TASS Score" },
-          { key: "# Reads Aligned",    label: "Reads Aligned" },
-          { key: "Genome Coverage %",  label: "Genome Coverage %" },
+          { key: "Specimen ID", label: "Sample" },
+          { key: "Detected Organism", label: "Organism" },
+          { key: "Taxonomic ID #", label: "Taxon ID" },
+          { key: "TASS Score", label: "TASS Score" },
+          { key: "# Reads Aligned", label: "Reads Aligned" },
+          { key: "Genome Coverage %", label: "Genome Coverage %" },
           { key: "Microbial Category", label: "Category" },
-          { key: "Genus",              label: "Genus" },
-          { key: "BSL Level",          label: "BSL" },
-          { key: "High Consequence",   label: "High Consequence" },
-          { key: "Mol Type",           label: "Mol Type" },
+          { key: "Genus", label: "Genus" },
+          { key: "BSL Level", label: "BSL" },
+          { key: "High Consequence", label: "High Consequence" },
+          { key: "Mol Type", label: "Mol Type" },
         ].filter((m) => pinnedRows.some((r) => r[m.key] != null && r[m.key] !== ""));
 
         // Build transposed table: rows = metrics, cols = pinned organisms
         const bslColor = { "BSL-1": "#2e7d32", "BSL-2": "#b45309", "BSL-3": "#c2410c", "BSL-4": "#b91c1c" };
-        const bslBg   = { "BSL-1": "#e8f5e9", "BSL-2": "#fff9c4", "BSL-3": "#ffe0b2", "BSL-4": "#ffcdd2" };
+        const bslBg = { "BSL-1": "#e8f5e9", "BSL-2": "#fff9c4", "BSL-3": "#ffe0b2", "BSL-4": "#ffcdd2" };
 
-        const colHeaders = pinnedRows.map((r, i) => {
-          const org = r["Detected Organism"] || r["Taxonomic ID #"] || `Row ${i + 1}`;
-          const sn  = r["Specimen ID"] || "";
-          const isHC = isTruthy(r["High Consequence"]);
-          return `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;white-space:normal;word-break:break-word;min-width:140px;max-width:220px;border-bottom:2px solid #1565c0">
+        const colHeaders = pinnedRows
+          .map((r, i) => {
+            const org = r["Detected Organism"] || r["Taxonomic ID #"] || `Row ${i + 1}`;
+            const sn = r["Specimen ID"] || "";
+            const isHC = isTruthy(r["High Consequence"]);
+            return `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;white-space:normal;word-break:break-word;min-width:140px;max-width:220px;border-bottom:2px solid #1565c0">
             ${isHC ? '<span style="color:#c62828;margin-right:3px">⚠</span>' : ""}
             <span style="font-weight:700;font-size:0.9em">${org}</span><br>
             <span style="font-weight:400;font-size:0.78em;color:#666">${sn}</span>
           </th>`;
-        }).join("");
+          })
+          .join("");
 
         const bodyRows = METRICS.map((m) => {
-          const cells = pinnedRows.map((r) => {
-            let raw = r[m.key] != null ? r[m.key] : "—";
-            let style = "padding:6px 10px;white-space:nowrap;border-bottom:1px solid #eee";
-            if (m.key === "TASS Score") {
-              const sc = parseFloat(raw);
-              if (!isNaN(sc) && sc > 0) {
-                const t = Math.min(1, sc / 100);
-                const hue = Math.round(210 - t * 65);
-                const alpha = (0.1 + t * 0.3).toFixed(2);
-                style += `;background:hsla(${hue},70%,45%,${alpha});font-weight:700;text-align:right`;
-                raw = sc.toFixed(2);
-              } else {
-                style += ";text-align:right";
+          const cells = pinnedRows
+            .map((r) => {
+              let raw = r[m.key] != null ? r[m.key] : "—";
+              let style = "padding:6px 10px;white-space:nowrap;border-bottom:1px solid #eee";
+              if (m.key === "TASS Score") {
+                const sc = parseFloat(raw);
+                if (!isNaN(sc) && sc > 0) {
+                  const t = Math.min(1, sc / 100);
+                  const hue = Math.round(210 - t * 65);
+                  const alpha = (0.1 + t * 0.3).toFixed(2);
+                  style += `;background:hsla(${hue},70%,45%,${alpha});font-weight:700;text-align:right`;
+                  raw = sc.toFixed(2);
+                } else {
+                  style += ";text-align:right";
+                }
+              } else if (m.key === "# Reads Aligned") {
+                const n = parseFloat(raw);
+                if (!isNaN(n)) {
+                  style += ";text-align:right";
+                  raw = _fmtBig(n).short;
+                }
+              } else if (m.key === "BSL Level") {
+                const bg = bslBg[raw] || "";
+                const fg = bslColor[raw] || "";
+                if (bg) style += `;background:${bg};color:${fg};font-weight:700;text-align:center`;
+              } else if (m.key === "High Consequence") {
+                const hc = isTruthy(raw);
+                style += ";text-align:center";
+                raw = hc
+                  ? '<span style="color:#c62828;font-weight:700">⚠ Yes</span>'
+                  : '<span style="color:#888">No</span>';
+              } else if (m.key === "Genome Coverage %") {
+                const n = parseFloat(raw);
+                if (!isNaN(n)) {
+                  style += ";text-align:right";
+                  raw = n.toFixed(1) + "%";
+                }
               }
-            } else if (m.key === "# Reads Aligned") {
-              const n = parseFloat(raw);
-              if (!isNaN(n)) {
-                style += ";text-align:right";
-                raw = _fmtBig(n).short;
-              }
-            } else if (m.key === "BSL Level") {
-              const bg = bslBg[raw] || "";
-              const fg = bslColor[raw] || "";
-              if (bg) style += `;background:${bg};color:${fg};font-weight:700;text-align:center`;
-            } else if (m.key === "High Consequence") {
-              const hc = isTruthy(raw);
-              style += ";text-align:center";
-              raw = hc ? '<span style="color:#c62828;font-weight:700">⚠ Yes</span>' : '<span style="color:#888">No</span>';
-            } else if (m.key === "Genome Coverage %") {
-              const n = parseFloat(raw);
-              if (!isNaN(n)) {
-                style += ";text-align:right";
-                raw = n.toFixed(1) + "%";
-              }
-            }
-            return `<td style="${style}">${raw}</td>`;
-          }).join("");
+              return `<td style="${style}">${raw}</td>`;
+            })
+            .join("");
 
           return `<tr>
             <td style="padding:6px 10px;font-size:0.8em;color:#6c757d;font-weight:600;white-space:nowrap;background:#fafafa;border-bottom:1px solid #eee;border-right:2px solid #e0e0e0;text-transform:uppercase;letter-spacing:0.02em">${m.label}</td>
@@ -7570,7 +7791,9 @@
 
         const body = document.getElementById("compare-body");
         body.innerHTML =
-          `<p style="font-size:0.82em;color:#888;margin-bottom:0.6em">${pinnedRows.length} pinned row${pinnedRows.length !== 1 ? "s" : ""} — click any row in the table to toggle pinning</p>` +
+          `<p style="font-size:0.82em;color:#888;margin-bottom:0.6em">${pinnedRows.length} pinned row${
+            pinnedRows.length !== 1 ? "s" : ""
+          } — click any row in the table to toggle pinning</p>` +
           `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:0.85em">` +
           `<thead><tr>` +
           `<th style="text-align:left;padding:6px 10px;background:#f0f4fa;border-bottom:2px solid #1565c0;width:130px;font-size:0.78em;color:#555;text-transform:uppercase;letter-spacing:0.02em">Target</th>` +
@@ -7588,18 +7811,25 @@
 
         // Toolbar "Unpin All" button
         const unpinBarBtn = document.getElementById("tbl-unpin-all-btn");
-        if (unpinBarBtn) unpinBarBtn.addEventListener("click", () => {
-          _tblPinned.clear();
-          populateTable();
-          _updateComparePinnedBtn();
-        });
+        if (unpinBarBtn)
+          unpinBarBtn.addEventListener("click", () => {
+            _tblPinned.clear();
+            populateTable();
+            _updateComparePinnedBtn();
+          });
 
         const overlay = document.getElementById("compare-overlay");
-        const closeModal = () => { overlay.style.display = "none"; };
+        const closeModal = () => {
+          overlay.style.display = "none";
+        };
         document.getElementById("compare-close-btn").addEventListener("click", closeModal);
         document.getElementById("compare-close-btn2").addEventListener("click", closeModal);
-        overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
-        document.addEventListener("keydown", (e) => { if (e.key === "Escape" && overlay.style.display !== "none") closeModal(); });
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) closeModal();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && overlay.style.display !== "none") closeModal();
+        });
 
         // Modal "Unpin All" button
         document.getElementById("compare-unpin-all-btn").addEventListener("click", () => {
@@ -9023,7 +9253,10 @@
       }
       function _sup(n) {
         const map = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
-        return String(n).split("").map((c) => map[c] || c).join("");
+        return String(n)
+          .split("")
+          .map((c) => map[c] || c)
+          .join("");
       }
       function _orgBadges(r) {
         // ★ high consequence, Ⓓ/Ⓡ molecule type
@@ -9067,9 +9300,7 @@
         if (fam && fam !== genus) chips.push({ t: fam, c: "" });
         const bsl = r["BSL Level"];
         if (bsl) chips.push({ t: bsl, c: "kw-bsl" });
-        return chips
-          .map((ch) => `<span class="kw-chip ${ch.c}">${String(ch.t)}</span>`)
-          .join("");
+        return chips.map((ch) => `<span class="kw-chip ${ch.c}">${String(ch.t)}</span>`).join("");
       }
 
       // Build a Map of full CONTIG_DATA entries keyed by sample||organism||taxon.
@@ -9128,15 +9359,17 @@
         return (
           '<span class="spark">' +
           vals
-            .map((v, i) => `<i style="height:${Math.max(2, Math.round((v / max) * 16))}px;background:${_DEPTH_COLORS[i]}"></i>`)
+            .map(
+              (v, i) =>
+                `<i style="height:${Math.max(2, Math.round((v / max) * 16))}px;background:${_DEPTH_COLORS[i]}"></i>`,
+            )
             .join("") +
           "</span>"
         );
       }
       function _histPreviewHtml(r, cd) {
         const pos = _posBins(cd);
-        const head =
-          `<b><i>${r["Detected Organism"]}</i></b><br><span style="color:#aaa">${r["Specimen ID"]}</span><br>`;
+        const head = `<b><i>${r["Detected Organism"]}</i></b><br><span style="color:#aaa">${r["Specimen ID"]}</span><br>`;
         if (pos && pos.length) {
           const W = 180,
             H = 56;
@@ -9172,7 +9405,9 @@
           const x = i * (bw + gap);
           bars +=
             `<rect x="${x}" y="${H - h}" width="${bw}" height="${h}" fill="${_DEPTH_COLORS[i]}"></rect>` +
-            `<text x="${x + bw / 2}" y="${H + 10}" font-size="7" text-anchor="middle" fill="#666">${_DEPTH_BINS[i]}</text>`;
+            `<text x="${x + bw / 2}" y="${H + 10}" font-size="7" text-anchor="middle" fill="#666">${
+              _DEPTH_BINS[i]
+            }</text>`;
         });
         return (
           head +
@@ -9224,8 +9459,7 @@
         const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
 
         // ── KPI cards ──────────────────────────────────────────────────────
-        const totalInput = samples.reduce(
-          (s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
+        const totalInput = samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
         const totalOrg =
           samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
           fd.reduce((s, r) => s + num(r["# Reads Aligned"]), 0);
@@ -9259,23 +9493,41 @@
             cutVal = _appliedVals[0].toFixed(1);
             cutSub = _kpiTypes.length === 1 ? _kpiTypes[0] : "all types";
           } else {
-            const _mn = Math.min(..._appliedVals), _mx = Math.max(..._appliedVals);
+            const _mn = Math.min(..._appliedVals),
+              _mx = Math.max(..._appliedVals);
             cutVal = `${_mn.toFixed(0)}\u2013${_mx.toFixed(0)}`;
             cutSub = "by sample type";
           }
         } else {
           _typeVals = null;
           const appliedCut = _globalFallback;
-          cutVal = appliedCut > 0 ? appliedCut.toFixed(1) : (_recCut != null ? _recCut.toFixed(1) : "—");
+          cutVal = appliedCut > 0 ? appliedCut.toFixed(1) : _recCut != null ? _recCut.toFixed(1) : "—";
           cutSub = _recCut != null ? `recommended ${_recCut.toFixed(1)}` : "applied filter";
         }
 
         const tReads = _fmtBig(totalInput);
         const aReads = _fmtBig(totalOrg);
         const cards = [
-          { label: "Samples", value: samples.length, sub: platforms.length ? platforms.join(", ") : "", tipId: "kpi-tip-samples" },
-          { label: "Total Reads", value: totalInput > 0 ? tReads.short : "N/A", full: tReads.full, sub: "input reads", tipId: "kpi-tip-reads" },
-          { label: "% Classified", value: pctClass, sub: aReads.short + " aligned", subFull: aReads.full, tipId: "kpi-tip-pct" },
+          {
+            label: "Samples",
+            value: samples.length,
+            sub: platforms.length ? platforms.join(", ") : "",
+            tipId: "kpi-tip-samples",
+          },
+          {
+            label: "Total Reads",
+            value: totalInput > 0 ? tReads.short : "N/A",
+            full: tReads.full,
+            sub: "input reads",
+            tipId: "kpi-tip-reads",
+          },
+          {
+            label: "% Classified",
+            value: pctClass,
+            sub: aReads.short + " aligned",
+            subFull: aReads.full,
+            tipId: "kpi-tip-pct",
+          },
           { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
           { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
           { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged pathogens" },
@@ -9287,7 +9539,9 @@
         kpiRow.innerHTML = cards
           .map(
             (c) =>
-              `<div class="kpi-card${c.label === "High Consequence" && hcCount > 0 ? " kpi-hc" : ""}"${c.label === "High Consequence" ? ` style="border-left-color:${hcColor}"` : ""}${c.tipId ? ` id="${c.tipId}" style="cursor:help"` : ""}>` +
+              `<div class="kpi-card${c.label === "High Consequence" && hcCount > 0 ? " kpi-hc" : ""}"${
+                c.label === "High Consequence" ? ` style="border-left-color:${hcColor}"` : ""
+              }${c.tipId ? ` id="${c.tipId}" style="cursor:help"` : ""}>` +
               `<div class="kpi-label">${c.label}${c.tipId || c.label === "High Consequence" ? infoIcon : ""}</div>` +
               `<div class="kpi-value"${c.full ? ` title="${c.full}"` : ""}>${c.value}</div>` +
               (c.sub ? `<div class="kpi-sub"${c.subFull ? ` title="${c.subFull}"` : ""}>${c.sub}</div>` : "") +
@@ -9320,13 +9574,17 @@
                 `<tr>` +
                 `<td style="text-align:right;padding-right:6px;font-weight:600;color:#ffb3b3">${entry.samples.size}</td>` +
                 `<td style="text-align:left;padding-right:10px">${org}</td>` +
-                `<td style="text-align:right;color:#ffd580;font-weight:600;white-space:nowrap">${entry.maxTass > 0 ? entry.maxTass.toFixed(1) : "—"}</td>` +
+                `<td style="text-align:right;color:#ffd580;font-weight:600;white-space:nowrap">${
+                  entry.maxTass > 0 ? entry.maxTass.toFixed(1) : "—"
+                }</td>` +
                 `</tr>`,
             )
             .join("");
           const tip =
             `<b style="color:#ffb3b3">High-consequence detections</b><br>` +
-            `<span style="font-size:0.85em;color:#ccc">${_fmtInt(byOrg.size)} unique organism${byOrg.size === 1 ? "" : "s"} &nbsp;·&nbsp; ${_fmtInt(hcSamples.size)} sample${hcSamples.size === 1 ? "" : "s"}</span>` +
+            `<span style="font-size:0.85em;color:#ccc">${_fmtInt(byOrg.size)} unique organism${
+              byOrg.size === 1 ? "" : "s"
+            } &nbsp;·&nbsp; ${_fmtInt(hcSamples.size)} sample${hcSamples.size === 1 ? "" : "s"}</span>` +
             `<table style="margin-top:6px;border-collapse:collapse;width:100%">` +
             `<tr style="color:#aaa;font-size:0.8em"><td style="text-align:right;padding-right:6px"># Samples</td><td style="padding-right:10px">Organism</td><td style="text-align:right">Max TASS</td></tr>` +
             orgRows +
@@ -9344,16 +9602,20 @@
             .map((sn) => {
               const m = SAMPLE_META[sn] || {};
               const reads = m.total_reads ? _fmtBig(m.total_reads).short : "—";
-              const plat  = m.platform && m.platform !== "unknown" ? m.platform : "";
-              return `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
-                     `<td style="padding:2px 8px 2px 0;text-align:right;color:#90caf9">${reads}</td>` +
-                     `<td style="padding:2px 0;color:#aaa;font-size:0.85em">${plat}</td></tr>`;
-            }).join("");
+              const plat = m.platform && m.platform !== "unknown" ? m.platform : "";
+              return (
+                `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                `<td style="padding:2px 8px 2px 0;text-align:right;color:#90caf9">${reads}</td>` +
+                `<td style="padding:2px 0;color:#aaa;font-size:0.85em">${plat}</td></tr>`
+              );
+            })
+            .join("");
           const sampTip =
             `<b style="color:#90caf9">Samples in view</b> <span style="color:#aaa;font-size:0.85em">(${samples.length})</span><br>` +
             `<table style="margin-top:5px;border-collapse:collapse">` +
             `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Name</td><td style="padding-right:8px;text-align:right">Reads</td><td>Platform</td></tr>` +
-            sampRows + `</table>`;
+            sampRows +
+            `</table>`;
           sampCard.addEventListener("mouseover", (ev) => showTip(sampTip, ev));
           sampCard.addEventListener("mousemove", moveTip);
           sampCard.addEventListener("mouseout", hideTip);
@@ -9366,16 +9628,20 @@
             .map((sn) => {
               const r = parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0;
               const pct = totalInput > 0 ? ((r / totalInput) * 100).toFixed(1) + "%" : "—";
-              return `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
-                     `<td style="padding:2px 4px;text-align:right;color:#90caf9">${_fmtBig(r).short}</td>` +
-                     `<td style="padding:2px 0;color:#aaa;text-align:right">${pct}</td></tr>`;
-            }).join("");
+              return (
+                `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                `<td style="padding:2px 4px;text-align:right;color:#90caf9">${_fmtBig(r).short}</td>` +
+                `<td style="padding:2px 0;color:#aaa;text-align:right">${pct}</td></tr>`
+              );
+            })
+            .join("");
           const readsTip =
             `<b style="color:#90caf9">Total input reads</b><br>` +
             `<span style="color:#aaa;font-size:0.85em">Full count: ${tReads.full}</span><br>` +
             `<table style="margin-top:5px;border-collapse:collapse">` +
             `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">Reads</td><td style="text-align:right">Share</td></tr>` +
-            rRows + `</table>`;
+            rRows +
+            `</table>`;
           readsCard.addEventListener("mouseover", (ev) => showTip(readsTip, ev));
           readsCard.addEventListener("mousemove", moveTip);
           readsCard.addEventListener("mouseout", hideTip);
@@ -9390,16 +9656,22 @@
               const inp = parseFloat(m.total_reads) || 0;
               const aln = parseFloat(m.total_organism_reads) || 0;
               const p = inp > 0 ? ((aln / inp) * 100).toFixed(1) + "%" : "—";
-              return `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
-                     `<td style="padding:2px 4px;text-align:right;color:#90caf9">${p}</td>` +
-                     `<td style="padding:2px 0;color:#aaa;text-align:right;font-size:0.85em">${_fmtBig(aln).short} / ${_fmtBig(inp).short}</td></tr>`;
-            }).join("");
+              return (
+                `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                `<td style="padding:2px 4px;text-align:right;color:#90caf9">${p}</td>` +
+                `<td style="padding:2px 0;color:#aaa;text-align:right;font-size:0.85em">${_fmtBig(aln).short} / ${
+                  _fmtBig(inp).short
+                }</td></tr>`
+              );
+            })
+            .join("");
           const pctTip =
             `<b style="color:#90caf9">% Classified</b><br>` +
             `<span style="color:#aaa;font-size:0.85em">Reads assigned to any organism ÷ total input reads</span><br>` +
             `<table style="margin-top:5px;border-collapse:collapse">` +
             `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">% Class.</td><td style="text-align:right">Aligned / Total</td></tr>` +
-            pctRows + `</table>`;
+            pctRows +
+            `</table>`;
           pctCard.addEventListener("mouseover", (ev) => showTip(pctTip, ev));
           pctCard.addEventListener("mousemove", moveTip);
           pctCard.addEventListener("mouseout", hideTip);
@@ -9420,23 +9692,31 @@
               `<th style="color:#90caf9;font-weight:500;text-align:right;padding-bottom:4px;padding-right:12px">Applied</th>` +
               `<th style="color:#90caf9;font-weight:500;text-align:right;padding-bottom:4px">Default</th>` +
               `</tr>` +
-              _typeVals.map((tv) => {
-                const changed = Math.round(tv.applied) !== Math.round(tv.def);
-                return (
-                  `<tr>` +
-                  `<td style="color:#fff;text-transform:capitalize;padding-right:12px;padding-bottom:2px">${tv.type}</td>` +
-                  `<td style="color:${changed ? "#ffb74d" : "#a5d6a7"};font-weight:700;text-align:right;padding-right:12px">${tv.applied.toFixed(0)}</td>` +
-                  `<td style="color:#78909c;text-align:right">${tv.def.toFixed(0)}</td>` +
-                  `</tr>`
-                );
-              }).join("") +
+              _typeVals
+                .map((tv) => {
+                  const changed = Math.round(tv.applied) !== Math.round(tv.def);
+                  return (
+                    `<tr>` +
+                    `<td style="color:#fff;text-transform:capitalize;padding-right:12px;padding-bottom:2px">${tv.type}</td>` +
+                    `<td style="color:${
+                      changed ? "#ffb74d" : "#a5d6a7"
+                    };font-weight:700;text-align:right;padding-right:12px">${tv.applied.toFixed(0)}</td>` +
+                    `<td style="color:#78909c;text-align:right">${tv.def.toFixed(0)}</td>` +
+                    `</tr>`
+                  );
+                })
+                .join("") +
               `</table>` +
               `<div style="margin-top:6px;font-size:0.78em;color:#607d8b">Orange = modified from default · Green = at default</div>`;
           } else {
             tassTip +=
               `<table style="border-collapse:collapse;font-size:0.88em">` +
               `<tr><td style="color:#aaa;padding-right:8px">Applied cutoff</td><td style="color:#fff;font-weight:700">${cutVal}</td></tr>` +
-              (_recCut != null ? `<tr><td style="color:#aaa;padding-right:8px">Recommended</td><td style="color:#90caf9;font-weight:700">${_recCut.toFixed(1)}</td></tr>` : "") +
+              (_recCut != null
+                ? `<tr><td style="color:#aaa;padding-right:8px">Recommended</td><td style="color:#90caf9;font-weight:700">${_recCut.toFixed(
+                    1,
+                  )}</td></tr>`
+                : "") +
               `</table>`;
           }
           tassCard.addEventListener("mouseover", (ev) => showTip(tassTip, ev));
@@ -9513,7 +9793,9 @@
         _SUM_COLS.forEach((c) => {
           const sortable = !c.nosort;
           const ind = c.key === _sumSortCol ? `<span class="sort-ind">${_sumSortAsc ? "▲" : "▼"}</span>` : "";
-          html += `<th class="${sortable ? "sortable" : ""}" data-col="${c.key}" style="text-align:${c.align}">${c.label}${ind}</th>`;
+          html += `<th class="${sortable ? "sortable" : ""}" data-col="${c.key}" style="text-align:${c.align}">${
+            c.label
+          }${ind}</th>`;
         });
         html += "</tr></thead><tbody>";
 
@@ -9531,14 +9813,24 @@
           html +=
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_sumPinned.has(key) ? " row-pinned" : ""}">` +
             `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}</td>` +
-            `<td style="text-align:center">${hist ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>` : '<span style="color:#ccc">—</span>'}</td>` +
+            `<td style="text-align:center">${
+              hist
+                ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>`
+                : '<span style="color:#ccc">—</span>'
+            }</td>` +
             `<td>${r["Specimen ID"] || ""}</td>` +
             `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
             `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
             `<td style="text-align:right">${num(r["% Reads"]).toFixed(2)}</td>` +
-            `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${_fmtBig(r["# Reads Aligned"]).short}</td>` +
+            `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${
+              _fmtBig(r["# Reads Aligned"]).short
+            }</td>` +
             `<td style="text-align:right">${num(r["Breadth %"]).toFixed(1)}</td>` +
-            `<td>${r["Sample Type"] && r["Sample Type"] !== "unknown" ? r["Sample Type"] : '<span style="color:#ccc">—</span>'}</td>` +
+            `<td>${
+              r["Sample Type"] && r["Sample Type"] !== "unknown"
+                ? r["Sample Type"]
+                : '<span style="color:#ccc">—</span>'
+            }</td>` +
             `<td>${_rowKeywords(r)}</td>` +
             "</tr>";
         });
@@ -9620,10 +9912,18 @@
         if (!HAS_PROT) return false;
         if (!_AMR_GENERA) {
           _AMR_GENERA = new Set(
-            (PROT.amr_genes || []).map((a) => String(a.Genus || a.genus || "").trim().toLowerCase()).filter(Boolean),
+            (PROT.amr_genes || [])
+              .map((a) =>
+                String(a.Genus || a.genus || "")
+                  .trim()
+                  .toLowerCase(),
+              )
+              .filter(Boolean),
           );
         }
-        const g = String(r["Genus"] || "").trim().toLowerCase();
+        const g = String(r["Genus"] || "")
+          .trim()
+          .toLowerCase();
         return g && _AMR_GENERA.has(g);
       }
 
@@ -9678,18 +9978,20 @@
 
       (function _initSumPinBar() {
         const compareBtn = document.getElementById("sum-compare-btn");
-        if (compareBtn) compareBtn.addEventListener("click", () => {
-          // Gather rows matching sumPinned keys from full DATA
-          const pinnedRows = DATA.filter((r) => _sumPinned.has(_sumRowKey(r)));
-          if (!pinnedRows.length) return;
-          _openCompareModalForRows(pinnedRows);
-        });
+        if (compareBtn)
+          compareBtn.addEventListener("click", () => {
+            // Gather rows matching sumPinned keys from full DATA
+            const pinnedRows = DATA.filter((r) => _sumPinned.has(_sumRowKey(r)));
+            if (!pinnedRows.length) return;
+            _openCompareModalForRows(pinnedRows);
+          });
         const unpinBtn = document.getElementById("sum-unpin-all-btn");
-        if (unpinBtn) unpinBtn.addEventListener("click", () => {
-          _sumPinned.clear();
-          _updateSumPinBar();
-          _renderSummaryTable(filteredData());
-        });
+        if (unpinBtn)
+          unpinBtn.addEventListener("click", () => {
+            _sumPinned.clear();
+            _updateSumPinBar();
+            _renderSummaryTable(filteredData());
+          });
       })();
 
       function _drawSummaryGenera(fd, samples) {
@@ -9739,12 +10041,7 @@
         const maxTotal = d3.max(ordered, (d) => d[1].total) || 1;
         const x = d3.scaleLinear().domain([0, maxTotal]).range([0, iW]);
 
-        const svg = d3
-          .select(wrap)
-          .append("svg")
-          .attr("width", W)
-          .attr("height", H)
-          .attr("viewBox", `0 0 ${W} ${H}`);
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).attr("viewBox", `0 0 ${W} ${H}`);
         const g = svg.append("g").attr("transform", `translate(${mL},${mT})`);
 
         // tooltip uses the shared showTip/moveTip/hideTip helpers
@@ -9764,9 +10061,11 @@
             .text(genus.length > 22 ? genus.slice(0, 21) + "…" : genus);
 
           let xacc = 0;
-          const segs = (metric === "TASS Score" ? sampleList.map((sn) => [sn, info.perSample[sn] || 0]) : sampleList
-            .map((sn) => [sn, info.perSample[sn] || 0]))
-            .filter((s) => s[1] > 0);
+          const segs = (
+            metric === "TASS Score"
+              ? sampleList.map((sn) => [sn, info.perSample[sn] || 0])
+              : sampleList.map((sn) => [sn, info.perSample[sn] || 0])
+          ).filter((s) => s[1] > 0);
           segs.forEach(([sn, val]) => {
             g.append("rect")
               .attr("x", x(xacc))
@@ -9841,12 +10140,20 @@
 
         // Helper: best available gene/product label for an annotation row.
         const _geneLabel = (r) =>
-          r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+          r["Gene"] ||
+          r["Gene Name"] ||
+          r.gene_name ||
+          r["Product"] ||
+          r.product ||
+          r["Name"] ||
+          r["Antibiotics"] ||
+          "";
 
         // Top genera by # hits
         const byGenus = {};
         const _ensure = (g) => {
-          if (!byGenus[g]) byGenus[g] = { hits: 0, samples: new Set(), amr: 0, geneNames: new Map(), amrNames: new Map() };
+          if (!byGenus[g])
+            byGenus[g] = { hits: 0, samples: new Set(), amr: 0, geneNames: new Map(), amrNames: new Map() };
           return byGenus[g];
         };
         genusRows.forEach((r) => {
@@ -9903,8 +10210,12 @@
           html +=
             `<tr class="annot-genus-row" data-genus="${g}" data-gi="${gi}" style="cursor:pointer">` +
             `<td><i style="color:#1565c0;text-decoration:underline">${g}</i></td>` +
-            `<td class="annot-gene-cell" style="text-align:right${geneTip ? ";cursor:help;text-decoration:underline dotted" : ""}">${_fmtInt(info.hits)}</td>` +
-            `<td class="annot-amr-cell" style="text-align:right${amrTip ? ";cursor:help;text-decoration:underline dotted" : ""}">${info.amr ? _fmtInt(info.amr) : "—"}</td>` +
+            `<td class="annot-gene-cell" style="text-align:right${
+              geneTip ? ";cursor:help;text-decoration:underline dotted" : ""
+            }">${_fmtInt(info.hits)}</td>` +
+            `<td class="annot-amr-cell" style="text-align:right${
+              amrTip ? ";cursor:help;text-decoration:underline dotted" : ""
+            }">${info.amr ? _fmtInt(info.amr) : "—"}</td>` +
             `<td style="text-align:right">${info.samples.size || "—"}</td>` +
             `<td style="text-align:right;color:#1565c0"><i class="fas fa-arrow-up-right-from-square" title="Open in VF / AMR tab"></i></td>` +
             "</tr>";
@@ -10072,9 +10383,10 @@
       // Summary tab genera-comparison controls
       ["summary-genus-metric", "summary-genus-topn"].forEach((id) => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener("change", () => {
-          if (typeof drawSummary === "function") drawSummary();
-        });
+        if (el)
+          el.addEventListener("change", () => {
+            if (typeof drawSummary === "function") drawSummary();
+          });
       });
       // VF/AMR genus chart scale selector
       const _protScaleEl = document.getElementById("prot-genus-scale");
