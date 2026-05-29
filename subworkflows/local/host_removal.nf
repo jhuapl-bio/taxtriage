@@ -75,8 +75,13 @@ workflow HOST_REMOVAL {
 
             ch_bam_hosts = FILTER_MINIMAP2.out.bam
 
+            // Join the BAM with the original (fastp-trimmed) reads so that
+            // REMOVE_HOSTREADS can use QNAME-based FASTQ filtering.  This is
+            // required for paired-end samples whose R1/R2 files may be
+            // desynchronised (Casava 1.8+ headers, orphan reads after QC) and
+            // where positional-pair BAM flags (-f 12) are therefore unreliable.
             REMOVE_HOSTREADS(
-                ch_bam_hosts
+                ch_bam_hosts.join(ch_reads)
             )
             ch_filtered_reads = REMOVE_HOSTREADS.out.reads
             ch_host_removal_stats = REMOVE_HOSTREADS.out.stats.collect{it[1]}.ifEmpty([])

@@ -67,8 +67,37 @@ process MINIMAP2_ALIGN {
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? "-f ${params.mmap2_fraction_filter}" : ''
     def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
 
+    // BAM output pipeline.
+    //
+    // Why name-sort → fixmate → coordinate-sort instead of a single sort?
+    //
+    // --split-prefix causes minimap2 to process the reference index in
+    // multiple chunks and emit reads in multiple passes.  Each pass ends with
+    // unmapped reads for that chunk, so the SAM stream delivered to the pipe
+    // is not globally ordered: RNAME=* (unmapped) records appear between
+    // mapped records from different index splits.  A single coordinate sort
+    // with limited per-thread memory (-m) creates temp files and merges them;
+    // when the merge is also memory-constrained the final BAM can contain
+    // RNAME=* records before some mapped records, which samtools index rejects
+    // with "NO_COOR reads not in a single block at the end".
+    //
+    // The name-sort → fixmate pipeline fixes this:
+    //   1. Name sort groups mates together so fixmate can run.
+    //   2. fixmate normalises FLAG bits and RNEXT/PNEXT/TLEN for every read,
+    //      including setting RNAME=* / POS=0 for reads whose mate is also
+    //      unmapped.  This ensures truly unmapped reads carry no residual
+    //      reference coordinate that would misplace them during coordinate sort.
+    //   3. The final coordinate sort produces a BAM where all RNAME=* records
+    //      are in a single block at the end, which samtools index requires.
+    //
+    // For single-end and long-read samples fixmate is a no-op (passes reads
+    // through unchanged) so there is no correctness cost, only a small
+    // additional sort pass.
     def bam_output = bam_format
-        ? "-a | samtools sort -@ ${sort_threads} -m ${S_value} -T ${prefix}.tmp -O BAM -o ${prefix}.bam -"
+        ? """-a \\
+        | samtools sort -n -@ ${sort_threads} -m ${S_value} -T ${prefix}.nsort.tmp \\
+        | samtools fixmate -m -@ ${sort_threads} - - \\
+        | samtools sort    -@ ${sort_threads} -m ${S_value} -T ${prefix}.csort.tmp -O BAM -o ${prefix}.bam"""
         : "-o ${prefix}.paf"
 
     """
