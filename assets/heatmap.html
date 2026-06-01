@@ -3418,12 +3418,14 @@
       const _TABLE_SETTINGS = {};
 
       function _slug(s) {
-        return String(s || "taxtriage-export")
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .slice(0, 80) || "taxtriage-export";
+        return (
+          String(s || "taxtriage-export")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 80) || "taxtriage-export"
+        );
       }
 
       function _downloadBlob(blob, filename) {
@@ -3529,7 +3531,10 @@
         overlay.querySelector("#export-format").innerHTML =
           '<option value="png">PNG</option><option value="jpeg">JPEG</option><option value="svg">SVG</option><option value="pdf">PDF</option><option value="html">HTML</option>';
         const w = Math.max(50, Math.round(parseFloat(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 900));
-        const h = Math.max(50, Math.round(parseFloat(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || 500));
+        const h = Math.max(
+          50,
+          Math.round(parseFloat(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || 500),
+        );
         overlay.querySelector("#export-width").value = w;
         overlay.querySelector("#export-height").value = h;
         _syncExportModalFields();
@@ -3612,10 +3617,10 @@
         }
         if (opts.format === "html") {
           const html =
-            "<!doctype html><html><head><meta charset=\"utf-8\"><title>" +
+            '<!doctype html><html><head><meta charset="utf-8"><title>' +
             title.replace(/</g, "&lt;") +
             "</title><style>body{margin:24px;font-family:system-ui,sans-serif;background:#fff;color:#222}svg{max-width:100%;height:auto}</style></head><body>" +
-            "<h1 style=\"font-size:18px;margin:0 0 14px\">" +
+            '<h1 style="font-size:18px;margin:0 0 14px">' +
             title.replace(/</g, "&lt;") +
             "</h1>" +
             svgText +
