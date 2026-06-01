@@ -5,6 +5,7 @@
     <title>TaxTriage Multi-Run Analysis</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
@@ -409,6 +410,388 @@
         font-weight: 600;
         margin-bottom: 0.6em;
         color: #1565c0;
+      }
+      .plot-export-host,
+      .table-export-host {
+        position: relative;
+      }
+      .plot-export-btn,
+      .table-export-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 6;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 26px;
+        border: 1px solid #c5d5e8;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.94);
+        color: #1565c0;
+        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      }
+      .plot-export-btn:hover,
+      .table-export-btn:hover {
+        background: #eaf3ff;
+        border-color: #1565c0;
+      }
+      .table-export-btn {
+        top: 8px;
+        right: 8px;
+      }
+      .table-settings-btn {
+        position: absolute;
+        top: 8px;
+        right: 42px;
+        z-index: 6;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 26px;
+        border: 1px solid #c5d5e8;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.94);
+        color: #566579;
+        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      }
+      .table-settings-btn:hover {
+        background: #f4f8ff;
+        border-color: #1565c0;
+        color: #1565c0;
+      }
+      .export-control {
+        flex-shrink: 0;
+      }
+      .export-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1300;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.42);
+      }
+      .export-modal {
+        width: min(92vw, 430px);
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
+      .export-modal header {
+        display: flex;
+        align-items: center;
+        gap: 0.55em;
+        padding: 0.75em 1em;
+        background: #1565c0;
+        color: #fff;
+        font-weight: 700;
+      }
+      .export-modal header button {
+        margin-left: auto;
+        border: none;
+        background: transparent;
+        color: #fff;
+        cursor: pointer;
+        font-size: 1.2em;
+        line-height: 1;
+      }
+      .export-modal-body {
+        padding: 0.9em 1em;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75em;
+        font-size: 0.86em;
+      }
+      .export-modal-body label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25em;
+        color: #445;
+        font-weight: 600;
+      }
+      .export-modal-body select,
+      .export-modal-body input {
+        border: 1px solid #c5d5e8;
+        border-radius: 5px;
+        padding: 0.35em 0.45em;
+        font-size: 0.95em;
+        background: #fff;
+      }
+      .export-modal-actions {
+        display: flex;
+        gap: 0.6em;
+        justify-content: flex-end;
+        padding: 0.7em 1em;
+        border-top: 1px solid #e4ebf5;
+        background: #f8fbff;
+      }
+      .export-modal-actions button {
+        border: 1px solid #c5d5e8;
+        border-radius: 5px;
+        padding: 0.4em 0.85em;
+        background: #fff;
+        cursor: pointer;
+        color: #445;
+      }
+      .export-modal-actions button.primary {
+        border-color: #1565c0;
+        background: #1565c0;
+        color: #fff;
+      }
+      .table-settings-body {
+        padding: 0.9em 1em;
+        display: grid;
+        gap: 0.8em;
+        font-size: 0.86em;
+      }
+      .table-settings-body label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25em;
+        color: #445;
+        font-weight: 600;
+      }
+      .table-settings-body select,
+      .table-settings-body input {
+        border: 1px solid #c5d5e8;
+        border-radius: 5px;
+        padding: 0.35em 0.45em;
+        font-size: 0.95em;
+        background: #fff;
+      }
+      .table-settings-body select[multiple] {
+        min-height: 180px;
+      }
+      .table-settings-inline {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75em;
+      }
+      .table-settings-tools {
+        display: flex;
+        gap: 0.45em;
+        flex-wrap: wrap;
+      }
+      .table-settings-tools button {
+        border: 1px solid #c5d5e8;
+        border-radius: 4px;
+        background: #fff;
+        color: #445;
+        padding: 0.25em 0.55em;
+        cursor: pointer;
+        font-size: 0.86em;
+      }
+      .pdf-progress-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1400;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.34);
+      }
+      .pdf-progress-card {
+        width: min(90vw, 380px);
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3);
+        padding: 1em 1.05em;
+      }
+      .pdf-progress-title {
+        display: flex;
+        align-items: center;
+        gap: 0.55em;
+        color: #1565c0;
+        font-weight: 800;
+        font-size: 0.95em;
+        margin-bottom: 0.45em;
+      }
+      .pdf-progress-text {
+        color: #445;
+        font-size: 0.84em;
+        line-height: 1.4;
+        margin-bottom: 0.7em;
+      }
+      .pdf-progress-bar {
+        height: 8px;
+        border-radius: 999px;
+        background: #e8eef7;
+        overflow: hidden;
+      }
+      .pdf-progress-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #1565c0, #0288d1);
+        transition: width 0.2s ease;
+      }
+      .pdf-progress-sub {
+        color: #7b8794;
+        font-size: 0.72em;
+        margin-top: 0.55em;
+      }
+      .report-pdf-card {
+        border: 1px solid #c5d8f5;
+        border-radius: 7px;
+        background: #f6faff;
+        padding: 0.7em 0.65em;
+        margin: 0.75em 0 0.2em;
+      }
+      .report-pdf-card .pdf-title {
+        font-size: 0.82em;
+        font-weight: 700;
+        color: #1565c0;
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        margin-bottom: 0.25em;
+      }
+      .report-pdf-card .pdf-desc {
+        font-size: 0.74em;
+        color: #52616f;
+        line-height: 1.35;
+        margin-bottom: 0.55em;
+      }
+      .report-pdf-card .pdf-sub {
+        font-size: 0.68em;
+        color: #7b8794;
+        line-height: 1.3;
+        margin-top: 0.45em;
+      }
+      .report-pdf-btn {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45em;
+        border: 1px solid #1565c0;
+        border-radius: 5px;
+        background: #1565c0;
+        color: #fff;
+        padding: 0.42em 0.65em;
+        font-size: 0.78em;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .report-pdf-btn:hover {
+        background: #0d47a1;
+      }
+      #pdf-report-cover {
+        display: none;
+      }
+      @media print {
+        @page {
+          size: landscape;
+          margin: 0.35in;
+        }
+        body.report-pdf-printing {
+          display: block;
+          height: auto;
+          overflow: visible;
+          background: #fff;
+          color: #111;
+        }
+        body.report-pdf-printing #banner,
+        body.report-pdf-printing #tabbar,
+        body.report-pdf-printing #sidebar,
+        body.report-pdf-printing #sidebar-resizer,
+        body.report-pdf-printing .export-control,
+        body.report-pdf-printing .export-modal-overlay,
+        body.report-pdf-printing .pdf-progress-overlay,
+        body.report-pdf-printing #tooltip,
+        body.report-pdf-printing .tab-controls,
+        body.report-pdf-printing .summary-tbl-toolbar,
+        body.report-pdf-printing #tbl-toolbar,
+        body.report-pdf-printing #tbl-pin-bar,
+        body.report-pdf-printing #sum-pin-bar {
+          display: none !important;
+        }
+        body.report-pdf-printing #pdf-report-cover {
+          display: block;
+          page-break-after: avoid;
+          margin: 0 0 18px;
+          padding: 0 0 12px;
+          border-bottom: 2px solid #1565c0;
+        }
+        body.report-pdf-printing #pdf-report-cover h1 {
+          margin: 0 0 6px;
+          font-size: 22px;
+          color: #1565c0;
+        }
+        body.report-pdf-printing #pdf-report-cover .pdf-cover-desc {
+          margin: 0 0 5px;
+          font-size: 12px;
+          color: #333;
+        }
+        body.report-pdf-printing #pdf-report-cover .pdf-cover-sub {
+          margin: 0;
+          font-size: 10px;
+          color: #666;
+        }
+        body.report-pdf-printing #main,
+        body.report-pdf-printing #content {
+          display: block;
+          height: auto;
+          overflow: visible;
+          padding: 0;
+        }
+        body.report-pdf-printing .pane {
+          display: block !important;
+          height: auto;
+          overflow: visible;
+          page-break-before: always;
+        }
+        body.report-pdf-printing .pane:first-of-type {
+          page-break-before: auto;
+        }
+        body.report-pdf-printing .chart-wrap {
+          box-shadow: none;
+          border: 1px solid #d9e2ef;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          overflow: visible;
+        }
+        body.report-pdf-printing #tbl-wrap,
+        body.report-pdf-printing #summary-top-wrap,
+        body.report-pdf-printing #summary-annot-genus,
+        body.report-pdf-printing #prot-table-wrap,
+        body.report-pdf-printing #runmeta-table-wrap,
+        body.report-pdf-printing #map-panel-body,
+        body.report-pdf-printing #compare-body {
+          overflow: visible !important;
+          max-width: none !important;
+        }
+        body.report-pdf-printing table {
+          width: 100% !important;
+          max-width: 100% !important;
+          table-layout: auto !important;
+          font-size: var(--tt-table-print-font-size, 8px) !important;
+          border-collapse: collapse !important;
+        }
+        body.report-pdf-printing th,
+        body.report-pdf-printing td {
+          white-space: normal !important;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          padding: 2px 3px !important;
+          max-width: none !important;
+        }
+        body.report-pdf-printing th {
+          position: static !important;
+        }
+        body.report-pdf-printing svg {
+          max-width: 100%;
+        }
+        body.report-pdf-printing #map-split {
+          height: 520px !important;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
       }
       /* Table tab: high-consequence highlight + pin + group rows */
       #data-table tbody tr.hc-row td {
@@ -1040,6 +1423,23 @@
       <button class="tab-btn hidden" id="runmeta-tab-btn" data-tab="runmeta">
         <i class="fas fa-tags"></i> Run Metadata
       </button>
+    </div>
+
+    <div id="pdf-report-cover">
+      <h1>TaxTriage Multi-Run Analysis</h1>
+      <p class="pdf-cover-desc">
+        Current report export with active filters, sample visibility, chart selections, and table pagination applied.
+      </p>
+      <p class="pdf-cover-sub" id="pdf-report-subtext"></p>
+    </div>
+
+    <div id="pdf-progress-overlay" class="pdf-progress-overlay" aria-live="polite" aria-busy="true">
+      <div class="pdf-progress-card">
+        <div class="pdf-progress-title"><i class="fas fa-file-pdf"></i> Preparing PDF</div>
+        <div class="pdf-progress-text" id="pdf-progress-text">Collecting current report state…</div>
+        <div class="pdf-progress-bar"><div class="pdf-progress-fill" id="pdf-progress-fill"></div></div>
+        <div class="pdf-progress-sub" id="pdf-progress-sub">The print dialog will open when this is ready.</div>
+      </div>
     </div>
 
     <div id="main">
@@ -1855,12 +2255,6 @@
 
         <!-- TABLE -->
         <div class="pane" id="pane-table">
-          <div class="chart-wrap" style="padding-bottom: 0.2em">
-            <div class="row" style="gap: 0.5em; align-items: center; flex-wrap: wrap">
-              <strong>Columns:&nbsp;</strong>
-              <select multiple id="col-toggle" style="flex: 1; min-height: 4.5em; font-size: 0.8em"></select>
-            </div>
-          </div>
           <!-- row count + pagination controls -->
           <div
             id="tbl-toolbar"
@@ -2602,7 +2996,14 @@
           </span>
         </h3>
         <div id="sample-list"></div>
-
+        <div class="report-pdf-card">
+          <div class="pdf-title"><i class="fas fa-file-pdf"></i> Report PDF</div>
+          <div class="pdf-desc">Export the current filtered report, including the active plot and table settings.</div>
+          <button type="button" class="report-pdf-btn" id="report-pdf-btn">
+            <i class="fas fa-print"></i> Export HTML to PDF
+          </button>
+          <div class="pdf-sub">Opens your browser print dialog. Choose “Save as PDF” to write the file.</div>
+        </div>
         <h3>Upload Data</h3>
         <div
           id="upload-zone"
@@ -2671,6 +3072,7 @@
           &#10005; Clear metadata
         </button>
       </div>
+
       <!-- /sidebar -->
     </div>
     <!-- /main -->
@@ -3009,6 +3411,750 @@
       }
       function hideTip() {
         tooltip.style.opacity = 0;
+      }
+
+      /* ── Plot + table exports ────────────────────────────────────────────── */
+      const _EXPORT_STATE = { target: null, mode: null, observer: null, timer: null };
+      const _TABLE_SETTINGS = {};
+
+      function _slug(s) {
+        return (
+          String(s || "taxtriage-export")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 80) || "taxtriage-export"
+        );
+      }
+
+      function _downloadBlob(blob, filename) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(a.href);
+          a.remove();
+        }, 250);
+      }
+
+      function _downloadText(text, filename, type) {
+        _downloadBlob(new Blob([text], { type: type || "text/plain;charset=utf-8" }), filename);
+      }
+
+      function _nearestTitle(el) {
+        const wrap = el.closest(".chart-wrap, .sun-panel, .hist-bar-track, .pane") || el.parentElement;
+        const title =
+          wrap?.querySelector(".chart-title, .sun-charthead, .hist-bar-title, .compare-title")?.textContent ||
+          document.querySelector(`.tab-btn[data-tab="${activeTab}"]`)?.textContent ||
+          document.title ||
+          "TaxTriage export";
+        return title.replace(/\s+/g, " ").trim();
+      }
+
+      function _ensureExportModal() {
+        let overlay = document.getElementById("export-overlay");
+        if (overlay) return overlay;
+        overlay = document.createElement("div");
+        overlay.id = "export-overlay";
+        overlay.className = "export-modal-overlay";
+        overlay.innerHTML = `
+          <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="export-title">
+            <header>
+              <i class="fas fa-file-export"></i>
+              <span id="export-title">Export</span>
+              <button type="button" id="export-close" title="Close">x</button>
+            </header>
+            <div class="export-modal-body">
+              <label>Format
+                <select id="export-format"></select>
+              </label>
+              <label id="export-delim-wrap">Delimiter
+                <select id="export-delim">
+                  <option value=",">Comma (,)</option>
+                  <option value="\\t">Tab</option>
+                  <option value=";">Semicolon (;)</option>
+                  <option value="|">Pipe (|)</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+              <label id="export-custom-delim-wrap" style="display:none">Custom delimiter
+                <input id="export-custom-delim" value="," maxlength="8" />
+              </label>
+              <label id="export-width-wrap">Width (px)
+                <input id="export-width" type="number" min="50" step="50" />
+              </label>
+              <label id="export-height-wrap">Height (px)
+                <input id="export-height" type="number" min="50" step="50" />
+              </label>
+            </div>
+            <div class="export-modal-actions">
+              <button type="button" id="export-cancel">Cancel</button>
+              <button type="button" class="primary" id="export-save">Save</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const close = () => (overlay.style.display = "none");
+        overlay.querySelector("#export-close").addEventListener("click", close);
+        overlay.querySelector("#export-cancel").addEventListener("click", close);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) close();
+        });
+        overlay.querySelector("#export-delim").addEventListener("change", (e) => {
+          overlay.querySelector("#export-custom-delim-wrap").style.display = e.target.value === "custom" ? "" : "none";
+        });
+        overlay.querySelector("#export-format").addEventListener("change", () => _syncExportModalFields());
+        overlay.querySelector("#export-save").addEventListener("click", () => _runExportFromModal());
+        return overlay;
+      }
+
+      function _syncExportModalFields() {
+        const overlay = document.getElementById("export-overlay");
+        if (!overlay) return;
+        const fmt = overlay.querySelector("#export-format").value;
+        const isTable = _EXPORT_STATE.mode === "table";
+        const isDelimited = fmt === "csv" || fmt === "tsv";
+        overlay.querySelector("#export-delim-wrap").style.display = isTable && isDelimited ? "" : "none";
+        overlay.querySelector("#export-custom-delim-wrap").style.display =
+          isTable && isDelimited && overlay.querySelector("#export-delim").value === "custom" ? "" : "none";
+        overlay.querySelector("#export-width-wrap").style.display = isTable ? "none" : "";
+        overlay.querySelector("#export-height-wrap").style.display = isTable ? "none" : "";
+      }
+
+      function _openPlotExport(svg) {
+        const overlay = _ensureExportModal();
+        _EXPORT_STATE.mode = "plot";
+        _EXPORT_STATE.target = svg;
+        overlay.querySelector("#export-title").textContent = "Export Plot";
+        overlay.querySelector("#export-format").innerHTML =
+          '<option value="png">PNG</option><option value="jpeg">JPEG</option><option value="svg">SVG</option><option value="pdf">PDF</option><option value="html">HTML</option>';
+        const w = Math.max(50, Math.round(parseFloat(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 900));
+        const h = Math.max(
+          50,
+          Math.round(parseFloat(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || 500),
+        );
+        overlay.querySelector("#export-width").value = w;
+        overlay.querySelector("#export-height").value = h;
+        _syncExportModalFields();
+        overlay.style.display = "flex";
+      }
+
+      function _openTableExport(table) {
+        const overlay = _ensureExportModal();
+        _EXPORT_STATE.mode = "table";
+        _EXPORT_STATE.target = table;
+        overlay.querySelector("#export-title").textContent = "Export Table";
+        overlay.querySelector("#export-format").innerHTML =
+          '<option value="xlsx">XLSX</option><option value="csv">CSV</option><option value="tsv">TSV</option>';
+        overlay.querySelector("#export-delim").value = ",";
+        _syncExportModalFields();
+        overlay.style.display = "flex";
+      }
+
+      function _cloneSvgWithStyles(svg, width, height) {
+        const clone = svg.cloneNode(true);
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        clone.setAttribute("width", width);
+        clone.setAttribute("height", height);
+        if (!clone.getAttribute("viewBox")) {
+          const ow = parseFloat(svg.getAttribute("width")) || width;
+          const oh = parseFloat(svg.getAttribute("height")) || height;
+          clone.setAttribute("viewBox", `0 0 ${ow} ${oh}`);
+        }
+        const src = [svg, ...svg.querySelectorAll("*")];
+        const dst = [clone, ...clone.querySelectorAll("*")];
+        const props = [
+          "font-family",
+          "font-size",
+          "font-weight",
+          "font-style",
+          "fill",
+          "stroke",
+          "stroke-width",
+          "opacity",
+          "text-anchor",
+          "dominant-baseline",
+          "shape-rendering",
+        ];
+        for (let i = 0; i < src.length; i++) {
+          const cs = getComputedStyle(src[i]);
+          props.forEach((p) => {
+            const v = cs.getPropertyValue(p);
+            if (v) dst[i].style.setProperty(p, v);
+          });
+        }
+        return new XMLSerializer().serializeToString(clone);
+      }
+
+      function _svgTextToImage(svgText) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Could not render SVG for export."));
+          };
+          img.src = url;
+        });
+      }
+
+      async function _exportPlot(svg, opts) {
+        const title = _nearestTitle(svg);
+        const filename = _slug(title);
+        const width = Math.max(50, parseInt(opts.width, 10) || parseFloat(svg.getAttribute("width")) || 900);
+        const height = Math.max(50, parseInt(opts.height, 10) || parseFloat(svg.getAttribute("height")) || 500);
+        const svgText = _cloneSvgWithStyles(svg, width, height);
+
+        if (opts.format === "svg") {
+          _downloadText(svgText, `${filename}.svg`, "image/svg+xml;charset=utf-8");
+          return;
+        }
+        if (opts.format === "html") {
+          const html =
+            '<!doctype html><html><head><meta charset="utf-8"><title>' +
+            title.replace(/</g, "&lt;") +
+            "</title><style>body{margin:24px;font-family:system-ui,sans-serif;background:#fff;color:#222}svg{max-width:100%;height:auto}</style></head><body>" +
+            '<h1 style="font-size:18px;margin:0 0 14px">' +
+            title.replace(/</g, "&lt;") +
+            "</h1>" +
+            svgText +
+            "</body></html>";
+          _downloadText(html, `${filename}.html`, "text/html;charset=utf-8");
+          return;
+        }
+
+        const img = await _svgTextToImage(svgText);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        if (opts.format === "pdf") {
+          const jsPDF = window.jspdf && window.jspdf.jsPDF;
+          if (!jsPDF) {
+            alert("PDF export requires the jsPDF library. Try PNG/JPEG/SVG, or open the report with internet access.");
+            return;
+          }
+          const orient = width >= height ? "landscape" : "portrait";
+          const pdf = new jsPDF({ orientation: orient, unit: "pt", format: [width, height] });
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, width, height);
+          pdf.save(`${filename}.pdf`);
+          return;
+        }
+
+        const mime = opts.format === "jpeg" ? "image/jpeg" : "image/png";
+        canvas.toBlob(
+          (blob) => {
+            if (blob) _downloadBlob(blob, `${filename}.${opts.format === "jpeg" ? "jpg" : "png"}`);
+          },
+          mime,
+          0.95,
+        );
+      }
+
+      function _tableToRows(table) {
+        const rows = [];
+        table.querySelectorAll("tr").forEach((tr) => {
+          if (tr.offsetParent === null && getComputedStyle(tr).display === "none") return;
+          const cells = Array.from(tr.children).filter((c) => c.matches("th,td"));
+          if (!cells.length) return;
+          rows.push(
+            cells
+              .filter((c) => getComputedStyle(c).display !== "none")
+              .map((c) => c.innerText.replace(/\s+/g, " ").trim()),
+          );
+        });
+        return rows;
+      }
+
+      function _delimitedEscape(value, delimiter) {
+        const s = value == null ? "" : String(value);
+        return /["\r\n]/.test(s) || s.includes(delimiter) ? `"${s.replace(/"/g, '""')}"` : s;
+      }
+
+      function _exportTable(table, opts) {
+        const rows = _tableToRows(table);
+        if (!rows.length) {
+          alert("No visible table rows to export.");
+          return;
+        }
+        const title = _nearestTitle(table);
+        const filename = _slug(title || table.id || "taxtriage-table");
+        if (opts.format === "xlsx") {
+          if (typeof XLSX === "undefined") {
+            alert("XLSX export requires the SheetJS library. Try CSV or TSV.");
+            return;
+          }
+          const ws = XLSX.utils.aoa_to_sheet(rows);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Table");
+          XLSX.writeFile(wb, `${filename}.xlsx`);
+          return;
+        }
+        let delimiter = opts.delimiter === "custom" ? opts.customDelimiter || "," : opts.delimiter || ",";
+        if (delimiter === "\\t") delimiter = "\t";
+        const ext = opts.format === "tsv" ? "tsv" : "csv";
+        const text = rows.map((r) => r.map((v) => _delimitedEscape(v, delimiter)).join(delimiter)).join("\r\n");
+        _downloadText(text, `${filename}.${ext}`, "text/plain;charset=utf-8");
+      }
+
+      function _runExportFromModal() {
+        const overlay = document.getElementById("export-overlay");
+        if (!overlay || !_EXPORT_STATE.target) return;
+        const opts = {
+          format: overlay.querySelector("#export-format").value,
+          width: overlay.querySelector("#export-width").value,
+          height: overlay.querySelector("#export-height").value,
+          delimiter: overlay.querySelector("#export-delim").value,
+          customDelimiter: overlay.querySelector("#export-custom-delim").value,
+        };
+        overlay.style.display = "none";
+        if (_EXPORT_STATE.mode === "plot") _exportPlot(_EXPORT_STATE.target, opts);
+        else _exportTable(_EXPORT_STATE.target, opts);
+      }
+
+      function _plotExportHost(svg) {
+        return (
+          svg.closest(
+            "#heatmap-svg-wrap, #tass-svg-wrap, #coverage-svg-wrap, #summary-genus-wrap, #prot-genus-svg, #prot-prop-svg, #prot-compare-svg, #longi-chart-wrap, #hist-chart-wrap, #hist-breadth-chart, #hist-depth-chart, #explore-bubble-wrap, #explore-radar-wrap, #explore-chord-wrap, #explore-lolli-wrap, #explore-corr-wrap, .sun-panel-svg-wrap, .chart-wrap, .sun-panel",
+          ) || svg.parentElement
+        );
+      }
+
+      function _tableExportHost(table) {
+        return table.parentElement;
+      }
+
+      function _keepButtonInScrollport(host, btn) {
+        if (!host || !btn || btn._scrollPinned) return;
+        btn._scrollPinned = true;
+        const update = () => {
+          btn.style.transform = `translate(${host.scrollLeft || 0}px, ${host.scrollTop || 0}px)`;
+        };
+        host.addEventListener("scroll", update, { passive: true });
+        update();
+      }
+
+      function _tableSettingsKey(table) {
+        if (table.id) return `table:${table.id}`;
+        const host = _tableExportHost(table);
+        const hostId = host && host.id ? host.id : _slug(_nearestTitle(table));
+        const headers = _tableColumns(table)
+          .map((c) => c.label)
+          .join("|");
+        return `table:${hostId}:${headers}`;
+      }
+
+      function _tableColumns(table) {
+        const headerRow =
+          table.querySelector("thead tr") ||
+          Array.from(table.querySelectorAll("tr")).find((tr) => tr.querySelector("th,td"));
+        if (!headerRow) return [];
+        return Array.from(headerRow.children)
+          .filter((c) => c.matches("th,td"))
+          .map((cell, index) => ({
+            index,
+            label: cell.innerText.replace(/\s+/g, " ").trim() || `Column ${index + 1}`,
+          }));
+      }
+
+      function _tableSettingsFor(table) {
+        const key = _tableSettingsKey(table);
+        if (!_TABLE_SETTINGS[key]) _TABLE_SETTINGS[key] = { hidden: {}, fontSize: "", fontFamily: "" };
+        return _TABLE_SETTINGS[key];
+      }
+
+      function _autoPrintTableFontSize(visibleCount) {
+        if (visibleCount <= 4) return "13px";
+        if (visibleCount <= 6) return "12px";
+        if (visibleCount <= 8) return "10px";
+        if (visibleCount <= 12) return "9px";
+        if (visibleCount <= 16) return "8px";
+        return "7px";
+      }
+
+      function _printFontFromSetting(fontSize, visibleCount) {
+        if (!fontSize) return _autoPrintTableFontSize(visibleCount);
+        const mapped = {
+          "0.68em": "8px",
+          "0.8em": "10px",
+          "0.95em": "12px",
+        };
+        return mapped[fontSize] || fontSize;
+      }
+
+      function _applyTableSettings(table) {
+        if (!table) return;
+        const settings = _tableSettingsFor(table);
+        table.style.fontSize = settings.fontSize || "";
+        table.style.fontFamily = settings.fontFamily || "";
+        const cols = _tableColumns(table);
+        const hiddenIdx = new Set(cols.filter((c) => settings.hidden[c.label]).map((c) => c.index));
+        const visibleCount = Math.max(1, cols.length - hiddenIdx.size);
+        table.dataset.visibleCols = String(visibleCount);
+        table.style.setProperty("--tt-table-print-font-size", _printFontFromSetting(settings.fontSize, visibleCount));
+        table.querySelectorAll("colgroup col").forEach((col, idx) => {
+          col.style.display = hiddenIdx.has(idx) ? "none" : "";
+        });
+        table.querySelectorAll("tr").forEach((tr) => {
+          const cells = Array.from(tr.children).filter((c) => c.matches("th,td"));
+          if (cells.length !== cols.length) return;
+          cells.forEach((cell, idx) => {
+            cell.style.display = hiddenIdx.has(idx) ? "none" : "";
+          });
+        });
+      }
+
+      function _ensureTableSettingsModal() {
+        let overlay = document.getElementById("table-settings-overlay");
+        if (overlay) return overlay;
+        overlay = document.createElement("div");
+        overlay.id = "table-settings-overlay";
+        overlay.className = "export-modal-overlay";
+        overlay.innerHTML = `
+          <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="table-settings-title">
+            <header>
+              <i class="fas fa-pen-to-square"></i>
+              <span id="table-settings-title">Table Display</span>
+              <button type="button" id="table-settings-close" title="Close">x</button>
+            </header>
+            <div class="table-settings-body">
+              <div style="color:#667;font-size:.86em;line-height:1.4">
+                Select the columns to show. Deselected columns are hidden in the report, exports, and PDF print view.
+              </div>
+              <label>Shown columns
+                <select id="table-settings-columns" multiple></select>
+              </label>
+              <div class="table-settings-tools">
+                <button type="button" id="table-settings-all">Show all</button>
+                <button type="button" id="table-settings-none">Hide all</button>
+              </div>
+              <div class="table-settings-inline">
+                <label>Font size
+                  <select id="table-settings-font-size">
+                    <option value="">Default</option>
+                    <option value="0.68em">Compact</option>
+                    <option value="0.8em">Normal</option>
+                    <option value="0.95em">Large</option>
+                    <option value="11px">11 px</option>
+                    <option value="12px">12 px</option>
+                    <option value="14px">14 px</option>
+                  </select>
+                </label>
+                <label>Font type
+                  <select id="table-settings-font-family">
+                    <option value="">Default</option>
+                    <option value="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">System Sans</option>
+                    <option value="Arial, Helvetica, sans-serif">Arial</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="'Courier New', monospace">Monospace</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="export-modal-actions">
+              <button type="button" id="table-settings-cancel">Cancel</button>
+              <button type="button" class="primary" id="table-settings-apply">Apply</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const close = () => (overlay.style.display = "none");
+        overlay.querySelector("#table-settings-close").addEventListener("click", close);
+        overlay.querySelector("#table-settings-cancel").addEventListener("click", close);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) close();
+        });
+        overlay.querySelector("#table-settings-all").addEventListener("click", () => {
+          overlay.querySelectorAll("#table-settings-columns option").forEach((opt) => (opt.selected = true));
+        });
+        overlay.querySelector("#table-settings-none").addEventListener("click", () => {
+          overlay.querySelectorAll("#table-settings-columns option").forEach((opt) => (opt.selected = false));
+        });
+        overlay.querySelector("#table-settings-apply").addEventListener("click", () => {
+          const table = overlay._tableTarget;
+          if (!table) return close();
+          const settings = _tableSettingsFor(table);
+          const shown = new Set(
+            Array.from(overlay.querySelector("#table-settings-columns").selectedOptions).map((opt) => opt.value),
+          );
+          settings.hidden = {};
+          _tableColumns(table).forEach((col) => {
+            if (!shown.has(col.label)) settings.hidden[col.label] = true;
+          });
+          settings.fontSize = overlay.querySelector("#table-settings-font-size").value;
+          settings.fontFamily = overlay.querySelector("#table-settings-font-family").value;
+          _applyTableSettings(table);
+          close();
+        });
+        return overlay;
+      }
+
+      function _openTableSettings(table) {
+        const overlay = _ensureTableSettingsModal();
+        overlay._tableTarget = table;
+        const cols = _tableColumns(table);
+        const settings = _tableSettingsFor(table);
+        const colSel = overlay.querySelector("#table-settings-columns");
+        colSel.innerHTML = "";
+        cols.forEach((col) => {
+          const opt = document.createElement("option");
+          opt.value = col.label;
+          opt.textContent = col.label;
+          opt.selected = !settings.hidden[col.label];
+          colSel.appendChild(opt);
+        });
+        overlay.querySelector("#table-settings-font-size").value = settings.fontSize || "";
+        overlay.querySelector("#table-settings-font-family").value = settings.fontFamily || "";
+        overlay.querySelector("#table-settings-title").textContent = `Table Display: ${_nearestTitle(table)}`;
+        overlay.style.display = "flex";
+      }
+
+      function _enhanceExports() {
+        document.querySelectorAll("svg").forEach((svg) => {
+          if (svg.closest("#tooltip, .export-modal-overlay, .export-control")) return;
+          const w = parseFloat(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
+          const h = parseFloat(svg.getAttribute("height")) || svg.getBoundingClientRect().height;
+          if (w < 90 || h < 60) return;
+          const host = _plotExportHost(svg);
+          if (!host || host.querySelector(":scope > .plot-export-btn")) return;
+          host.classList.add("plot-export-host");
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "plot-export-btn export-control";
+          btn.title = "Export plot";
+          btn.innerHTML = '<i class="fas fa-download"></i>';
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            _openPlotExport(svg);
+          });
+          host.appendChild(btn);
+        });
+
+        document.querySelectorAll("table").forEach((table) => {
+          if (table.closest("#tooltip, .export-modal-overlay, .export-control")) return;
+          const host = _tableExportHost(table);
+          if (!host) return;
+          host.classList.add("table-export-host");
+          _applyTableSettings(table);
+          if (!host.querySelector(":scope > .table-export-btn")) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "table-export-btn export-control";
+            btn.title = "Export table";
+            btn.innerHTML = '<i class="fas fa-file-export"></i>';
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              _openTableExport(table);
+            });
+            host.appendChild(btn);
+            _keepButtonInScrollport(host, btn);
+          }
+          if (!host.querySelector(":scope > .table-settings-btn")) {
+            const settingsBtn = document.createElement("button");
+            settingsBtn.type = "button";
+            settingsBtn.className = "table-settings-btn export-control";
+            settingsBtn.title = "Edit table columns and font";
+            settingsBtn.innerHTML = '<i class="fas fa-pen-to-square"></i>';
+            settingsBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              _openTableSettings(table);
+            });
+            host.appendChild(settingsBtn);
+            _keepButtonInScrollport(host, settingsBtn);
+          }
+        });
+      }
+
+      function _scheduleExportEnhance() {
+        clearTimeout(_EXPORT_STATE.timer);
+        _EXPORT_STATE.timer = setTimeout(_enhanceExports, 60);
+      }
+
+      function _initExportEnhancer() {
+        _ensureExportModal();
+        _scheduleExportEnhance();
+        if (_EXPORT_STATE.observer) return;
+        _EXPORT_STATE.observer = new MutationObserver((records) => {
+          for (const rec of records) {
+            const target = rec.target && rec.target.nodeType === 1 ? rec.target : null;
+            if (target && target.closest("#tooltip, .export-modal-overlay")) continue;
+            for (const node of rec.addedNodes || []) {
+              if (node.nodeType !== 1) continue;
+              if (node.closest && node.closest("#tooltip, .export-modal-overlay")) continue;
+              if (
+                node.matches?.("svg,table") ||
+                node.querySelector?.("svg,table") ||
+                target?.matches?.("svg,table") ||
+                target?.querySelector?.("svg,table")
+              ) {
+                _scheduleExportEnhance();
+                return;
+              }
+            }
+          }
+        });
+        _EXPORT_STATE.observer.observe(document.body, { childList: true, subtree: true });
+      }
+
+      function _ensureReportPdfModal() {
+        let overlay = document.getElementById("report-pdf-overlay");
+        if (overlay) return overlay;
+        overlay = document.createElement("div");
+        overlay.id = "report-pdf-overlay";
+        overlay.className = "export-modal-overlay";
+        overlay.innerHTML = `
+          <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="report-pdf-title">
+            <header>
+              <i class="fas fa-file-pdf"></i>
+              <span id="report-pdf-title">Export Report PDF</span>
+              <button type="button" id="report-pdf-close" title="Close">x</button>
+            </header>
+            <div style="padding:1em 1.05em;color:#334;line-height:1.45;font-size:.88em">
+              <p style="margin:0 0 .65em">
+                This will prepare every report tab using the current filters, sample visibility, chart controls, and table state.
+              </p>
+              <p style="margin:0;color:#667;font-size:.86em">
+                Your browser print dialog will open next. Select <b>Save as PDF</b> as the destination to write the report.
+              </p>
+            </div>
+            <div class="export-modal-actions">
+              <button type="button" id="report-pdf-cancel">Cancel</button>
+              <button type="button" class="primary" id="report-pdf-confirm">
+                <i class="fas fa-print"></i> Prepare PDF
+              </button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const close = () => (overlay.style.display = "none");
+        overlay.querySelector("#report-pdf-close").addEventListener("click", close);
+        overlay.querySelector("#report-pdf-cancel").addEventListener("click", close);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) close();
+        });
+        overlay.querySelector("#report-pdf-confirm").addEventListener("click", () => {
+          overlay.style.display = "none";
+          _exportReportPdf().catch((err) => {
+            _hidePdfProgress();
+            alert("PDF export failed: " + (err && err.message ? err.message : err));
+          });
+        });
+        return overlay;
+      }
+
+      function _openReportPdfModal() {
+        const overlay = _ensureReportPdfModal();
+        overlay.style.display = "flex";
+      }
+
+      function _visibleReportTabs() {
+        return Array.from(document.querySelectorAll(".tab-btn[data-tab]"))
+          .filter((btn) => !btn.classList.contains("hidden"))
+          .map((btn) => btn.dataset.tab)
+          .filter((tab) => document.getElementById(`pane-${tab}`));
+      }
+
+      function _restoreActiveTab(tab) {
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+        document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
+        const pane = document.getElementById(`pane-${tab}`);
+        if (pane) pane.classList.add("active");
+        activeTab = tab;
+      }
+
+      function _pdfDelay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function _setPdfProgress(message, done, total, subtext) {
+        const overlay = document.getElementById("pdf-progress-overlay");
+        const text = document.getElementById("pdf-progress-text");
+        const fill = document.getElementById("pdf-progress-fill");
+        const sub = document.getElementById("pdf-progress-sub");
+        if (overlay) overlay.style.display = "flex";
+        if (text) text.textContent = message || "Preparing PDF…";
+        const pct = total ? Math.max(0, Math.min(100, Math.round((done / total) * 100))) : 0;
+        if (fill) fill.style.width = pct + "%";
+        if (sub) sub.textContent = subtext || "The print dialog will open when this is ready.";
+      }
+
+      function _hidePdfProgress() {
+        const overlay = document.getElementById("pdf-progress-overlay");
+        if (overlay) overlay.style.display = "none";
+      }
+
+      function _tabLabel(tab) {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+        return btn ? btn.textContent.replace(/\s+/g, " ").trim() : tab;
+      }
+
+      async function _renderTabsForPdf() {
+        const originalTab = activeTab;
+        const tabs = _visibleReportTabs();
+        for (let i = 0; i < tabs.length; i++) {
+          const tab = tabs[i];
+          _setPdfProgress(`Rendering ${_tabLabel(tab)}…`, i, tabs.length);
+          _restoreActiveTab(tab);
+          if (tab === "runmeta") {
+            if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+            await _pdfDelay(80);
+          } else if (tab === "map") {
+            if (typeof L !== "undefined" && typeof _initMap === "function") {
+              _initMap();
+              if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+              if (typeof _refreshMapMarkerColors === "function") _refreshMapMarkerColors();
+              if (_leafletMap) {
+                _leafletMap.invalidateSize();
+                setTimeout(() => _leafletMap && _leafletMap.invalidateSize(), 180);
+              }
+              await _pdfDelay(900);
+            }
+          } else {
+            const pane = document.getElementById(`pane-${tab}`);
+            const hasRenderedContent = !!(pane && pane.querySelector("svg,table"));
+            if (_TAB_DIRTY[tab] || !hasRenderedContent) _drawTab(tab);
+            await _pdfDelay(tab === "sunburst" ? 950 : 120);
+          }
+          _setPdfProgress(`Finished ${_tabLabel(tab)}.`, i + 1, tabs.length);
+        }
+        _restoreActiveTab(originalTab);
+        _setPdfProgress("Finalizing print layout…", tabs.length, tabs.length);
+        await _pdfDelay(150);
+      }
+
+      async function _exportReportPdf() {
+        _setPdfProgress("Collecting current report state…", 0, 1);
+        const coverSub = document.getElementById("pdf-report-subtext");
+        if (coverSub) {
+          const stamp = new Date().toLocaleString();
+          coverSub.textContent = `${_buildBannerSub()} · Exported ${stamp}`;
+        }
+        await _renderTabsForPdf();
+        _enhanceExports();
+        document.body.classList.add("report-pdf-printing");
+        const cleanup = () => {
+          document.body.classList.remove("report-pdf-printing");
+          _hidePdfProgress();
+          window.removeEventListener("afterprint", cleanup);
+          _scheduleExportEnhance();
+        };
+        window.addEventListener("afterprint", cleanup);
+        setTimeout(() => {
+          _setPdfProgress("Opening print dialog…", 1, 1, "Choose Save as PDF in your browser dialog.");
+          window.print();
+          setTimeout(() => {
+            if (document.body.classList.contains("report-pdf-printing")) cleanup();
+          }, 1500);
+        }, 120);
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -6529,22 +7675,7 @@
       }
 
       function buildTable() {
-        const colSel = document.getElementById("col-toggle");
-        if (!colSel.options.length) {
-          ALL_COLS.forEach((c) => {
-            const opt = document.createElement("option");
-            opt.textContent = c;
-            opt.value = c;
-            opt.selected = true;
-            colSel.appendChild(opt);
-          });
-          visibleCols = [...ALL_COLS];
-          colSel.addEventListener("change", () => {
-            visibleCols = [...colSel.selectedOptions].map((o) => o.value);
-            renderTableHeaders();
-            populateTable();
-          });
-        }
+        visibleCols = [...ALL_COLS];
       }
 
       function renderTableHeaders() {
@@ -10292,6 +11423,7 @@
             break;
         }
         _TAB_DIRTY[tab] = false;
+        _scheduleExportEnhance();
       }
       function redraw() {
         _invalidateFilterCache();
@@ -10877,9 +12009,6 @@
           document.getElementById("banner-sub").textContent = _buildBannerSub();
 
           buildSampleList();
-          // Reset column selector so buildTable() fully rebuilds with new columns + samples
-          const _colSelMerge = document.getElementById("col-toggle");
-          if (_colSelMerge) _colSelMerge.innerHTML = "";
           buildTable();
           renderTableHeaders();
           buildHmValueSel();
@@ -11140,9 +12269,6 @@
           _computeBslLevels();
 
           buildSampleList();
-          // Reset column selector so buildTable() fully rebuilds
-          const _colSelClear = document.getElementById("col-toggle");
-          if (_colSelClear) _colSelClear.innerHTML = "";
           buildTable();
           renderTableHeaders();
           buildHmValueSel();
@@ -11470,6 +12596,9 @@
         // ── Build Run Metadata table + longitudinal section on init
         _buildRunMetaTable();
         _buildLongitudinalSection();
+        _initExportEnhancer();
+        const pdfBtn = document.getElementById("report-pdf-btn");
+        if (pdfBtn) pdfBtn.addEventListener("click", _openReportPdfModal);
 
         // ── Wire up sortable map-panel column headers ──────────────────────
         _initPanelSortHeaders();
