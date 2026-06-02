@@ -1839,7 +1839,8 @@ def build_removed_ids_best_alignment(
     only_primary: bool = False,
     ref_read_counts: Optional[Dict[str, int]] = None,
     ani_boost_weight: float = 10.0,
-) -> Dict[str, List[str]]:
+    return_per_read: bool = False,
+):
     """
     For each read with multiple alignments, keep the alignment(s) with best score.
 
@@ -1931,7 +1932,96 @@ def build_removed_ids_best_alignment(
             if c not in keep_contigs:
                 removed[rid].append(c)
 
-    return {rid: sorted(set(refs)) for rid, refs in removed.items() if refs}
+    out = {rid: sorted(set(refs)) for rid, refs in removed.items() if refs}
+    if return_per_read:
+        return out, per_read
+    return out
+
+
+def resolve_group_aware_removal(
+    per_read: Dict[str, List[dict]],
+    acc_to_group: Dict[str, str],
+    *,
+    drop_contigs: Optional[set[str]] = None,
+    drop_if_ambiguous: bool = True,
+    min_alt_count: int = 2,
+):
+    """Resolve multi-mapping reads with LCA (taxonomy-aware) semantics.
+
+    Contigs that belong to the SAME group (e.g. strains of one species, or
+    species of one genus) are treated as non-competing: a read that maps to
+    several members of one group is NOT a conflict at that group's level, so
+    it is fully retained for the group.  A contig's alignment is removed for a
+    read only when its group's best score is strictly below the global best
+    score for that read — i.e. the contig belongs to a LOSING group across a
+    real taxonomic boundary.
+
+    Parameters
+    ----------
+    per_read : dict
+        read_id -> list of {"contig", "score", "alt_n", ...} (as produced by
+        build_removed_ids_best_alignment(..., return_per_read=True)).
+    acc_to_group : dict
+        contig -> group id.  Contigs absent from the map are treated as their
+        own singleton group, so an identity map reproduces strain-level
+        best-alignment removal exactly.
+
+    Returns
+    -------
+    removed_dict : dict
+        read_id -> sorted list of contigs to remove for that read.
+    retention : dict
+        group_id -> {"total_reads", "retained_reads"} where a read is counted
+        once per group it aligns to.  retained_reads/total_reads is the
+        group's read-retention rate under cross-group competition only.
+    """
+    if drop_contigs is None:
+        drop_contigs = set()
+
+    def _grp(c):
+        return acc_to_group.get(c, c)
+
+    removed = defaultdict(list)
+    grp_total: Dict[str, set] = defaultdict(set)
+    grp_retained: Dict[str, set] = defaultdict(set)
+
+    for rid, alns in per_read.items():
+        if not alns:
+            continue
+        # Best score within each group for this read.
+        group_best: Dict[str, float] = {}
+        for a in alns:
+            g = _grp(a["contig"])
+            s = a["score"]
+            if g not in group_best or s > group_best[g]:
+                group_best[g] = s
+        gb = max(group_best.values())
+        winners = {g for g, s in group_best.items() if s == gb}
+
+        # Retention accounting: a read counts once per group it touched.
+        for g in group_best:
+            grp_total[g].add(rid)
+            if g in winners:
+                grp_retained[g].add(rid)
+
+        # Removal: only contigs in a losing group are stripped (plus the
+        # explicit drop_contigs/ambiguous rule, preserved from strain mode).
+        for a in alns:
+            c = a["contig"]
+            g = _grp(c)
+            ambiguous = (a["alt_n"] >= min_alt_count)
+            if c in drop_contigs and drop_if_ambiguous and ambiguous:
+                removed[rid].append(c)
+                continue
+            if g not in winners:
+                removed[rid].append(c)
+
+    retention = {
+        g: {"total_reads": len(grp_total[g]), "retained_reads": len(grp_retained[g])}
+        for g in grp_total
+    }
+    removed_dict = {rid: sorted(set(refs)) for rid, refs in removed.items() if refs}
+    return removed_dict, retention
 
 
 def report_removed_read_stats(bam_path: str, removed_read_ids: Dict[str, List[str]]) -> Dict[str, float]:
@@ -2119,6 +2209,18 @@ def compare_metrics(per_ref_stats: Dict[str, dict], reflengths: Dict[str, int],
                 "Breadth New": b1,
                 "Δ Breadth": (b1 - b0),
                 "Δ^-1 Breadth": (b1 / b0) if b0 else 0.0,
+                # Species/genus LCA-aware coverage (intra-group reads kept).
+                # covered_bp_* are raw covered bases for UNION aggregation by
+                # match_paths (sum covered_bp ÷ sum length). Pass-filtered counts
+                # feed the species/genus minhash read_retention.
+                "Covered BP Original": st.get("covered_bp_old", 0),
+                "Covered BP New": st.get("covered_bp", 0),
+                "Covered BP Subkey": st.get("covered_bp_subkey", 0),
+                "Covered BP Toplevelkey": st.get("covered_bp_toplevelkey", 0),
+                "Pass Filtered Reads Subkey": st.get("pass_filtered_reads_subkey", pass_reads),
+                "Pass Filtered Reads Toplevelkey": st.get("pass_filtered_reads_toplevelkey", pass_reads),
+                "Breadth Subkey": st.get("breadth_subkey", b1),
+                "Breadth Toplevelkey": st.get("breadth_toplevelkey", b1),
                 # RPKM / RPM (pre- and post-removal)
                 "RPKM Pre": rpkm_pre,
                 "RPKM Post": rpkm_post,
@@ -2842,6 +2944,8 @@ def determine_conflicts(
     window_size: int = 5000,
     step_size: int = 2500,
     dominance_protect_ratio: float = 3.0,
+    accession_to_subkey: Optional[Dict[str, str]] = None,
+    accession_to_toplevelkey: Optional[Dict[str, str]] = None,
 ):
     # only raise error if bedfile is missing AND compare_to_reference_windows is not selected
     if output_dir is None or input_bam is None or (bedfile is None and not compare_to_reference_windows):
@@ -3132,12 +3236,13 @@ def determine_conflicts(
         shared_idx = load_shared_windows_csv(report_path, min_jaccard=sim_ani_threshold, skip_same_contig=True)
 
     # Removal plan
+    _per_read_alns = None  # populated only by the shared-window path below
     if compare_to_reference_windows and shared_idx is not None:
         print("Building removal plan based on shared-window alignments...")
         # _ref_counts_pre already computed above for aligned_refs filtering;
         # reuse it here for ANI-weighted dominance scoring.
         print(f"  Pre-counted reads for {len(_ref_counts_pre)} references (used for ANI-weighted dominance scoring)")
-        removed_read_ids = build_removed_ids_best_alignment(
+        removed_read_ids, _per_read_alns = build_removed_ids_best_alignment(
             bam_path=input_bam,
             shared_idx=shared_idx,
             penalize_weight=0,
@@ -3148,6 +3253,7 @@ def determine_conflicts(
             only_primary=False,
             ref_read_counts=_ref_counts_pre,
             ani_boost_weight=10.0,
+            return_per_read=True,
         )
     else:
         # Parse bedgraph + merge regions
@@ -3252,6 +3358,62 @@ def determine_conflicts(
     # Pre-convert removed_read_ids values to sets for O(1) lookup
     _removed_sets = {rid: set(refs) for rid, refs in removed_read_ids.items()}
 
+    # ── Taxonomy-aware (LCA) removal sets for species / genus scoring ──────
+    # Reads that map ambiguously to multiple members of the SAME species (or
+    # genus) are not conflicts at that level, so they must not be removed when
+    # measuring that level's breadth / read-retention.  We re-resolve the same
+    # per-read alignments with the accession→subkey and accession→toplevelkey
+    # maps; only reads lost across a real taxonomic boundary are removed.
+    # These feed the species/genus coverage + minhash; STRAIN scoring keeps
+    # _removed_sets unchanged.
+    _removed_sets_subkey = _removed_sets
+    _removed_sets_top = _removed_sets
+    _retention_subkey: Dict[str, dict] = {}
+    _retention_top: Dict[str, dict] = {}
+
+    # The bedgraph/proportional removal path (finalize_proportional_removal) does
+    # not emit per-read alignments. Reconstruct a minimal per-read structure for
+    # the strain-level-removed reads (kept contigs = winners, score 1; removed
+    # contigs, score 0) so the LCA resolver can suppress intra-group removals on
+    # this path too. One extra BAM pass, only over reads that had ≥1 removal, and
+    # only when rollup maps are supplied — strain-only runs skip this entirely.
+    if (_per_read_alns is None and _removed_sets
+            and (accession_to_subkey or accession_to_toplevelkey)):
+        _removed_read_set = set(_removed_sets.keys())
+        _read_to_refs: Dict[str, set] = defaultdict(set)
+        bam_fs.reset()
+        for ref, L in reflengths.items():
+            for r in bam_fs.fetch(ref, 0, L):
+                if r.is_unmapped:
+                    continue
+                rid = r.query_name
+                if rid in _removed_read_set:
+                    _read_to_refs[rid].add(ref)
+        _per_read_alns = {}
+        for rid, refs in _read_to_refs.items():
+            removed_refs = _removed_sets.get(rid, set())
+            _per_read_alns[rid] = [
+                {"contig": rf, "score": (0.0 if rf in removed_refs else 1.0),
+                 "alt_n": len(refs)}
+                for rf in refs
+            ]
+        bam_fs.reset()
+        print(f"[LCA] reconstructed per-read alignments for {len(_per_read_alns)} "
+              f"removed reads (proportional-removal path)")
+
+    if _per_read_alns is not None and accession_to_subkey:
+        _rm_sub, _retention_subkey = resolve_group_aware_removal(
+            _per_read_alns, accession_to_subkey, min_alt_count=2)
+        _removed_sets_subkey = {rid: set(refs) for rid, refs in _rm_sub.items()}
+        print(f"[LCA] species-level removal: {len(_removed_sets_subkey)} reads "
+              f"removed across species boundaries (vs {len(_removed_sets)} at strain level)")
+    if _per_read_alns is not None and accession_to_toplevelkey:
+        _rm_top, _retention_top = resolve_group_aware_removal(
+            _per_read_alns, accession_to_toplevelkey, min_alt_count=2)
+        _removed_sets_top = {rid: set(refs) for rid, refs in _rm_top.items()}
+        print(f"[LCA] genus-level removal: {len(_removed_sets_top)} reads "
+              f"removed across genus boundaries")
+
     total_reads_all = set()
     total_alns_all = 0
     removed_alns_all = 0
@@ -3261,11 +3423,18 @@ def determine_conflicts(
         total = 0
         passed = 0
 
-        # Breadth tracking: two interval merge streams (old=all, new=kept)
+        # Breadth tracking: interval merge streams (old=all, new=kept strain,
+        # sub=kept under species-LCA removal, top=kept under genus-LCA removal)
         old_s = old_e = None
         new_s = new_e = None
+        sub_s = sub_e = None
+        top_s = top_e = None
         covered_old = 0
         covered_new = 0
+        covered_sub = 0
+        covered_top = 0
+        passed_sub = 0
+        passed_top = 0
 
         for r in bam_fs.fetch(ref, 0, L):
             if r.is_unmapped or r.reference_start is None or r.reference_end is None:
@@ -3293,7 +3462,7 @@ def determine_conflicts(
             if is_removed:
                 removed_alns_all += 1
 
-            # -- breadth NEW (kept reads) --
+            # -- breadth NEW (kept reads, strain-level removal) --
             if not is_removed and s < e:
                 if new_s is None:
                     new_s, new_e = s, e
@@ -3302,6 +3471,32 @@ def determine_conflicts(
                 else:
                     covered_new += (new_e - new_s)
                     new_s, new_e = s, e
+
+            # -- breadth under SPECIES-LCA removal (intra-species reads kept) --
+            is_removed_sub = rid in _removed_sets_subkey and ref in _removed_sets_subkey[rid]
+            if not is_removed_sub:
+                passed_sub += 1
+                if s < e:
+                    if sub_s is None:
+                        sub_s, sub_e = s, e
+                    elif s <= sub_e + 1:
+                        sub_e = max(sub_e, e)
+                    else:
+                        covered_sub += (sub_e - sub_s)
+                        sub_s, sub_e = s, e
+
+            # -- breadth under GENUS-LCA removal (intra-genus reads kept) --
+            is_removed_top = rid in _removed_sets_top and ref in _removed_sets_top[rid]
+            if not is_removed_top:
+                passed_top += 1
+                if s < e:
+                    if top_s is None:
+                        top_s, top_e = s, e
+                    elif s <= top_e + 1:
+                        top_e = max(top_e, e)
+                    else:
+                        covered_top += (top_e - top_s)
+                        top_s, top_e = s, e
 
             # -- GT accounting --
             gt = infer_gt_from_readname(rid)
@@ -3329,12 +3524,28 @@ def determine_conflicts(
             covered_old += (old_e - old_s)
         if new_s is not None:
             covered_new += (new_e - new_s)
+        if sub_s is not None:
+            covered_sub += (sub_e - sub_s)
+        if top_s is not None:
+            covered_top += (top_e - top_s)
 
         breadth_old[ref] = (100.0 * covered_old / L) if L > 0 else 0.0
         breadth_new[ref] = (100.0 * covered_new / L) if L > 0 else 0.0
 
         per_ref[ref]["total_reads"] = total
         per_ref[ref]["pass_filtered_reads"] = passed
+        # Species/genus LCA-aware coverage + retention (intra-group reads kept).
+        # covered_bp_* are raw covered bases so match_paths can UNION them across
+        # species/genus members (sum covered_bp ÷ sum length). When no rollup map
+        # was supplied these default to the strain-level NEW values.
+        per_ref[ref]["covered_bp_old"] = covered_old
+        per_ref[ref]["covered_bp"] = covered_new
+        per_ref[ref]["covered_bp_subkey"] = covered_sub if accession_to_subkey else covered_new
+        per_ref[ref]["covered_bp_toplevelkey"] = covered_top if accession_to_toplevelkey else covered_new
+        per_ref[ref]["pass_filtered_reads_subkey"] = passed_sub if accession_to_subkey else passed
+        per_ref[ref]["pass_filtered_reads_toplevelkey"] = passed_top if accession_to_toplevelkey else passed
+        per_ref[ref]["breadth_subkey"] = (100.0 * covered_sub / L) if (L > 0 and accession_to_subkey) else breadth_new[ref]
+        per_ref[ref]["breadth_toplevelkey"] = (100.0 * covered_top / L) if (L > 0 and accession_to_toplevelkey) else breadth_new[ref]
 
         per_ref[ref]["proportion_aligned"] = (per_ref[ref]["TP Original"] / total) if total else 0.0
         denom = per_ref[ref]["TP Original"] + per_ref[ref]["FP Original"]

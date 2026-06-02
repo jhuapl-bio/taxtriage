@@ -4,7 +4,7 @@ from utils import logarithmic_weight, apply_weight, normalize_mapq
 from map_taxid import get_lineage
 import numpy as np
 from scipy.stats import norm
-from typing import Dict, Any, List, Iterable
+from typing import Dict, Any, List, Iterable, Optional
 from body_site_normalization import normalize_body_site, get_pathogen_classification
 
 
@@ -418,9 +418,19 @@ def calculate_normalized_groups(
     contig_penalty_power: float = 0.3,
     depth_concentration_power: float = 0.3,
     default_read_length: int = 150,
+    group_covered_bp_override: Optional[Dict[str, float]] = None,
+    group_coverage_override: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
+
+    group_covered_bp_override: optional {group_value -> covered_bp}. When given,
+    the group's covered_bases (and hence coverage, breadth_log_score and the
+    minhash coverage gate) is taken from this UNION value instead of the sum of
+    member (strain-level removed) covered_bases. This is how species/genus levels
+    recover their true breadth: intra-group shared reads removed at the strain
+    level are NOT conflicts at this level, so the union of member coverage is the
+    correct breadth. Strain-level calls pass None → unchanged behaviour.
     """
 
     # sums
@@ -545,6 +555,36 @@ def calculate_normalized_groups(
         total_length = agg["length"]
         agg["coverage"] = min(1.0, agg["covered_bases"] / total_length) if total_length > 0 else 0.0
 
+        # ── UNION (LCA-aware) coverage override for species/genus levels ──────
+        # At the species/genus level, reads shared among members of the SAME
+        # group are not conflicts, so breadth must reflect the UNION of member
+        # coverage (computed in determine_conflicts under group-LCA removal),
+        # not the sum of strain-level-removed covered_bases (which double-charges
+        # near-identical strains and collapses to ~7-9%). This drives both
+        # breadth_log_score and the minhash coverage gate below.
+        if group_covered_bp_override is not None and str(gval) in group_covered_bp_override:
+            _union_cb = float(group_covered_bp_override[str(gval)])
+            agg["covered_bases_union"] = _union_cb
+            agg["covered_bases_strain_sum"] = agg["covered_bases"]
+            agg["covered_bases"] = _union_cb
+            agg["coverage"] = min(1.0, _union_cb / total_length) if total_length > 0 else 0.0
+
+            # ── Representative-breadth coverage (fixes redundant-reference
+            # dilution) ────────────────────────────────────────────────────
+            # Σcovered/Σlength is a length-weighted AVERAGE, not a union. For
+            # conspecific strains (≈99% ANI, near-identical genome content)
+            # summing reference lengths triple-counts the genome and a single
+            # divergent/poorly-covered member reference drags the species/genus
+            # breadth far below the best-covered member (e.g. 2 strains at ~100%
+            # but species shown at 71%). The true species breadth is the
+            # fraction of a single REPRESENTATIVE genome covered by the union of
+            # reads, best approximated by the maximum per-member breadth
+            # fraction. When provided, override coverage with that value.
+            if group_coverage_override is not None and str(gval) in group_coverage_override:
+                _rep_cov = float(group_coverage_override[str(gval)])
+                agg["coverage_pooled"] = agg["coverage"]  # keep Σ/Σ for transparency
+                agg["coverage"] = max(min(1.0, _rep_cov), agg["coverage"])
+
         # weighted means
         for f in WAVG_FIELDS:
             agg[f] = _weighted_mean(entries, f, reads_key)
@@ -566,7 +606,36 @@ def calculate_normalized_groups(
         # Scale by high-MAPQ fraction so organisms dominated by MAPQ=0 reads
         # get their breadth crushed (unreliable alignment ≠ real coverage).
         _hmf = float(agg.get('highmapq_fraction', 1.0))
-        _mapq_scale = _hmf ** mapq_breadth_power
+
+        # ── Group-aware MapQ-breadth relief (intra-group multimapping) ────────
+        # At the species/genus level, reads that map equally well to several
+        # near-identical MEMBER references are assigned MAPQ≈0 by the aligner —
+        # not because the alignment is unreliable, but because the reference set
+        # is redundant. Crushing breadth by that low MAPQ wrongly tanks a
+        # species that is confidently present (e.g. 3 conspecific Salmonella
+        # strains: coverage=1.0, minhash=1.0, yet highmapq_fraction=0.13 →
+        # species TASS stuck ~77). When (a) this is a real group aggregation
+        # with union coverage engaged, (b) minhash INDEPENDENTLY confirms the
+        # genome is present, and (c) the group has multiple members (so
+        # multimapping is expected), lift the effective high-MAPQ fraction
+        # toward 1.0 in proportion to minhash confidence and reference
+        # redundancy. Single-member or low-minhash cases get little/no relief.
+        _eff_hmf = _hmf
+        _is_group_union = (
+            group_covered_bp_override is not None
+            and str(gval) in group_covered_bp_override
+        )
+        _n_members = len(entries)
+        # Use the aggregated raw minhash (minhash_score is a WAVG_FIELD computed
+        # just above); the gated minhash_reduction is not finalized until later.
+        _mh_conf = float(agg.get('minhash_score', agg.get('minhash_reduction', 0.0)) or 0.0)
+        if _is_group_union and _n_members > 1 and _mh_conf > 0.0:
+            _redundancy = 1.0 - 1.0 / _n_members        # 0.5 @2 members → 0.67 @3 …
+            _relief = max(0.0, min(1.0, _mh_conf * _redundancy))
+            _eff_hmf = _hmf + (1.0 - _hmf) * _relief
+        agg['highmapq_fraction_effective'] = _eff_hmf
+
+        _mapq_scale = _eff_hmf ** mapq_breadth_power
         agg['breadth_log_score'] = breadth_score_sigmoid(agg["coverage"]) * _mapq_scale
 
         # ========== RECALCULATE gini_coefficient from combined coverage ==========
@@ -626,8 +695,10 @@ def calculate_normalized_groups(
         else:
             _contig_penalty = 1.0
 
-        # MAPQ penalty: same approach as breadth scaling
-        _hmf_gini = float(agg.get('highmapq_fraction', 1.0))
+        # MAPQ penalty: same approach as breadth scaling. Use the group-aware
+        # effective high-MAPQ fraction so intra-group multimapping (relieved
+        # above when minhash confirms presence) doesn't double-crush Gini.
+        _hmf_gini = _eff_hmf
         _mapq_gini_scale = _hmf_gini ** mapq_gini_power if mapq_gini_power > 0 else 1.0
 
         # Fix 3 — Depth-concentration penalty:
@@ -660,11 +731,29 @@ def calculate_normalized_groups(
             _avg_rl = _rl_num / _rl_den if _rl_den > 0 else float(default_read_length)
 
             if _total_numreads > 0 and _genome_len > 0:
-                _expected_cov = (_total_numreads * _avg_rl) / _genome_len
-                _expected_cov = min(1.0, _expected_cov)  # cap at 100%
+                # Lander–Waterman expected breadth instead of a linear
+                # expected-coverage ratio.  The old formula
+                #   expected_cov = numreads * read_len / genome_len  (linear)
+                # grows without bound as read count rises, while actual breadth
+                # SATURATES (reads pile onto already-covered bases).  So a true
+                # positive's efficiency (actual/expected) fell as depth rose,
+                # crushing minhash on the *higher*-evidence run and inverting
+                # the TASS ordering (e.g. LT2 scored higher at 20k than 200k).
+                #
+                # Under Lander–Waterman the expected fraction of the genome
+                # covered at average depth d is (1 - e^-d).  This saturates
+                # toward 1.0 just like actual breadth, so a genuine organism
+                # holds a stable efficiency as depth increases.  We additionally
+                # cap depth so that once an organism is "deep enough", adding
+                # more reads cannot change the gate at all — fully decoupling
+                # the penalty from read count for true positives, while a
+                # low-breadth pile-up (Toxoplasma pattern) still scores poorly.
+                _depth = (_total_numreads * _avg_rl) / _genome_len
+                _depth_capped = min(_depth, 5.0)  # depth>5 ⇒ ~99% expected breadth
+                _expected_breadth = 1.0 - math.exp(-_depth_capped)
 
-                if _expected_cov > 0:
-                    _cov_efficiency = min(1.0, _actual_cov / _expected_cov)
+                if _expected_breadth > 0:
+                    _cov_efficiency = min(1.0, _actual_cov / _expected_breadth)
                     _depth_conc_penalty = _cov_efficiency ** depth_concentration_power
                 # else: no reads expected → no penalty
 

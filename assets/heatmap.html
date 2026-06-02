@@ -433,6 +433,37 @@
         cursor: pointer;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
       }
+      /* Plot export button: hidden until the user hovers over the plot, then
+         fades in; fades back out when the mouse leaves. Stays visible on
+         keyboard focus for accessibility. (Table export button is unaffected.) */
+      .plot-export-btn {
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        pointer-events: none;
+      }
+      .plot-export-host:hover .plot-export-btn,
+      .plot-export-btn:focus-visible,
+      .plot-export-host:focus-within .plot-export-btn {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      /* Table export + settings buttons: same hover-fade behavior, keyed off
+         the table host. Visible on hover or keyboard focus, hidden otherwise. */
+      .table-export-btn,
+      .table-settings-btn {
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        pointer-events: none;
+      }
+      .table-export-host:hover .table-export-btn,
+      .table-export-host:hover .table-settings-btn,
+      .table-export-host:focus-within .table-export-btn,
+      .table-export-host:focus-within .table-settings-btn,
+      .table-export-btn:focus-visible,
+      .table-settings-btn:focus-visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
       .plot-export-btn:hover,
       .table-export-btn:hover {
         background: #eaf3ff;
@@ -809,6 +840,10 @@
         font-weight: 700;
         color: #1565c0;
         border-top: 2px solid #d6e0f0;
+      }
+      /* Strain below cutoff but rescued by species/genus rollup */
+      #data-table tbody tr.rescued-row td {
+        box-shadow: inset 3px 0 0 #f59f00;
       }
       svg text {
         font-family: system-ui, sans-serif;
@@ -1624,6 +1659,21 @@
                 <option value="linear" selected>Linear</option>
                 <option value="sqrt">Sqrt</option>
               </select>
+              <label title="Which TASS value to plot: the strain score, or the rolled-up species / genus aggregation."
+                >TASS level</label
+              >
+              <select id="tass-level">
+                <option value="strain" selected>Strain</option>
+                <option value="species">Species</option>
+                <option value="genus">Genus</option>
+              </select>
+              <label
+                title="Show or hide the TASS cutoff reference line on the chart"
+                style="display: flex; align-items: center; gap: 4px; cursor: pointer"
+              >
+                <input type="checkbox" id="tass-show-cutoff" checked style="cursor: pointer" />
+                Cutoff line
+              </label>
             </div>
             <div id="tass-svg-wrap"></div>
           </div>
@@ -2885,6 +2935,25 @@
           <input type="checkbox" id="filter-hc" />
           <label for="filter-hc">High Consequence only</label>
         </div>
+        <div class="row" style="margin-top: 0.2em">
+          <input type="checkbox" id="filter-rollup" checked />
+          <label
+            for="filter-rollup"
+            title="Keep a strain visible when its parent species or genus aggregation passes the TASS cutoff, even if the strain itself is below it."
+            >Roll up threshold (show species/genus-rescued strains)</label
+          >
+        </div>
+        <div class="row" style="margin-top: 0.35em; gap: 0.4em; align-items: center">
+          <label for="view-level" style="margin: 0">View level</label>
+          <select
+            id="view-level"
+            title="Switch the taxonomic granularity of the tables, heatmap, TASS chart and coverage plots between Strain (key), Species (subkey) and Genus (toplevelkey). Note: this updates those views only — the sunburst and summary cards stay at strain level. Most useful when a sample has a lot of strain-level discordance and you want the rolled-up species/genus call."
+          >
+            <option value="Strain" selected>Strain (key)</option>
+            <option value="Species">Species (subkey)</option>
+            <option value="Genus">Genus (toplevelkey)</option>
+          </select>
+        </div>
         <div class="row">
           <input type="checkbox" hidden id="filter-pass" />
           <label for="filter-pass"></label>
@@ -3314,6 +3383,7 @@
       function filteredData() {
         const txt = document.getElementById("filter-text").value.trim();
         const ic = document.getElementById("filter-ic").checked;
+        const viewLevel = (document.getElementById("view-level") || {}).value || "Strain";
         const minV = parseFloat(document.getElementById("filter-min").value) || 0;
         const onlyHC = document.getElementById("filter-hc").checked;
         const onlyP = document.getElementById("filter-pass").checked;
@@ -3345,6 +3415,8 @@
           _hashRescale(),
           DATA.length,
           _hashPerTypeTass(),
+          ROLLUP_PASS ? 1 : 0,
+          viewLevel,
         ].join("\u0001");
         if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
@@ -3352,26 +3424,79 @@
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
         const anyRescale = _hasAnyRescale();
 
-        const filtered = DATA.filter((r) => {
+        // Base (non-level, non-threshold) predicates shared by every view.
+        function _basePass(r) {
           if (sampleHidden[r["Specimen ID"]]) return false;
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
-          const tass = parseFloat(r["TASS Score"]);
-          const _st = (r["Sample Type"] || "").trim().toLowerCase();
-          const _typeMin = _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
-          const tassFilter = anyRescale && sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
-          if (!isNaN(tassFilter) && tassFilter < _typeMin) return false;
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
-          if (onlyP && !isTruthy(r["Passes Threshold"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
           const mt = (r["Mol Type"] || "").toLowerCase();
           if (mt === "dna" && !mtDNA) return false;
           if (mt === "rna" && !mtRNA) return false;
           if (mt !== "dna" && mt !== "rna" && !mtBoth) return false;
           return true;
+        }
+        const _lvlOf = (r) => r["Level"] || "Strain";
+
+        const filtered = DATA.filter((r) => {
+          if (_lvlOf(r) !== viewLevel) return false;
+          if (!_basePass(r)) return false;
+          const pi = rowPassInfo(r);
+          // Threshold gate: when rollup is on, keep a row whose species or
+          // genus aggregation passes even if the row itself is below cutoff.
+          if (ROLLUP_PASS) {
+            if (!isNaN(pi.strain) && !pi.effectivePass) return false;
+          } else {
+            if (!isNaN(pi.strain) && pi.strain < pi.thr) return false;
+          }
+          // "Passes threshold" filter stays STRICT (own-level) so users can
+          // still isolate rows that pass on their own merits.
+          if (onlyP && !pi.strainPass) return false;
+          return true;
         });
+
+        // ── Species rollup in the Strain view ──────────────────────────────
+        // When every visible strain of a species is below the cutoff but the
+        // species aggregation passes, collapse those strains into a single
+        // Species summary row (flagged so the UI can badge it). Species where
+        // at least one strain passes keep their detailed strain rows.
+        let finalRows = filtered;
+        if (viewLevel === "Strain" && ROLLUP_PASS) {
+          const speciesRowByKey = new Map();
+          for (const r of DATA) {
+            if ((r["Level"] || "") === "Species") {
+              speciesRowByKey.set((r["Specimen ID"] || "") + "" + (r["Subkey"] || ""), r);
+            }
+          }
+          const groups = new Map();
+          for (const r of filtered) {
+            const k = (r["Specimen ID"] || "") + "" + (r["Subkey"] || "");
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(r);
+          }
+          finalRows = [];
+          const handled = new Set();
+          for (const r of filtered) {
+            const k = (r["Specimen ID"] || "") + "" + (r["Subkey"] || "");
+            if (handled.has(k)) continue;
+            const grpRows = groups.get(k);
+            const anyStrainPass = grpRows.some((g) => rowPassInfo(g).strainPass);
+            const specRow = speciesRowByKey.get(k);
+            if (!anyStrainPass && specRow && rowPassInfo(specRow).effectivePass) {
+              // promote the species summary row in place of the failing strains
+              const inj = Object.assign({}, specRow);
+              inj.__rescuedSpecies = true;
+              inj.__rescuedStrainCount = grpRows.length;
+              finalRows.push(inj);
+              handled.add(k);
+            } else {
+              finalRows.push(r);
+            }
+          }
+        }
         // Skip the .map(applyRescale) allocation entirely when no sample is
         // currently rescaled — saves a 14k-object copy on every filter pass.
-        const out = anyRescale ? filtered.map(applyRescale) : filtered;
+        const out = anyRescale ? finalRows.map(applyRescale) : finalRows;
         _FD_CACHE = { key: cacheKey, value: out };
         return out;
       }
@@ -3388,6 +3513,45 @@
         }
         return copy;
       }
+
+      /* ── Threshold rollup (effective pass) ──────────────────────────────
+         A strain may fall below the TASS cutoff while its parent species or
+         genus aggregation passes. We compute an "effective pass" that rolls
+         up: a row counts as effectively passing if the strain OR its species
+         OR its genus clears the threshold. The strict strain-level pass is
+         still kept for the "Passes Threshold" filter and badges.            */
+      function _rescaleVal(r, v) {
+        return _hasAnyRescale() && sampleRescale[r["Specimen ID"]] ? v * 100 : v;
+      }
+      function thresholdForRow(r) {
+        const minV = parseFloat(document.getElementById("filter-min").value) || 0;
+        const _st = (r["Sample Type"] || "").trim().toLowerCase();
+        return _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
+      }
+      function rowPassInfo(r) {
+        const thr = thresholdForRow(r);
+        const strain = _rescaleVal(r, parseFloat(r["TASS Score"]));
+        const species = _rescaleVal(r, parseFloat(r["Species TASS"]));
+        const genus = _rescaleVal(r, parseFloat(r["Genus TASS"]));
+        const sP = !isNaN(strain) && strain >= thr;
+        const spP = !isNaN(species) && species >= thr;
+        const gP = !isNaN(genus) && genus >= thr;
+        return {
+          thr,
+          strain,
+          species,
+          genus,
+          strainPass: sP,
+          speciesPass: spP,
+          genusPass: gP,
+          effectivePass: sP || spP || gP,
+          rescued: !sP && (spP || gP),
+          rescueLevel: sP ? null : spP ? "species" : gP ? "genus" : null,
+        };
+      }
+      // Global toggle: when true, the threshold filter uses effective (rolled-up)
+      // pass so species/genus-rescued strains stay visible. Default on.
+      let ROLLUP_PASS = true;
 
       function uniq(arr) {
         return [...new Set(arr)];
@@ -3530,11 +3694,9 @@
         overlay.querySelector("#export-title").textContent = "Export Plot";
         overlay.querySelector("#export-format").innerHTML =
           '<option value="png">PNG</option><option value="jpeg">JPEG</option><option value="svg">SVG</option><option value="pdf">PDF</option><option value="html">HTML</option>';
-        const w = Math.max(50, Math.round(parseFloat(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 900));
-        const h = Math.max(
-          50,
-          Math.round(parseFloat(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || 500),
-        );
+        const size = _plotNaturalSize(svg);
+        const w = Math.max(50, Math.round(size.width || 900));
+        const h = Math.max(50, Math.round(size.height || 500));
         overlay.querySelector("#export-width").value = w;
         overlay.querySelector("#export-height").value = h;
         _syncExportModalFields();
@@ -3604,12 +3766,69 @@
         });
       }
 
-      async function _exportPlot(svg, opts) {
-        const title = _nearestTitle(svg);
+      function _plotSvgs(target) {
+        const svgs =
+          target && target.tagName && target.tagName.toLowerCase() === "svg"
+            ? [target]
+            : Array.from(target.querySelectorAll("svg"));
+        return svgs.filter((svg) => {
+          const w = parseFloat(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
+          const h = parseFloat(svg.getAttribute("height")) || svg.getBoundingClientRect().height;
+          return w >= 90 && h >= 60 && getComputedStyle(svg).display !== "none";
+        });
+      }
+
+      function _plotNaturalSize(target) {
+        if (target && target.tagName && target.tagName.toLowerCase() === "svg") {
+          return {
+            width:
+              parseFloat(target.getAttribute("width")) ||
+              target.viewBox?.baseVal?.width ||
+              target.getBoundingClientRect().width ||
+              900,
+            height:
+              parseFloat(target.getAttribute("height")) ||
+              target.viewBox?.baseVal?.height ||
+              target.getBoundingClientRect().height ||
+              500,
+          };
+        }
+        const rect = target.getBoundingClientRect();
+        return {
+          width: Math.max(target.scrollWidth || 0, rect.width || 0, 900),
+          height: Math.max(target.scrollHeight || 0, rect.height || 0, 500),
+        };
+      }
+
+      function _plotToSvgText(target, width, height) {
+        if (target && target.tagName && target.tagName.toLowerCase() === "svg") {
+          return _cloneSvgWithStyles(target, width, height);
+        }
+        const natural = _plotNaturalSize(target);
+        const base = target.getBoundingClientRect();
+        const pieces = _plotSvgs(target).map((svg) => {
+          const r = svg.getBoundingClientRect();
+          const x = Math.max(0, r.left - base.left + (target.scrollLeft || 0));
+          const y = Math.max(0, r.top - base.top + (target.scrollTop || 0));
+          const w = parseFloat(svg.getAttribute("width")) || r.width;
+          const h = parseFloat(svg.getAttribute("height")) || r.height;
+          const inner = _cloneSvgWithStyles(svg, w, h);
+          return `<g transform="translate(${x.toFixed(2)},${y.toFixed(2)})">${inner}</g>`;
+        });
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${
+          natural.width
+        } ${natural.height}"><rect width="${natural.width}" height="${natural.height}" fill="#fff"/>${pieces.join(
+          "",
+        )}</svg>`;
+      }
+
+      async function _exportPlot(target, opts) {
+        const title = _nearestTitle(target);
         const filename = _slug(title);
-        const width = Math.max(50, parseInt(opts.width, 10) || parseFloat(svg.getAttribute("width")) || 900);
-        const height = Math.max(50, parseInt(opts.height, 10) || parseFloat(svg.getAttribute("height")) || 500);
-        const svgText = _cloneSvgWithStyles(svg, width, height);
+        const natural = _plotNaturalSize(target);
+        const width = Math.max(50, parseInt(opts.width, 10) || natural.width || 900);
+        const height = Math.max(50, parseInt(opts.height, 10) || natural.height || 500);
+        const svgText = _plotToSvgText(target, width, height);
 
         if (opts.format === "svg") {
           _downloadText(svgText, `${filename}.svg`, "image/svg+xml;charset=utf-8");
@@ -3725,7 +3944,7 @@
       function _plotExportHost(svg) {
         return (
           svg.closest(
-            "#heatmap-svg-wrap, #tass-svg-wrap, #coverage-svg-wrap, #summary-genus-wrap, #prot-genus-svg, #prot-prop-svg, #prot-compare-svg, #longi-chart-wrap, #hist-chart-wrap, #hist-breadth-chart, #hist-depth-chart, #explore-bubble-wrap, #explore-radar-wrap, #explore-chord-wrap, #explore-lolli-wrap, #explore-corr-wrap, .sun-panel-svg-wrap, .chart-wrap, .sun-panel",
+            "#heatmap-svg-wrap, #tass-svg-wrap, #coverage-svg-wrap, #summary-genus-wrap, #prot-genus-svg, #prot-prop-svg, #prot-compare-svg, #longi-chart-wrap, #hist-main, #explore-bubble-wrap, #explore-radar-wrap, #explore-chord-wrap, #explore-lolli-wrap, #explore-corr-wrap, .sun-panel-svg-wrap, .chart-wrap, .sun-panel",
           ) || svg.parentElement
         );
       }
@@ -3927,6 +4146,7 @@
           const host = _plotExportHost(svg);
           if (!host || host.querySelector(":scope > .plot-export-btn")) return;
           host.classList.add("plot-export-host");
+          const target = host.id === "hist-main" || host.querySelectorAll("svg").length > 1 ? host : svg;
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "plot-export-btn export-control";
@@ -3934,9 +4154,10 @@
           btn.innerHTML = '<i class="fas fa-download"></i>';
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            _openPlotExport(svg);
+            _openPlotExport(target);
           });
           host.appendChild(btn);
+          _keepButtonInScrollport(host, btn);
         });
 
         document.querySelectorAll("table").forEach((table) => {
@@ -5048,6 +5269,34 @@
                 .attr("font-size", 9)
                 .text(v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0));
             }
+
+            // Rescued-strain marker: top-right corner triangle when the strain
+            // is below cutoff but its species/genus rollup passes. Orange =
+            // species rescue, purple = genus rescue.
+            if (r) {
+              const _pi = rowPassInfo(r);
+              if (_pi.rescued) {
+                const x0 = xScale(sp),
+                  y0 = yScale(org),
+                  bw = xScale.bandwidth(),
+                  s = Math.min(8, bw * 0.32);
+                const _rl = _pi.rescueLevel === "species" ? "species" : "genus";
+                const _tassNum = +r["TASS Score"];
+                const _tassTxt = isFinite(_tassNum) ? _tassNum.toFixed(1) : "n/a";
+                svg
+                  .append("path")
+                  .attr("d", `M${x0 + bw - s},${y0} L${x0 + bw},${y0} L${x0 + bw},${y0 + s} Z`)
+                  .attr("fill", _rl === "species" ? "#fb8c00" : "#8e24aa")
+                  .style("cursor", "help")
+                  .append("title")
+                  .text(
+                    `Rescued strain: this strain's TASS (${_tassTxt}) is below the cutoff, ` +
+                      `but its ${_rl}-level roll-up passes, so it is kept visible. ` +
+                      `${_rl === "species" ? "Orange" : "Purple"} corner = ${_rl} rescue. ` +
+                      `Turn off "Roll up threshold" to hide it.`,
+                  );
+              }
+            }
           });
         });
 
@@ -5100,6 +5349,40 @@
           .attr("font-size", 9)
           .attr("fill", "#666")
           .text(`Scale: ${scaleMode}`);
+
+        // Rescued-strain marker legend (only if any rescued cells are showing)
+        const _anyRescued = fd.some((r) => {
+          const _pi = rowPassInfo(r);
+          return _pi && _pi.rescued;
+        });
+        if (_anyRescued) {
+          const lgX = cbX - 4,
+            lgY = cbY + cbH + 30;
+          const lg = svg.append("g").attr("transform", `translate(${lgX},${lgY})`);
+          lg.append("text")
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("font-size", 9)
+            .attr("font-weight", 600)
+            .attr("fill", "#444")
+            .text("Rescued strains");
+          const _items = [
+            { c: "#fb8c00", t: "species roll-up" },
+            { c: "#8e24aa", t: "genus roll-up" },
+          ];
+          _items.forEach((it, i) => {
+            const ry = 12 + i * 14;
+            lg.append("path")
+              .attr("d", `M0,${ry} L9,${ry} L9,${ry + 9} Z`)
+              .attr("fill", it.c);
+            lg.append("text")
+              .attr("x", 13)
+              .attr("y", ry + 8)
+              .attr("font-size", 9)
+              .attr("fill", "#666")
+              .text(it.t);
+          });
+        }
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -5128,12 +5411,19 @@
           return;
         }
 
+        // TASS level: plot strain score, or the rolled-up species/genus TASS.
+        const _tassLevel = (document.getElementById("tass-level") || {}).value || "strain";
+        const _tassCol =
+          _tassLevel === "species" ? "Species TASS" : _tassLevel === "genus" ? "Genus TASS" : "TASS Score";
+
         // Build grouped data: {group: {sample: maxTASS}}
         const grouped = {};
         fd.forEach((r) => {
           const g = r[rankField] || "Unknown";
           const sp = r["Specimen ID"] || "";
-          const v = num(r["TASS Score"]);
+          // Fall back to strain TASS when the chosen parent column is absent.
+          let v = num(r[_tassCol]);
+          if (_tassCol !== "TASS Score" && (isNaN(v) || v === 0) && r[_tassCol] == null) v = num(r["TASS Score"]);
           if (!grouped[g]) grouped[g] = {};
           grouped[g][sp] = Math.max(grouped[g][sp] || 0, v);
         });
@@ -5254,6 +5544,66 @@
 
         _updateXAxis(x0);
         _drawBars(x0, x1);
+
+        // ── Threshold overlay ────────────────────────────────────────────
+        // Horizontal dashed line at the active TASS cutoff so it is obvious
+        // which rank groups clear the threshold (a species/genus bar above the
+        // line "rescues" its strains under the rollup). Uses the global min;
+        // per-sample-type cutoffs vary, so this is the baseline reference.
+        // Toggled by #tass-show-cutoff checkbox.
+        (function () {
+          const _showCutoff = (document.getElementById("tass-show-cutoff") || { checked: true }).checked;
+          if (!_showCutoff) return;
+          const _thr = parseFloat(document.getElementById("filter-min").value) || 0;
+          if (_thr <= 0 || _thr > 100) return;
+          const yT = y(_thr);
+          const tg = g.append("g").attr("class", "tass-threshold");
+          // White halo behind the dashed line so it stays legible over any bar color
+          tg.append("line")
+            .attr("x1", 0)
+            .attr("x2", innerW)
+            .attr("y1", yT)
+            .attr("y2", yT)
+            .attr("stroke", "white")
+            .attr("stroke-width", 4)
+            .attr("pointer-events", "none");
+          // Dashed cutoff line on top
+          tg.append("line")
+            .attr("x1", 0)
+            .attr("x2", innerW)
+            .attr("y1", yT)
+            .attr("y2", yT)
+            .attr("stroke", "#e53935")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "8,4")
+            .attr("pointer-events", "none");
+          // Pill background behind label so it's readable over any bar
+          const _labelText = `TASS cutoff ${_thr}`;
+          const _lblPadX = 5,
+            _lblPadY = 3,
+            _lblFontSize = 10;
+          const _lblW = _labelText.length * 6 + _lblPadX * 2;
+          const _lblH = _lblFontSize + _lblPadY * 2;
+          tg.append("rect")
+            .attr("x", innerW - 4 - _lblW)
+            .attr("y", yT - _lblH - 3)
+            .attr("width", _lblW)
+            .attr("height", _lblH)
+            .attr("fill", "#e53935")
+            .attr("rx", 3)
+            .attr("opacity", 0.9)
+            .attr("pointer-events", "none");
+          tg.append("text")
+            .attr("x", innerW - 4 - _lblW / 2)
+            .attr("y", yT - 3 - _lblPadY)
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "middle")
+            .attr("font-size", _lblFontSize)
+            .attr("font-weight", "700")
+            .attr("fill", "white")
+            .attr("pointer-events", "none")
+            .text(_labelText);
+        })();
 
         // D3 zoom — rescale band x0 range
         const zoom = d3
@@ -8687,6 +9037,99 @@
             }
             td.style.textAlign = "center";
             td.style.fontWeight = "600";
+            // Species-rollup hit: this row is a Species summary promoted into the
+            // Strain view because every child strain fell below the cutoff. Mark
+            // it with a distinctive icon + explanatory tooltip.
+            if (row.__rescuedSpecies) {
+              const sIcon = document.createElement("span");
+              sIcon.textContent = "⬢S";
+              sIcon.style.cssText =
+                "display:inline-block;margin-left:4px;font-size:9px;font-weight:700;" +
+                "padding:0 3px;border-radius:3px;vertical-align:middle;line-height:1.4;" +
+                "background:#ede7f6;color:#5e35b1;border:1px solid #b39ddb";
+              const _n = row.__rescuedStrainCount || 0;
+              sIcon.textContent = "⬢ species hit";
+              sIcon.title =
+                "Species-level hit: all " +
+                _n +
+                " strain" +
+                (_n === 1 ? "" : "s") +
+                " were below the TASS cutoff, but the species aggregation passes " +
+                "(Species TASS " +
+                (isNaN(parseFloat(row["Species TASS"])) ? "?" : parseFloat(row["Species TASS"]).toFixed(1)) +
+                "). This row is the rolled-up species, shown in place of its " +
+                "below-cutoff strains.";
+              td.appendChild(sIcon);
+              tr.classList.add("rescued-row");
+            }
+            // Pass / rescue badge. Behaviour depends on the active view level:
+            //  • Strain view — "✓ pass" when the strain clears the cutoff on its
+            //    own; "↑ species" / "↑ genus" (text-labelled) when it is below
+            //    cutoff but kept visible because its parent aggregation passes.
+            //  • Species / Genus view — the row IS the parent, so a rollup arrow
+            //    is meaningless; show "✓ pass" / "✗ below" against its own score.
+            const _vlBadge = (document.getElementById("view-level") || {}).value || "Strain";
+            const _pi = rowPassInfo(row);
+            if (!row.__rescuedSpecies && !isNaN(_pi.strain)) {
+              const badge = document.createElement("span");
+              badge.style.cssText =
+                "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5";
+              if (_vlBadge !== "Strain") {
+                // Species / Genus view: own-level pass / fail, no rollup arrows.
+                if (_pi.strainPass) {
+                  badge.textContent = "✓ pass";
+                  badge.title = _vlBadge + " passes the TASS threshold (≥ " + _pi.thr + ")";
+                  badge.style.background = "#c8e6c9";
+                  badge.style.color = "#2e7d32";
+                } else {
+                  badge.textContent = "✗ below";
+                  badge.title = _vlBadge + " is below the TASS cutoff (" + _pi.thr + ")";
+                  badge.style.background = "#ffcdd2";
+                  badge.style.color = "#c62828";
+                }
+                td.appendChild(badge);
+              } else if (_pi.strainPass) {
+                badge.textContent = "✓ pass";
+                badge.title = "Strain passes the TASS threshold (≥ " + _pi.thr + ")";
+                badge.style.background = "#c8e6c9";
+                badge.style.color = "#2e7d32";
+                td.appendChild(badge);
+              } else if (_pi.rescued) {
+                badge.textContent = _pi.rescueLevel === "species" ? "↑ species" : "↑ genus";
+                badge.title =
+                  "Strain is BELOW the cutoff (" +
+                  _pi.strain.toFixed(1) +
+                  " < " +
+                  _pi.thr +
+                  ") but kept visible because its " +
+                  _pi.rescueLevel +
+                  " aggregation passes (" +
+                  (_pi.rescueLevel === "species"
+                    ? "Species TASS " + (isNaN(_pi.species) ? "?" : _pi.species.toFixed(1))
+                    : "Genus TASS " + (isNaN(_pi.genus) ? "?" : _pi.genus.toFixed(1))) +
+                  " ≥ " +
+                  _pi.thr +
+                  "). Turn off “Roll up threshold” to hide it.";
+                badge.style.background = "#ffe0b2";
+                badge.style.color = "#c2410c";
+                tr.classList.add("rescued-row");
+                td.appendChild(badge);
+              }
+            }
+          }
+          // Species TASS / Genus TASS: same gradient styling as TASS Score,
+          // 2-dp, so parent confidence is legible alongside the strain score.
+          if (c === "Species TASS" || c === "Genus TASS") {
+            const pscore = parseFloat(val);
+            if (!isNaN(pscore)) {
+              td.textContent = +pscore.toFixed(2);
+              const t = Math.min(1, Math.max(0, pscore / 100));
+              const hue = Math.round(210 - t * 65);
+              const alpha = (0.05 + t * 0.18).toFixed(3);
+              td.style.background = `hsla(${hue},55%,45%,${alpha})`;
+              td.style.textAlign = "center";
+            }
           }
           tr.appendChild(td);
         });
@@ -11498,6 +11941,157 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
+      // Threshold-rollup toggle: drive ROLLUP_PASS + invalidate filter cache.
+      (function () {
+        const el = document.getElementById("filter-rollup");
+        if (!el) return;
+        ROLLUP_PASS = el.checked;
+        el.addEventListener("change", () => {
+          ROLLUP_PASS = el.checked;
+          _invalidateFilterCache();
+          redraw();
+        });
+      })();
+      // View-level dropdown: strain/species/genus granularity → invalidate the
+      // filtered-data cache (its result depends on Level) and redraw everything.
+      (function () {
+        const el = document.getElementById("view-level");
+        if (!el) return;
+        el.addEventListener("change", () => {
+          _invalidateFilterCache();
+          redraw();
+        });
+      })();
+      // ── Client-side hierarchy synthesis ──────────────────────────────────
+      // Reports built from the flat TSV/XLSX path — and the bundled sample data
+      // in heatmap_boot.js / pages.js — have no taxonomic hierarchy: every row
+      // is an un-leveled strain with no Species/Genus TASS. So that the View
+      // level dropdown works EVERYWHERE (not just JSON-hierarchy reports), we
+      // synthesize Species (Subkey) and Genus rollup rows here when none exist.
+      //
+      // The synthesized parent TASS is a proxy: the MAX member TASS (a species
+      // is detected at least as strongly as its best strain). JSON-hierarchy
+      // reports already carry properly-computed Species/Genus TASS rows, so this
+      // is skipped for them. Idempotent — guarded by a flag.
+      let _HIERARCHY_SYNTHESIZED = false;
+      function _binomial(name) {
+        const parts = String(name || "")
+          .trim()
+          .split(/\s+/);
+        return parts.slice(0, 2).join(" ") || String(name || "");
+      }
+      function _synthesizeHierarchy() {
+        if (_HIERARCHY_SYNTHESIZED) return;
+        const haveLevels = new Set(DATA.map((r) => r["Level"]).filter(Boolean));
+        if (haveLevels.has("Species") || haveLevels.has("Genus")) {
+          // already a real hierarchy — just normalize the Level tag and return
+          DATA.forEach((r) => {
+            if (!r["Level"]) r["Level"] = "Strain";
+          });
+          _HIERARCHY_SYNTHESIZED = true;
+          return;
+        }
+        const num_ = (v) => {
+          const n = parseFloat(v);
+          return isNaN(n) ? 0 : n;
+        };
+        const byGenus = new Map(); // "spec||genus" -> {rows, tass}
+        const bySpecies = new Map(); // "spec||subkey" -> rows
+        for (const r of DATA) {
+          r["Level"] = "Strain";
+          const spec = r["Specimen ID"] || "";
+          const sub = r["Subkey"] || r["Taxonomic ID #"] || "";
+          const gen = r["Genus"] || "";
+          if (sub) {
+            const k = spec + "" + sub;
+            (bySpecies.get(k) || bySpecies.set(k, []).get(k)).push(r);
+          }
+          if (gen) {
+            const k = spec + "" + gen;
+            (byGenus.get(k) || byGenus.set(k, []).get(k)).push(r);
+          }
+        }
+        // genus-level proxy TASS = max strain TASS within the genus
+        const genusTassByKey = new Map();
+        for (const [k, rows] of byGenus) {
+          genusTassByKey.set(k, Math.max(...rows.map((r) => num_(r["TASS Score"]))));
+        }
+        const newRows = [];
+        // species summary rows + back-fill Species/Genus TASS onto strain rows
+        for (const [k, rows] of bySpecies) {
+          const rep = rows.reduce((a, b) => (num_(b["TASS Score"]) > num_(a["TASS Score"]) ? b : a));
+          const spTass = num_(rep["TASS Score"]);
+          const gKey = (rep["Specimen ID"] || "") + "" + (rep["Genus"] || "");
+          const gTass = genusTassByKey.has(gKey) ? genusTassByKey.get(gKey) : spTass;
+          rows.forEach((r) => {
+            if (r["Species TASS"] == null) r["Species TASS"] = spTass;
+            if (r["Genus TASS"] == null) r["Genus TASS"] = gTass;
+          });
+          if (rows.length >= 1) {
+            const sRow = Object.assign({}, rep);
+            sRow["Level"] = "Species";
+            sRow["Detected Organism"] = _binomial(rep["Detected Organism"]);
+            sRow["Taxonomic ID #"] = rep["Subkey"] || rep["Taxonomic ID #"] || "";
+            sRow["TASS Score"] = spTass;
+            sRow["Species TASS"] = spTass;
+            sRow["Genus TASS"] = gTass;
+            sRow["# Reads Aligned"] = rows.reduce((s, r) => s + num_(r["# Reads Aligned"]), 0);
+            sRow["Coverage"] = Math.max(...rows.map((r) => num_(r["Coverage"])));
+            newRows.push(sRow);
+          }
+        }
+        // genus summary rows
+        for (const [k, rows] of byGenus) {
+          const rep = rows.reduce((a, b) => (num_(b["TASS Score"]) > num_(a["TASS Score"]) ? b : a));
+          const gTass = genusTassByKey.get(k);
+          const gRow = Object.assign({}, rep);
+          gRow["Level"] = "Genus";
+          gRow["Detected Organism"] = rep["Genus"] || _binomial(rep["Detected Organism"]);
+          gRow["TASS Score"] = gTass;
+          gRow["Species TASS"] = gTass;
+          gRow["Genus TASS"] = gTass;
+          gRow["# Reads Aligned"] = rows.reduce((s, r) => s + num_(r["# Reads Aligned"]), 0);
+          gRow["Coverage"] = Math.max(...rows.map((r) => num_(r["Coverage"])));
+          newRows.push(gRow);
+        }
+        if (newRows.length) DATA.push(...newRows);
+        _HIERARCHY_SYNTHESIZED = true;
+      }
+
+      // Keep the View-level dropdown in sync with the data. We synthesize a
+      // hierarchy when needed (above), so all three levels are normally usable.
+      // Only options with genuinely zero rows are disabled (never the whole
+      // control), so the dropdown never looks dead.
+      function _syncViewLevelOptions() {
+        _synthesizeHierarchy();
+        const el = document.getElementById("view-level");
+        if (!el) return;
+        const have = new Set(DATA.map((r) => r["Level"] || "Strain"));
+        let changed = false;
+        for (const opt of el.options) {
+          const present = opt.value === "Strain" ? true : have.has(opt.value);
+          opt.disabled = !present;
+          // Strip any stale "(no rows)" suffix, then re-add if needed.
+          const base = opt.textContent.replace(/\s*\(no rows\)\s*$/, "");
+          opt.textContent = present ? base : base + " (no rows)";
+          if (!present && el.value === opt.value) {
+            el.value = "Strain";
+            changed = true;
+          }
+        }
+        el.disabled = false;
+        el.title =
+          "Switch the granularity of the TABLE, heatmap and TASS/coverage plots " +
+          "between strain (key), species (subkey) and genus. Rolls strains up " +
+          "into their parent aggregation — most useful when a sample has lots of " +
+          "strain discordance (many near-tied strains of one species). Note: it " +
+          "updates the row-level tables and plots, not the sunburst/summary " +
+          "genus charts, which always span all ranks.";
+        if (changed) {
+          _invalidateFilterCache();
+          redraw();
+        }
+      }
       document.getElementById("filter-mc").addEventListener("change", redraw);
       [
         "hm-value-col",
@@ -11505,6 +12099,8 @@
         "hm-scale",
         "tass-rank",
         "tass-scale",
+        "tass-level",
+        "tass-show-cutoff",
         "sun-metric",
         "cov-scale",
         "explore-bubble-scale",
@@ -12000,6 +12596,9 @@
           const passCount = DATA.filter((r) => isTruthy(r["Passes Threshold"])).length;
           const fpEl = document.getElementById("filter-pass");
           if (fpEl && passCount === 0) fpEl.checked = false;
+
+          // Re-sync view-level options now that merged data may add hierarchy.
+          if (typeof _syncViewLevelOptions === "function") _syncViewLevelOptions();
 
           // Recompute BSL levels with merged data
           _computeBslLevels();
@@ -12538,6 +13137,9 @@
           const fpEl = document.getElementById("filter-pass");
           if (fpEl) fpEl.checked = false;
         }
+
+        // Sync the View-level dropdown to what the data actually contains.
+        _syncViewLevelOptions();
 
         // Pre-populate min TASS filter from the recommended best_cutoffs threshold.
         // CRITICAL: also push the value into the paired range slider — otherwise the
