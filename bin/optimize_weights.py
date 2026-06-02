@@ -420,6 +420,7 @@ def calculate_normalized_groups(
     default_read_length: int = 150,
     group_covered_bp_override: Optional[Dict[str, float]] = None,
     group_coverage_override: Optional[Dict[str, float]] = None,
+    group_numreads_override: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Aggregate `hits` into group-level summaries keyed by `group_field`.
@@ -431,6 +432,13 @@ def calculate_normalized_groups(
     recover their true breadth: intra-group shared reads removed at the strain
     level are NOT conflicts at this level, so the union of member coverage is the
     correct breadth. Strain-level calls pass None → unchanged behaviour.
+
+    group_numreads_override: optional {group_value -> numreads}. When given,
+    overrides the summed per-strain numreads with the pre-minmapq, species-LCA-
+    filtered total from comparison_df (sum of Pass Filtered Reads Subkey). At the
+    species/genus level, MAPQ=0 reads are not ambiguous about the organism — only
+    about which strain — so the full species read count is the correct input for
+    RPM/abundance scoring. Strain-level calls pass None → unchanged behaviour.
     """
 
     # sums
@@ -542,6 +550,19 @@ def calculate_normalized_groups(
         agg["length"] = sums.get("length", 0.0)
         agg["covered_bases"] = sums.get("covered_bases", 0.0)
         agg["k2_reads"] = sums.get("k2_reads", 0.0)
+
+        # ── Pre-minmapq numreads override for species/genus levels ────────────
+        # The per-strain numreads from count_reference_hits is filtered by
+        # minmapq (default 7), discarding MAPQ=0 multi-mapping reads that
+        # have no secondary alignments in the BAM. At species/genus level those
+        # reads are not ambiguous about the organism — only about which strain —
+        # so the pre-minmapq species-LCA read count is the correct denominator
+        # for RPM and abundance scoring.
+        if group_numreads_override is not None and str(gval) in group_numreads_override:
+            _pre_mapq_reads = float(group_numreads_override[str(gval)])
+            if _pre_mapq_reads > agg["numreads"]:
+                agg["numreads_strain_sum"] = agg["numreads"]  # keep original for transparency
+                agg["numreads"] = _pre_mapq_reads
 
         # counts
         agg["accessions"] = [x.get("accession") for x in entries if x.get("accession")]

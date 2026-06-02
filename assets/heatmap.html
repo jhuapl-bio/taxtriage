@@ -10,8 +10,8 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- <script src="pages.js"></script> -->
-    <!-- <script src="mce.js"></script> -->
+    <script src="pages.js"></script>
+    <script src="mce.js"></script>
     <script src="heatmap_boot.js"></script>
 
     <script>
@@ -2504,18 +2504,14 @@
             <span
               style="
                 display: inline-block;
-                font-size: 9px;
-                font-weight: 700;
-                padding: 0 4px;
-                border-radius: 3px;
-                vertical-align: middle;
-                line-height: 1.5;
+                width: 12px;
+                height: 12px;
                 background: #c8e6c9;
-                color: #2e7d32;
+                border-radius: 2px;
+                vertical-align: middle;
               "
-              >✓ pass</span
-            >
-            = meets threshold independently ·
+            ></span>
+            = meets TASS threshold independently ·
             <span style="border-left: 3px solid #f59f00; padding-left: 4px">amber bar</span> = rescued or pinned row
           </div>
           <div id="tbl-wrap">
@@ -3073,7 +3069,7 @@
           <label for="filter-hc">High Consequence only</label>
         </div>
         <div class="row" id="rollup-row" style="margin-top: 0.2em">
-          <input type="checkbox" id="filter-rollup" checked />
+          <input type="checkbox" id="filter-rollup" />
           <label
             for="filter-rollup"
             title="Keep a strain visible when its parent species or genus aggregation passes the TASS cutoff, even if the strain itself is below it."
@@ -4731,8 +4727,11 @@
         });
 
         // Build / sync _sampleOrder: keep existing order for known samples, append new ones
+        // New samples (or first load) are natural-sorted (numeric-aware, case-insensitive).
         const knownSet = new Set(_sampleOrder);
-        const newOnes = rawSamples.filter((id) => !knownSet.has(id));
+        const newOnes = rawSamples
+          .filter((id) => !knownSet.has(id))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
         _sampleOrder = _sampleOrder.filter((id) => rawSamples.includes(id));
         _sampleOrder.push(...newOnes);
 
@@ -5266,8 +5265,7 @@
           const _pi = rowPassInfo(r);
           return _pi && _pi.rescued;
         });
-        const _legendExtraH = _anyRescued ? 68 : 0; // title + 2 items + padding
-        const marginB = 20 + _legendExtraH;
+        const marginB = 20;
         const W = marginL + samples.length * cellW + marginR;
         const H = marginT + organisms.length * cellH + marginB;
 
@@ -5509,42 +5507,28 @@
           .attr("fill", "#666")
           .text(`Scale: ${scaleMode}`);
 
-        // Rescued-strain marker legend (only if any rescued cells are showing)
-        // _anyRescued was pre-computed above for H sizing
+        // Rescued-strain legend — rendered as HTML below the SVG so it can
+        // never overlap the chart axes or cells regardless of chart dimensions.
         if (_anyRescued) {
-          // Right-align the legend to the SVG right edge so labels never clip.
-          // Use text-anchor:end with the triangle icon placed just before the
-          // right edge; text flows left from the icon.
-          const lgRight = W - 4;
-          const lgY = cbY + cbH + 30;
-          const lg = svg.append("g");
-          lg.append("text")
-            .attr("x", lgRight)
-            .attr("y", lgY)
-            .attr("text-anchor", "end")
-            .attr("font-size", 9)
-            .attr("font-weight", 600)
-            .attr("fill", "#444")
-            .text("Rescued strains");
-          const _items = [
-            { c: "#fb8c00", t: "species roll-up" },
-            { c: "#8e24aa", t: "genus roll-up" },
-          ];
-          _items.forEach((it, i) => {
-            const ry = lgY + 12 + i * 14;
-            // Triangle icon flush to the right edge
-            lg.append("path")
-              .attr("d", `M${lgRight - 9},${ry} L${lgRight},${ry} L${lgRight},${ry + 9} Z`)
-              .attr("fill", it.c);
-            // Label to the left of the icon
-            lg.append("text")
-              .attr("x", lgRight - 13)
-              .attr("y", ry + 8)
-              .attr("text-anchor", "end")
-              .attr("font-size", 9)
-              .attr("fill", "#666")
-              .text(it.t);
-          });
+          const lgDiv = document.createElement("div");
+          lgDiv.style.cssText =
+            "display:flex;align-items:center;gap:12px;padding:5px 8px 2px;" +
+            "font-size:0.76em;color:#555;flex-wrap:wrap;";
+          lgDiv.innerHTML =
+            "<span style='font-weight:600;color:#444;'>Rescued strains:</span>" +
+            "<span style='display:flex;align-items:center;gap:4px;'>" +
+            "<svg width='10' height='10' style='flex-shrink:0'>" +
+            "<path d='M0,0 L10,0 L10,10 Z' fill='#fb8c00'/>" +
+            "</svg>" +
+            "<span style='color:#666;'>species roll-up</span>" +
+            "</span>" +
+            "<span style='display:flex;align-items:center;gap:4px;'>" +
+            "<svg width='10' height='10' style='flex-shrink:0'>" +
+            "<path d='M0,0 L10,0 L10,10 Z' fill='#8e24aa'/>" +
+            "</svg>" +
+            "<span style='color:#666;'>genus roll-up</span>" +
+            "</span>";
+          wrap.appendChild(lgDiv);
         }
       }
 
@@ -9225,40 +9209,60 @@
               td.appendChild(sIcon);
               tr.classList.add("rescued-row");
             }
-            // Pass / rescue badge. Behaviour depends on the active view level:
-            //  • Strain view — "✓ pass" when the strain clears the cutoff on its
-            //    own; "↑ species" / "↑ genus" (text-labelled) when it is below
-            //    cutoff but kept visible because its parent aggregation passes.
-            //  • Species / Genus view — the row IS the parent, so a rollup arrow
-            //    is meaningless; show "✓ pass" / "✗ below" against its own score.
+            // Pass / rescue indicator. Passing rows get a green cell background;
+            // no text badge. Rescued rows get the ↑ rollup badge. ✗ below is
+            // shown in Species/Genus view when the aggregation itself doesn't pass.
             const _vlBadge = (document.getElementById("view-level") || {}).value || "Strain";
             const _pi = rowPassInfo(row);
             if (!row.__rescuedSpecies && !isNaN(_pi.strain)) {
-              const badge = document.createElement("span");
-              badge.style.cssText =
-                "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
-                "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5";
               if (_vlBadge !== "Strain") {
-                // Species / Genus view: own-level pass / fail, no rollup arrows.
+                // Species / Genus view: green for pass, rescue badge if rescued, ✗ below otherwise.
                 if (_pi.strainPass) {
-                  badge.textContent = "✓ pass";
-                  badge.title = _vlBadge + " passes the TASS threshold (≥ " + _pi.thr + ")";
-                  badge.style.background = "#c8e6c9";
-                  badge.style.color = "#2e7d32";
+                  td.style.background = "#c8e6c9";
+                  td.title = _vlBadge + " passes the TASS threshold (≥ " + _pi.thr + ")";
+                } else if (_pi.rescued) {
+                  const badge = document.createElement("span");
+                  badge.style.cssText =
+                    "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                    "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;" +
+                    "background:#ffe0b2;color:#c2410c";
+                  badge.textContent = _pi.rescueLevel === "species" ? "↑ species" : "↑ genus";
+                  badge.title =
+                    "Strain is BELOW the cutoff (" +
+                    _pi.strain.toFixed(1) +
+                    " < " +
+                    _pi.thr +
+                    ") but kept visible because its " +
+                    _pi.rescueLevel +
+                    " aggregation passes (" +
+                    (_pi.rescueLevel === "species"
+                      ? "Species TASS " + (isNaN(_pi.species) ? "?" : _pi.species.toFixed(1))
+                      : "Genus TASS " + (isNaN(_pi.genus) ? "?" : _pi.genus.toFixed(1))) +
+                    " ≥ " +
+                    _pi.thr +
+                    '). Turn off "Roll up threshold" to hide it.';
+                  tr.classList.add("rescued-row");
+                  td.appendChild(badge);
                 } else {
+                  const badge = document.createElement("span");
+                  badge.style.cssText =
+                    "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                    "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;" +
+                    "background:#ffcdd2;color:#c62828";
                   badge.textContent = "✗ below";
                   badge.title = _vlBadge + " is below the TASS cutoff (" + _pi.thr + ")";
-                  badge.style.background = "#ffcdd2";
-                  badge.style.color = "#c62828";
+                  td.appendChild(badge);
                 }
-                td.appendChild(badge);
               } else if (_pi.strainPass) {
-                badge.textContent = "✓ pass";
-                badge.title = "Strain passes the TASS threshold (≥ " + _pi.thr + ")";
-                badge.style.background = "#c8e6c9";
-                badge.style.color = "#2e7d32";
-                td.appendChild(badge);
+                // Strain view, passes on its own: green cell, no badge.
+                td.style.background = "#c8e6c9";
+                td.title = "Strain passes the TASS threshold (≥ " + _pi.thr + ")";
               } else if (_pi.rescued) {
+                const badge = document.createElement("span");
+                badge.style.cssText =
+                  "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                  "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;" +
+                  "background:#ffe0b2;color:#c2410c";
                 badge.textContent = _pi.rescueLevel === "species" ? "↑ species" : "↑ genus";
                 badge.title =
                   "Strain is BELOW the cutoff (" +
@@ -9273,9 +9277,7 @@
                     : "Genus TASS " + (isNaN(_pi.genus) ? "?" : _pi.genus.toFixed(1))) +
                   " ≥ " +
                   _pi.thr +
-                  "). Turn off “Roll up threshold” to hide it.";
-                badge.style.background = "#ffe0b2";
-                badge.style.color = "#c2410c";
+                  '). Turn off "Roll up threshold" to hide it.';
                 tr.classList.add("rescued-row");
                 td.appendChild(badge);
               }
@@ -9303,12 +9305,17 @@
         let fd = filteredData();
         const _tblGrouped = document.getElementById("tbl-group-sample")?.checked;
         if (_tblGrouped) {
-          // Group by Sample: primary sort on Specimen ID, secondary on the
-          // active sort column (or TASS desc by default) within each sample.
+          // Group by Sample: primary sort follows _sampleOrder (right-panel order),
+          // secondary sort on the active column (or TASS desc by default) within each group.
           const sc = sortCol || "TASS Score";
+          const _grpIdx = _sampleOrder.length ? Object.fromEntries(_sampleOrder.map((id, i) => [id, i])) : {};
           fd = [...fd].sort((a, b) => {
-            const sd = String(a["Specimen ID"] || "").localeCompare(String(b["Specimen ID"] || ""));
-            if (sd !== 0) return sd;
+            const sia = String(a["Specimen ID"] || "");
+            const sib = String(b["Specimen ID"] || "");
+            const ia = _grpIdx[sia] !== undefined ? _grpIdx[sia] : 9999;
+            const ib = _grpIdx[sib] !== undefined ? _grpIdx[sib] : 9999;
+            if (ia !== ib) return ia - ib;
+            // Fallback within same group: active sort col
             const na = parseFloat(a[sc]),
               nb = parseFloat(b[sc]);
             if (!isNaN(na) && !isNaN(nb)) return sortCol ? (sortAsc ? na - nb : nb - na) : nb - na;
@@ -11514,11 +11521,15 @@
           const d = String(a[col] || "").localeCompare(String(b[col] || ""));
           return _sumSortAsc ? d : -d;
         };
+        const _sumGrpIdx = _sampleOrder.length ? Object.fromEntries(_sampleOrder.map((id, i) => [id, i])) : {};
         rows.sort((a, b) => {
-          // When grouping, keep samples together (primary) then TASS desc within.
+          // When grouping, order groups by _sampleOrder (right-panel order), then sort within.
           if (grouped) {
-            const sd = String(a["Specimen ID"] || "").localeCompare(String(b["Specimen ID"] || ""));
-            if (sd !== 0) return sd;
+            const sia = String(a["Specimen ID"] || "");
+            const sib = String(b["Specimen ID"] || "");
+            const ia = _sumGrpIdx[sia] !== undefined ? _sumGrpIdx[sia] : 9999;
+            const ib = _sumGrpIdx[sib] !== undefined ? _sumGrpIdx[sib] : 9999;
+            if (ia !== ib) return ia - ib;
             if (col !== "Specimen ID") return cmp(a, b);
             return num(b["TASS Score"]) - num(a["TASS Score"]);
           }

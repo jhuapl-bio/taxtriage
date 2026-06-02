@@ -2471,12 +2471,16 @@ def main():
     _toplevelkey_union_cb = {}
     _subkey_cov_frac = {}
     _toplevelkey_cov_frac = {}
+    _subkey_numreads_override = {}
+    _toplevelkey_numreads_override = {}
     if comparison_df is not None and not comparison_df.empty and 'Covered BP Subkey' in comparison_df.columns:
         _ucb = comparison_df.copy()
         _ucb['_sk'] = _ucb.index.map(lambda a: str(acc_to_subkey.get(a, a)))
         _ucb['_tlk'] = _ucb.index.map(lambda a: str(acc_to_toplevelkey.get(a, a)))
-        for _c in ('Covered BP Subkey', 'Covered BP Toplevelkey'):
-            _ucb[_c] = pd.to_numeric(_ucb[_c], errors='coerce').fillna(0)
+        for _c in ('Covered BP Subkey', 'Covered BP Toplevelkey',
+                   'Pass Filtered Reads Subkey', 'Pass Filtered Reads Toplevelkey'):
+            if _c in _ucb.columns:
+                _ucb[_c] = pd.to_numeric(_ucb[_c], errors='coerce').fillna(0)
         _subkey_union_cb = {str(k): float(v) for k, v in
                             _ucb.groupby('_sk')['Covered BP Subkey'].sum().items()}
         _toplevelkey_union_cb = {str(k): float(v) for k, v in
@@ -2497,6 +2501,46 @@ def main():
                                 _sk_frac.groupby(_ucb['_sk']).max().items()}
             _toplevelkey_cov_frac = {str(k): float(v) for k, v in
                                      _tlk_frac.groupby(_ucb['_tlk']).max().items()}
+
+        # ── Best-strain breadth override ──────────────────────────────────────
+        # covered_bp_subkey can undercount when conserved cross-species regions
+        # (rRNA, housekeeping genes) are stripped by species-LCA removal, making
+        # the representative fraction artificially low (e.g. 72% even when every
+        # strain's actual post-removal breadth is ~100%).  Take the max against
+        # each strain's actual post-strain-removal coverage so that species/genus
+        # coverage and the TASS breadth score reflect the best available alignment
+        # quality rather than cross-species-unique coverage only.
+        for _acc, _hit in strain_summary.items():
+            _sk = str(_hit.get('subkey', _hit.get('key', _acc)))
+            _tlk = str(_hit.get('toplevelkey', _acc))
+            _cov = float(_hit.get('coverage', 0) or 0)
+            if _cov > _subkey_cov_frac.get(_sk, 0.0):
+                _subkey_cov_frac[_sk] = _cov
+            if _cov > _toplevelkey_cov_frac.get(_tlk, 0.0):
+                _toplevelkey_cov_frac[_tlk] = _cov
+
+        # ── Pre-minmapq numreads override (species/genus level) ───────────────
+        # The per-strain numreads only counts MAPQ≥minmapq reads (default 7).
+        # For near-identical strains (Salmonella), most reads have MAPQ=0 and
+        # are filtered, leaving ~5% of actual reads at species level. But MAPQ=0
+        # is not ambiguous about the species — only about which strain — so
+        # species/genus RPM/abundance should use the pre-minmapq count from
+        # comparison_df (Pass Filtered Reads Subkey = reads surviving species-LCA
+        # removal regardless of MAPQ). Sum per species gives the true species read
+        # total without double-counting (each read has one primary alignment).
+        _subkey_numreads_override = {}
+        _toplevelkey_numreads_override = {}
+        if 'Pass Filtered Reads Subkey' in _ucb.columns:
+            _nr = pd.to_numeric(_ucb.get('Pass Filtered Reads Subkey', 0), errors='coerce').fillna(0)
+            _nr_tlk = pd.to_numeric(_ucb.get('Pass Filtered Reads Toplevelkey',
+                                             _ucb.get('Pass Filtered Reads Subkey', 0)),
+                                    errors='coerce').fillna(0)
+            _subkey_numreads_override = {str(k): float(v) for k, v in
+                                         _nr.groupby(_ucb['_sk']).sum().items()}
+            _toplevelkey_numreads_override = {str(k): float(v) for k, v in
+                                              _nr_tlk.groupby(_ucb['_tlk']).sum().items()}
+            print(f"[LCA] pre-minmapq numreads: {len(_subkey_numreads_override)} species groups overridden")
+
         print(f"[LCA] union covered-bp: {len(_subkey_union_cb)} species, "
               f"{len(_toplevelkey_union_cb)} genera; "
               f"representative-breadth override: {len(_subkey_cov_frac)} species")
@@ -2515,6 +2559,7 @@ def main():
         depth_concentration_power=args.depth_concentration_power,
         group_covered_bp_override=_subkey_union_cb if _subkey_union_cb else None,
         group_coverage_override=_subkey_cov_frac if _subkey_cov_frac else None,
+        group_numreads_override=_subkey_numreads_override if _subkey_numreads_override else None,
     )
     # Attach strain-level members to each subkey group
     for _, sk_data in subkey_summary.items():
@@ -2537,6 +2582,7 @@ def main():
         depth_concentration_power=args.depth_concentration_power,
         group_covered_bp_override=_toplevelkey_union_cb if _toplevelkey_union_cb else None,
         group_coverage_override=_toplevelkey_cov_frac if _toplevelkey_cov_frac else None,
+        group_numreads_override=_toplevelkey_numreads_override if _toplevelkey_numreads_override else None,
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():
