@@ -112,6 +112,29 @@
       .tab-btn.hidden {
         display: none;
       }
+      .tab-btn.rollup-highlight {
+        color: #fff;
+        background: rgba(255, 193, 7, 0.18);
+        border-bottom-color: #ffc107;
+        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.35);
+      }
+      .info-tip-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: #90a4ae;
+        cursor: help;
+        font-size: 0.88em;
+        padding: 0 2px;
+        vertical-align: middle;
+        transition: color 0.15s;
+        line-height: 1;
+      }
+      .info-tip-btn:hover {
+        color: #1565c0;
+      }
 
       /* ── layout ── */
       #main {
@@ -2867,7 +2890,7 @@
           <input type="checkbox" id="filter-ic" checked />
           <label for="filter-ic">Case-insensitive</label>
         </div>
-        <label id="filter-min-label">Min TASS Score (0–100)</label>
+        <label id="filter-min-label">Min TASS Score (0–100) <button class="info-tip-btn" aria-label="About TASS Score" data-tip="<b>TASS Score</b> (Taxonomic Assignment Scoring System)<br>A 0–100 confidence metric for each organism detection. Higher scores indicate stronger evidence of a true detection based on read depth, coverage breadth, and classifier agreement.<br><br>Organisms with a TASS score below this threshold are hidden across all views. The recommended cutoff is computed per sample type from historical data and shown in the KPI panel above.">&#x24D8;</button></label>
         <div
           id="filter-min-wrap"
           style="display: flex; align-items: center; gap: 0.4em; flex-wrap: wrap; margin-top: 0.15em"
@@ -2935,13 +2958,14 @@
           <input type="checkbox" id="filter-hc" />
           <label for="filter-hc">High Consequence only</label>
         </div>
-        <div class="row" style="margin-top: 0.2em">
+        <div class="row" id="rollup-row" style="margin-top: 0.2em">
           <input type="checkbox" id="filter-rollup" checked />
           <label
             for="filter-rollup"
             title="Keep a strain visible when its parent species or genus aggregation passes the TASS cutoff, even if the strain itself is below it."
             >Roll up threshold (show species/genus-rescued strains)</label
           >
+          <button class="info-tip-btn" aria-label="About Roll-up Threshold" data-tip="<b>Roll-up Threshold</b><br>When enabled, a strain is kept visible if its parent <i>species</i> or <i>genus</i> aggregation passes the TASS cutoff — even if the strain's own score is below the threshold.<br><br>This prevents high-confidence parent-level calls from disappearing just because an individual strain is under-detected. Rescued strains are marked with a colored triangle in the charts.<br><br><i>Affects all data views.</i>">&#x24D8;</button>
         </div>
         <div class="row" style="margin-top: 0.35em; gap: 0.4em; align-items: center">
           <label for="view-level" style="margin: 0">View level</label>
@@ -3004,7 +3028,7 @@
             <input type="checkbox" id="filter-mt-both" checked /> Both/Unspecified
           </label>
         </div>
-        <label style="margin-top: 0.6em">Microbial Category</label>
+        <label style="margin-top: 0.6em">Microbial Category <button class="info-tip-btn" aria-label="About Microbial Category" data-tip="<b>Microbial Category</b><br>Classifies each detected organism by its typical clinical relevance:<br><br><b>Primary</b> — known pathogen, directly associated with disease<br><b>Commensal</b> — normal flora, usually harmless in healthy individuals<br><b>Opportunistic</b> — can cause disease in immunocompromised hosts<br><b>Potential</b> — possible pathogen under certain conditions<br><b>Unknown</b> — category not determined<br><br>Hold Ctrl/⌘ to select multiple; deselect all to show every category.">&#x24D8;</button></label>
         <select
           id="filter-mc"
           multiple
@@ -11952,6 +11976,27 @@
           redraw();
         });
       })();
+      // ── Info-tip icon hover (sidebar tooltips) ──────────────────────────────
+      document.querySelectorAll(".info-tip-btn[data-tip]").forEach((btn) => {
+        btn.addEventListener("mouseenter", (ev) => showTip(btn.dataset.tip, ev));
+        btn.addEventListener("mousemove", moveTip);
+        btn.addEventListener("mouseleave", hideTip);
+        // Prevent label click from toggling the associated checkbox
+        btn.addEventListener("click", (ev) => ev.preventDefault());
+      });
+
+      // ── Rollup row hover: highlight all visible tab buttons ─────────────────
+      (function () {
+        const row = document.getElementById("rollup-row");
+        if (!row) return;
+        row.addEventListener("mouseenter", () => {
+          document.querySelectorAll(".tab-btn:not(.hidden)").forEach((b) => b.classList.add("rollup-highlight"));
+        });
+        row.addEventListener("mouseleave", () => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("rollup-highlight"));
+        });
+      })();
+
       // View-level dropdown: strain/species/genus granularity → invalidate the
       // filtered-data cache (its result depends on Level) and redraw everything.
       (function () {
