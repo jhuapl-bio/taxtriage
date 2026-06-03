@@ -118,6 +118,14 @@
         border-bottom-color: #ffc107;
         box-shadow: 0 2px 8px rgba(255, 193, 7, 0.35);
       }
+      .tab-btn.tab-disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .tab-btn.tab-disabled:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: #c9daf8;
+      }
       .info-tip-btn {
         display: inline-flex;
         align-items: center;
@@ -689,51 +697,26 @@
         font-size: 0.72em;
         margin-top: 0.55em;
       }
-      .report-pdf-card {
-        border: 1px solid #c5d8f5;
-        border-radius: 7px;
-        background: #f6faff;
-        padding: 0.7em 0.65em;
-        margin: 0.75em 0 0.2em;
-      }
-      .report-pdf-card .pdf-title {
-        font-size: 0.82em;
-        font-weight: 700;
-        color: #1565c0;
-        display: flex;
-        align-items: center;
-        gap: 0.4em;
-        margin-bottom: 0.25em;
-      }
-      .report-pdf-card .pdf-desc {
-        font-size: 0.74em;
-        color: #52616f;
-        line-height: 1.35;
-        margin-bottom: 0.55em;
-      }
-      .report-pdf-card .pdf-sub {
-        font-size: 0.68em;
-        color: #7b8794;
-        line-height: 1.3;
-        margin-top: 0.45em;
-      }
-      .report-pdf-btn {
-        width: 100%;
+      /* ── Sidebar PDF export icon (inline next to Filters heading) ── */
+      #report-pdf-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0.45em;
-        border: 1px solid #1565c0;
+        width: 28px;
+        height: 26px;
+        border: 1px solid #c5d5e8;
         border-radius: 5px;
-        background: #1565c0;
-        color: #fff;
-        padding: 0.42em 0.65em;
-        font-size: 0.78em;
-        font-weight: 700;
+        background: rgba(255, 255, 255, 0.94);
+        color: #1565c0;
         cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        font-size: 0.85em;
+        padding: 0;
+        flex-shrink: 0;
       }
-      .report-pdf-btn:hover {
-        background: #0d47a1;
+      #report-pdf-btn:hover {
+        background: #eaf3ff;
+        border-color: #1565c0;
       }
       #pdf-report-cover {
         display: none;
@@ -1175,8 +1158,26 @@
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.1s;
-        max-width: 480px;
+        max-width: 520px;
+        width: max-content;
         z-index: 999;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        box-sizing: border-box;
+      }
+      /* Force tables inside tooltips to respect the tooltip max-width.
+         Without this, white-space:nowrap cells push the box past max-width. */
+      #tooltip table {
+        table-layout: fixed;
+        width: 100%;
+        max-width: 100%;
+        border-collapse: collapse;
+      }
+      #tooltip td,
+      #tooltip th {
+        white-space: normal !important;
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
       .axis text {
         font-size: 9px;
@@ -1476,7 +1477,11 @@
       <button class="tab-btn" data-tab="coverage"><i class="fas fa-layer-group"></i> Coverage</button>
       <button class="tab-btn hidden" data-tab="proteins" id="prot-tab-btn"><i class="fas fa-dna"></i> VF / AMR</button>
       <button class="tab-btn hidden" id="hist-tab-btn" data-tab="histogram">
-        <i class="fas fa-chart-column"></i> Histograms
+        <i class="fas fa-chart-column"></i> Histograms<i
+          class="fas fa-triangle-exclamation"
+          id="hist-tab-warn"
+          style="display: none; color: #f59f00; margin-left: 5px; font-size: 0.85em"
+        ></i>
       </button>
       <button class="tab-btn" data-tab="explore"><i class="fas fa-magnifying-glass-chart"></i> Explore</button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
@@ -1512,15 +1517,70 @@
           <div id="summary-kpi-row" class="summary-kpi-row"></div>
 
           <div class="chart-wrap">
-            <div class="chart-title"><i class="fas fa-triangle-exclamation"></i> Detections</div>
+            <div class="chart-title">
+              <i class="fas fa-triangle-exclamation"></i> Detections
+              <button
+                class="info-tip-btn"
+                style="font-size: 0.78em; margin-left: 4px; vertical-align: middle"
+                data-tip="&lt;b&gt;How TASS Scores Are Calculated&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;TaxTriage scores every detection at three taxonomic levels — Strain, Species, and Genus — using the same components but with different read sets and coverage inputs.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Scoring Components (weighted sum → 0–100)&lt;/b&gt;&lt;br&gt;&lt;table style='border-collapse:collapse;font-size:0.85em;margin:4px 0'&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;Breadth %&lt;/td&gt;&lt;td style='color:#ccc'&gt;Fraction of the reference genome covered by reads (sigmoid-scaled). Higher coverage → stronger signal.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;Gini / Evenness&lt;/td&gt;&lt;td style='color:#ccc'&gt;How evenly reads are distributed across the genome. Spiky or highly concentrated coverage lowers this component.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;MinHash&lt;/td&gt;&lt;td style='color:#ccc'&gt;Signature similarity between reads and the reference after conflict-region analysis. Shared genomic regions with related organisms reduce this score.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;HMP (optional)&lt;/td&gt;&lt;td style='color:#ccc'&gt;Expected abundance for this organism at the reported body site. Absent organisms score 0; typical residents score higher.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Three-Level Hierarchy&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em'&gt;&lt;span style='background:#e3f2fd;color:#1565c0;padding:0 4px;border-radius:3px;font-weight:700'&gt;Strain&lt;/span&gt; — individual reference accession; reads that map ambiguously across highly-similar references (conflict regions) are &lt;b&gt;removed&lt;/b&gt; before scoring. This penalises the strain's breadth, Gini, and read count.&lt;br&gt;&lt;span style='background:#f3e5f5;color:#6a1b9a;padding:0 4px;border-radius:3px;font-weight:700'&gt;Species&lt;/span&gt; — aggregates all strains sharing the same species. Uses a &lt;i&gt;union covered-bp&lt;/i&gt; approach: reads ambiguous &lt;i&gt;between strains of the same species&lt;/i&gt; are re-included because they confirm the species even without pinpointing the strain.&lt;br&gt;&lt;span style='background:#e8f5e9;color:#2e7d32;padding:0 4px;border-radius:3px;font-weight:700'&gt;Genus&lt;/span&gt; — aggregates all species in the genus using the same union logic at the genus level.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#ffd580'&gt;Why Strain 72 / Species 75.8?&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;Example: &lt;b&gt;Ⓓ Oribacterium sinus&lt;/b&gt; Strain 72 → Species 75.8. At strain level, reads overlapping conserved genomic regions shared with sibling strains are removed, lowering breadth and Gini. At species level those same reads re-count (they confirm the species), so species coverage and TASS are higher. This is expected behaviour — a strain can score below its parent species whenever intra-species read sharing is detected.&lt;/span&gt;"
+              >
+                ⓘ
+              </button>
+            </div>
             <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5em">
               Organisms across the run (respects sidebar filters). Click a column header to sort · click a row to pin it
               · ★ = high-consequence pathogen · <span style="color: #1565c0; font-weight: 600">Ⓓ</span>/<span
                 style="color: #6a1b9a; font-weight: 600"
                 >Ⓡ</span
               >
-              = DNA / RNA · hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark for a
-              coverage-depth preview<span id="sum-rollup-hint" style="display: none">
+              = DNA / RNA ·
+              <span
+                style="
+                  display: inline-block;
+                  font-size: 9px;
+                  font-weight: 700;
+                  padding: 0 4px;
+                  border-radius: 3px;
+                  vertical-align: middle;
+                  line-height: 1.5;
+                  background: #e3f2fd;
+                  color: #1565c0;
+                  border: 1px solid #1565c044;
+                "
+                >Strain</span
+              >
+              <span
+                style="
+                  display: inline-block;
+                  font-size: 9px;
+                  font-weight: 700;
+                  padding: 0 4px;
+                  border-radius: 3px;
+                  vertical-align: middle;
+                  line-height: 1.5;
+                  background: #f3e5f5;
+                  color: #6a1b9a;
+                  border: 1px solid #6a1b9a44;
+                "
+                >Species</span
+              >
+              <span
+                style="
+                  display: inline-block;
+                  font-size: 9px;
+                  font-weight: 700;
+                  padding: 0 4px;
+                  border-radius: 3px;
+                  vertical-align: middle;
+                  line-height: 1.5;
+                  background: #e8f5e9;
+                  color: #2e7d32;
+                  border: 1px solid #2e7d3244;
+                "
+                >Genus</span
+              >
+              = taxonomic level of each row · hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark
+              for a coverage-depth preview<span id="sum-rollup-hint" style="display: none">
                 ·
                 <span
                   style="
@@ -1654,7 +1714,16 @@
           </div>
 
           <div class="chart-wrap" id="summary-annot-wrap" style="display: none">
-            <div class="chart-title"><i class="fas fa-dna"></i> Annotation Summary (VF / AMR)</div>
+            <div class="chart-title">
+              <i class="fas fa-dna"></i> Annotation Summary (VF / AMR)
+              <button
+                class="info-tip-btn"
+                style="font-size: 0.78em; margin-left: 4px; vertical-align: middle"
+                data-tip="&lt;b&gt;Annotation Summary — VF / AMR&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;This table summarises Virulence Factor (VF) and Antimicrobial Resistance (AMR) gene hits detected across all samples, grouped by genus.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Columns&lt;/b&gt;&lt;br&gt;&lt;table style='border-collapse:collapse;font-size:0.85em;margin:4px 0'&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;Genus&lt;/td&gt;&lt;td style='color:#ccc'&gt;Taxonomic genus shared by all matching organisms. Click to jump to the full VF / AMR tab filtered to this genus.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;# Unique Genes&lt;/td&gt;&lt;td style='color:#ccc'&gt;Count of &lt;b&gt;distinct gene names&lt;/b&gt; (VF + AMR) detected for this genus. Hover to see each gene and how many samples it appeared in.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;AMR Hits&lt;/td&gt;&lt;td style='color:#ccc'&gt;Total number of &lt;b&gt;Antimicrobial Resistance&lt;/b&gt; gene hits. Hover to see which AMR genes were found and in how many samples.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;# Samples&lt;/td&gt;&lt;td style='color:#ccc'&gt;Number of samples where this genus had at least one gene hit. Hover to see the full list of sample names.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Data Sources&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;Gene hits come from two sources: &lt;b&gt;per_gene_hits&lt;/b&gt; (VF annotations from DIAMOND / protein alignment) and &lt;b&gt;amr_genes&lt;/b&gt; (AMR hits from the annotation pipeline). Both are merged into the unique-gene count per genus. To explore individual hit details, click a genus row or open the &lt;b&gt;VF / AMR&lt;/b&gt; tab.&lt;/span&gt;"
+              >
+                ⓘ
+              </button>
+            </div>
             <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom: 0.8em"></div>
             <div id="summary-annot-genus" style="overflow: auto"></div>
           </div>
@@ -2480,6 +2549,52 @@
                 border-radius: 3px;
                 vertical-align: middle;
                 line-height: 1.5;
+                background: #e3f2fd;
+                color: #1565c0;
+                border: 1px solid #1565c044;
+              "
+              >Strain</span
+            >
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #f3e5f5;
+                color: #6a1b9a;
+                border: 1px solid #6a1b9a44;
+              "
+              >Species</span
+            >
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #e8f5e9;
+                color: #2e7d32;
+                border: 1px solid #2e7d3244;
+              "
+              >Genus</span
+            >
+            = taxonomic level of each row ·
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
                 background: #ffe0b2;
                 color: #c2410c;
               "
@@ -2972,9 +3087,22 @@
       <!-- /content -->
 
       <div id="sidebar-resizer" title="Drag to resize panel"></div>
-
       <div id="sidebar">
-        <h3>Filters</h3>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.2em">
+          <h3 style="margin: 0">Filters</h3>
+          <div style="display: inline-flex; align-items: center; gap: 0.4em">
+            <button
+              type="button"
+              id="report-pdf-btn"
+              class="export-control"
+              title="Export Report PDF"
+              data-tip="&lt;b&gt;Export Report PDF&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Exports the current filtered report to a printable layout — respects all active sidebar filters, the selected plot, and table settings.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;How to save&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Clicking opens your browser's &lt;b&gt;Print dialog&lt;/b&gt;. Set the destination to &lt;b&gt;Save as PDF&lt;/b&gt;.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Tips&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;• Orientation: &lt;b&gt;Landscape&lt;/b&gt;&lt;br&gt;• Disable &lt;i&gt;Headers and footers&lt;/i&gt;&lt;br&gt;• All charts, detections table, and current tab view are included&lt;/span&gt;"
+            >
+              <i class="fas fa-file-download"></i>
+            </button>
+            <span style="font-size: 0.72em; color: #555; white-space: nowrap">Export Report</span>
+          </div>
+        </div>
         <label
           >Search (Sample / Organism)
           <button
@@ -3214,14 +3342,6 @@
           </span>
         </h3>
         <div id="sample-list"></div>
-        <div class="report-pdf-card">
-          <div class="pdf-title"><i class="fas fa-file-pdf"></i> Report PDF</div>
-          <div class="pdf-desc">Export the current filtered report, including the active plot and table settings.</div>
-          <button type="button" class="report-pdf-btn" id="report-pdf-btn">
-            <i class="fas fa-print"></i> Export HTML to PDF
-          </button>
-          <div class="pdf-sub">Opens your browser print dialog. Choose “Save as PDF” to write the file.</div>
-        </div>
         <h3>Upload Data</h3>
         <div
           id="upload-zone"
@@ -3713,14 +3833,23 @@
       const tooltip = document.getElementById("tooltip");
       function showTip(html, event) {
         tooltip.innerHTML = html;
+        // Park at 0,0 before measuring so offsetWidth reflects the true
+        // unconstrained width (not a clipped value from the previous position).
+        tooltip.style.left = "0px";
+        tooltip.style.top = "0px";
         tooltip.style.opacity = 1;
         moveTip(event);
       }
       function moveTip(event) {
         const x = event.clientX + 12,
           y = event.clientY - 28;
-        tooltip.style.left = Math.min(x, window.innerWidth - 490) + "px";
-        tooltip.style.top = Math.max(y, 4) + "px";
+        // offsetWidth after parking at 0,0 (or from previous frame) is reliable.
+        const tw = tooltip.offsetWidth || 520;
+        const th = tooltip.offsetHeight || 0;
+        const left = Math.min(x, window.innerWidth - tw - 16);
+        const top = Math.min(Math.max(y, 4), window.innerHeight - th - 8);
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
       }
       function hideTip() {
         tooltip.style.opacity = 0;
@@ -9125,29 +9254,46 @@
           if (c === "Detected Organism") {
             const isHC = row["High Consequence"];
             const mt = (row["Mol Type"] || "").toLowerCase();
-            if (isHC || mt) {
-              if (isHC) td.style.cssText = "color:#c62828;font-weight:600;white-space:nowrap";
-              else td.style.cssText = "white-space:nowrap";
-              if (isHC) {
-                const badge = document.createElement("span");
-                badge.textContent = "⚠ ";
-                badge.title = "High Consequence Pathogen";
-                badge.style.cssText = "color:#c62828;margin-right:2px";
-                td.appendChild(badge);
-              }
-              td.appendChild(document.createTextNode(val));
-              if (mt === "dna" || mt === "rna") {
-                const mtBadge = document.createElement("span");
-                mtBadge.textContent = mt === "dna" ? "D" : "R";
-                mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
-                mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
-                  mt === "dna" ? "#1565c0" : "#6a1b9a"
-                };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
-                td.appendChild(mtBadge);
-              }
-            } else {
-              td.textContent = val;
+            const rowLevel = row["Level"] || "Strain";
+            td.style.cssText = "white-space:nowrap" + (isHC ? ";color:#c62828;font-weight:600" : "");
+            if (isHC) {
+              const badge = document.createElement("span");
+              badge.textContent = "⚠ ";
+              badge.title = "High Consequence Pathogen";
+              badge.style.cssText = "color:#c62828;margin-right:2px";
+              td.appendChild(badge);
             }
+            td.appendChild(document.createTextNode(val));
+            if (mt === "dna" || mt === "rna") {
+              const mtBadge = document.createElement("span");
+              mtBadge.textContent = mt === "dna" ? "D" : "R";
+              mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
+              mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
+                mt === "dna" ? "#1565c0" : "#6a1b9a"
+              };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
+              td.appendChild(mtBadge);
+            }
+            // Taxonomic level badge: always shown so users can tell whether
+            // a row is a direct Strain call, a Species aggregate, or a Genus aggregate.
+            const _lvlStyles = {
+              Strain: { bg: "#e3f2fd", fg: "#1565c0", label: "Strain" },
+              Species: { bg: "#f3e5f5", fg: "#6a1b9a", label: "Species" },
+              Genus: { bg: "#e8f5e9", fg: "#2e7d32", label: "Genus" },
+            };
+            const _ls = _lvlStyles[rowLevel] || { bg: "#f5f5f5", fg: "#555", label: rowLevel };
+            const lvlBadge = document.createElement("span");
+            lvlBadge.textContent = _ls.label;
+            lvlBadge.title =
+              rowLevel === "Strain"
+                ? "Strain-level detection — TASS reflects this specific strain's alignments."
+                : rowLevel === "Species"
+                ? "Species-level aggregate — TASS reflects all reads assigned to this species."
+                : "Genus-level aggregate — TASS reflects all reads assigned to this genus.";
+            lvlBadge.style.cssText =
+              `display:inline-block;margin-left:5px;font-size:9px;font-weight:700;` +
+              `padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;` +
+              `background:${_ls.bg};color:${_ls.fg};border:1px solid ${_ls.fg}44`;
+            td.appendChild(lvlBadge);
           } else {
             td.textContent = val;
           }
@@ -9184,29 +9330,10 @@
             }
             td.style.textAlign = "center";
             td.style.fontWeight = "600";
-            // Species-rollup hit: this row is a Species summary promoted into the
-            // Strain view because every child strain fell below the cutoff. Mark
-            // it with a distinctive icon + explanatory tooltip.
+            // Species-rollup hit: mark the row with the rescued-row style.
+            // The level badge in the Detected Organism column already identifies
+            // this as a Species row — no duplicate text badge needed here.
             if (row.__rescuedSpecies) {
-              const sIcon = document.createElement("span");
-              sIcon.textContent = "⬢S";
-              sIcon.style.cssText =
-                "display:inline-block;margin-left:4px;font-size:9px;font-weight:700;" +
-                "padding:0 3px;border-radius:3px;vertical-align:middle;line-height:1.4;" +
-                "background:#ede7f6;color:#5e35b1;border:1px solid #b39ddb";
-              const _n = row.__rescuedStrainCount || 0;
-              sIcon.textContent = "⬢ species hit";
-              sIcon.title =
-                "Species-level hit: all " +
-                _n +
-                " strain" +
-                (_n === 1 ? "" : "s") +
-                " were below the TASS cutoff, but the species aggregation passes " +
-                "(Species TASS " +
-                (isNaN(parseFloat(row["Species TASS"])) ? "?" : parseFloat(row["Species TASS"]).toFixed(1)) +
-                "). This row is the rolled-up species, shown in place of its " +
-                "below-cutoff strains.";
-              td.appendChild(sIcon);
               tr.classList.add("rescued-row");
             }
             // Pass / rescue indicator. Passing rows get a green cell background;
@@ -9603,6 +9730,7 @@
 ═══════════════════════════════════════════════════════════════════════════ */
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
+          if (btn.classList.contains("tab-disabled")) return;
           document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
           document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
           btn.classList.add("active");
@@ -11560,7 +11688,8 @@
         slice.forEach((r) => {
           if (grouped && r["Specimen ID"] !== lastSample) {
             lastSample = r["Specimen ID"];
-            html += `<tr class="grp-row"><td colspan="${_SUM_COLS.length}"><i class="fas fa-vial"></i> ${lastSample}</td></tr>`;
+            const _grpSwatchColor = sampleColors[lastSample] || "#90a4ae";
+            html += `<tr class="grp-row"><td colspan="${_SUM_COLS.length}"><i class="fas fa-vial"></i> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}</td></tr>`;
           }
           const cat = r["Microbial Category"] || "Unknown";
           const cc = _CAT_COLORS[cat] || "#555";
@@ -11582,7 +11711,19 @@
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               _sumPinned.has(key) ? " row-pinned" : ""
             }">` +
-            `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}</td>` +
+            `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${(function () {
+              const _lvl = r["Level"] || "Strain";
+              const _s = {
+                Strain: ["#e3f2fd", "#1565c0"],
+                Species: ["#f3e5f5", "#6a1b9a"],
+                Genus: ["#e8f5e9", "#2e7d32"],
+              }[_lvl] || ["#f5f5f5", "#555"];
+              return `<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;background:${
+                _s[0]
+              };color:${_s[1]};border:1px solid ${_s[1]}44" title="${_lvl}-level ${
+                _lvl === "Strain" ? "detection" : "aggregate"
+              }">${_lvl}</span>`;
+            })()}</td>` +
             `<td style="text-align:center">${
               hist
                 ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>`
@@ -11923,6 +12064,8 @@
         const byGenus = {};
         const _ensure = (g) => {
           if (!byGenus[g])
+            // geneNames: Map<geneName, Set<sampleName>>  (unique genes, per-sample tracking)
+            // amrNames:  Map<geneName, Set<sampleName>>
             byGenus[g] = { hits: 0, samples: new Set(), amr: 0, geneNames: new Map(), amrNames: new Map() };
           return byGenus[g];
         };
@@ -11933,23 +12076,32 @@
           e.hits += n;
           if (r.Sample || r.sample) e.samples.add(r.Sample || r.sample);
         });
-        // Collect individual gene-hit names per genus (for the # Gene Hits tooltip).
+        // Collect individual gene-hit names per genus — track which samples each gene was seen in.
         geneHits.forEach((r) => {
           const g = r.Genus || r.genus || "Unknown";
           const e = _ensure(g);
           const lbl = _geneLabel(r);
-          if (lbl) e.geneNames.set(lbl, (e.geneNames.get(lbl) || 0) + 1);
-          if (r.Sample || r.sample) e.samples.add(r.Sample || r.sample);
+          const smp = r.Sample || r.sample || null;
+          if (lbl) {
+            if (!e.geneNames.has(lbl)) e.geneNames.set(lbl, new Set());
+            if (smp) e.geneNames.get(lbl).add(smp);
+          }
+          if (smp) e.samples.add(smp);
         });
         amrRows.forEach((r) => {
           const g = r.Genus || r.genus || "Unknown";
           const e = _ensure(g);
           e.amr += 1;
           const lbl = _geneLabel(r);
-          if (lbl) e.amrNames.set(lbl, (e.amrNames.get(lbl) || 0) + 1);
+          const smp = r.Sample || r.sample || null;
+          if (lbl) {
+            if (!e.amrNames.has(lbl)) e.amrNames.set(lbl, new Set());
+            if (smp) e.amrNames.get(lbl).add(smp);
+          }
+          if (smp) e.samples.add(smp);
         });
         const ordered = Object.entries(byGenus)
-          .sort((a, b) => b[1].hits - a[1].hits)
+          .sort((a, b) => b[1].geneNames.size - a[1].geneNames.size || b[1].hits - a[1].hits)
           .slice(0, 12);
         const cont = document.getElementById("summary-annot-genus");
         if (!ordered.length) {
@@ -11959,34 +12111,58 @@
         let html =
           '<p style="font-size:0.74rem;color:#6c757d;margin:0 0 0.4em">Click a genus to open it in the VF / AMR tab.</p>' +
           "<table><thead><tr>" +
-          ["Genus", "# Gene Hits", "AMR Hits", "Samples", ""].map((h) => `<th>${h}</th>`).join("") +
+          ["Genus", "# Unique Genes", "AMR Hits", "# Samples", ""].map((h) => `<th>${h}</th>`).join("") +
           "</tr></thead><tbody>";
-        // Tooltip HTML from a name→count Map of gene/AMR hits.
-        const _hitsTip = (title, m) => {
-          const items = Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+        // Tooltip HTML: geneNameMap is Map<name, Set<sample>> — show unique gene names sorted by sample count.
+        const _hitsTip = (title, geneNameMap) => {
+          const items = Array.from(geneNameMap.entries())
+            .map(([name, smpSet]) => [name, smpSet.size])
+            .sort((a, b) => b[1] - a[1]);
           if (!items.length) return "";
-          let t = `<b>${title}</b><br>`;
+          let t = `<b>${title}</b> <span style="color:#aaa;font-size:0.85em">(${items.length} unique gene${
+            items.length === 1 ? "" : "s"
+          })</span><br>`;
+          t += `<table style="border-collapse:collapse;margin-top:4px;font-size:0.88em">`;
+          t += `<tr style="color:#888"><td style="padding-right:12px">Gene</td><td style="text-align:right"># Samples</td></tr>`;
           items.slice(0, 15).forEach(([name, n]) => {
-            t += `<div><i>${name}</i>${n > 1 ? ` <span style="color:#aaa">×${n}</span>` : ""}</div>`;
+            t += `<tr><td style="padding-right:12px;color:#e0e0e0"><i>${name}</i></td><td style="text-align:right;color:#90caf9;font-weight:600">${n}</td></tr>`;
           });
-          if (items.length > 15) t += `<div style="color:#aaa">…and ${items.length - 15} more</div>`;
+          if (items.length > 15)
+            t += `<tr><td colspan="2" style="color:#aaa;padding-top:3px">…and ${items.length - 15} more</td></tr>`;
+          t += `</table>`;
+          return t;
+        };
+        // Sample list tooltip: show all sample names that had hits for this genus.
+        const _samplesTip = (title, sampleSet) => {
+          const smpArr = Array.from(sampleSet).sort();
+          if (!smpArr.length) return "";
+          let t = `<b>${title}</b> <span style="color:#aaa;font-size:0.85em">(${smpArr.length})</span><br>`;
+          t += `<div style="margin-top:4px;max-height:220px;overflow:auto">`;
+          smpArr.forEach((s) => {
+            t += `<div style="color:#e0e0e0;padding:1px 0">${s}</div>`;
+          });
+          t += `</div>`;
           return t;
         };
         const _tipStore = {};
         ordered.forEach(([g, info], gi) => {
-          const geneTip = _hitsTip(`${g} — gene hits`, info.geneNames);
+          const geneTip = _hitsTip(`${g} — unique gene hits`, info.geneNames);
           const amrTip = _hitsTip(`${g} — AMR genes`, info.amrNames);
-          _tipStore[gi] = { gene: geneTip, amr: amrTip };
+          const samplesTip = _samplesTip(`${g} — samples with hits`, info.samples);
+          _tipStore[gi] = { gene: geneTip, amr: amrTip, samples: samplesTip };
+          const uniqueGenes = info.geneNames.size;
           html +=
             `<tr class="annot-genus-row" data-genus="${g}" data-gi="${gi}" style="cursor:pointer">` +
             `<td><i style="color:#1565c0;text-decoration:underline">${g}</i></td>` +
             `<td class="annot-gene-cell" style="text-align:right${
               geneTip ? ";cursor:help;text-decoration:underline dotted" : ""
-            }">${_fmtInt(info.hits)}</td>` +
+            }">${uniqueGenes > 0 ? _fmtInt(uniqueGenes) : "—"}</td>` +
             `<td class="annot-amr-cell" style="text-align:right${
               amrTip ? ";cursor:help;text-decoration:underline dotted" : ""
             }">${info.amr ? _fmtInt(info.amr) : "—"}</td>` +
-            `<td style="text-align:right">${info.samples.size || "—"}</td>` +
+            `<td class="annot-samples-cell" style="text-align:right${
+              samplesTip ? ";cursor:help;text-decoration:underline dotted" : ""
+            }">${info.samples.size || "—"}</td>` +
             `<td style="text-align:right;color:#1565c0"><i class="fas fa-arrow-up-right-from-square" title="Open in VF / AMR tab"></i></td>` +
             "</tr>";
         });
@@ -12007,6 +12183,7 @@
           };
           wire(tr.querySelector(".annot-gene-cell"), store.gene);
           wire(tr.querySelector(".annot-amr-cell"), store.amr);
+          wire(tr.querySelector(".annot-samples-cell"), store.samples);
         });
       }
 
@@ -12171,11 +12348,39 @@
 
       // View-level dropdown: strain/species/genus granularity → invalidate the
       // filtered-data cache (its result depends on Level) and redraw everything.
+      function _updateHistTabDisabled() {
+        const level = document.getElementById("view-level")?.value || "Strain";
+        const histBtn = document.getElementById("hist-tab-btn");
+        const warnIcon = document.getElementById("hist-tab-warn");
+        if (!histBtn) return;
+        const shouldDisable = level === "Species" || level === "Genus";
+        histBtn.classList.toggle("tab-disabled", shouldDisable);
+        if (warnIcon) warnIcon.style.display = shouldDisable ? "" : "none";
+        // Remove any previously attached tooltip listeners before re-attaching
+        if (histBtn._disabledTipOver) histBtn.removeEventListener("mouseover", histBtn._disabledTipOver);
+        if (histBtn._disabledTipMove) histBtn.removeEventListener("mousemove", histBtn._disabledTipMove);
+        if (histBtn._disabledTipOut) histBtn.removeEventListener("mouseout", histBtn._disabledTipOut);
+        if (shouldDisable) {
+          const _msg = `<b><i class="fas fa-triangle-exclamation" style="color:#f59f00"></i> Histograms unavailable</b><br><span style="font-size:0.88em;color:#ccc">Depth histograms are only available at <b>Strain</b> view level — they require individual alignment data that is not present for ${level}-level aggregates.<br>Switch <b>View level</b> back to <b>Strain</b> to enable this tab.</span>`;
+          histBtn._disabledTipOver = (e) => showTip(_msg, e);
+          histBtn._disabledTipMove = (e) => moveTip(e);
+          histBtn._disabledTipOut = () => hideTip();
+          histBtn.addEventListener("mouseover", histBtn._disabledTipOver);
+          histBtn.addEventListener("mousemove", histBtn._disabledTipMove);
+          histBtn.addEventListener("mouseout", histBtn._disabledTipOut);
+          // If the histogram tab is currently active, switch to summary
+          if (activeTab === "histogram") {
+            const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
+            if (summaryBtn) summaryBtn.click();
+          }
+        }
+      }
       (function () {
         const el = document.getElementById("view-level");
         if (!el) return;
         el.addEventListener("change", () => {
           _invalidateFilterCache();
+          _updateHistTabDisabled();
           redraw();
         });
       })();
@@ -13440,7 +13645,13 @@
         _buildLongitudinalSection();
         _initExportEnhancer();
         const pdfBtn = document.getElementById("report-pdf-btn");
-        if (pdfBtn) pdfBtn.addEventListener("click", _openReportPdfModal);
+        if (pdfBtn) {
+          pdfBtn.addEventListener("click", _openReportPdfModal);
+          // Hover tooltip — same pattern as info-tip-btn icons
+          pdfBtn.addEventListener("mouseenter", (ev) => showTip(pdfBtn.dataset.tip, ev));
+          pdfBtn.addEventListener("mousemove", moveTip);
+          pdfBtn.addEventListener("mouseleave", hideTip);
+        }
 
         // ── Wire up sortable map-panel column headers ──────────────────────
         _initPanelSortHeaders();
