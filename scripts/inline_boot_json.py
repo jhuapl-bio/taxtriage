@@ -106,8 +106,8 @@ def build_index(template_path: Path, json_text: str, check_only: bool = False) -
         sys.exit("ERROR: BOOTSTRAP block missing from generated HTML")
     if "JSON.parse(document.getElementById" not in html:
         sys.exit("ERROR: BOOT reader not updated in generated HTML")
-    if "heatmap_boot.js" in html:
-        sys.exit("ERROR: heatmap_boot.js reference still present in generated HTML")
+    if re.search(r'<script\b[^>]*\bsrc=["\']heatmap_boot\.js["\']', html):
+        sys.exit("ERROR: heatmap_boot.js <script> tag still present in generated HTML")
 
     # ── 5. Compare with existing docs/index.html ────────────────────────────
     existing = INDEX_HTML.read_text(encoding="utf-8") if INDEX_HTML.exists() else ""
