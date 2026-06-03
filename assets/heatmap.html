@@ -10,8 +10,8 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- <script src="pages.js"></script>
-    <script src="mce.js"></script> -->
+    <!-- <script src="pages.js"></script> -->
+    <!-- <script src="mce.js"></script> -->
     <script src="heatmap_boot.js"></script>
 
     <script>
@@ -12133,12 +12133,36 @@
           r["Antibiotics"] ||
           "";
 
+        // Helper: best available description/function for a gene row.
+        const _geneDesc = (r) =>
+          r["Description"] ||
+          r.description ||
+          r["Product"] ||
+          r.product ||
+          r["Antibiotics Class"] ||
+          r["Antibiotics"] ||
+          "";
+
+        // Helper: category label for a gene row, with an optional fallback.
+        const _geneCat = (r, fallback) =>
+          r["Property"] || r["Class"] || r.property || r.class || r["Category"] || r.category || fallback || "";
+
+        // Shared category → color map (mirrors _catColors in the VF/AMR tab).
+        const _annotCatColors = {
+          "Virulence Factor": "#e53935",
+          "Antibiotic Resistance": "#fb8c00",
+          AMR: "#fb8c00",
+          "Drug Target": "#8e24aa",
+          Transporter: "#00897b",
+          Efflux: "#00897b",
+        };
+
         // Top genera by # hits
         const byGenus = {};
         const _ensure = (g) => {
           if (!byGenus[g])
-            // geneNames: Map<geneName, Set<sampleName>>  (unique genes, per-sample tracking)
-            // amrNames:  Map<geneName, Set<sampleName>>
+            // geneNames: Map<geneName, {samples: Set<sampleName>, desc: string}>  (unique genes, per-sample tracking + description)
+            // amrNames:  Map<geneName, {samples: Set<sampleName>, desc: string}>
             byGenus[g] = { hits: 0, samples: new Set(), amr: 0, geneNames: new Map(), amrNames: new Map() };
           return byGenus[g];
         };
@@ -12154,10 +12178,11 @@
           const g = r.Genus || r.genus || "Unknown";
           const e = _ensure(g);
           const lbl = _geneLabel(r);
-          const smp = r.Sample || r.sample || null;
+          const smp = r["Specimen ID"] || r.Sample || r.sample || null;
           if (lbl) {
-            if (!e.geneNames.has(lbl)) e.geneNames.set(lbl, new Set());
-            if (smp) e.geneNames.get(lbl).add(smp);
+            if (!e.geneNames.has(lbl))
+              e.geneNames.set(lbl, { samples: new Set(), desc: _geneDesc(r), cat: _geneCat(r, "Virulence Factor") });
+            if (smp) e.geneNames.get(lbl).samples.add(smp);
           }
           if (smp) e.samples.add(smp);
         });
@@ -12166,10 +12191,11 @@
           const e = _ensure(g);
           e.amr += 1;
           const lbl = _geneLabel(r);
-          const smp = r.Sample || r.sample || null;
+          const smp = r["Specimen ID"] || r.Sample || r.sample || null;
           if (lbl) {
-            if (!e.amrNames.has(lbl)) e.amrNames.set(lbl, new Set());
-            if (smp) e.amrNames.get(lbl).add(smp);
+            if (!e.amrNames.has(lbl))
+              e.amrNames.set(lbl, { samples: new Set(), desc: _geneDesc(r), cat: _geneCat(r, "AMR") });
+            if (smp) e.amrNames.get(lbl).samples.add(smp);
           }
           if (smp) e.samples.add(smp);
         });
@@ -12186,10 +12212,18 @@
           "<table><thead><tr>" +
           ["Genus", "# Unique Genes", "AMR Hits", "# Samples", ""].map((h) => `<th>${h}</th>`).join("") +
           "</tr></thead><tbody>";
-        // Tooltip HTML: geneNameMap is Map<name, Set<sample>> — show unique gene names sorted by sample count.
+        // Tooltip HTML: geneNameMap is Map<name, {samples: Set, desc: string, cat: string}> — show gene names sorted by sample count with description and category badge.
         const _hitsTip = (title, geneNameMap) => {
           const items = Array.from(geneNameMap.entries())
-            .map(([name, smpSet]) => [name, smpSet.size])
+            .map(([name, val]) => {
+              const isSet = val instanceof Set;
+              return [
+                name,
+                isSet ? val.size : val.samples.size,
+                isSet ? "" : val.desc || "",
+                isSet ? "" : val.cat || "",
+              ];
+            })
             .sort((a, b) => b[1] - a[1]);
           if (!items.length) return "";
           let t = `<b>${title}</b> <span style="color:#aaa;font-size:0.85em">(${items.length} unique gene${
@@ -12197,8 +12231,17 @@
           })</span><br>`;
           t += `<table style="border-collapse:collapse;margin-top:4px;font-size:0.88em">`;
           t += `<tr style="color:#888"><td style="padding-right:12px">Gene</td><td style="text-align:right"># Samples</td></tr>`;
-          items.slice(0, 15).forEach(([name, n]) => {
-            t += `<tr><td style="padding-right:12px;color:#e0e0e0"><i>${name}</i></td><td style="text-align:right;color:#90caf9;font-weight:600">${n}</td></tr>`;
+          items.slice(0, 15).forEach(([name, n, desc, cat]) => {
+            const catColor = _annotCatColors[cat] || "#90a4ae";
+            t += `<tr><td style="padding-right:12px;color:#e0e0e0;vertical-align:top"><i>${name}</i>`;
+            if (desc && desc !== name) t += `<br><span style="font-size:0.8em;color:#aaa">${desc}</span>`;
+            t += `</td><td style="vertical-align:top;white-space:nowrap">`;
+            t += `<div style="display:flex;align-items:center;gap:6px;justify-content:space-between">`;
+            if (cat)
+              t += `<span style="font-size:0.72em;font-weight:600;color:${catColor};border:1px solid ${catColor};border-radius:3px;padding:0 4px;opacity:0.9;flex-shrink:0">${cat}</span>`;
+            else t += `<span></span>`;
+            t += `<span style="color:#90caf9;font-weight:600">${n}</span>`;
+            t += `</div></td></tr>`;
           });
           if (items.length > 15)
             t += `<tr><td colspan="2" style="color:#aaa;padding-top:3px">…and ${items.length - 15} more</td></tr>`;
