@@ -6309,7 +6309,7 @@
           const maxR = W / 2 - 8;
           st.maxR = maxR;
           // Scales — half-dome: flat base, arcs fan upward from center
-          const innerR = Math.max(14, maxR * 0.04);
+          const innerR = Math.max(10, maxR * 0.025);
           st.xSc = d3
             .scaleLinear()
             .domain([0, 1])
@@ -6402,25 +6402,18 @@
             .attr("fill-opacity", 0.95)
             .attr("stroke", "#dee2e6")
             .attr("stroke-width", 1.5);
-          const cl = cg
-            .append("text")
-            .attr("text-anchor", "middle")
-            .attr("fill", "#333")
-            .style("pointer-events", "none")
-            .style("user-select", "none");
+          if (st.centerLabelEl) st.centerLabelEl.remove();
           const lbl = sampleFilter || "All";
-          cl.append("tspan")
-            .attr("x", 0)
-            .attr("dy", "-.3em")
-            .attr("font-size", 10)
-            .attr("font-weight", 700)
-            .text(lbl.length > 12 ? lbl.slice(0, 11) + "…" : lbl);
-          cl.append("tspan")
-            .attr("x", 0)
-            .attr("dy", "1.4em")
-            .attr("font-size", 8)
-            .attr("fill", "#888")
-            .text(metric.length > 14 ? metric.slice(0, 13) + "…" : metric);
+          const centerLabel = document.createElement("div");
+          centerLabel.className = "sun-center-label";
+          centerLabel.style.cssText = "text-align:center;margin-top:4px;line-height:1.1";
+          centerLabel.innerHTML =
+            `<div style="font-size:10px;font-weight:700;color:#333">${
+              lbl.length > 18 ? lbl.slice(0, 17) + "…" : lbl
+            }</div>` +
+            `<div style="font-size:9px;color:#888">${metric.length > 22 ? metric.slice(0, 21) + "…" : metric}</div>`;
+          st.svgWrapEl.appendChild(centerLabel);
+          st.centerLabelEl = centerLabel;
           cg.on("click", () => {
             const focused = st.focusedNode;
             const target = focused && focused !== st.hroot && focused.parent ? focused.parent : st.hroot;
