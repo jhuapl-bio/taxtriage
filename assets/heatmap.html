@@ -5234,6 +5234,7 @@
             }
             _invalidateFilterCache();
             redraw();
+            if (window._resetHistSelectors) window._resetHistSelectors();
           };
 
           rangeEl.addEventListener("input", () => applyVal(rangeEl.value));
@@ -5326,6 +5327,7 @@
             });
             _invalidateFilterCache();
             redraw();
+            if (window._resetHistSelectors) window._resetHistSelectors();
           });
         }
 
@@ -5353,6 +5355,7 @@
             });
             _invalidateFilterCache();
             redraw();
+            if (window._resetHistSelectors) window._resetHistSelectors();
           });
         }
       }
@@ -8409,6 +8412,7 @@
               const sample = cd.sample || "";
               if (sampleHidden[sample]) return;
               if (!visibleTaxa.has(`${sample}||${cd.taxon_id}`)) return;
+              if (!cd.contigs || !cd.contigs.length) return;
               if (rx && !rx.test(orgName) && !rx.test(sample)) return;
               if (q && !orgName.toLowerCase().includes(q)) return;
               const k = _getOrgKey(cd);
@@ -8443,7 +8447,9 @@
               (cd) =>
                 _getOrgKey(cd) === orgKey &&
                 !sampleHidden[cd.sample] &&
-                visibleTaxa.has(`${cd.sample}||${cd.taxon_id}`),
+                visibleTaxa.has(`${cd.sample}||${cd.taxon_id}`) &&
+                cd.contigs &&
+                cd.contigs.length,
             ).forEach((cd) => {
               if (rx && !rx.test(cd.organism || "") && !rx.test(cd.sample || "")) return;
               const opt = document.createElement("option");
@@ -8480,20 +8486,18 @@
               window.drawHistogram();
             });
           }
-          ["filter-text", "filter-ic", "filter-mc"].forEach((id) => {
+          ["filter-text", "filter-ic", "filter-mc", "filter-min", "filter-min-range", "filter-rollup"].forEach((id) => {
             const el = document.getElementById(id);
             if (el && !el._histWired) {
               el._histWired = true;
-              el.addEventListener("input", () => {
+              const _onHistFilterChange = () => {
+                _invalidateFilterCache();
                 _refreshOrgs();
                 _refreshSamples();
                 window.drawHistogram();
-              });
-              el.addEventListener("change", () => {
-                _refreshOrgs();
-                _refreshSamples();
-                window.drawHistogram();
-              });
+              };
+              el.addEventListener("input", _onHistFilterChange);
+              el.addEventListener("change", _onHistFilterChange);
             }
           });
         }
