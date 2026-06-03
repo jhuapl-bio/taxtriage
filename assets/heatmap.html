@@ -1178,6 +1178,7 @@
         white-space: normal !important;
         overflow-wrap: break-word;
         word-break: break-word;
+        background: transparent !important;
       }
       .axis text {
         font-size: 9px;
@@ -3894,6 +3895,88 @@
       }
       function hideTip() {
         tooltip.style.opacity = 0;
+      }
+
+      /* ── Strain-level hover tooltip helpers ─────────────────────────────── */
+      /**
+       * Return up to `n` Strain-level rows from DATA that belong to the same
+       * species (or genus) and sample as `row`, sorted by TASS desc.
+       */
+      function _getTopStrainsForRow(row, n) {
+        n = n || 5;
+        var lvl = row["Level"] || "Strain";
+        if (lvl === "Strain") return [];
+        var sampleId = row["Specimen ID"];
+        var strains = DATA.filter(function (r) {
+          if ((r["Level"] || "Strain") !== "Strain") return false;
+          if (r["Specimen ID"] !== sampleId) return false;
+          if (lvl === "Species") return r["Species Name"] === row["Species Name"];
+          if (lvl === "Genus") return r["Genus Name"] === row["Genus Name"];
+          return false;
+        });
+        strains.sort(function (a, b) {
+          return (parseFloat(b["TASS Score"]) || 0) - (parseFloat(a["TASS Score"]) || 0);
+        });
+        return strains.slice(0, n);
+      }
+
+      /**
+       * Build the inner HTML for a strain-breakdown tooltip table.
+       */
+      function _strainTooltipHtml(strains, rowLevel, parentName) {
+        if (!strains || !strains.length) return null;
+        var title = rowLevel === "Genus" ? "Top strains in genus (by TASS)" : "Top strains in species (by TASS)";
+        // Build regex to strip shared parent-name prefix from strain labels
+        var _prefixRe = null;
+        if (parentName) {
+          var _esc = parentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          _prefixRe = new RegExp("^" + _esc + "\\s*", "i");
+        }
+        var html =
+          '<div style="font-weight:700;margin-bottom:5px;font-size:0.9em;border-bottom:1px solid rgba(255,255,255,0.25);padding-bottom:4px">' +
+          title +
+          "</div>";
+        html +=
+          '<table style="border-collapse:collapse;font-size:0.82em;width:100%">' +
+          "<thead><tr>" +
+          '<th style="text-align:left;padding:2px 8px 3px 0;color:#ffd580;font-weight:600;white-space:nowrap">Strain</th>' +
+          '<th style="text-align:right;padding:2px 6px 3px;color:#ffd580;font-weight:600;white-space:nowrap">TASS</th>' +
+          '<th style="text-align:right;padding:2px 6px 3px;color:#ffd580;font-weight:600;white-space:nowrap">% Reads</th>' +
+          '<th style="text-align:right;padding:2px 0 3px 6px;color:#ffd580;font-weight:600;white-space:nowrap"># Reads</th>' +
+          "</tr></thead><tbody>";
+        strains.forEach(function (s) {
+          var tass = parseFloat(s["TASS Score"]);
+          var pct = parseFloat(s["% Reads"]);
+          var reads = s["# Reads Aligned"];
+          var tassStr = isNaN(tass) ? "—" : tass.toFixed(1);
+          var pctStr = isNaN(pct) ? "—" : pct.toFixed(2) + "%";
+          var readsStr = _fmtBig(reads).short;
+          var rawName = s["Detected Organism"] || "—";
+          var displayName = rawName;
+          if (_prefixRe && _prefixRe.test(rawName)) {
+            var suffix = rawName.replace(_prefixRe, "").trim();
+            displayName = suffix
+              ? '<span style="color:rgba(255,255,255,0.4)" title="' + rawName + '">…</span> ' + suffix
+              : rawName;
+          }
+          html +=
+            "<tr>" +
+            '<td style="padding:2px 8px 2px 0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i>' +
+            displayName +
+            "</i></td>" +
+            '<td style="text-align:right;padding:2px 6px;font-weight:700">' +
+            tassStr +
+            "</td>" +
+            '<td style="text-align:right;padding:2px 6px">' +
+            pctStr +
+            "</td>" +
+            '<td style="text-align:right;padding:2px 0 2px 6px">' +
+            readsStr +
+            "</td>" +
+            "</tr>";
+        });
+        html += "</tbody></table>";
+        return html;
       }
 
       /* ── Plot + table exports ────────────────────────────────────────────── */
@@ -9286,10 +9369,12 @@
           }
           _updateComparePinnedBtn();
         });
+        let _orgTd = null;
         visibleCols.forEach((c) => {
           const td = document.createElement("td");
           const val = row[c] != null ? row[c] : "";
           if (c === "Detected Organism") {
+            _orgTd = td;
             const isHC = row["High Consequence"];
             const mt = (row["Mol Type"] || "").toLowerCase();
             const rowLevel = row["Level"] || "Strain";
@@ -9469,6 +9554,20 @@
           }
           tr.appendChild(td);
         });
+        // Strain-breakdown hover tooltip — only on the Detected Organism cell
+        const _trLevel = row["Level"] || "Strain";
+        if ((_trLevel === "Species" || _trLevel === "Genus") && _orgTd) {
+          _orgTd.style.cursor = "help";
+          _orgTd.addEventListener("mouseenter", function (e) {
+            const _tipStrains = _getTopStrainsForRow(row);
+            if (_tipStrains.length) {
+              const _tipHtml = _strainTooltipHtml(_tipStrains, _trLevel, row["Detected Organism"]);
+              if (_tipHtml) showTip(_tipHtml, e);
+            }
+          });
+          _orgTd.addEventListener("mousemove", moveTip);
+          _orgTd.addEventListener("mouseleave", hideTip);
+        }
         return tr;
       }
 
@@ -11865,6 +11964,31 @@
             hideTip();
             _jumpToHistogram(parts[1], parts[2], parts[0]);
           });
+        });
+        // Strain-breakdown hover tooltip for Species / Genus rows in the summary table.
+        // Build a key→row lookup from the current page slice so we can resolve data on hover.
+        const _sumSliceMap = new Map();
+        slice.forEach(function (r) {
+          _sumSliceMap.set(_sumRowKey(r), r);
+        });
+        wrap.querySelectorAll("tbody tr[data-key]").forEach(function (tr) {
+          // skip group-header rows (they have no data-key — already filtered by selector)
+          const _sumR = _sumSliceMap.get(tr.dataset.key);
+          if (!_sumR) return;
+          const _sumLvl = _sumR["Level"] || "Strain";
+          if (_sumLvl !== "Species" && _sumLvl !== "Genus") return;
+          const _sumOrgTd = tr.querySelector("td:first-child");
+          if (!_sumOrgTd) return;
+          _sumOrgTd.style.cursor = "help";
+          _sumOrgTd.addEventListener("mouseenter", function (e) {
+            const _tipStrains = _getTopStrainsForRow(_sumR);
+            if (_tipStrains.length) {
+              const _tipHtml = _strainTooltipHtml(_tipStrains, _sumLvl, _sumR["Detected Organism"]);
+              if (_tipHtml) showTip(_tipHtml, e);
+            }
+          });
+          _sumOrgTd.addEventListener("mousemove", moveTip);
+          _sumOrgTd.addEventListener("mouseleave", hideTip);
         });
 
         _updateSummaryPager(total, start, end, pages);

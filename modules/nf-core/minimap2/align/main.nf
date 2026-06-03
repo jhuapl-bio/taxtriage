@@ -57,9 +57,14 @@ process MINIMAP2_ALIGN {
     sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
     def S_value = "${sort_mem_per_thread_mb}M"
 
-    // Treat minimap2 memory knobs as tuning params, not hard caps
-    def I_value = params.mmap2_I ?: '8G'
-    def K_value = params.mmap2_K ?: '100M'
+    // Treat minimap2 memory knobs as tuning params, not hard caps.
+    // On retries, shrink chunk sizes so minimap2 uses less RAM (more passes, but survives OOM).
+    // User-supplied params.mmap2_I / mmap2_K always take priority.
+    def I_defaults = ['8G', '4G', '2G', '1G']
+    def K_defaults = ['500M', '200M', '100M', '50M']
+    def attempt_idx = Math.min(task.attempt - 1, I_defaults.size() - 1)
+    def I_value = params.mmap2_I ?: I_defaults[attempt_idx]
+    def K_value = params.mmap2_K ?: K_defaults[attempt_idx]
 
     def cigar_paf     = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
