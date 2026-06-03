@@ -395,6 +395,45 @@ class AbsoluteAnchorFlowable(Flowable):
         self.canv.bookmarkHorizontal(self._name, 0, 0)
 
 
+class JumpButton(Flowable):
+    """Small icon button that jumps to a named PDF destination when clicked.
+
+    Renders as a filled rounded rectangle with a right-pointing triangle
+    (play-button style) drawn entirely via canvas primitives — no font glyphs
+    required, so it works with all built-in PDF fonts.
+    """
+    W, H = 16, 14
+
+    def __init__(self, dest_key):
+        Flowable.__init__(self)
+        self.dest_key = dest_key
+        self.width = self.W
+        self.height = self.H
+
+    def wrap(self, availW, availH):
+        return self.width, self.height
+
+    def draw(self):
+        c = self.canv
+        c.saveState()
+        # Rounded rectangle background
+        c.setFillColor(colors.HexColor('#1F4E79'))
+        c.roundRect(0, 1, self.width, self.height - 1, 2, fill=1, stroke=0)
+        # Right-pointing triangle (play/jump icon)
+        c.setFillColor(colors.white)
+        mx, my = 4, 3
+        p = c.beginPath()
+        p.moveTo(mx, my)
+        p.lineTo(mx, self.height - my)
+        p.lineTo(self.width - mx + 1, self.height / 2)
+        p.close()
+        c.drawPath(p, fill=1, stroke=0)
+        # Internal PDF link annotation (Dest = named bookmark)
+        c.linkAbsolute('', self.dest_key,
+                       Rect=(0, 0, self.width, self.height))
+        c.restoreState()
+
+
 class FinalizeOutlines(Flowable):
     """Zero-size flowable placed at the very end of the story.
 
@@ -1025,6 +1064,7 @@ def sanitize_bookmark_name(name):
 
 def collect_all_bookmarks(samples_dict, low_confidence_strains):
     bookmarks = set()
+    bookmarks.add('doc_top')
     bookmarks.add('color_key')
     bookmarks.add('column_explanations')
     if low_confidence_strains:
@@ -4082,11 +4122,11 @@ def create_pdf_template(output_path, samples_dict, args):
     left_margin = page_width * 0.05
     right_margin = page_width * 0.05
     bottom_margin = 0.5 * inch
-    first_page_top = 1.15 * inch   # room for your big header
+    first_page_top = 1.35 * inch   # room for your big header
     body_top = 0.5 * inch          # normal pages
     def draw_header(canvas, doc):
         page_width, page_height = letter
-        header_h = 1.15 * inch
+        header_h = 1.35 * inch
 
         canvas.saveState()
 
@@ -4097,7 +4137,7 @@ def create_pdf_template(output_path, samples_dict, args):
         # Title
         title = Paragraph("Organism Discovery Report", title_style)
         tw, th = title.wrap(page_width - 0.5 * inch, header_h)
-        title.drawOn(canvas, 0.25 * inch, page_height - 0.25 * inch - th)
+        title.drawOn(canvas, 0.25 * inch, page_height - 0.30 * inch - th)
 
         # Metadata row
         meta_tbl = Table(
@@ -4122,7 +4162,7 @@ def create_pdf_template(output_path, samples_dict, args):
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ]))
         mw, mh = meta_tbl.wrap(page_width - 0.5 * inch, header_h)
-        meta_tbl.drawOn(canvas, 0.25 * inch, page_height - header_h + 0.16 * inch)
+        meta_tbl.drawOn(canvas, 0.25 * inch, page_height - header_h + 0.20 * inch)
 
         canvas.restoreState()
     cover_frame = Frame(
@@ -4275,6 +4315,11 @@ def create_pdf_template(output_path, samples_dict, args):
 
 
     doc.build(story)
+    # ── Top-of-document anchor (used by per-sample ↑ back links) ─────────────
+    # Must be appended AFTER the first doc.build() call, which pops items from
+    # the list — placing it before would cause it to be consumed and absent from
+    # the real build at the end of this function.
+    story.append(AnchorFlowable('doc_top'))
     #Summary info
     story.append(Spacer(1, 0.05*inch))
     story.append(Paragraph(
@@ -4286,9 +4331,9 @@ def create_pdf_template(output_path, samples_dict, args):
     'RunSummarySample',
     parent=small_style,
     fontSize=10,
-    leading=9,
+    leading=13,
     fontName='Helvetica',
-    wordWrap='CJK',
+    wordWrap='LTR',
     )
 
     summary_data = [[
@@ -4300,17 +4345,6 @@ def create_pdf_template(output_path, samples_dict, args):
     "Organism Reads"
     ]]
 
-    for sample_name in sorted(samples_dict.keys()):
-        _meta = getattr(args, '_input_metadata', {}).get(sample_name, {})
-
-        summary_data.append([
-            Paragraph(sample_name, run_summary_sample_style),
-            _meta.get('sample_type', '—'),
-            _meta.get('platform', '—'),
-            f"{int(_meta.get('total_reads', 0)):,}" if _meta.get('total_reads') else "—",
-            f"{int(_meta.get('aligned_reads', 0)):,}" if _meta.get('aligned_reads') else "—",
-            f"{int(_meta.get('total_organism_reads', 0)):,}" if _meta.get('total_organism_reads') else "—",
-    ])
     summary_col_widths = [
     available_width * 0.25,
     available_width * 0.15,
@@ -4319,6 +4353,20 @@ def create_pdf_template(output_path, samples_dict, args):
     available_width * 0.15,
     available_width * 0.15,
     ]
+
+    for sample_name in sorted(samples_dict.keys()):
+        _meta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+        _bm = f"sample_{sanitize_bookmark_name(sample_name)}"
+        _linked_name = create_safe_link(sample_name, _bm, valid_bookmarks, color='#1F4E79')
+
+        summary_data.append([
+            Paragraph(_linked_name, run_summary_sample_style),
+            _meta.get('sample_type', '—'),
+            _meta.get('platform', '—'),
+            f"{int(_meta.get('total_reads', 0)):,}" if _meta.get('total_reads') else "—",
+            f"{int(_meta.get('aligned_reads', 0)):,}" if _meta.get('aligned_reads') else "—",
+            f"{int(_meta.get('total_organism_reads', 0)):,}" if _meta.get('total_organism_reads') else "—",
+    ])
 
     summary_tbl = Table(
         summary_data,
@@ -4336,12 +4384,15 @@ def create_pdf_template(output_path, samples_dict, args):
         ('INNERGRID', (0, 0), (-1, -1), 0.45, colors.HexColor('#C9D8E3')),
 
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
 
         ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 1), (0, -1), 8),
+        ('RIGHTPADDING', (0, 1), (0, -1), 4),
     ]))
-    
+
     story.append(summary_tbl)
     story.append(Spacer(1, 0.15*inch))
         # ── Footer: Color Key ─────────────────────────────────────────────────────
@@ -4602,16 +4653,25 @@ def create_pdf_template(output_path, samples_dict, args):
         _species_groups_value = f'{_nsg}' if _nsg is not None else '—'
         _cutoff_source_value = _conf_src if _conf_src else '—'
 
+        _top_link = create_safe_link('↑ top', 'doc_top', valid_bookmarks, color='#1F4E79')
+        _top_link_style = ParagraphStyle(
+            'TopLink', parent=styles['Normal'], fontSize=8, leading=10,
+            textColor=colors.HexColor('#1F4E79'), alignment=TA_RIGHT,
+            fontName='Helvetica-Bold')
         _sample_title = Table(
-            [[Paragraph(f'{sample_name}', sample_title_style)]],
-            colWidths=[available_width],
+            [[Paragraph(f'{sample_name}', sample_title_style),
+              Paragraph(_top_link, _top_link_style)]],
+            colWidths=[available_width - 40, 40],
         )
         _sample_title.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F4F8FB')),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (0, -1), 10),
+            ('RIGHTPADDING', (0, 0), (0, -1), 8),
+            ('LEFTPADDING', (1, 0), (1, -1), 4),
+            ('RIGHTPADDING', (1, 0), (1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#D6E2EB')),
         ]))
 
@@ -4678,6 +4738,8 @@ def create_pdf_template(output_path, samples_dict, args):
                 story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} follows the same anticipated clinical distribution as blood samples.</font>", small_style))
         story.append(Spacer(1, 0.08*inch))
         story.append(Paragraph(f"<font color=\"#1565c0\">Aligned reads are often discordant from original mappings for each strain because of post-processing for possible false-positive hits</font>", small_style))
+        story.append(Spacer(1, 0.06*inch))
+
         # ── Check if any qualifying strains have below-threshold zscore ───
         # If so, add a note explaining the diamond symbol and faded rows.
         _zt_note = args.zscore_threshold
