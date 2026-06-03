@@ -11518,18 +11518,22 @@
             .map((sn) => {
               const m = SAMPLE_META[sn] || {};
               const reads = m.total_reads ? _fmtBig(m.total_reads).short : "—";
-              const plat = m.platform && m.platform !== "unknown" ? m.platform : "";
+              const plat = m.platform && m.platform !== "unknown" ? m.platform : "—";
+              const rev = m.workflow_revision || "—";
+              const commit = m.commit_id ? m.commit_id.slice(0, 10) : "—";
               return (
-                `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
-                `<td style="padding:2px 8px 2px 0;text-align:right;color:#90caf9">${reads}</td>` +
-                `<td style="padding:2px 0;color:#aaa;font-size:0.85em">${plat}</td></tr>`
+                `<tr><td style="padding:4px 12px 4px 4px;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                `<td style="padding:4px 12px;text-align:right;color:#90caf9">${reads}</td>` +
+                `<td style="padding:4px 12px;color:#aaa;font-size:0.85em">${plat}</td>` +
+                `<td style="padding:4px 12px;color:#a5d6a7;font-size:0.85em;white-space:nowrap">${rev}</td>` +
+                `<td style="padding:4px 4px 4px 12px;color:#888;font-size:0.82em;font-family:monospace">${commit}</td></tr>`
               );
             })
             .join("");
           const sampTip =
             `<b style="color:#90caf9">Samples in view</b> <span style="color:#aaa;font-size:0.85em">(${samples.length})</span><br>` +
             `<table style="margin-top:5px;border-collapse:collapse">` +
-            `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Name</td><td style="padding-right:8px;text-align:right">Reads</td><td>Platform</td></tr>` +
+            `<tr style="color:#888;font-size:0.78em"><td style="padding:4px 12px 4px 4px">Name</td><td style="padding:4px 12px;text-align:right">Reads</td><td style="padding:4px 12px">Platform</td><td style="padding:4px 12px">Revision</td><td style="padding:4px 4px 4px 12px">Commit</td></tr>` +
             sampRows +
             `</table>`;
           sampCard.addEventListener("mouseover", (ev) => showTip(sampTip, ev));
@@ -11545,9 +11549,9 @@
               const r = parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0;
               const pct = totalInput > 0 ? ((r / totalInput) * 100).toFixed(1) + "%" : "—";
               return (
-                `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
-                `<td style="padding:2px 4px;text-align:right;color:#90caf9">${_fmtBig(r).short}</td>` +
-                `<td style="padding:2px 0;color:#aaa;text-align:right">${pct}</td></tr>`
+                `<tr><td style="padding:4px 12px 4px 4px;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                `<td style="padding:4px 12px;text-align:right;color:#90caf9">${_fmtBig(r).short}</td>` +
+                `<td style="padding:4px 4px 4px 0;color:#aaa;text-align:right">${pct}</td></tr>`
               );
             })
             .join("");
@@ -11555,7 +11559,7 @@
             `<b style="color:#90caf9">Total input reads</b><br>` +
             `<span style="color:#aaa;font-size:0.85em">Full count: ${tReads.full}</span><br>` +
             `<table style="margin-top:5px;border-collapse:collapse">` +
-            `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">Reads</td><td style="text-align:right">Share</td></tr>` +
+            `<tr style="color:#888;font-size:0.78em"><td style="padding:4px 12px 4px 4px">Sample</td><td style="padding:4px 12px;text-align:right">Reads</td><td style="padding:4px 4px 4px 0;text-align:right">Share</td></tr>` +
             rRows +
             `</table>`;
           readsCard.addEventListener("mouseover", (ev) => showTip(readsTip, ev));
@@ -11573,11 +11577,11 @@
               const aln = parseFloat(m.total_organism_reads) || 0;
               const p = inp > 0 ? ((aln / inp) * 100).toFixed(1) + "%" : "—";
               return (
-                `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
-                `<td style="padding:2px 4px;text-align:right;color:#90caf9">${p}</td>` +
-                `<td style="padding:2px 0;color:#aaa;text-align:right;font-size:0.85em">${_fmtBig(aln).short} / ${
-                  _fmtBig(inp).short
-                }</td></tr>`
+                `<tr><td style="padding:4px 12px 4px 4px;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
+                `<td style="padding:4px 12px;text-align:right;color:#90caf9">${p}</td>` +
+                `<td style="padding:4px 4px 4px 0;color:#aaa;text-align:right;font-size:0.85em">${
+                  _fmtBig(aln).short
+                } / ${_fmtBig(inp).short}</td></tr>`
               );
             })
             .join("");
@@ -11585,7 +11589,7 @@
             `<b style="color:#90caf9">% Classified</b><br>` +
             `<span style="color:#aaa;font-size:0.85em">Reads assigned to any organism ÷ total input reads</span><br>` +
             `<table style="margin-top:5px;border-collapse:collapse">` +
-            `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">% Class.</td><td style="text-align:right">Aligned / Total</td></tr>` +
+            `<tr style="color:#888;font-size:0.78em"><td style="padding:4px 12px 4px 4px">Sample</td><td style="padding:4px 12px;text-align:right">% Class.</td><td style="padding:4px 4px 4px 0;text-align:right">Aligned / Total</td></tr>` +
             pctRows +
             `</table>`;
           pctCard.addEventListener("mouseover", (ev) => showTip(pctTip, ev));
@@ -13132,6 +13136,30 @@
             window._applyMetaRecords(_uploadedMetaRecords, false);
           }
 
+          // Extract workflow_revision / commit_id from TSV/XLSX row columns (first non-empty value per sample)
+          const _WF_ROW_FIELDS = ["workflow_revision", "commit_id", "platform"];
+          const _perSampleWf = {};
+          _uploadedRows.forEach((row) => {
+            const sn = row["Specimen ID"] || row["sample_name"] || row["sample"] || "";
+            if (!sn) return;
+            if (!_perSampleWf[sn]) _perSampleWf[sn] = {};
+            _WF_ROW_FIELDS.forEach((f) => {
+              if (_perSampleWf[sn][f]) return; // already found
+              const v = row[f];
+              if (v !== undefined && v !== null && String(v).trim() !== "") {
+                _perSampleWf[sn][f] = String(v).trim();
+              }
+            });
+          });
+          Object.entries(_perSampleWf).forEach(([sn, fields]) => {
+            if (!Object.keys(fields).length) return;
+            if (!SAMPLE_META[sn]) SAMPLE_META[sn] = { sample_name: sn };
+            Object.assign(SAMPLE_META[sn], fields);
+            if (BOOT && BOOT.sample_meta && BOOT.sample_meta[sn]) {
+              Object.assign(BOOT.sample_meta[sn], fields);
+            }
+          });
+
           // Merge protein annotation data into PROT
           _PROT_KEYS.forEach((k) => {
             PROT[k] = [...((BOOT.prot_data || {})[k] || []), ...(_uploadedProtData[k] || [])];
@@ -13271,7 +13299,18 @@
                 const m = result.meta;
                 const _META_NUM = new Set(["latitude", "longitude", "depth", "salinity"]);
                 const metaRec = { sample_name: result.sampleName };
-                ["run_id", "latitude", "longitude", "depth", "salinity", "collection_time", "location"].forEach((k) => {
+                [
+                  "run_id",
+                  "latitude",
+                  "longitude",
+                  "depth",
+                  "salinity",
+                  "collection_time",
+                  "location",
+                  "workflow_revision",
+                  "commit_id",
+                  "platform",
+                ].forEach((k) => {
                   const v = m[k];
                   if (v === undefined || v === null || v === "") {
                     metaRec[k] = null;
@@ -13294,6 +13333,9 @@
                   total_reads: parseFloat(m.total_reads) || existing.total_reads || 0,
                   aligned_reads: parseFloat(m.aligned_reads) || existing.aligned_reads || 0,
                   total_organism_reads: parseFloat(m.total_organism_reads) || existing.total_organism_reads || 0,
+                  ...(m.workflow_revision ? { workflow_revision: String(m.workflow_revision) } : {}),
+                  ...(m.commit_id ? { commit_id: String(m.commit_id) } : {}),
+                  ...(m.platform ? { platform: String(m.platform) } : {}),
                 });
                 // Mirror into BOOT.sample_meta so clear/restore also sees the value
                 if (BOOT && BOOT.sample_meta) {
