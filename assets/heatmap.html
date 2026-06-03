@@ -1473,17 +1473,35 @@
       <button class="tab-btn active" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary</button>
       <button class="tab-btn" data-tab="heatmap"><i class="fas fa-th"></i> Heatmap</button>
       <button class="tab-btn" data-tab="tass"><i class="fas fa-chart-bar"></i> TASS Comparison</button>
-      <button class="tab-btn" data-tab="sunburst"><i class="fas fa-circle-nodes"></i> Sunburst</button>
-      <button class="tab-btn" data-tab="coverage"><i class="fas fa-layer-group"></i> Coverage</button>
-      <button class="tab-btn hidden" data-tab="proteins" id="prot-tab-btn"><i class="fas fa-dna"></i> VF / AMR</button>
-      <button class="tab-btn hidden" id="hist-tab-btn" data-tab="histogram">
+      <button class="tab-btn" data-tab="sunburst" title="Radial taxonomy view sized by selected metric.">
+        <i class="fas fa-circle-nodes"></i> Sunburst
+      </button>
+      <button class="tab-btn" data-tab="coverage" title="Coverage vs TASS/reads scatter to spot outliers.">
+        <i class="fas fa-layer-group"></i> Coverage
+      </button>
+      <button
+        class="tab-btn hidden"
+        data-tab="proteins"
+        id="prot-tab-btn"
+        title="VF/AMR and transporter gene hits with charts and table."
+      >
+        <i class="fas fa-dna"></i> VF / AMR
+      </button>
+      <button
+        class="tab-btn hidden"
+        id="hist-tab-btn"
+        data-tab="histogram"
+        title="Per-contig/assembly read distributions."
+      >
         <i class="fas fa-chart-column"></i> Histograms<i
           class="fas fa-triangle-exclamation"
           id="hist-tab-warn"
           style="display: none; color: #f59f00; margin-left: 5px; font-size: 0.85em"
         ></i>
       </button>
-      <button class="tab-btn" data-tab="explore"><i class="fas fa-magnifying-glass-chart"></i> Explore</button>
+      <button class="tab-btn" data-tab="explore" title="Cross-sample exploratory charts for multi-metric patterns.">
+        <i class="fas fa-magnifying-glass-chart"></i> Explore
+      </button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
       <button class="tab-btn hidden" id="map-tab-btn" data-tab="map">
         <i class="fas fa-map-location-dot"></i> Map
@@ -1534,53 +1552,57 @@
                 >Ⓡ</span
               >
               = DNA / RNA ·
-              <span
-                style="
-                  display: inline-block;
-                  font-size: 9px;
-                  font-weight: 700;
-                  padding: 0 4px;
-                  border-radius: 3px;
-                  vertical-align: middle;
-                  line-height: 1.5;
-                  background: #e3f2fd;
-                  color: #1565c0;
-                  border: 1px solid #1565c044;
-                "
-                >Strain</span
-              >
-              <span
-                style="
-                  display: inline-block;
-                  font-size: 9px;
-                  font-weight: 700;
-                  padding: 0 4px;
-                  border-radius: 3px;
-                  vertical-align: middle;
-                  line-height: 1.5;
-                  background: #f3e5f5;
-                  color: #6a1b9a;
-                  border: 1px solid #6a1b9a44;
-                "
-                >Species</span
-              >
-              <span
-                style="
-                  display: inline-block;
-                  font-size: 9px;
-                  font-weight: 700;
-                  padding: 0 4px;
-                  border-radius: 3px;
-                  vertical-align: middle;
-                  line-height: 1.5;
-                  background: #e8f5e9;
-                  color: #2e7d32;
-                  border: 1px solid #2e7d3244;
-                "
-                >Genus</span
-              >
-              = taxonomic level of each row · hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark
-              for a coverage-depth preview<span id="sum-rollup-hint" style="display: none">
+              <span id="sum-level-legend-rollup">
+                <span
+                  style="
+                    display: inline-block;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 0 4px;
+                    border-radius: 3px;
+                    vertical-align: middle;
+                    line-height: 1.5;
+                    background: #e3f2fd;
+                    color: #1565c0;
+                    border: 1px solid #1565c044;
+                  "
+                  >Strain</span
+                >
+                <span
+                  style="
+                    display: inline-block;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 0 4px;
+                    border-radius: 3px;
+                    vertical-align: middle;
+                    line-height: 1.5;
+                    background: #f3e5f5;
+                    color: #6a1b9a;
+                    border: 1px solid #6a1b9a44;
+                  "
+                  >Species</span
+                >
+                <span
+                  style="
+                    display: inline-block;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 0 4px;
+                    border-radius: 3px;
+                    vertical-align: middle;
+                    line-height: 1.5;
+                    background: #e8f5e9;
+                    color: #2e7d32;
+                    border: 1px solid #2e7d3244;
+                  "
+                  >Genus</span
+                >
+                = taxonomic level of each row ·
+              </span>
+              <span id="sum-level-legend-simple" style="display: none"></span>
+              hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark for a coverage-depth
+              preview<span id="sum-rollup-hint" style="display: none">
                 ·
                 <span
                   style="
@@ -1833,7 +1855,8 @@
               </div>
             </div>
             <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
-              Click arc to zoom · center ring = up one level · ↺ = reset to root
+              Radial view of taxonomy sized by the selected metric. Click arc to zoom · center ring = up one level · ↺ =
+              reset to root
             </div>
             <div id="sun-panels-container"></div>
           </div>
@@ -1843,6 +1866,9 @@
         <div class="pane" id="pane-coverage">
           <div class="chart-wrap">
             <div class="chart-title">Coverage Scatter</div>
+            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+              Compare coverage, depth, reads, and TASS to spot outliers across samples.
+            </div>
             <div class="tab-controls" style="flex-wrap: wrap; gap: 0.5em">
               <label>X axis</label>
               <select id="cov-x-sel">
@@ -1890,6 +1916,9 @@
 
         <!-- PROTEINS / VF / AMR -->
         <div class="pane" id="pane-proteins">
+          <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+            Virulence, AMR, and transporter gene hits summarized by genus, plus a searchable annotation table.
+          </div>
           <div class="chart-wrap" id="prot-genus-wrap">
             <div style="display: flex; align-items: center; gap: 0.7em; flex-wrap: wrap; margin-bottom: 0.3em">
               <div class="chart-title" style="margin: 0">VF / AMR / Transporter Hits by Genus</div>
@@ -2200,6 +2229,9 @@
         <div class="pane" id="pane-histogram">
           <div class="chart-wrap">
             <div class="chart-title">Contig / Assembly Read Distribution</div>
+            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+              Per-contig distributions for the selected organism and sample.
+            </div>
             <div id="hist-controls">
               <label>Organism:</label>
               <select id="hist-org-sel" style="min-width: 220px; max-width: 380px"></select>
@@ -2280,6 +2312,10 @@
 
         <!-- EXPLORE: cross-sample comparison plots -->
         <div class="pane" id="pane-explore">
+          <div class="chart-title">Explore</div>
+          <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+            Cross-sample comparison plots for multi-metric patterns and relationships.
+          </div>
           <div class="chart-wrap">
             <div class="tab-controls" style="flex-wrap: wrap; gap: 0.5em 0.8em">
               <label>Color by</label>
@@ -2434,6 +2470,11 @@
 
         <!-- TABLE -->
         <div class="pane" id="pane-table">
+          <div class="chart-title"><i class="fas fa-table"></i> Full Detections Table</div>
+          <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5em">
+            Complete list of detections across the run (respects sidebar filters). Click a column header to sort · click
+            a row to pin it.
+          </div>
           <!-- row count + pagination controls -->
           <div
             id="tbl-toolbar"
@@ -9255,15 +9296,20 @@
             const isHC = row["High Consequence"];
             const mt = (row["Mol Type"] || "").toLowerCase();
             const rowLevel = row["Level"] || "Strain";
-            td.style.cssText = "white-space:nowrap" + (isHC ? ";color:#c62828;font-weight:600" : "");
+            td.style.cssText =
+              "position:relative;white-space:nowrap;padding-right:54px" +
+              (isHC ? ";color:#c62828;font-weight:600" : "");
+            const contentSpan = document.createElement("span");
+            contentSpan.style.cssText =
+              "display:inline-block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle";
             if (isHC) {
               const badge = document.createElement("span");
               badge.textContent = "⚠ ";
               badge.title = "High Consequence Pathogen";
               badge.style.cssText = "color:#c62828;margin-right:2px";
-              td.appendChild(badge);
+              contentSpan.appendChild(badge);
             }
-            td.appendChild(document.createTextNode(val));
+            contentSpan.appendChild(document.createTextNode(val));
             if (mt === "dna" || mt === "rna") {
               const mtBadge = document.createElement("span");
               mtBadge.textContent = mt === "dna" ? "D" : "R";
@@ -9271,8 +9317,9 @@
               mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
                 mt === "dna" ? "#1565c0" : "#6a1b9a"
               };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
-              td.appendChild(mtBadge);
+              contentSpan.appendChild(mtBadge);
             }
+            td.appendChild(contentSpan);
             // Taxonomic level badge: always shown so users can tell whether
             // a row is a direct Strain call, a Species aggregate, or a Genus aggregate.
             const _lvlStyles = {
@@ -9290,8 +9337,8 @@
                 ? "Species-level aggregate — TASS reflects all reads assigned to this species."
                 : "Genus-level aggregate — TASS reflects all reads assigned to this genus.";
             lvlBadge.style.cssText =
-              `display:inline-block;margin-left:5px;font-size:9px;font-weight:700;` +
-              `padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;` +
+              `display:inline-block;position:absolute;right:6px;top:50%;transform:translateY(-50%);` +
+              `font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;line-height:1.5;` +
               `background:${_ls.bg};color:${_ls.fg};border:1px solid ${_ls.fg}44`;
             td.appendChild(lvlBadge);
           } else {
@@ -11624,11 +11671,30 @@
         // Show rollup hint only when rescued rows are actually present
         const _sumRollupHint = document.getElementById("sum-rollup-hint");
         if (_sumRollupHint) {
-          const _hasRescued = fd.some((r) => {
-            const p = rowPassInfo(r);
-            return p && p.rescued;
-          });
+          const _hasRescued =
+            ROLLUP_PASS &&
+            fd.some((r) => {
+              const p = rowPassInfo(r);
+              return p && p.rescued;
+            });
           _sumRollupHint.style.display = _hasRescued ? "" : "none";
+        }
+        // Legend: show all three badges when rollup on; single current-level badge when off
+        const _legendRollup = document.getElementById("sum-level-legend-rollup");
+        const _legendSimple = document.getElementById("sum-level-legend-simple");
+        if (_legendRollup) _legendRollup.style.display = ROLLUP_PASS ? "" : "none";
+        if (_legendSimple) {
+          _legendSimple.style.display = ROLLUP_PASS ? "none" : "";
+          if (!ROLLUP_PASS) {
+            const _vl = document.getElementById("view-level")?.value || "Strain";
+            const _lvlStyles = {
+              Strain: ["#e3f2fd", "#1565c0"],
+              Species: ["#f3e5f5", "#6a1b9a"],
+              Genus: ["#e8f5e9", "#2e7d32"],
+            };
+            const _ls = _lvlStyles[_vl] || ["#f5f5f5", "#555"];
+            _legendSimple.innerHTML = `<span style="display:inline-block;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;background:${_ls[0]};color:${_ls[1]};border:1px solid ${_ls[1]}44">${_vl}</span> = taxonomic level of each row ·`;
+          }
         }
         if (!fd.length) {
           wrap.innerHTML = '<p style="color:#888;padding:1em">No organisms match the current filters.</p>';
@@ -11636,6 +11702,8 @@
           return;
         }
         const grouped = document.getElementById("summary-group-sample")?.checked;
+        const _sumViewLevel = document.getElementById("view-level")?.value || "Strain";
+        const _visSumCols = _SUM_COLS.filter((c) => !(c.key === "_spark" && _sumViewLevel !== "Strain"));
 
         // Sort
         const rows = [...fd];
@@ -11675,7 +11743,7 @@
 
         // Header
         let html = "<table><thead><tr>";
-        _SUM_COLS.forEach((c) => {
+        _visSumCols.forEach((c) => {
           const sortable = !c.nosort;
           const ind = c.key === _sumSortCol ? `<span class="sort-ind">${_sumSortAsc ? "▲" : "▼"}</span>` : "";
           html += `<th class="${sortable ? "sortable" : ""}" data-col="${c.key}" style="text-align:${c.align}">${
@@ -11689,7 +11757,7 @@
           if (grouped && r["Specimen ID"] !== lastSample) {
             lastSample = r["Specimen ID"];
             const _grpSwatchColor = sampleColors[lastSample] || "#90a4ae";
-            html += `<tr class="grp-row"><td colspan="${_SUM_COLS.length}"><i class="fas fa-vial"></i> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}</td></tr>`;
+            html += `<tr class="grp-row"><td colspan="${_visSumCols.length}"> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}</td></tr>`;
           }
           const cat = r["Microbial Category"] || "Unknown";
           const cc = _CAT_COLORS[cat] || "#555";
@@ -11711,24 +11779,32 @@
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               _sumPinned.has(key) ? " row-pinned" : ""
             }">` +
-            `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${(function () {
-              const _lvl = r["Level"] || "Strain";
-              const _s = {
-                Strain: ["#e3f2fd", "#1565c0"],
-                Species: ["#f3e5f5", "#6a1b9a"],
-                Genus: ["#e8f5e9", "#2e7d32"],
-              }[_lvl] || ["#f5f5f5", "#555"];
-              return `<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;background:${
-                _s[0]
-              };color:${_s[1]};border:1px solid ${_s[1]}44" title="${_lvl}-level ${
-                _lvl === "Strain" ? "detection" : "aggregate"
-              }">${_lvl}</span>`;
-            })()}</td>` +
-            `<td style="text-align:center">${
-              hist
-                ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>`
-                : '<span style="color:#ccc">—</span>'
+            `<td style="position:relative;min-width:0;padding-right:54px"><span style="display:inline-block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_orgBadges(
+              r,
+            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}</span>${
+              ROLLUP_PASS
+                ? (function () {
+                    const _lvl = r["Level"] || "Strain";
+                    const _s = {
+                      Strain: ["#e3f2fd", "#1565c0"],
+                      Species: ["#f3e5f5", "#6a1b9a"],
+                      Genus: ["#e8f5e9", "#2e7d32"],
+                    }[_lvl] || ["#f5f5f5", "#555"];
+                    return `<span style="display:inline-block;position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;line-height:1.5;background:${
+                      _s[0]
+                    };color:${_s[1]};border:1px solid ${_s[1]}44" title="${_lvl}-level ${
+                      _lvl === "Strain" ? "detection" : "aggregate"
+                    }">${_lvl}</span>`;
+                  })()
+                : ""
             }</td>` +
+            (_visSumCols.some((c) => c.key === "_spark")
+              ? `<td style="text-align:center">${
+                  hist
+                    ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>`
+                    : '<span style="color:#ccc">—</span>'
+                }</td>`
+              : "") +
             `<td>${r["Specimen ID"] || ""}</td>` +
             `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
             `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
