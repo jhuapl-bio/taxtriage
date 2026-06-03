@@ -155,10 +155,18 @@ def _resolve_microbial_cats(cat_args):
     return result or None  # if everything was invalid, fall back to no filter
 
 
-def _flatten_organism(org, sample_name, sample_type, total_reads):
+def _flatten_organism(org, sample_name, sample_type, total_reads,
+                      species_parent=None, genus_parent=None, level="Strain"):
     """
     Flatten one organism entry (any hierarchy level) into a flat dict
     suitable for the tabular view and all plots.
+
+    species_parent / genus_parent: the subkey (species) and toplevelkey (genus)
+    group objects this organism rolls up into. Their tass_score is attached as
+    Species TASS / Genus TASS so the UI can show that a strain failing its own
+    threshold may still be detected at the species or genus level (LCA-aware
+    rollup). For a row that IS already the species/genus level, the parent of
+    that same level points to itself.
     """
     strain_reads = float(org.get("numreads", 0) or 0)
     pct = strain_reads / max(1, total_reads) * 100.0
@@ -168,6 +176,16 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
     tass = float(org.get("tass_score", 0) or 0)
 
     tax = org.get("taxonomy", {})
+
+    # Parent-level TASS (species = subkey, genus = toplevelkey). Fall back to the
+    # organism's own TASS when a parent level is absent so the rollup never
+    # under-reports the row itself.
+    _species_src = species_parent if species_parent is not None else org
+    _genus_src = genus_parent if genus_parent is not None else (species_parent if species_parent is not None else org)
+    species_tass = float(_species_src.get("tass_score", tass) or 0)
+    genus_tass = float(_genus_src.get("tass_score", tass) or 0)
+    species_name = str(_species_src.get("name", org.get("name", "")) or "")
+    genus_name = str(_genus_src.get("name", "") or tax.get("genus", "") or "")
 
     return {
         "Specimen ID":         sample_name,
@@ -201,6 +219,19 @@ def _flatten_organism(org, sample_name, sample_type, total_reads):
         "RPM":                 round(float(org.get("rpm", 0) or 0), 2),
         "RPKM":                round(float(org.get("rpkm", 0) or 0), 4),
         "Passes Threshold":    bool(org.get("passes_threshold", False)),
+        # Taxonomic rollup level of this row: "Strain" (key), "Species" (subkey),
+        # or "Genus" (toplevelkey). Lets the UI switch the view granularity and
+        # surface a species/genus summary row when its children fail their own
+        # threshold. Strain rows are the default view.
+        "Level":               level,
+        # Parent-level rollup TASS — lets the UI show a strain that fails its own
+        # threshold but is still detected at the species (subkey) or genus
+        # (toplevelkey) level. Pass/fail itself is computed client-side against
+        # the active threshold, so only the scores are emitted here.
+        "Species TASS":        round(species_tass, 4),
+        "Genus TASS":          round(genus_tass, 4),
+        "Species Name":        species_name,
+        "Genus Name":          genus_name,
         # taxonomy
         "Kingdom":             tax.get("kingdom", ""),
         "Domain":             tax.get("domain", ""),
@@ -227,19 +258,49 @@ def _iter_organisms(json_data, sample_name, mintass=0, microbial_cats=None):
             return True
         return org.get("microbial_category", "Unknown") in microbial_cats
 
+    # grp = toplevelkey (genus) group; sk_m = subkey (species) group; strain = key.
+    #
+    # Leaf nodes (the organisms actually shown in the default view) are emitted as
+    # Level="Strain". For every group that has children we ALSO emit a summary row
+    # one level up — Level="Species" for a subkey group with strain members, and
+    # Level="Genus" for a genus group with members — carrying that group's own
+    # aggregate TASS/coverage. These summary rows let the UI roll up to the
+    # species/genus level and surface a species hit even when every child strain
+    # falls below the active cutoff. They are hidden in the default Strain view
+    # unless promoted by the rollup.
     for grp in json_data.get("organisms", []):
+        grp_has_members = bool(grp.get("members"))
         for sk_m in grp.get("members", []):
+            sk_has_members = bool(sk_m.get("members"))
             for strain in sk_m.get("members", []):
                 if float(strain.get("tass_score", 0) or 0) >= mintass and _cat_ok(strain):
-                    yield _flatten_organism(strain, sample_name, sample_type, total_reads)
-            # if no nested members, use subkey level directly
-            if not sk_m.get("members"):
+                    yield _flatten_organism(strain, sample_name, sample_type, total_reads,
+                                            species_parent=sk_m, genus_parent=grp,
+                                            level="Strain")
+            if sk_has_members:
+                # species summary row over its strain members
                 if float(sk_m.get("tass_score", 0) or 0) >= mintass and _cat_ok(sk_m):
-                    yield _flatten_organism(sk_m, sample_name, sample_type, total_reads)
-        # if no members at all, use group level
-        if not grp.get("members"):
+                    yield _flatten_organism(sk_m, sample_name, sample_type, total_reads,
+                                            species_parent=sk_m, genus_parent=grp,
+                                            level="Species")
+            else:
+                # no nested strains: the subkey node is itself the leaf
+                if float(sk_m.get("tass_score", 0) or 0) >= mintass and _cat_ok(sk_m):
+                    yield _flatten_organism(sk_m, sample_name, sample_type, total_reads,
+                                            species_parent=sk_m, genus_parent=grp,
+                                            level="Strain")
+        if grp_has_members:
+            # genus summary row over its species/strain members
             if float(grp.get("tass_score", 0) or 0) >= mintass and _cat_ok(grp):
-                yield _flatten_organism(grp, sample_name, sample_type, total_reads)
+                yield _flatten_organism(grp, sample_name, sample_type, total_reads,
+                                        species_parent=grp, genus_parent=grp,
+                                        level="Genus")
+        else:
+            # no members at all: the genus node is itself the leaf
+            if float(grp.get("tass_score", 0) or 0) >= mintass and _cat_ok(grp):
+                yield _flatten_organism(grp, sample_name, sample_type, total_reads,
+                                        species_parent=grp, genus_parent=grp,
+                                        level="Strain")
 
 
 def load_json_inputs(paths, mintass=0, microbial_cats=None):

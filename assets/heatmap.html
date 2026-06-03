@@ -10,8 +10,8 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- <script src="pages.js"></script> -->
-    <!-- <script src="mce.js"></script> -->
+    <script src="pages.js"></script>
+    <script src="mce.js"></script>
     <script src="heatmap_boot.js"></script>
 
     <script>
@@ -111,6 +111,37 @@
       }
       .tab-btn.hidden {
         display: none;
+      }
+      .tab-btn.rollup-highlight {
+        color: #fff;
+        background: rgba(255, 193, 7, 0.18);
+        border-bottom-color: #ffc107;
+        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.35);
+      }
+      .tab-btn.tab-disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .tab-btn.tab-disabled:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: #c9daf8;
+      }
+      .info-tip-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: #90a4ae;
+        cursor: help;
+        font-size: 0.88em;
+        padding: 0 2px;
+        vertical-align: middle;
+        transition: color 0.15s;
+        line-height: 1;
+      }
+      .info-tip-btn:hover {
+        color: #1565c0;
       }
 
       /* ── layout ── */
@@ -433,6 +464,37 @@
         cursor: pointer;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
       }
+      /* Plot export button: hidden until the user hovers over the plot, then
+         fades in; fades back out when the mouse leaves. Stays visible on
+         keyboard focus for accessibility. (Table export button is unaffected.) */
+      .plot-export-btn {
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        pointer-events: none;
+      }
+      .plot-export-host:hover .plot-export-btn,
+      .plot-export-btn:focus-visible,
+      .plot-export-host:focus-within .plot-export-btn {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      /* Table export + settings buttons: same hover-fade behavior, keyed off
+         the table host. Visible on hover or keyboard focus, hidden otherwise. */
+      .table-export-btn,
+      .table-settings-btn {
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        pointer-events: none;
+      }
+      .table-export-host:hover .table-export-btn,
+      .table-export-host:hover .table-settings-btn,
+      .table-export-host:focus-within .table-export-btn,
+      .table-export-host:focus-within .table-settings-btn,
+      .table-export-btn:focus-visible,
+      .table-settings-btn:focus-visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
       .plot-export-btn:hover,
       .table-export-btn:hover {
         background: #eaf3ff;
@@ -635,51 +697,26 @@
         font-size: 0.72em;
         margin-top: 0.55em;
       }
-      .report-pdf-card {
-        border: 1px solid #c5d8f5;
-        border-radius: 7px;
-        background: #f6faff;
-        padding: 0.7em 0.65em;
-        margin: 0.75em 0 0.2em;
-      }
-      .report-pdf-card .pdf-title {
-        font-size: 0.82em;
-        font-weight: 700;
-        color: #1565c0;
-        display: flex;
-        align-items: center;
-        gap: 0.4em;
-        margin-bottom: 0.25em;
-      }
-      .report-pdf-card .pdf-desc {
-        font-size: 0.74em;
-        color: #52616f;
-        line-height: 1.35;
-        margin-bottom: 0.55em;
-      }
-      .report-pdf-card .pdf-sub {
-        font-size: 0.68em;
-        color: #7b8794;
-        line-height: 1.3;
-        margin-top: 0.45em;
-      }
-      .report-pdf-btn {
-        width: 100%;
+      /* ── Sidebar PDF export icon (inline next to Filters heading) ── */
+      #report-pdf-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0.45em;
-        border: 1px solid #1565c0;
+        width: 28px;
+        height: 26px;
+        border: 1px solid #c5d5e8;
         border-radius: 5px;
-        background: #1565c0;
-        color: #fff;
-        padding: 0.42em 0.65em;
-        font-size: 0.78em;
-        font-weight: 700;
+        background: rgba(255, 255, 255, 0.94);
+        color: #1565c0;
         cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        font-size: 0.85em;
+        padding: 0;
+        flex-shrink: 0;
       }
-      .report-pdf-btn:hover {
-        background: #0d47a1;
+      #report-pdf-btn:hover {
+        background: #eaf3ff;
+        border-color: #1565c0;
       }
       #pdf-report-cover {
         display: none;
@@ -707,6 +744,7 @@
         body.report-pdf-printing .tab-controls,
         body.report-pdf-printing .summary-tbl-toolbar,
         body.report-pdf-printing #tbl-toolbar,
+        body.report-pdf-printing #tbl-legend-bar,
         body.report-pdf-printing #tbl-pin-bar,
         body.report-pdf-printing #sum-pin-bar {
           display: none !important;
@@ -810,6 +848,10 @@
         color: #1565c0;
         border-top: 2px solid #d6e0f0;
       }
+      /* Strain below cutoff but rescued by species/genus rollup */
+      #data-table tbody tr.rescued-row td {
+        box-shadow: inset 3px 0 0 #f59f00;
+      }
       svg text {
         font-family: system-ui, sans-serif;
       }
@@ -896,6 +938,10 @@
       }
       #summary-top-wrap tr.row-pinned td {
         background: #fff3cd !important;
+        box-shadow: inset 3px 0 0 #f59f00;
+      }
+      /* rescued-row indicator in summary table */
+      #summary-top-wrap tr.rescued-row td {
         box-shadow: inset 3px 0 0 #f59f00;
       }
       /* group header rows */
@@ -1112,8 +1158,26 @@
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.1s;
-        max-width: 480px;
+        max-width: 520px;
+        width: max-content;
         z-index: 999;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        box-sizing: border-box;
+      }
+      /* Force tables inside tooltips to respect the tooltip max-width.
+         Without this, white-space:nowrap cells push the box past max-width. */
+      #tooltip table {
+        table-layout: fixed;
+        width: 100%;
+        max-width: 100%;
+        border-collapse: collapse;
+      }
+      #tooltip td,
+      #tooltip th {
+        white-space: normal !important;
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
       .axis text {
         font-size: 9px;
@@ -1413,7 +1477,11 @@
       <button class="tab-btn" data-tab="coverage"><i class="fas fa-layer-group"></i> Coverage</button>
       <button class="tab-btn hidden" data-tab="proteins" id="prot-tab-btn"><i class="fas fa-dna"></i> VF / AMR</button>
       <button class="tab-btn hidden" id="hist-tab-btn" data-tab="histogram">
-        <i class="fas fa-chart-column"></i> Histograms
+        <i class="fas fa-chart-column"></i> Histograms<i
+          class="fas fa-triangle-exclamation"
+          id="hist-tab-warn"
+          style="display: none; color: #f59f00; margin-left: 5px; font-size: 0.85em"
+        ></i>
       </button>
       <button class="tab-btn" data-tab="explore"><i class="fas fa-magnifying-glass-chart"></i> Explore</button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
@@ -1449,15 +1517,102 @@
           <div id="summary-kpi-row" class="summary-kpi-row"></div>
 
           <div class="chart-wrap">
-            <div class="chart-title"><i class="fas fa-triangle-exclamation"></i> Detections</div>
+            <div class="chart-title">
+              <i class="fas fa-triangle-exclamation"></i> Detections
+              <button
+                class="info-tip-btn"
+                style="font-size: 0.78em; margin-left: 4px; vertical-align: middle"
+                data-tip="&lt;b&gt;How TASS Scores Are Calculated&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;TaxTriage scores every detection at three taxonomic levels — Strain, Species, and Genus — using the same components but with different read sets and coverage inputs.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Scoring Components (weighted sum → 0–100)&lt;/b&gt;&lt;br&gt;&lt;table style='border-collapse:collapse;font-size:0.85em;margin:4px 0'&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;Breadth %&lt;/td&gt;&lt;td style='color:#ccc'&gt;Fraction of the reference genome covered by reads (sigmoid-scaled). Higher coverage → stronger signal.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;Gini / Evenness&lt;/td&gt;&lt;td style='color:#ccc'&gt;How evenly reads are distributed across the genome. Spiky or highly concentrated coverage lowers this component.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;MinHash&lt;/td&gt;&lt;td style='color:#ccc'&gt;Signature similarity between reads and the reference after conflict-region analysis. Shared genomic regions with related organisms reduce this score.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:8px;white-space:nowrap'&gt;HMP (optional)&lt;/td&gt;&lt;td style='color:#ccc'&gt;Expected abundance for this organism at the reported body site. Absent organisms score 0; typical residents score higher.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Three-Level Hierarchy&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em'&gt;&lt;span style='background:#e3f2fd;color:#1565c0;padding:0 4px;border-radius:3px;font-weight:700'&gt;Strain&lt;/span&gt; — individual reference accession; reads that map ambiguously across highly-similar references (conflict regions) are &lt;b&gt;removed&lt;/b&gt; before scoring. This penalises the strain's breadth, Gini, and read count.&lt;br&gt;&lt;span style='background:#f3e5f5;color:#6a1b9a;padding:0 4px;border-radius:3px;font-weight:700'&gt;Species&lt;/span&gt; — aggregates all strains sharing the same species. Uses a &lt;i&gt;union covered-bp&lt;/i&gt; approach: reads ambiguous &lt;i&gt;between strains of the same species&lt;/i&gt; are re-included because they confirm the species even without pinpointing the strain.&lt;br&gt;&lt;span style='background:#e8f5e9;color:#2e7d32;padding:0 4px;border-radius:3px;font-weight:700'&gt;Genus&lt;/span&gt; — aggregates all species in the genus using the same union logic at the genus level.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#ffd580'&gt;Why Strain 72 / Species 75.8?&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;Example: &lt;b&gt;Ⓓ Oribacterium sinus&lt;/b&gt; Strain 72 → Species 75.8. At strain level, reads overlapping conserved genomic regions shared with sibling strains are removed, lowering breadth and Gini. At species level those same reads re-count (they confirm the species), so species coverage and TASS are higher. This is expected behaviour — a strain can score below its parent species whenever intra-species read sharing is detected.&lt;/span&gt;"
+              >
+                ⓘ
+              </button>
+            </div>
             <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5em">
               Organisms across the run (respects sidebar filters). Click a column header to sort · click a row to pin it
               · ★ = high-consequence pathogen · <span style="color: #1565c0; font-weight: 600">Ⓓ</span>/<span
                 style="color: #6a1b9a; font-weight: 600"
                 >Ⓡ</span
               >
-              = DNA / RNA · hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark for a
-              coverage-depth preview.
+              = DNA / RNA ·
+              <span
+                style="
+                  display: inline-block;
+                  font-size: 9px;
+                  font-weight: 700;
+                  padding: 0 4px;
+                  border-radius: 3px;
+                  vertical-align: middle;
+                  line-height: 1.5;
+                  background: #e3f2fd;
+                  color: #1565c0;
+                  border: 1px solid #1565c044;
+                "
+                >Strain</span
+              >
+              <span
+                style="
+                  display: inline-block;
+                  font-size: 9px;
+                  font-weight: 700;
+                  padding: 0 4px;
+                  border-radius: 3px;
+                  vertical-align: middle;
+                  line-height: 1.5;
+                  background: #f3e5f5;
+                  color: #6a1b9a;
+                  border: 1px solid #6a1b9a44;
+                "
+                >Species</span
+              >
+              <span
+                style="
+                  display: inline-block;
+                  font-size: 9px;
+                  font-weight: 700;
+                  padding: 0 4px;
+                  border-radius: 3px;
+                  vertical-align: middle;
+                  line-height: 1.5;
+                  background: #e8f5e9;
+                  color: #2e7d32;
+                  border: 1px solid #2e7d3244;
+                "
+                >Genus</span
+              >
+              = taxonomic level of each row · hover the <i class="fas fa-chart-column" style="color: #4dabf7"></i> spark
+              for a coverage-depth preview<span id="sum-rollup-hint" style="display: none">
+                ·
+                <span
+                  style="
+                    display: inline-block;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 0 4px;
+                    border-radius: 3px;
+                    vertical-align: middle;
+                    line-height: 1.5;
+                    background: #ffe0b2;
+                    color: #c2410c;
+                  "
+                  >↑ species</span
+                >
+                /
+                <span
+                  style="
+                    display: inline-block;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 0 4px;
+                    border-radius: 3px;
+                    vertical-align: middle;
+                    line-height: 1.5;
+                    background: #ffe0b2;
+                    color: #c2410c;
+                  "
+                  >↑ genus</span
+                >
+                = strain below TASS cutoff, kept by parent roll-up</span
+              >.
             </div>
             <div class="summary-tbl-toolbar">
               <span id="summary-row-count" style="flex: 1; min-width: 110px"></span>
@@ -1559,7 +1714,16 @@
           </div>
 
           <div class="chart-wrap" id="summary-annot-wrap" style="display: none">
-            <div class="chart-title"><i class="fas fa-dna"></i> Annotation Summary (VF / AMR)</div>
+            <div class="chart-title">
+              <i class="fas fa-dna"></i> Annotation Summary (VF / AMR)
+              <button
+                class="info-tip-btn"
+                style="font-size: 0.78em; margin-left: 4px; vertical-align: middle"
+                data-tip="&lt;b&gt;Annotation Summary — VF / AMR&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;This table summarises Virulence Factor (VF) and Antimicrobial Resistance (AMR) gene hits detected across all samples, grouped by genus.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Columns&lt;/b&gt;&lt;br&gt;&lt;table style='border-collapse:collapse;font-size:0.85em;margin:4px 0'&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;Genus&lt;/td&gt;&lt;td style='color:#ccc'&gt;Taxonomic genus shared by all matching organisms. Click to jump to the full VF / AMR tab filtered to this genus.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;# Unique Genes&lt;/td&gt;&lt;td style='color:#ccc'&gt;Count of &lt;b&gt;distinct gene names&lt;/b&gt; (VF + AMR) detected for this genus. Hover to see each gene and how many samples it appeared in.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;AMR Hits&lt;/td&gt;&lt;td style='color:#ccc'&gt;Total number of &lt;b&gt;Antimicrobial Resistance&lt;/b&gt; gene hits. Hover to see which AMR genes were found and in how many samples.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style='color:#ffd580;padding-right:10px;white-space:nowrap;vertical-align:top'&gt;# Samples&lt;/td&gt;&lt;td style='color:#ccc'&gt;Number of samples where this genus had at least one gene hit. Hover to see the full list of sample names.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Data Sources&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:0.85em;color:#ccc'&gt;Gene hits come from two sources: &lt;b&gt;per_gene_hits&lt;/b&gt; (VF annotations from DIAMOND / protein alignment) and &lt;b&gt;amr_genes&lt;/b&gt; (AMR hits from the annotation pipeline). Both are merged into the unique-gene count per genus. To explore individual hit details, click a genus row or open the &lt;b&gt;VF / AMR&lt;/b&gt; tab.&lt;/span&gt;"
+              >
+                ⓘ
+              </button>
+            </div>
             <div id="summary-annot-cards" class="summary-kpi-row" style="margin-bottom: 0.8em"></div>
             <div id="summary-annot-genus" style="overflow: auto"></div>
           </div>
@@ -1624,6 +1788,21 @@
                 <option value="linear" selected>Linear</option>
                 <option value="sqrt">Sqrt</option>
               </select>
+              <label title="Which TASS value to plot: the strain score, or the rolled-up species / genus aggregation."
+                >TASS level</label
+              >
+              <select id="tass-level">
+                <option value="strain" selected>Strain</option>
+                <option value="species">Species</option>
+                <option value="genus">Genus</option>
+              </select>
+              <label
+                title="Show or hide the TASS cutoff reference line on the chart"
+                style="display: flex; align-items: center; gap: 4px; cursor: pointer"
+              >
+                <input type="checkbox" id="tass-show-cutoff" checked style="cursor: pointer" />
+                Cutoff line
+              </label>
             </div>
             <div id="tass-svg-wrap"></div>
           </div>
@@ -2350,6 +2529,106 @@
               <i class="fas fa-times"></i> Unpin All
             </button>
           </div>
+          <div
+            style="
+              font-size: 0.73rem;
+              color: #6c757d;
+              padding: 0.3em 0.5em;
+              border-bottom: 1px solid #e8edf3;
+              background: #fafafa;
+            "
+            id="tbl-legend-bar"
+          >
+            ★ = high-consequence ·
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #e3f2fd;
+                color: #1565c0;
+                border: 1px solid #1565c044;
+              "
+              >Strain</span
+            >
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #f3e5f5;
+                color: #6a1b9a;
+                border: 1px solid #6a1b9a44;
+              "
+              >Species</span
+            >
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #e8f5e9;
+                color: #2e7d32;
+                border: 1px solid #2e7d3244;
+              "
+              >Genus</span
+            >
+            = taxonomic level of each row ·
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #ffe0b2;
+                color: #c2410c;
+              "
+              >↑ species</span
+            >
+            /
+            <span
+              style="
+                display: inline-block;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 0 4px;
+                border-radius: 3px;
+                vertical-align: middle;
+                line-height: 1.5;
+                background: #ffe0b2;
+                color: #c2410c;
+              "
+              >↑ genus</span
+            >
+            = below TASS cutoff, kept visible by parent roll-up ·
+            <span
+              style="
+                display: inline-block;
+                width: 12px;
+                height: 12px;
+                background: #c8e6c9;
+                border-radius: 2px;
+                vertical-align: middle;
+              "
+            ></span>
+            = meets TASS threshold independently ·
+            <span style="border-left: 3px solid #f59f00; padding-left: 4px">amber bar</span> = rescued or pinned row
+          </div>
           <div id="tbl-wrap">
             <table id="data-table">
               <thead>
@@ -2808,16 +3087,48 @@
       <!-- /content -->
 
       <div id="sidebar-resizer" title="Drag to resize panel"></div>
-
       <div id="sidebar">
-        <h3>Filters</h3>
-        <label>Search (Sample / Organism)</label>
-        <input id="filter-text" type="text" placeholder="regex e.g. ^Nano" />
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.2em">
+          <h3 style="margin: 0">Filters</h3>
+          <div style="display: inline-flex; align-items: center; gap: 0.4em">
+            <button
+              type="button"
+              id="report-pdf-btn"
+              class="export-control"
+              title="Export Report PDF"
+              data-tip="&lt;b&gt;Export Report PDF&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Exports the current filtered report to a printable layout — respects all active sidebar filters, the selected plot, and table settings.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;How to save&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;Clicking opens your browser's &lt;b&gt;Print dialog&lt;/b&gt;. Set the destination to &lt;b&gt;Save as PDF&lt;/b&gt;.&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b style='color:#90caf9'&gt;Tips&lt;/b&gt;&lt;br&gt;&lt;span style='color:#ccc;font-size:0.9em'&gt;• Orientation: &lt;b&gt;Landscape&lt;/b&gt;&lt;br&gt;• Disable &lt;i&gt;Headers and footers&lt;/i&gt;&lt;br&gt;• All charts, detections table, and current tab view are included&lt;/span&gt;"
+            >
+              <i class="fas fa-file-download"></i>
+            </button>
+            <span style="font-size: 0.72em; color: #555; white-space: nowrap">Export Report</span>
+          </div>
+        </div>
+        <label
+          >Search (Sample / Organism)
+          <button
+            class="info-tip-btn"
+            id="filter-text-tip-btn"
+            aria-label="Search help"
+            data-tip='<b>Search filter</b> — matches against both Sample ID and Organism name using a <b>regular expression</b>.<br><br><b>Simple substring:</b><br><code>listeria</code> — matches anything containing "listeria"<br><br><b>Wildcard-style (prefix):</b><br><code>listeria.*</code> — organism starting with listeria, any suffix<br><code>^Nano</code> — sample or organism name starting with "Nano"<br><br><b>Multi-match (OR):</b><br><code>hominis|corona</code> — matches either "hominis" or "corona"<br><code>listeria|salmonella|ecoli</code> — any of three terms<br><br><b>Exact species:</b><br><code>^Listeria monocytogenes$</code> — exact name only<br><br><b>Exclude (negate):</b><br>Use the case-insensitive checkbox below to control case. Patterns follow JavaScript RegExp syntax.'
+          >
+            &#x24D8;
+          </button></label
+        >
+        <input id="filter-text" type="text" placeholder="regex e.g. ^Nano or hominis|corona" />
         <div class="row">
           <input type="checkbox" id="filter-ic" checked />
           <label for="filter-ic">Case-insensitive</label>
         </div>
-        <label id="filter-min-label">Min TASS Score (0–100)</label>
+        <label id="filter-min-label"
+          >Min TASS Score (0–100)
+          <button
+            class="info-tip-btn"
+            aria-label="About TASS Score"
+            data-tip="<b>TASS Score</b> (Taxonomic Assignment Scoring System)<br>A 0–100 confidence metric for each organism detection. Higher scores indicate stronger evidence of a true detection based on read depth, coverage breadth, and classifier agreement.<br><br>Organisms with a TASS score below this threshold are hidden across all views. The recommended cutoff is computed per sample type from historical data and shown in the KPI panel above."
+          >
+            &#x24D8;
+          </button></label
+        >
         <div
           id="filter-min-wrap"
           style="display: flex; align-items: center; gap: 0.4em; flex-wrap: wrap; margin-top: 0.15em"
@@ -2860,7 +3171,7 @@
                   cursor: pointer;
                 "
               >
-                Reset All
+                Reset Cutoffs
               </button>
               <button
                 id="per-type-set-all-btn"
@@ -2884,6 +3195,32 @@
         <div class="row" style="margin-top: 0.4em">
           <input type="checkbox" id="filter-hc" />
           <label for="filter-hc">High Consequence only</label>
+        </div>
+        <div class="row" id="rollup-row" style="margin-top: 0.2em">
+          <input type="checkbox" id="filter-rollup" />
+          <label
+            for="filter-rollup"
+            title="Keep a strain visible when its parent species or genus aggregation passes the TASS cutoff, even if the strain itself is below it."
+            >Roll up threshold (show species/genus-rescued strains)</label
+          >
+          <button
+            class="info-tip-btn"
+            aria-label="About Roll-up Threshold"
+            data-tip="<b>Roll-up Threshold</b><br>When enabled, a strain is kept visible if its parent <i>species</i> or <i>genus</i> aggregation passes the TASS cutoff — even if the strain's own score is below the threshold.<br><br>This prevents high-confidence parent-level calls from disappearing just because an individual strain is under-detected. Rescued strains are marked with a colored triangle in the charts.<br><br><i>Affects all data views.</i>"
+          >
+            &#x24D8;
+          </button>
+        </div>
+        <div class="row" style="margin-top: 0.35em; gap: 0.4em; align-items: center">
+          <label for="view-level" style="margin: 0">View level</label>
+          <select
+            id="view-level"
+            title="Switch the taxonomic granularity of the tables, heatmap, TASS chart and coverage plots between Strain (key), Species (subkey) and Genus (toplevelkey). Note: this updates those views only — the sunburst and summary cards stay at strain level. Most useful when a sample has a lot of strain-level discordance and you want the rolled-up species/genus call."
+          >
+            <option value="Strain" selected>Strain (key)</option>
+            <option value="Species">Species (subkey)</option>
+            <option value="Genus">Genus (toplevelkey)</option>
+          </select>
         </div>
         <div class="row">
           <input type="checkbox" hidden id="filter-pass" />
@@ -2935,7 +3272,16 @@
             <input type="checkbox" id="filter-mt-both" checked /> Both/Unspecified
           </label>
         </div>
-        <label style="margin-top: 0.6em">Microbial Category</label>
+        <label style="margin-top: 0.6em"
+          >Microbial Category
+          <button
+            class="info-tip-btn"
+            aria-label="About Microbial Category"
+            data-tip="<b>Microbial Category</b><br>Classifies each detected organism by its typical clinical relevance:<br><br><b>Primary</b> — known pathogen, directly associated with disease<br><b>Commensal</b> — normal flora, usually harmless in healthy individuals<br><b>Opportunistic</b> — can cause disease in immunocompromised hosts<br><b>Potential</b> — possible pathogen under certain conditions<br><b>Unknown</b> — category not determined<br><br>Hold Ctrl/⌘ to select multiple; deselect all to show every category."
+          >
+            &#x24D8;
+          </button></label
+        >
         <select
           id="filter-mc"
           multiple
@@ -2996,14 +3342,6 @@
           </span>
         </h3>
         <div id="sample-list"></div>
-        <div class="report-pdf-card">
-          <div class="pdf-title"><i class="fas fa-file-pdf"></i> Report PDF</div>
-          <div class="pdf-desc">Export the current filtered report, including the active plot and table settings.</div>
-          <button type="button" class="report-pdf-btn" id="report-pdf-btn">
-            <i class="fas fa-print"></i> Export HTML to PDF
-          </button>
-          <div class="pdf-sub">Opens your browser print dialog. Choose “Save as PDF” to write the file.</div>
-        </div>
         <h3>Upload Data</h3>
         <div
           id="upload-zone"
@@ -3314,6 +3652,7 @@
       function filteredData() {
         const txt = document.getElementById("filter-text").value.trim();
         const ic = document.getElementById("filter-ic").checked;
+        const viewLevel = (document.getElementById("view-level") || {}).value || "Strain";
         const minV = parseFloat(document.getElementById("filter-min").value) || 0;
         const onlyHC = document.getElementById("filter-hc").checked;
         const onlyP = document.getElementById("filter-pass").checked;
@@ -3345,6 +3684,8 @@
           _hashRescale(),
           DATA.length,
           _hashPerTypeTass(),
+          ROLLUP_PASS ? 1 : 0,
+          viewLevel,
         ].join("\u0001");
         if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
@@ -3352,26 +3693,79 @@
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
         const anyRescale = _hasAnyRescale();
 
-        const filtered = DATA.filter((r) => {
+        // Base (non-level, non-threshold) predicates shared by every view.
+        function _basePass(r) {
           if (sampleHidden[r["Specimen ID"]]) return false;
           if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
-          const tass = parseFloat(r["TASS Score"]);
-          const _st = (r["Sample Type"] || "").trim().toLowerCase();
-          const _typeMin = _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
-          const tassFilter = anyRescale && sampleRescale[r["Specimen ID"]] ? tass * 100 : tass;
-          if (!isNaN(tassFilter) && tassFilter < _typeMin) return false;
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
-          if (onlyP && !isTruthy(r["Passes Threshold"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
           const mt = (r["Mol Type"] || "").toLowerCase();
           if (mt === "dna" && !mtDNA) return false;
           if (mt === "rna" && !mtRNA) return false;
           if (mt !== "dna" && mt !== "rna" && !mtBoth) return false;
           return true;
+        }
+        const _lvlOf = (r) => r["Level"] || "Strain";
+
+        const filtered = DATA.filter((r) => {
+          if (_lvlOf(r) !== viewLevel) return false;
+          if (!_basePass(r)) return false;
+          const pi = rowPassInfo(r);
+          // Threshold gate: when rollup is on, keep a row whose species or
+          // genus aggregation passes even if the row itself is below cutoff.
+          if (ROLLUP_PASS) {
+            if (!isNaN(pi.strain) && !pi.effectivePass) return false;
+          } else {
+            if (!isNaN(pi.strain) && pi.strain < pi.thr) return false;
+          }
+          // "Passes threshold" filter stays STRICT (own-level) so users can
+          // still isolate rows that pass on their own merits.
+          if (onlyP && !pi.strainPass) return false;
+          return true;
         });
+
+        // ── Species rollup in the Strain view ──────────────────────────────
+        // When every visible strain of a species is below the cutoff but the
+        // species aggregation passes, collapse those strains into a single
+        // Species summary row (flagged so the UI can badge it). Species where
+        // at least one strain passes keep their detailed strain rows.
+        let finalRows = filtered;
+        if (viewLevel === "Strain" && ROLLUP_PASS) {
+          const speciesRowByKey = new Map();
+          for (const r of DATA) {
+            if ((r["Level"] || "") === "Species") {
+              speciesRowByKey.set((r["Specimen ID"] || "") + "" + (r["Subkey"] || ""), r);
+            }
+          }
+          const groups = new Map();
+          for (const r of filtered) {
+            const k = (r["Specimen ID"] || "") + "" + (r["Subkey"] || "");
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(r);
+          }
+          finalRows = [];
+          const handled = new Set();
+          for (const r of filtered) {
+            const k = (r["Specimen ID"] || "") + "" + (r["Subkey"] || "");
+            if (handled.has(k)) continue;
+            const grpRows = groups.get(k);
+            const anyStrainPass = grpRows.some((g) => rowPassInfo(g).strainPass);
+            const specRow = speciesRowByKey.get(k);
+            if (!anyStrainPass && specRow && rowPassInfo(specRow).effectivePass) {
+              // promote the species summary row in place of the failing strains
+              const inj = Object.assign({}, specRow);
+              inj.__rescuedSpecies = true;
+              inj.__rescuedStrainCount = grpRows.length;
+              finalRows.push(inj);
+              handled.add(k);
+            } else {
+              finalRows.push(r);
+            }
+          }
+        }
         // Skip the .map(applyRescale) allocation entirely when no sample is
         // currently rescaled — saves a 14k-object copy on every filter pass.
-        const out = anyRescale ? filtered.map(applyRescale) : filtered;
+        const out = anyRescale ? finalRows.map(applyRescale) : finalRows;
         _FD_CACHE = { key: cacheKey, value: out };
         return out;
       }
@@ -3389,6 +3783,45 @@
         return copy;
       }
 
+      /* ── Threshold rollup (effective pass) ──────────────────────────────
+         A strain may fall below the TASS cutoff while its parent species or
+         genus aggregation passes. We compute an "effective pass" that rolls
+         up: a row counts as effectively passing if the strain OR its species
+         OR its genus clears the threshold. The strict strain-level pass is
+         still kept for the "Passes Threshold" filter and badges.            */
+      function _rescaleVal(r, v) {
+        return _hasAnyRescale() && sampleRescale[r["Specimen ID"]] ? v * 100 : v;
+      }
+      function thresholdForRow(r) {
+        const minV = parseFloat(document.getElementById("filter-min").value) || 0;
+        const _st = (r["Sample Type"] || "").trim().toLowerCase();
+        return _st && _st !== "unknown" && perTypeTass[_st] != null ? perTypeTass[_st] : minV;
+      }
+      function rowPassInfo(r) {
+        const thr = thresholdForRow(r);
+        const strain = _rescaleVal(r, parseFloat(r["TASS Score"]));
+        const species = _rescaleVal(r, parseFloat(r["Species TASS"]));
+        const genus = _rescaleVal(r, parseFloat(r["Genus TASS"]));
+        const sP = !isNaN(strain) && strain >= thr;
+        const spP = !isNaN(species) && species >= thr;
+        const gP = !isNaN(genus) && genus >= thr;
+        return {
+          thr,
+          strain,
+          species,
+          genus,
+          strainPass: sP,
+          speciesPass: spP,
+          genusPass: gP,
+          effectivePass: sP || spP || gP,
+          rescued: !sP && (spP || gP),
+          rescueLevel: sP ? null : spP ? "species" : gP ? "genus" : null,
+        };
+      }
+      // Global toggle: when true, the threshold filter uses effective (rolled-up)
+      // pass so species/genus-rescued strains stay visible. Default on.
+      let ROLLUP_PASS = true;
+
       function uniq(arr) {
         return [...new Set(arr)];
       }
@@ -3400,14 +3833,23 @@
       const tooltip = document.getElementById("tooltip");
       function showTip(html, event) {
         tooltip.innerHTML = html;
+        // Park at 0,0 before measuring so offsetWidth reflects the true
+        // unconstrained width (not a clipped value from the previous position).
+        tooltip.style.left = "0px";
+        tooltip.style.top = "0px";
         tooltip.style.opacity = 1;
         moveTip(event);
       }
       function moveTip(event) {
         const x = event.clientX + 12,
           y = event.clientY - 28;
-        tooltip.style.left = Math.min(x, window.innerWidth - 490) + "px";
-        tooltip.style.top = Math.max(y, 4) + "px";
+        // offsetWidth after parking at 0,0 (or from previous frame) is reliable.
+        const tw = tooltip.offsetWidth || 520;
+        const th = tooltip.offsetHeight || 0;
+        const left = Math.min(x, window.innerWidth - tw - 16);
+        const top = Math.min(Math.max(y, 4), window.innerHeight - th - 8);
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
       }
       function hideTip() {
         tooltip.style.opacity = 0;
@@ -3530,11 +3972,9 @@
         overlay.querySelector("#export-title").textContent = "Export Plot";
         overlay.querySelector("#export-format").innerHTML =
           '<option value="png">PNG</option><option value="jpeg">JPEG</option><option value="svg">SVG</option><option value="pdf">PDF</option><option value="html">HTML</option>';
-        const w = Math.max(50, Math.round(parseFloat(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 900));
-        const h = Math.max(
-          50,
-          Math.round(parseFloat(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || 500),
-        );
+        const size = _plotNaturalSize(svg);
+        const w = Math.max(50, Math.round(size.width || 900));
+        const h = Math.max(50, Math.round(size.height || 500));
         overlay.querySelector("#export-width").value = w;
         overlay.querySelector("#export-height").value = h;
         _syncExportModalFields();
@@ -3604,12 +4044,69 @@
         });
       }
 
-      async function _exportPlot(svg, opts) {
-        const title = _nearestTitle(svg);
+      function _plotSvgs(target) {
+        const svgs =
+          target && target.tagName && target.tagName.toLowerCase() === "svg"
+            ? [target]
+            : Array.from(target.querySelectorAll("svg"));
+        return svgs.filter((svg) => {
+          const w = parseFloat(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
+          const h = parseFloat(svg.getAttribute("height")) || svg.getBoundingClientRect().height;
+          return w >= 90 && h >= 60 && getComputedStyle(svg).display !== "none";
+        });
+      }
+
+      function _plotNaturalSize(target) {
+        if (target && target.tagName && target.tagName.toLowerCase() === "svg") {
+          return {
+            width:
+              parseFloat(target.getAttribute("width")) ||
+              target.viewBox?.baseVal?.width ||
+              target.getBoundingClientRect().width ||
+              900,
+            height:
+              parseFloat(target.getAttribute("height")) ||
+              target.viewBox?.baseVal?.height ||
+              target.getBoundingClientRect().height ||
+              500,
+          };
+        }
+        const rect = target.getBoundingClientRect();
+        return {
+          width: Math.max(target.scrollWidth || 0, rect.width || 0, 900),
+          height: Math.max(target.scrollHeight || 0, rect.height || 0, 500),
+        };
+      }
+
+      function _plotToSvgText(target, width, height) {
+        if (target && target.tagName && target.tagName.toLowerCase() === "svg") {
+          return _cloneSvgWithStyles(target, width, height);
+        }
+        const natural = _plotNaturalSize(target);
+        const base = target.getBoundingClientRect();
+        const pieces = _plotSvgs(target).map((svg) => {
+          const r = svg.getBoundingClientRect();
+          const x = Math.max(0, r.left - base.left + (target.scrollLeft || 0));
+          const y = Math.max(0, r.top - base.top + (target.scrollTop || 0));
+          const w = parseFloat(svg.getAttribute("width")) || r.width;
+          const h = parseFloat(svg.getAttribute("height")) || r.height;
+          const inner = _cloneSvgWithStyles(svg, w, h);
+          return `<g transform="translate(${x.toFixed(2)},${y.toFixed(2)})">${inner}</g>`;
+        });
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${
+          natural.width
+        } ${natural.height}"><rect width="${natural.width}" height="${natural.height}" fill="#fff"/>${pieces.join(
+          "",
+        )}</svg>`;
+      }
+
+      async function _exportPlot(target, opts) {
+        const title = _nearestTitle(target);
         const filename = _slug(title);
-        const width = Math.max(50, parseInt(opts.width, 10) || parseFloat(svg.getAttribute("width")) || 900);
-        const height = Math.max(50, parseInt(opts.height, 10) || parseFloat(svg.getAttribute("height")) || 500);
-        const svgText = _cloneSvgWithStyles(svg, width, height);
+        const natural = _plotNaturalSize(target);
+        const width = Math.max(50, parseInt(opts.width, 10) || natural.width || 900);
+        const height = Math.max(50, parseInt(opts.height, 10) || natural.height || 500);
+        const svgText = _plotToSvgText(target, width, height);
 
         if (opts.format === "svg") {
           _downloadText(svgText, `${filename}.svg`, "image/svg+xml;charset=utf-8");
@@ -3725,7 +4222,7 @@
       function _plotExportHost(svg) {
         return (
           svg.closest(
-            "#heatmap-svg-wrap, #tass-svg-wrap, #coverage-svg-wrap, #summary-genus-wrap, #prot-genus-svg, #prot-prop-svg, #prot-compare-svg, #longi-chart-wrap, #hist-chart-wrap, #hist-breadth-chart, #hist-depth-chart, #explore-bubble-wrap, #explore-radar-wrap, #explore-chord-wrap, #explore-lolli-wrap, #explore-corr-wrap, .sun-panel-svg-wrap, .chart-wrap, .sun-panel",
+            "#heatmap-svg-wrap, #tass-svg-wrap, #coverage-svg-wrap, #summary-genus-wrap, #prot-genus-svg, #prot-prop-svg, #prot-compare-svg, #longi-chart-wrap, #hist-main, #explore-bubble-wrap, #explore-radar-wrap, #explore-chord-wrap, #explore-lolli-wrap, #explore-corr-wrap, .sun-panel-svg-wrap, .chart-wrap, .sun-panel",
           ) || svg.parentElement
         );
       }
@@ -3927,6 +4424,7 @@
           const host = _plotExportHost(svg);
           if (!host || host.querySelector(":scope > .plot-export-btn")) return;
           host.classList.add("plot-export-host");
+          const target = host.id === "hist-main" || host.querySelectorAll("svg").length > 1 ? host : svg;
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "plot-export-btn export-control";
@@ -3934,9 +4432,10 @@
           btn.innerHTML = '<i class="fas fa-download"></i>';
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            _openPlotExport(svg);
+            _openPlotExport(target);
           });
           host.appendChild(btn);
+          _keepButtonInScrollport(host, btn);
         });
 
         document.querySelectorAll("table").forEach((table) => {
@@ -4357,8 +4856,11 @@
         });
 
         // Build / sync _sampleOrder: keep existing order for known samples, append new ones
+        // New samples (or first load) are natural-sorted (numeric-aware, case-insensitive).
         const knownSet = new Set(_sampleOrder);
-        const newOnes = rawSamples.filter((id) => !knownSet.has(id));
+        const newOnes = rawSamples
+          .filter((id) => !knownSet.has(id))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
         _sampleOrder = _sampleOrder.filter((id) => rawSamples.includes(id));
         _sampleOrder.push(...newOnes);
 
@@ -4886,8 +5388,13 @@
         });
         const marginL = Math.max(140, _maxLabelWidth + 20);
         const marginT = 110,
-          marginB = 20,
           marginR = 90; // wider: 28px for mol-type badge column + original 60 for colorbar
+        // Pre-compute rescued status so we can add bottom margin for the legend
+        const _anyRescued = fd.some((r) => {
+          const _pi = rowPassInfo(r);
+          return _pi && _pi.rescued;
+        });
+        const marginB = 20;
         const W = marginL + samples.length * cellW + marginR;
         const H = marginT + organisms.length * cellH + marginB;
 
@@ -5048,6 +5555,34 @@
                 .attr("font-size", 9)
                 .text(v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0));
             }
+
+            // Rescued-strain marker: top-right corner triangle when the strain
+            // is below cutoff but its species/genus rollup passes. Orange =
+            // species rescue, purple = genus rescue.
+            if (r) {
+              const _pi = rowPassInfo(r);
+              if (_pi.rescued) {
+                const x0 = xScale(sp),
+                  y0 = yScale(org),
+                  bw = xScale.bandwidth(),
+                  s = Math.min(8, bw * 0.32);
+                const _rl = _pi.rescueLevel === "species" ? "species" : "genus";
+                const _tassNum = +r["TASS Score"];
+                const _tassTxt = isFinite(_tassNum) ? _tassNum.toFixed(1) : "n/a";
+                svg
+                  .append("path")
+                  .attr("d", `M${x0 + bw - s},${y0} L${x0 + bw},${y0} L${x0 + bw},${y0 + s} Z`)
+                  .attr("fill", _rl === "species" ? "#fb8c00" : "#8e24aa")
+                  .style("cursor", "help")
+                  .append("title")
+                  .text(
+                    `Rescued strain: this strain's TASS (${_tassTxt}) is below the cutoff, ` +
+                      `but its ${_rl}-level roll-up passes, so it is kept visible. ` +
+                      `${_rl === "species" ? "Orange" : "Purple"} corner = ${_rl} rescue. ` +
+                      `Turn off "Roll up threshold" to hide it.`,
+                  );
+              }
+            }
           });
         });
 
@@ -5100,6 +5635,30 @@
           .attr("font-size", 9)
           .attr("fill", "#666")
           .text(`Scale: ${scaleMode}`);
+
+        // Rescued-strain legend — rendered as HTML below the SVG so it can
+        // never overlap the chart axes or cells regardless of chart dimensions.
+        if (_anyRescued) {
+          const lgDiv = document.createElement("div");
+          lgDiv.style.cssText =
+            "display:flex;align-items:center;gap:12px;padding:5px 8px 2px;" +
+            "font-size:0.76em;color:#555;flex-wrap:wrap;";
+          lgDiv.innerHTML =
+            "<span style='font-weight:600;color:#444;'>Rescued strains:</span>" +
+            "<span style='display:flex;align-items:center;gap:4px;'>" +
+            "<svg width='10' height='10' style='flex-shrink:0'>" +
+            "<path d='M0,0 L10,0 L10,10 Z' fill='#fb8c00'/>" +
+            "</svg>" +
+            "<span style='color:#666;'>species roll-up</span>" +
+            "</span>" +
+            "<span style='display:flex;align-items:center;gap:4px;'>" +
+            "<svg width='10' height='10' style='flex-shrink:0'>" +
+            "<path d='M0,0 L10,0 L10,10 Z' fill='#8e24aa'/>" +
+            "</svg>" +
+            "<span style='color:#666;'>genus roll-up</span>" +
+            "</span>";
+          wrap.appendChild(lgDiv);
+        }
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -5128,12 +5687,19 @@
           return;
         }
 
+        // TASS level: plot strain score, or the rolled-up species/genus TASS.
+        const _tassLevel = (document.getElementById("tass-level") || {}).value || "strain";
+        const _tassCol =
+          _tassLevel === "species" ? "Species TASS" : _tassLevel === "genus" ? "Genus TASS" : "TASS Score";
+
         // Build grouped data: {group: {sample: maxTASS}}
         const grouped = {};
         fd.forEach((r) => {
           const g = r[rankField] || "Unknown";
           const sp = r["Specimen ID"] || "";
-          const v = num(r["TASS Score"]);
+          // Fall back to strain TASS when the chosen parent column is absent.
+          let v = num(r[_tassCol]);
+          if (_tassCol !== "TASS Score" && (isNaN(v) || v === 0) && r[_tassCol] == null) v = num(r["TASS Score"]);
           if (!grouped[g]) grouped[g] = {};
           grouped[g][sp] = Math.max(grouped[g][sp] || 0, v);
         });
@@ -5254,6 +5820,66 @@
 
         _updateXAxis(x0);
         _drawBars(x0, x1);
+
+        // ── Threshold overlay ────────────────────────────────────────────
+        // Horizontal dashed line at the active TASS cutoff so it is obvious
+        // which rank groups clear the threshold (a species/genus bar above the
+        // line "rescues" its strains under the rollup). Uses the global min;
+        // per-sample-type cutoffs vary, so this is the baseline reference.
+        // Toggled by #tass-show-cutoff checkbox.
+        (function () {
+          const _showCutoff = (document.getElementById("tass-show-cutoff") || { checked: true }).checked;
+          if (!_showCutoff) return;
+          const _thr = parseFloat(document.getElementById("filter-min").value) || 0;
+          if (_thr <= 0 || _thr > 100) return;
+          const yT = y(_thr);
+          const tg = g.append("g").attr("class", "tass-threshold");
+          // White halo behind the dashed line so it stays legible over any bar color
+          tg.append("line")
+            .attr("x1", 0)
+            .attr("x2", innerW)
+            .attr("y1", yT)
+            .attr("y2", yT)
+            .attr("stroke", "white")
+            .attr("stroke-width", 4)
+            .attr("pointer-events", "none");
+          // Dashed cutoff line on top
+          tg.append("line")
+            .attr("x1", 0)
+            .attr("x2", innerW)
+            .attr("y1", yT)
+            .attr("y2", yT)
+            .attr("stroke", "#e53935")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "8,4")
+            .attr("pointer-events", "none");
+          // Pill background behind label so it's readable over any bar
+          const _labelText = `TASS cutoff ${_thr}`;
+          const _lblPadX = 5,
+            _lblPadY = 3,
+            _lblFontSize = 10;
+          const _lblW = _labelText.length * 6 + _lblPadX * 2;
+          const _lblH = _lblFontSize + _lblPadY * 2;
+          tg.append("rect")
+            .attr("x", innerW - 4 - _lblW)
+            .attr("y", yT - _lblH - 3)
+            .attr("width", _lblW)
+            .attr("height", _lblH)
+            .attr("fill", "#e53935")
+            .attr("rx", 3)
+            .attr("opacity", 0.9)
+            .attr("pointer-events", "none");
+          tg.append("text")
+            .attr("x", innerW - 4 - _lblW / 2)
+            .attr("y", yT - 3 - _lblPadY)
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "middle")
+            .attr("font-size", _lblFontSize)
+            .attr("font-weight", "700")
+            .attr("fill", "white")
+            .attr("pointer-events", "none")
+            .text(_labelText);
+        })();
 
         // D3 zoom — rescale band x0 range
         const zoom = d3
@@ -8628,29 +9254,46 @@
           if (c === "Detected Organism") {
             const isHC = row["High Consequence"];
             const mt = (row["Mol Type"] || "").toLowerCase();
-            if (isHC || mt) {
-              if (isHC) td.style.cssText = "color:#c62828;font-weight:600;white-space:nowrap";
-              else td.style.cssText = "white-space:nowrap";
-              if (isHC) {
-                const badge = document.createElement("span");
-                badge.textContent = "⚠ ";
-                badge.title = "High Consequence Pathogen";
-                badge.style.cssText = "color:#c62828;margin-right:2px";
-                td.appendChild(badge);
-              }
-              td.appendChild(document.createTextNode(val));
-              if (mt === "dna" || mt === "rna") {
-                const mtBadge = document.createElement("span");
-                mtBadge.textContent = mt === "dna" ? "D" : "R";
-                mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
-                mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
-                  mt === "dna" ? "#1565c0" : "#6a1b9a"
-                };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
-                td.appendChild(mtBadge);
-              }
-            } else {
-              td.textContent = val;
+            const rowLevel = row["Level"] || "Strain";
+            td.style.cssText = "white-space:nowrap" + (isHC ? ";color:#c62828;font-weight:600" : "");
+            if (isHC) {
+              const badge = document.createElement("span");
+              badge.textContent = "⚠ ";
+              badge.title = "High Consequence Pathogen";
+              badge.style.cssText = "color:#c62828;margin-right:2px";
+              td.appendChild(badge);
             }
+            td.appendChild(document.createTextNode(val));
+            if (mt === "dna" || mt === "rna") {
+              const mtBadge = document.createElement("span");
+              mtBadge.textContent = mt === "dna" ? "D" : "R";
+              mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
+              mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
+                mt === "dna" ? "#1565c0" : "#6a1b9a"
+              };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
+              td.appendChild(mtBadge);
+            }
+            // Taxonomic level badge: always shown so users can tell whether
+            // a row is a direct Strain call, a Species aggregate, or a Genus aggregate.
+            const _lvlStyles = {
+              Strain: { bg: "#e3f2fd", fg: "#1565c0", label: "Strain" },
+              Species: { bg: "#f3e5f5", fg: "#6a1b9a", label: "Species" },
+              Genus: { bg: "#e8f5e9", fg: "#2e7d32", label: "Genus" },
+            };
+            const _ls = _lvlStyles[rowLevel] || { bg: "#f5f5f5", fg: "#555", label: rowLevel };
+            const lvlBadge = document.createElement("span");
+            lvlBadge.textContent = _ls.label;
+            lvlBadge.title =
+              rowLevel === "Strain"
+                ? "Strain-level detection — TASS reflects this specific strain's alignments."
+                : rowLevel === "Species"
+                ? "Species-level aggregate — TASS reflects all reads assigned to this species."
+                : "Genus-level aggregate — TASS reflects all reads assigned to this genus.";
+            lvlBadge.style.cssText =
+              `display:inline-block;margin-left:5px;font-size:9px;font-weight:700;` +
+              `padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;` +
+              `background:${_ls.bg};color:${_ls.fg};border:1px solid ${_ls.fg}44`;
+            td.appendChild(lvlBadge);
           } else {
             td.textContent = val;
           }
@@ -8687,6 +9330,98 @@
             }
             td.style.textAlign = "center";
             td.style.fontWeight = "600";
+            // Species-rollup hit: mark the row with the rescued-row style.
+            // The level badge in the Detected Organism column already identifies
+            // this as a Species row — no duplicate text badge needed here.
+            if (row.__rescuedSpecies) {
+              tr.classList.add("rescued-row");
+            }
+            // Pass / rescue indicator. Passing rows get a green cell background;
+            // no text badge. Rescued rows get the ↑ rollup badge. ✗ below is
+            // shown in Species/Genus view when the aggregation itself doesn't pass.
+            const _vlBadge = (document.getElementById("view-level") || {}).value || "Strain";
+            const _pi = rowPassInfo(row);
+            if (!row.__rescuedSpecies && !isNaN(_pi.strain)) {
+              if (_vlBadge !== "Strain") {
+                // Species / Genus view: green for pass, rescue badge if rescued, ✗ below otherwise.
+                if (_pi.strainPass) {
+                  td.style.background = "#c8e6c9";
+                  td.title = _vlBadge + " passes the TASS threshold (≥ " + _pi.thr + ")";
+                } else if (_pi.rescued) {
+                  const badge = document.createElement("span");
+                  badge.style.cssText =
+                    "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                    "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;" +
+                    "background:#ffe0b2;color:#c2410c";
+                  badge.textContent = _pi.rescueLevel === "species" ? "↑ species" : "↑ genus";
+                  badge.title =
+                    "Strain is BELOW the cutoff (" +
+                    _pi.strain.toFixed(1) +
+                    " < " +
+                    _pi.thr +
+                    ") but kept visible because its " +
+                    _pi.rescueLevel +
+                    " aggregation passes (" +
+                    (_pi.rescueLevel === "species"
+                      ? "Species TASS " + (isNaN(_pi.species) ? "?" : _pi.species.toFixed(1))
+                      : "Genus TASS " + (isNaN(_pi.genus) ? "?" : _pi.genus.toFixed(1))) +
+                    " ≥ " +
+                    _pi.thr +
+                    '). Turn off "Roll up threshold" to hide it.';
+                  tr.classList.add("rescued-row");
+                  td.appendChild(badge);
+                } else {
+                  const badge = document.createElement("span");
+                  badge.style.cssText =
+                    "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                    "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;" +
+                    "background:#ffcdd2;color:#c62828";
+                  badge.textContent = "✗ below";
+                  badge.title = _vlBadge + " is below the TASS cutoff (" + _pi.thr + ")";
+                  td.appendChild(badge);
+                }
+              } else if (_pi.strainPass) {
+                // Strain view, passes on its own: green cell, no badge.
+                td.style.background = "#c8e6c9";
+                td.title = "Strain passes the TASS threshold (≥ " + _pi.thr + ")";
+              } else if (_pi.rescued) {
+                const badge = document.createElement("span");
+                badge.style.cssText =
+                  "display:inline-block;margin-left:5px;font-size:9px;font-weight:700;" +
+                  "padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;" +
+                  "background:#ffe0b2;color:#c2410c";
+                badge.textContent = _pi.rescueLevel === "species" ? "↑ species" : "↑ genus";
+                badge.title =
+                  "Strain is BELOW the cutoff (" +
+                  _pi.strain.toFixed(1) +
+                  " < " +
+                  _pi.thr +
+                  ") but kept visible because its " +
+                  _pi.rescueLevel +
+                  " aggregation passes (" +
+                  (_pi.rescueLevel === "species"
+                    ? "Species TASS " + (isNaN(_pi.species) ? "?" : _pi.species.toFixed(1))
+                    : "Genus TASS " + (isNaN(_pi.genus) ? "?" : _pi.genus.toFixed(1))) +
+                  " ≥ " +
+                  _pi.thr +
+                  '). Turn off "Roll up threshold" to hide it.';
+                tr.classList.add("rescued-row");
+                td.appendChild(badge);
+              }
+            }
+          }
+          // Species TASS / Genus TASS: same gradient styling as TASS Score,
+          // 2-dp, so parent confidence is legible alongside the strain score.
+          if (c === "Species TASS" || c === "Genus TASS") {
+            const pscore = parseFloat(val);
+            if (!isNaN(pscore)) {
+              td.textContent = +pscore.toFixed(2);
+              const t = Math.min(1, Math.max(0, pscore / 100));
+              const hue = Math.round(210 - t * 65);
+              const alpha = (0.05 + t * 0.18).toFixed(3);
+              td.style.background = `hsla(${hue},55%,45%,${alpha})`;
+              td.style.textAlign = "center";
+            }
           }
           tr.appendChild(td);
         });
@@ -8697,12 +9432,17 @@
         let fd = filteredData();
         const _tblGrouped = document.getElementById("tbl-group-sample")?.checked;
         if (_tblGrouped) {
-          // Group by Sample: primary sort on Specimen ID, secondary on the
-          // active sort column (or TASS desc by default) within each sample.
+          // Group by Sample: primary sort follows _sampleOrder (right-panel order),
+          // secondary sort on the active column (or TASS desc by default) within each group.
           const sc = sortCol || "TASS Score";
+          const _grpIdx = _sampleOrder.length ? Object.fromEntries(_sampleOrder.map((id, i) => [id, i])) : {};
           fd = [...fd].sort((a, b) => {
-            const sd = String(a["Specimen ID"] || "").localeCompare(String(b["Specimen ID"] || ""));
-            if (sd !== 0) return sd;
+            const sia = String(a["Specimen ID"] || "");
+            const sib = String(b["Specimen ID"] || "");
+            const ia = _grpIdx[sia] !== undefined ? _grpIdx[sia] : 9999;
+            const ib = _grpIdx[sib] !== undefined ? _grpIdx[sib] : 9999;
+            if (ia !== ib) return ia - ib;
+            // Fallback within same group: active sort col
             const na = parseFloat(a[sc]),
               nb = parseFloat(b[sc]);
             if (!isNaN(na) && !isNaN(nb)) return sortCol ? (sortAsc ? na - nb : nb - na) : nb - na;
@@ -8990,6 +9730,7 @@
 ═══════════════════════════════════════════════════════════════════════════ */
       document.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
+          if (btn.classList.contains("tab-disabled")) return;
           document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
           document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
           btn.classList.add("active");
@@ -10880,6 +11621,15 @@
 
       function _renderSummaryTable(fd) {
         const wrap = document.getElementById("summary-top-wrap");
+        // Show rollup hint only when rescued rows are actually present
+        const _sumRollupHint = document.getElementById("sum-rollup-hint");
+        if (_sumRollupHint) {
+          const _hasRescued = fd.some((r) => {
+            const p = rowPassInfo(r);
+            return p && p.rescued;
+          });
+          _sumRollupHint.style.display = _hasRescued ? "" : "none";
+        }
         if (!fd.length) {
           wrap.innerHTML = '<p style="color:#888;padding:1em">No organisms match the current filters.</p>';
           _updateSummaryPager(0, 0, 0, 0);
@@ -10899,11 +11649,15 @@
           const d = String(a[col] || "").localeCompare(String(b[col] || ""));
           return _sumSortAsc ? d : -d;
         };
+        const _sumGrpIdx = _sampleOrder.length ? Object.fromEntries(_sampleOrder.map((id, i) => [id, i])) : {};
         rows.sort((a, b) => {
-          // When grouping, keep samples together (primary) then TASS desc within.
+          // When grouping, order groups by _sampleOrder (right-panel order), then sort within.
           if (grouped) {
-            const sd = String(a["Specimen ID"] || "").localeCompare(String(b["Specimen ID"] || ""));
-            if (sd !== 0) return sd;
+            const sia = String(a["Specimen ID"] || "");
+            const sib = String(b["Specimen ID"] || "");
+            const ia = _sumGrpIdx[sia] !== undefined ? _sumGrpIdx[sia] : 9999;
+            const ib = _sumGrpIdx[sib] !== undefined ? _sumGrpIdx[sib] : 9999;
+            if (ia !== ib) return ia - ib;
             if (col !== "Specimen ID") return cmp(a, b);
             return num(b["TASS Score"]) - num(a["TASS Score"]);
           }
@@ -10934,16 +11688,42 @@
         slice.forEach((r) => {
           if (grouped && r["Specimen ID"] !== lastSample) {
             lastSample = r["Specimen ID"];
-            html += `<tr class="grp-row"><td colspan="${_SUM_COLS.length}"><i class="fas fa-vial"></i> ${lastSample}</td></tr>`;
+            const _grpSwatchColor = sampleColors[lastSample] || "#90a4ae";
+            html += `<tr class="grp-row"><td colspan="${_SUM_COLS.length}"><i class="fas fa-vial"></i> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}</td></tr>`;
           }
           const cat = r["Microbial Category"] || "Unknown";
           const cc = _CAT_COLORS[cat] || "#555";
           const hc = isTruthy(r["High Consequence"]);
           const key = _sumRowKey(r);
           const hist = _histFor(r);
+          const _pi_s = rowPassInfo(r);
+          const _rescued_s = _pi_s && _pi_s.rescued;
+          const _rescueBadge = _rescued_s
+            ? `<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;` +
+              `padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;` +
+              `background:#ffe0b2;color:#c2410c;" ` +
+              `title="Strain TASS ${_pi_s.strain.toFixed(1)} is below the cutoff (${
+                _pi_s.thr
+              }) but kept visible because its ${_pi_s.rescueLevel} aggregation passes. ` +
+              `Turn off &quot;Roll up threshold&quot; to hide it.">&#x2191; ${_pi_s.rescueLevel}</span>`
+            : "";
           html +=
-            `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_sumPinned.has(key) ? " row-pinned" : ""}">` +
-            `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}</td>` +
+            `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
+              _sumPinned.has(key) ? " row-pinned" : ""
+            }">` +
+            `<td>${_orgBadges(r)}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${(function () {
+              const _lvl = r["Level"] || "Strain";
+              const _s = {
+                Strain: ["#e3f2fd", "#1565c0"],
+                Species: ["#f3e5f5", "#6a1b9a"],
+                Genus: ["#e8f5e9", "#2e7d32"],
+              }[_lvl] || ["#f5f5f5", "#555"];
+              return `<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;vertical-align:middle;line-height:1.5;background:${
+                _s[0]
+              };color:${_s[1]};border:1px solid ${_s[1]}44" title="${_lvl}-level ${
+                _lvl === "Strain" ? "detection" : "aggregate"
+              }">${_lvl}</span>`;
+            })()}</td>` +
             `<td style="text-align:center">${
               hist
                 ? `<span class="spark-cell" data-spark="${key}">${_sparkHtml(hist)}</span>`
@@ -11284,6 +12064,8 @@
         const byGenus = {};
         const _ensure = (g) => {
           if (!byGenus[g])
+            // geneNames: Map<geneName, Set<sampleName>>  (unique genes, per-sample tracking)
+            // amrNames:  Map<geneName, Set<sampleName>>
             byGenus[g] = { hits: 0, samples: new Set(), amr: 0, geneNames: new Map(), amrNames: new Map() };
           return byGenus[g];
         };
@@ -11294,23 +12076,32 @@
           e.hits += n;
           if (r.Sample || r.sample) e.samples.add(r.Sample || r.sample);
         });
-        // Collect individual gene-hit names per genus (for the # Gene Hits tooltip).
+        // Collect individual gene-hit names per genus — track which samples each gene was seen in.
         geneHits.forEach((r) => {
           const g = r.Genus || r.genus || "Unknown";
           const e = _ensure(g);
           const lbl = _geneLabel(r);
-          if (lbl) e.geneNames.set(lbl, (e.geneNames.get(lbl) || 0) + 1);
-          if (r.Sample || r.sample) e.samples.add(r.Sample || r.sample);
+          const smp = r.Sample || r.sample || null;
+          if (lbl) {
+            if (!e.geneNames.has(lbl)) e.geneNames.set(lbl, new Set());
+            if (smp) e.geneNames.get(lbl).add(smp);
+          }
+          if (smp) e.samples.add(smp);
         });
         amrRows.forEach((r) => {
           const g = r.Genus || r.genus || "Unknown";
           const e = _ensure(g);
           e.amr += 1;
           const lbl = _geneLabel(r);
-          if (lbl) e.amrNames.set(lbl, (e.amrNames.get(lbl) || 0) + 1);
+          const smp = r.Sample || r.sample || null;
+          if (lbl) {
+            if (!e.amrNames.has(lbl)) e.amrNames.set(lbl, new Set());
+            if (smp) e.amrNames.get(lbl).add(smp);
+          }
+          if (smp) e.samples.add(smp);
         });
         const ordered = Object.entries(byGenus)
-          .sort((a, b) => b[1].hits - a[1].hits)
+          .sort((a, b) => b[1].geneNames.size - a[1].geneNames.size || b[1].hits - a[1].hits)
           .slice(0, 12);
         const cont = document.getElementById("summary-annot-genus");
         if (!ordered.length) {
@@ -11320,34 +12111,58 @@
         let html =
           '<p style="font-size:0.74rem;color:#6c757d;margin:0 0 0.4em">Click a genus to open it in the VF / AMR tab.</p>' +
           "<table><thead><tr>" +
-          ["Genus", "# Gene Hits", "AMR Hits", "Samples", ""].map((h) => `<th>${h}</th>`).join("") +
+          ["Genus", "# Unique Genes", "AMR Hits", "# Samples", ""].map((h) => `<th>${h}</th>`).join("") +
           "</tr></thead><tbody>";
-        // Tooltip HTML from a name→count Map of gene/AMR hits.
-        const _hitsTip = (title, m) => {
-          const items = Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+        // Tooltip HTML: geneNameMap is Map<name, Set<sample>> — show unique gene names sorted by sample count.
+        const _hitsTip = (title, geneNameMap) => {
+          const items = Array.from(geneNameMap.entries())
+            .map(([name, smpSet]) => [name, smpSet.size])
+            .sort((a, b) => b[1] - a[1]);
           if (!items.length) return "";
-          let t = `<b>${title}</b><br>`;
+          let t = `<b>${title}</b> <span style="color:#aaa;font-size:0.85em">(${items.length} unique gene${
+            items.length === 1 ? "" : "s"
+          })</span><br>`;
+          t += `<table style="border-collapse:collapse;margin-top:4px;font-size:0.88em">`;
+          t += `<tr style="color:#888"><td style="padding-right:12px">Gene</td><td style="text-align:right"># Samples</td></tr>`;
           items.slice(0, 15).forEach(([name, n]) => {
-            t += `<div><i>${name}</i>${n > 1 ? ` <span style="color:#aaa">×${n}</span>` : ""}</div>`;
+            t += `<tr><td style="padding-right:12px;color:#e0e0e0"><i>${name}</i></td><td style="text-align:right;color:#90caf9;font-weight:600">${n}</td></tr>`;
           });
-          if (items.length > 15) t += `<div style="color:#aaa">…and ${items.length - 15} more</div>`;
+          if (items.length > 15)
+            t += `<tr><td colspan="2" style="color:#aaa;padding-top:3px">…and ${items.length - 15} more</td></tr>`;
+          t += `</table>`;
+          return t;
+        };
+        // Sample list tooltip: show all sample names that had hits for this genus.
+        const _samplesTip = (title, sampleSet) => {
+          const smpArr = Array.from(sampleSet).sort();
+          if (!smpArr.length) return "";
+          let t = `<b>${title}</b> <span style="color:#aaa;font-size:0.85em">(${smpArr.length})</span><br>`;
+          t += `<div style="margin-top:4px;max-height:220px;overflow:auto">`;
+          smpArr.forEach((s) => {
+            t += `<div style="color:#e0e0e0;padding:1px 0">${s}</div>`;
+          });
+          t += `</div>`;
           return t;
         };
         const _tipStore = {};
         ordered.forEach(([g, info], gi) => {
-          const geneTip = _hitsTip(`${g} — gene hits`, info.geneNames);
+          const geneTip = _hitsTip(`${g} — unique gene hits`, info.geneNames);
           const amrTip = _hitsTip(`${g} — AMR genes`, info.amrNames);
-          _tipStore[gi] = { gene: geneTip, amr: amrTip };
+          const samplesTip = _samplesTip(`${g} — samples with hits`, info.samples);
+          _tipStore[gi] = { gene: geneTip, amr: amrTip, samples: samplesTip };
+          const uniqueGenes = info.geneNames.size;
           html +=
             `<tr class="annot-genus-row" data-genus="${g}" data-gi="${gi}" style="cursor:pointer">` +
             `<td><i style="color:#1565c0;text-decoration:underline">${g}</i></td>` +
             `<td class="annot-gene-cell" style="text-align:right${
               geneTip ? ";cursor:help;text-decoration:underline dotted" : ""
-            }">${_fmtInt(info.hits)}</td>` +
+            }">${uniqueGenes > 0 ? _fmtInt(uniqueGenes) : "—"}</td>` +
             `<td class="annot-amr-cell" style="text-align:right${
               amrTip ? ";cursor:help;text-decoration:underline dotted" : ""
             }">${info.amr ? _fmtInt(info.amr) : "—"}</td>` +
-            `<td style="text-align:right">${info.samples.size || "—"}</td>` +
+            `<td class="annot-samples-cell" style="text-align:right${
+              samplesTip ? ";cursor:help;text-decoration:underline dotted" : ""
+            }">${info.samples.size || "—"}</td>` +
             `<td style="text-align:right;color:#1565c0"><i class="fas fa-arrow-up-right-from-square" title="Open in VF / AMR tab"></i></td>` +
             "</tr>";
         });
@@ -11368,6 +12183,7 @@
           };
           wire(tr.querySelector(".annot-gene-cell"), store.gene);
           wire(tr.querySelector(".annot-amr-cell"), store.amr);
+          wire(tr.querySelector(".annot-samples-cell"), store.samples);
         });
       }
 
@@ -11498,6 +12314,226 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
+      // Threshold-rollup toggle: drive ROLLUP_PASS + invalidate filter cache.
+      (function () {
+        const el = document.getElementById("filter-rollup");
+        if (!el) return;
+        ROLLUP_PASS = el.checked;
+        el.addEventListener("change", () => {
+          ROLLUP_PASS = el.checked;
+          _invalidateFilterCache();
+          redraw();
+        });
+      })();
+      // ── Info-tip icon hover (sidebar tooltips) ──────────────────────────────
+      document.querySelectorAll(".info-tip-btn[data-tip]").forEach((btn) => {
+        btn.addEventListener("mouseenter", (ev) => showTip(btn.dataset.tip, ev));
+        btn.addEventListener("mousemove", moveTip);
+        btn.addEventListener("mouseleave", hideTip);
+        // Prevent label click from toggling the associated checkbox
+        btn.addEventListener("click", (ev) => ev.preventDefault());
+      });
+
+      // ── Rollup row hover: highlight all visible tab buttons ─────────────────
+      (function () {
+        const row = document.getElementById("rollup-row");
+        if (!row) return;
+        row.addEventListener("mouseenter", () => {
+          document.querySelectorAll(".tab-btn:not(.hidden)").forEach((b) => b.classList.add("rollup-highlight"));
+        });
+        row.addEventListener("mouseleave", () => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("rollup-highlight"));
+        });
+      })();
+
+      // View-level dropdown: strain/species/genus granularity → invalidate the
+      // filtered-data cache (its result depends on Level) and redraw everything.
+      function _updateHistTabDisabled() {
+        const level = document.getElementById("view-level")?.value || "Strain";
+        const histBtn = document.getElementById("hist-tab-btn");
+        const warnIcon = document.getElementById("hist-tab-warn");
+        if (!histBtn) return;
+        const shouldDisable = level === "Species" || level === "Genus";
+        histBtn.classList.toggle("tab-disabled", shouldDisable);
+        if (warnIcon) warnIcon.style.display = shouldDisable ? "" : "none";
+        // Remove any previously attached tooltip listeners before re-attaching
+        if (histBtn._disabledTipOver) histBtn.removeEventListener("mouseover", histBtn._disabledTipOver);
+        if (histBtn._disabledTipMove) histBtn.removeEventListener("mousemove", histBtn._disabledTipMove);
+        if (histBtn._disabledTipOut) histBtn.removeEventListener("mouseout", histBtn._disabledTipOut);
+        if (shouldDisable) {
+          const _msg = `<b><i class="fas fa-triangle-exclamation" style="color:#f59f00"></i> Histograms unavailable</b><br><span style="font-size:0.88em;color:#ccc">Depth histograms are only available at <b>Strain</b> view level — they require individual alignment data that is not present for ${level}-level aggregates.<br>Switch <b>View level</b> back to <b>Strain</b> to enable this tab.</span>`;
+          histBtn._disabledTipOver = (e) => showTip(_msg, e);
+          histBtn._disabledTipMove = (e) => moveTip(e);
+          histBtn._disabledTipOut = () => hideTip();
+          histBtn.addEventListener("mouseover", histBtn._disabledTipOver);
+          histBtn.addEventListener("mousemove", histBtn._disabledTipMove);
+          histBtn.addEventListener("mouseout", histBtn._disabledTipOut);
+          // If the histogram tab is currently active, switch to summary
+          if (activeTab === "histogram") {
+            const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
+            if (summaryBtn) summaryBtn.click();
+          }
+        }
+      }
+      (function () {
+        const el = document.getElementById("view-level");
+        if (!el) return;
+        el.addEventListener("change", () => {
+          _invalidateFilterCache();
+          _updateHistTabDisabled();
+          redraw();
+        });
+      })();
+      // ── Client-side hierarchy synthesis ──────────────────────────────────
+      // Reports built from the flat TSV/XLSX path — and the bundled sample data
+      // in heatmap_boot.js / pages.js — have no taxonomic hierarchy: every row
+      // is an un-leveled strain with no Species/Genus TASS. So that the View
+      // level dropdown works EVERYWHERE (not just JSON-hierarchy reports), we
+      // synthesize Species (Subkey) and Genus rollup rows here when none exist.
+      //
+      // The synthesized parent TASS is a proxy: the MAX member TASS (a species
+      // is detected at least as strongly as its best strain). JSON-hierarchy
+      // reports already carry properly-computed Species/Genus TASS rows, so this
+      // is skipped for them. Idempotent — guarded by a flag.
+      let _HIERARCHY_SYNTHESIZED = false;
+      function _binomial(name) {
+        const parts = String(name || "")
+          .trim()
+          .split(/\s+/);
+        return parts.slice(0, 2).join(" ") || String(name || "");
+      }
+      function _synthesizeHierarchy() {
+        if (_HIERARCHY_SYNTHESIZED) return;
+
+        // Step 1: normalize — every row without a Level gets "Strain"
+        DATA.forEach((r) => {
+          if (!r["Level"]) r["Level"] = "Strain";
+        });
+
+        // Step 2: collect which (specimen × subkey) and (specimen × genus) pairs
+        // already have pre-built Species / Genus rows (e.g. from BOOT hierarchy JSON).
+        // We only synthesize proxy rows for pairs that are NOT already covered.
+        const existingSpeciesKeys = new Set();
+        const existingGenusKeys = new Set();
+        for (const r of DATA) {
+          const spec = r["Specimen ID"] || "";
+          if (r["Level"] === "Species") {
+            existingSpeciesKeys.add(spec + "\0" + (r["Subkey"] || r["Taxonomic ID #"] || ""));
+          }
+          if (r["Level"] === "Genus") {
+            existingGenusKeys.add(spec + "\0" + (r["Genus"] || ""));
+          }
+        }
+
+        const num_ = (v) => {
+          const n = parseFloat(v);
+          return isNaN(n) ? 0 : n;
+        };
+        const byGenus = new Map(); // (spec \0 genus)  → strain rows needing a proxy
+        const bySpecies = new Map(); // (spec \0 subkey) → strain rows needing a proxy
+
+        for (const r of DATA) {
+          if (r["Level"] !== "Strain") continue;
+          const spec = r["Specimen ID"] || "";
+          const sub = r["Subkey"] || r["Taxonomic ID #"] || "";
+          const gen = r["Genus"] || "";
+          if (sub) {
+            const k = spec + "\0" + sub;
+            if (!existingSpeciesKeys.has(k)) {
+              (bySpecies.get(k) || bySpecies.set(k, []).get(k)).push(r);
+            }
+          }
+          if (gen) {
+            const k = spec + "\0" + gen;
+            if (!existingGenusKeys.has(k)) {
+              (byGenus.get(k) || byGenus.set(k, []).get(k)).push(r);
+            }
+          }
+        }
+
+        // genus-level proxy TASS = max strain TASS within the genus group
+        const genusTassByKey = new Map();
+        for (const [k, rows] of byGenus) {
+          genusTassByKey.set(k, Math.max(...rows.map((r) => num_(r["TASS Score"]))));
+        }
+
+        const newRows = [];
+
+        // Species proxy rows + back-fill Species/Genus TASS onto contributing strains
+        for (const [k, rows] of bySpecies) {
+          const rep = rows.reduce((a, b) => (num_(b["TASS Score"]) > num_(a["TASS Score"]) ? b : a));
+          const spTass = num_(rep["TASS Score"]);
+          const gKey = (rep["Specimen ID"] || "") + "\0" + (rep["Genus"] || "");
+          const gTass = genusTassByKey.has(gKey) ? genusTassByKey.get(gKey) : spTass;
+          rows.forEach((r) => {
+            if (r["Species TASS"] == null) r["Species TASS"] = spTass;
+            if (r["Genus TASS"] == null) r["Genus TASS"] = gTass;
+          });
+          const sRow = Object.assign({}, rep);
+          sRow["Level"] = "Species";
+          sRow["Detected Organism"] = _binomial(rep["Detected Organism"]);
+          sRow["Taxonomic ID #"] = rep["Subkey"] || rep["Taxonomic ID #"] || "";
+          sRow["TASS Score"] = spTass;
+          sRow["Species TASS"] = spTass;
+          sRow["Genus TASS"] = gTass;
+          sRow["# Reads Aligned"] = rows.reduce((s, r) => s + num_(r["# Reads Aligned"]), 0);
+          sRow["Coverage"] = Math.max(...rows.map((r) => num_(r["Coverage"])));
+          newRows.push(sRow);
+        }
+
+        // Genus proxy rows
+        for (const [k, rows] of byGenus) {
+          const rep = rows.reduce((a, b) => (num_(b["TASS Score"]) > num_(a["TASS Score"]) ? b : a));
+          const gTass = genusTassByKey.get(k);
+          const gRow = Object.assign({}, rep);
+          gRow["Level"] = "Genus";
+          gRow["Detected Organism"] = rep["Genus"] || _binomial(rep["Detected Organism"]);
+          gRow["TASS Score"] = gTass;
+          gRow["Species TASS"] = gTass;
+          gRow["Genus TASS"] = gTass;
+          gRow["# Reads Aligned"] = rows.reduce((s, r) => s + num_(r["# Reads Aligned"]), 0);
+          gRow["Coverage"] = Math.max(...rows.map((r) => num_(r["Coverage"])));
+          newRows.push(gRow);
+        }
+
+        if (newRows.length) DATA.push(...newRows);
+        _HIERARCHY_SYNTHESIZED = true;
+      }
+
+      // Keep the View-level dropdown in sync with the data. We synthesize a
+      // hierarchy when needed (above), so all three levels are normally usable.
+      // Only options with genuinely zero rows are disabled (never the whole
+      // control), so the dropdown never looks dead.
+      function _syncViewLevelOptions() {
+        _synthesizeHierarchy();
+        const el = document.getElementById("view-level");
+        if (!el) return;
+        const have = new Set(DATA.map((r) => r["Level"] || "Strain"));
+        let changed = false;
+        for (const opt of el.options) {
+          const present = opt.value === "Strain" ? true : have.has(opt.value);
+          opt.disabled = !present;
+          // Strip any stale "(no rows)" suffix, then re-add if needed.
+          const base = opt.textContent.replace(/\s*\(no rows\)\s*$/, "");
+          opt.textContent = present ? base : base + " (no rows)";
+          if (!present && el.value === opt.value) {
+            el.value = "Strain";
+            changed = true;
+          }
+        }
+        el.disabled = false;
+        el.title =
+          "Switch the granularity of the TABLE, heatmap and TASS/coverage plots " +
+          "between strain (key), species (subkey) and genus. Rolls strains up " +
+          "into their parent aggregation — most useful when a sample has lots of " +
+          "strain discordance (many near-tied strains of one species). Note: it " +
+          "updates the row-level tables and plots, not the sunburst/summary " +
+          "genus charts, which always span all ranks.";
+        if (changed) {
+          _invalidateFilterCache();
+          redraw();
+        }
+      }
       document.getElementById("filter-mc").addEventListener("change", redraw);
       [
         "hm-value-col",
@@ -11505,6 +12541,8 @@
         "hm-scale",
         "tass-rank",
         "tass-scale",
+        "tass-level",
+        "tass-show-cutoff",
         "sun-metric",
         "cov-scale",
         "explore-bubble-scale",
@@ -12000,6 +13038,12 @@
           const passCount = DATA.filter((r) => isTruthy(r["Passes Threshold"])).length;
           const fpEl = document.getElementById("filter-pass");
           if (fpEl && passCount === 0) fpEl.checked = false;
+
+          // Re-sync view-level options. Reset the synthesis guard first so
+          // _synthesizeHierarchy re-runs on the combined data — uploaded rows
+          // from _parseJson arrive without a Level field and need proxy rows.
+          _HIERARCHY_SYNTHESIZED = false;
+          if (typeof _syncViewLevelOptions === "function") _syncViewLevelOptions();
 
           // Recompute BSL levels with merged data
           _computeBslLevels();
@@ -12539,6 +13583,9 @@
           if (fpEl) fpEl.checked = false;
         }
 
+        // Sync the View-level dropdown to what the data actually contains.
+        _syncViewLevelOptions();
+
         // Pre-populate min TASS filter from the recommended best_cutoffs threshold.
         // CRITICAL: also push the value into the paired range slider — otherwise the
         // slider knob stays at its HTML default (70) while the number reads e.g. 20,
@@ -12598,7 +13645,13 @@
         _buildLongitudinalSection();
         _initExportEnhancer();
         const pdfBtn = document.getElementById("report-pdf-btn");
-        if (pdfBtn) pdfBtn.addEventListener("click", _openReportPdfModal);
+        if (pdfBtn) {
+          pdfBtn.addEventListener("click", _openReportPdfModal);
+          // Hover tooltip — same pattern as info-tip-btn icons
+          pdfBtn.addEventListener("mouseenter", (ev) => showTip(pdfBtn.dataset.tip, ev));
+          pdfBtn.addEventListener("mousemove", moveTip);
+          pdfBtn.addEventListener("mouseleave", hideTip);
+        }
 
         // ── Wire up sortable map-panel column headers ──────────────────────
         _initPanelSortHeaders();

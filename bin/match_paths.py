@@ -643,6 +643,18 @@ def parse_args(argv=None):
              "and without removal applied to the scoring pipeline.",
     )
     parser.add_argument(
+        '--no_read_removal',
+        action='store_true',
+        default=False,
+        help="Disable conflict read removal ENTIRELY for the scoring pipeline. "
+             "Conflict regions / breadth-change stats are still computed and written "
+             "to disk (so reference lengths and reports are intact), but NO reads are "
+             "removed: strain coverage, Gini, numreads and the full TASS score are all "
+             "derived from the complete original alignment set. Equivalent in effect to "
+             "--skip_read_removal_scoring; provided as a clearer name for running the "
+             "on/off TASS comparison when post-removal coverage is very low.",
+    )
+    parser.add_argument(
         "--filtered_bam", default=False,  help="Create a filtered bam file of a certain name post sourmash sigfile matching..", type=str
     )
     parser.add_argument(
@@ -1389,6 +1401,45 @@ def main():
             desc_col=args.namecol,
         )
 
+    # ── Early taxdump load + species/genus rollup maps ────────────────────
+    # determine_conflicts needs accession→species (subkey) and accession→genus
+    # (toplevelkey) maps so it can apply LCA-aware read removal: reads ambiguous
+    # only among members of the same species/genus are NOT removed at that level.
+    # The full reference_hits-based maps are built later (after taxdump load at
+    # the original site); we replicate the SAME rollup here from the matchfile
+    # taxids so the grouping is identical. taxdump is loaded once and reused.
+    taxdump, taxdump_names = {}, {}
+    _taxdump_loaded = False
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+        print("Loading taxdump from", args.taxdump)
+        taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
+        _taxdump_loaded = True
+    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+        print("Loading taxdump names from", args.taxdump)
+        taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
+
+    _early_subrank = args.subrank
+    if not _early_subrank or _early_subrank.lower() in ("none", "strain"):
+        _early_subrank = None
+    early_acc_to_subkey = {}
+    early_acc_to_toplevelkey = {}
+    if early_acc_to_taxid and args.rank and taxdump:
+        for _acc, _tid in early_acc_to_taxid.items():
+            if not _tid:
+                continue
+            _top = taxid_to_rank(_tid, taxdump, args.rank)
+            _sub = taxid_to_rank(_tid, taxdump, _early_subrank) if _early_subrank else _tid
+            _sub_s = str(_sub if _sub else _tid)
+            _top_s = str(_top if _top else _tid)
+            early_acc_to_subkey[_acc] = _sub_s
+            early_acc_to_toplevelkey[_acc] = _top_s
+            _acc_nov = re.sub(r"\.\d+$", "", _acc)
+            early_acc_to_subkey[_acc_nov] = _sub_s
+            early_acc_to_toplevelkey[_acc_nov] = _top_s
+        print(f"[LCA] built early rollup maps: {len(early_acc_to_subkey)} subkey, "
+              f"{len(early_acc_to_toplevelkey)} toplevelkey entries "
+              f"(rank='{args.rank}', subrank='{_early_subrank}')")
+
     if args.minhash_weight > 0:
         if args.comparisons and os.path.exists(args.comparisons):
             # if ends with csv
@@ -1425,6 +1476,8 @@ def main():
                 step_size=args.step_size,
                 accession_to_taxid=early_acc_to_taxid if early_acc_to_taxid else None,
                 taxid_to_name=early_taxid_to_desc if early_taxid_to_desc else None,
+                accession_to_subkey=early_acc_to_subkey if early_acc_to_subkey else None,
+                accession_to_toplevelkey=early_acc_to_toplevelkey if early_acc_to_toplevelkey else None,
                 taxid_removal_stats=args.taxid_removal_stats,
                 dominance_protect_ratio=args.dominance_protect_ratio,
             )
@@ -1434,9 +1487,10 @@ def main():
             # When --skip_read_removal_scoring is set we simply discard the
             # removal dict so that count_reference_hits uses every read for
             # numreads / coverage / gini, giving a clean baseline for comparison.
-            if getattr(args, 'skip_read_removal_scoring', False):
+            if getattr(args, 'skip_read_removal_scoring', False) or getattr(args, 'no_read_removal', False):
+                _flag = 'no_read_removal' if getattr(args, 'no_read_removal', False) else 'skip_read_removal_scoring'
                 print(
-                    "[skip_read_removal_scoring] Conflict removal computed but NOT applied "
+                    f"[{_flag}] Conflict removal computed but NOT applied "
                     "to scoring reads.  All original reads will be used for coverage, "
                     "Gini, numreads, and TASS-score inputs."
                 )
@@ -1523,11 +1577,12 @@ def main():
         mmbert['taxid'] = mmbert['taxid'].astype(str)
         mmbert_dict = mmbert.set_index('taxid').T.to_dict()
 
-    taxdump, taxdump_names = {}, {}
-    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
+    # taxdump/taxdump_names were already loaded early (before determine_conflicts)
+    # for the LCA rollup maps; only load here if that early load was skipped.
+    if not taxdump and args.taxdump and os.path.exists(os.path.join(args.taxdump, "nodes.dmp")):
         print("Loading taxdump from", args.taxdump)
         taxdump = load_taxdump(os.path.join(args.taxdump, "nodes.dmp"))
-    if args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
+    if not taxdump_names and args.taxdump and os.path.exists(os.path.join(args.taxdump, "names.dmp")):
         print("Loading taxdump names from", args.taxdump)
         taxdump_names = load_names(os.path.join(args.taxdump, "names.dmp"))
 
@@ -1858,7 +1913,10 @@ def main():
         _cdf['subkey'] = _cdf.index.map(lambda a: acc_to_subkey.get(a, a))
         # Weighted aggregation: weight by Total Reads per accession
         _numeric_cols = [c for c in ['Total Reads', 'Pass Filtered Reads', 'Δ All',
-                         'Reference Length'] if c in _cdf.columns]
+                         'Reference Length',
+                         # LCA-aware (species) columns from determine_conflicts:
+                         'Covered BP Original', 'Covered BP Subkey',
+                         'Pass Filtered Reads Subkey'] if c in _cdf.columns]
         _wavg_cols = ['Δ All%', 'Δ^-1 Breadth', 'Breadth Original', 'Breadth New']
         # Force all numeric columns to numeric dtype (some may arrive as strings)
         for _nc in _numeric_cols + _wavg_cols:
@@ -1874,6 +1932,32 @@ def main():
                 _wavg_parts[col] = _grouped[f'_w_{col}'].sum() / _sums['Total Reads'].replace(0, 1)
         _wavg_df = pd.DataFrame(_wavg_parts)
         subkey_comparison_df = pd.concat([_sums, _wavg_df], axis=1)
+
+        # ── LCA-aware (species) breadth + retention via UNION across members ──
+        # The user's scenario: 3 near-identical Salmonella strains share reads;
+        # strain-level removal cannibalises each strain's coverage. At the SPECIES
+        # level those intra-species reads are NOT conflicts, so we measure species
+        # breadth as the UNION of member coverage (Σ covered_bp ÷ Σ length) under
+        # species-LCA removal, and read_retention as Σ pass_filtered_subkey ÷ Σ total.
+        # These OVERRIDE the strain-derived Δ^-1 Breadth / Breadth New so the
+        # species minhash reflects cross-species separability, not intra-strain
+        # competition.
+        if 'Covered BP Subkey' in _sums.columns and 'Reference Length' in _sums.columns:
+            _len = _sums['Reference Length'].replace(0, 1)
+            _union_breadth_new = 100.0 * _sums['Covered BP Subkey'] / _len
+            _union_breadth_old = 100.0 * _sums['Covered BP Original'] / _len
+            subkey_comparison_df['Breadth Original'] = _union_breadth_old
+            subkey_comparison_df['Breadth New'] = _union_breadth_new
+            subkey_comparison_df['Δ^-1 Breadth'] = (
+                _sums['Covered BP Subkey'] /
+                _sums['Covered BP Original'].replace(0, 1)
+            ).clip(upper=1.0)
+        if 'Pass Filtered Reads Subkey' in _sums.columns:
+            # Species read_retention = reads surviving species-LCA removal ÷ total.
+            subkey_comparison_df['Pass Filtered Reads'] = _sums['Pass Filtered Reads Subkey']
+            subkey_comparison_df['Δ All'] = (
+                _sums['Total Reads'] - _sums['Pass Filtered Reads Subkey']
+            )
         print(f"Aggregated comparison_df: {len(comparison_df)} accessions → {len(subkey_comparison_df)} subkeys")
 
     # ── Build cross-genus conflict clusters from shared_windows_report.csv ──
@@ -1992,7 +2076,21 @@ def main():
         if acc in _cluster_dominance:
             data["cluster_dominance"] = _cluster_dominance[acc]
         elif acc in _sw_cluster_dominance:
-            data["cluster_dominance"] = _sw_cluster_dominance[acc]
+            # The shared-windows-derived dominance dict omits mean_conflict_mapq
+            # and hardcodes cluster_removal_frac=0.0.  Downstream in
+            # optimize_weights the dominant-organism gate floor is
+            #   gate_floor = (1 - removal_frac) * (mean_conflict_mapq/60) * 0.70
+            # so a missing mean_conflict_mapq silently forces gate_floor=0 and
+            # the floor that protects a clear cluster winner never activates.
+            # Inject this reference's mean MAPQ (already computed in
+            # count_reference_hits) so the floor works on the True path too.
+            _sw_cd = dict(_sw_cluster_dominance[acc])
+            try:
+                _sw_mapq = float(data.get("meanmapq", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                _sw_mapq = 0.0
+            _sw_cd.setdefault("mean_conflict_mapq", _sw_mapq)
+            data["cluster_dominance"] = _sw_cd
         top = data.get('key')
         species_to_all_accs[top].add(acc)
         data = compute_scores_per(
@@ -2364,6 +2462,89 @@ def main():
         }
         print(f"Filtered strains by min_reads_align={_min_ra}: {_before} → {len(strain_summary)}")
 
+    # ── Union (LCA-aware) covered-bp per species / genus ───────────────────
+    # determine_conflicts emitted per-accession covered bases under species-LCA
+    # and genus-LCA removal (intra-group shared reads kept). Summing these across
+    # a group's accessions gives the UNION breadth numerator for that group, used
+    # to override the (collapsed) strain-removal coverage at species/genus level.
+    _subkey_union_cb = {}
+    _toplevelkey_union_cb = {}
+    _subkey_cov_frac = {}
+    _toplevelkey_cov_frac = {}
+    _subkey_numreads_override = {}
+    _toplevelkey_numreads_override = {}
+    if comparison_df is not None and not comparison_df.empty and 'Covered BP Subkey' in comparison_df.columns:
+        _ucb = comparison_df.copy()
+        _ucb['_sk'] = _ucb.index.map(lambda a: str(acc_to_subkey.get(a, a)))
+        _ucb['_tlk'] = _ucb.index.map(lambda a: str(acc_to_toplevelkey.get(a, a)))
+        for _c in ('Covered BP Subkey', 'Covered BP Toplevelkey',
+                   'Pass Filtered Reads Subkey', 'Pass Filtered Reads Toplevelkey'):
+            if _c in _ucb.columns:
+                _ucb[_c] = pd.to_numeric(_ucb[_c], errors='coerce').fillna(0)
+        _subkey_union_cb = {str(k): float(v) for k, v in
+                            _ucb.groupby('_sk')['Covered BP Subkey'].sum().items()}
+        _toplevelkey_union_cb = {str(k): float(v) for k, v in
+                                 _ucb.groupby('_tlk')['Covered BP Toplevelkey'].sum().items()}
+
+        # ── Representative breadth fraction per group ─────────────────────
+        # Σcovered/Σlength dilutes a species when a divergent/poorly-covered
+        # member reference is summed in (e.g. 2 strains at ~100% but species
+        # shown at 71%). Conspecific strains are near-identical genomes, so the
+        # species/genus breadth is best represented by the MAXIMUM per-member
+        # breadth fraction (Covered BP Subkey / Reference Length), not the
+        # length-weighted pool. Pass this as a coverage override.
+        if 'Reference Length' in _ucb.columns:
+            _len = pd.to_numeric(_ucb['Reference Length'], errors='coerce').fillna(0)
+            _sk_frac = (_ucb['Covered BP Subkey'] / _len.replace(0, pd.NA)).fillna(0).clip(upper=1.0)
+            _tlk_frac = (_ucb['Covered BP Toplevelkey'] / _len.replace(0, pd.NA)).fillna(0).clip(upper=1.0)
+            _subkey_cov_frac = {str(k): float(v) for k, v in
+                                _sk_frac.groupby(_ucb['_sk']).max().items()}
+            _toplevelkey_cov_frac = {str(k): float(v) for k, v in
+                                     _tlk_frac.groupby(_ucb['_tlk']).max().items()}
+
+        # ── Best-strain breadth override ──────────────────────────────────────
+        # covered_bp_subkey can undercount when conserved cross-species regions
+        # (rRNA, housekeeping genes) are stripped by species-LCA removal, making
+        # the representative fraction artificially low (e.g. 72% even when every
+        # strain's actual post-removal breadth is ~100%).  Take the max against
+        # each strain's actual post-strain-removal coverage so that species/genus
+        # coverage and the TASS breadth score reflect the best available alignment
+        # quality rather than cross-species-unique coverage only.
+        for _acc, _hit in strain_summary.items():
+            _sk = str(_hit.get('subkey', _hit.get('key', _acc)))
+            _tlk = str(_hit.get('toplevelkey', _acc))
+            _cov = float(_hit.get('coverage', 0) or 0)
+            if _cov > _subkey_cov_frac.get(_sk, 0.0):
+                _subkey_cov_frac[_sk] = _cov
+            if _cov > _toplevelkey_cov_frac.get(_tlk, 0.0):
+                _toplevelkey_cov_frac[_tlk] = _cov
+
+        # ── Pre-minmapq numreads override (species/genus level) ───────────────
+        # The per-strain numreads only counts MAPQ≥minmapq reads (default 7).
+        # For near-identical strains (Salmonella), most reads have MAPQ=0 and
+        # are filtered, leaving ~5% of actual reads at species level. But MAPQ=0
+        # is not ambiguous about the species — only about which strain — so
+        # species/genus RPM/abundance should use the pre-minmapq count from
+        # comparison_df (Pass Filtered Reads Subkey = reads surviving species-LCA
+        # removal regardless of MAPQ). Sum per species gives the true species read
+        # total without double-counting (each read has one primary alignment).
+        _subkey_numreads_override = {}
+        _toplevelkey_numreads_override = {}
+        if 'Pass Filtered Reads Subkey' in _ucb.columns:
+            _nr = pd.to_numeric(_ucb.get('Pass Filtered Reads Subkey', 0), errors='coerce').fillna(0)
+            _nr_tlk = pd.to_numeric(_ucb.get('Pass Filtered Reads Toplevelkey',
+                                             _ucb.get('Pass Filtered Reads Subkey', 0)),
+                                    errors='coerce').fillna(0)
+            _subkey_numreads_override = {str(k): float(v) for k, v in
+                                         _nr.groupby(_ucb['_sk']).sum().items()}
+            _toplevelkey_numreads_override = {str(k): float(v) for k, v in
+                                              _nr_tlk.groupby(_ucb['_tlk']).sum().items()}
+            print(f"[LCA] pre-minmapq numreads: {len(_subkey_numreads_override)} species groups overridden")
+
+        print(f"[LCA] union covered-bp: {len(_subkey_union_cb)} species, "
+              f"{len(_toplevelkey_union_cb)} genera; "
+              f"representative-breadth override: {len(_subkey_cov_frac)} species")
+
     # ── Subkey (species) level aggregation ─────────────────────────────────
     # Intermediate aggregation: strain → subkey (species).  Each subkey group
     # aggregates all strains sharing the same species-level taxid and will
@@ -2376,6 +2557,9 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        group_covered_bp_override=_subkey_union_cb if _subkey_union_cb else None,
+        group_coverage_override=_subkey_cov_frac if _subkey_cov_frac else None,
+        group_numreads_override=_subkey_numreads_override if _subkey_numreads_override else None,
     )
     # Attach strain-level members to each subkey group
     for _, sk_data in subkey_summary.items():
@@ -2396,6 +2580,9 @@ def main():
         mapq_gini_power=args.mapq_gini_power,
         contig_penalty_power=args.contig_penalty_power,
         depth_concentration_power=args.depth_concentration_power,
+        group_covered_bp_override=_toplevelkey_union_cb if _toplevelkey_union_cb else None,
+        group_coverage_override=_toplevelkey_cov_frac if _toplevelkey_cov_frac else None,
+        group_numreads_override=_toplevelkey_numreads_override if _toplevelkey_numreads_override else None,
     )
     # iterate through aggregate_dict, make the accession_to_key dict
     for k, v in aggregate_dict.items():
