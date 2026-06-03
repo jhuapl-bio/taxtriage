@@ -39,7 +39,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image , KeepTogether
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, NextPageTemplate, HRFlowable
 from reportlab.platypus.flowables import AnchorFlowable, Flowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
@@ -229,7 +230,7 @@ def resolve_rollup_annotation(species_record=None, qualifying_strains=None):
 
 def build_subkey_display_lookup(species_group, args, min_conf, min_reads=1,
                                 max_members=None):
-    """Build visible species/subkey rows plus directly qualifying child strains."""
+    """Build visible speciess plus directly qualifying child strains."""
     lookup = {}
     for sk_grp in get_subkey_groups(species_group):
         sk = str(sk_grp.get('subkey', sk_grp.get('key', 'unknown')))
@@ -538,20 +539,22 @@ class ControlSparkBar(Flowable):
                 x = val * w
                 c.line(x, by, x, by + bar_h)
 
-        # ── Teal zone (in-silico control range) ─────────────────────────
+        # ── Purple zone (in-silico control range) ───────────────────────
         isil_tass_vals = [_norm(v.get("tass_score", 0)) for v in self.insilico_values]
         if isil_tass_vals:
             isil_min = min(isil_tass_vals)
             isil_max = max(isil_tass_vals)
-            teal_x = isil_min * w
-            teal_w = max(1, (isil_max - isil_min) * w)
+            purple_x = isil_min * w
+            purple_w = max(1, (isil_max - isil_min) * w)
             if isil_max >= 0.95:
-                teal_w = w - teal_x
-            # Light teal with transparency
-            c.setFillColor(colors.Color(0.6, 0.88, 0.88, 0.45))
-            c.rect(teal_x, by, teal_w, bar_h, fill=1, stroke=0)
-            # Tick marks for individual insilico values
-            c.setStrokeColor(colors.Color(0.0, 0.55, 0.55, 0.7))
+                purple_w = w - purple_x
+
+            # Light purple with transparency
+            c.setFillColor(colors.Color(106/255, 27/255, 154/255, alpha=0.35))
+            c.rect(purple_x, by, purple_w, bar_h, fill=1, stroke=0)
+
+            # Tick marks for individual in-silico values
+            c.setStrokeColor(colors.Color(106/255, 27/255, 154/255, alpha=0.75))
             c.setLineWidth(0.5)
             for val in isil_tass_vals:
                 x = val * w
@@ -590,7 +593,7 @@ class ControlSparkBar(Flowable):
                 return "\u221e\u00d7"   # ∞×
             return f"{v:.1f}\u00d7"
 
-        c.setFont("Helvetica", 5)
+        c.setFont("Helvetica", 6)
 
         # Determine which row each label set occupies:
         # When both exist: neg on row 0 (bottom), pos on row 1 (above).
@@ -633,15 +636,15 @@ class ControlSparkBar(Flowable):
                 c.drawString(pos_txt_w + 4, row_y, pos_rd_txt)
             _current_row += 1
 
-        # In-silico control folds — teal text, prefixed with "∞"
+        # In-silico control folds — purple text, prefixed with "∞"
         if self._has_isil_label:
             row_y = _current_row * self._row_h + 0.5
             if self.missing_from_insilico:
-                c.setFillColor(colors.Color(0.0, 0.45, 0.45, 1))
+                c.setFillColor(colors.Color(106/255, 27/255, 154/255, 1))
                 c.drawString(1, row_y, "\u221e not in sim")  # ∞ prefix
             elif isil_tass_vals:
                 isil_fold_txt = "\u221e " + _fold_str(self.insilico_tass_fold)  # ∞ prefix
-                c.setFillColor(colors.Color(0.0, 0.45, 0.45, 1))
+                c.setFillColor(colors.Color(106/255, 27/255, 154/255, 1))
                 c.drawString(1, row_y, isil_fold_txt)
 
                 if self.insilico_reads_fold is not None:
@@ -649,7 +652,7 @@ class ControlSparkBar(Flowable):
                     if isil_rd_txt:
                         isil_rd_txt = isil_rd_txt.rstrip("\u00d7") + "\u00d7 rd"
                     isil_txt_w = c.stringWidth(isil_fold_txt, "Helvetica", 5)
-                    c.setFillColor(colors.Color(0.2, 0.55, 0.55, 1))
+                    c.setFillColor(colors.Color(106/255, 27/255, 154/255, 1))
                     c.drawString(isil_txt_w + 4, row_y, isil_rd_txt)
 
 
@@ -1500,7 +1503,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     When use_subkey=True (default):
             - Each genus/toplevel group is followed by a species/subkey summary row.
             - Any child strains that also pass the cutoff are rendered immediately
-                below that species/subkey row.
+                below that species.
 
     When use_subkey=False:
       - Original flat per-strain layout (one row per strain, original behaviour).
@@ -1525,7 +1528,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         'ANIStyle', parent=small_style, fontSize=6, leading=8,
         wordWrap='CJK')
     species_name_style = ParagraphStyle(
-        'SpeciesName', parent=small_style, fontSize=10.5, leading=11.5,
+        'SpeciesName', parent=small_style, fontSize=9.5, leading=11.5,
         fontName='Helvetica-Bold', leftIndent=6, wordWrap='CJK')
     species_name_style_small = ParagraphStyle(
         'SpeciesNameSmall', parent=small_style, fontSize=9.5, leading=10.5,
@@ -1543,7 +1546,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         'ChildStrainData', parent=small_style, fontSize=6.8, leading=7.8,
         alignment=TA_CENTER, wordWrap='CJK')
     group_header_style = ParagraphStyle(
-        'GroupHeader', parent=small_style, fontSize=12, leading=13,
+        'GroupHeader', parent=small_style, fontSize=10.5, leading=13,
         fontName='Helvetica-Bold', wordWrap='CJK')
     group_strain_summary_style = ParagraphStyle(
         'GroupStrainSummary', parent=small_style, fontSize=9, leading=9,
@@ -1611,20 +1614,20 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     # ── Headers ──────────────────────────────────────────────────────────────
     header_style = ParagraphStyle(
         'HeaderStyle', parent=small_style, fontSize=8, leading=9,
-        fontName='Helvetica-Bold', textColor=colors.whitesmoke,
+        fontName='Helvetica-Bold', textColor=colors.HexColor('#1F4E79'),
         alignment=TA_CENTER, wordWrap='CJK')
-    base_headers = ['', Paragraph('Organism', header_style), Paragraph('TASS', header_style)]
+    base_headers = ['', Paragraph('Organism', header_style), Paragraph('TASS<br/>Score', header_style)]
     if show_k2_column:
         base_headers.append(Paragraph('Classifier<br/>Reads', header_style))
     base_headers += [
         Paragraph('Aligned Reads', header_style),
         Paragraph('RPM', header_style),
-        Paragraph('Cov.', header_style),
+        Paragraph('%<br/>Coverage', header_style),
     ]
     if show_ani_column:
         base_headers.append(Paragraph('High<br/>ANI', header_style))
     if show_control_bar:
-        base_headers.append(Paragraph('Ctrl', header_style))
+        base_headers.append(Paragraph('Control<br/>Comparison', header_style))
     n_base = len(base_headers)
 
     # Strain detail column in subkey mode (single column holding a nested mini-table).
@@ -1637,7 +1640,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
     n_total = len(headers)
 
     # ── Column widths ─────────────────────────────────────────────────────────
-    #   Columns: [indicator, Organism, TASS, (Classifier Reads), Reads, RPM, Coverage, (High ANI), (Ctrl)]
+    #   Columns: [color swatch, Organism, TASS Score, (Classifier Reads), Reads, RPM, % Coverage, (High ANI), (Control Comparison)]
     def _base_col_widths(w):
         # All proportions are normalised to sum exactly to w so the table spans
         # the full available_width regardless of which optional columns are present.
@@ -1814,12 +1817,14 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             row_marker = ' <font color="#666666" size="7"><i>species from qualifying strains</i></font>'
         flora_tag = _commensal_site_tag(species_record, species_record.get('normalized_sample_site', ''))
         _mt_tag = _mol_type_tag(species_record.get('mol_type'))
-        name_html = (
-            f'{display_name}{_mt_tag} '
+        _hc_prefix = '<b>★</b> ' if indicator_text else ''
+        _details_html = (
+            f'{_hc_prefix}{_mt_tag} '
             f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" '
             f'color="blue">{species_key}</link>)'
             f'{row_marker}{flora_tag}{zscore_sym}'
         )
+        name_html = f'{display_name}<br/><font size="7">{_details_html.strip()}</font>'
 
         species_reads = float(species_record.get('numreads', 0) or 0)
         pct = (species_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
@@ -1842,7 +1847,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         _name_cell = Paragraph(name_html, row_name_style)
 
         row = [
-            Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
+            '',
             _name_cell,
             Paragraph(f"{species_record.get('tass_score', 0):.1f}", row_data_style),
         ]
@@ -1870,7 +1875,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             _species_above_strains_below = (
                 species_entry.get('species_passes') and not species_entry.get('visible_strains')
             )
-            _primary_hex = '#E8A0A0' if _species_above_strains_below else '#E85F50'
+            _primary_hex = '#F0C2C2' if _species_above_strains_below else '#E8A0A0'
             _SUMMARY_PRIMARY = colors.HexColor(_primary_hex)
             if row_below_zscore:
                 ind_color = colors.Color(_SUMMARY_PRIMARY.red, _SUMMARY_PRIMARY.green, _SUMMARY_PRIMARY.blue, alpha=0.35 * flora_mult)
@@ -1886,8 +1891,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * flora_mult)
                 row_color = get_category_color(microbial_category, ann_class, alpha=0.20 * flora_mult)
         table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
-        table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
-        table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.8, colors.HexColor('#D8D8D8')))
+        table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.8, colors.HexColor('#D7E3EC')))
         table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 4))
         table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 4))
         # Species row: slight indent from genus header
@@ -1911,26 +1915,28 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         strain_key = strain.get('key', '')
         flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
         _mt_tag = _mol_type_tag(strain.get('mol_type'))
+        _hc_prefix = '<b>★</b> ' if indicator_text else ''
         if promoted:
             followup_symbol = ''
             if strain.get('harmful_followup'):
                 followup_symbol = f' {_WARN_SYMBOL_HTML}'
-            name_html = (
-                f'{followup_symbol}'
-                f'{strain.get("name", "Unknown")}{_mt_tag} '
+            _details_html = (
+                f'{followup_symbol}{_hc_prefix}{_mt_tag} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>)'
                 f' <font color="#666666" size="7"><i>strain</i></font>'
                 f'{flora_tag}{zscore_sym}'
             )
+            name_html = f'{strain.get("name", "Unknown")}<br/><font size="7">{_details_html.strip()}</font>'
         else:
-            name_html = (
-                f'! {strain.get("name", "Unknown")}{_mt_tag} '
+            _details_html = (
+                f'{_hc_prefix}{_mt_tag} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>) '
                 f'<font color="#666666" size="6"><i>qualifying strain</i></font>'
                 f'{flora_tag}{zscore_sym}'
             )
+            name_html = f'! {strain.get("name", "Unknown")}<br/><font size="7">{_details_html.strip()}</font>'
         high_ani_text = _build_high_ani_paragraph(strain, row_ani_style)
         strain_reads = float(strain.get('numreads', 0) or 0)
         pct = (strain_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
@@ -1939,7 +1945,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         _name_cell_s = Paragraph(name_html, row_name_style)
 
         row = [
-            Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
+            '',
             _name_cell_s,
             Paragraph(f"{strain.get('tass_score', 0):.1f}", row_data_style),
         ]
@@ -1964,7 +1970,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             # Promoted strains are always above the threshold (they come from visible_strains),
             # so use dark red (#E85F50) for Primary — never the light summary shade (#E8A0A0).
             if 'Primary' in str(microbial_category):
-                _PROMOTED_PRIMARY = colors.HexColor('#E85F50')
+                _PROMOTED_PRIMARY = colors.HexColor("#E85F50")
                 if row_below_zscore:
                     ind_color = colors.Color(_PROMOTED_PRIMARY.red, _PROMOTED_PRIMARY.green, _PROMOTED_PRIMARY.blue, alpha=0.35 * flora_mult)
                     row_color = colors.Color(_PROMOTED_PRIMARY.red, _PROMOTED_PRIMARY.green, _PROMOTED_PRIMARY.blue, alpha=0.08 * flora_mult)
@@ -1985,14 +1991,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * flora_mult)
             row_color = get_category_color(microbial_category, ann_class, alpha=0.10 * flora_mult)
         table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
-        table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
         if promoted:
-            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.8, colors.HexColor('#D8D8D8')))
+            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.8, colors.HexColor('#D7E3EC')))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 4))
             table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 4))
             table_styles.append(('LEFTPADDING', (1, row_idx), (1, row_idx), 14))
         else:
-            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.5, colors.HexColor('#E3E3E3')))
+            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.5, colors.HexColor('#E6EEF4')))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 3))
             table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 3))
             # Strain row: deeper indent than species, clearly subordinate
@@ -2075,11 +2080,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             _zscore_sym = ''
 
         _flora_tag = _commensal_site_tag(best, best.get('normalized_sample_site', ''))
-        name_html_base = (
-            f'{display_name}{_mt_tag} '
+        _hc_prefix = '<b>★</b> ' if indicator_text else ''
+        _details_html = (
+            f'{followup_symbol}{_hc_prefix}{_mt_tag} '
             f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={display_key}" '
-            f'color="blue">{display_key}</link>){followup_symbol}{row_marker}{_flora_tag}{_zscore_sym}'
+            f'color="blue">{display_key}</link>){row_marker}{_flora_tag}{_zscore_sym}'
         )
+        name_html_base = f'{display_name}<br/><font size="7">{_details_html.strip()}</font>'
 
         has_appendix_entry = bool(detail_members)
         if not show_inline_table and has_appendix_entry:
@@ -2127,7 +2134,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 _display_tass = _sk_grp.get('tass_score', _display_tass)
 
         row = [
-            Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
+            '',
             Paragraph(name_html, row_name_style),
             Paragraph(f"{_display_tass:.1f}", row_data_style),
         ]
@@ -2205,14 +2212,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * _flora_mult)
                 row_color = get_category_color(microbial_category, ann_class, alpha=0.15 * _flora_mult)
         table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
-        table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
         if _row_below_zscore:
             table_styles.append(('TEXTCOLOR', (1, row_idx), (-1, row_idx),
                                  colors.Color(0.6, 0.6, 0.6, 1)))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 3))
             table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 3))
             table_styles.append(('FONTSIZE', (1, row_idx), (-1, row_idx), 7))
-        table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1.5, colors.HexColor('#CCCCCC')))
+        table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1.5, colors.HexColor('#C9D8E3')))
         if not _row_below_zscore:
             table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
@@ -2330,7 +2336,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 table_styles.append(('LINEABOVE', (0, row_idx), (-1, row_idx),
                                      2.0, colors.HexColor('#999999')))
                 table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx),
-                                     0.5, colors.HexColor('#CCCCCC')))
+                                     0.5, colors.HexColor('#C9D8E3')))
                 table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
                 table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 6))
                 table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'CENTER'))
@@ -2366,29 +2372,30 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             emitted_subkeys_per_group[species_key] = set()
 
             group_name = species_group.get('toplevelname', 'Unknown')
-            group_reads = species_group.get('numreads', 0)
-            group_k2_reads = species_group.get('k2_reads', 0)
-
             group_strain_names = strains_per_group.get(species_key, [])
             n_strains = len(group_strain_names)
             n_species_rows = len((subkey_display_lookup or {}).get(species_key, {}))
 
+            if n_species_rows:
+                _group_summary = (
+                    f'{n_species_rows} species; '
+                    f'{n_strains} qualifying strain{"s" if n_strains != 1 else ""}'
+                )
+            else:
+                _group_summary = f'{n_strains} likely detected organism{"s" if n_strains != 1 else ""}'
+
             _grp_flora = _commensal_site_tag(species_group, species_group.get('normalized_sample_site', ''))
             group_name_para = Paragraph(
                 f'<b><link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={species_key}" '
-                f'color="blue">{group_name}</link></b>{_grp_flora}',
+                f'color="blue">{group_name}</link></b>{_grp_flora} '
+                f'<font size="8" color="#5F6B73"><i>{_group_summary}</i></font>',
                 group_header_style
             )
 
-            # Group-level metrics: CDS/mmbert (group-level only)
-            gm = group_mmbert_max.get(species_key, None)
-            dmd_cds = group_dmnd_cds_max.get(species_key, None)
-            # Pass right column content width (minus outer cell padding) to cap mini-table
-            metrics_max_w = (right_w - 6) if use_subkey else None
-            group_metrics_tbl = build_metrics_mini_table(dmd_cds, gm, max_width=metrics_max_w)
-
-            # The group name cell spans columns 1+2
-            spanned_name_width = col_widths[1] + col_widths[2]
+            # Group row is a section divider only.  It intentionally omits
+            # classifier/aligned read values so the row stays visually distinct
+            # from organism data rows.
+            spanned_name_width = sum(col_widths[1:])
 
             # Name cell contains anchor + outline dest + name paragraph
             # Subtract outer cell padding (LEFT=4 + RIGHT=4) so text wraps within bounds
@@ -2419,55 +2426,17 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
 
-            group_row = ['', group_name_cell, '']
-            if show_k2_column:
-                group_row.append(Paragraph(f'<b>{group_k2_reads:,.0f}</b>', mini_style))
-            group_row.append(Paragraph(f'<b>{group_reads:,.0f}</b>', mini_style))
-            group_row += ['', '']
-            if show_ani_column:
-                group_row.append('')
-            if show_control_bar:
-                # Group-level spark bar using the group's control_comparison
-                _grp_spark = _build_spark_bar_from_member(species_group, bar_width=int(col_widths[-2 if show_inline_table else -1] - 6) if col_widths else 72, bar_height=10)
-                group_row.append(_grp_spark if _grp_spark else '')
-            # Right-side detail column (inline mode only — compact mode has no extra column)
-            if show_inline_table:
-                # Full inline mode: show CDS/mmbert metrics (organism count is now in the spanned area)
-                if group_metrics_tbl is not None:
-                    right_cell_rows = [[group_metrics_tbl]]
-                    right_cell = Table(right_cell_rows, colWidths=[right_w - 6])
-                    right_cell.setStyle(TableStyle([
-                        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                        ('TOPPADDING', (0, 0), (-1, -1), 0),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-                    ]))
-                    group_row.append(right_cell)
-                else:
-                    group_row.append('')
+            group_row = ['', group_name_cell] + [''] * (n_total - 2)
 
             table_data.append(group_row)
             group_row_indices.append(row_idx)
 
-            # Span group name across Organism + TASS columns only
-            table_styles.append(('SPAN', (1, row_idx), (2, row_idx)))
-            # Span trailing columns: stop before the right detail column when it exists
-            rpm_col_idx = 5 if show_k2_column else 4
-            span_end = (n_base - 1) if show_inline_table else (n_total - 1)
-            if rpm_col_idx <= span_end:
-                table_styles.append(('SPAN', (rpm_col_idx, row_idx), (span_end, row_idx)))
-            # Always place organism count summary in the RPM slot (first cell of trailing span)
-            if n_species_rows:
-                summary_text = (
-                    f'<i>{n_species_rows} species/subkey row{"s" if n_species_rows != 1 else ""}; '
-                    f'{n_strains} qualifying strain{"s" if n_strains != 1 else ""}</i>'
-                )
-            else:
-                summary_text = f'<i>{n_strains} likely detected organism{"s" if n_strains != 1 else ""}</i>'
-            group_row[rpm_col_idx] = Paragraph(summary_text, group_strain_summary_style)
-            table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#E8E8E8')))
+            # Span the full genus/group row so it behaves like a divider and
+            # does not show vertical grid lines between data columns.
+            table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
+            table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#EEF5F9')))
+            table_styles.append(('LINEABOVE', (0, row_idx), (-1, row_idx), 0.8, colors.HexColor('#C9D8E3')))
+            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.8, colors.HexColor('#C9D8E3')))
             table_styles.append(('ALIGN', (1, row_idx), (1, row_idx), 'LEFT'))
             table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 8))
             table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
@@ -2529,11 +2498,13 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             else:
                 _zscore_sym = ''
             _flora_tag = _commensal_site_tag(strain, strain.get('normalized_sample_site', ''))
-            name_html = (
-                f'{strain.get("name", "Unknown")}{_mt_tag} '
+            _hc_prefix = '<b>★</b> ' if indicator_text else ''
+            _details_html = (
+                f'{_hc_prefix}{_mt_tag} '
                 f'(<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={strain_key}" '
                 f'color="blue">{strain_key}</link>){_flora_tag}{_zscore_sym}'
             )
+            name_html = f'{strain.get("name", "Unknown")}<br/><font size="7">{_details_html.strip()}</font>'
 
             high_ani_text = ''
             if show_ani_column:
@@ -2566,7 +2537,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             row_ani_style = ani_style_small if _row_below_zscore else ani_style
 
             row = [
-                Paragraph(indicator_text, indicator_para_style) if indicator_text else '',
+                '',
                 Paragraph(name_html, row_name_style),
                 Paragraph(f"{strain.get('tass_score', 0):.1f}", row_data_style),
             ]
@@ -2600,7 +2571,6 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 ind_color = get_category_color(microbial_category, ann_class, alpha=1.0 * _flora_mult)
                 row_color = get_category_color(microbial_category, ann_class, alpha=0.15 * _flora_mult)
             table_styles.append(('BACKGROUND', (0, row_idx), (0, row_idx), ind_color))
-            table_styles.append(('BACKGROUND', (1, row_idx), (-1, row_idx), row_color))
             if _row_below_zscore:
                 table_styles.append(('TEXTCOLOR', (1, row_idx), (-1, row_idx),
                                      colors.Color(0.6, 0.6, 0.6, 1)))
@@ -2608,87 +2578,87 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                 table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 3))
                 table_styles.append(('FONTSIZE', (1, row_idx), (-1, row_idx), 7))
             # Horizontal separator below each strain row with padding
-            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1.5, colors.HexColor('#CCCCCC')))
+            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1.5, colors.HexColor('#C9D8E3')))
             if not _row_below_zscore:
                 table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 8))
                 table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 6))
             row_idx += 1
             i += 1
 
-    # ── Missing positive control rows (tiny, faded) ─────────────────────────
+    # ── Missing positive control summary (tiny, faded) ───────────────────────
     _miss_pos = missing_pos_controls or []
     if _miss_pos:
+        from xml.sax.saxutils import escape as _xml_escape
+
         _miss_style = ParagraphStyle(
             'MissingCtrl', parent=small_style,
-            fontSize=6.5, leading=8, textColor=colors.Color(0.5, 0.3, 0.1))
-        _miss_data_style = ParagraphStyle(
-            'MissingCtrlData', parent=small_style,
-            fontSize=6, leading=7, textColor=colors.Color(0.55, 0.55, 0.55))
+            fontSize=8, leading=10, textColor=colors.Color(0.5, 0.3, 0.1))
 
-        # Separator row labelling the section
-        _sep_label = Paragraph(
-            '<font size="6"><b>Not found but in the positive control</b></font>',
-            ParagraphStyle('MissSep', parent=small_style, fontSize=6,
-                           leading=7, textColor=colors.Color(0.45, 0.25, 0.1)))
-        _sep_row = [''] * n_total
-        _sep_row[1] = _sep_label
-        table_data.append(_sep_row)
-        table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
-        table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
-                             colors.Color(0.97, 0.93, 0.87, 1)))
-        table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 2))
-        table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 2))
-        row_idx += 1
-
+        _miss_parts = []
         for mp in _miss_pos:
-            _mname = mp.get('name') or mp.get('id') or '?'
-            _mlevel = mp.get('level', 'toplevelkey')
+            _mname = _xml_escape(str(mp.get('name') or mp.get('id') or '?'))
+            _mid = _xml_escape(str(mp.get('id') or ''))
             _mtass = mp.get('pos_tass_score', 0)
             _mreads = mp.get('pos_numreads', 0)
-            _msrc = mp.get('source', '')
+            _msrc = _xml_escape(str(mp.get('source') or ''))
 
-            _name_html = (
-                f'<font color="#8B4513"><i>{_mname}</i></font>'
-                f'&nbsp;<font size="5" color="#999999">'
-                f'Control TASS {_mtass:.2f}, {int(_mreads):,} reads'
+            try:
+                _mtass_str = f'{float(_mtass):.2f}'
+            except (TypeError, ValueError):
+                _mtass_str = '-'
+            try:
+                _mreads_str = f'{int(float(_mreads)):,}'
+            except (TypeError, ValueError):
+                _mreads_str = '-'
+
+            _id_txt = f' <font color="#999999">({_mid})</font>' if _mid and _mid != _mname else ''
+            _src_txt = f', source: {_msrc}' if _msrc else ''
+            _miss_parts.append(
+                f'<font color="#8B4513"><i>{_mname}</i></font>{_id_txt} '
+                f'<font size="8" color="#999999">'
+                f'Control TASS {_mtass_str}, {_mreads_str} reads{_src_txt}'
                 f'</font>'
             )
-            miss_row = [''] * n_total
-            miss_row[0] = ''  # no category indicator
-            miss_row[1] = Paragraph(_name_html, _miss_style)
-            # Span organism name across all data columns
-            table_data.append(miss_row)
-            table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
-            table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
-                                 colors.Color(0.98, 0.96, 0.92, 1)))
-            table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 1))
-            table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 1))
-            table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.5,
-                                 colors.Color(0.85, 0.85, 0.85)))
-            row_idx += 1
+
+        _summary_html = (
+            '<b>Positive Control Organisms Not Detected in Sample:</b> '
+            + '; '.join(_miss_parts)
+        )
+        _summary_row = [''] * n_total
+        _summary_row[1] = Paragraph(_summary_html, _miss_style)
+        table_data.append(_summary_row)
+        table_styles.append(('SPAN', (1, row_idx), (n_total - 1, row_idx)))
+        table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
+                             colors.Color(0.98, 0.96, 0.92, 1)))
+        table_styles.append(('TOPPADDING', (0, row_idx), (-1, row_idx), 3))
+        table_styles.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 3))
+        table_styles.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 0.5,
+                             colors.Color(0.85, 0.85, 0.85)))
+        row_idx += 1
 
     # ── Base table style ──────────────────────────────────────────────────────
     base_ts = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1F4E79')),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
+        ('TOPPADDING', (0, 0), (-1, 0), 7),
         ('LEFTPADDING', (0, 0), (-1, 0), 3),
         ('RIGHTPADDING', (0, 0), (-1, 0), 3),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.45, colors.HexColor('#C9D8E3')),
         ('VALIGN', (0, 1), (0, -1), 'MIDDLE'),
+        ('VALIGN', (1, 1), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+        # Color swatch column (col 0): intentionally narrow and only used for row colour
         ('LEFTPADDING', (0, 1), (0, -1), 1),
         ('RIGHTPADDING', (0, 1), (0, -1), 1),
         ('TOPPADDING', (0, 1), (0, -1), 2),
         ('BOTTOMPADDING', (0, 1), (0, -1), 2),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('VALIGN', (1, 1), (1, -1), 'MIDDLE'),
-        ('VALIGN', (2, 1), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
-        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         # Organism column (col 1): keep comfortable padding
         ('LEFTPADDING', (1, 1), (1, -1), 4),
         ('RIGHTPADDING', (1, 1), (1, -1), 4),
@@ -2710,7 +2680,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             ('TOPPADDING', (n_base, 1), (n_total - 1, -1), 2),
             ('RIGHTPADDING', (n_base, 1), (n_total - 1, -1), 2),
             ('BOTTOMPADDING', (n_base, 1), (n_total - 1, -1), 2),
-            ('LINEAFTER', (n_base - 1, 0), (n_base - 1, -1), 2, colors.HexColor('#3498DB')),
+            ('LINEAFTER', (n_base - 1, 0), (n_base - 1, -1), 1.2, colors.HexColor('#C9D8E3')),
         ]
         base_ts += right_col_ts
 
@@ -2724,10 +2694,10 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
     strain_name_style = ParagraphStyle(
         'StrainName', parent=small_style, fontSize=8, leading=10)
     data_style = ParagraphStyle(
-        'DataStyle', parent=small_style, fontSize=7, leading=9)
+        'DataStyle', parent=small_style, fontSize=8, leading=9)
 
-    headers = (['Sample', 'Organism', 'TASS', 'Class. Reads', 'Reads']
-               if show_k2_column else ['Sample', 'Organism', 'TASS', 'Reads'])
+    headers = (['Sample', 'Organism', 'TASS', 'Classifier Reads', 'Aligned Reads']
+               if show_k2_column else ['Sample', 'Organism', 'TASS', 'Aligned Reads'])
     table_data = [headers]
 
     for item in low_confidence_strains:
@@ -2759,28 +2729,30 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
         available_width = 8.5*inch - 0.02*8.5*inch
 
     if show_k2_column:
-        col_widths = [available_width*0.18, available_width*0.50,
-                      available_width*0.10, available_width*0.10, available_width*0.12]
+        col_widths = [available_width*0.16, available_width*0.48,
+                      available_width*0.08, available_width*0.13, available_width*0.15]
     else:
-        col_widths = [available_width*0.20, available_width*0.56,
-                      available_width*0.11, available_width*0.13]
+        col_widths = [available_width*0.18, available_width*0.54,
+                      available_width*0.11, available_width*0.17]
 
     table = Table(table_data, repeatRows=1, colWidths=col_widths)
     table_styles = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1F4E79')),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
+        ('TOPPADDING', (0, 0), (-1, 0), 7),
+        ('BOX', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.45, colors.HexColor('#C9D8E3')),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
         ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 1), (1, -1), 'LEFT'),
         ('LEFTPADDING', (0, 1), (-1, -1), 6),
         ('RIGHTPADDING', (0, 1), (-1, -1), 6),
-        ('TOPPADDING', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
     ]
     for idx, item in enumerate(low_confidence_strains):
         row_color = get_category_color(
@@ -2823,7 +2795,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
         'StrainCell', parent=small_style, fontSize=7, leading=8, wordWrap='CJK')
     header_cell_style = ParagraphStyle(
         'StrainHeaderCell', parent=small_style, fontSize=7, leading=8,
-        fontName='Helvetica-Bold', textColor=colors.whitesmoke,
+        fontName='Helvetica-Bold', textColor=colors.HexColor('#1F4E79'),
         alignment=TA_CENTER, wordWrap='CJK')
 
     story_items.append(AnchorFlowable('strain_detail_table'))
@@ -4107,18 +4079,73 @@ def create_pdf_template(output_path, samples_dict, args):
     Create the full PDF report.
     """
     page_width, page_height = letter
-    left_margin = page_width * 0.01
-    right_margin = page_width * 0.01
+    left_margin = page_width * 0.05
+    right_margin = page_width * 0.05
+    bottom_margin = 0.5 * inch
+    first_page_top = 1.15 * inch   # room for your big header
+    body_top = 0.5 * inch          # normal pages
+    def draw_header(canvas, doc):
+        page_width, page_height = letter
+        header_h = 1.15 * inch
 
-    doc = SimpleDocTemplate(
-        output_path,
-        pagesize=letter,
-        leftMargin=left_margin,
-        rightMargin=right_margin,
-        topMargin=0.5*inch,
-        bottomMargin=0.5*inch
+        canvas.saveState()
+
+        # Full-width blue background
+        canvas.setFillColor(colors.HexColor('#1F4E79'))
+        canvas.rect(0, page_height - header_h, page_width, header_h, stroke=0, fill=1)
+
+        # Title
+        title = Paragraph("Organism Discovery Report", title_style)
+        tw, th = title.wrap(page_width - 0.5 * inch, header_h)
+        title.drawOn(canvas, 0.25 * inch, page_height - 0.25 * inch - th)
+
+        # Metadata row
+        meta_tbl = Table(
+            [
+                [Paragraph("TAXTRIAGE VERSION", header_label_style),
+                Paragraph("GENERATED", header_label_style),
+                Paragraph("COMMIT ID", header_label_style)],
+                [Paragraph(_version_label, header_value_style),
+                Paragraph(current_time, header_value_style),
+                Paragraph(
+                    f'<link href="https://github.com/jhuapl-bio/taxtriage/commit/{_commit_id}" color="white">{_commit_id or ""}</link>',
+                    header_value_style
+                )],
+            ],
+            colWidths=[(page_width - 0.5 * inch) / 3.0] * 3,
+        )
+        meta_tbl.setStyle(TableStyle([
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        mw, mh = meta_tbl.wrap(page_width - 0.5 * inch, header_h)
+        meta_tbl.drawOn(canvas, 0.25 * inch, page_height - header_h + 0.16 * inch)
+
+        canvas.restoreState()
+    cover_frame = Frame(
+        left_margin,
+        bottom_margin,
+        page_width - left_margin - right_margin,
+        page_height - bottom_margin - first_page_top,
+        id="cover_frame",
     )
-    available_width = doc.width
+
+    body_frame = Frame(
+        left_margin,
+        bottom_margin,
+        page_width - left_margin - right_margin,
+        page_height - bottom_margin - body_top,
+        id="body_frame",
+    )
+    doc = BaseDocTemplate(output_path, pagesize=letter)
+    doc.addPageTemplates([
+    PageTemplate(id="Cover", frames=[cover_frame], onPage=draw_header),
+    PageTemplate(id="Body", frames=[body_frame]),
+    ])
+    available_width = page_width - left_margin - right_margin
     story = []
     outline_collector = _OutlineCollector()
     styles = getSampleStyleSheet()
@@ -4126,11 +4153,36 @@ def create_pdf_template(output_path, samples_dict, args):
 
     legend_text_style = ParagraphStyle('LegendText', parent=styles['Normal'], fontSize=8, leading=10)
     title_style = ParagraphStyle(
-        'CustomTitle', parent=styles['Heading1'], fontSize=24,
-        textColor=colors.HexColor('#2C3E50'), spaceAfter=20, alignment=TA_CENTER)
+        'CustomTitle', parent=styles['Heading1'], fontSize=20, leading=22,
+        textColor=colors.white, spaceAfter=0, alignment=TA_CENTER,
+        fontName='Helvetica-Bold')
+    header_label_style = ParagraphStyle(
+        'HeaderLabel', parent=styles['Normal'], fontSize=7.5, leading=9,
+        textColor=colors.HexColor('#B7C9D6'), alignment=TA_CENTER,
+        fontName='Helvetica-Bold')
+    header_value_style = ParagraphStyle(
+        'HeaderValue', parent=styles['Normal'], fontSize=10, leading=12,
+        textColor=colors.white, alignment=TA_CENTER,
+        fontName='Helvetica')
+    sample_title_style = ParagraphStyle(
+        'SampleTitle', parent=styles['Heading2'], fontSize=12, leading=18,
+        textColor=colors.HexColor('#1F4E79'), alignment=TA_LEFT,
+        fontName='Helvetica-Bold', spaceBefore=0, spaceAfter=0)
+    sample_label_style = ParagraphStyle(
+        'SampleLabel', parent=styles['Normal'], fontSize=6.6, leading=8,
+        textColor=colors.HexColor('#6C7A86'), alignment=TA_CENTER,
+        fontName='Helvetica-Bold')
+    sample_value_style = ParagraphStyle(
+        'SampleValue', parent=styles['Normal'], fontSize=8.4, leading=10,
+        textColor=colors.HexColor('#1E2A32'), alignment=TA_CENTER,
+        fontName='Helvetica-Bold')
+    sample_note_style = ParagraphStyle(
+        'SampleNote', parent=styles['Normal'], fontSize=6.2, leading=7.5,
+        textColor=colors.HexColor('#6C7A86'), alignment=TA_LEFT,
+        fontName='Helvetica')
     heading_style = ParagraphStyle(
-        'CustomHeading', parent=styles['Heading2'], fontSize=16,
-        textColor=colors.HexColor('#34495E'), spaceAfter=0, spaceBefore=12)
+        'CustomHeading', parent=styles['Heading2'], fontSize=14,
+        textColor=colors.HexColor('#34495E'), spaceAfter=0, spaceBefore=6)
     indent_style = ParagraphStyle(
         'IndentStyle', parent=styles['Normal'], fontSize=7, leading=10, leftIndent=20)
     small_style = ParagraphStyle('SmallText', parent=styles['Normal'], fontSize=10, leading=10)
@@ -4167,7 +4219,7 @@ def create_pdf_template(output_path, samples_dict, args):
     print(f"Classifier Reads column: {'SHOWN' if show_k2_column else 'HIDDEN'}")
     print(f"Subkey grouping: {'ENABLED' if use_subkey else 'DISABLED'}")
     if use_subkey:
-        print("Strain detail layout: species/subkey rows with qualifying strain rows inline in main table")
+        print("Strain detail layout: speciess with qualifying strain rows inline in main table")
     else:
         print(f"Strain detail table: {'INLINE' if show_strains_table else 'APPENDIX'}")
     print(f"\nFiltering settings:")
@@ -4197,21 +4249,7 @@ def create_pdf_template(output_path, samples_dict, args):
     valid_bookmarks = collect_all_bookmarks(samples_dict, low_confidence_strains)
     valid_bookmarks.update(taxid_to_bookmark.values())
 
-    # ── Title ─────────────────────────────────────────────────────────────────
-    story.append(OutlineDest('outline_title', 'Organism Discovery Report', level=0, closed=False, collector=outline_collector))
-    story.append(Paragraph("Organism Discovery Report", title_style))
-    story.append(Spacer(1, 0.05*inch))
-
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-    generation_text = (
-        f"This report was generated using "
-        f"<link href=\"https://github.com/jhuapl-bio/taxtriage\" color=\"blue\">TaxTriage</link> "
-        f"at <b>{current_time}</b> and is derived from "
-        f"an in <link href=\"https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv\" "
-        f"color=\"blue\">development spreadsheet of human-host pathogens</link>."
-    )
-    story.append(Paragraph(generation_text, metadata_style))
-    # Collect version/commit for use in Additional Information section at the bottom
+    # Collect version/commit for use in the title card and Additional Information section.
     _workflow_rev = None
     for _meta in getattr(args, '_input_metadata', {}).values():
         _rev = _meta.get('workflow_revision')
@@ -4224,20 +4262,280 @@ def create_pdf_template(output_path, samples_dict, args):
         if _cid:
             _commit_id = _cid
             break
-    story.append(Spacer(1, 0.02*inch))
-    story.append(Paragraph(
-        "<b>★</b> = High Consequence Pathogen  |  "
-        "<font color=\"#1565c0\"><b>Ⓓ</b></font> = DNA pathogen  |  "
-        "<font color=\"#6a1b9a\"><b>Ⓡ</b></font> = RNA pathogen  "
-        "(no symbol = applies to both)",
-        small_style))
-    story.append(Spacer(1, 0.02*inch))
 
+    # ── Modern title/header card ──────────────────────────────────────────────
+    story.append(OutlineDest('outline_title', 'Organism Discovery Report', level=0, closed=False, collector=outline_collector))
+
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    _version_label = (
+        str(_workflow_rev)
+        if _workflow_rev and str(_workflow_rev).upper() != "NA"
+        else "Not specified / local build"
+    )
+
+
+    doc.build(story)
+    #Summary info
+    story.append(Spacer(1, 0.05*inch))
+    story.append(Paragraph(
+        "<b>Run Summary</b>",
+        heading_style
+    ))
+    story.append(Spacer(1, 0.08*inch))
+    run_summary_sample_style = ParagraphStyle(
+    'RunSummarySample',
+    parent=small_style,
+    fontSize=10,
+    leading=9,
+    fontName='Helvetica',
+    wordWrap='CJK',
+    )
+
+    summary_data = [[
+    "Sample",
+    "Sample Type",
+    "Platform",
+    "Total Reads",
+    "Aligned Reads",
+    "Organism Reads"
+    ]]
+
+    for sample_name in sorted(samples_dict.keys()):
+        _meta = getattr(args, '_input_metadata', {}).get(sample_name, {})
+
+        summary_data.append([
+            Paragraph(sample_name, run_summary_sample_style),
+            _meta.get('sample_type', '—'),
+            _meta.get('platform', '—'),
+            f"{int(_meta.get('total_reads', 0)):,}" if _meta.get('total_reads') else "—",
+            f"{int(_meta.get('aligned_reads', 0)):,}" if _meta.get('aligned_reads') else "—",
+            f"{int(_meta.get('total_organism_reads', 0)):,}" if _meta.get('total_organism_reads') else "—",
+    ])
+    summary_col_widths = [
+    available_width * 0.25,
+    available_width * 0.15,
+    available_width * 0.15,
+    available_width * 0.15,
+    available_width * 0.15,
+    available_width * 0.15,
+    ]
+
+    summary_tbl = Table(
+        summary_data,
+        repeatRows=1,
+        colWidths=summary_col_widths
+    )
+
+    summary_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1F4E79')),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+
+        ('BOX', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.45, colors.HexColor('#C9D8E3')),
+
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    
+    story.append(summary_tbl)
+    story.append(Spacer(1, 0.15*inch))
+        # ── Footer: Color Key ─────────────────────────────────────────────────────
+    story.append(AnchorFlowable('color_key'))
+    story.append(OutlineDest('outline_color_key', 'Color Key', level=0, closed=True, collector=outline_collector))
+
+    story.append(Paragraph("<b>Color Key</b>", heading_style))
+    story.append(Spacer(1, 0.08*inch))
+
+    url = 'https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv'
+    # Build legend rows dynamically — only include categories that are active
+    _legend_always = [
+        # (row_data, bg_color_hex_or_None)
+        (
+            ['', Paragraph('<b>Category</b>', legend_text_style), Paragraph('<b>Description</b>', legend_text_style)],
+            None,  # header row – styled separately
+        ),
+        (
+            ['', Paragraph('Primary Pathogen (Matched Sample Type)', legend_text_style),
+             Paragraph(f'Detected by <link href="{url}" color="blue">taxonomic id</link> or assembly name and classified as clinically relevant for this sample type.', legend_text_style)],
+            '#E85F50',
+        ),
+        (
+            ['', Paragraph('Primary Pathogen (Other Sample Type)', legend_text_style),
+             Paragraph('Detected and classified as clinically relevant for a different sample type.', legend_text_style)],
+            '#E67E22',
+        ),
+        (
+            ['', Paragraph('Species/Subkey Summary (inferred)', legend_text_style),
+             Paragraph(f'Species-level detection exceeds the threshold, but individual strains do not. '
+                       f'{_WARN_SYMBOL_HTML} indicates the highest scoring primary strain below the threshold.', legend_text_style)],
+            "#E8A0A0",
+        ),
+
+    ]
+    print(args.show_potentials)
+    _legend_conditional = [
+        (args.show_commensals,    '#90EE90',  'Commensal',      'Normal flora / non-pathogenic'),
+        (args.show_opportunistic, '#ffe6a8',  'Opportunistic',  'May cause disease in certain conditions'),
+        (args.show_potentials,    '#ADD8E6',  'Potential',      'Potential pathogen requiring further investigation'),
+        (args.show_unidentified,  '#FFFFFF',  'Unknown',        'Classified organism with unknown significance'),
+    ]
+    _hidden_category_names = [name for (show, _color, name, _desc) in _legend_conditional if not show]
+
+    legend_data = [row for row, _bg in _legend_always]
+    _legend_bg_colors = [(None if bg is None else bg) for _row, bg in _legend_always]
+    for show, color_hex, name, desc in _legend_conditional:
+        if show:
+            legend_data.append(['', Paragraph(name, legend_text_style), Paragraph(desc, legend_text_style)])
+            _legend_bg_colors.append(color_hex)
+    annotation_rows = [
+    [
+        Paragraph('<font color="#1565c0"><b>■</b></font>', legend_text_style),
+        Paragraph('DNA Pathogen', legend_text_style),
+        Paragraph('Detected pathogen has a DNA genome.', legend_text_style),
+    ],
+    [
+        Paragraph('<font color="#6a1b9b"><b>■</b></font>', legend_text_style),
+        Paragraph('RNA Pathogen', legend_text_style),
+        Paragraph('Detected pathogen has an RNA genome.', legend_text_style),
+    ],
+    [
+        Paragraph('<b>★</b>', legend_text_style),
+        Paragraph('High Consequence', legend_text_style),
+        Paragraph('Organism of elevated clinical significance that may warrant immediate review.', legend_text_style),
+    ],
+    [
+        Paragraph(''),
+        Paragraph('<font color="#e67e22"><b>[site flora]</b></font>', legend_text_style),
+        Paragraph('Identifies organisms that are normal flora at the indicated body site but were detected in a normally sterile sample (blood, CSF, or serum).', legend_text_style),
+    ],
+    ]
+
+    for row in annotation_rows:
+        legend_data.append(row)
+        _legend_bg_colors.append(None)
+
+    _legend_col_widths = [0.3*inch, available_width * 0.25, available_width - 0.3*inch - available_width * 0.25]
+    legend_table = Table(legend_data, colWidths=_legend_col_widths)
+    _legend_ts = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1F4E79')),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
+        ('TOPPADDING', (0, 0), (-1, 0), 7),
+        ('BOX', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.45, colors.HexColor('#C9D8E3')),
+        ('FONTSIZE', (1, 1), (-1, -1), 8),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (1, 1), (-1, -1), 6),
+    ]
+    for _ri, _bg in enumerate(_legend_bg_colors):
+        if _bg is not None and _ri > 0:
+            _legend_ts.append(('BACKGROUND', (0, _ri), (0, _ri), colors.HexColor(_bg)))
+    legend_table.setStyle(TableStyle(_legend_ts))
+    story.append(legend_table)
+    # Note about hidden categories
+    if _hidden_category_names:
+        _hidden_note_style = ParagraphStyle(
+            'HiddenCatNote', parent=legend_text_style,
+            fontSize=7.5, leading=8.5, textColor=colors.HexColor('#666666'),)
+        _hidden_list = ', '.join(_hidden_category_names)
+        story.append(Spacer(1, 0.05*inch))
+        story.append(Paragraph(
+            f'Categories excluded by report settings and omitted from this report: '
+            f'<b>{_hidden_list}</b>. See the output reports or multi-run analysis for additional details.',
+            _hidden_note_style))
+    story.append(Spacer(1, 0.15*inch))
+
+    # ── Footer: Column Explanations ───────────────────────────────────────────
+# ── Footer: Column Explanations ───────────────────────────────────────────
+    story.append(AnchorFlowable('column_explanations'))
+    story.append(OutlineDest('outline_column_explanations', 'Column Explanations', level=0, closed=True, collector=outline_collector))
+    story.append(Paragraph("<b>Column Explanations</b>", heading_style))
+    story.append(Spacer(1, 0.05*inch))
+
+    expl_rows = [
+        ["Organism", "Detected organism with associated annotation, taxonomic ID, and taxonomic rank."],
+        ["TASS Score", "Confidence score for organism detection (0–100), with higher values indicating greater confidence."],
+        ["Classifier Reads", "Number of reads assigned to the organism by Kraken2/Centrifuge."],
+        ["Aligned Reads", "Number of reads aligned to the organism's reference genome. (%) indicates the proportion of total sample reads aligned to that organism."],
+        ["RPM", "Reads Per Million (RPM), a normalized abundance metric that enables comparison across samples."],
+        ["% Coverage", "Percentage of the organism's genome covered by aligned reads."],
+        ["High ANI Matches", "Lists strains with Average Nucleotide Identity (ANI) above the specified threshold."],
+        ["Control Comparison",
+        "Displays an organism's TASS score relative to control samples.<br/>"
+        "• <font color=\"#cc2222\"><b>Red</b></font>: Negative-control range.<br/>"
+        "• <font color=\"#2a8a2a\"><b>Green</b></font>: Positive-control range.<br/>"
+        "• <font color=\"#6A1B9A\"><b>Purple</b></font>: In-silico simulation range, when available.<br/>"
+        "• <b>&times;</b>: Sample TASS fold change; <b>&times; rd</b>: Read-count fold change.<br/>"
+        "• Prefix symbols: <b>&minus;</b> max negative control, <b>+</b> min positive control, <b>&infin;</b> in-silico control.<br/>"],
+    ]
+    col_exp_name_style = ParagraphStyle(
+        'ColExpName',
+        parent=metadata_style,
+        fontSize=8.5,
+        leading=10,
+        fontName='Helvetica-Bold',
+        textColor=colors.HexColor('#1F4E79'),
+    )
+
+    col_exp_text_style = ParagraphStyle(
+        'ColExpText',
+        parent=metadata_style,
+        fontSize=8.5,
+        leading=10,
+        textColor=colors.black,
+    )
+
+    col_exp_data = []
+
+    for name, desc in expl_rows:
+        col_exp_data.append([
+            Paragraph(name, col_exp_name_style),
+            Paragraph(desc, col_exp_text_style),
+        ])
+
+    col_exp_table = Table(
+        col_exp_data,
+        colWidths=[available_width * 0.22, available_width * 0.78],
+        repeatRows=1,
+    )
+
+    col_exp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1F4E79')),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+        ('BOX', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.45, colors.HexColor('#C9D8E3')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(col_exp_table)
+    story.append(Spacer(1, 0.1*inch))
+    story.append(NextPageTemplate("Body"))
+    story.append(PageBreak())
 
     # ── Per-sample content ────────────────────────────────────────────────────
     # Also build sorted_groups_by_sample for the strain appendix.
     sorted_groups_by_sample = []  # list of (sample_name, sorted_groups)
-
+    story.append(Paragraph("Per-Sample Classification Results", heading_style))
+    story.append(HRFlowable(
+        width="100%",
+        thickness=0.6,
+        color=colors.HexColor('#C9D8E3'),
+        spaceBefore=2,
+        spaceAfter=6,
+    ))
+    story.append(Spacer(1, 0.03*inch))
     for sample_name in sorted(samples_dict.keys()):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
         story.append(AnchorFlowable(bookmark_name))
@@ -4251,31 +4549,18 @@ def create_pdf_template(output_path, samples_dict, args):
         # PDF outline: sample as top-level entry (collapsed by default)
         outline_sample_key = f"outline_{bookmark_name}"
         story.append(OutlineDest(outline_sample_key,
-                                 f'Sample: {sample_name}{_plat_str}', level=0, closed=True,
+                                 f'{sample_name}{_plat_str}', level=0, closed=True,
                                  collector=outline_collector))
-        story.append(Paragraph(f"Sample: {sample_name}{_plat_str} ({sampletype})", heading_style))
-        # Sample metadata line: TASS cutoff + source + platform + read stats from input metadata
+        # Sample subsection header: visually distinct from the main title card,
+        # but attached to the organism table that follows.
         _smeta = getattr(args, '_input_metadata', {}).get(sample_name, {})
         _conf_src = getattr(args, '_sample_conf_source', {}).get(sample_name, '')
         _tr = _smeta.get('total_reads')
         _ar = _smeta.get('aligned_reads')
         _nsg = _smeta.get('num_species_groups')
 
-        # ── Build read-stats bullet line ──────────────────────────────────
-        _meta_parts = []
-        if _tr is not None:
-            _meta_parts.append(f"Total reads: {int(_tr):,}")
-        if _ar is not None:
-            _meta_parts.append(f"Aligned: {int(_ar):,}")
-        if _nsg is not None:
-            _meta_parts.append(f"Species groups: {_nsg}")
-        if _meta_parts:
-            story.append(Paragraph(
-                f"<i>{' &bull; '.join(_meta_parts)}</i>", small_style))
-
-        # ── Build TASS cutoff line(s) ────────────────────────────────────
-        # If domain-aware cutoffs are available, show one line per domain;
-        # otherwise fall back to the single global cutoff.
+        # Build TASS cutoff display text. If domain-aware cutoffs are available,
+        # keep them compact so the sample header remains table-adjacent.
         _pref_g = _smeta.get('preferred_granularity', 'subkey')
         _gran_order_rpt = [_pref_g] + [
             g for g in ('subkey', 'key', 'toplevelkey') if g != _pref_g
@@ -4291,14 +4576,13 @@ def create_pdf_template(output_path, samples_dict, args):
 
         _domain_cutoffs = _smeta.get('best_cutoffs_by_domain') or {}
         if _domain_cutoffs:
-            _src_str = f" <font color='#888888'>({_conf_src})</font>" if _conf_src else ''
-            _cutoff_lines = [f"<b>TASS cutoffs</b>{_src_str}:"]
             _domain_label_map = {
                 'viruses':   'Viruses',
                 'bacteria':  'Bacteria',
                 'eukaryota': 'Eukaryota',
                 'archaea':   'Archaea',
             }
+            _cutoff_bits = []
             for _dom_key in ('bacteria', 'viruses', 'eukaryota', 'archaea'):
                 _dom_entry = _domain_cutoffs.get(_dom_key)
                 if not _dom_entry:
@@ -4306,19 +4590,88 @@ def create_pdf_template(output_path, samples_dict, args):
                 _bt, _g = _pick_threshold(_dom_entry)
                 if _bt is not None:
                     _lbl = _domain_label_map.get(_dom_key, _dom_key.capitalize())
-                    _cutoff_lines.append(
-                        f"&nbsp;&nbsp;&nbsp;&nbsp;{_lbl}: <b>{_bt:.2f}</b>"
-                        f" <font color='#888888'>({_g})</font>"
-                    )
-            story.append(Paragraph(
-                "<i>" + "<br/>".join(_cutoff_lines) + "</i>", small_style))
+                    _cutoff_bits.append(f'{_lbl} {_bt:.2f}')
+            _cutoff_value = '<br/>'.join(_cutoff_bits) if _cutoff_bits else f'{_mc}'
         else:
-            # Fallback: single global threshold (2-key JSON or no JSON)
-            _cutoff_parts = [f"TASS cutoff: <b>{_mc}</b>"]
-            if _conf_src:
-                _cutoff_parts.append(f"Source: {_conf_src}")
-            story.append(Paragraph(
-                f"<i>{' &bull; '.join(_cutoff_parts)}</i>", small_style))
+            _cutoff_value = f'{_mc}'
+
+        _sample_site_value = sampletype or 'Unspecified'
+        _platform_value = _plat_hdr if _plat_hdr and _plat_hdr != 'unknown' else 'Unknown'
+        _total_reads_value = f'{int(_tr):,}' if _tr is not None else '—'
+        _aligned_reads_value = f'{int(_ar):,}' if _ar is not None else '—'
+        _species_groups_value = f'{_nsg}' if _nsg is not None else '—'
+        _cutoff_source_value = _conf_src if _conf_src else '—'
+
+        _sample_title = Table(
+            [[Paragraph(f'{sample_name}', sample_title_style)]],
+            colWidths=[available_width],
+        )
+        _sample_title.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F4F8FB')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#D6E2EB')),
+        ]))
+
+        _metric_labels = [
+            'SAMPLE TYPE', 'SEQUENCING PLATFORM', 'TOTAL READS',
+            'ALIGNED READS', 'SPECIES GROUPS', 'TASS CUTOFF'
+        ]
+        _metric_values = [
+            _sample_site_value, _platform_value, _total_reads_value,
+            _aligned_reads_value, _species_groups_value, _cutoff_value,
+        ]
+        _metrics_row_labels = [Paragraph(x, sample_label_style) for x in _metric_labels]
+        _metrics_row_values = [Paragraph(str(x), sample_value_style) for x in _metric_values]
+        _sample_metrics = Table(
+            [_metrics_row_labels, _metrics_row_values],
+            colWidths=[available_width / 6.0] * 6,
+        )
+        _sample_metrics.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.4, colors.HexColor('#E1E8EE')),
+            ('LINEAFTER', (0, 0), (-2, -1), 0.4, colors.HexColor('#E1E8EE')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, 0), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
+            ('TOPPADDING', (0, 1), (-1, 1), 3),
+            ('BOTTOMPADDING', (0, 1), (-1, 1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+
+        _sample_card_data = [[_sample_title], [_sample_metrics]]
+        #if _conf_src:
+        #    _sample_card_data.append([
+        #        Paragraph(f'Cutoff source: {_cutoff_source_value}', sample_note_style)
+        #    ])
+        _sample_card = Table(_sample_card_data, colWidths=[available_width])
+        _sample_card_style = [
+            ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+            # Draw the header as the top half of one continuous sample block.
+            # The organism table that follows supplies the bottom/continuing border.
+            ('LINEABOVE', (0, 0), (-1, 0), 0.9, colors.HexColor('#C9D8E3')),
+            ('LINEBEFORE', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+            ('LINEAFTER', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+            ('LINEBELOW', (0, -1), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('TOPPADDING', (0, 0), (-1, 0), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 0),
+            ('TOPPADDING', (0, 1), (-1, 1), 0),
+            ('BOTTOMPADDING', (0, 1), (-1, 1), 0),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]
+        if _conf_src:
+            _sample_card_style += [
+                ('TOPPADDING', (0, 2), (-1, 2), 3),
+                ('BOTTOMPADDING', (0, 2), (-1, 2), 5),
+            ]
+        _sample_card.setStyle(TableStyle(_sample_card_style))
+        story.append(KeepTogether([_sample_card,
+                                   Spacer(1, 0.03*inch)]))
         if sampletype in ['blood', 'csf', 'sterile', 'serum']:
             story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} sample likely leads to lower TASS scores due to relatively low read count or coverage of organisms. All pathogens are defaulted to primary pathogens.</font>", small_style))
             if sampletype != "blood":
@@ -4352,7 +4705,7 @@ def create_pdf_template(output_path, samples_dict, args):
                     f'for this body site.</font>',
                     small_style))
 
-        story.append(Spacer(1, 0.08*inch))
+        story.append(Spacer(1, 0.02*inch))
 
         species_groups = samples_dict[sample_name]
         # Use total reads from metadata (includes unaligned) when available;
@@ -4427,7 +4780,7 @@ def create_pdf_template(output_path, samples_dict, args):
         sorted_groups_by_sample.append((sample_name, sorted_groups))
 
         # Build subkey group lookup: (toplevelkey, subkey) → subkey_group_data,
-        # plus a display lookup for visible species/subkey rows and child strains.
+        # plus a display lookup for visible speciess and child strains.
         _subkey_group_lookup = {}
         _subkey_display_lookup = {}
         for sg, group_strains in _group_qualified:
@@ -4462,11 +4815,11 @@ def create_pdf_template(output_path, samples_dict, args):
                     _alert_extra = f' and {len({a["display_name"] for a in _derived_alerts}) - 4} more'
                 # story.append(Paragraph(
                 #     f'{_WARN_SYMBOL_HTML} '
-                #     f'Potential harmful pathogen signal detected in one or more species/subkey rows. '
+                #     f'Potential harmful pathogen signal detected in one or more speciess. '
                 #     f'These rows have qualifying child strains that require follow-up. '
                 #     f'Affected rows are marked with {_WARN_SYMBOL_HTML}: <b>{_alert_names}{_alert_extra}</b>.',
                 #     small_style))
-                story.append(Spacer(1, 0.05*inch))
+                story.append(Spacer(1,0.05*inch))
             # Auto-detect control data presence for the control bar column
             # (now also includes insilico_comparison data)
             _show_ctrl = getattr(args, 'show_control_bar', False) or _has_control_data(species_groups)
@@ -4494,68 +4847,18 @@ def create_pdf_template(output_path, samples_dict, args):
                 subkey_display_lookup=_subkey_display_lookup,
             )
             story.append(combined_table)
+            #story.append(Spacer(1, 0.80*inch))
+            story.append(Spacer(1, 0.10*inch))
 
-            # ── Control bar legend (shown only when control data is present) ──
-            if _show_ctrl:
-                _smeta_ctrl = getattr(args, '_input_metadata', {}).get(sample_name, {})
-                _neg_used = _smeta_ctrl.get('negative_controls_used') or []
-                _pos_used = _smeta_ctrl.get('positive_controls_used') or []
-                _fold_thresh = _smeta_ctrl.get('control_fold_threshold')
-                _ctrl_legend_style = ParagraphStyle(
-                    'CtrlLegend', parent=small_style,
-                    fontSize=6.5, leading=9, textColor=colors.Color(0.35, 0.35, 0.35))
-                _ctrl_parts = [
-                    '<b>Ctrl column:</b> '
-                    'The bar shows each organism\u2019s TASS score position (▲) relative to '
-                    'control samples. '
-                ]
-                if _neg_used:
-                    _neg_names = ', '.join(_neg_used)
-                    _ctrl_parts.append(
-                        f'<font color="#cc2222">\u25a0 Red zone</font> = '
-                        f'negative control range ({_neg_names}). '
-                    )
-                if _pos_used:
-                    _pos_names = ', '.join(_pos_used)
-                    _ctrl_parts.append(
-                        f'<font color="#2a8a2a">\u25a0 Green zone</font> = '
-                        f'positive control range ({_pos_names}). '
-                    )
-                _ctrl_parts.append(
-                    'The label below the bar shows: '
-                    '<b>#\u00d7</b> = fold-change of sample TASS; '
-                    '<b>#\u00d7 rd</b> = same ratio for read counts. '
-                    'Prefix symbols indicate control type: '
-                )
-                if _neg_used:
-                    _ctrl_parts.append(
-                        '<b>\u2212</b> (minus) = vs. max negative control '
-                        '(dark gray / <font color="#cc2222">red</font> text). '
-                    )
-                if _pos_used:
-                    _ctrl_parts.append(
-                        '<b>+</b> (plus) = vs. min positive control '
-                        '(<font color="#2a8a2a">green text</font>). '
-                    )
-                _isil_used = _smeta_ctrl.get('insilico_controls_used') or []
-                if _isil_used:
-                    _isil_names = ', '.join(_isil_used)
-                    _ctrl_parts.append(
-                        f'<font color="#008B8B">\u25a0 Teal zone</font> = '
-                        f'in-silico simulation range ({_isil_names}). '
-                    )
-                    _ctrl_parts.append(
-                        '<b>\u221e</b> (loop) = vs. in-silico control '
-                        '(<font color="#007373">teal text</font>). '
-                    )
-                if _fold_thresh is not None:
-                    _ctrl_parts.append(
-                        f'Organisms with fold &lt; {_fold_thresh}\u00d7 are considered '
-                        f'within negative-control bounds (triangle shown in red).'
-                    )
-                story.append(Spacer(1, 0.03 * inch))
-                story.append(Paragraph(''.join(_ctrl_parts), _ctrl_legend_style))
+            story.append(HRFlowable(
+                width="100%",
+                thickness=1.5,
+                color=colors.HexColor('#AABBC8'),
+                spaceBefore=0,
+                spaceAfter=0,
+            ))
 
+            story.append(Spacer(1, 0.08*inch))
             # ── In-silico metrics summary tables (one per simulator type) ─────
             _miss_isil = _smeta.get('missing_insilico_controls') or []
             _miss_by_type = _smeta.get('missing_insilico_by_type') or {}
@@ -4750,133 +5053,50 @@ def create_pdf_template(output_path, samples_dict, args):
             #     story.append(Spacer(1, 0.06 * inch))
             #     story.append(_genus_cards)
 
+
         else:
-            story.append(Paragraph(
-                "<i>No data available for this sample above confidence threshold</i>",
-                styles['Italic']))
+            no_data_style = ParagraphStyle(
+                'NoDataStyle',
+                parent=small_style,
+                fontSize=9,
+                leading=11,
+                textColor=colors.HexColor('#34495E'),
+            )
+
             if low_confidence_strains:
-                story.append(Spacer(1, 0.02*inch))
-                story.append(Paragraph(
-                    f"<i>However, {len(low_confidence_strains)} high-consequence detections below confidence threshold were found. See section on Low Confidence, High Consequence Detections.</i>",
-                    small_style))
+                msg = (
+                    "<b>No organisms met the reporting confidence threshold for this sample.</b><br/>"
+                    f"{len(low_confidence_strains)} high-consequence detections were identified below the threshold. "
+                    "See the Low Confidence, High Consequence Detections section for details."
+                )
+            else:
+                msg = "<b>No organisms met the reporting confidence threshold for this sample.</b>"
+
+            no_data_tbl = Table(
+                [[Paragraph(msg, no_data_style)]],
+                colWidths=[available_width],
+            )
+            no_data_tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F4F8FB')),
+                ('BOX', (0, 0), (-1, -1), 0.9, colors.HexColor('#C9D8E3')),
+                ('LINEBELOW', (0, 0), (-1, -1), 1.5, colors.HexColor('#C9D8E3')),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+
+            story.append(no_data_tbl)
+            story.append(Spacer(1, 0.08*inch))
         if args.max_members is not None and args.max_members > 0:
             story.append(Paragraph(
                 f"<i>Showing top {args.max_members} strains per group by TASS score</i>",
                 small_style))
-        story.append(Spacer(1, 0.1*inch))
-    story.append(Spacer(1, 0.05*inch))
-
-    # ── Footer: Color Key ─────────────────────────────────────────────────────
-    story.append(Spacer(1, 0.15*inch))
-    story.append(AnchorFlowable('color_key'))
-    story.append(OutlineDest('outline_color_key', 'Color Key', level=0, closed=True, collector=outline_collector))
-    story.append(Paragraph("<b>Color Key:</b>", heading_style))
-    story.append(Spacer(1, 0.08*inch))
-    url = 'https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv'
-    # Build legend rows dynamically — only include categories that are active
-    _legend_always = [
-        # (row_data, bg_color_hex_or_None)
-        (
-            ['', Paragraph('Category', legend_text_style), Paragraph('Description', legend_text_style)],
-            None,  # header row – styled separately
-        ),
-        (
-            ['', Paragraph('Primary Pathogen (Direct)', legend_text_style),
-             Paragraph(f'The organism is directly detected according to <link href="{url}" color="blue">taxonomic id</link> or assembly name and is listed as being of importance in your sample type.', legend_text_style)],
-            '#E85F50',
-        ),
-        (
-            ['', Paragraph('Primary Pathogen', legend_text_style),
-             Paragraph('It is directly detected according to taxonomic id or assembly name and is listed as being of importance in a different sample type.', legend_text_style)],
-            '#E67E22',
-        ),
-        (
-            ['', Paragraph('Species/Subkey Summary (inferred)', legend_text_style),
-             Paragraph(f'! shown when the species-level aggregation passes the threshold but all individual strains are below it. Dark red is used when any qualifying strain also passes. Rows marked with {_WARN_SYMBOL_HTML} list the highest-scoring Primary strain that is below the defined TASS threshold.', legend_text_style)],
-            '#E8A0A0',
-        ),
-    ]
-    print(args.show_potentials)
-    _legend_conditional = [
-        (args.show_commensals,    '#90EE90',  'Commensal',      'Normal flora / non-pathogenic'),
-        (args.show_opportunistic, '#ffe6a8',  'Opportunistic',  'May cause disease in certain conditions'),
-        (args.show_potentials,    '#ADD8E6',  'Potential',      'Potential pathogen requiring further investigation'),
-        (args.show_unidentified,  '#FFFFFF',  'Unknown',        'Classified organism with unknown significance'),
-    ]
-    _hidden_category_names = [name for (show, _color, name, _desc) in _legend_conditional if not show]
-
-    legend_data = [row for row, _bg in _legend_always]
-    _legend_bg_colors = [(None if bg is None else bg) for _row, bg in _legend_always]
-    for show, color_hex, name, desc in _legend_conditional:
-        if show:
-            legend_data.append(['', Paragraph(name, legend_text_style), Paragraph(desc, legend_text_style)])
-            _legend_bg_colors.append(color_hex)
-
-    _legend_col_widths = [0.3*inch, available_width * 0.25, available_width - 0.3*inch - available_width * 0.25]
-    legend_table = Table(legend_data, colWidths=_legend_col_widths)
-    _legend_ts = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTSIZE', (1, 1), (-1, -1), 8),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (1, 1), (-1, -1), 6),
-    ]
-    for _ri, _bg in enumerate(_legend_bg_colors):
-        if _bg is not None and _ri > 0:
-            _legend_ts.append(('BACKGROUND', (0, _ri), (0, _ri), colors.HexColor(_bg)))
-    legend_table.setStyle(TableStyle(_legend_ts))
-    story.append(legend_table)
-    # Note about hidden categories
-    if _hidden_category_names:
-        _hidden_note_style = ParagraphStyle(
-            'HiddenCatNote', parent=legend_text_style,
-            fontSize=9, leading=9, textColor=colors.Color(0,0,0),
-            )
-        _hidden_list = ', '.join(_hidden_category_names)
         story.append(Spacer(1, 0.05*inch))
-        story.append(Paragraph(
-            f'<i>The following categories are not shown in this report because they were excluded by run '
-            f'settings: <b>{_hidden_list}</b>. <b>These organisms will not appear in the Organism Discovery '
-            f'Report (ODR)</b>. To see more information, please refer to the output reports or multi-run '
-            f'analysis.</i>',
-            _hidden_note_style))
-    story.append(Spacer(1, 0.05*inch))
-    _flora_note_style = ParagraphStyle(
-        'FloraNote', parent=legend_text_style,
-        fontSize=9, leading=9, textColor=colors.Color(0.35, 0.35, 0.35))
-    story.append(Paragraph(
-        '<font color="#e67e22"><b>[site flora]</b></font> '
-        'Appears next to organism names in sterile samples (blood, CSF, serum) '
-        'when the organism is a known commensal at the indicated body site. '
-        'Detection in a normally sterile site may suggest contamination.',
-        _flora_note_style))
-    story.append(Spacer(1, 0.02*inch))
+    story.append(PageBreak())
 
-    # ── Footer: Column Explanations ───────────────────────────────────────────
-    story.append(AnchorFlowable('column_explanations'))
-    story.append(OutlineDest('outline_column_explanations', 'Column Explanations', level=0, closed=True, collector=outline_collector))
-    story.append(Paragraph("<b>Column Explanations:</b>", heading_style))
-    story.append(Spacer(1, 0.03*inch))
-    explanations = [
-        "• <b>Specimen ID (Taxonomic ID #):</b> The unique identifier for the sample including its name and taxonomic ID. The taxonomic ID is a link to the NCBI Taxonomy Browser for that organism.",
-        "• <b>Detected Organism:</b> The organism detected in the sample, which could be a bacterium, virus, fungus, or parasite.",
-        "• <b>TASS Score:</b> A metric between 0 and 100 that reflects the confidence of the organism's detection, with 100 being the highest value.",
-        "• <b>Classifier Reads:</b> The number of reads classified by Kraken2/Centrifuge, tool(s) for metagenomic taxonomic classification of sequencing data.",
-        "• <b># Reads Aligned:</b> The number of reads from the sequencing data that align to the organism's genome. (%) refers to the percentage of total reads in the sample aligned to that species.",
-        "• <b>RPM:</b> Reads Per Million (RPM). This normalized metric allows for comparison of abundance across samples and organisms of different sizes.",
-        "• <b>Cov.:</b> The coverage of the organism's genome by aligned reads, expressed as a percentage.",
-        "• <b>Species/Subkey Rows:</b> When subkey grouping is enabled (default), each genus group is followed by a species/subkey summary row and then any individual child strains that also pass the TASS cutoff. The species/subkey row color is promoted to the most clinically significant qualifying annotation among that species and its visible child strains.",
-        f"• <b>Species/Subkey Warning Symbol:</b> Rows marked with {_WARN_SYMBOL_HTML} have one or more qualifying harmful child strains beneath that species/subkey and should be followed up.",
-        "• <b>High ANI Matches:</b> When the High ANI column is shown, this column lists any strains in the dataset that have an Average Nucleotide Identity (ANI) above the specified threshold with the given strain. Each match includes a link to its section in the report if it is present, or just the taxonomic ID and ANI percentage if not present.",
-    ]
-    for e in explanations:
-        story.append(Paragraph(e, metadata_style))
-        story.append(Spacer(1, 0.02*inch))
-    story.append(Spacer(1, 0.1*inch))
+
 
     # ── Footer: Low Confidence ────────────────────────────────────────────────
     if low_confidence_strains:
@@ -4884,16 +5104,15 @@ def create_pdf_template(output_path, samples_dict, args):
         story.append(OutlineDest('outline_low_confidence',
                                  'Low Confidence Detections', level=0, closed=True,
                                  collector=outline_collector))
-        story.append(Paragraph("<b>Low Confidence, High Consequence Detections:</b>", heading_style))
+        story.append(Paragraph("<b>Low Confidence, High Consequence Detections</b>", heading_style))
         # Build a summary of per-sample thresholds for the description
         _unique_confs = sorted(set(sample_min_conf.values()))
         if len(_unique_confs) == 1:
             _conf_desc = f"the confidence threshold of {_unique_confs[0]}"
         else:
-            _conf_desc = "their sample-specific confidence thresholds"
+            _conf_desc = "their sample-specific confidence thresholds."
         story.append(Paragraph(
-            f"The following strains were detected but fell below {_conf_desc} "
-            f"and are listed here for reference.", metadata_style))
+            f"Detected strains below {_conf_desc}.", metadata_style))
         story.append(Spacer(1, 0.05*inch))
         story.append(create_low_confidence_table(
             low_confidence_strains, small_style, show_k2_column, available_width))
@@ -4911,50 +5130,49 @@ def create_pdf_template(output_path, samples_dict, args):
     # ── Footer: Additional Information ───────────────────────────────────────
     story.append(AnchorFlowable('additional_info'))
     story.append(OutlineDest('outline_additional_info', 'Additional Information', level=0, closed=True, collector=outline_collector))
-    story.append(Paragraph("<b>Additional Information:</b>", heading_style))
+    story.append(Paragraph("<b>Additional Information</b>", heading_style))
     story.append(Spacer(1, 0.01*inch))
+
     url2 = "https://github.com/jhuapl-bio/taxtriage/blob/main/docs/usage.md#confidence-scoring"
+    discussions_url = "https://github.com/jhuapl-bio/taxtriage/discussions"
+    issues_url = "https://github.com/jhuapl-bio/taxtriage/issues"
+
     story.append(Paragraph(
-        f'Please visit our <a href="{url2}"><b><font color="blue">DOCUMENTATION PAGE</font></b></a> '
-        f'for more information on how confidence is calculated.', metadata_style))
-    story.append(Spacer(1, 0.01*inch))
+        "• Sample names and species groups throughout the report are hyperlinked for navigation. "
+        "Selecting a sample or organism entry will jump directly to its corresponding section in the document.",
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.03*inch))
+
     story.append(Paragraph(
-        "The following information highlights the description for the color combinations "
-        "for each organism class in the annotated table(s).", metadata_style))
-    story.append(Spacer(1, 0.01*inch))
+        "• Organism groups are sorted by TASS score by default, or alphabetically when the alphabetical sorting option is enabled. "
+        "• Only samples and organism groups containing visible qualifying strains are included in the index and navigation sections. "
+        "• When subkey grouping is enabled, each genus-level group expands into species/subkey summary rows followed by qualifying child strains that also pass the reporting threshold.",
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.03*inch))
+
     story.append(Paragraph(
-        "Please see the relevant Discovery Analysis txt file for low confidence, "
-        "high consequence annotations that were not present in the pdf.", metadata_style))
-    story.append(Spacer(1, 0.01*inch))
+        "• Low-confidence, high-consequence detections that do not appear in the PDF report may still be present in the corresponding Discovery Analysis TXT output file.",
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.03*inch))
+
     story.append(Paragraph(
-        "Read amounts are represented as the <b>total number of aligned reads</b> of sufficient "
-        "mapping quality <b>(% relative to total reads in sample)</b>.", metadata_style))
-    story.append(Spacer(1, 0.06*inch))
-    # ── TaxTriage version and commit ID ──────────────────────────────────────
-    if _workflow_rev and str(_workflow_rev).upper() != "NA":
-        story.append(Paragraph(f"TaxTriage Version: <b>{_workflow_rev}</b>", metadata_style))
-    else:
-        story.append(Paragraph("TaxTriage Version: <b>Not Specified or Local Build</b>", metadata_style))
-    if _commit_id and str(_commit_id).upper() != "NA":
-        story.append(Paragraph(
-            f'Commit ID: <link href="https://github.com/jhuapl-bio/taxtriage/commit/{_commit_id}" '
-            f'color="blue">{_commit_id}</link>', metadata_style))
-        story.append(Paragraph(
-        "Click on sample names or species groups to jump to their sections. Samples are listed in order of appearance in the main table with their top groups listed below. They are sorted by TASS Score by default or alphabetically if selected."
-        "Only samples/groups with visible strains are shown here", small_style))
+        f'• Please visit our <a href="{url2}"><b><font color="blue">DOCUMENTATION PAGE</font></b></a> '
+        f'for additional details on TASS confidence scoring.',
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.05*inch))
+
     story.append(Paragraph(
-        "The table is organized by samples first, then in order of TASS Score by default or alphabetical if selected. "
-        "Each genus group expands into species/subkey summary rows and then any child strains that also clear the cutoff. "
-        "The number of visible child strains can still be limited with the max-members setting.",
-        small_style))
-    # ── Samples in Run summary + section navigation links ────────────────────
-    story.append(Spacer(1, 0.08*inch))
-    story.append(Paragraph(
-        "If there are questions or issues with your report, please open an issue on GitHub as a "
-        "discussion <link href=\"https://github.com/jhuapl-bio/taxtriage/discussions\" color=\"blue\">"
-        "here</link>. Issues should be tracked/submitted at "
-        "<link href=\"https://github.com/jhuapl-bio/taxtriage/issues\" color=\"blue\">this link</link>.",
-        metadata_style))
+        f'Questions, feedback, or issues related to this report or the TaxTriage workflow can be submitted through the GitHub repository. '
+        f'General questions and discussions should be posted in the '
+        f'<a href="{discussions_url}"><b><font color="blue">Discussions</font></b></a> section, '
+        f'while bugs and feature requests should be submitted through the '
+        f'<a href="{issues_url}"><b><font color="blue">Issues</font></b></a> tracker.',
+        metadata_style
+    ))
     story.append(Spacer(1, 0.12*inch))
 
     # ── Index ─────────────────────────────────────────────────────
@@ -4965,7 +5183,7 @@ def create_pdf_template(output_path, samples_dict, args):
     story.append(Paragraph("<b>Samples in Run:</b>", small_style))
     story.append(Spacer(1, 0.07*inch))
     story.append(Paragraph(
-        "<i>Format: Sample Name (# Total Alignments - # Primary Pathogens) → "
+        "<i>Format: Sample name (# Total Alignments;# Primary Pathogens) → "
         "Category Label ■ (# Primary Strains, Max TASS)</i>", small_style))
     story.append(Spacer(1, 0.12*inch))
     for _sir_sample_name in sorted(samples_dict.keys()):
@@ -4990,7 +5208,7 @@ def create_pdf_template(output_path, samples_dict, args):
         _sir_plat = _sir_toc_meta.get('platform', '')
         _sir_plat_str = f" — {_sir_plat}" if _sir_plat and _sir_plat != 'unknown' else ''
         _sir_link_text = create_safe_link(
-            f'<b>{_sir_sample_name}</b>{_sir_plat_str} ({_sir_total_alignments:,} Alignments - {_sir_primary_count} Primary Pathogens)',
+            f'<b>{_sir_sample_name}</b>{_sir_plat_str} ({_sir_total_alignments:,} alignments;{_sir_primary_count} primary pathogens)',
             _sir_bookmark, valid_bookmarks)
         story.append(Paragraph(_sir_link_text, small_style))
         story.append(Spacer(1, 0.05*inch))
