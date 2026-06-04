@@ -57,9 +57,12 @@ process MINIMAP2_ALIGN {
     sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
     def S_value = "${sort_mem_per_thread_mb}M"
 
-    // Treat minimap2 memory knobs as tuning params, not hard caps
-    def I_value = params.mmap2_I ?: '8G'
-    def K_value = params.mmap2_K ?: '100M'
+    // Derive -I and -K from 80% of the container's allocated RAM
+    def ram_80pct_mb = (task.memory.toMega() * 0.80).longValue()
+    def I_gb         = Math.max((ram_80pct_mb / 1024) as long, 1L)
+    def K_mb         = Math.max((ram_80pct_mb / 8) as long, 64L)
+    def I_value      = params.mmap2_I ?: "${I_gb}G"
+    def K_value      = params.mmap2_K ?: "${K_mb}M"
 
     def cigar_paf     = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
