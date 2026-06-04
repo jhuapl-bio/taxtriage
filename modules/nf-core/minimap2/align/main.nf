@@ -1,6 +1,6 @@
 process MINIMAP2_ALIGN {
     tag "$meta.id"
-    label 'process_high'
+    label 'process_standard'
 
     conda (params.enable_conda ? 'bioconda::minimap2=2.21 bioconda::samtools=1.12' : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -51,43 +51,15 @@ process MINIMAP2_ALIGN {
     def sort_threads = task.cpus > 4 ? 2 : 1
     def mm2_threads  = Math.max(task.cpus - sort_threads, 1)
 
-    // Sort memory is PER THREAD, so set it explicitly and conservatively.
-    // Keep the sort buffer small: on Fusion/S3, the host reference is cached
-    // by the Fusion agent (~reference size) AND loaded by minimap2 as an index.
-    // A generous sort buffer can push the process over its cgroup limit, causing
-    // samtools sort to fork() a merge helper and fail with "Cannot allocate memory".
-    // 8% of task memory, capped at 1 GB per thread, is safe across all machine sizes.
-    def sort_mem_total_mb      = (task.memory.toMega() * 0.08).longValue()
-    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 256L)
-    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 1024L)
+    // Sort memory is PER THREAD, so set it explicitly and conservatively
+    def sort_mem_total_mb      = (task.memory.toMega() * 0.20).longValue()
+    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 768L)
+    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
     def S_value = "${sort_mem_per_thread_mb}M"
 
-    // Treat minimap2 memory knobs as tuning params, not hard caps.
-    //
-    // -I (index batch size) is deliberately kept LARGE enough to index a typical
-    // host reference (~4 Gbp) in a SINGLE pass.  When -I is smaller than the
-    // reference, minimap2 splits the index into multiple parts and (with
-    // --split-prefix) writes per-split intermediate files (e.g.
-    // <id>.prefix.0000.tmp) into the work dir.  On Fusion/S3 those temp writes
-    // are buffered in memory-backed /tmp (fusion_cache_*), which competes with
-    // the in-RAM index and the read stream and triggers
-    // "write ...: cannot allocate memory" (NOT a disk-space problem).
-    //
-    // Therefore, on OOM retries we DO NOT shrink -I (that would create more
-    // splits and more RAM-backed temp writes, making the failure worse).
-    // Instead we hold/raise -I and rely on the memory ladder in modules.config
-    // (40 -> 56 -> 72 -> 88 GB) to give the single-pass index more headroom.
-    // Only K (the query mini-batch) is shrunk on retry to cut query-side RAM.
-    //
-    // A 4 Gbp reference (~4.03e9 bp) fits in one 6G batch -> no split temp files.
-    // For genuinely larger references that still must split, --split-prefix
-    // remains correct; pair it with NVMe-backed Fusion scratch (see README).
-    // User-supplied params.mmap2_I / mmap2_K always take priority.
-    def I_defaults = ['6G', '6G', '8G', '8G']
-    def K_defaults = ['500M', '200M', '100M', '50M']
-    def attempt_idx = Math.min(task.attempt - 1, I_defaults.size() - 1)
-    def I_value = params.mmap2_I ?: I_defaults[attempt_idx]
-    def K_value = params.mmap2_K ?: K_defaults[attempt_idx]
+    // Treat minimap2 memory knobs as tuning params, not hard caps
+    def I_value = params.mmap2_I ?: '8G'
+    def K_value = params.mmap2_K ?: '100M'
 
     def cigar_paf     = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
