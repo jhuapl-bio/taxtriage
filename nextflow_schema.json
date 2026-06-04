@@ -790,6 +790,24 @@
                     "description": "Monochrome logs",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "mmap2_mem_reserve_fraction": {
+                    "type": "number",
+                    "description": "Fraction of memory to reserve for minimap2. This is used to prevent minimap2 from using all available memory and crashing the pipeline. Default is 0.1 or 10%",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.2
+                },
+                "mmap2_sort_budget_fraction": {
+                    "type": "number",
+                    "description": "Fraction of memory to reserve for minimap2 sorting. This is used to prevent minimap2 from using all available memory and crashing the pipeline during the sorting step. Default is 0.1 or 10%",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.1
+                },
+                "mmap2_mm2_budget_fraction": {
+                    "type": "number",
+                    "description": "Fraction of memory to reserve for minimap2 mm2 step. This is used to prevent minimap2 from using all available memory and crashing the pipeline during the mm2 step. Default is 0.1 or 10%",
+                    "fa_icon": "fas fa-file-signature",
+                    "default": 0.7
+                },
                 "help": {
                     "type": "boolean",
                     "description": "Print help message",
