@@ -90,10 +90,10 @@ process MINIMAP2_ALIGN {
     def total_mem_mb  = task.memory.toMega().longValue()
     def usable_mem_mb = Math.max((total_mem_mb * (1.0d - mem_reserve_fraction)).longValue(), 1L)
 
-    // Use one samtools thread for BAM output.
-    // For PAF output there is no samtools sort, so minimap2 can use all CPUs.
-    def sort_threads = bam_format ? 1 : 0
-    def mm2_threads  = bam_format ? Math.max(task.cpus - sort_threads, 1) : Math.max(task.cpus, 1)
+    // minimap2 and samtools now run sequentially (file-based, not piped),
+    // so each stage can use all available CPUs in turn.
+    def sort_threads = bam_format ? Math.max(task.cpus, 1) : 0
+    def mm2_threads  = Math.max(task.cpus, 1)
 
     // samtools sort -m is per thread.
     // The BAM pipeline has two sort stages:
@@ -101,7 +101,9 @@ process MINIMAP2_ALIGN {
     //   2. coordinate sort
     //
     // Divide the total samtools sort budget across both stages.
-    def sort_stages = bam_format ? 2 : 0
+    // Paired-end runs two coordinate-affecting sort stages (name + coord);
+    // single-end runs only the single coordinate sort.
+    def sort_stages = bam_format ? (meta.single_end ? 1 : 2) : 0
 
     def sort_budget_total_mb = bam_format
         ? Math.max((usable_mem_mb * sort_budget_fraction).longValue(), 1L)
@@ -135,19 +137,26 @@ process MINIMAP2_ALIGN {
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? "-f ${params.mmap2_fraction_filter}" : ''
     def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
 
-    // BAM output pipeline.
+    // File-based BAM pipeline (no shell pipe).
+    //
+    // minimap2 writes its SAM to disk, then each samtools stage reads from a
+    // file and writes the next file. Running the stages sequentially instead
+    // of through a pipe keeps peak memory low: minimap2 releases its index
+    // memory before samtools sort allocates its own, which avoids the OOM
+    // kills that previously surfaced as "samtools sort: failed to read header
+    // from -" (samtools receiving an empty stream from a dead minimap2).
     //
     // Why name-sort -> fixmate -> coordinate-sort instead of a single sort?
     //
     // --split-prefix causes minimap2 to process the reference index in
     // multiple chunks and emit reads in multiple passes. Each pass ends with
-    // unmapped reads for that chunk, so the SAM stream delivered to the pipe
-    // is not globally ordered: RNAME=* unmapped records appear between
-    // mapped records from different index splits. A single coordinate sort
-    // with limited per-thread memory -m creates temp files and merges them;
-    // when the merge is also memory-constrained the final BAM can contain
-    // RNAME=* records before some mapped records, which samtools index rejects
-    // with "NO_COOR reads not in a single block at the end".
+    // unmapped reads for that chunk, so the SAM is not globally ordered:
+    // RNAME=* unmapped records appear between mapped records from different
+    // index splits. A single coordinate sort with limited per-thread memory
+    // -m creates temp files and merges them; when the merge is also
+    // memory-constrained the final BAM can contain RNAME=* records before some
+    // mapped records, which samtools index rejects with "NO_COOR reads not in
+    // a single block at the end".
     //
     // The name-sort -> fixmate pipeline fixes this:
     //   1. Name sort groups mates together so fixmate can run.
@@ -158,17 +167,39 @@ process MINIMAP2_ALIGN {
     //   3. The final coordinate sort produces a BAM where all RNAME=* records
     //      are in a single block at the end, which samtools index requires.
     //
-    // For single-end and long-read samples fixmate is a no-op, passing reads
-    // through unchanged, so there is no correctness cost, only an additional
-    // sort pass.
-    def bam_output = bam_format
-        ? """-a \\
-        | samtools sort -n -@ ${sort_threads} -m ${S_value} -T ${prefix}.nsort.tmp \\
-        | samtools fixmate -m -@ ${sort_threads} - - \\
-        | samtools sort    -@ ${sort_threads} -m ${S_value} -T ${prefix}.csort.tmp -O BAM -o ${prefix}.bam"""
-        : "-o ${prefix}.paf"
+    // For single-end (and long-read) samples there are no mate pairs, so the
+    // name-sort -> fixmate stages are pure no-ops. We skip them entirely and
+    // run a single coordinate sort straight from the minimap2 SAM, which is
+    // both faster and uses less disk. The name-sort -> fixmate pipeline only
+    // runs for paired-end data, where it is required.
+    def minimap2_out = bam_format ? "-a -o ${prefix}.aln.sam" : "-o ${prefix}.paf"
+
+    def samtools_block
+    if (!bam_format) {
+        samtools_block = ""
+    } else if (meta.single_end) {
+        samtools_block = """
+    samtools sort      -@ ${sort_threads} -m ${S_value} -T ${prefix}.csort.tmp -O BAM -o ${prefix}.bam ${prefix}.aln.sam"""
+    } else {
+        samtools_block = """
+    samtools sort   -n -@ ${sort_threads} -m ${S_value} -T ${prefix}.nsort.tmp -O BAM -o ${prefix}.nsort.bam ${prefix}.aln.sam
+    samtools fixmate -m -@ ${sort_threads} ${prefix}.nsort.bam ${prefix}.fixmate.bam
+    samtools sort      -@ ${sort_threads} -m ${S_value} -T ${prefix}.csort.tmp -O BAM -o ${prefix}.bam ${prefix}.fixmate.bam"""
+    }
 
     """
+    set -euo pipefail
+
+    # Always remove intermediate and temp files, whether the task succeeds or
+    # fails. The EXIT trap preserves the original exit code, so a minimap2 or
+    # samtools failure still propagates to Nextflow.
+    cleanup() {
+        rm -f ${prefix}.aln.sam ${prefix}.nsort.bam ${prefix}.fixmate.bam
+        rm -f ${prefix}.nsort.tmp*.bam ${prefix}.csort.tmp*.bam
+        rm -f ${meta.id}.prefix.* 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
     minimap2 \\
         $args $mapx \\
         -t ${mm2_threads} -I ${I_value} -K ${K_value} ${split_prefix} \\
@@ -176,7 +207,8 @@ process MINIMAP2_ALIGN {
         ${input_reads} \\
         ${cigar_paf} ${mmap2_window} ${mmap2_fraction_filter} \\
         ${set_cigar_bam} \\
-        ${bam_output}
+        ${minimap2_out}
+${samtools_block}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
