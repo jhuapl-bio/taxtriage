@@ -63,11 +63,27 @@ process MINIMAP2_ALIGN {
     def S_value = "${sort_mem_per_thread_mb}M"
 
     // Treat minimap2 memory knobs as tuning params, not hard caps.
-    // On retries, shrink chunk sizes so minimap2 uses less RAM (more passes, but survives OOM).
-    // Start at 4G (-I) so a 7 GB reference is processed in 2 passes rather than 1,
-    // halving minimap2's peak index footprint.
+    //
+    // -I (index batch size) is deliberately kept LARGE enough to index a typical
+    // host reference (~4 Gbp) in a SINGLE pass.  When -I is smaller than the
+    // reference, minimap2 splits the index into multiple parts and (with
+    // --split-prefix) writes per-split intermediate files (e.g.
+    // <id>.prefix.0000.tmp) into the work dir.  On Fusion/S3 those temp writes
+    // are buffered in memory-backed /tmp (fusion_cache_*), which competes with
+    // the in-RAM index and the read stream and triggers
+    // "write ...: cannot allocate memory" (NOT a disk-space problem).
+    //
+    // Therefore, on OOM retries we DO NOT shrink -I (that would create more
+    // splits and more RAM-backed temp writes, making the failure worse).
+    // Instead we hold/raise -I and rely on the memory ladder in modules.config
+    // (40 -> 56 -> 72 -> 88 GB) to give the single-pass index more headroom.
+    // Only K (the query mini-batch) is shrunk on retry to cut query-side RAM.
+    //
+    // A 4 Gbp reference (~4.03e9 bp) fits in one 6G batch -> no split temp files.
+    // For genuinely larger references that still must split, --split-prefix
+    // remains correct; pair it with NVMe-backed Fusion scratch (see README).
     // User-supplied params.mmap2_I / mmap2_K always take priority.
-    def I_defaults = ['4G', '2G', '1G', '512M']
+    def I_defaults = ['6G', '6G', '8G', '8G']
     def K_defaults = ['500M', '200M', '100M', '50M']
     def attempt_idx = Math.min(task.attempt - 1, I_defaults.size() - 1)
     def I_value = params.mmap2_I ?: I_defaults[attempt_idx]
