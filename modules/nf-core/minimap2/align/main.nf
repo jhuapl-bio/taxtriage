@@ -51,16 +51,23 @@ process MINIMAP2_ALIGN {
     def sort_threads = task.cpus > 4 ? 2 : 1
     def mm2_threads  = Math.max(task.cpus - sort_threads, 1)
 
-    // Sort memory is PER THREAD, so set it explicitly and conservatively
-    def sort_mem_total_mb      = (task.memory.toMega() * 0.20).longValue()
-    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 768L)
-    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
+    // Sort memory is PER THREAD, so set it explicitly and conservatively.
+    // Keep the sort buffer small: on Fusion/S3, the host reference is cached
+    // by the Fusion agent (~reference size) AND loaded by minimap2 as an index.
+    // A generous sort buffer can push the process over its cgroup limit, causing
+    // samtools sort to fork() a merge helper and fail with "Cannot allocate memory".
+    // 8% of task memory, capped at 1 GB per thread, is safe across all machine sizes.
+    def sort_mem_total_mb      = (task.memory.toMega() * 0.08).longValue()
+    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 256L)
+    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 1024L)
     def S_value = "${sort_mem_per_thread_mb}M"
 
     // Treat minimap2 memory knobs as tuning params, not hard caps.
     // On retries, shrink chunk sizes so minimap2 uses less RAM (more passes, but survives OOM).
+    // Start at 4G (-I) so a 7 GB reference is processed in 2 passes rather than 1,
+    // halving minimap2's peak index footprint.
     // User-supplied params.mmap2_I / mmap2_K always take priority.
-    def I_defaults = ['8G', '4G', '2G', '1G']
+    def I_defaults = ['4G', '2G', '1G', '512M']
     def K_defaults = ['500M', '200M', '100M', '50M']
     def attempt_idx = Math.min(task.attempt - 1, I_defaults.size() - 1)
     def I_value = params.mmap2_I ?: I_defaults[attempt_idx]
