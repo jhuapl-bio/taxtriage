@@ -115,21 +115,54 @@ process MINIMAP2_ALIGN {
 
     def S_value = "${sort_mem_per_thread_mb}M"
 
-    // minimap2 memory tuning budget.
-    // -I uses the total minimap2 budget.
-    // -K is scaled across minimap2 threads.
+    // minimap2 memory model.
     //
-    // User-supplied params.mmap2_I or params.mmap2_K still override these
-    // dynamic defaults.
+    // CRITICAL: -I and -K are NOT memory caps. Larger values use MORE RAM.
+    //   -I = target reference bases per index block. A large -I loads the
+    //        whole reference into one in-RAM index; --split-prefix only
+    //        actually splits when -I is SMALLER than the reference, so a
+    //        smaller -I bounds index RAM on large references (6+ Gbp) at the
+    //        cost of extra alignment passes.
+    //   -K = query bases loaded per mini-batch. Larger -K holds more reads and
+    //        their buffered alignments in RAM at once.
+    //
+    // The previous model set -I/-K *to* the available memory, which forced
+    // minimap2 to consume it all and triggered OOM ("Killed") on large
+    // references. Instead we pick the LARGEST -I/-K that fit inside the
+    // minimap2 budget, using rough bytes-per-base estimates, and cap -K.
+    //
+    // User-supplied params.mmap2_I / params.mmap2_K still override everything.
     def mm2_budget_total_mb = Math.max((usable_mem_mb * mm2_budget_fraction).longValue(), 1L)
 
-    def mm2_budget_per_thread_mb = Math.max(
-        (mm2_budget_total_mb / mm2_threads) as long,
-        1L
-    )
+    // Split the budget between the reference index and the read mini-batch.
+    def index_fraction = toDoubleOrDefault(params.mmap2_index_budget_fraction, 0.70d)
+    def index_budget_mb = Math.max((mm2_budget_total_mb * index_fraction).longValue(), 1L)
+    def reads_budget_mb = Math.max((mm2_budget_total_mb * (1.0d - index_fraction)).longValue(), 1L)
 
-    def I_value = params.mmap2_I ?: "${mm2_budget_total_mb}M"
-    def K_value = params.mmap2_K ?: "${mm2_budget_per_thread_mb}M"
+    // Estimated peak RAM (bytes) per base. The sr preset builds a dense
+    // minimizer index, so the index estimate is deliberately conservative.
+    def index_bytes_per_base = toDoubleOrDefault(params.mmap2_index_bytes_per_base, 8.0d)
+    def reads_bytes_per_base = toDoubleOrDefault(params.mmap2_reads_bytes_per_base, 12.0d)
+
+    // Convert a RAM budget (MB) into a minimap2 base count in millions:
+    // bases = budget_bytes / bytes_per_base, expressed in M (1e6) bases, so
+    // millions-of-bases == budget_mb / bytes_per_base.
+    def I_mbases = Math.max((index_budget_mb / index_bytes_per_base) as long, 1L)
+    def K_mbases = Math.max((reads_budget_mb / reads_bytes_per_base) as long, 1L)
+
+    // Cap -I to force --split-prefix into more, smaller index passes. A large
+    // reference (e.g. 6 Gbp) divided by a small -I produces ceil(ref/I)
+    // passes, each with a much smaller in-RAM index. Lower this to force even
+    // more splits / lower peak RAM (default 2 Gbp).
+    def i_cap_mbases = toDoubleOrDefault(params.mmap2_I_cap_mbases, 2000.0d) as long
+    I_mbases = Math.min(I_mbases, i_cap_mbases)
+
+    // Cap -K so a single mini-batch can never dominate RAM (default 1 Gbp).
+    def k_cap_mbases = toDoubleOrDefault(params.mmap2_K_cap_mbases, 1000.0d) as long
+    K_mbases = Math.min(K_mbases, k_cap_mbases)
+
+    def I_value = params.mmap2_I ?: "${I_mbases}M"
+    def K_value = params.mmap2_K ?: "${K_mbases}M"
 
     def cigar_paf     = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
