@@ -26,13 +26,13 @@ process MINIMAP2_ALIGN {
     def prefix = task.ext.prefix ?: "${meta.id}"
 
     // Resolve the minimap2 preset.
-    // Priority: meta.minimap2_preset user-supplied per-sample >
+    // Priority: meta.minimap2_preset (user-supplied per-sample) >
     //           meta.platform-derived default.
-    // Valid preset names passed without the leading -ax:
-    //   map-ont, map-pb, map-hifi, lr:hq,
-    //   sr, splice, splice:hq, splice:sr,
-    //   asm5, asm10, asm20,
-    //   ava-pb, ava-ont.
+    // Valid preset names (passed without the leading -ax):
+    //   map-ont, map-pb, map-pb (CLR), map-hifi (HiFi/CCS), lr:hq (ONT Q20),
+    //   sr (short reads), splice (spliced long reads), splice:hq (Iso-seq),
+    //   splice:sr (short-read RNA-seq), asm5/asm10/asm20 (assembly alignment),
+    //   ava-pb, ava-ont (read overlap).
     def mapx = ''
     if (meta.minimap2_preset) {
         mapx = "-ax ${meta.minimap2_preset}"
@@ -41,93 +41,25 @@ process MINIMAP2_ALIGN {
     } else if (meta.platform =~ /(?i)pacbio/) {
         mapx = '-ax map-hifi'
     } else {
-        // Default: Oxford Nanopore, also used for unspecified / FASTA inputs.
+        // Default: Oxford Nanopore (also used for unspecified / FASTA inputs)
         mapx = '-ax map-ont'
     }
 
     def input_reads = reads.findAll { it != null }.join(' ')
 
-    /*
-     * Dynamic memory / thread model
-     *
-     * Keep 20% of task.memory unused.
-     *
-     * Of the remaining 80%:
-     *   - samtools sort gets 10%
-     *   - minimap2 tuning budget gets 70%
-     *   - the remaining 20% is extra headroom for pipes, compression,
-     *     process overhead, and memory not directly controlled by -I/-K/-m.
-     *
-     * Example with task.memory = 20 GB and task.cpus = 6:
-     *
-     *   usable memory         = 20 GB * 0.80 = 16 GB
-     *   samtools sort budget  = 16 GB * 0.10 = 1.6 GB total
-     *   minimap2 budget       = 16 GB * 0.70 = 11.2 GB total
-     *   samtools threads      = 1
-     *   minimap2 threads      = 5
-     *
-     * Because the BAM path has two samtools sort stages in the same pipe,
-     * the samtools sort budget is divided across both sort commands.
-     *
-     * So in the 20 GB / 6 CPU example:
-     *
-     *   each samtools sort -m  = 1.6 GB / 2 = 800M
-     *   minimap2 -I           = 11200M
-     *   minimap2 -K           = 11200M / 5 = 2240M
-     *
-     * Note:
-     *   samtools sort -m is per thread.
-     *   minimap2 -I and -K are tuning parameters, not strict RAM caps.
-     */
-    def toDoubleOrDefault = { value, defaultValue ->
-        value != null ? value.toString().toDouble() : defaultValue
-    }
+    // Reserve most CPUs for minimap2; keep sort small
+    def sort_threads = task.cpus > 4 ? 2 : 1
+    def mm2_threads  = Math.max(task.cpus - sort_threads, 1)
 
-    def mem_reserve_fraction = toDoubleOrDefault(params.mmap2_mem_reserve_fraction, 0.20d)
-    def sort_budget_fraction = toDoubleOrDefault(params.mmap2_sort_budget_fraction, 0.10d)
-    def mm2_budget_fraction  = toDoubleOrDefault(params.mmap2_mm2_budget_fraction, 0.70d)
-
-    def total_mem_mb  = task.memory.toMega().longValue()
-    def usable_mem_mb = Math.max((total_mem_mb * (1.0d - mem_reserve_fraction)).longValue(), 1L)
-
-    // Use one samtools thread for BAM output.
-    // For PAF output there is no samtools sort, so minimap2 can use all CPUs.
-    def sort_threads = bam_format ? 1 : 0
-    def mm2_threads  = bam_format ? Math.max(task.cpus - sort_threads, 1) : Math.max(task.cpus, 1)
-
-    // samtools sort -m is per thread.
-    // The BAM pipeline has two sort stages:
-    //   1. name sort
-    //   2. coordinate sort
-    //
-    // Divide the total samtools sort budget across both stages.
-    def sort_stages = bam_format ? 2 : 0
-
-    def sort_budget_total_mb = bam_format
-        ? Math.max((usable_mem_mb * sort_budget_fraction).longValue(), 1L)
-        : 0L
-
-    def sort_mem_per_thread_mb = bam_format
-        ? Math.max((sort_budget_total_mb / (sort_stages * sort_threads)) as long, 1L)
-        : 0L
-
+    // Sort memory is PER THREAD, so set it explicitly and conservatively
+    def sort_mem_total_mb      = (task.memory.toMega() * 0.20).longValue()
+    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 768L)
+    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
     def S_value = "${sort_mem_per_thread_mb}M"
 
-    // minimap2 memory tuning budget.
-    // -I uses the total minimap2 budget.
-    // -K is scaled across minimap2 threads.
-    //
-    // User-supplied params.mmap2_I or params.mmap2_K still override these
-    // dynamic defaults.
-    def mm2_budget_total_mb = Math.max((usable_mem_mb * mm2_budget_fraction).longValue(), 1L)
-
-    def mm2_budget_per_thread_mb = Math.max(
-        (mm2_budget_total_mb / mm2_threads) as long,
-        1L
-    )
-
-    def I_value = params.mmap2_I ?: "${mm2_budget_total_mb}M"
-    def K_value = params.mmap2_K ?: "${mm2_budget_per_thread_mb}M"
+    // Treat minimap2 memory knobs as tuning params, not hard caps
+    def I_value = params.mmap2_I ?: '8G'
+    def K_value = params.mmap2_K ?: '100M'
 
     def cigar_paf     = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
@@ -135,37 +67,8 @@ process MINIMAP2_ALIGN {
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? "-f ${params.mmap2_fraction_filter}" : ''
     def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
 
-    // BAM output pipeline.
-    //
-    // Why name-sort -> fixmate -> coordinate-sort instead of a single sort?
-    //
-    // --split-prefix causes minimap2 to process the reference index in
-    // multiple chunks and emit reads in multiple passes. Each pass ends with
-    // unmapped reads for that chunk, so the SAM stream delivered to the pipe
-    // is not globally ordered: RNAME=* unmapped records appear between
-    // mapped records from different index splits. A single coordinate sort
-    // with limited per-thread memory -m creates temp files and merges them;
-    // when the merge is also memory-constrained the final BAM can contain
-    // RNAME=* records before some mapped records, which samtools index rejects
-    // with "NO_COOR reads not in a single block at the end".
-    //
-    // The name-sort -> fixmate pipeline fixes this:
-    //   1. Name sort groups mates together so fixmate can run.
-    //   2. fixmate normalises FLAG bits and RNEXT/PNEXT/TLEN for every read,
-    //      including setting RNAME=* / POS=0 for reads whose mate is also
-    //      unmapped. This ensures truly unmapped reads carry no residual
-    //      reference coordinate that would misplace them during coordinate sort.
-    //   3. The final coordinate sort produces a BAM where all RNAME=* records
-    //      are in a single block at the end, which samtools index requires.
-    //
-    // For single-end and long-read samples fixmate is a no-op, passing reads
-    // through unchanged, so there is no correctness cost, only an additional
-    // sort pass.
     def bam_output = bam_format
-        ? """-a \\
-        | samtools sort -n -@ ${sort_threads} -m ${S_value} -T ${prefix}.nsort.tmp \\
-        | samtools fixmate -m -@ ${sort_threads} - - \\
-        | samtools sort    -@ ${sort_threads} -m ${S_value} -T ${prefix}.csort.tmp -O BAM -o ${prefix}.bam"""
+        ? "-a | samtools sort -@ ${sort_threads} -m ${S_value} -T ${prefix}.tmp -O BAM -o ${prefix}.bam -"
         : "-o ${prefix}.paf"
 
     """
