@@ -24,6 +24,7 @@ include { ALIGNMENT_PER_SAMPLE } from '../../modules/local/alignment_per_sample'
 include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
 include { CREATE_COMPARISON_REPORT } from '../../modules/local/create_comparison_report'
+include { COMBINE_SAMPLES_JSON } from '../../modules/local/combine_samples_json'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
 include { CLUSTER_ALIGNMENT } from '../../modules/local/cluster_alignment'
 include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
@@ -242,6 +243,14 @@ workflow REPORT {
             all_alignment_outputs.map{ m, txt -> txt }.collect().map{
                 [[id: "all"], it]
             }.set{ full_list_pathogen_files }
+
+            // ── Combine all per-sample JSONs into a single all.samples.json ──────
+            // Published to report/ so users can download one file and drag+drop
+            // it onto any TaxTriage heatmap.html instead of individual JSONs.
+            ch_all_jsons_for_combine = all_alignment_outputs
+                .map { meta, json -> json }
+                .collect()
+            COMBINE_SAMPLES_JSON( ch_all_jsons_for_combine )
 
             // merge
             SINGLE_REPORT(

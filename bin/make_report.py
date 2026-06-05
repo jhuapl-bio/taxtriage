@@ -332,6 +332,48 @@ def load_json_inputs(paths, mintass=0, microbial_cats=None):
             print(f"[make_report] WARNING: failed to parse {path}: {exc}", file=sys.stderr)
             continue
 
+        # ── Combined all.samples.json: expand into per-sample loads ──────────
+        if data.get("taxtriage_combined") and isinstance(data.get("samples"), list):
+            print(f"[make_report] Detected combined JSON {path!r} with "
+                  f"{len(data['samples'])} sample(s); expanding...")
+            for sample_data in data["samples"]:
+                s_meta = sample_data.get("metadata", {})
+                s_name = s_meta.get("sample_name",
+                                     os.path.basename(path).split(".")[0])
+                sample_meta[s_name] = s_meta
+                for row in _iter_organisms(sample_data, s_name,
+                                           mintass=mintass,
+                                           microbial_cats=microbial_cats):
+                    rows.append(row)
+                _STRIP = {'members', 'subkey', 'key', 'toplevelkey'}
+                for grp in sample_data.get("organisms", []):
+                    for sk_m in grp.get("members", []):
+                        if float(sk_m.get('tass_score', 0) or 0) < mintass:
+                            continue
+                        if microbial_cats is not None and sk_m.get('microbial_category', 'Unknown') not in microbial_cats:
+                            continue
+                        for strain in sk_m.get("members", []):
+                            if float(strain.get('tass_score', 0) or 0) < mintass:
+                                continue
+                            if microbial_cats is not None and strain.get('microbial_category', 'Unknown') not in microbial_cats:
+                                continue
+                            _contigs = strain.get("contigs")
+                            _dhist   = strain.get("depth_histogram")
+                            _bhist   = strain.get("breadth_histogram")
+                            if _contigs or _dhist or _bhist:
+                                _key = f"{s_name}||{strain.get('name','')}||{strain.get('key','')}"
+                                _cd_entry = {
+                                    "sample":          s_name,
+                                    "organism":        strain.get("name", "Unknown"),
+                                    "taxon_id":        str(strain.get("key", "")),
+                                    "contigs":         [{k: v for k, v in c.items() if k not in _STRIP} for c in (_contigs or [])],
+                                    "depth_histogram": _dhist or {},
+                                }
+                                if _bhist:
+                                    _cd_entry["breadth_histogram"] = _bhist
+                                contig_data[_key] = _cd_entry
+            continue
+
         meta = data.get("metadata", {})
         sample_name = meta.get("sample_name", os.path.basename(path).split(".")[0])
         sample_meta[sample_name] = meta
