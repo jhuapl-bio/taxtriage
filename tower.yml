@@ -5,6 +5,8 @@ reports:
     display: "Organism Discovery Report(s)"
   "**/report/all.odr.html":
     display: "Organism Comparison Report"
+  "**/report/all.odr.json":
+    display: "All Samples Combined JSON (drag+drop onto any TaxTriage report)"
   "**/report/*.odr.txt":
     display: "Organism Discovery Analysis Basic Table"
   "**/report/all.odr.xlsx":

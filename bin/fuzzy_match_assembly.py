@@ -163,9 +163,17 @@ def main():
                         if gcf:
                             final_list.append(f"{seq_record.id}\t{gcf}\t{basename}\t{desc}")
                         else:
+                            # Name matched a pathogen but no GCF/GCA is present in the
+                            # assembly summaries. Keep the accession in the map (empty
+                            # Assembly) so the taxid backup step can resolve it from NCBI.
+                            final_list.append(f"{seq_record.id}\t\t{name}\t{desc}")
                             missing_elements.append(f"{seq_record.id}\t{desc}")
                     else:
-                        # print(f"No match found in the backup sheet for {seq_record.id}\t{desc}")
+                        # Accession (e.g. OR833055.1) is absent from both assembly
+                        # summaries and the pathogen sheet. Rather than dropping it,
+                        # emit a row with an empty Assembly column so the downstream
+                        # taxid step can query NCBI directly by accession.
+                        final_list.append(f"{seq_record.id}\t\t{desc}\t{desc}")
                         missing_elements.append(f"{seq_record.id}\t{desc}")
     if total > 0:
         print(f"Found {count} out of {total} FASTA accessions ({count/total*100:.2f}%) in the assembly file.")

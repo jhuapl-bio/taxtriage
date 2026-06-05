@@ -26,13 +26,13 @@ process MINIMAP2_ALIGN {
     def prefix = task.ext.prefix ?: "${meta.id}"
 
     // Resolve the minimap2 preset.
-    // Priority: meta.minimap2_preset user-supplied per-sample >
+    // Priority: meta.minimap2_preset (user-supplied per-sample) >
     //           meta.platform-derived default.
-    // Valid preset names passed without the leading -ax:
-    //   map-ont, map-pb, map-hifi, lr:hq,
-    //   sr, splice, splice:hq, splice:sr,
-    //   asm5, asm10, asm20,
-    //   ava-pb, ava-ont.
+    // Valid preset names (passed without the leading -ax):
+    //   map-ont, map-pb, map-pb (CLR), map-hifi (HiFi/CCS), lr:hq (ONT Q20),
+    //   sr (short reads), splice (spliced long reads), splice:hq (Iso-seq),
+    //   splice:sr (short-read RNA-seq), asm5/asm10/asm20 (assembly alignment),
+    //   ava-pb, ava-ont (read overlap).
     def mapx = ''
     if (meta.minimap2_preset) {
         mapx = "-ax ${meta.minimap2_preset}"
@@ -41,7 +41,7 @@ process MINIMAP2_ALIGN {
     } else if (meta.platform =~ /(?i)pacbio/) {
         mapx = '-ax map-hifi'
     } else {
-        // Default: Oxford Nanopore, also used for unspecified / FASTA inputs.
+        // Default: Oxford Nanopore (also used for unspecified / FASTA inputs)
         mapx = '-ax map-ont'
     }
 
@@ -113,6 +113,10 @@ process MINIMAP2_ALIGN {
         ? Math.max((sort_budget_total_mb / (sort_stages * sort_threads)) as long, 1L)
         : 0L
 
+    // Sort memory is PER THREAD, so set it explicitly and conservatively
+    def sort_mem_total_mb      = (task.memory.toMega() * 0.20).longValue()
+    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 768L)
+    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
     def S_value = "${sort_mem_per_thread_mb}M"
 
     // minimap2 memory model.

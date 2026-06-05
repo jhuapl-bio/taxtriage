@@ -3394,7 +3394,7 @@
         >
           <i class="fas fa-cloud-upload-alt" style="font-size: 1.4em; color: #6c9abf"></i>
           <span style="display: block; font-size: 0.78em; margin: 0.3em 0 0.5em"
-            >Drop .paths.json, .xlsx, .tsv, or .txt files here</span
+            >Drop all.samples.json, .paths.json, .xlsx, .tsv, or .txt files here</span
           >
           <label class="upload-btn" for="file-upload-input">Browse Files</label>
           <input
@@ -13325,8 +13325,30 @@
               reader.onload = (e) => {
                 try {
                   const data = JSON.parse(e.target.result);
-                  const result = _parseJson(data, file.name);
-                  resolve(result);
+                  // ── Combined all.samples.json: iterate over every sample ─────
+                  if (data.taxtriage_combined === true && Array.isArray(data.samples)) {
+                    const merged = { rows: [], contigs: [], prot_data: {}, metas: [] };
+                    const _PROT_KEYS_LOCAL = ["genus_summary", "per_gene_hits", "sample_overview", "amr_genes"];
+                    _PROT_KEYS_LOCAL.forEach((k) => {
+                      merged.prot_data[k] = [];
+                    });
+                    for (const sample of data.samples) {
+                      const r = _parseJson(sample, file.name);
+                      merged.rows.push(...(r.rows || []));
+                      merged.contigs.push(...(r.contigs || []));
+                      if (r.prot_data) {
+                        _PROT_KEYS_LOCAL.forEach((k) => {
+                          if (r.prot_data[k] && r.prot_data[k].length) merged.prot_data[k].push(...r.prot_data[k]);
+                        });
+                      }
+                      if (r.sampleName && r.meta) {
+                        merged.metas.push({ sampleName: r.sampleName, meta: r.meta });
+                      }
+                    }
+                    resolve(merged);
+                  } else {
+                    resolve(_parseJson(data, file.name));
+                  }
                 } catch (err) {
                   reject(`${file.name}: JSON parse error – ${err.message}`);
                 }
@@ -13390,11 +13412,16 @@
                     _uploadedProtData[k].push(...result.prot_data[k]);
                 });
               }
-              // Extract run metadata fields from the JSON's metadata block
-              if (result.meta && result.sampleName) {
-                const m = result.meta;
-                const _META_NUM = new Set(["latitude", "longitude", "depth", "salinity"]);
-                const metaRec = { sample_name: result.sampleName };
+              // Extract run metadata fields — handles both single (.paths.json)
+              // and combined (all.samples.json) results.
+              const _metaEntries = result.metas
+                ? result.metas // combined: array of {sampleName, meta}
+                : result.meta && result.sampleName
+                ? [{ sampleName: result.sampleName, meta: result.meta }]
+                : [];
+              const _META_NUM = new Set(["latitude", "longitude", "depth", "salinity"]);
+              for (const { sampleName: sn, meta: m } of _metaEntries) {
+                const metaRec = { sample_name: sn };
                 ["run_id", "latitude", "longitude", "depth", "salinity", "collection_time", "location"].forEach((k) => {
                   const v = m[k];
                   if (v === undefined || v === null || v === "") {
@@ -13406,22 +13433,20 @@
                     metaRec[k] = String(v);
                   }
                 });
-                // Only store if at least one field is non-null
                 if (Object.values(metaRec).some((v, i) => i > 0 && v != null)) {
                   _uploadedMetaRecords.push(metaRec);
                 }
                 // Always update SAMPLE_META with read-count fields so the
                 // banner % reads classified stays accurate after a JSON upload.
-                const existing = SAMPLE_META[result.sampleName] || {};
-                SAMPLE_META[result.sampleName] = Object.assign({}, existing, {
-                  sample_name: result.sampleName,
+                const existing = SAMPLE_META[sn] || {};
+                SAMPLE_META[sn] = Object.assign({}, existing, {
+                  sample_name: sn,
                   total_reads: parseFloat(m.total_reads) || existing.total_reads || 0,
                   aligned_reads: parseFloat(m.aligned_reads) || existing.aligned_reads || 0,
                   total_organism_reads: parseFloat(m.total_organism_reads) || existing.total_organism_reads || 0,
                 });
-                // Mirror into BOOT.sample_meta so clear/restore also sees the value
                 if (BOOT && BOOT.sample_meta) {
-                  BOOT.sample_meta[result.sampleName] = SAMPLE_META[result.sampleName];
+                  BOOT.sample_meta[sn] = SAMPLE_META[sn];
                 }
               }
               _uploadedNames.push(file.name);
