@@ -13329,15 +13329,16 @@
                   if (data.taxtriage_combined === true && Array.isArray(data.samples)) {
                     const merged = { rows: [], contigs: [], prot_data: {}, metas: [] };
                     const _PROT_KEYS_LOCAL = ["genus_summary", "per_gene_hits", "sample_overview", "amr_genes"];
-                    _PROT_KEYS_LOCAL.forEach((k) => { merged.prot_data[k] = []; });
+                    _PROT_KEYS_LOCAL.forEach((k) => {
+                      merged.prot_data[k] = [];
+                    });
                     for (const sample of data.samples) {
                       const r = _parseJson(sample, file.name);
                       merged.rows.push(...(r.rows || []));
                       merged.contigs.push(...(r.contigs || []));
                       if (r.prot_data) {
                         _PROT_KEYS_LOCAL.forEach((k) => {
-                          if (r.prot_data[k] && r.prot_data[k].length)
-                            merged.prot_data[k].push(...r.prot_data[k]);
+                          if (r.prot_data[k] && r.prot_data[k].length) merged.prot_data[k].push(...r.prot_data[k]);
                         });
                       }
                       if (r.sampleName && r.meta) {
@@ -13414,8 +13415,10 @@
               // Extract run metadata fields — handles both single (.paths.json)
               // and combined (all.samples.json) results.
               const _metaEntries = result.metas
-                ? result.metas                                    // combined: array of {sampleName, meta}
-                : (result.meta && result.sampleName ? [{ sampleName: result.sampleName, meta: result.meta }] : []);
+                ? result.metas // combined: array of {sampleName, meta}
+                : result.meta && result.sampleName
+                ? [{ sampleName: result.sampleName, meta: result.meta }]
+                : [];
               const _META_NUM = new Set(["latitude", "longitude", "depth", "salinity"]);
               for (const { sampleName: sn, meta: m } of _metaEntries) {
                 const metaRec = { sample_name: sn };
