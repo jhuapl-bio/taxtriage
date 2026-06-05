@@ -46,10 +46,21 @@ process GET_ASSEMBLIES {
 
     """
     if [[ ! -s 'assembly_summary_refseq.txt' ]] ; then
-        echo "Downloading the assembly summary file from ncbi...."
+        echo "Downloading the RefSeq assembly summary file from ncbi...."
         wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt  -O assembly_summary_refseq.txt
     else
-        echo "Assembly file exists"
+        echo "RefSeq assembly summary file exists"
+    fi
+
+    if [[ "${params.enable_genbank}" == "true" ]] ; then
+        if [[ ! -s 'assembly_summary_genbank.txt' ]] ; then
+            echo "Downloading the GenBank assembly summary file from ncbi...."
+            wget --no-check-certificate https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt -O assembly_summary_genbank.txt
+        else
+            echo "GenBank assembly summary file exists"
+        fi
+    else
+        echo "GenBank pulling disabled (enable with --enable_genbank)"
     fi
 
     cat <<-END_VERSIONS > versions.yml

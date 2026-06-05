@@ -351,6 +351,20 @@
                     "help_text": "",
                     "fa_icon": "fas fa-file-csv"
                 },
+                "assembly_summary_genbank": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Optional path to a GenBank assembly summary file (assembly_summary_genbank.txt). Supplements --assembly to enable mapping of GCA_ accessions not present in RefSeq. Null by default.",
+                    "help_text": "Download from https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt",
+                    "fa_icon": "fas fa-file-csv"
+                },
+                "enable_genbank": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable automatic pulling of the GenBank assembly summary (assembly_summary_genbank.txt) from NCBI. Disabled by default; only RefSeq is pulled unless this is toggled on.",
+                    "help_text": "When set, GET_ASSEMBLIES downloads https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt in addition to the RefSeq summary.",
+                    "fa_icon": "fas fa-database"
+                },
                 "get_pathogens": {
                     "type": "boolean",
                     "schema": "assets/schema_input.json",

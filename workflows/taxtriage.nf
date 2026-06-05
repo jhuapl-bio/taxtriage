@@ -122,11 +122,16 @@ if (params.pathogens) {
     }
 }
 if (!params.assembly) {
-    println 'No assembly file given, downloading the standard ncbi one'
+    println 'No assembly file given, downloading the standard NCBI RefSeq summary' + (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
     ch_assembly_txt = null
 } else {
     println "Assembly file present, using it to pull genomes from... ${params.assembly}"
-    ch_assembly_txt = file(params.assembly, checkIfExists: true)
+    def _assembly_files = [file(params.assembly, checkIfExists: true)]
+    if (params.assembly_summary_genbank) {
+        println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
+        _assembly_files << file(params.assembly_summary_genbank, checkIfExists: true)
+    }
+    ch_assembly_txt = _assembly_files.size() == 1 ? _assembly_files[0] : _assembly_files
 }
 
 if (!params.assembly_file_type) {

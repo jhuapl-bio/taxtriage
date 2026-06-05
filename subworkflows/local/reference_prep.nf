@@ -244,9 +244,14 @@ workflow  REFERENCE_PREP {
             }
         }
 
+    ch_custom_accession_map = params.custom_accession_map
+        ? Channel.fromPath(params.custom_accession_map, checkIfExists: true).first()
+        : Channel.value(file("$projectDir/assets/NO_FILE"))
+
     MAP_TAXID_ASSEMBLY(
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, mergedmap] },
-        ch_assembly_txt
+        ch_assembly_txt,
+        ch_custom_accession_map
     )
     if ((params.use_diamond ) && ( !params.skip_refpull && ( !params.skip_realignment && !params.skip_features ) ) ) {
         try {
