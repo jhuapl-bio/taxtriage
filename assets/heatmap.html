@@ -10,9 +10,9 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="pages.js"></script>
+    <!-- <script src="pages.js"></script> -->
     <!-- <script src="mce.js"></script> -->
-    <!-- <script src="heatmap_boot.js"></script> -->
+    <script src="heatmap_boot.js"></script>
 
     <script>
       const BOOT = window.HEATMAP_BOOT || {};
@@ -108,9 +108,14 @@
         background: rgba(255, 255, 255, 0.08);
       }
       .tab-btn.active {
-        color: #fff;
-        border-bottom-color: #ff9800;
-        font-weight: 600;
+        background: #fff;
+        color: #0d3c66;
+        font-weight: 700;
+        border-radius: 8px 8px 0 0;
+        border-bottom-color: transparent;
+        box-shadow:
+          0 0 0 2px #2196f3,
+          0 0 14px 3px rgba(33, 150, 243, 0.5);
       }
       .tab-btn.hidden {
         display: none;
@@ -15232,12 +15237,11 @@
           C.orgNames.length > 1
             ? `<div class="cov-ctrl">` +
               `<span class="cov-ctrl-lbl">Organism:</span>` +
-              `<input id="cov-org-input" class="cov-org-input" list="cov-org-list" value="${_esc(
-                C.selectedOrg,
-              )}" placeholder="Search organism…" autocomplete="off" spellcheck="false">` +
-              `<datalist id="cov-org-list">` +
-              C.orgNames.map((n) => `<option value="${_esc(n)}"></option>`).join("") +
-              `</datalist>` +
+              `<select id="cov-org-input" class="cov-org-input">` +
+              C.orgNames
+                .map((n) => `<option value="${_esc(n)}"${n === C.selectedOrg ? " selected" : ""}>${_esc(n)}</option>`)
+                .join("") +
+              `</select>` +
               `<span class="cov-ctrl-lbl">${C.orgNames.length} organisms · showing one at a time</span>` +
               `</div>`
             : "";
@@ -15279,18 +15283,14 @@
             .join("") +
           `</div>`;
         body.innerHTML = orgPicker + ctrl + legend + `<div id="cov-charts"></div><div id="cov-stats"></div>`;
-        // Organism dropdown wiring (searchable via datalist)
+        // Organism dropdown wiring (plain select)
         const orgInput = document.getElementById("cov-org-input");
         if (orgInput) {
           orgInput.addEventListener("change", () => {
-            const v = orgInput.value.trim();
-            const match =
-              C.orgNames.find((n) => n === v) || C.orgNames.find((n) => n.toLowerCase() === v.toLowerCase());
-            if (match && match !== C.selectedOrg) {
-              C.selectedOrg = match;
+            const v = orgInput.value;
+            if (v && v !== C.selectedOrg) {
+              C.selectedOrg = v;
               _covRender();
-            } else if (!match) {
-              orgInput.value = C.selectedOrg; // revert invalid entry
             }
           });
         }
