@@ -177,6 +177,17 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
 
     tax = org.get("taxonomy", {})
 
+    # ── ANI annotation (set by match_paths.py when the ANI matrix is enabled) ──
+    # Presence of the 'high_ani_matches' key — even as an empty list — signals
+    # that ANI was computed for this run. Its absence means the data predates
+    # ANI support, so ANI-dependent views fall back to an "out of date /
+    # unsupported" state for this sample.
+    _ani_annotated = 'high_ani_matches' in org
+    _ani_list = [
+        {"key": str(m.get("key", "")), "ani_pct": round(float(m.get("ani_pct", 0) or 0), 2)}
+        for m in (org.get('high_ani_matches') or []) if isinstance(m, dict)
+    ]
+
     # Parent-level TASS (species = subkey, genus = toplevelkey). Fall back to the
     # organism's own TASS when a parent level is absent so the rollup never
     # under-reports the row itself.
@@ -219,6 +230,11 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "RPM":                 round(float(org.get("rpm", 0) or 0), 2),
         "RPKM":                round(float(org.get("rpkm", 0) or 0), 4),
         "Passes Threshold":    bool(org.get("passes_threshold", False)),
+        # ANI annotation: capability flag + list of high-ANI partner taxa
+        # ({key, ani_pct}). Consumed by the cross-sample Feature Compare view and
+        # by client-side capability detection (absence ⇒ ANI unsupported).
+        "ANI Annotated":       _ani_annotated,
+        "High ANI Matches":    _ani_list,
         # Taxonomic rollup level of this row: "Strain" (key), "Species" (subkey),
         # or "Genus" (toplevelkey). Lets the UI switch the view granularity and
         # surface a species/genus summary row when its children fail their own
@@ -547,7 +563,12 @@ def main():
               f"{args.input[0]!r}")
 
     # ── derive column lists ────────────────────────────────────────────────────
-    all_cols = list(rows[0].keys()) if rows else []
+    # These fields are carried on each record for client-side analysis (the
+    # Feature Compare view + capability detection) but are NOT human-displayable
+    # table columns — 'High ANI Matches' is a nested list — so keep them out of
+    # the column picker / detections table.
+    _NON_DISPLAY_COLS = {"High ANI Matches", "ANI Annotated"}
+    all_cols = [c for c in (rows[0].keys() if rows else []) if c not in _NON_DISPLAY_COLS]
     numeric_cols = []
     if rows:
         for col in all_cols:

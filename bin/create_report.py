@@ -1798,7 +1798,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         visible_strains = species_entry['visible_strains']
         microbial_category = species_entry['microbial_category']
         ann_class = species_entry['annClass']
-        indicator_text = '★' if species_entry['high_cons'] else ''
+        indicator_text = '<font color="#cc0000">●</font>' if species_entry['high_cons'] else ''
         row_below_zscore, zscore_sym = _row_zscore_state(species_record, visible_strains)
         row_name_style = species_name_style_small if row_below_zscore else species_name_style
         row_data_style = data_style_small if row_below_zscore else species_data_style
@@ -1899,7 +1899,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         microbial_category = strain.get('microbial_category', 'Unknown')
         ann_class = strain.get('annClass', '')
-        indicator_text = '★' if strain.get('high_cons', False) else ''
+        indicator_text = '<font color="#cc0000">●</font>' if strain.get('high_cons', False) else ''
         row_below_zscore, zscore_sym = _row_zscore_state(strain)
         if promoted:
             row_name_style = species_name_style_small if row_below_zscore else species_name_style
@@ -2010,7 +2010,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         microbial_category = _sk_grp_ann.get('microbial_category') or best.get('microbial_category', 'Unknown')
         ann_class = _sk_grp_ann.get('annClass') or best.get('annClass', '')
         is_hc = _sk_grp_ann.get('high_cons', best.get('high_cons', False))
-        indicator_text = '★' if is_hc else ''
+        indicator_text = '<font color="#cc0000">●</font>' if is_hc else ''
         _mt_tag = _mol_type_tag(_sk_grp_ann.get('mol_type') or best.get('mol_type'))
 
         _row_below_zscore = False
@@ -2156,7 +2156,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                     m_pct = (m_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
                     m_key = m.get('key', '')
                     m_name = m.get('name', 'Unknown')
-                    m_star = '★ ' if m.get('high_cons', False) else ''
+                    m_star = '<font color="#cc0000">●</font> ' if m.get('high_cons', False) else ''
                     mini_rows.append([
                         Paragraph(
                             f'{m_star}<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={m_key}" '
@@ -2506,7 +2506,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             microbial_category = strain.get('microbial_category', 'Unknown')
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
-            indicator_text = '★' if is_hc else ''
+            indicator_text = '<font color="#cc0000">●</font>' if is_hc else ''
             _mt_tag = _mol_type_tag(strain.get('mol_type'))
 
             # ── Early per-row zscore check (flat mode) ────────────────────
@@ -2743,7 +2743,7 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
                 f'color="blue">{strain_key}</link>)'
             )
         if strain.get('high_cons', False):
-            strain_name_text = f"★ {strain_name_text}"
+            strain_name_text = f'<font color="#cc0000">●</font> {strain_name_text}'
 
         row = [
             Paragraph(sample_name, strain_name_style),
@@ -2825,6 +2825,10 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
         'StrainHeaderCell', parent=small_style, fontSize=7, leading=8,
         fontName='Helvetica-Bold', textColor=colors.whitesmoke,
         alignment=TA_CENTER, wordWrap='CJK')
+    indicator_para_style = ParagraphStyle(
+        'StrainDetailIndicator', parent=small_style, fontSize=11, leading=13,
+        spaceBefore=0, spaceAfter=0,
+        alignment=TA_CENTER, fontName='Helvetica-Bold')
 
     story_items.append(AnchorFlowable('strain_detail_table'))
     story_items.append(OutlineDest('outline_strain_detail', 'Strain Detail', level=0, closed=True, collector=outline_collector))
@@ -2954,7 +2958,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             microbial_category = strain.get('microbial_category', 'Unknown')
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
-            indicator = '★' if is_hc else ''
+            indicator = '<font color="#cc0000">●</font>' if is_hc else ''
 
             strain_key = strain.get('key', '')
             strain_name = strain.get('name', 'Unknown')
@@ -2982,7 +2986,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             tass_val = strain.get('tass_score', 0)
 
             row = [
-                indicator,
+                Paragraph(indicator, indicator_para_style) if indicator else '',
                 Paragraph(name_html, cell_style),
                 Paragraph(f'{tass_val:.1f}', cell_style),
             ]
@@ -3033,7 +3037,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             ('RIGHTPADDING', (1, 1), (1, -1), 3),
             ('LEFTPADDING', (2, 1), (-1, -1), 2),
             ('RIGHTPADDING', (2, 1), (-1, -1), 2),
-            ('FONTSIZE', (0, 1), (0, -1), 11),  # indicator column larger for ★
+            ('FONTSIZE', (0, 1), (0, -1), 11),  # indicator column larger for ●
         ]
 
         det_table = Table(table_data, repeatRows=1, colWidths=cw)
@@ -4226,7 +4230,7 @@ def create_pdf_template(output_path, samples_dict, args):
             break
     story.append(Spacer(1, 0.02*inch))
     story.append(Paragraph(
-        "<b>★</b> = High Consequence Pathogen  |  "
+        '<font color="#cc0000"><b>●</b></font> = High Consequence Pathogen  |  '
         "<font color=\"#1565c0\"><b>Ⓓ</b></font> = DNA pathogen  |  "
         "<font color=\"#6a1b9a\"><b>Ⓡ</b></font> = RNA pathogen  "
         "(no symbol = applies to both)",
@@ -5065,6 +5069,11 @@ def _build_tabular_dataframe(samples_dict, args):
         'MicrobeRT Model', 'Reads Aligned', 'Group', 'Subkey',
         'Superkingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus',
         'Flora Sites', 'Passes Threshold', 'TASS Threshold',
+        # High-ANI partners (taxid(pct%);…) — serialized from the JSON's
+        # 'high_ani_matches' so flat XLSX/TSV exports carry ANI too. An empty
+        # string means ANI ran but found no high-ANI partner; the column being
+        # absent entirely (older exports) signals ANI was never computed.
+        'High ANI Matches',
     ]
 
     all_rows = []
@@ -5186,6 +5195,10 @@ def _build_tabular_dataframe(samples_dict, args):
                     _flora_sites_str,
                     _passes_thresh,
                     round(_org_threshold, 6),
+                    ';'.join(
+                        f"{m.get('key', '')}({float(m.get('ani_pct', 0) or 0):.1f}%)"
+                        for m in get_high_ani_matches(strain)
+                    ),
                 ])
                 global_index += 1
 
