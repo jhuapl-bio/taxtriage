@@ -1007,6 +1007,41 @@
       #data-table tbody tr.rescued-row td {
         box-shadow: inset 3px 0 0 #f59f00;
       }
+      /* ── Pin-hint icon on hover (compare path) ── */
+      /* pointer cursor for clickable data rows */
+      #data-table tbody tr:not(.grp-row),
+      #summary-top-wrap tbody tr[data-key] {
+        cursor: pointer;
+      }
+      /* inline thumbtack hint — sits right after the organism name */
+      .row-pin-hint {
+        font-family: "Font Awesome 6 Free";
+        font-weight: 400;
+        font-size: 10px;
+        display: inline-block;
+        transform: rotate(45deg);
+        margin-left: 5px;
+        vertical-align: middle;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s;
+        color: #1565c0;
+      }
+      .row-pin-hint::before {
+        content: "\f08d";
+      }
+      /* show faint outline on hover (not yet pinned) */
+      #data-table tbody tr:not(.grp-row):not(.row-pinned):hover .row-pin-hint,
+      #summary-top-wrap tbody tr[data-key]:not(.row-pinned):hover .row-pin-hint {
+        opacity: 0.45;
+      }
+      /* solid amber when pinned (always visible as a reminder) */
+      #data-table tbody tr.row-pinned .row-pin-hint,
+      #summary-top-wrap tbody tr[data-key].row-pinned .row-pin-hint {
+        font-weight: 900;
+        color: #f59f00;
+        opacity: 0.9;
+      }
       svg text {
         font-family: system-ui, sans-serif;
       }
@@ -11212,6 +11247,10 @@
               contentSpan.appendChild(mtBadge);
             }
             td.appendChild(contentSpan);
+            // Pin-hint thumbtack — outside contentSpan so overflow:hidden doesn't clip it
+            const pinHint = document.createElement("span");
+            pinHint.className = "row-pin-hint";
+            td.appendChild(pinHint);
             // Taxonomic level badge: always shown so users can tell whether
             // a row is a direct Strain call, a Species aggregate, or a Genus aggregate.
             const _lvlStyles = {
@@ -13763,7 +13802,9 @@
               true,
             )}<span style="display:inline-block;min-width:0;max-width:calc(100% - 18px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${_orgBadges(
               r,
-            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}</span>${
+            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(
+              r,
+            )}${_rescueBadge}</span><span class="row-pin-hint"></span>${
               ROLLUP_PASS
                 ? (function () {
                     const _lvl = r["Level"] || "Strain";
