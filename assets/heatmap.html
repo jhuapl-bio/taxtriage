@@ -3498,7 +3498,7 @@
           <div class="chart-title"><i class="fas fa-table"></i> Full Detections Table</div>
           <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5em">
             Complete list of detections across the run (respects sidebar filters). Click a column header to sort · click
-            a row to pin it.
+            a row to pin it · click the ★ to add to the follow-up watchlist.
           </div>
           <!-- row count + pagination controls -->
           <div
@@ -11165,7 +11165,7 @@
         const _rk = _tblRowKey(row);
         if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
         tr.addEventListener("click", (e) => {
-          if (e.target.closest("a")) return;
+          if (e.target.closest("a") || e.target.closest(".watch-star")) return;
           if (_tblPinned.has(_rk)) {
             _tblPinned.delete(_rk);
             tr.classList.remove("row-pinned");
@@ -11173,8 +11173,6 @@
             _tblPinned.add(_rk);
             tr.classList.add("row-pinned");
           }
-          // Row click also toggles the follow-up watchlist (replaces star icon).
-          _toggleWatchKey(_watchKey(row));
           _updateComparePinnedBtn();
         });
         let _orgTd = null;
@@ -11187,9 +11185,22 @@
             const mt = (row["Mol Type"] || "").toLowerCase();
             const rowLevel = row["Level"] || "Strain";
             td.style.cssText =
-              "position:relative;white-space:nowrap;padding-right:54px;padding-left:2px" +
+              "position:relative;white-space:nowrap;padding-right:54px;padding-left:18px" +
               (isHC ? ";color:#c62828;font-weight:600" : "");
-            // (Star icon removed — row click now toggles follow-up watchlist.)
+            // Star icon for watchlist toggle (click star to watch, click row to pin).
+            const starEl = document.createElement("i");
+            const _wk = _watchKey(row);
+            const _starred = watchlist.has(_wk);
+            starEl.className = "watch-star" + (_starred ? " on" : "");
+            starEl.title = _starred ? "On the follow-up list — click to remove" : "Add to follow-up list";
+            starEl.style.cssText =
+              "position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;";
+            starEl.innerHTML = `<i class="${_starred ? "fas" : "far"} fa-star"></i>`;
+            starEl.addEventListener("click", (e) => {
+              e.stopPropagation();
+              _toggleWatchKey(_wk);
+            });
+            td.appendChild(starEl);
             const contentSpan = document.createElement("span");
             contentSpan.style.cssText =
               "display:inline-block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle";
