@@ -1071,6 +1071,13 @@
           transform 0.12s;
         -webkit-text-stroke: 0;
       }
+      /* Hide stars unless the row is hovered or the organism is already starred */
+      .watch-star:not(.on) {
+        display: none;
+      }
+      tr:hover .watch-star {
+        display: inline;
+      }
       .watch-star:hover {
         color: #f0a500;
         transform: scale(1.2);
@@ -11210,7 +11217,7 @@
             const mt = (row["Mol Type"] || "").toLowerCase();
             const rowLevel = row["Level"] || "Strain";
             td.style.cssText =
-              "position:relative;white-space:nowrap;padding-right:54px;padding-left:18px" +
+              "position:relative;white-space:nowrap;padding-right:54px" +
               (isHC ? ";color:#c62828;font-weight:600" : "");
             // Star icon for watchlist toggle (click star to watch, click row to pin).
             const starEl = document.createElement("i");
@@ -11218,8 +11225,7 @@
             const _starred = watchlist.has(_wk);
             starEl.className = "watch-star" + (_starred ? " on" : "");
             starEl.title = _starred ? "On the follow-up list — click to remove" : "Add to follow-up list";
-            starEl.style.cssText =
-              "position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;";
+            starEl.style.cssText = "font-size:11px;cursor:pointer;vertical-align:middle;";
             starEl.innerHTML = `<i class="${_starred ? "fas" : "far"} fa-star"></i>`;
             starEl.addEventListener("click", (e) => {
               e.stopPropagation();
@@ -13797,7 +13803,7 @@
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               _sumPinned.has(key) ? " row-pinned" : ""
             }">` +
-            `<td style="position:relative;min-width:0;padding-right:54px;padding-left:18px">${_watchStarHTML(
+            `<td style="position:relative;min-width:0;padding-right:54px">${_watchStarHTML(
               r,
               true,
             )}<span style="display:inline-block;min-width:0;max-width:calc(100% - 18px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${_orgBadges(
