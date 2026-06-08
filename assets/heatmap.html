@@ -1073,10 +1073,12 @@
       }
       /* Hide stars unless the row is hovered or the organism is already starred */
       .watch-star:not(.on) {
-        display: none;
+        opacity: 0;
+        pointer-events: none;
       }
       tr:hover .watch-star {
-        display: inline;
+        opacity: 1;
+        pointer-events: auto;
       }
       .watch-star:hover {
         color: #f0a500;
@@ -5004,10 +5006,12 @@
         if (interactive) {
           return `<i class="${cls}" data-watch-key="${encodeURIComponent(
             key,
-          )}" role="button" tabindex="0" title="${title}"><i class="${icon}"></i></i>`;
+          )}" role="button" tabindex="0" title="${title}" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;transition:opacity 0.12s;"><i class="${icon}"></i></i>`;
         }
         // Non-interactive marker: only render when starred.
-        return on ? `<i class="watch-star on" title="On the follow-up list"><i class="${icon}"></i></i>` : "";
+        return on
+          ? `<i class="watch-star on" title="On the follow-up list" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;"><i class="${icon}"></i></i>`
+          : "";
       }
       function _setWatch(key, on) {
         if (on) watchlist.add(key);
@@ -11217,15 +11221,16 @@
             const mt = (row["Mol Type"] || "").toLowerCase();
             const rowLevel = row["Level"] || "Strain";
             td.style.cssText =
-              "position:relative;white-space:nowrap;padding-right:54px" +
-              (isHC ? ";color:#c62828;font-weight:600" : "");
+              "position:relative;white-space:nowrap;padding-right:54px;padding-left:18px;" +
+              (isHC ? "color:#c62828;font-weight:600;" : "");
             // Star icon for watchlist toggle (click star to watch, click row to pin).
             const starEl = document.createElement("i");
             const _wk = _watchKey(row);
             const _starred = watchlist.has(_wk);
             starEl.className = "watch-star" + (_starred ? " on" : "");
             starEl.title = _starred ? "On the follow-up list — click to remove" : "Add to follow-up list";
-            starEl.style.cssText = "font-size:11px;cursor:pointer;vertical-align:middle;";
+            starEl.style.cssText =
+              "position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;transition:opacity 0.12s;";
             starEl.innerHTML = `<i class="${_starred ? "fas" : "far"} fa-star"></i>`;
             starEl.addEventListener("click", (e) => {
               e.stopPropagation();
@@ -11233,8 +11238,7 @@
             });
             td.appendChild(starEl);
             const contentSpan = document.createElement("span");
-            contentSpan.style.cssText =
-              "display:inline-block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle";
+            contentSpan.style.cssText = "display:inline-block;min-width:0;white-space:nowrap;vertical-align:middle";
             if (isHC) {
               const badge = document.createElement("span");
               badge.textContent = "⚠ ";
@@ -13803,10 +13807,10 @@
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               _sumPinned.has(key) ? " row-pinned" : ""
             }">` +
-            `<td style="position:relative;min-width:0;padding-right:54px">${_watchStarHTML(
+            `<td style="position:relative;padding-right:54px;padding-left:18px;white-space:nowrap;">${_watchStarHTML(
               r,
               true,
-            )}<span style="display:inline-block;min-width:0;max-width:calc(100% - 18px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${_orgBadges(
+            )}<span style="display:inline-block;min-width:0;white-space:nowrap;vertical-align:middle">${_orgBadges(
               r,
             )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(
               r,
