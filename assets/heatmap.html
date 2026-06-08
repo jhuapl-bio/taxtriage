@@ -1043,16 +1043,7 @@
       .watch-star.on {
         color: #f5a623;
       }
-      /* watched-row emphasis (Summary + Table) */
-      #summary-top-wrap tr.watch-row td,
-      #data-table tbody tr.watch-row td {
-        background: #fff8e1;
-        box-shadow: inset 3px 0 0 #f5a623;
-      }
-      #summary-top-wrap tr.watch-row.row-pinned td,
-      #data-table tbody tr.watch-row.row-pinned td {
-        background: #fff3cd;
-      }
+      /* watched-row emphasis removed — star icon indicates watchlist state; rows are not highlighted */
       /* follow-up panel in the Summary tab */
       #watch-panel {
         display: none;
@@ -11161,7 +11152,6 @@
       function _renderOneRow(row) {
         const tr = document.createElement("tr");
         if (isTruthy(row["High Consequence"])) tr.classList.add("hc-row");
-        if (_isWatched(row)) tr.classList.add("watch-row");
         const _rk = _tblRowKey(row);
         if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
         tr.addEventListener("click", (e) => {
@@ -13767,8 +13757,11 @@
           html +=
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               _sumPinned.has(key) ? " row-pinned" : ""
-            }${_isWatched(r) ? " watch-row" : ""}">` +
-            `<td style="position:relative;min-width:0;padding-right:54px"><span style="display:inline-block;min-width:0;max-width:calc(100% - 18px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${_orgBadges(
+            }">` +
+            `<td style="position:relative;min-width:0;padding-right:54px;padding-left:18px">${_watchStarHTML(
+              r,
+              true,
+            )}<span style="display:inline-block;min-width:0;max-width:calc(100% - 18px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${_orgBadges(
               r,
             )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}</span>${
               ROLLUP_PASS
@@ -13826,10 +13819,16 @@
             _renderSummaryTable(filteredData());
           });
         });
-        // Wire row pin (click) — ignore clicks on the spark or group rows
+        // Wire row pin (click) — ignore clicks on the spark, group rows, links, and star icon
         wrap.querySelectorAll("tbody tr[data-key]").forEach((tr) => {
           tr.addEventListener("click", (e) => {
-            if (e.target.closest(".spark") || e.target.closest("[data-spark]") || e.target.closest("a")) return;
+            if (
+              e.target.closest(".spark") ||
+              e.target.closest("[data-spark]") ||
+              e.target.closest("a") ||
+              e.target.closest(".watch-star")
+            )
+              return;
             const k = tr.dataset.key;
             if (_sumPinned.has(k)) {
               _sumPinned.delete(k);
@@ -13838,10 +13837,6 @@
               _sumPinned.add(k);
               tr.classList.add("row-pinned");
             }
-            // Row click also toggles the follow-up watchlist (replaces star icon).
-            const fd = filteredData();
-            const r = fd.find((x) => `${x["Specimen ID"]}||${x["Detected Organism"]}||${x["Taxonomic ID #"]}` === k);
-            if (r) _toggleWatchKey(_watchKey(r));
             _updateSumPinBar();
           });
         });
