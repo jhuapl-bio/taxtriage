@@ -1013,12 +1013,14 @@
       #summary-top-wrap tbody tr[data-key] {
         cursor: pointer;
       }
-      /* inline thumbtack hint — sits right after the organism name */
+      /* thumbtack hint — sits at the very end of the cell. Collapsed (no width)
+         until the row is hovered or pinned, so the level badge stays flush-right
+         and only shifts left to make room when the pin appears. */
       .row-pin-hint {
         font-family: "Font Awesome 6 Free";
         font-weight: 400;
         font-size: 10px;
-        display: inline-block;
+        display: none;
         transform: rotate(45deg);
         margin-left: 5px;
         vertical-align: middle;
@@ -1033,11 +1035,13 @@
       /* show faint outline on hover (not yet pinned) */
       #data-table tbody tr:not(.grp-row):not(.row-pinned):hover .row-pin-hint,
       #summary-top-wrap tbody tr[data-key]:not(.row-pinned):hover .row-pin-hint {
+        display: inline-block;
         opacity: 0.45;
       }
       /* solid amber when pinned (always visible as a reminder) */
       #data-table tbody tr.row-pinned .row-pin-hint,
       #summary-top-wrap tbody tr[data-key].row-pinned .row-pin-hint {
+        display: inline-block;
         font-weight: 900;
         color: #f59f00;
         opacity: 0.9;
@@ -1064,11 +1068,11 @@
         cursor: pointer;
         color: #cfd6df;
         font-size: 0.95em;
-        margin-right: 4px;
         vertical-align: middle;
         transition:
           color 0.12s,
-          transform 0.12s;
+          transform 0.12s,
+          opacity 0.12s;
         -webkit-text-stroke: 0;
       }
       /* Hide stars unless the row is hovered or the organism is already starred */
@@ -1076,7 +1080,7 @@
         opacity: 0;
         pointer-events: none;
       }
-      tr:hover .watch-star {
+      tr:hover .watch-star:not(.on) {
         opacity: 1;
         pointer-events: auto;
       }
@@ -2510,7 +2514,8 @@
               </div>
               <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.5em">
                 Organisms across the run (respects sidebar filters). Click a column header to sort · click a row to pin
-                it · <span style="color: #cc0000">●</span> = high-consequence pathogen ·
+                for comparison.
+                <span style="color: #cc0000">●</span> = high-consequence pathogen ·
                 <span style="color: #1565c0; font-weight: 600">Ⓓ</span>/<span style="color: #6a1b9a; font-weight: 600"
                   >Ⓡ</span
                 >
@@ -2598,6 +2603,10 @@
                   >
                   = strain below TASS cutoff, kept by parent roll-up</span
                 >.
+                <span id="sum-level-legend-simple">
+                  <i class="fas fa-star" style="color: #f59f00"></i>
+                  Click to target an organism for follow-up across tabs.
+                </span>
               </div>
               <div class="summary-tbl-toolbar">
                 <span id="summary-row-count" style="flex: 1; min-width: 110px"></span>
@@ -4995,22 +5004,27 @@
         }
         return key.replace(/^tax:/, "Taxon ");
       }
-      // Star markup used as a label prefix wherever organism names are shown.
-      // interactive=true makes it a clickable toggle (.watch-star with data-watch-key).
-      function _watchStarHTML(r, interactive) {
+      // Star markup for organism name cells. interactive=true makes it a clickable
+      // toggle (.watch-star with data-watch-key). inline=true renders it in the normal
+      // flow right after the organism text instead of absolutely on the cell's right edge.
+      function _watchStarHTML(r, interactive, rightOffset, inline) {
         const key = _watchKey(r);
         const on = watchlist.has(key);
         const cls = "watch-star" + (on ? " on" : "");
         const icon = on ? "fas fa-star" : "far fa-star";
         const title = on ? "On the follow-up list — click to remove" : "Add to follow-up list";
+        const ro = rightOffset != null ? rightOffset : 48;
+        const style = inline
+          ? `margin-left:5px;font-size:11px;cursor:pointer;vertical-align:middle;`
+          : `position:absolute;right:${ro}px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;z-index:1;`;
         if (interactive) {
           return `<i class="${cls}" data-watch-key="${encodeURIComponent(
             key,
-          )}" role="button" tabindex="0" title="${title}" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;transition:opacity 0.12s;"><i class="${icon}"></i></i>`;
+          )}" role="button" tabindex="0" title="${title}" style="${style}"><i class="${icon}"></i></i>`;
         }
         // Non-interactive marker: only render when starred.
         return on
-          ? `<i class="watch-star on" title="On the follow-up list" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;"><i class="${icon}"></i></i>`
+          ? `<i class="watch-star on" title="On the follow-up list" style="${style}"><i class="${icon}"></i></i>`
           : "";
       }
       function _setWatch(key, on) {
@@ -11221,24 +11235,24 @@
             const mt = (row["Mol Type"] || "").toLowerCase();
             const rowLevel = row["Level"] || "Strain";
             td.style.cssText =
-              "position:relative;white-space:nowrap;padding-right:54px;padding-left:18px;" +
+              "position:relative;white-space:nowrap;overflow:hidden;padding-right:70px;padding-left:4px;" +
               (isHC ? "color:#c62828;font-weight:600;" : "");
-            // Star icon for watchlist toggle (click star to watch, click row to pin).
-            const starEl = document.createElement("i");
+            // Star icon for watchlist toggle — sits inline right after the organism
+            // text (appended below). Click star to watch; click row to pin.
             const _wk = _watchKey(row);
             const _starred = watchlist.has(_wk);
+            const starEl = document.createElement("i");
             starEl.className = "watch-star" + (_starred ? " on" : "");
             starEl.title = _starred ? "On the follow-up list — click to remove" : "Add to follow-up list";
-            starEl.style.cssText =
-              "position:absolute;left:2px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;transition:opacity 0.12s;";
+            starEl.style.cssText = "margin-left:5px;font-size:11px;cursor:pointer;vertical-align:middle;";
             starEl.innerHTML = `<i class="${_starred ? "fas" : "far"} fa-star"></i>`;
             starEl.addEventListener("click", (e) => {
               e.stopPropagation();
               _toggleWatchKey(_wk);
             });
-            td.appendChild(starEl);
             const contentSpan = document.createElement("span");
-            contentSpan.style.cssText = "display:inline-block;min-width:0;white-space:nowrap;vertical-align:middle";
+            contentSpan.style.cssText =
+              "display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%";
             if (isHC) {
               const badge = document.createElement("span");
               badge.textContent = "⚠ ";
@@ -11257,10 +11271,14 @@
               contentSpan.appendChild(mtBadge);
             }
             td.appendChild(contentSpan);
-            // Pin-hint thumbtack — outside contentSpan so overflow:hidden doesn't clip it
-            const pinHint = document.createElement("span");
-            pinHint.className = "row-pin-hint";
-            td.appendChild(pinHint);
+            // Star sits inline, right after the organism text.
+            td.appendChild(starEl);
+            // Right-anchored group: level badge (flush right when not hovered), then
+            // the pin-hint thumbtack which only appears on hover/pin and pushes the
+            // badge left. Absolute so overflow:hidden on the cell doesn't clip it.
+            const rightGroup = document.createElement("span");
+            rightGroup.style.cssText =
+              "position:absolute;right:6px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;white-space:nowrap;";
             // Taxonomic level badge: always shown so users can tell whether
             // a row is a direct Strain call, a Species aggregate, or a Genus aggregate.
             const _lvlStyles = {
@@ -11278,10 +11296,14 @@
                 ? "Species-level aggregate — TASS reflects all reads assigned to this species."
                 : "Genus-level aggregate — TASS reflects all reads assigned to this genus.";
             lvlBadge.style.cssText =
-              `display:inline-block;position:absolute;right:6px;top:50%;transform:translateY(-50%);` +
-              `font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;line-height:1.5;` +
+              `display:inline-block;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;line-height:1.5;` +
               `background:${_ls.bg};color:${_ls.fg};border:1px solid ${_ls.fg}44`;
-            td.appendChild(lvlBadge);
+            rightGroup.appendChild(lvlBadge);
+            // Pin-hint thumbtack — last, so it sits at the very end of the cell.
+            const pinHint = document.createElement("span");
+            pinHint.className = "row-pin-hint";
+            rightGroup.appendChild(pinHint);
+            td.appendChild(rightGroup);
           } else {
             td.textContent = val;
           }
@@ -13807,14 +13829,15 @@
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               _sumPinned.has(key) ? " row-pinned" : ""
             }">` +
-            `<td style="position:relative;padding-right:54px;padding-left:18px;white-space:nowrap;">${_watchStarHTML(
+            `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
+            `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
               r,
-              true,
-            )}<span style="display:inline-block;min-width:0;white-space:nowrap;vertical-align:middle">${_orgBadges(
-              r,
-            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(
-              r,
-            )}${_rescueBadge}</span><span class="row-pin-hint"></span>${
+            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}</span>` +
+            // Star sits inline, right after the organism text.
+            `${_watchStarHTML(r, true, null, true)}` +
+            // Right-anchored group: level badge (flush right), then the pin hint
+            // which only appears on hover/pin and shifts the badge left.
+            `<span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;white-space:nowrap;">${
               ROLLUP_PASS
                 ? (function () {
                     const _lvl = r["Level"] || "Strain";
@@ -13823,14 +13846,14 @@
                       Species: ["#f3e5f5", "#6a1b9a"],
                       Genus: ["#e8f5e9", "#2e7d32"],
                     }[_lvl] || ["#f5f5f5", "#555"];
-                    return `<span style="display:inline-block;position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;line-height:1.5;background:${
+                    return `<span style="display:inline-block;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;line-height:1.5;background:${
                       _s[0]
                     };color:${_s[1]};border:1px solid ${_s[1]}44" title="${_lvl}-level ${
                       _lvl === "Strain" ? "detection" : "aggregate"
                     }">${_lvl}</span>`;
                   })()
                 : ""
-            }</td>` +
+            }<span class="row-pin-hint"></span></span></td>` +
             (_visSumCols.some((c) => c.key === "_spark")
               ? `<td style="text-align:center">${
                   hist
