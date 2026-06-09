@@ -1798,7 +1798,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         visible_strains = species_entry['visible_strains']
         microbial_category = species_entry['microbial_category']
         ann_class = species_entry['annClass']
-        indicator_text = '<font color="#cc0000">●</font>' if species_entry['high_cons'] else ''
+        indicator_text = '<font color="#000000">★</font>' if species_entry['high_cons'] else ''
         row_below_zscore, zscore_sym = _row_zscore_state(species_record, visible_strains)
         row_name_style = species_name_style_small if row_below_zscore else species_name_style
         row_data_style = data_style_small if row_below_zscore else species_data_style
@@ -1899,7 +1899,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
 
         microbial_category = strain.get('microbial_category', 'Unknown')
         ann_class = strain.get('annClass', '')
-        indicator_text = '<font color="#cc0000">●</font>' if strain.get('high_cons', False) else ''
+        indicator_text = '<font color="#000000">★</font>' if strain.get('high_cons', False) else ''
         row_below_zscore, zscore_sym = _row_zscore_state(strain)
         if promoted:
             row_name_style = species_name_style_small if row_below_zscore else species_name_style
@@ -2010,7 +2010,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
         microbial_category = _sk_grp_ann.get('microbial_category') or best.get('microbial_category', 'Unknown')
         ann_class = _sk_grp_ann.get('annClass') or best.get('annClass', '')
         is_hc = _sk_grp_ann.get('high_cons', best.get('high_cons', False))
-        indicator_text = '<font color="#cc0000">●</font>' if is_hc else ''
+        indicator_text = '<font color="#000000">★</font>' if is_hc else ''
         _mt_tag = _mol_type_tag(_sk_grp_ann.get('mol_type') or best.get('mol_type'))
 
         _row_below_zscore = False
@@ -2156,7 +2156,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
                     m_pct = (m_reads / sample_total_reads * 100.0) if sample_total_reads else 0.0
                     m_key = m.get('key', '')
                     m_name = m.get('name', 'Unknown')
-                    m_star = '<font color="#cc0000">●</font> ' if m.get('high_cons', False) else ''
+                    m_star = '<font color="#000000">★</font> ' if m.get('high_cons', False) else ''
                     mini_rows.append([
                         Paragraph(
                             f'{m_star}<link href="https://www.ncbi.nlm.nih.gov/taxonomy/?term={m_key}" '
@@ -2506,7 +2506,7 @@ def create_combined_sample_table(all_strains, species_group_map, small_style,
             microbial_category = strain.get('microbial_category', 'Unknown')
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
-            indicator_text = '<font color="#cc0000">●</font>' if is_hc else ''
+            indicator_text = '<font color="#000000">★</font>' if is_hc else ''
             _mt_tag = _mol_type_tag(strain.get('mol_type'))
 
             # ── Early per-row zscore check (flat mode) ────────────────────
@@ -2743,7 +2743,7 @@ def create_low_confidence_table(low_confidence_strains, small_style, show_k2_col
                 f'color="blue">{strain_key}</link>)'
             )
         if strain.get('high_cons', False):
-            strain_name_text = f'<font color="#cc0000">●</font> {strain_name_text}'
+            strain_name_text = f'<font color="#000000">★</font> {strain_name_text}'
 
         row = [
             Paragraph(sample_name, strain_name_style),
@@ -2958,7 +2958,7 @@ def create_strain_detail_tables(samples_dict, sorted_groups_by_sample,
             microbial_category = strain.get('microbial_category', 'Unknown')
             ann_class = strain.get('annClass', '')
             is_hc = strain.get('high_cons', False)
-            indicator = '<font color="#cc0000">●</font>' if is_hc else ''
+            indicator = '<font color="#000000">★</font>' if is_hc else ''
 
             strain_key = strain.get('key', '')
             strain_name = strain.get('name', 'Unknown')

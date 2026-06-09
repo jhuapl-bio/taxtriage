@@ -1698,3 +1698,6 @@ Imtechella halotolerans,1165090,primary,,,,established,FALSE,,"human, all",Pseud
 Truepera radiovictrix,332249,primary,,,,established,FALSE,,"human, all",Thermotogati,Deinococcota,Deinococci,Trueperales,Trueperaceae,Truepera,dna,,
 Truepera radiovictrix DSM 17093,649638,primary,,,,established,FALSE,,"human, all",Thermotogati,Deinococcota,Deinococci,Trueperales,Trueperaceae,Truepera,dna,,
 Allobacillus halotolerans,570278,primary,,,,established,FALSE,,"human, all",Bacillati,Bacillota,Bacilli,Caryophanales,Bacillaceae,Allobacillus,dna,,
+Poliovirus 1,12080,primary,,,,established,FALSE,,"human, all",Bacillati,Bacillota,Bacilli,Caryophanales,Bacillaceae,Allobacillus,rna,,
+Poliovirus 2,12083,primary,,,,established,FALSE,,"human, all",Bacillati,Bacillota,Bacilli,Caryophanales,Bacillaceae,Allobacillus,rna,,
+Poliovirus 3,12086,primary,,,,established,FALSE,,"human, all",Bacillati,Bacillota,Bacilli,Caryophanales,Bacillaceae,Allobacillus,rna,,
