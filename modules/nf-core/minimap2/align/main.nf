@@ -60,7 +60,9 @@ process MINIMAP2_ALIGN {
     // Derive -I and -K from 80% of the container's allocated RAM
     def ram_80pct_mb = (task.memory.toMega() * 0.80).longValue()
     def I_gb         = Math.max((ram_80pct_mb / 1024) as long, 1L)
-    def K_mb         = Math.max((ram_80pct_mb / 8) as long, 64L)
+    // Cap the derived query minibatch at 2G: a large -K is the main OOM driver
+    // (it loads that many query bases into RAM on top of the index).
+    def K_mb         = Math.min(Math.max((ram_80pct_mb / 8) as long, 64L), 2048L)
     def I_value      = params.mmap2_I ?: "${I_gb}G"
     def K_value      = params.mmap2_K ?: "${K_mb}M"
 
