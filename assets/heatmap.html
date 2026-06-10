@@ -814,6 +814,22 @@
           overflow: visible !important;
           max-width: none !important;
         }
+        body.report-pdf-printing .meta-subpane {
+          display: block !important;
+          overflow: visible !important;
+          margin-bottom: 1.5em;
+          padding-bottom: 1em;
+          border-bottom: 1px solid #e0e0e0;
+        }
+        body.report-pdf-printing #cmp-chart,
+        body.report-pdf-printing #geo-cmp-chart,
+        body.report-pdf-printing #host-cmp-chart {
+          overflow: visible !important;
+        }
+        body.report-pdf-printing .meta-subtabs-pdf-section {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
         body.report-pdf-printing table {
           width: 100% !important;
           max-width: 100% !important;
@@ -6520,6 +6536,63 @@
         return btn ? btn.textContent.replace(/\s+/g, " ").trim() : tab;
       }
 
+      /** Renders all enabled metadata sub-tabs so their charts appear in the PDF. */
+      async function _renderMetaSubTabsForPdf() {
+        const subIds = ["longi", "geo", "host", "cmp"];
+        const originalSub = _activeMetaSub;
+        for (const id of subIds) {
+          const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
+          if (!btn || btn.disabled) continue;
+          _switchMetaSub(id);
+          // For the compare sub-tab, render all four analysis types
+          if (id === "cmp" && typeof _buildComparison === "function") {
+            const origAnalysis = _cmpAnalysis;
+            const analyses = ["cosine", "jaccard", "enrichment", "profile"];
+            const chart = document.getElementById("cmp-chart");
+            // Create a print-only container to hold all analysis snapshots
+            let printSnap = document.getElementById("cmp-print-snapshots");
+            if (!printSnap) {
+              printSnap = document.createElement("div");
+              printSnap.id = "cmp-print-snapshots";
+              printSnap.style.cssText = "display:none";
+              const cmpPane = document.getElementById("meta-subpane-cmp");
+              if (cmpPane) cmpPane.appendChild(printSnap);
+            }
+            printSnap.innerHTML = "";
+            for (const analysis of analyses) {
+              _cmpAnalysis = analysis;
+              // Reflect active state on buttons
+              document.querySelectorAll("#cmp-analysis-tabs .cmp-atab").forEach((b) =>
+                b.classList.toggle("active", b.getAttribute("data-analysis") === analysis)
+              );
+              _buildComparison();
+              await _pdfDelay(300);
+              if (chart && chart.querySelector("svg")) {
+                const section = document.createElement("div");
+                section.className = "meta-subtabs-pdf-section";
+                section.style.cssText = "margin-bottom:1.2em";
+                const heading = document.createElement("div");
+                heading.style.cssText = "font-size:0.82em;font-weight:700;color:#1565c0;margin-bottom:0.4em;text-transform:uppercase;letter-spacing:.04em";
+                const labels = { cosine: "Cosine Similarity", jaccard: "Jaccard Overlap", enrichment: "Enrichment", profile: "Profile Heatmap" };
+                heading.textContent = labels[analysis] || analysis;
+                section.appendChild(heading);
+                Array.from(chart.querySelectorAll("svg")).forEach((svg) =>
+                  section.appendChild(svg.cloneNode(true))
+                );
+                printSnap.appendChild(section);
+              }
+            }
+            // Restore active analysis
+            _cmpAnalysis = origAnalysis;
+            _buildComparison();
+          } else {
+            await _pdfDelay(id === "longi" ? 400 : 250);
+          }
+        }
+        // Restore original sub-tab
+        if (originalSub) _switchMetaSub(originalSub);
+      }
+
       async function _renderTabsForPdf() {
         const originalTab = activeTab;
         const tabs = _visibleReportTabs();
@@ -6530,6 +6603,12 @@
           if (tab === "runmeta") {
             if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
             if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+            await _pdfDelay(80);
+            _setPdfProgress("Rendering metadata sub-tabs…", i, tabs.length);
+            await _renderMetaSubTabsForPdf();
+            // Make all rendered sub-tab snapshots visible for print
+            const snap = document.getElementById("cmp-print-snapshots");
+            if (snap) snap.style.display = "";
             await _pdfDelay(80);
           } else if (tab === "map") {
             if (typeof L !== "undefined" && typeof _initMap === "function") {
@@ -6837,9 +6916,20 @@
         const cleanup = () => {
           document.body.classList.remove("report-pdf-printing");
           document.body.classList.remove("pdf-legend-footer-on");
+          // Hide the cmp analysis snapshots again after printing
+          const snap = document.getElementById("cmp-print-snapshots");
+          if (snap) snap.style.display = "none";
           _hidePdfProgress();
           window.removeEventListener("afterprint", cleanup);
           _scheduleExportEnhance();
+          // Re-render the longitudinal chart after the print layout is removed so
+          // it measures the correct container width (sidebar back, normal layout).
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (typeof _drawLongitudinalPlot === "function") {
+              const longiWrap = document.getElementById("longi-chart-wrap");
+              if (longiWrap && longiWrap.querySelector("svg")) _drawLongitudinalPlot();
+            }
+          }));
         };
         window.addEventListener("afterprint", cleanup);
         setTimeout(() => {
@@ -18990,7 +19080,15 @@
         wrap.appendChild(legendDiv);
 
         // ── SVG chart ──
-        const W = Math.max(320, wrap.clientWidth || 520);
+        // If the container has no layout width yet (tab hidden on first render),
+        // defer one animation frame so the browser can compute the real clientWidth.
+        const _rawW = wrap.clientWidth || wrap.offsetWidth || 0;
+        if (!_rawW) {
+          wrap.innerHTML = "";
+          requestAnimationFrame(_drawLongitudinalPlot);
+          return;
+        }
+        const W = Math.max(320, _rawW);
         const H = 290;
         const ML = 62,
           MR = 20,
@@ -19003,6 +19101,7 @@
           .select(wrap)
           .append("svg")
           .attr("viewBox", `0 0 ${W} ${H}`)
+          .attr("height", H)
           .style("width", "100%")
           .style("display", "block")
           .style("overflow", "visible");
@@ -19605,7 +19704,15 @@
         wrap.appendChild(legendDiv);
 
         // ── SVG chart ──
-        const W = Math.max(320, wrap.clientWidth || 520);
+        // If the container has no layout width yet (tab hidden on first render),
+        // defer one animation frame so the browser can compute the real clientWidth.
+        const _rawW = wrap.clientWidth || wrap.offsetWidth || 0;
+        if (!_rawW) {
+          wrap.innerHTML = "";
+          requestAnimationFrame(_drawLongitudinalPlot);
+          return;
+        }
+        const W = Math.max(320, _rawW);
         const H = 290;
         const ML = 62,
           MR = 20,
@@ -19618,6 +19725,7 @@
           .select(wrap)
           .append("svg")
           .attr("viewBox", `0 0 ${W} ${H}`)
+          .attr("height", H)
           .style("width", "100%")
           .style("display", "block")
           .style("overflow", "visible");
@@ -20324,10 +20432,10 @@
         const n = ids.length;
         const cell = Math.max(16, Math.min(40, Math.floor(560 / n)));
         const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
-        const marginL = Math.min(220, Math.max(70, labelLen * 6.1));
-        const marginT = Math.min(200, Math.max(60, labelLen * 5.6));
+        const marginL = Math.min(280, Math.max(90, labelLen * 7.5));
+        const marginT = Math.min(220, Math.max(70, labelLen * 5.6));
         const W = marginL + n * cell + 90;
-        const H = marginT + n * cell + 20;
+        const H = marginT + n * cell + 60;
         const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
         const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
         const color = d3.scaleSequential(d3.interpolateBlues).domain([0, 1]);
@@ -20396,10 +20504,10 @@
         const cellH = Math.max(16, Math.min(34, Math.floor(420 / Math.max(nR, 1))));
         const taxLen = taxa.reduce((m, t) => Math.max(m, String(t).length), 0);
         const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
-        const marginL = Math.min(220, Math.max(80, labelLen * 6.1));
-        const marginT = Math.min(220, Math.max(70, taxLen * 5.6));
-        const W = marginL + nC * cellW + 90;
-        const H = marginT + nR * cellH + 20;
+        const marginL = Math.min(280, Math.max(100, labelLen * 7.5));
+        const marginT = Math.min(240, Math.max(80, taxLen * 5.8));
+        const W = marginL + nC * cellW + 20;   // no right-side legend; minimal right padding
+        const H = marginT + nR * cellH + 76;   // extra bottom room for horizontal legend
         const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
         const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
 
@@ -20434,7 +20542,8 @@
             .attr("fill", "#333")
             .text(t.length > 26 ? t.slice(0, 25) + "…" : t);
         });
-        _cmpColorLegend(svg, marginL + nC * cellW + 18, marginT, colorFn, domain[0], domain[1], fmt);
+        // Place the color legend horizontally below the heatmap cells
+        _cmpColorLegend(svg, marginL, marginT + nR * cellH + 22, colorFn, domain[0], domain[1], fmt);
       }
 
       // Vertical color-scale legend.
