@@ -70,7 +70,8 @@ process MINIMAP2_ALIGN {
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     def mmap2_window  = params.mmap2_window ? "-w ${params.mmap2_window}" : ''
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? "-f ${params.mmap2_fraction_filter}" : ''
-    def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
+    // Off by default; enable --split-prefix only for references too large to index in RAM as one block
+    def split_prefix  = params.split_prefix ? "--split-prefix ${meta.id}.prefix" : ""
     // 
     def bam_output = bam_format
         ? "-a | samtools sort -@ ${sort_threads} -m ${S_value} -T ${prefix}.tmp -O BAM -o ${prefix}.bam -"

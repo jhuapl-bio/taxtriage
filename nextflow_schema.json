@@ -265,9 +265,9 @@
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
-                "no_split_prefix": {
+                "split_prefix": {
                     "type": "boolean",
-                    "description": "DON'T split the alignment fasta files for minimap2 to reduce RAM overhead",
+                    "description": "Enable minimap2 --split-prefix (multi-part index, writes temp files). Off by default; only enable when the reference is too large to index in RAM as a single block.",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
