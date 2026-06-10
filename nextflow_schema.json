@@ -540,6 +540,16 @@
                     "description": "filter out top FLOAT fraction of repetitive minimizers",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "mmap2_I": {
+                    "type": ["number", "null"],
+                    "description": "minimap2 -I parameter to set the index batch size. Increase if you have a lot of RAM and want faster runtimes",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "mmap2_K": {
+                    "type": ["number", "null"],
+                    "description": "minimap2 -K parameter to set the batch size for processing query sequences. IT dynamically sets it to 80% of total across total threads. Increase if you have a lot of RAM and want faster runtimes",
+                    "fa_icon": "fas fa-file-signature"
+                },
                 "bt2_indices": {
                     "type": "string",
                     "format": "file-path",
