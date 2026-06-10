@@ -278,8 +278,14 @@ def parse_args(argv=None):
         default=None,
         help=(
             "JSON string with run-level metadata fields to embed in output JSON. "
-            "Accepted keys: run_id, latitude, longitude, depth, salinity, "
-            "collection_time, location. "
+            "Accepted keys include: run_id, latitude, longitude, depth, salinity, "
+            "collection_time, location, and the AMD-P/Talos standard fields "
+            "(organism, sample_id, submitter_organization_name, sample_origin_country, "
+            "sample_origin_state_province_territory, sample_origin_county, "
+            "host_scientific_name, environmental_site, host_disease, "
+            "library_preparation_kit, sequencing_instrument, "
+            "sequencing_protocol_primer_set, sequencing_platform). Any other keys "
+            "are passed through verbatim. "
             "Example: '{\"run_id\":\"run_001\",\"latitude\":37.5,\"longitude\":-122.5}'"
         ),
     )
@@ -3623,10 +3629,32 @@ def main():
         "salinity":        _run_meta.get("salinity"),
         "collection_time": _run_meta.get("collection_time"),
         "location":        _run_meta.get("location"),
+        # ── AMD-P / Talos standard metadata fields (always present) ────────────
+        # Promoted to first-class known fields so make_report.py / the interactive
+        # report can drive geographic, host/disease, and instrument plots from them.
+        "organism":                              _run_meta.get("organism"),
+        "sample_id":                             _run_meta.get("sample_id"),
+        "submitter_organization_name":           _run_meta.get("submitter_organization_name"),
+        "sample_origin_country":                 _run_meta.get("sample_origin_country"),
+        "sample_origin_state_province_territory": _run_meta.get("sample_origin_state_province_territory"),
+        "sample_origin_county":                  _run_meta.get("sample_origin_county"),
+        "host_scientific_name":                  _run_meta.get("host_scientific_name"),
+        "environmental_site":                    _run_meta.get("environmental_site"),
+        "host_disease":                          _run_meta.get("host_disease"),
+        "library_preparation_kit":               _run_meta.get("library_preparation_kit"),
+        "sequencing_instrument":                 _run_meta.get("sequencing_instrument"),
+        "sequencing_protocol_primer_set":        _run_meta.get("sequencing_protocol_primer_set"),
+        "sequencing_platform":                   _run_meta.get("sequencing_platform"),
         # ── Any extra schema-agnostic fields from the --meta CSV ───────────────
         **{k: v for k, v in _run_meta.items()
            if k not in {"run_id", "latitude", "longitude", "depth",
-                        "salinity", "collection_time", "location"}},
+                        "salinity", "collection_time", "location",
+                        "organism", "sample_id", "submitter_organization_name",
+                        "sample_origin_country", "sample_origin_state_province_territory",
+                        "sample_origin_county", "host_scientific_name",
+                        "environmental_site", "host_disease", "library_preparation_kit",
+                        "sequencing_instrument", "sequencing_protocol_primer_set",
+                        "sequencing_platform"}},
         "total_reads": total_reads,
         "aligned_reads": aligned_reads_total,
         "total_organism_reads": int(_total_organism_reads),

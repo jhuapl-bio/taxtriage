@@ -1640,6 +1640,88 @@
         white-space: nowrap;
       }
 
+      /* ── Run Metadata analysis sub-tabs ── */
+      #meta-subtabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid #e0e8f5;
+        margin-top: 1.5em;
+        flex-wrap: wrap;
+      }
+      .meta-subtab {
+        padding: 0.5em 1.2em;
+        border: none;
+        border-bottom: 3px solid transparent;
+        background: none;
+        font-size: 0.87em;
+        font-weight: 600;
+        color: #555;
+        cursor: pointer;
+        margin-bottom: -2px;
+        transition: color 0.15s, border-color 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 0.35em;
+        white-space: nowrap;
+      }
+      .meta-subtab:hover:not(:disabled) {
+        color: #1565c0;
+      }
+      .meta-subtab.active {
+        color: #1565c0;
+        border-bottom-color: #1565c0;
+      }
+      .meta-subtab:disabled {
+        color: #b0b8c6;
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+      .meta-subpane {
+        display: none;
+        padding-top: 1.2em;
+      }
+      .meta-subpane.active {
+        display: block;
+      }
+      .meta-subtab-warn {
+        background: #fff8e1;
+        border: 1px solid #ffe082;
+        border-radius: 6px;
+        padding: 0.65em 1em;
+        margin-bottom: 1em;
+        font-size: 0.84em;
+        color: #6d4c41;
+        display: flex;
+        gap: 0.55em;
+        align-items: flex-start;
+      }
+      .meta-subtab-warn i {
+        color: #f59f00;
+        flex-shrink: 0;
+        margin-top: 0.1em;
+      }
+
+      /* ── Cross-Entry Comparison analysis switch ── */
+      .cmp-atab {
+        border: 1px solid #ccd6e8;
+        background: #f4f8ff;
+        color: #4a5a73;
+        border-radius: 6px;
+        padding: 5px 11px;
+        font-size: 0.82em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+      }
+      .cmp-atab:hover {
+        background: #e3f0ff;
+      }
+      .cmp-atab.active {
+        background: #1565c0;
+        border-color: #1565c0;
+        color: #fff;
+      }
+
       /* ── Map pane ── */
       #map-split {
         align-items: stretch;
@@ -4033,9 +4115,29 @@
             </table>
           </div>
 
-          <!-- ── Longitudinal Analysis (only shown when collection_time data exists) ── -->
-          <div id="longi-section" style="display: none; margin-top: 2em">
-            <div style="border-top: 2px solid #e0e8f5; padding-top: 1.2em">
+          <!-- ── Analysis sub-tabs ── -->
+          <div id="meta-subtabs">
+            <button class="meta-subtab" data-metasub="longi">
+              <i class="fas fa-chart-line"></i> Longitudinal Analysis
+            </button>
+            <button class="meta-subtab" data-metasub="geo">
+              <i class="fas fa-earth-americas"></i> Geographic Comparison
+            </button>
+            <button class="meta-subtab" data-metasub="host">
+              <i class="fas fa-virus-covid"></i> Host &amp; Disease
+            </button>
+            <button class="meta-subtab" data-metasub="cmp">
+              <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
+            </button>
+          </div>
+
+          <!-- ── Longitudinal Analysis sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-longi">
+            <div id="meta-subtab-warn-longi" class="meta-subtab-warn" style="display:none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-longi-msg"></span>
+            </div>
+            <div id="longi-section">
               <div class="chart-title" style="margin-bottom: 1em">
                 <i class="fas fa-chart-line"></i> Longitudinal Analysis
               </div>
@@ -4192,6 +4294,189 @@
               </div>
             </div>
           </div>
+          <!-- /meta-subpane-longi -->
+
+          <!-- ── Geographic Comparison sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-geo">
+            <div id="meta-subtab-warn-geo" class="meta-subtab-warn" style="display:none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-geo-msg"></span>
+            </div>
+            <div id="geo-cmp-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-earth-americas"></i> Geographic Comparison
+              </div>
+              <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                Aggregate the visible detections across samples by country, state/province/territory, or county.
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Level</label>
+                  <select
+                    id="geo-cmp-level"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="sample_origin_country" selected>Country</option>
+                    <option value="sample_origin_state_province_territory">State / Province / Territory</option>
+                    <option value="sample_origin_county">County</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Metric</label>
+                  <select
+                    id="geo-cmp-metric"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="detections" selected>Detections</option>
+                    <option value="samples">Samples</option>
+                    <option value="reads"># Reads Aligned</option>
+                    <option value="tass">Mean TASS Score</option>
+                  </select>
+                </div>
+              </div>
+              <div id="geo-cmp-chart" style="position: relative; overflow: visible"></div>
+              <div
+                id="geo-cmp-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No country / state / county metadata in the visible samples.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-geo -->
+
+          <!-- ── Host &amp; Disease sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-host">
+            <div id="meta-subtab-warn-host" class="meta-subtab-warn" style="display:none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-host-msg"></span>
+            </div>
+            <div id="host-cmp-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-virus-covid"></i> Host &amp; Disease
+              </div>
+              <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                Aggregate the visible detections by host species, host disease, or environmental site.
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Group by</label>
+                  <select
+                    id="host-cmp-field"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="host_disease" selected>Host Disease</option>
+                    <option value="host_scientific_name">Host (Scientific Name)</option>
+                    <option value="environmental_site">Environmental Site</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Metric</label>
+                  <select
+                    id="host-cmp-metric"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="detections" selected>Detections</option>
+                    <option value="samples">Samples</option>
+                    <option value="reads"># Reads Aligned</option>
+                    <option value="tass">Mean TASS Score</option>
+                  </select>
+                </div>
+              </div>
+              <div id="host-cmp-chart" style="position: relative; overflow: visible"></div>
+              <div
+                id="host-cmp-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No host / disease / site metadata in the visible samples.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-host -->
+
+          <!-- ── Cross-Entry Comparison sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-cmp">
+            <div id="meta-subtab-warn-cmp" class="meta-subtab-warn" style="display:none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-cmp-msg"></span>
+            </div>
+            <div id="cmp-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
+              </div>
+              <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                Compare the organism-hit profiles across samples or metadata groups in this run — similarity, overlap,
+                and enrichment of genus / species hits using presence, TASS, or coverage.
+              </div>
+
+              <!-- Analysis switcher -->
+              <div id="cmp-analysis-tabs" style="display: flex; gap: 0.4em; flex-wrap: wrap; margin-bottom: 0.9em">
+                <button class="cmp-atab" data-analysis="cosine">Cosine Similarity</button>
+                <button class="cmp-atab" data-analysis="jaccard">Jaccard Overlap</button>
+                <button class="cmp-atab" data-analysis="enrichment">Enrichment</button>
+                <button class="cmp-atab" data-analysis="profile">Profile Heatmap</button>
+              </div>
+
+              <!-- Controls -->
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Compare by</label>
+                  <select
+                    id="cmp-unit"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="group" selected>Metadata group</option>
+                    <option value="sample" >Samples</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label id="cmp-field-label" style="font-size: 0.81em; font-weight: 600; color: #555">
+                    Group / label field
+                  </label>
+                  <select
+                    id="cmp-field"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff; min-width: 180px"
+                  ></select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Level</label>
+                  <select
+                    id="cmp-level"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="genus" selected>Genus</option>
+                    <option value="species">Species</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label id="cmp-value-label" style="font-size: 0.81em; font-weight: 600; color: #555">Value basis</label>
+                  <select
+                    id="cmp-value"
+                    style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                  >
+                    <option value="presence" selected>Presence / abundance</option>
+                    <option value="tass">TASS score</option>
+                    <option value="coverage">Coverage (breadth %)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div id="cmp-desc" style="font-size: 0.78em; color: #888; margin-bottom: 0.7em"></div>
+              <div id="cmp-chart" style="position: relative; overflow: auto"></div>
+              <div
+                id="cmp-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                Need at least two entries with organism hits to compare. Try widening the filters or selecting a
+                different field.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-cmp -->
+
         </div>
       </div>
       <!-- /content -->
@@ -4501,7 +4786,11 @@
           <span style="display: block; font-size: 0.76em; margin: 0.25em 0 0.45em; color: #555">
             Drop a metadata .csv or .xlsx here<br />
             <span style="color: #888; font-size: 0.9em"
-              >columns: sample, run_id, latitude, longitude,<br />depth, salinity, collection_time, location</span
+              >columns: sample, run_id, latitude, longitude, depth, salinity,
+              collection_time, location,<br />plus AMD-P fields: sample_origin_country,
+              sample_origin_state_province_territory, sample_origin_county,
+              host_scientific_name, host_disease, environmental_site,
+              sequencing_instrument, sequencing_platform …</span
             >
           </span>
           <label class="upload-btn" for="meta-upload-input" style="font-size: 0.78em; padding: 0.25em 0.7em"
@@ -6240,7 +6529,7 @@
           _restoreActiveTab(tab);
           if (tab === "runmeta") {
             if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
-            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+            if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
             await _pdfDelay(80);
           } else if (tab === "map") {
             if (typeof L !== "undefined" && typeof _initMap === "function") {
@@ -11819,9 +12108,9 @@
               if (typeof _initMap === "function") _initMap();
             }, 80);
           } else if (activeTab === "runmeta") {
-            // Rebuild the metadata table each time the tab is activated
+            // Rebuild the metadata table and update sub-tab enabled states
             if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
-            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+            if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
           }
         });
       });
@@ -11838,6 +12127,16 @@
             if (pane) pane.classList.add("active");
             // Trigger xs redraw if switching to cross-sample for the first time
             if (target === "xs" && typeof _drawXS === "function") _drawXS();
+          });
+        });
+      })();
+
+      /* ── Run Metadata analysis sub-tab click handlers ── */
+      (function () {
+        document.querySelectorAll(".meta-subtab").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            if (btn.disabled) return;
+            if (typeof _switchMetaSub === "function") _switchMetaSub(btn.getAttribute("data-metasub"));
           });
         });
       })();
@@ -16646,6 +16945,10 @@
         _refreshMapMarkerColors();
         if (_selectedSample || _selectedGroup) _refreshMapPanelTable();
         if (_longiBuilt) _buildLongitudinalSection();
+        // Keep the active metadata sub-tab in sync with the active filters.
+        if (activeTab === "runmeta" && _activeMetaSub) {
+          if (typeof _switchMetaSub === "function") _switchMetaSub(_activeMetaSub);
+        }
         _updateCapabilityNotice();
       }
 
@@ -17959,8 +18262,9 @@
           if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
           if (rmBtn) rmBtn.classList.toggle("hidden", RUN_META.length === 0);
 
-          // Rebuild metadata table
+          // Rebuild metadata table + update sub-tab enabled states
           _buildRunMetaTable();
+          if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
 
           // Rebuild / refresh map if it was already initialized
           if (_leafletMap) {
@@ -18121,6 +18425,9 @@
         };
       })();
 
+      // ── Run Metadata analysis sub-tab state ──────────────────────────────
+      let _activeMetaSub = null; // e.g. "longi" | "geo" | "host" | "cmp"
+
       (function init() {
         // Banner subtitle
         document.getElementById("banner-sub").textContent = _buildBannerSub();
@@ -18189,9 +18496,9 @@
         renderTableHeaders();
         redraw();
 
-        // ── Build Run Metadata table + longitudinal section on init
+        // ── Build Run Metadata table + initialize sub-tab states on load
         _buildRunMetaTable();
-        _buildLongitudinalSection();
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
         _initExportEnhancer();
         const pdfBtn = document.getElementById("report-pdf-btn");
         if (pdfBtn) {
@@ -18236,14 +18543,104 @@
        -     _buildRunMetaTable()  — renders the metadata grid (one row per
        -     sample, columns from the union of metadata keys present in DATA).
        -     _metaKeyLabel()       — pretty-prints raw keys for column headers.
-       -     The Run Metadata tab also hosts the longitudinal-analysis section
-       -     (next banner) when collection_time + run_id are present.
+       -     _switchMetaSub(id)    — activates a run-metadata analysis sub-tab.
+       -     _updateMetaSubTabStates() — enables/disables sub-tabs based on data.
 ═══════════════════════════════════════════════════════════════════════════ */
+
+      // Activate a sub-tab pane and trigger its chart build.
+      function _switchMetaSub(id) {
+        _activeMetaSub = id;
+        document.querySelectorAll(".meta-subtab").forEach((b) =>
+          b.classList.toggle("active", b.getAttribute("data-metasub") === id),
+        );
+        document.querySelectorAll(".meta-subpane").forEach((p) =>
+          p.classList.toggle("active", p.id === `meta-subpane-${id}`),
+        );
+        // Trigger the relevant build now that the pane is visible
+        if (id === "longi" && typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+        if (id === "geo"   && typeof _buildGeoComparison       === "function") _buildGeoComparison();
+        if (id === "host"  && typeof _buildHostDisease         === "function") _buildHostDisease();
+        if (id === "cmp"   && typeof _buildComparison          === "function") _buildComparison();
+      }
+
+      // Inspect RUN_META and enable/disable each sub-tab; auto-switch away from
+      // a disabled tab.  Also shows/hides the per-pane warning banner.
+      function _updateMetaSubTabStates() {
+        // ── Longitudinal: needs at least one record with a parseable collection_time
+        const hasLongi = (RUN_META || []).some((r) => {
+          try { return !!_parseLongiDate(r.collection_time); } catch(e) { return false; }
+        });
+
+        // Inline field lists to avoid TDZ if this is called before the const declarations
+        // lower in the script (_GEO_META_FIELDS / _HOST_META_FIELDS at ~line 19970).
+        const _geoFields  = ["sample_origin_country", "sample_origin_state_province_territory", "sample_origin_county"];
+        const _hostFields = ["host_scientific_name", "host_disease", "environmental_site"];
+
+        // ── Geographic: needs at least one geo-origin field
+        const hasGeo = typeof _anyMetaValue === "function" && _anyMetaValue(_geoFields);
+
+        // ── Host & Disease: needs host / disease / site field
+        const hasHost = typeof _anyMetaValue === "function" && _anyMetaValue(_hostFields);
+
+        // ── Cross-Entry: always available (shows internal no-data message when < 2 entries)
+        const hasCmp = true;
+
+        const configs = [
+          {
+            id: "longi",
+            ok: hasLongi,
+            warn: "This tab requires a <b>collection_time</b> column in your metadata samplesheet (ISO date or M/D/YYYY).",
+          },
+          {
+            id: "geo",
+            ok: hasGeo,
+            warn: "This tab requires at least one of: <b>sample_origin_country</b>, <b>sample_origin_state_province_territory</b>, or <b>sample_origin_county</b> in your metadata samplesheet.",
+          },
+          {
+            id: "host",
+            ok: hasHost,
+            warn: "This tab requires at least one of: <b>host_scientific_name</b>, <b>host_disease</b>, or <b>environmental_site</b> in your metadata samplesheet.",
+          },
+          { id: "cmp", ok: hasCmp, warn: "" },
+        ];
+
+        let firstEnabled = null;
+        configs.forEach(({ id, ok, warn }) => {
+          const btn     = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
+          const warnEl  = document.getElementById(`meta-subtab-warn-${id}`);
+          const warnMsg = document.getElementById(`meta-subtab-warn-${id}-msg`);
+          if (btn) btn.disabled = !ok;
+          if (warnEl)  warnEl.style.display = (!ok && warn) ? "flex" : "none";
+          if (warnMsg) warnMsg.innerHTML = warn;
+          if (ok && !firstEnabled) firstEnabled = id;
+        });
+
+        // If no active sub-tab yet, or the active one just became disabled → switch
+        const activeBtn = _activeMetaSub &&
+          document.querySelector(`.meta-subtab[data-metasub="${_activeMetaSub}"]`);
+        if (!_activeMetaSub || (activeBtn && activeBtn.disabled)) {
+          if (firstEnabled) _switchMetaSub(firstEnabled);
+        }
+      }
+
       // Pretty-print a raw key name → display label
       function _metaKeyLabel(k) {
         const KNOWN = {
           sample_name: "Sample",
           run_id: "Run ID",
+          sample_id: "Sample ID",
+          organism: "Organism",
+          submitter_organization_name: "Submitter Organization",
+          sample_origin_country: "Country",
+          sample_origin_state_province_territory: "State / Province / Territory",
+          sample_origin_county: "County",
+          host_scientific_name: "Host (Scientific Name)",
+          environmental_site: "Environmental Site",
+          host_disease: "Host Disease",
+          library_preparation_kit: "Library Prep Kit",
+          sequencing_instrument: "Sequencing Instrument",
+          sequencing_protocol_primer_set: "Primer Set",
+          sequencing_platform: "Sequencing Platform",
           latitude: "Latitude",
           longitude: "Longitude",
           depth: "Depth (m)",
@@ -18301,11 +18698,8 @@
         });
 
         const timedSamples = Object.keys(timeMap);
-        if (!timedSamples.length) {
-          section.style.display = "none";
-          return;
-        }
-        section.style.display = "block";
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!timedSamples.length) return;
 
         // Organisms that appear in at least one timed sample
         const eligible = new Set(timedSamples);
@@ -18919,11 +19313,8 @@
         });
 
         const timedSamples = Object.keys(timeMap);
-        if (!timedSamples.length) {
-          section.style.display = "none";
-          return;
-        }
-        section.style.display = "block";
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!timedSamples.length) return;
 
         // Organisms that appear in at least one timed sample
         const eligible = new Set(timedSamples);
@@ -19500,7 +19891,28 @@
           }),
         );
         // Preferred order for known fields, then any extras alphabetically
-        const KNOWN_ORDER = ["run_id", "latitude", "longitude", "depth", "salinity", "collection_time", "location"];
+        const KNOWN_ORDER = [
+          "run_id",
+          "sample_id",
+          "organism",
+          "host_scientific_name",
+          "host_disease",
+          "environmental_site",
+          "sample_origin_country",
+          "sample_origin_state_province_territory",
+          "sample_origin_county",
+          "latitude",
+          "longitude",
+          "depth",
+          "salinity",
+          "collection_time",
+          "location",
+          "submitter_organization_name",
+          "library_preparation_kit",
+          "sequencing_instrument",
+          "sequencing_platform",
+          "sequencing_protocol_primer_set",
+        ];
         const ordered = [
           "sample_name",
           ...KNOWN_ORDER.filter((k) => keySet.has(k)),
@@ -19540,6 +19952,644 @@
         if (_runmetaHighlightSample) {
           const row = document.getElementById(`runmeta-row-${CSS.escape(_runmetaHighlightSample)}`);
           if (row) setTimeout(() => row.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+        }
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  CATEGORICAL METADATA COMPARISONS  (geo + host/disease bar charts)
+       -     Driven by the AMD-P/Talos standard metadata fields. Each chart groups
+       -     the currently-visible detections by a categorical metadata field
+       -     (country / state / county, or host / disease / site) and aggregates a
+       -     chosen metric. Sections self-hide when no relevant metadata is present.
+       -     Functions: _aggregateMetaByField, _renderMetaBarChart,
+       -     _buildGeoComparison, _buildHostDisease.
+═══════════════════════════════════════════════════════════════════════════ */
+      const _META_METRIC_LABELS = {
+        samples: "Samples",
+        detections: "Detections",
+        reads: "# Reads Aligned",
+        tass: "Mean TASS Score",
+      };
+      const _GEO_META_FIELDS = [
+        "sample_origin_country",
+        "sample_origin_state_province_territory",
+        "sample_origin_county",
+      ];
+      const _HOST_META_FIELDS = ["host_scientific_name", "host_disease", "environmental_site"];
+
+      // True if any RUN_META record has a non-empty value for one of `fields`.
+      function _anyMetaValue(fields) {
+        return (RUN_META || []).some((r) => fields.some((f) => r[f] != null && String(r[f]).trim() !== ""));
+      }
+
+      // Group visible detections by a categorical metadata field and aggregate a metric.
+      // Returns [{label, value}] sorted descending by value.
+      function _aggregateMetaByField(fieldKey, metric) {
+        // sample_name → categorical value for this field
+        const valBy = {};
+        (RUN_META || []).forEach((r) => {
+          const v = r[fieldKey];
+          if (v == null || String(v).trim() === "") return;
+          valBy[r.sample_name] = String(v).trim();
+        });
+        if (!Object.keys(valBy).length) return [];
+
+        const groups = {};
+        const ensure = (val) =>
+          (groups[val] = groups[val] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
+
+        if (metric === "samples") {
+          // Count visible (non-hidden) samples per category value
+          Object.entries(valBy).forEach(([s, val]) => {
+            if (sampleHidden[s]) return;
+            ensure(val).samples.add(s);
+          });
+        } else {
+          filteredData().forEach((r) => {
+            const s = r["Specimen ID"] || "";
+            const val = valBy[s];
+            if (val == null) return;
+            const g = ensure(val);
+            g.samples.add(s);
+            g.detections += 1;
+            const reads = parseFloat(r["# Reads Aligned"]);
+            if (!isNaN(reads)) g.reads += reads;
+            const tass = parseFloat(r["TASS Score"]);
+            if (!isNaN(tass)) {
+              g.tassSum += tass;
+              g.tassN += 1;
+            }
+          });
+        }
+
+        const out = Object.entries(groups).map(([label, g]) => {
+          let value;
+          if (metric === "samples") value = g.samples.size;
+          else if (metric === "detections") value = g.detections;
+          else if (metric === "reads") value = g.reads;
+          else value = g.tassN ? g.tassSum / g.tassN : 0;
+          return { label, value };
+        });
+        out.sort((a, b) => b.value - a.value);
+        return out;
+      }
+
+      // Horizontal bar chart for [{label, value}] data into the element `wrapId`.
+      function _renderMetaBarChart(wrapId, data, metric) {
+        const wrap = document.getElementById(wrapId);
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        if (!data.length) return;
+
+        const isFloat = metric === "tass";
+        const fmt = (v) => (isFloat ? v.toFixed(1) : Math.round(v).toLocaleString());
+
+        const top = data.slice(0, 25);
+        const rowH = Math.max(22, Math.min(38, Math.floor(460 / Math.max(top.length, 1))));
+        const marginL = Math.max(120, top.reduce((m, d) => Math.max(m, String(d.label).length * 6.0), 0) + 12);
+        const marginT = 12,
+          marginR = 70,
+          marginB = 30;
+        const W = Math.max(420, wrap.clientWidth || 600);
+        const chartH = top.length * rowH;
+        const H = chartH + marginT + marginB;
+        const iW = W - marginL - marginR;
+        const xMax = d3.max(top, (d) => d.value) || 1;
+
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
+        const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
+
+        const x = d3.scaleLinear().domain([0, xMax]).range([0, iW]).nice();
+        const y = d3
+          .scaleBand()
+          .domain(top.map((d) => d.label))
+          .range([0, chartH])
+          .padding(0.2);
+
+        g.append("g")
+          .attr("class", "axis")
+          .attr("transform", `translate(0,${chartH})`)
+          .call(d3.axisBottom(x).ticks(5));
+        g.append("g").attr("class", "axis").call(d3.axisLeft(y).tickSize(0)).select(".domain").remove();
+
+        const color = d3.scaleOrdinal(d3.schemeTableau10);
+        const metricLabel = _META_METRIC_LABELS[metric] || metric;
+
+        top.forEach((d, i) => {
+          g.append("rect")
+            .attr("x", 0)
+            .attr("y", y(d.label))
+            .attr("height", y.bandwidth())
+            .attr("width", x(d.value))
+            .attr("fill", color(i))
+            .attr("rx", 2)
+            .on("mouseover", (ev) => showTip(`<b>${d.label}</b><br>${metricLabel}: ${fmt(d.value)}`, ev))
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
+          g.append("text")
+            .attr("x", x(d.value) + 5)
+            .attr("y", y(d.label) + y.bandwidth() / 2)
+            .attr("dy", "0.35em")
+            .style("font-size", "10px")
+            .attr("fill", "#444")
+            .text(fmt(d.value));
+        });
+      }
+
+      function _buildGeoComparison() {
+        const section = document.getElementById("geo-cmp-section");
+        if (!section) return;
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!_anyMetaValue(_GEO_META_FIELDS)) return;
+        const levelSel = document.getElementById("geo-cmp-level");
+        const metricSel = document.getElementById("geo-cmp-metric");
+        const noData = document.getElementById("geo-cmp-no-data");
+        const draw = () => {
+          const field = (levelSel && levelSel.value) || "sample_origin_country";
+          const metric = (metricSel && metricSel.value) || "detections";
+          const data = _aggregateMetaByField(field, metric);
+          if (noData) noData.style.display = data.length ? "none" : "block";
+          _renderMetaBarChart("geo-cmp-chart", data, metric);
+        };
+        if (!section._wired) {
+          section._wired = true;
+          if (levelSel) levelSel.addEventListener("change", draw);
+          if (metricSel) metricSel.addEventListener("change", draw);
+        }
+        draw();
+      }
+
+      function _buildHostDisease() {
+        const section = document.getElementById("host-cmp-section");
+        if (!section) return;
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!_anyMetaValue(_HOST_META_FIELDS)) return;
+        const fieldSel = document.getElementById("host-cmp-field");
+        const metricSel = document.getElementById("host-cmp-metric");
+        const noData = document.getElementById("host-cmp-no-data");
+        const draw = () => {
+          const field = (fieldSel && fieldSel.value) || "host_disease";
+          const metric = (metricSel && metricSel.value) || "detections";
+          const data = _aggregateMetaByField(field, metric);
+          if (noData) noData.style.display = data.length ? "none" : "block";
+          _renderMetaBarChart("host-cmp-chart", data, metric);
+        };
+        if (!section._wired) {
+          section._wired = true;
+          if (fieldSel) fieldSel.addEventListener("change", draw);
+          if (metricSel) metricSel.addEventListener("change", draw);
+        }
+        draw();
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  CROSS-ENTRY COMPARISON  (organism-profile similarity / enrichment)
+       -     Compares the organism-hit profiles of either individual samples or
+       -     aggregated metadata groups (country, host disease, …) within a run.
+       -     Analyses: cosine similarity, Jaccard overlap, enrichment (log2 fold
+       -     vs the rest), and a raw profile heatmap. Profiles are built at genus
+       -     or species level from presence/abundance, TASS, or coverage.
+       -     Functions: _cmpAvailableFields, _cmpBuildProfiles, _cmpCosine,
+       -     _cmpJaccard, _cmpEnrichment, _cmpRenderSquare, _cmpRenderRect,
+       -     _buildComparison.
+═══════════════════════════════════════════════════════════════════════════ */
+      let _cmpAnalysis = "profile";
+      let _cmpWired = false;
+
+      // Candidate metadata fields (ordered) offered in the field selector.
+      const _CMP_FIELD_ORDER = [
+        "sample_origin_country",
+        "sample_origin_state_province_territory",
+        "sample_origin_county",
+        "host_disease",
+        "host_scientific_name",
+        "environmental_site",
+        "sequencing_instrument",
+        "sequencing_platform",
+        "library_preparation_kit",
+        "submitter_organization_name",
+        "organism",
+        "run_id",
+        "location",
+      ];
+
+      // Metadata fields that actually have ≥1 non-empty value across RUN_META.
+      function _cmpAvailableFields() {
+        return _CMP_FIELD_ORDER.filter((f) =>
+          (RUN_META || []).some((r) => r[f] != null && String(r[f]).trim() !== ""),
+        );
+      }
+
+      // Build per-entry organism profiles.
+      // Returns { entries:[{id,label,group}], taxa:[...], profile:{id:{taxon:value}}, unit, value }
+      function _cmpBuildProfiles() {
+        const unit = (document.getElementById("cmp-unit") || {}).value || "sample";
+        const field = (document.getElementById("cmp-field") || {}).value || "";
+        const level = (document.getElementById("cmp-level") || {}).value || "genus";
+        const value = (document.getElementById("cmp-value") || {}).value || "presence";
+
+        // sample_name → metadata field value
+        const fieldBy = {};
+        (RUN_META || []).forEach((r) => {
+          const v = r[field];
+          if (v != null && String(v).trim() !== "") fieldBy[r.sample_name] = String(v).trim();
+        });
+
+        const taxonOf = (r) =>
+          level === "genus"
+            ? (r["Genus Name"] || r["Genus"] || "").trim()
+            : (r["Species Name"] || r["Detected Organism"] || "").trim();
+
+        // The contribution of a single detection row, given the value basis.
+        const valOf = (r) => {
+          if (value === "tass") {
+            const t =
+              level === "genus"
+                ? parseFloat(r["Genus TASS"])
+                : parseFloat(r["Species TASS"]);
+            const fallback = parseFloat(r["TASS Score"]);
+            return Math.max(isNaN(t) ? 0 : t, isNaN(fallback) ? 0 : fallback);
+          }
+          if (value === "coverage") {
+            const b = parseFloat(r["Breadth %"]);
+            const c = parseFloat(r["Coverage"]);
+            return Math.max(isNaN(b) ? 0 : b, isNaN(c) ? 0 : c);
+          }
+          // presence / abundance → read count (presence implied by >0)
+          const reads = parseFloat(r["# Reads Aligned"]);
+          return isNaN(reads) ? 1 : Math.max(reads, 1);
+        };
+
+        // How to combine multiple rows of the same taxon within an entry.
+        const combine = value === "presence" ? (a, b) => a + b : (a, b) => Math.max(a, b);
+
+        const profile = {}; // entryId → {taxon → value}
+        const entryGroup = {}; // entryId → metadata group value (for sample mode coloring)
+        const taxaSet = new Set();
+
+        filteredData().forEach((r) => {
+          const sample = r["Specimen ID"] || "";
+          if (!sample || sampleHidden[sample]) return;
+          const taxon = taxonOf(r);
+          if (!taxon) return;
+          let entryId;
+          if (unit === "group") {
+            entryId = fieldBy[sample];
+            if (entryId == null) return; // sample has no value for this field → excluded
+          } else {
+            entryId = sample;
+            if (fieldBy[sample] != null) entryGroup[entryId] = fieldBy[sample];
+          }
+          const v = valOf(r);
+          if (!profile[entryId]) profile[entryId] = {};
+          profile[entryId][taxon] = profile[entryId][taxon] == null ? v : combine(profile[entryId][taxon], v);
+          taxaSet.add(taxon);
+        });
+
+        const entries = Object.keys(profile)
+          .sort((a, b) => a.localeCompare(b))
+          .map((id) => ({ id, label: id, group: unit === "group" ? id : entryGroup[id] || null }));
+
+        return {
+          unit,
+          value,
+          field,
+          level,
+          entries,
+          taxa: [...taxaSet],
+          profile,
+        };
+      }
+
+      // Cosine similarity between two {taxon:value} maps.
+      function _cmpCosine(a, b) {
+        let dot = 0,
+          na = 0,
+          nb = 0;
+        for (const k in a) {
+          na += a[k] * a[k];
+          if (b[k] != null) dot += a[k] * b[k];
+        }
+        for (const k in b) nb += b[k] * b[k];
+        if (na === 0 || nb === 0) return 0;
+        return dot / (Math.sqrt(na) * Math.sqrt(nb));
+      }
+
+      // Jaccard overlap of the presence sets of two {taxon:value} maps.
+      function _cmpJaccard(a, b) {
+        const sa = new Set(Object.keys(a).filter((k) => a[k] > 0));
+        const sb = new Set(Object.keys(b).filter((k) => b[k] > 0));
+        if (!sa.size && !sb.size) return 0;
+        let inter = 0;
+        sa.forEach((k) => {
+          if (sb.has(k)) inter++;
+        });
+        const uni = sa.size + sb.size - inter;
+        return uni === 0 ? 0 : inter / uni;
+      }
+
+      // Enrichment: per entry × taxon log2 fold-change of mean value vs all OTHER entries.
+      // Returns { taxa:[topTaxa], matrix:{entryId:{taxon:log2fc}} }
+      function _cmpEnrichment(pf) {
+        const { entries, taxa, profile } = pf;
+        const eps = 1e-6;
+        const meanOver = (ids, taxon) => {
+          if (!ids.length) return 0;
+          let s = 0;
+          ids.forEach((id) => (s += (profile[id] && profile[id][taxon]) || 0));
+          return s / ids.length;
+        };
+        const allIds = entries.map((e) => e.id);
+        const matrix = {};
+        const score = {}; // taxon → max |log2fc| (for ranking)
+        entries.forEach((e) => {
+          matrix[e.id] = {};
+          const others = allIds.filter((id) => id !== e.id);
+          taxa.forEach((t) => {
+            const mIn = (profile[e.id] && profile[e.id][t]) || 0;
+            const mOut = meanOver(others, t);
+            const fc = Math.log2((mIn + eps) / (mOut + eps));
+            matrix[e.id][t] = fc;
+            score[t] = Math.max(score[t] || 0, Math.abs(fc));
+          });
+        });
+        const topTaxa = [...taxa].sort((a, b) => (score[b] || 0) - (score[a] || 0)).slice(0, 25);
+        return { taxa: topTaxa, matrix };
+      }
+
+      // ── Square (entry × entry) similarity heatmap ──────────────────────────
+      function _cmpRenderSquare(wrap, entries, simFn, fmt) {
+        wrap.innerHTML = "";
+        const ids = entries.map((e) => e.id);
+        const n = ids.length;
+        const cell = Math.max(16, Math.min(40, Math.floor(560 / n)));
+        const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
+        const marginL = Math.min(220, Math.max(70, labelLen * 6.1));
+        const marginT = Math.min(200, Math.max(60, labelLen * 5.6));
+        const W = marginL + n * cell + 90;
+        const H = marginT + n * cell + 20;
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
+        const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
+        const color = d3.scaleSequential(d3.interpolateBlues).domain([0, 1]);
+
+        // Precompute matrix
+        const M = ids.map((a) => ids.map((b) => simFn(entries.find((e) => e.id === a), entries.find((e) => e.id === b))));
+
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            const v = M[i][j];
+            g.append("rect")
+              .attr("x", j * cell)
+              .attr("y", i * cell)
+              .attr("width", cell - 1)
+              .attr("height", cell - 1)
+              .attr("rx", 2)
+              .attr("fill", color(v))
+              .on("mouseover", (ev) =>
+                showTip(`<b>${entries[i].label}</b> vs <b>${entries[j].label}</b><br>Similarity: ${fmt(v)}`, ev),
+              )
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+            if (cell >= 28) {
+              g.append("text")
+                .attr("x", j * cell + (cell - 1) / 2)
+                .attr("y", i * cell + (cell - 1) / 2)
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .style("font-size", "9px")
+                .attr("fill", v > 0.6 ? "#fff" : "#333")
+                .text(fmt(v));
+            }
+          }
+        }
+        // Row labels
+        entries.forEach((e, i) => {
+          g.append("text")
+            .attr("x", -6)
+            .attr("y", i * cell + (cell - 1) / 2)
+            .attr("dy", "0.35em")
+            .attr("text-anchor", "end")
+            .style("font-size", "10px")
+            .attr("fill", "#333")
+            .text(e.label.length > 28 ? e.label.slice(0, 27) + "…" : e.label);
+        });
+        // Column labels (rotated)
+        entries.forEach((e, j) => {
+          g.append("text")
+            .attr("transform", `translate(${j * cell + (cell - 1) / 2}, -6) rotate(-45)`)
+            .attr("text-anchor", "start")
+            .style("font-size", "10px")
+            .attr("fill", "#333")
+            .text(e.label.length > 24 ? e.label.slice(0, 23) + "…" : e.label);
+        });
+        // Legend
+        _cmpColorLegend(svg, marginL + n * cell + 18, marginT, color, 0, 1, fmt);
+      }
+
+      // ── Rectangular (entry × taxon) heatmap (profile or enrichment) ─────────
+      function _cmpRenderRect(wrap, entries, taxa, getVal, colorFn, fmt, domain) {
+        wrap.innerHTML = "";
+        const nR = entries.length,
+          nC = taxa.length;
+        if (!nC) return;
+        const cellW = Math.max(16, Math.min(34, Math.floor(620 / nC)));
+        const cellH = Math.max(16, Math.min(34, Math.floor(420 / Math.max(nR, 1))));
+        const taxLen = taxa.reduce((m, t) => Math.max(m, String(t).length), 0);
+        const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
+        const marginL = Math.min(220, Math.max(80, labelLen * 6.1));
+        const marginT = Math.min(220, Math.max(70, taxLen * 5.6));
+        const W = marginL + nC * cellW + 90;
+        const H = marginT + nR * cellH + 20;
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
+        const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
+
+        entries.forEach((e, i) => {
+          taxa.forEach((t, j) => {
+            const v = getVal(e.id, t);
+            g.append("rect")
+              .attr("x", j * cellW)
+              .attr("y", i * cellH)
+              .attr("width", cellW - 1)
+              .attr("height", cellH - 1)
+              .attr("rx", 2)
+              .attr("fill", colorFn(v))
+              .on("mouseover", (ev) => showTip(`<b>${e.label}</b><br>${t}: ${fmt(v)}`, ev))
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+          });
+          g.append("text")
+            .attr("x", -6)
+            .attr("y", i * cellH + (cellH - 1) / 2)
+            .attr("dy", "0.35em")
+            .attr("text-anchor", "end")
+            .style("font-size", "10px")
+            .attr("fill", "#333")
+            .text(e.label.length > 28 ? e.label.slice(0, 27) + "…" : e.label);
+        });
+        taxa.forEach((t, j) => {
+          g.append("text")
+            .attr("transform", `translate(${j * cellW + (cellW - 1) / 2}, -6) rotate(-45)`)
+            .attr("text-anchor", "start")
+            .style("font-size", "9.5px")
+            .attr("fill", "#333")
+            .text(t.length > 26 ? t.slice(0, 25) + "…" : t);
+        });
+        _cmpColorLegend(svg, marginL + nC * cellW + 18, marginT, colorFn, domain[0], domain[1], fmt);
+      }
+
+      // Vertical color-scale legend.
+      function _cmpColorLegend(svg, x, y, colorFn, lo, hi, fmt) {
+        const h = 120,
+          w = 12,
+          steps = 30;
+        for (let i = 0; i < steps; i++) {
+          const t = i / (steps - 1);
+          const v = lo + (hi - lo) * (1 - t);
+          svg
+            .append("rect")
+            .attr("x", x)
+            .attr("y", y + t * h)
+            .attr("width", w)
+            .attr("height", h / steps + 0.5)
+            .attr("fill", colorFn(v));
+        }
+        svg
+          .append("text")
+          .attr("x", x + w + 4)
+          .attr("y", y + 4)
+          .style("font-size", "9px")
+          .attr("fill", "#555")
+          .text(fmt(hi));
+        svg
+          .append("text")
+          .attr("x", x + w + 4)
+          .attr("y", y + h)
+          .style("font-size", "9px")
+          .attr("fill", "#555")
+          .text(fmt(lo));
+      }
+
+      function _buildComparison() {
+        const section = document.getElementById("cmp-section");
+        if (!section) return;
+        const fields = _cmpAvailableFields();
+
+        const unitSel = document.getElementById("cmp-unit");
+        const fieldSel = document.getElementById("cmp-field");
+        const levelSel = document.getElementById("cmp-level");
+        const valueSel = document.getElementById("cmp-value");
+        const fieldLabel = document.getElementById("cmp-field-label");
+        const desc = document.getElementById("cmp-desc");
+        const noData = document.getElementById("cmp-no-data");
+        const chart = document.getElementById("cmp-chart");
+
+        // Populate field selector (preserve current selection if still valid)
+        if (fieldSel) {
+          const prev = fieldSel.value;
+          fieldSel.innerHTML = fields.map((f) => `<option value="${f}">${_metaKeyLabel(f)}</option>`).join("");
+          if (fields.includes(prev)) fieldSel.value = prev;
+        }
+
+        // Wire controls once
+        if (!_cmpWired) {
+          _cmpWired = true;
+          [unitSel, fieldSel, levelSel, valueSel].forEach((el) => {
+            if (el) el.addEventListener("change", _buildComparison);
+          });
+          document.querySelectorAll("#cmp-analysis-tabs .cmp-atab").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              _cmpAnalysis = btn.getAttribute("data-analysis");
+              _buildComparison();
+            });
+          });
+        }
+
+        // Reflect active analysis on the buttons + relevance of controls
+        document.querySelectorAll("#cmp-analysis-tabs .cmp-atab").forEach((btn) => {
+          btn.classList.toggle("active", btn.getAttribute("data-analysis") === _cmpAnalysis);
+        });
+        // Jaccard ignores the value basis (presence only)
+        if (valueSel) valueSel.disabled = _cmpAnalysis === "jaccard";
+        // Group mode needs a field; sample mode uses field only as a label
+        if (fieldLabel) {
+          const u = (unitSel || {}).value || "sample";
+          fieldLabel.textContent = u === "group" ? "Group by field" : "Label / color field";
+          if (fieldSel) fieldSel.style.opacity = u === "group" && !fields.length ? 0.5 : 1;
+        }
+
+        const pf = _cmpBuildProfiles();
+
+        if (pf.entries.length < 2) {
+          if (chart) chart.innerHTML = "";
+          if (noData) noData.style.display = "block";
+          if (desc) desc.textContent = "";
+          return;
+        }
+        if (noData) noData.style.display = "none";
+
+        const lvl = pf.level === "genus" ? "genus" : "species";
+        const valLbl =
+          pf.value === "tass" ? "TASS score" : pf.value === "coverage" ? "coverage (breadth %)" : "read abundance";
+        const unitLbl = pf.unit === "group" ? `${_metaKeyLabel(pf.field)} groups` : "samples";
+
+        if (_cmpAnalysis === "cosine") {
+          if (desc)
+            desc.textContent = `Cosine similarity between ${unitLbl} based on ${lvl}-level ${valLbl} profiles (1 = identical, 0 = no shared signal). ${pf.entries.length} entries × ${pf.taxa.length} taxa.`;
+          _cmpRenderSquare(
+            chart,
+            pf.entries,
+            (a, b) => _cmpCosine(pf.profile[a.id], pf.profile[b.id]),
+            (v) => v.toFixed(2),
+          );
+        } else if (_cmpAnalysis === "jaccard") {
+          if (desc)
+            desc.textContent = `Jaccard overlap between ${unitLbl} based on shared ${lvl}-level hits (presence/absence). ${pf.entries.length} entries × ${pf.taxa.length} taxa.`;
+          _cmpRenderSquare(
+            chart,
+            pf.entries,
+            (a, b) => _cmpJaccard(pf.profile[a.id], pf.profile[b.id]),
+            (v) => v.toFixed(2),
+          );
+        } else if (_cmpAnalysis === "enrichment") {
+          const enr = _cmpEnrichment(pf);
+          const maxAbs = Math.max(
+            1,
+            ...enr.taxa.map((t) => Math.max(...pf.entries.map((e) => Math.abs(enr.matrix[e.id][t] || 0)))),
+          );
+          const color = d3.scaleSequential(d3.interpolateRdBu).domain([maxAbs, -maxAbs]);
+          if (desc)
+            desc.textContent = `Enrichment (log₂ fold-change of ${lvl}-level ${valLbl}, each entry vs. the rest). Red = enriched, blue = depleted. Top ${enr.taxa.length} most differential taxa.`;
+          _cmpRenderRect(
+            chart,
+            pf.entries,
+            enr.taxa,
+            (id, t) => enr.matrix[id][t] || 0,
+            (v) => color(v),
+            (v) => (v >= 0 ? "+" : "") + v.toFixed(2),
+            [-maxAbs, maxAbs],
+          );
+        } else {
+          // profile heatmap
+          const totals = {};
+          pf.taxa.forEach((t) => {
+            totals[t] = pf.entries.reduce((s, e) => s + ((pf.profile[e.id] && pf.profile[e.id][t]) || 0), 0);
+          });
+          const topTaxa = [...pf.taxa].sort((a, b) => totals[b] - totals[a]).slice(0, 30);
+          const vmax = Math.max(1, ...topTaxa.map((t) => Math.max(...pf.entries.map((e) => (pf.profile[e.id] && pf.profile[e.id][t]) || 0))));
+          const color = d3.scaleSequential(d3.interpolateYlGnBu).domain([0, vmax]);
+          const isInt = pf.value === "presence";
+          const fmt = (v) => (isInt ? Math.round(v).toLocaleString() : v.toFixed(1));
+          if (desc)
+            desc.textContent = `${lvl.charAt(0).toUpperCase() + lvl.slice(1)}-level ${valLbl} per ${pf.unit === "group" ? "group" : "sample"} (top ${topTaxa.length} taxa by total).`;
+          _cmpRenderRect(
+            chart,
+            pf.entries,
+            topTaxa,
+            (id, t) => (pf.profile[id] && pf.profile[id][t]) || 0,
+            (v) => (v > 0 ? color(v) : "#f3f5f8"),
+            fmt,
+            [0, vmax],
+          );
         }
       }
 
@@ -20176,7 +21226,7 @@
         buildSampleList();
         _computeBslLevels();
         _buildRunMetaTable();
-        _buildLongitudinalSection();
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
         // Rebuild histogram selectors so the rename is visible immediately
         if (window._resetHistSelectors) window._resetHistSelectors();
         redraw();
