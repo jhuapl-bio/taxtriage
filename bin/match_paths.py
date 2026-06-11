@@ -281,7 +281,7 @@ def parse_args(argv=None):
             "Accepted keys include: run_id, latitude, longitude, depth, salinity, "
             "collection_time, location, and the AMD-P/Talos standard fields "
             "(organism, sample_id, submitter_organization_name, sample_origin_country, "
-            "sample_origin_state_province_territory, sample_origin_county, "
+            "sample_origin_state_province_territory, "
             "host_scientific_name, environmental_site, host_disease, "
             "library_preparation_kit, sequencing_instrument, "
             "sequencing_protocol_primer_set, sequencing_platform). Any other keys "
@@ -3613,6 +3613,15 @@ def main():
             except (ValueError, TypeError):
                 pass  # leave as string if conversion fails
 
+    # Split comma-separated host_disease into a list of individual disease values.
+    # e.g. "runny stool, cramps, cold-like symptoms" → ["runny stool", "cramps", "cold-like symptoms"]
+    if "host_disease" in _run_meta and isinstance(_run_meta.get("host_disease"), str):
+        _hd_parts = [_p.strip() for _p in _run_meta["host_disease"].split(",") if _p.strip()]
+        if len(_hd_parts) > 1:
+            _run_meta["host_disease"] = _hd_parts
+        elif _hd_parts:
+            _run_meta["host_disease"] = _hd_parts[0]  # single value — keep as plain string
+
     # ── Build metadata dict: fixed fields first, then ALL run-meta fields ───────
     # Known fixed fields (always present so make_report.py can rely on them)
     _output_metadata = {
@@ -3637,7 +3646,6 @@ def main():
         "submitter_organization_name":           _run_meta.get("submitter_organization_name"),
         "sample_origin_country":                 _run_meta.get("sample_origin_country"),
         "sample_origin_state_province_territory": _run_meta.get("sample_origin_state_province_territory"),
-        "sample_origin_county":                  _run_meta.get("sample_origin_county"),
         "host_scientific_name":                  _run_meta.get("host_scientific_name"),
         "environmental_site":                    _run_meta.get("environmental_site"),
         "host_disease":                          _run_meta.get("host_disease"),

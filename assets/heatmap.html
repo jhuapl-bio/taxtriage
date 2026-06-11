@@ -10,9 +10,91 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- <script src="pages.js"></script> -->
-    <!-- <script src="mce.js"></script> -->
-    <script src="heatmap_boot.js"></script>
+    <style id="geo-host-extra-css">
+      /* ── Geographic choropleth map ── */
+      #geo-map-wrap {
+        position: relative;
+        width: 100%;
+        height: 560px;
+        border: 1px solid #e3e9f2;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #eef3f9;
+      }
+      #geo-map-svg { display: block; width: 100%; height: 100%; }
+      #geo-map-svg path.geo-region { cursor: pointer; transition: fill 0.15s ease; }
+      #geo-map-svg path.geo-region:hover { stroke: #1f2d3d; stroke-width: 1.1px; }
+      #geo-back {
+        position: absolute; top: 12px; left: 12px; z-index: 500; cursor: pointer;
+        align-items: center; gap: 0.4em; font-size: 0.8em; font-weight: 600; color: #33475b;
+        background: rgba(255, 255, 255, 0.96); border: 1px solid #d6deea; border-radius: 6px;
+        padding: 5px 10px; box-shadow: 0 2px 8px rgba(31, 45, 61, 0.14);
+      }
+      #geo-back:hover { background: #eef3fb; }
+      #geo-map-status {
+        position: absolute; inset: 0; display: flex; align-items: center;
+        justify-content: center; color: #7a8aa0; font-size: 0.9em; pointer-events: none;
+        text-align: center; padding: 1em;
+      }
+      /* overlay "dropdown" ranked-bar panel floating on the map */
+      .geo-overlay {
+        position: absolute; top: 12px; right: 12px; width: 300px; height: 360px;
+        display: flex; flex-direction: column;
+        background: rgba(255, 255, 255, 0.96); border: 1px solid #d6deea;
+        border-radius: 8px; box-shadow: 0 4px 16px rgba(31, 45, 61, 0.16);
+        font-size: 0.82em; z-index: 500; overflow: hidden;
+      }
+      .geo-overlay.collapsed { height: auto !important; }
+      .geo-overlay-head {
+        flex: 0 0 auto;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 0.5em; padding: 8px 11px; cursor: move; user-select: none;
+        font-weight: 600; color: #33475b; background: #f4f7fc; border-bottom: 1px solid #e3e9f2;
+      }
+      .geo-overlay-head .fa-chevron-down { transition: transform 0.2s ease; }
+      .geo-overlay.collapsed .geo-overlay-head .fa-chevron-down { transform: rotate(-90deg); }
+      .geo-overlay-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px; }
+      .geo-overlay.collapsed .geo-overlay-body { display: none; }
+      .geo-overlay-grip {
+        position: absolute; right: 1px; bottom: 1px; width: 16px; height: 16px;
+        cursor: nwse-resize; z-index: 3; border-bottom-right-radius: 7px;
+        background: linear-gradient(135deg, transparent 0 8px, #b6c1d0 8px 10px,
+          transparent 10px 11px, #b6c1d0 11px 13px, transparent 13px);
+      }
+      .geo-overlay.collapsed .geo-overlay-grip { display: none; }
+      .geo-legend {
+        position: absolute; left: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.94);
+        border: 1px solid #d6deea; border-radius: 7px; padding: 7px 10px; z-index: 500;
+        font-size: 0.74em; color: #44515f; box-shadow: 0 2px 8px rgba(31, 45, 61, 0.12);
+      }
+      .geo-legend-bar { height: 9px; width: 150px; border-radius: 3px; margin: 4px 0 2px; }
+      .geo-legend-row { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+      /* ── Host & Disease symptom × organism matrix ── */
+      #host-matrix-chart { overflow-x: auto; }
+      #host-matrix-chart table.hx-matrix { border-collapse: collapse; font-size: 0.78em; }
+      #host-matrix-chart table.hx-matrix th,
+      #host-matrix-chart table.hx-matrix td { border: 1px solid #e8edf4; padding: 0; text-align: center; }
+      #host-matrix-chart table.hx-matrix th.hx-corner { background: #f4f7fc; }
+      #host-matrix-chart table.hx-matrix th.hx-col {
+        background: #f4f7fc; font-weight: 600; color: #33475b; vertical-align: bottom;
+        height: 118px; white-space: nowrap; padding: 4px 2px;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-col > div {
+        writing-mode: vertical-rl; transform: rotate(180deg); margin: 0 auto; max-height: 110px;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-row {
+        background: #f4f7fc; font-weight: 600; color: #33475b; text-align: left;
+        padding: 4px 9px; white-space: nowrap; cursor: pointer; max-width: 220px;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-row:hover { background: #e7eefb; }
+      #host-matrix-chart table.hx-matrix th.hx-row.hx-active { background: #d7e4fb; }
+      #host-matrix-chart table.hx-matrix td.hx-cell { width: 34px; height: 30px; cursor: default; }
+      #host-matrix-chart table.hx-matrix td.hx-cell span { color: #1f2d3d; font-variant-numeric: tabular-nums; }
+    </style>
+    <script src="pages.js"></script>
+    <!-- <script src="heatmap_boot.js"></script> -->
 
     <script>
       const BOOT = window.HEATMAP_BOOT || {};
@@ -51,6 +133,53 @@
         box-sizing: border-box;
         margin: 0;
         padding: 0;
+      }
+
+      /* ──────────────────────────────────────────────────────────────────────
+         Design tokens. These mirror the palette/spacing already used throughout
+         the file so existing rules render identically; new polish rules (focus
+         rings, scrollbars, the UI-polish layer near the end of this stylesheet)
+         reference them so the look stays consistent and is easy to retune.
+         ────────────────────────────────────────────────────────────────────── */
+      :root {
+        /* brand / accent */
+        --tt-primary: #1565c0;
+        --tt-primary-dark: #0d3c66;
+        --tt-primary-light: #0288d1;
+        --tt-accent: #2196f3;
+        --tt-accent-soft: rgba(33, 150, 243, 0.5);
+
+        /* surfaces & text */
+        --tt-bg: #f4f6f9;
+        --tt-surface: #fff;
+        --tt-text: #222;
+        --tt-text-muted: #555;
+        --tt-text-soft: #777;
+
+        /* borders */
+        --tt-border: #ddd;
+        --tt-border-strong: #ccc;
+
+        /* status */
+        --tt-warn: #f59f00;
+        --tt-danger: #d23f3f;
+        --tt-ok: #2e9e5b;
+
+        /* radii */
+        --tt-radius-sm: 4px;
+        --tt-radius: 8px;
+        --tt-radius-lg: 12px;
+
+        /* elevation */
+        --tt-shadow-sm: 0 1px 2px rgba(13, 42, 71, 0.08);
+        --tt-shadow: 0 2px 8px rgba(13, 42, 71, 0.12);
+        --tt-shadow-lg: 0 12px 32px rgba(13, 42, 71, 0.22);
+
+        /* motion */
+        --tt-transition: 0.15s ease;
+
+        /* focus ring */
+        --tt-focus: #2196f3;
       }
       body {
         font-family:
@@ -730,6 +859,11 @@
       #pdf-legend-footer {
         display: none;
       }
+      /* Print-only report scaffolding — injected during export, hidden on screen. */
+      .pdf-section-head,
+      .pdf-explainer {
+        display: none;
+      }
       @media print {
         @page {
           size: landscape;
@@ -780,6 +914,137 @@
           margin: 0;
           font-size: 10px;
           color: #666;
+        }
+        /* ── PDF cover KPI banner (concise, like the Summary tab header) ── */
+        body.report-pdf-printing #pdf-kpi-banner {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin: 12px 0 4px;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi {
+          flex: 1 1 90px;
+          min-width: 84px;
+          border: 1px solid #d9e2ef;
+          border-left: 3px solid #1565c0;
+          border-radius: 4px;
+          padding: 5px 8px;
+          background: #f7fafd;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi.hc {
+          border-left-color: #c62828;
+          background: #fdf4f4;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi-label {
+          font-size: 7.5px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #6b7785;
+          font-weight: 700;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi-value {
+          font-size: 15px;
+          font-weight: 800;
+          color: #14304d;
+          line-height: 1.15;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi.hc .pdf-kpi-value {
+          color: #c62828;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi-sub {
+          font-size: 7.5px;
+          color: #8a93a3;
+        }
+        /* ── PDF "contents" list of included sections ── */
+        body.report-pdf-printing #pdf-contents {
+          display: block;
+          margin-top: 10px;
+          font-size: 9px;
+          color: #44525f;
+        }
+        body.report-pdf-printing #pdf-contents .pdf-contents-h {
+          font-size: 8.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #1565c0;
+          margin-bottom: 3px;
+        }
+        body.report-pdf-printing #pdf-contents ol {
+          margin: 0;
+          padding-left: 16px;
+          columns: 2;
+          column-gap: 28px;
+        }
+        body.report-pdf-printing #pdf-contents li {
+          margin: 0 0 1px;
+          break-inside: avoid;
+        }
+        /* ── Per-section header injected at the top of each printed pane ── */
+        body.report-pdf-printing .pdf-section-head {
+          display: block;
+          margin: 0 0 8px;
+          padding-bottom: 5px;
+          border-bottom: 1.5px solid #1565c0;
+          break-after: avoid;
+          page-break-after: avoid;
+        }
+        body.report-pdf-printing .pdf-section-head .pdf-section-group {
+          font-size: 8px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #5b8fc9;
+        }
+        body.report-pdf-printing .pdf-section-head .pdf-section-title {
+          font-size: 16px;
+          font-weight: 800;
+          color: #14304d;
+        }
+        body.report-pdf-printing .pdf-section-head .pdf-section-num {
+          display: inline-block;
+          min-width: 18px;
+          height: 18px;
+          line-height: 18px;
+          text-align: center;
+          background: #1565c0;
+          color: #fff;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 700;
+          margin-right: 6px;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        /* ── "What this shows / How to read it" explainer box ── */
+        body.report-pdf-printing .pdf-explainer {
+          display: flex;
+          gap: 14px;
+          margin: 0 0 10px;
+          padding: 7px 10px;
+          background: #f2f7fc;
+          border: 1px solid #dce7f3;
+          border-radius: 5px;
+          font-size: 9px;
+          line-height: 1.4;
+          color: #2f3e4c;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body.report-pdf-printing .pdf-explainer > div {
+          flex: 1 1 0;
+        }
+        body.report-pdf-printing .pdf-explainer .pdf-explainer-h {
+          font-weight: 700;
+          color: #1565c0;
+          text-transform: uppercase;
+          font-size: 7.5px;
+          letter-spacing: 0.05em;
+          margin-bottom: 2px;
         }
         body.report-pdf-printing #main,
         body.report-pdf-printing #content {
@@ -2172,9 +2437,172 @@
         transform: scale(0.96);
       }
       @media (max-width: 720px) {
-        #help-btn .help-btn-label {
+        #help-btn .help-btn-label,
+        #helpmode-btn .help-btn-label {
           display: none;
         }
+      }
+
+      /* ── Help-mode toggle button (sits left of Guided tour) ── */
+      #helpmode-btn {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45em;
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 999px;
+        padding: 0.32em 0.85em;
+        font-size: 0.72em;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          box-shadow 0.15s,
+          transform 0.1s;
+      }
+      #helpmode-btn:hover {
+        background: rgba(255, 255, 255, 0.32);
+        box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
+      }
+      #helpmode-btn:active {
+        transform: scale(0.96);
+      }
+      /* active (mode on) state */
+      #helpmode-btn.on {
+        background: #fff;
+        color: #1565c0;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+      }
+      #help-btn {
+        margin-left: 0.5em !important;
+      }
+
+      /* ── Per-tab contextual help panel ── */
+      #tab-help-panel {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        width: 320px;
+        max-width: calc(100vw - 32px);
+        max-height: 72vh;
+        overflow-y: auto;
+        z-index: 8500;
+        background: #fff;
+        border: 1px solid #cfdcec;
+        border-radius: 12px;
+        box-shadow: 0 12px 32px rgba(13, 42, 71, 0.22);
+        padding: 14px 16px 12px;
+        font-size: 0.86rem;
+        color: #2f3e4c;
+        transform: translateY(12px);
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+      #tab-help-panel.open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #tab-help-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      #tab-help-eyebrow {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #1565c0;
+      }
+      #tab-help-close {
+        border: none;
+        background: #eef2f7;
+        color: #5a6675;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      #tab-help-close:hover {
+        background: #dde5ee;
+        color: #222;
+      }
+      #tab-help-fig {
+        background: #f3f8fd;
+        border: 1px solid #e1ecf7;
+        border-radius: 8px;
+        padding: 6px;
+        margin-bottom: 10px;
+      }
+      #tab-help-fig svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: 96px;
+      }
+      #tab-help-fig:empty {
+        display: none;
+      }
+      #tab-help-group {
+        font-size: 0.66rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #5b8fc9;
+      }
+      #tab-help-group:empty {
+        display: none;
+      }
+      #tab-help-title {
+        margin: 1px 0 6px;
+        font-size: 1.04rem;
+        color: #14304d;
+      }
+      #tab-help-desc {
+        margin: 0 0 8px;
+        line-height: 1.5;
+        color: #3a4754;
+      }
+      #tab-help-tips {
+        margin: 0 0 10px;
+        padding-left: 1.1em;
+      }
+      #tab-help-tips li {
+        margin-bottom: 4px;
+        line-height: 1.45;
+        color: #44525f;
+      }
+      #tab-help-tips:empty {
+        display: none;
+      }
+      #tab-help-foot {
+        border-top: 1px solid #eef2f7;
+        padding-top: 8px;
+        font-size: 0.74rem;
+        color: #8a93a3;
+      }
+      #tab-help-foot a {
+        color: #1565c0;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      #tab-help-foot a:hover {
+        text-decoration: underline;
+      }
+      /* Hide the panel entirely while the full-screen tour or a print is active. */
+      body.help-active #tab-help-panel,
+      body.report-pdf-printing #tab-help-panel {
+        display: none;
       }
 
       /* ── dimmed backdrop + card ── */
@@ -2443,6 +2871,293 @@
             0 0 30px 10px rgba(33, 150, 243, 0.95);
         }
       }
+
+      /* ═══ Enhanced sidebar search ═══════════════════════════════════════ */
+      #filter-search-box {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin-top: 0.15em;
+      }
+      #filter-search-icon {
+        position: absolute;
+        left: 9px;
+        font-size: 0.82em;
+        color: #90a4ae;
+        pointer-events: none;
+        transition: color 0.15s;
+      }
+      #filter-search-box input#filter-text {
+        width: 100%;
+        padding: 0.42em 1.9em 0.42em 1.95em;
+        border: 1px solid #cfd8e3;
+        border-radius: 7px;
+        font-size: 0.92em;
+        line-height: 1;
+        vertical-align: middle;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      #filter-search-box input#filter-text:focus {
+        outline: none;
+        border-color: #2196f3;
+        box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.16);
+      }
+      #filter-search-box input#filter-text:focus ~ #filter-search-icon,
+      #filter-search-box:focus-within #filter-search-icon {
+        color: #2196f3;
+      }
+      /* invalid / incomplete regex feedback */
+      body.search-invalid #filter-search-box input#filter-text {
+        border-color: #e0a800;
+        box-shadow: 0 0 0 3px rgba(224, 168, 0, 0.16);
+      }
+      #filter-clear {
+        position: absolute;
+        right: 6px;
+        border: none;
+        background: #eceff3;
+        color: #66707d;
+        width: 18px;
+        height: 18px;
+        line-height: 1;
+        border-radius: 50%;
+        font-size: 14px;
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background 0.15s;
+      }
+      #filter-clear:hover {
+        background: #d7dde5;
+        color: #333;
+      }
+      body.has-search #filter-clear {
+        display: inline-flex;
+      }
+      /* ── search footer: status + options toggle ── */
+      #filter-search-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 0.3em;
+        font-size: 0.76em;
+        color: #607d8b;
+        min-height: 1.4em;
+      }
+      #filter-status {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      #filter-status.warn {
+        color: #d18700;
+      }
+      #filter-status.zero {
+        color: #c62828;
+      }
+      #filter-opts-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.9em;
+        color: #90a4ae;
+        padding: 1px 3px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        transition: color 0.15s;
+        white-space: nowrap;
+        margin-left: auto;
+      }
+      #filter-opts-toggle:hover {
+        color: #455a64;
+      }
+      #filter-opts-toggle.open {
+        color: #2196f3;
+      }
+      /* ── collapsible options panel ── */
+      #filter-search-meta {
+        display: none;
+        align-items: center;
+        gap: 0.5em;
+        margin-top: 0.3em;
+        padding: 0.35em 0.5em;
+        font-size: 0.76em;
+        color: #607d8b;
+        background: #f4f7fb;
+        border: 1px solid #dce6f0;
+        border-radius: 6px;
+      }
+      #filter-search-meta.open {
+        display: flex;
+      }
+      #filter-scope {
+        font-size: 0.92em;
+        padding: 1px 4px;
+        border: 1px solid #cfd8e3;
+        border-radius: 5px;
+        background: #fff;
+        color: #455a64;
+        cursor: pointer;
+      }
+      #filter-ic-lbl {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        cursor: pointer;
+        padding: 1px 4px;
+        border: 1px solid #cfd8e3;
+        border-radius: 5px;
+        font-weight: 700;
+        color: #607d8b;
+        user-select: none;
+      }
+      #filter-ic-lbl input {
+        margin: 0;
+      }
+      #filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 0.4em;
+      }
+      #filter-chips:empty {
+        display: none;
+      }
+      .filter-chip {
+        font-size: 0.72em;
+        padding: 2px 8px;
+        border: 1px solid #d4dde7;
+        border-radius: 999px;
+        background: #f4f7fb;
+        color: #41566a;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.13s,
+          border-color 0.13s,
+          color 0.13s;
+      }
+      .filter-chip:hover {
+        background: #e3f0fd;
+        border-color: #90caf9;
+        color: #1565c0;
+      }
+      .filter-chip.recent {
+        font-style: italic;
+      }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         UI POLISH LAYER
+         Placed last in this stylesheet so it wins the cascade. Purely visual /
+         accessibility refinements — no element is moved or hidden, so behaviour
+         is unchanged. Covers: keyboard focus rings, custom scrollbars, reduced-
+         motion support, depth on the banner, a cleaner active-tab treatment,
+         and a few small-screen tweaks.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      /* 1 ─ Visible keyboard focus. Only shows on keyboard navigation
+            (:focus-visible), never on mouse clicks, so it doesn't add noise for
+            pointer users. Components that already draw their own focus ring keep
+            it (their id/class selectors out-specify these element selectors). */
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid var(--tt-focus);
+        outline-offset: 2px;
+        border-radius: var(--tt-radius-sm);
+      }
+      /* Tabs sit on a dark bar — use a light ring so it reads against the blue. */
+      #tabbar .tab-btn:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: -2px;
+      }
+
+      /* 2 ─ Modern, unobtrusive scrollbars (WebKit/Blink + Firefox). */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #c2ccd6 transparent;
+      }
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: #c2ccd6;
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: #9aa7b5;
+        background-clip: padding-box;
+      }
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      /* 3 ─ Respect reduced-motion preferences (accessibility + perf on weak
+            hardware): collapse transitions/animations to near-instant. */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+
+      /* 4 ─ A touch of depth so the banner/tab bar read as a single chrome unit. */
+      #banner {
+        box-shadow: var(--tt-shadow-sm);
+        position: relative;
+        z-index: 2;
+      }
+      #tabbar {
+        box-shadow: var(--tt-shadow-sm);
+        position: relative;
+        z-index: 1;
+        scroll-snap-type: x proximity;
+      }
+      #tabbar .tab-btn {
+        scroll-snap-align: start;
+      }
+
+      /* 5 ─ Cleaner active-tab treatment: keep the recognisable white tab + blue
+            accent, but swap the heavy double neon glow for a crisp ring and a
+            soft lift. Easier on the eyes, same visual hierarchy. */
+      .tab-btn.active {
+        box-shadow: var(--tt-shadow-sm);
+      }
+      .tab-btn {
+        transition:
+          color var(--tt-transition),
+          background var(--tt-transition),
+          box-shadow var(--tt-transition);
+      }
+
+      /* 6 ─ Small-screen breathing room. The tab bar already scrolls
+            horizontally; tighten chrome so more fits before it has to. */
+      @media (max-width: 720px) {
+        #content {
+          padding: 0.6em;
+        }
+        .tab-btn {
+          padding: 0.55em 0.8em;
+        }
+        #banner {
+          font-size: 1em;
+        }
+      }
     </style>
   </head>
   <body>
@@ -2451,14 +3166,41 @@
       TaxTriage Multi-Run Analysis
       <span class="sub" id="banner-sub"></span>
       <button
+        id="helpmode-btn"
+        type="button"
+        title="Help mode — show a help panel for whatever tab you're on"
+        aria-label="Toggle per-tab help mode"
+        aria-pressed="false"
+      >
+        <i class="fas fa-circle-info"></i><span class="help-btn-label">Help mode</span>
+      </button>
+      <button
         id="help-btn"
         type="button"
         title="Take the guided tour — learn what every tab does and how to drive them"
         aria-label="Open the guided help tutorial"
       >
-        <i class="fas fa-circle-question"></i><span class="help-btn-label">Help &amp; Tour</span>
+        <i class="fas fa-graduation-cap"></i><span class="help-btn-label">Guided tour</span>
       </button>
     </div>
+
+    <!-- ── Per-tab contextual help panel (driven by Help mode) ── -->
+    <aside id="tab-help-panel" aria-hidden="true" aria-live="polite">
+      <div id="tab-help-head">
+        <span id="tab-help-eyebrow"><i class="fas fa-circle-info"></i> Help mode</span>
+        <button id="tab-help-close" type="button" title="Turn off help mode" aria-label="Close help panel">
+          &times;
+        </button>
+      </div>
+      <div id="tab-help-fig" aria-hidden="true"></div>
+      <div id="tab-help-group"></div>
+      <h3 id="tab-help-title"></h3>
+      <p id="tab-help-desc"></p>
+      <ul id="tab-help-tips"></ul>
+      <div id="tab-help-foot">
+        Panel follows the active tab. <a href="#" id="tab-help-tour">Take the full guided tour →</a>
+      </div>
+    </aside>
 
     <div id="tabbar">
       <button class="tab-btn active" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary</button>
@@ -2508,6 +3250,10 @@
         Current report export with active filters, sample visibility, chart selections, and table pagination applied.
       </p>
       <p class="pdf-cover-sub" id="pdf-report-subtext"></p>
+      <!-- Concise KPI banner (mirrors the Summary tab header). Populated by _buildPdfCover(). -->
+      <div id="pdf-kpi-banner"></div>
+      <!-- Ordered list of the report sections included below. Populated by _buildPdfCover(). -->
+      <div id="pdf-contents"></div>
       <!-- Sample-color + TASS-cutoff legend (cover placement). Populated by _buildPdfLegend(). -->
       <div id="pdf-legend"></div>
     </div>
@@ -4323,7 +5069,7 @@
                 <i class="fas fa-earth-americas"></i> Geographic Comparison
               </div>
               <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
-                Aggregate the visible detections across samples by country, state/province/territory, or county.
+                Aggregate the visible detections across samples by country or state / province / territory.
               </div>
               <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
                 <div style="display: flex; flex-direction: column; gap: 0.3em">
@@ -4334,7 +5080,6 @@
                   >
                     <option value="sample_origin_country" selected>Country</option>
                     <option value="sample_origin_state_province_territory">State / Province / Territory</option>
-                    <option value="sample_origin_county">County</option>
                   </select>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 0.3em">
@@ -4350,13 +5095,36 @@
                   </select>
                 </div>
               </div>
-              <div id="geo-cmp-chart" style="position: relative; overflow: visible"></div>
+              <!-- Large choropleth with a collapsible ranked-bar overlay -->
+              <div id="geo-map-wrap">
+                <svg id="geo-map-svg"></svg>
+                <div id="geo-map-status">Open this tab to load the map…</div>
+                <button type="button" id="geo-back" style="display: none">
+                  <i class="fas fa-arrow-left"></i> Back to countries
+                </button>
+                <div class="geo-overlay collapsed" id="geo-overlay">
+                  <div class="geo-overlay-head" id="geo-overlay-toggle" title="Show / hide ranked list">
+                    <span><i class="fas fa-ranking-star"></i> Ranked <span id="geo-overlay-level-lbl">Countries</span></span>
+                    <i class="fas fa-chevron-down"></i>
+                  </div>
+                  <div class="geo-overlay-body" id="geo-overlay-body">
+                    <div id="geo-cmp-chart" style="position: relative; overflow: visible"></div>
+                  </div>
+                  <div class="geo-overlay-grip" id="geo-overlay-grip" title="Drag to resize"></div>
+                </div>
+                <div class="geo-legend" id="geo-legend" style="display: none"></div>
+              </div>
               <div
                 id="geo-cmp-no-data"
                 style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
               >
                 <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
-                No country / state / county metadata in the visible samples.
+                No country / state metadata in the visible samples.
+              </div>
+              <div style="font-size: 0.74em; color: #9aa6b4; margin-top: 0.5em">
+                <i class="fas fa-circle-info" style="margin-right: 0.3em"></i>
+                Regions are shaded by the selected metric. Hover a country to see its state / territory breakdown.
+                Boundary outlines load from a public map CDN; if offline, the ranked list still works.
               </div>
             </div>
           </div>
@@ -4407,6 +5175,68 @@
               >
                 <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
                 No host / disease / site metadata in the visible samples.
+              </div>
+
+              <!-- ── Symptom × Organism matrix ── -->
+              <div id="host-matrix-section" style="margin-top: 1.6em; border-top: 1px solid #eef2f7; padding-top: 1.1em">
+                <div class="chart-title" style="margin-bottom: 0.35em">
+                  <i class="fas fa-table-cells"></i> Symptom &times; Organism
+                </div>
+                <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                  How many samples carry each organism, broken down by symptom / host disease. Each cell is the number
+                  of samples reporting that symptom in which the organism was detected. Click a symptom row to drill in.
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                  <div style="display: flex; flex-direction: column; gap: 0.3em">
+                    <label style="font-size: 0.81em; font-weight: 600; color: #555">Symptom field</label>
+                    <select
+                      id="host-mx-field"
+                      style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                    >
+                      <option value="host_disease" selected>Host Disease / Symptom</option>
+                      <option value="environmental_site">Environmental Site</option>
+                      <option value="host_scientific_name">Host (Scientific Name)</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 0.3em">
+                    <label style="font-size: 0.81em; font-weight: 600; color: #555">Organism level</label>
+                    <select
+                      id="host-mx-level"
+                      style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                    >
+                      <option value="Detected Organism" selected>Detected Organism</option>
+                      <option value="Species Name">Species</option>
+                      <option value="Genus Name">Genus</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 0.3em">
+                    <label style="font-size: 0.81em; font-weight: 600; color: #555">Top organisms</label>
+                    <select
+                      id="host-mx-topn"
+                      style="border: 1px solid #ccd6e8; border-radius: 6px; padding: 5px 9px; font-size: 0.82em; background: #fff"
+                    >
+                      <option value="10">10</option>
+                      <option value="15" selected>15</option>
+                      <option value="25">25</option>
+                      <option value="0">All</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="host-matrix-chart"></div>
+                <div
+                  id="host-matrix-no-data"
+                  style="display: none; text-align: center; padding: 1.6em 1em; color: #999; font-size: 0.88em"
+                >
+                  <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                  No overlap between symptom metadata and detected organisms in the visible samples.
+                </div>
+                <div id="host-drill" style="display: none; margin-top: 1.2em">
+                  <div class="chart-title" style="font-size: 0.92em; margin-bottom: 0.3em">
+                    <i class="fas fa-magnifying-glass-chart"></i>
+                    Organisms in samples with <span id="host-drill-label" style="color: #2b6cb0"></span>
+                  </div>
+                  <div id="host-drill-chart" style="position: relative; overflow: visible"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -4520,16 +5350,34 @@
             class="info-tip-btn"
             id="filter-text-tip-btn"
             aria-label="Search help"
-            data-tip='<b>Search filter</b> — matches against both Sample ID and Organism name using a <b>regular expression</b>.<br><br><b>Simple substring:</b><br><code>listeria</code> — matches anything containing "listeria"<br><br><b>Wildcard-style (prefix):</b><br><code>listeria.*</code> — organism starting with listeria, any suffix<br><code>^Nano</code> — sample or organism name starting with "Nano"<br><br><b>Multi-match (OR):</b><br><code>hominis|corona</code> — matches either "hominis" or "corona"<br><code>listeria|salmonella|ecoli</code> — any of three terms<br><br><b>Exact species:</b><br><code>^Listeria monocytogenes$</code> — exact name only<br><br><b>Exclude (negate):</b><br>Use the case-insensitive checkbox below to control case. Patterns follow JavaScript RegExp syntax.'
+            data-tip='<b>Search filter</b> — matches Sample ID and/or Organism name. Plain words work as a simple substring search; power users can use full <b>regular expressions</b>.<br><br><b>Simple substring:</b><br><code>listeria</code> — matches anything containing "listeria"<br><br><b>Multi-match (OR):</b><br><code>hominis|corona</code> — matches either term<br><br><b>Anchors / exact:</b><br><code>^Nano</code> — starts with "Nano"<br><code>^Listeria monocytogenes$</code> — exact name only<br><br><b>Scope</b> — limit matching to Sample names, Organism names, or both.<br><b>Shortcut</b> — press <code>/</code> anywhere to jump here, <code>Esc</code> to clear. Patterns follow JavaScript RegExp syntax.'
           >
             &#x24D8;
           </button></label
         >
-        <input id="filter-text" type="text" placeholder="regex e.g. ^Nano or hominis|corona" />
-        <div class="row">
-          <input type="checkbox" id="filter-ic" checked />
-          <label for="filter-ic">Case-insensitive</label>
+        <div id="filter-search-box">
+          <i class="fas fa-magnifying-glass" id="filter-search-icon" aria-hidden="true"></i>
+          <input id="filter-text" type="text" style="font-size: 10px; margin-left:2px" placeholder="Type to search…  (e.g. listeria or ^Nano)" autocomplete="off" spellcheck="false" />
+          <button type="button" id="filter-clear" title="Clear search (Esc)" aria-label="Clear search">&times;</button>
         </div>
+        <div id="filter-search-footer">
+          <span id="filter-status" aria-live="polite"></span>
+          <button type="button" id="filter-opts-toggle" title="Search options" aria-expanded="false" aria-controls="filter-search-meta">
+            <i class="fas fa-sliders-h" style="font-size:0.85em"></i> Options ▾
+          </button>
+        </div>
+        <div id="filter-search-meta" role="group" aria-label="Search options">
+          <select id="filter-scope" title="Which fields the search matches against" aria-label="Search scope">
+            <option value="both" selected>Sample + Organism</option>
+            <option value="sample">Sample only</option>
+            <option value="organism">Organism only</option>
+          </select>
+          <label id="filter-ic-lbl" title="Ignore upper/lower case when matching">
+            <input type="checkbox" id="filter-ic" checked />
+            Aa
+          </label>
+        </div>
+        <div id="filter-chips" aria-label="Quick filters"></div>
         <label id="filter-min-label"
           >Min TASS Score (0–100)
           <button
@@ -4804,7 +5652,7 @@
             <span style="color: #888; font-size: 0.9em"
               >columns: sample, run_id, latitude, longitude, depth, salinity,
               collection_time, location,<br />plus AMD-P fields: sample_origin_country,
-              sample_origin_state_province_territory, sample_origin_county,
+              sample_origin_state_province_territory,
               host_scientific_name, host_disease, environmental_site,
               sequencing_instrument, sequencing_platform …</span
             >
@@ -5418,22 +6266,25 @@
       });
 
       // Palette for samples
+      // Colorblind-safe categorical palette (Okabe-Ito + Paul Tol muted),
+      // ordered so the earliest-assigned sample colors stay maximally
+      // distinct under deuteranopia/protanopia (no adjacent red↔green).
       const PALETTE = [
-        "#1f77b4",
-        "#ff7f0e",
-        "#2ca02c",
-        "#d62728",
-        "#9467bd",
-        "#8c564b",
-        "#e377c2",
-        "#7f7f7f",
-        "#bcbd22",
-        "#17becf",
-        "#aec7e8",
-        "#ffbb78",
-        "#98df8a",
-        "#ff9896",
-        "#c5b0d5",
+        "#0072B2", // blue
+        "#E69F00", // orange
+        "#009E73", // bluish green
+        "#CC79A7", // reddish purple
+        "#56B4E9", // sky blue
+        "#D55E00", // vermillion
+        "#117733", // dark green
+        "#882255", // wine
+        "#DDCC77", // sand
+        "#AA4499", // purple
+        "#44AA99", // teal
+        "#999933", // olive
+        "#332288", // indigo
+        "#661100", // brown
+        "#6699CC", // steel blue
       ];
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -5487,9 +6338,12 @@
           .map(([k, v]) => `${k}:${v}`)
           .join("|");
       }
+      // Search scope + last-known regex validity (surfaced in the sidebar status line).
+      let _searchInvalid = false;
       function filteredData() {
         const txt = document.getElementById("filter-text").value.trim();
         const ic = document.getElementById("filter-ic").checked;
+        const scope = (document.getElementById("filter-scope") || {}).value || "both";
         const viewLevel = (document.getElementById("view-level") || {}).value || "Strain";
         const minV = parseFloat(document.getElementById("filter-min").value) || 0;
         const onlyHC = document.getElementById("filter-hc").checked;
@@ -5511,6 +6365,7 @@
         const cacheKey = [
           txt,
           ic ? 1 : 0,
+          scope,
           minV,
           onlyHC ? 1 : 0,
           onlyP ? 1 : 0,
@@ -5529,14 +6384,37 @@
         ].join("\u0001");
         if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
-        const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
+        // Compile the search pattern defensively. While the user is still
+        // typing, an incomplete pattern (e.g. "(" or "[a-") would otherwise
+        // throw and break every view. On error we fall back to "no text
+        // filter" (results stay visible) and flag the box as invalid.
+        let rx = null;
+        _searchInvalid = false;
+        if (txt) {
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+            _searchInvalid = true;
+          }
+        }
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
         const anyRescale = _hasAnyRescale();
 
         // Base (non-level, non-threshold) predicates shared by every view.
         function _basePass(r) {
           if (sampleHidden[r["Specimen ID"]]) return false;
-          if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
+          if (rx) {
+            const inSample = rx.test(r["Specimen ID"] || "");
+            const inOrg = rx.test(r["Detected Organism"] || "");
+            if (scope === "sample") {
+              if (!inSample) return false;
+            } else if (scope === "organism") {
+              if (!inOrg) return false;
+            } else if (!inSample && !inOrg) {
+              return false;
+            }
+          }
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
           const mt = (r["Mol Type"] || "").toLowerCase();
@@ -6887,6 +7765,194 @@
         });
       }
 
+      /* ── PDF section metadata ─────────────────────────────────────────────
+         Per-tab grouping + plain-language explainers ("what this shows" /
+         "how to read it") injected at the top of each printed pane so the
+         exported report reads as an organized, annotated document rather than
+         a raw dump of plots. */
+      const PDF_SECTION_INFO = {
+        summary: {
+          group: "Overview",
+          what: "Headline run metrics plus the core detection tables — sample count, total reads, percent of reads classified, unique organisms/genera, and the high-confidence calls.",
+          how: "Read the KPI cards left-to-right for run scale and quality. In the detection table, each row is one organism call with its TASS confidence score; red rows are high-consequence pathogens.",
+        },
+        heatmap: {
+          group: "Taxonomic Composition",
+          what: "A samples × organisms grid in which each cell's colour encodes the selected metric (TASS score, reads, or coverage).",
+          how: "Darker cells are higher values. Scan across a row to see which samples share an organism; scan down a column to profile one sample. Empty cells mean the organism was not detected there.",
+        },
+        tass: {
+          group: "Detection Confidence",
+          what: "TASS confidence scores for each detection drawn side-by-side as bars, coloured by sample.",
+          how: "Taller bars are more confident detections. Compare each bar against the TASS cutoff — bars below it are weak calls. Bar colours match the sample legend.",
+        },
+        sunburst: {
+          group: "Taxonomic Composition",
+          what: "A radial view of the taxonomy: inner rings are higher ranks (kingdom→genus), outer rings are species/strains, sized by the chosen metric.",
+          how: "Wider wedges represent a larger share of the metric. Trace a wedge outward to follow a lineage from genus down to strain; the centre is the root of the tree.",
+        },
+        coverage: {
+          group: "Confidence & Coverage",
+          what: "A scatter of genome coverage against TASS score (or read count); each point is one detection, coloured by sample.",
+          how: "Points high and to the right are strong, well-covered detections. Outliers — e.g. many reads but low breadth — sit away from the main cluster and deserve a closer look.",
+        },
+        proteins: {
+          group: "Virulence & Resistance",
+          what: "Virulence-factor (VF) and antimicrobial-resistance (AMR) gene hits detected across the run, summarised by genus with a detailed gene table.",
+          how: "Bars rank genera by gene-hit count; AMR hits flag possible drug resistance. Use the table to see individual gene names and which samples carried them.",
+        },
+        histogram: {
+          group: "Per-Genome Coverage",
+          what: "Per-contig / per-genome read-depth distributions showing how sequencing depth is spread across each reference genome.",
+          how: "Even, full-width coverage indicates a genuine, well-covered genome; spiky or sparse coverage suggests partial or ambiguous mapping. Bin size varies with genome length.",
+        },
+        explore: {
+          group: "Cross-Sample Patterns",
+          what: "Free-form cross-sample charts for spotting multi-metric trends, batch effects, and sample-type patterns across the whole run.",
+          how: "Pick the axes/metrics that answer your question; clusters and trends reveal samples that behave alike or stand apart.",
+        },
+        table: {
+          group: "Detection Records",
+          what: "The complete detections table behind every chart — every organism call with its metrics, in the current filtered view.",
+          how: "Each row is one detection. Key columns: TASS Score (confidence), Breadth % (genome coverage), and # Reads Aligned. Red rows are high-consequence; amber-barred rows were rescued by species/genus roll-up.",
+        },
+        map: {
+          group: "Provenance & Geography",
+          what: "Geographic placement of samples that carry latitude/longitude metadata.",
+          how: "Each pin is a sampling site, coloured by sample. Use it to track spread across locations for surveillance.",
+        },
+        runmeta: {
+          group: "Provenance & Geography",
+          what: "Per-sample run provenance — sample type, sequencing platform, and any uploaded metadata fields — collected in one table.",
+          how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above.",
+        },
+      };
+
+      function _esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /* Compute the concise KPI set for the PDF cover — mirrors the Summary
+         tab's KPI logic but reads from the current filtered data so the cover
+         reflects exactly what was exported. */
+      function _pdfKpiCards() {
+        const fd = typeof filteredData === "function" ? filteredData() : [];
+        const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+        const totalInput = samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
+        const totalOrg =
+          samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
+          fd.reduce((s, r) => s + (parseFloat(r["# Reads Aligned"]) || 0), 0);
+        let pctClass = totalInput > 0 ? ((totalOrg / totalInput) * 100).toFixed(1) + "%" : "N/A";
+        if (pctClass === "0.0%" && totalOrg > 0) pctClass = "<0.1%";
+        const uniqOrgs = new Set(fd.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
+        const uniqGenera = new Set(fd.map((r) => r["Genus"]).filter(Boolean)).size;
+        const hcCount = new Set(
+          fd.filter((r) => isTruthy(r["High Consequence"])).map((r) => r["Taxonomic ID #"] || r["Detected Organism"]),
+        ).size;
+        const platforms = uniq(
+          samples.map((sn) => (SAMPLE_META[sn] || {}).platform).filter((p) => p && p !== "unknown"),
+        );
+        const cut = _tassCutoffSummary();
+        let cutVal, cutSub;
+        if (cut.mode === "byType" && cut.items.length) {
+          const vals = cut.items.map((it) => Number(it.applied));
+          const same = vals.every((v) => v === vals[0]);
+          if (same) {
+            cutVal = vals[0].toFixed(1);
+            cutSub = cut.items.length === 1 ? cut.items[0].type : "all types";
+          } else {
+            cutVal = `${Math.min(...vals).toFixed(0)}–${Math.max(...vals).toFixed(0)}`;
+            cutSub = "by sample type";
+          }
+        } else {
+          cutVal = cut.global > 0 ? cut.global.toFixed(1) : cut.recommended != null ? cut.recommended.toFixed(1) : "—";
+          cutSub = cut.recommended != null && cut.global <= 0 ? "recommended" : "applied filter";
+        }
+        const tReads = _fmtBig(totalInput);
+        const aReads = _fmtBig(totalOrg);
+        return [
+          { label: "Samples", value: samples.length, sub: platforms.length ? platforms.join(", ") : "in report" },
+          { label: "Total Reads", value: totalInput > 0 ? tReads.short : "N/A", sub: "input reads" },
+          { label: "% Classified", value: pctClass, sub: aReads.short + " aligned" },
+          { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
+          { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
+          { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged", hc: true },
+          { label: "TASS Cutoff", value: cutVal, sub: cutSub },
+        ];
+      }
+
+      /* Build the PDF cover: KPI banner + an ordered "contents" list of the
+         sections that will follow. */
+      function _buildPdfCover() {
+        const bannerEl = document.getElementById("pdf-kpi-banner");
+        if (bannerEl) {
+          bannerEl.innerHTML = _pdfKpiCards()
+            .map(
+              (c) =>
+                `<div class="pdf-kpi${c.hc && c.value !== "0" ? " hc" : ""}">` +
+                `<div class="pdf-kpi-label">${_esc(c.label)}</div>` +
+                `<div class="pdf-kpi-value">${_esc(c.value)}</div>` +
+                (c.sub ? `<div class="pdf-kpi-sub">${_esc(c.sub)}</div>` : "") +
+                `</div>`,
+            )
+            .join("");
+        }
+        const contentsEl = document.getElementById("pdf-contents");
+        if (contentsEl) {
+          const tabs = _visibleReportTabs();
+          const items = tabs
+            .map((tab) => {
+              const info = PDF_SECTION_INFO[tab] || {};
+              const title = _tabLabel(tab);
+              return `<li><b>${_esc(title)}</b>${info.group ? ` <span style="color:#8a93a3">— ${_esc(info.group)}</span>` : ""}</li>`;
+            })
+            .join("");
+          contentsEl.innerHTML = `<div class="pdf-contents-h">In this report</div><ol>${items}</ol>`;
+        }
+      }
+
+      // Track injected nodes so cleanup can remove them.
+      let _pdfInjectedNodes = [];
+      function _clearPdfSections() {
+        _pdfInjectedNodes.forEach((n) => n.parentNode && n.parentNode.removeChild(n));
+        _pdfInjectedNodes = [];
+      }
+
+      /* Prepend a numbered section header + "what / how" explainer to each
+         visible pane so the printed output is grouped and annotated. */
+      function _injectPdfSections() {
+        _clearPdfSections();
+        const tabs = _visibleReportTabs();
+        tabs.forEach((tab, i) => {
+          const pane = document.getElementById(`pane-${tab}`);
+          if (!pane) return;
+          const info = PDF_SECTION_INFO[tab] || {};
+          const title = _tabLabel(tab);
+
+          const head = document.createElement("div");
+          head.className = "pdf-section-head";
+          head.innerHTML =
+            (info.group ? `<div class="pdf-section-group">${_esc(info.group)}</div>` : "") +
+            `<div class="pdf-section-title"><span class="pdf-section-num">${i + 1}</span>${_esc(title)}</div>`;
+
+          pane.insertBefore(head, pane.firstChild);
+          _pdfInjectedNodes.push(head);
+
+          if (info.what || info.how) {
+            const exp = document.createElement("div");
+            exp.className = "pdf-explainer";
+            exp.innerHTML =
+              (info.what ? `<div><div class="pdf-explainer-h">What this shows</div>${_esc(info.what)}</div>` : "") +
+              (info.how ? `<div><div class="pdf-explainer-h">How to read it</div>${_esc(info.how)}</div>` : "");
+            head.insertAdjacentElement("afterend", exp);
+            _pdfInjectedNodes.push(exp);
+          }
+        });
+      }
+
       async function _exportReportPdf() {
         _setPdfProgress("Collecting current report state…", 0, 1);
         const coverSub = document.getElementById("pdf-report-subtext");
@@ -6895,6 +7961,9 @@
           coverSub.textContent = `${_buildBannerSub()} · Exported ${stamp}`;
         }
         await _renderTabsForPdf();
+        // Build the cover KPI banner + contents, then group/annotate each pane.
+        _buildPdfCover();
+        _injectPdfSections();
         _enhanceExports();
         // Scale every plot to the page (vector, no quality loss).
         _optimizeSvgForPrint();
@@ -6916,6 +7985,7 @@
         const cleanup = () => {
           document.body.classList.remove("report-pdf-printing");
           document.body.classList.remove("pdf-legend-footer-on");
+          _clearPdfSections();
           // Hide the cmp analysis snapshots again after printing
           const snap = document.getElementById("cmp-print-snapshots");
           if (snap) snap.style.display = "none";
@@ -10697,6 +11767,22 @@
           return `${cd.organism}||${cd.taxon_id}`;
         }
 
+        // Set of `${Specimen ID}||${Taxonomic ID #}` for visible detections that
+        // pass the TASS cutoff at their OWN level. Used to gate the histogram so
+        // organisms below the cutoff (including roll-up-rescued ones) can't be
+        // selected or charted.
+        function _histPassingTaxa() {
+          const set = new Set();
+          filteredData().forEach((r) => {
+            const pi = typeof rowPassInfo === "function" ? rowPassInfo(r) : null;
+            // Keep rows with no numeric strain TASS (nothing to gate on), else
+            // require a strict own-level pass.
+            if (pi && !isNaN(pi.strain) && !pi.strainPass) return;
+            set.add(`${r["Specimen ID"]}||${r["Taxonomic ID #"]}`);
+          });
+          return set;
+        }
+
         function _buildSelectors() {
           const orgSel = document.getElementById("hist-org-sel");
           const sampleSel = document.getElementById("hist-sample-sel");
@@ -10723,7 +11809,10 @@
             const orgKeys = {};
             const rx = _getTextFilter();
             const q = _getSearchTerm();
-            const visibleTaxa = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Taxonomic ID #"]}`));
+            // Only organisms whose detection clears the TASS cutoff at its own
+            // level are selectable — a below-cutoff organism (even one kept by
+            // species/genus roll-up) must not be pickable here.
+            const visibleTaxa = _histPassingTaxa();
             CONTIG_DATA.forEach((cd) => {
               const orgName = cd.organism || "";
               const sample = cd.sample || "";
@@ -10759,7 +11848,7 @@
             const orgKey = orgSel.value;
             sampleSel.innerHTML = '<option value="">All samples</option>';
             const rx = _getTextFilter();
-            const visibleTaxa = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Taxonomic ID #"]}`));
+            const visibleTaxa = _histPassingTaxa();
             CONTIG_DATA.filter(
               (cd) =>
                 _getOrgKey(cd) === orgKey &&
@@ -10856,7 +11945,7 @@
             return;
           }
 
-          const _fdTaxaKeys = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Taxonomic ID #"]}`));
+          const _fdTaxaKeys = _histPassingTaxa();
           let entries = CONTIG_DATA.filter(
             (cd) =>
               _getOrgKey(cd) === orgKey && !sampleHidden[cd.sample] && _fdTaxaKeys.has(`${cd.sample}||${cd.taxon_id}`),
@@ -12205,6 +13294,105 @@
         });
       });
 
+      /* ══════════════════════════════════════════════════════════════════════
+         Tab bar accessibility + keyboard navigation.
+         Additive only — the click handler above still owns activation. This
+         layers on the ARIA tablist pattern (roles, aria-selected) and the
+         expected keyboard behaviour (←/→ move between tabs, Home/End jump to
+         first/last, Enter/Space activate). Hidden + disabled tabs are skipped.
+         A MutationObserver keeps roving tabindex / aria-selected in sync no
+         matter how a tab is activated or shown/hidden elsewhere in the app.
+         ══════════════════════════════════════════════════════════════════════ */
+      (function () {
+        const bar = document.getElementById("tabbar");
+        if (!bar) return;
+        bar.setAttribute("role", "tablist");
+        bar.setAttribute("aria-label", "Analysis views");
+
+        const allTabs = () => Array.from(bar.querySelectorAll(".tab-btn"));
+        // Tabs a keyboard user can actually land on: visible + not disabled.
+        const navTabs = () =>
+          allTabs().filter(
+            (b) =>
+              !b.classList.contains("hidden") &&
+              !b.classList.contains("tab-disabled") &&
+              b.offsetParent !== null,
+          );
+
+        function syncA11y() {
+          allTabs().forEach((b) => {
+            b.setAttribute("role", "tab");
+            const sel = b.classList.contains("active");
+            b.setAttribute("aria-selected", sel ? "true" : "false");
+            // Roving tabindex: only the active tab is in the tab order.
+            b.tabIndex = sel ? 0 : -1;
+            const pane = document.getElementById(`pane-${b.dataset.tab}`);
+            if (pane) {
+              b.setAttribute("aria-controls", `pane-${b.dataset.tab}`);
+              pane.setAttribute("role", "tabpanel");
+            }
+          });
+          // Guarantee at least one focusable tab even if none is active yet.
+          if (!allTabs().some((b) => b.tabIndex === 0)) {
+            const first = navTabs()[0];
+            if (first) first.tabIndex = 0;
+          }
+        }
+
+        function focusTab(tab) {
+          if (!tab) return;
+          tab.tabIndex = 0;
+          tab.focus();
+        }
+
+        bar.addEventListener("keydown", (e) => {
+          const tabs = navTabs();
+          if (!tabs.length) return;
+          const current = document.activeElement;
+          let idx = tabs.indexOf(current);
+          if (idx === -1) idx = tabs.findIndex((b) => b.classList.contains("active"));
+          let next = null;
+          switch (e.key) {
+            case "ArrowRight":
+            case "ArrowDown":
+              next = tabs[(idx + 1) % tabs.length];
+              break;
+            case "ArrowLeft":
+            case "ArrowUp":
+              next = tabs[(idx - 1 + tabs.length) % tabs.length];
+              break;
+            case "Home":
+              next = tabs[0];
+              break;
+            case "End":
+              next = tabs[tabs.length - 1];
+              break;
+            case "Enter":
+            case " ":
+              if (current && current.classList.contains("tab-btn")) {
+                e.preventDefault();
+                current.click();
+              }
+              return;
+            default:
+              return;
+          }
+          if (next) {
+            e.preventDefault();
+            focusTab(next);
+            next.click(); // activate-on-focus, matching the existing click flow
+          }
+        });
+
+        // Re-sync whenever a tab's class (active / hidden / disabled) changes.
+        new MutationObserver(syncA11y).observe(bar, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["class", "style"],
+        });
+        syncA11y();
+      })();
+
       /* ── Summary inner sub-tab switching (Detections / Cross-Sample) ── */
       (function () {
         document.querySelectorAll(".sum-inner-tab").forEach((btn) => {
@@ -13470,17 +14658,18 @@
       let _panelSortCol = "TASS Score";
       let _panelSortAsc = false;
       let _mapDrag = null; // drag-resize state
+      // Mirrors PALETTE (colorblind-safe) so map markers match sample colors.
       const _MAP_PALETTE = [
-        "#1f77b4",
-        "#ff7f0e",
-        "#2ca02c",
-        "#d62728",
-        "#9467bd",
-        "#8c564b",
-        "#e377c2",
-        "#7f7f7f",
-        "#bcbd22",
-        "#17becf",
+        "#0072B2",
+        "#E69F00",
+        "#009E73",
+        "#CC79A7",
+        "#56B4E9",
+        "#D55E00",
+        "#117733",
+        "#882255",
+        "#DDCC77",
+        "#AA4499",
       ];
       // Highlight state for "View" button — must live here so init() can call _buildRunMetaTable
       let _runmetaHighlightSample = null;
@@ -17211,6 +18400,7 @@
       })();
       [
         "filter-ic",
+        "filter-scope",
         "filter-hc",
         "filter-pass",
         "hm-show-vals",
@@ -17221,6 +18411,170 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
+
+      /* ═══ Search box enhancements: live status, clear button, quick chips,
+             keyboard shortcut. Reuses filteredData()'s validity flag. ═══ */
+      (function () {
+        const input = document.getElementById("filter-text");
+        const clearBtn = document.getElementById("filter-clear");
+        const statusEl = document.getElementById("filter-status");
+        const scopeEl = document.getElementById("filter-scope");
+        const icEl = document.getElementById("filter-ic");
+        const chipsEl = document.getElementById("filter-chips");
+        if (!input) return;
+
+        // Lightweight, debounced count of what the current pattern matches —
+        // independent of the TASS threshold so it reflects the raw search.
+        function _updateSearchStatus() {
+          const txt = (input.value || "").trim();
+          const hasTxt = txt.length > 0;
+          document.body.classList.toggle("has-search", hasTxt);
+          _renderChips();
+          if (!hasTxt) {
+            document.body.classList.remove("search-invalid");
+            statusEl.textContent = "";
+            statusEl.className = "";
+            return;
+          }
+          const ic = icEl.checked;
+          const scope = scopeEl.value || "both";
+          let rx = null;
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+          }
+          if (!rx) {
+            document.body.classList.add("search-invalid");
+            statusEl.textContent = "incomplete pattern";
+            statusEl.className = "warn";
+            return;
+          }
+          document.body.classList.remove("search-invalid");
+          const orgs = new Set();
+          const samps = new Set();
+          for (let i = 0; i < DATA.length; i++) {
+            const r = DATA[i];
+            const sid = r["Specimen ID"] || "";
+            if (sampleHidden[sid]) continue;
+            const inS = rx.test(sid);
+            const inO = rx.test(r["Detected Organism"] || "");
+            const hit = scope === "sample" ? inS : scope === "organism" ? inO : inS || inO;
+            if (hit) {
+              orgs.add(r["Taxonomic ID #"] || r["Detected Organism"] || "");
+              if (sid) samps.add(sid);
+            }
+          }
+          const nO = orgs.size,
+            nS = samps.size;
+          if (nO === 0) {
+            statusEl.textContent = "no matches";
+            statusEl.className = "zero";
+          } else {
+            statusEl.textContent = `${nO} organism${nO === 1 ? "" : "s"} · ${nS} sample${nS === 1 ? "" : "s"}`;
+            statusEl.className = "";
+          }
+        }
+
+        let _statusTimer = null;
+        function _statusDebounced() {
+          clearTimeout(_statusTimer);
+          _statusTimer = setTimeout(_updateSearchStatus, 120);
+        }
+        input.addEventListener("input", _statusDebounced);
+        scopeEl.addEventListener("change", _updateSearchStatus);
+        icEl.addEventListener("change", _updateSearchStatus);
+
+        // Options panel toggle
+        const optsToggle = document.getElementById("filter-opts-toggle");
+        const metaPanel = document.getElementById("filter-search-meta");
+        if (optsToggle && metaPanel) {
+          optsToggle.addEventListener("click", () => {
+            const open = metaPanel.classList.toggle("open");
+            optsToggle.classList.toggle("open", open);
+            optsToggle.setAttribute("aria-expanded", String(open));
+            optsToggle.querySelector("i") && (optsToggle.innerHTML = `<i class="fas fa-sliders-h" style="font-size:0.85em"></i> Options ${open ? "▴" : "▾"}`);
+          });
+        }
+
+        // Clear button
+        clearBtn.addEventListener("click", () => {
+          input.value = "";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          _updateSearchStatus();
+          input.focus();
+        });
+
+        // Esc clears while focused; "/" focuses search from anywhere.
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && input.value) {
+            e.preventDefault();
+            input.value = "";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            _updateSearchStatus();
+          }
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "/") return;
+          const t = e.target;
+          const typing =
+            t &&
+            (t.tagName === "INPUT" ||
+              t.tagName === "TEXTAREA" ||
+              t.tagName === "SELECT" ||
+              t.isContentEditable);
+          if (typing) return;
+          if (document.body.classList.contains("help-active")) return;
+          e.preventDefault();
+          input.focus();
+          input.select();
+        });
+
+        // ── Quick-filter chips: recent searches + a one-click "Clear" reset.
+        // The bar stays hidden (CSS :empty) until there is something to show.
+        const _recent = [];
+        function _applyChip(pattern) {
+          input.value = pattern;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          _updateSearchStatus();
+        }
+        function _renderChips() {
+          if (!chipsEl) return;
+          const parts = [];
+          if ((input.value || "").trim()) {
+            parts.push(
+              `<span class="filter-chip" data-pat="" title="Clear the search"><i class="fas fa-xmark" style="font-size:0.85em;margin-right:3px;opacity:.6"></i>Clear</span>`,
+            );
+          }
+          _recent
+            .slice(0, 4)
+            .forEach((p) =>
+              parts.push(
+                `<span class="filter-chip recent" data-pat="${p.replace(/"/g, "&quot;")}" title="Recent: ${p}"><i class="fas fa-clock-rotate-left" style="font-size:0.85em;margin-right:3px;opacity:.6"></i>${
+                  p.length > 16 ? p.slice(0, 15) + "…" : p
+                }</span>`,
+              ),
+            );
+          chipsEl.innerHTML = parts.join("");
+        }
+        chipsEl?.addEventListener("click", (e) => {
+          const chip = e.target.closest(".filter-chip");
+          if (!chip) return;
+          _applyChip(chip.getAttribute("data-pat") || "");
+        });
+        // Remember a committed search (Enter) as a recent chip.
+        input.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          const v = (input.value || "").trim();
+          if (v && !_recent.includes(v)) {
+            _recent.unshift(v);
+            if (_recent.length > 4) _recent.pop();
+            _renderChips();
+          }
+        });
+        _renderChips();
+        _updateSearchStatus();
+      })();
       // Threshold-rollup toggle: drive ROLLUP_PASS + invalidate filter cache.
       (function () {
         const el = document.getElementById("filter-rollup");
@@ -18663,7 +20017,7 @@
 
         // Inline field lists to avoid TDZ if this is called before the const declarations
         // lower in the script (_GEO_META_FIELDS / _HOST_META_FIELDS at ~line 19970).
-        const _geoFields  = ["sample_origin_country", "sample_origin_state_province_territory", "sample_origin_county"];
+        const _geoFields  = ["sample_origin_country", "sample_origin_state_province_territory"];
         const _hostFields = ["host_scientific_name", "host_disease", "environmental_site"];
 
         // ── Geographic: needs at least one geo-origin field
@@ -18684,7 +20038,7 @@
           {
             id: "geo",
             ok: hasGeo,
-            warn: "This tab requires at least one of: <b>sample_origin_country</b>, <b>sample_origin_state_province_territory</b>, or <b>sample_origin_county</b> in your metadata samplesheet.",
+            warn: "This tab requires at least one of: <b>sample_origin_country</b> or <b>sample_origin_state_province_territory</b> in your metadata samplesheet.",
           },
           {
             id: "host",
@@ -18723,7 +20077,6 @@
           submitter_organization_name: "Submitter Organization",
           sample_origin_country: "Country",
           sample_origin_state_province_territory: "State / Province / Territory",
-          sample_origin_county: "County",
           host_scientific_name: "Host (Scientific Name)",
           environmental_site: "Environmental Site",
           host_disease: "Host Disease",
@@ -20008,7 +21361,6 @@
           "environmental_site",
           "sample_origin_country",
           "sample_origin_state_province_territory",
-          "sample_origin_county",
           "latitude",
           "longitude",
           "depth",
@@ -20026,9 +21378,13 @@
           ...KNOWN_ORDER.filter((k) => keySet.has(k)),
           ...[...keySet].filter((k) => !KNOWN_ORDER.includes(k)).sort(),
         ];
-        // Only show columns that have at least one non-null value and not an object
+        // Only show columns that have at least one non-null value.
+        // Arrays (e.g. host_disease split on commas) are allowed; plain objects are excluded.
         const activeCols = ordered.filter((k) =>
-          RUN_META.some((r) => r[k] != null && r[k] !== "" && typeof r[k] !== "object"),
+          RUN_META.some((r) => {
+            const _v = r[k];
+            return _v != null && _v !== "" && (Array.isArray(_v) || typeof _v !== "object");
+          }),
         );
         hdrRow.innerHTML = activeCols
           .map(
@@ -20046,9 +21402,9 @@
           const cells = activeCols
             .map((k) => {
               const v = rec[k];
-              return `<td style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${
-                v != null ? String(v).replace(/"/g, "&quot;") : ""
-              }">${v != null ? v : "—"}</td>`;
+              const disp = Array.isArray(v) ? v.join(", ") : (v != null ? v : "—");
+              const title = Array.isArray(v) ? v.join(", ").replace(/"/g, "&quot;") : (v != null ? String(v).replace(/"/g, "&quot;") : "");
+              return `<td style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${disp}</td>`;
             })
             .join("");
           return `<tr id="runmeta-row-${CSS.escape(
@@ -20067,7 +21423,7 @@
        -  §  CATEGORICAL METADATA COMPARISONS  (geo + host/disease bar charts)
        -     Driven by the AMD-P/Talos standard metadata fields. Each chart groups
        -     the currently-visible detections by a categorical metadata field
-       -     (country / state / county, or host / disease / site) and aggregates a
+       -     (country / state, or host / disease / site) and aggregates a
        -     chosen metric. Sections self-hide when no relevant metadata is present.
        -     Functions: _aggregateMetaByField, _renderMetaBarChart,
        -     _buildGeoComparison, _buildHostDisease.
@@ -20081,24 +21437,37 @@
       const _GEO_META_FIELDS = [
         "sample_origin_country",
         "sample_origin_state_province_territory",
-        "sample_origin_county",
       ];
       const _HOST_META_FIELDS = ["host_scientific_name", "host_disease", "environmental_site"];
 
       // True if any RUN_META record has a non-empty value for one of `fields`.
       function _anyMetaValue(fields) {
-        return (RUN_META || []).some((r) => fields.some((f) => r[f] != null && String(r[f]).trim() !== ""));
+        return (RUN_META || []).some((r) =>
+          fields.some((f) => {
+            const _v = r[f];
+            if (_v == null) return false;
+            if (Array.isArray(_v)) return _v.some((s) => String(s).trim() !== "");
+            return String(_v).trim() !== "";
+          }),
+        );
       }
 
       // Group visible detections by a categorical metadata field and aggregate a metric.
       // Returns [{label, value}] sorted descending by value.
-      function _aggregateMetaByField(fieldKey, metric) {
-        // sample_name → categorical value for this field
+      // Array field values (e.g. host_disease split on commas) expand into multiple groups.
+      function _aggregateMetaByField(fieldKey, metric, sampleSet) {
+        // sample_name → array of categorical values (always an array for uniform handling)
+        // sampleSet (optional): restrict to these sample_names (used when drilling
+        // into a single country's states).
         const valBy = {};
         (RUN_META || []).forEach((r) => {
+          if (sampleSet && !sampleSet.has(r.sample_name)) return;
           const v = r[fieldKey];
-          if (v == null || String(v).trim() === "") return;
-          valBy[r.sample_name] = String(v).trim();
+          if (v == null) return;
+          const vals = Array.isArray(v)
+            ? v.map((s) => String(s).trim()).filter(Boolean)
+            : [String(v).trim()].filter(Boolean);
+          if (vals.length) valBy[r.sample_name] = vals;
         });
         if (!Object.keys(valBy).length) return [];
 
@@ -20108,25 +21477,27 @@
 
         if (metric === "samples") {
           // Count visible (non-hidden) samples per category value
-          Object.entries(valBy).forEach(([s, val]) => {
+          Object.entries(valBy).forEach(([s, vals]) => {
             if (sampleHidden[s]) return;
-            ensure(val).samples.add(s);
+            vals.forEach((val) => ensure(val).samples.add(s));
           });
         } else {
           filteredData().forEach((r) => {
             const s = r["Specimen ID"] || "";
-            const val = valBy[s];
-            if (val == null) return;
-            const g = ensure(val);
-            g.samples.add(s);
-            g.detections += 1;
-            const reads = parseFloat(r["# Reads Aligned"]);
-            if (!isNaN(reads)) g.reads += reads;
-            const tass = parseFloat(r["TASS Score"]);
-            if (!isNaN(tass)) {
-              g.tassSum += tass;
-              g.tassN += 1;
-            }
+            const vals = valBy[s];
+            if (!vals) return;
+            vals.forEach((val) => {
+              const g = ensure(val);
+              g.samples.add(s);
+              g.detections += 1;
+              const reads = parseFloat(r["# Reads Aligned"]);
+              if (!isNaN(reads)) g.reads += reads;
+              const tass = parseFloat(r["TASS Score"]);
+              if (!isNaN(tass)) {
+                g.tassSum += tass;
+                g.tassN += 1;
+              }
+            });
           });
         }
 
@@ -20143,7 +21514,11 @@
       }
 
       // Horizontal bar chart for [{label, value}] data into the element `wrapId`.
-      function _renderMetaBarChart(wrapId, data, metric) {
+      // opts (optional): { width, fitHeight } — when given the chart sizes itself
+      // to the supplied box (used by the resizable map overlay) instead of using
+      // the container's natural width and a fixed row height.
+      function _renderMetaBarChart(wrapId, data, metric, opts) {
+        opts = opts || {};
         const wrap = document.getElementById(wrapId);
         if (!wrap) return;
         wrap.innerHTML = "";
@@ -20153,15 +21528,25 @@
         const fmt = (v) => (isFloat ? v.toFixed(1) : Math.round(v).toLocaleString());
 
         const top = data.slice(0, 25);
-        const rowH = Math.max(22, Math.min(38, Math.floor(460 / Math.max(top.length, 1))));
-        const marginL = Math.max(120, top.reduce((m, d) => Math.max(m, String(d.label).length * 6.0), 0) + 12);
+        const compact = !!(opts.width || opts.fitHeight);
         const marginT = 12,
-          marginR = 70,
+          marginR = compact ? 46 : 70,
           marginB = 30;
-        const W = Math.max(420, wrap.clientWidth || 600);
+        // Width: explicit (overlay) → container → fallback. No hard 420 floor so
+        // the chart can shrink to fit a narrow, resizable panel.
+        const W = Math.max(170, Math.floor(opts.width || wrap.clientWidth || 600));
+        // Row height: when a fit height is supplied, distribute rows to fill it
+        // (clamped so labels stay legible); otherwise use the original sizing.
+        const avail = opts.fitHeight ? Math.max(60, opts.fitHeight - marginT - marginB) : 460;
+        const rowH = Math.max(opts.fitHeight ? 15 : 22, Math.min(38, Math.floor(avail / Math.max(top.length, 1))));
+        // Left margin tracks label length but never eats more than ~55% of width.
+        const marginL = Math.min(
+          Math.max(70, top.reduce((m, d) => Math.max(m, String(d.label).length * 6.0), 0) + 12),
+          Math.floor(W * 0.55),
+        );
         const chartH = top.length * rowH;
         const H = chartH + marginT + marginB;
-        const iW = W - marginL - marginR;
+        const iW = Math.max(20, W - marginL - marginR);
         const xMax = d3.max(top, (d) => d.value) || 1;
 
         const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
@@ -20204,6 +21589,428 @@
         });
       }
 
+      /* ── Choropleth support ─────────────────────────────────────────────────
+       -   Renders a d3-geo Natural-Earth choropleth of the visible detections
+       -   shaded by the selected metric. Country level uses lightweight
+       -   world-atlas TopoJSON; State / Province / Territory level lazily loads
+       -   Natural Earth admin-1 GeoJSON. Boundaries are fetched from public CDNs
+       -   at view time (consistent with the Map tab's online tiles) and the view
+       -   degrades to the ranked bar list if the network is unavailable.
+      ──────────────────────────────────────────────────────────────────────── */
+      const _GEO_CACHE = {};
+      function _geoFetchJSON(key, url) {
+        if (_GEO_CACHE[key] !== undefined) return _GEO_CACHE[key];
+        // Try each URL in turn so a single CDN hiccup doesn't disable the map.
+        const tryNext = (i) => {
+          if (i >= url.length) return Promise.reject(new Error("all geo sources failed"));
+          return d3.json(url[i]).catch(() => tryNext(i + 1));
+        };
+        const p = tryNext(0).catch((e) => {
+          _GEO_CACHE[key] = undefined;
+          throw e;
+        });
+        _GEO_CACHE[key] = p;
+        return p;
+      }
+      // Plain GeoJSON sources (depend only on d3; no topojson needed).
+      function _geoCountries() {
+        return _geoFetchJSON("countries", [
+          "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson",
+          "https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json",
+          "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
+        ]).then((fc) => (fc && fc.features) || []);
+      }
+      function _geoAdmin1() {
+        return _geoFetchJSON("admin1", [
+          "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson",
+          "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_50m_admin_1_states_provinces.geojson",
+          "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson",
+        ]).then((fc) => (fc && fc.features) || []);
+      }
+      function _geoNorm(s) {
+        return String(s == null ? "" : s)
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[.,'’`]/g, "")
+          .replace(/&/g, "and")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/^the /, "");
+      }
+      const _COUNTRY_ALIASES = {
+        "united state of america": "united states of america",
+        "united states": "united states of america",
+        "united states of america": "united states of america",
+        usa: "united states of america",
+        us: "united states of america",
+        "u s a": "united states of america",
+        "u s": "united states of america",
+        uk: "united kingdom",
+        "great britain": "united kingdom",
+        england: "united kingdom",
+        "czech republic": "czechia",
+        "ivory coast": "cote divoire",
+        burma: "myanmar",
+        "south korea": "south korea",
+        "republic of korea": "south korea",
+        "north korea": "north korea",
+        "russian federation": "russia",
+        "democratic republic of the congo": "dem rep congo",
+      };
+      const _US_STATE_ABBR = {
+        AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+        CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+        HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+        KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+        MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+        MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+        NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+        OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+        SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+        VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+        DC: "District of Columbia", PR: "Puerto Rico", GU: "Guam", VI: "United States Virgin Islands",
+        AS: "American Samoa", MP: "Northern Mariana Islands",
+      };
+      // Normalized lookup keys for a metadata label, given the geo level.
+      function _geoMatchKeys(field, label) {
+        const out = [];
+        const raw = String(label == null ? "" : label).trim();
+        let n = _geoNorm(raw);
+        if (field === "sample_origin_country") {
+          n = _COUNTRY_ALIASES[n] || n;
+          out.push(n);
+        } else if (field === "sample_origin_state_province_territory") {
+          out.push(n);
+          const up = raw.toUpperCase();
+          if (_US_STATE_ABBR[up]) out.push(_geoNorm(_US_STATE_ABBR[up]));
+        } else {
+          out.push(n);
+        }
+        return out.filter(Boolean);
+      }
+      // Candidate normalized names carried by a boundary feature.
+      function _geoFeatureNames(field, f) {
+        const p = f.properties || {};
+        const cands = [];
+        if (field === "sample_origin_state_province_territory") {
+          [p.name, p.name_en, p.gn_name, p.woe_name, p.name_alt, p.abbrev, p.postal].forEach(
+            (v) => v && cands.push(_geoNorm(v)),
+          );
+        } else {
+          [p.name, p.NAME, p.name_long, p.NAME_LONG, p.admin, p.ADMIN, p.geounit, p.sovereignt, p.SOVEREIGNT].forEach(
+            (v) => {
+              if (!v) return;
+              const n = _geoNorm(v);
+              cands.push(n);
+              if (_COUNTRY_ALIASES[n]) cands.push(_COUNTRY_ALIASES[n]); // normalize map-side names too
+            },
+          );
+        }
+        return cands;
+      }
+      function _geoFeatureMatch(field, f, metaByNorm) {
+        const cands = _geoFeatureNames(field, f);
+        for (const c of cands) if (metaByNorm.has(c)) return metaByNorm.get(c);
+        return null;
+      }
+      // Normalized country name a boundary feature belongs to (for state→country
+      // filtering when drilling). Admin-1 features carry an `admin` country field.
+      function _geoFeatureCountryNorm(f) {
+        const p = f.properties || {};
+        const c = p.admin || p.ADMIN || p.sovereignt || p.SOVEREIGNT || p.geonunit || p.GEOUNIT || p.name || p.NAME || "";
+        const n = _geoNorm(c);
+        return _COUNTRY_ALIASES[n] || n;
+      }
+      // sample_names whose origin country matches a normalized country name.
+      function _geoCountrySampleSet(countryNorm) {
+        const set = new Set();
+        (RUN_META || []).forEach((r) => {
+          let n = _geoNorm(r.sample_origin_country);
+          n = _COUNTRY_ALIASES[n] || n;
+          if (n && n === countryNorm) set.add(r.sample_name);
+        });
+        return set;
+      }
+      // parentField → childField nested aggregation, keyed by normalized parent.
+      function _aggregateMetaNested(parentField, childField, metric) {
+        const toArr = (v) =>
+          v == null
+            ? []
+            : Array.isArray(v)
+              ? v.map((x) => String(x).trim()).filter(Boolean)
+              : [String(v).trim()].filter(Boolean);
+        const recBy = {};
+        (RUN_META || []).forEach((r) => {
+          const p = toArr(r[parentField]);
+          if (!p.length) return;
+          recBy[r.sample_name] = { parents: p, children: toArr(r[childField]) };
+        });
+        const parents = {};
+        const eP = (p) => (parents[p] = parents[p] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0, kids: {} });
+        const eK = (P, c) => (P.kids[c] = P.kids[c] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
+        if (metric === "samples") {
+          Object.entries(recBy).forEach(([s, o]) => {
+            if (sampleHidden[s]) return;
+            o.parents.forEach((p) => {
+              const P = eP(p);
+              P.samples.add(s);
+              (o.children.length ? o.children : ["—"]).forEach((c) => eK(P, c).samples.add(s));
+            });
+          });
+        } else {
+          filteredData().forEach((row) => {
+            const s = row["Specimen ID"] || "";
+            const o = recBy[s];
+            if (!o) return;
+            const reads = parseFloat(row["# Reads Aligned"]);
+            const tass = parseFloat(row["TASS Score"]);
+            o.parents.forEach((p) => {
+              const P = eP(p);
+              P.samples.add(s);
+              P.detections += 1;
+              if (!isNaN(reads)) P.reads += reads;
+              if (!isNaN(tass)) { P.tassSum += tass; P.tassN += 1; }
+              (o.children.length ? o.children : ["—"]).forEach((c) => {
+                const K = eK(P, c);
+                K.samples.add(s);
+                K.detections += 1;
+                if (!isNaN(reads)) K.reads += reads;
+                if (!isNaN(tass)) { K.tassSum += tass; K.tassN += 1; }
+              });
+            });
+          });
+        }
+        const val = (g) =>
+          metric === "samples" ? g.samples.size
+          : metric === "detections" ? g.detections
+          : metric === "reads" ? g.reads
+          : g.tassN ? g.tassSum / g.tassN : 0;
+        const out = {};
+        Object.entries(parents).forEach(([pLabel, P]) => {
+          const children = Object.entries(P.kids)
+            .map(([c, g]) => ({ label: c, value: val(g) }))
+            .filter((d) => d.label !== "—")
+            .sort((a, b) => b.value - a.value);
+          out[_geoNorm(pLabel)] = { label: pLabel, value: val(P), children };
+        });
+        return out;
+      }
+
+      let _geoNested = {};
+      function _geoRenderLegend(el, color, maxV, metric) {
+        if (!el) return;
+        const fmt = (v) => (metric === "tass" ? (+v).toFixed(1) : Math.round(v).toLocaleString());
+        const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => color(t * maxV));
+        el.style.display = "block";
+        el.innerHTML =
+          `<div style="font-weight:600;margin-bottom:1px">${_META_METRIC_LABELS[metric] || metric}</div>` +
+          `<div class="geo-legend-bar" style="background:linear-gradient(to right, ${stops.join(",")})"></div>` +
+          `<div class="geo-legend-row"><span>0</span><span>${fmt(maxV)}</span></div>`;
+      }
+      function _geoHover(ev, f, field, metric, metaByNorm) {
+        const p = f.properties || {};
+        const nm = p.name || p.NAME || p.name_en || p.admin || "—";
+        const lbl = _META_METRIC_LABELS[metric] || metric;
+        const fmt = (v) => (metric === "tass" ? (+v).toFixed(1) : Math.round(v).toLocaleString());
+        const m = _geoFeatureMatch(field, f, metaByNorm);
+        let html = `<b>${nm}</b>`;
+        if (m) {
+          html += `<br>${lbl}: ${fmt(m.value)}`;
+          const nested = _geoNested[_geoNorm(m.label)];
+          if (nested && nested.children && nested.children.length) {
+            const childName = field === "sample_origin_country" ? "States / territories" : "Counties";
+            html += `<br><span style="color:#9fb0c3;font-size:0.9em">${childName}:</span>`;
+            nested.children.slice(0, 6).forEach((c) => {
+              html += `<br>&nbsp;&nbsp;${c.label}: ${fmt(c.value)}`;
+            });
+            if (nested.children.length > 6) html += `<br>&nbsp;&nbsp;…and ${nested.children.length - 6} more`;
+          }
+        } else {
+          html += `<br><span style="color:#9fb0c3">no data</span>`;
+        }
+        showTip(html, ev);
+      }
+      function _geoDrawChoropleth(field, metric, ctx) {
+        ctx = ctx || {};
+        const wrap = document.getElementById("geo-map-wrap");
+        const svgEl = document.getElementById("geo-map-svg");
+        const statusEl = document.getElementById("geo-map-status");
+        const legendEl = document.getElementById("geo-legend");
+        if (!wrap || !svgEl || typeof d3.geoNaturalEarth1 !== "function") return;
+        const W = wrap.clientWidth || 760;
+        const H = wrap.clientHeight || 560;
+        const setStatus = (msg) => {
+          if (!statusEl) return;
+          statusEl.style.display = msg ? "flex" : "none";
+          statusEl.textContent = msg || "";
+        };
+        const flat = _aggregateMetaByField(field, metric, ctx.sampleSet);
+        const metaByNorm = new Map();
+        flat.forEach((d) => {
+          _geoMatchKeys(field, d.label).forEach((k) => {
+            if (!metaByNorm.has(k)) metaByNorm.set(k, d);
+          });
+        });
+        const maxV = d3.max(flat, (d) => d.value) || 1;
+        const color = d3.scaleSequential(d3.interpolateYlOrRd).domain([0, maxV]);
+        const childField =
+          !ctx.drill && field === "sample_origin_country" ? "sample_origin_state_province_territory" : null;
+        _geoNested = childField ? _aggregateMetaNested(field, childField, metric) : {};
+
+        const svg = d3.select(svgEl).attr("viewBox", `0 0 ${W} ${H}`).attr("preserveAspectRatio", "xMidYMid meet");
+        svg.selectAll("*").remove();
+        if (legendEl) legendEl.style.display = "none";
+        const isState = field === "sample_origin_state_province_territory";
+        setStatus("Loading boundaries…");
+        const loader = isState ? _geoAdmin1() : _geoCountries();
+        loader
+          .then((all) => {
+            if (!all || !all.length) {
+              setStatus("Map boundaries unavailable — use the ranked list →");
+              return;
+            }
+            setStatus("");
+            // When drilling into one country, restrict admin-1 polygons to it and
+            // zoom the projection to those regions.
+            let features = all;
+            if (ctx.drill) {
+              const sub = all.filter((f) => _geoFeatureCountryNorm(f) === ctx.drill.norm);
+              if (sub.length) features = sub;
+            }
+            const fc = { type: "FeatureCollection", features };
+            const proj = d3.geoNaturalEarth1().fitSize([W, H], fc);
+            const path = d3.geoPath(proj);
+            const sel = svg
+              .append("g")
+              .selectAll("path")
+              .data(features)
+              .join("path")
+              .attr("class", "geo-region")
+              .attr("d", path)
+              .attr("stroke", "#ffffff")
+              .attr("stroke-width", isState ? 0.3 : 0.4)
+              .attr("fill", (f) => {
+                const m = _geoFeatureMatch(field, f, metaByNorm);
+                return m ? color(m.value) : "#dfe6ef";
+              })
+              .on("mouseover", (ev, f) => _geoHover(ev, f, field, metric, metaByNorm))
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+            // At country level, clicking a country drills down to its states.
+            if (field === "sample_origin_country" && !ctx.drill) {
+              sel.style("cursor", "pointer").on("click", (ev, f) => {
+                hideTip();
+                let n = _geoFeatureNames(field, f)[0] || "";
+                n = _COUNTRY_ALIASES[n] || n;
+                const p = f.properties || {};
+                const label = p.name || p.NAME || p.admin || n;
+                _geoDrill = { norm: n, label };
+                if (typeof _geoRedraw === "function") _geoRedraw();
+              });
+            }
+            _geoRenderLegend(legendEl, color, maxV, metric);
+          })
+          .catch(() => {
+            setStatus("Map boundaries unavailable (offline?) — use the ranked list →");
+            if (legendEl) legendEl.style.display = "none";
+          });
+      }
+
+      // Current ranked-bar data, kept so the overlay can re-render to fit on resize
+      // without recomputing the aggregation.
+      let _geoBarData = [];
+      let _geoBarMetric = "detections";
+      // Drill state: when set, the map is showing one country's states/territories.
+      let _geoDrill = null;
+      let _geoRedraw = null; // the active draw() closure, callable from map clicks
+      function _geoFitOverlayBar() {
+        const body = document.getElementById("geo-overlay-body");
+        if (!body) return;
+        _renderMetaBarChart("geo-cmp-chart", _geoBarData, _geoBarMetric, {
+          width: body.clientWidth - 2,
+          fitHeight: body.clientHeight - 2,
+        });
+      }
+      // Make the overlay panel draggable (by its header) and resizable (corner
+      // grip), constrained to stay within the map div. Re-fits the bar on resize.
+      function _geoMakeOverlayInteractive() {
+        const wrap = document.getElementById("geo-map-wrap");
+        const ov = document.getElementById("geo-overlay");
+        const head = document.getElementById("geo-overlay-toggle");
+        const grip = document.getElementById("geo-overlay-grip");
+        if (!wrap || !ov || !head || ov._interactive) return;
+        ov._interactive = true;
+        let mode = null,
+          sx = 0,
+          sy = 0,
+          ox = 0,
+          oy = 0,
+          ow = 0,
+          oh = 0,
+          moved = false;
+        const onMove = (e) => {
+          if (!mode) return;
+          const wr = wrap.getBoundingClientRect();
+          const dx = e.clientX - sx;
+          const dy = e.clientY - sy;
+          if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+          if (mode === "move") {
+            let nl = Math.max(0, Math.min(ox + dx, wr.width - ow));
+            let nt = Math.max(0, Math.min(oy + dy, wr.height - oh));
+            ov.style.left = nl + "px";
+            ov.style.top = nt + "px";
+            ov.style.right = "auto";
+          } else {
+            let nw = Math.max(190, Math.min(ow + dx, wr.width - ox));
+            let nh = Math.max(150, Math.min(oh + dy, wr.height - oy));
+            ov.style.width = nw + "px";
+            ov.style.height = nh + "px";
+            _geoFitOverlayBar();
+          }
+          e.preventDefault();
+        };
+        const onUp = () => {
+          if (mode === "resize") _geoFitOverlayBar();
+          mode = null;
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+        };
+        const start = (e, m) => {
+          mode = m;
+          moved = false;
+          const r = ov.getBoundingClientRect();
+          const wr = wrap.getBoundingClientRect();
+          sx = e.clientX;
+          sy = e.clientY;
+          ox = r.left - wr.left;
+          oy = r.top - wr.top;
+          ow = r.width;
+          oh = r.height;
+          // pin to left/top so movement is absolute within the map div
+          ov.style.left = ox + "px";
+          ov.style.top = oy + "px";
+          ov.style.right = "auto";
+          document.addEventListener("pointermove", onMove);
+          document.addEventListener("pointerup", onUp);
+          e.preventDefault();
+        };
+        head.addEventListener("pointerdown", (e) => {
+          if (e.target.closest(".geo-overlay-grip")) return;
+          start(e, "move");
+        });
+        if (grip) grip.addEventListener("pointerdown", (e) => start(e, "resize"));
+        // Collapse on a genuine click (not the end of a drag).
+        head.addEventListener("click", () => {
+          if (moved) {
+            moved = false;
+            return;
+          }
+          ov.classList.toggle("collapsed");
+          if (!ov.classList.contains("collapsed")) _geoFitOverlayBar();
+        });
+      }
+
       function _buildGeoComparison() {
         const section = document.getElementById("geo-cmp-section");
         if (!section) return;
@@ -20212,17 +22019,50 @@
         const levelSel = document.getElementById("geo-cmp-level");
         const metricSel = document.getElementById("geo-cmp-metric");
         const noData = document.getElementById("geo-cmp-no-data");
-        const draw = () => {
-          const field = (levelSel && levelSel.value) || "sample_origin_country";
-          const metric = (metricSel && metricSel.value) || "detections";
-          const data = _aggregateMetaByField(field, metric);
-          if (noData) noData.style.display = data.length ? "none" : "block";
-          _renderMetaBarChart("geo-cmp-chart", data, metric);
+        const lvlLbl = document.getElementById("geo-overlay-level-lbl");
+        const LBL = {
+          sample_origin_country: "Countries",
+          sample_origin_state_province_territory: "States / Territories",
         };
+        const backBtn = document.getElementById("geo-back");
+        const draw = () => {
+          let field = (levelSel && levelSel.value) || "sample_origin_country";
+          const metric = (metricSel && metricSel.value) || "detections";
+          // A drill overrides to state level, restricted to the picked country.
+          let sampleSet = null;
+          let drill = null;
+          if (_geoDrill) {
+            field = "sample_origin_state_province_territory";
+            if (levelSel) levelSel.value = field;
+            sampleSet = _geoCountrySampleSet(_geoDrill.norm);
+            drill = _geoDrill;
+          }
+          const data = _aggregateMetaByField(field, metric, sampleSet);
+          if (noData) noData.style.display = data.length ? "none" : "block";
+          if (lvlLbl) lvlLbl.textContent = drill ? `${drill.label} — states` : LBL[field] || "Regions";
+          if (backBtn) backBtn.style.display = drill ? "inline-flex" : "none";
+          _geoBarData = data;
+          _geoBarMetric = metric;
+          _geoFitOverlayBar();
+          _geoDrawChoropleth(field, metric, { drill, sampleSet });
+        };
+        _geoRedraw = draw;
         if (!section._wired) {
           section._wired = true;
-          if (levelSel) levelSel.addEventListener("change", draw);
+          // Manually changing the level clears any active country drill.
+          if (levelSel)
+            levelSel.addEventListener("change", () => {
+              _geoDrill = null;
+              draw();
+            });
           if (metricSel) metricSel.addEventListener("change", draw);
+          if (backBtn)
+            backBtn.addEventListener("click", () => {
+              _geoDrill = null;
+              if (levelSel) levelSel.value = "sample_origin_country";
+              draw();
+            });
+          _geoMakeOverlayInteractive();
         }
         draw();
       }
@@ -20248,6 +22088,175 @@
           if (metricSel) metricSel.addEventListener("change", draw);
         }
         draw();
+        if (typeof _buildHostMatrix === "function") _buildHostMatrix();
+      }
+
+      /* ── Symptom × Organism matrix + drill-down ──────────────────────────────
+       -   For each symptom (host_disease value) counts the number of distinct
+       -   visible samples in which each organism was detected — e.g. how many
+       -   "cold-like symptoms" samples contain RSV, or how many "diarrhea"
+       -   samples contain E. coli. Rows = symptoms, columns = organisms, cell =
+       -   sample count. Clicking a symptom row drills into a per-organism bar.
+      ──────────────────────────────────────────────────────────────────────── */
+      function _hostMatrixData(symField, orgField) {
+        const toArr = (v) =>
+          v == null
+            ? []
+            : Array.isArray(v)
+              ? v.map((x) => String(x).trim()).filter(Boolean)
+              : [String(v).trim()].filter(Boolean);
+        const symBy = {};
+        (RUN_META || []).forEach((r) => {
+          const vals = toArr(r[symField]);
+          if (vals.length) symBy[r.sample_name] = vals;
+        });
+        if (!Object.keys(symBy).length) return null;
+        // sample → set of detected organisms (visible detections only)
+        const orgBy = {};
+        filteredData().forEach((row) => {
+          const s = row["Specimen ID"] || "";
+          if (!symBy[s]) return;
+          const o = String(row[orgField] == null ? "" : row[orgField]).trim();
+          if (!o) return;
+          (orgBy[s] = orgBy[s] || new Set()).add(o);
+        });
+        // symptom → organism → Set(samples)
+        const cells = {};
+        Object.entries(symBy).forEach(([s, syms]) => {
+          if (sampleHidden[s]) return;
+          const orgs = orgBy[s];
+          if (!orgs || !orgs.size) return;
+          syms.forEach((sym) => {
+            cells[sym] = cells[sym] || {};
+            orgs.forEach((o) => {
+              (cells[sym][o] = cells[sym][o] || new Set()).add(s);
+            });
+          });
+        });
+        const symList = [];
+        const orgCount = {};
+        Object.entries(cells).forEach(([sym, om]) => {
+          let t = 0;
+          Object.entries(om).forEach(([o, set]) => {
+            const n = set.size;
+            om[o] = n; // collapse Set → count
+            t += n;
+            orgCount[o] = (orgCount[o] || 0) + n;
+          });
+          symList.push({ sym, total: t });
+        });
+        if (!symList.length || !Object.keys(orgCount).length) return null;
+        symList.sort((a, b) => b.total - a.total);
+        const orgList = Object.entries(orgCount)
+          .map(([o, n]) => ({ o, n }))
+          .sort((a, b) => b.n - a.n);
+        return { cells, symList, orgList };
+      }
+
+      function _renderHostMatrix(model, topN, onRowClick) {
+        const wrap = document.getElementById("host-matrix-chart");
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        const orgs = topN > 0 ? model.orgList.slice(0, topN) : model.orgList;
+        let maxCell = 1;
+        model.symList.forEach((s) =>
+          orgs.forEach((o) => {
+            const v = model.cells[s.sym][o.o] || 0;
+            if (v > maxCell) maxCell = v;
+          }),
+        );
+        const color = d3.scaleSequential(d3.interpolateBlues).domain([0, maxCell * 1.15]);
+        const tbl = document.createElement("table");
+        tbl.className = "hx-matrix";
+        const thead = document.createElement("thead");
+        const hr = document.createElement("tr");
+        const corner = document.createElement("th");
+        corner.className = "hx-corner";
+        corner.textContent = "Symptom \\ Organism";
+        hr.appendChild(corner);
+        orgs.forEach((o) => {
+          const th = document.createElement("th");
+          th.className = "hx-col";
+          const d = document.createElement("div");
+          d.textContent = o.o;
+          d.title = o.o + " — " + o.n + " sample-hits total";
+          th.appendChild(d);
+          hr.appendChild(th);
+        });
+        thead.appendChild(hr);
+        tbl.appendChild(thead);
+        const tb = document.createElement("tbody");
+        model.symList.forEach((s) => {
+          const tr = document.createElement("tr");
+          const rh = document.createElement("th");
+          rh.className = "hx-row";
+          rh.textContent = s.sym;
+          rh.title = s.sym + " — click to drill in";
+          rh.addEventListener("click", () => {
+            tb.querySelectorAll("th.hx-row").forEach((x) => x.classList.remove("hx-active"));
+            rh.classList.add("hx-active");
+            onRowClick(s.sym);
+          });
+          tr.appendChild(rh);
+          orgs.forEach((o) => {
+            const td = document.createElement("td");
+            td.className = "hx-cell";
+            const v = model.cells[s.sym][o.o] || 0;
+            if (v > 0) {
+              td.style.background = color(v);
+              const sp = document.createElement("span");
+              if (v > maxCell * 0.6) sp.style.color = "#fff";
+              sp.textContent = v;
+              td.appendChild(sp);
+              td.title = `${s.sym} × ${o.o}: ${v} sample${v === 1 ? "" : "s"}`;
+            }
+            tr.appendChild(td);
+          });
+          tb.appendChild(tr);
+        });
+        tbl.appendChild(tb);
+        wrap.appendChild(tbl);
+      }
+
+      function _hostDrill(model, sym) {
+        const box = document.getElementById("host-drill");
+        const lbl = document.getElementById("host-drill-label");
+        if (!box) return;
+        const om = model.cells[sym] || {};
+        const data = Object.entries(om)
+          .map(([o, n]) => ({ label: o, value: n }))
+          .sort((a, b) => b.value - a.value);
+        if (lbl) lbl.textContent = sym;
+        box.style.display = data.length ? "block" : "none";
+        _renderMetaBarChart("host-drill-chart", data, "samples");
+      }
+
+      function _buildHostMatrix() {
+        const section = document.getElementById("host-matrix-section");
+        if (!section) return;
+        const fieldSel = document.getElementById("host-mx-field");
+        const levelSel = document.getElementById("host-mx-level");
+        const topnSel = document.getElementById("host-mx-topn");
+        const noData = document.getElementById("host-matrix-no-data");
+        const drill = document.getElementById("host-drill");
+        const draw = () => {
+          const symField = (fieldSel && fieldSel.value) || "host_disease";
+          const orgField = (levelSel && levelSel.value) || "Detected Organism";
+          const topN = parseInt((topnSel && topnSel.value) || "15", 10) || 0;
+          if (drill) drill.style.display = "none";
+          const model = _hostMatrixData(symField, orgField);
+          const ok = !!(model && model.symList.length && model.orgList.length);
+          if (noData) noData.style.display = ok ? "none" : "block";
+          const wrap = document.getElementById("host-matrix-chart");
+          if (wrap && !ok) wrap.innerHTML = "";
+          if (!ok) return;
+          _renderHostMatrix(model, topN, (sym) => _hostDrill(model, sym));
+        };
+        if (!section._wired) {
+          section._wired = true;
+          [fieldSel, levelSel, topnSel].forEach((sel) => sel && sel.addEventListener("change", draw));
+        }
+        draw();
       }
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -20268,7 +22277,6 @@
       const _CMP_FIELD_ORDER = [
         "sample_origin_country",
         "sample_origin_state_province_territory",
-        "sample_origin_county",
         "host_disease",
         "host_scientific_name",
         "environmental_site",
@@ -20282,9 +22290,15 @@
       ];
 
       // Metadata fields that actually have ≥1 non-empty value across RUN_META.
+      // Array values (e.g. host_disease) are considered populated if any element is non-empty.
       function _cmpAvailableFields() {
         return _CMP_FIELD_ORDER.filter((f) =>
-          (RUN_META || []).some((r) => r[f] != null && String(r[f]).trim() !== ""),
+          (RUN_META || []).some((r) => {
+            const _v = r[f];
+            if (_v == null) return false;
+            if (Array.isArray(_v)) return _v.some((s) => String(s).trim() !== "");
+            return String(_v).trim() !== "";
+          }),
         );
       }
 
@@ -20434,8 +22448,8 @@
         const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
         const marginL = Math.min(280, Math.max(90, labelLen * 7.5));
         const marginT = Math.min(220, Math.max(70, labelLen * 5.6));
-        const W = marginL + n * cell + 90;
-        const H = marginT + n * cell + 60;
+        const W = marginL + n * cell + 20;   // no right-side legend
+        const H = marginT + n * cell + 76;   // extra bottom space for horizontal legend
         const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
         const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
         const color = d3.scaleSequential(d3.interpolateBlues).domain([0, 1]);
@@ -20490,8 +22504,8 @@
             .attr("fill", "#333")
             .text(e.label.length > 24 ? e.label.slice(0, 23) + "…" : e.label);
         });
-        // Legend
-        _cmpColorLegend(svg, marginL + n * cell + 18, marginT, color, 0, 1, fmt);
+        // Legend — horizontal bar below the matrix
+        _cmpColorLegend(svg, marginL, marginT + n * cell + 22, color, 0, 1, fmt);
       }
 
       // ── Rectangular (entry × taxon) heatmap (profile or enrichment) ─────────
@@ -20546,36 +22560,38 @@
         _cmpColorLegend(svg, marginL, marginT + nR * cellH + 22, colorFn, domain[0], domain[1], fmt);
       }
 
-      // Vertical color-scale legend.
+      // Horizontal color-scale legend (below the heatmap cells).
       function _cmpColorLegend(svg, x, y, colorFn, lo, hi, fmt) {
-        const h = 120,
-          w = 12,
-          steps = 30;
+        const w = 140,
+          h = 10,
+          steps = 40;
         for (let i = 0; i < steps; i++) {
           const t = i / (steps - 1);
-          const v = lo + (hi - lo) * (1 - t);
+          const v = lo + (hi - lo) * t;
           svg
             .append("rect")
-            .attr("x", x)
-            .attr("y", y + t * h)
-            .attr("width", w)
-            .attr("height", h / steps + 0.5)
+            .attr("x", x + t * w)
+            .attr("y", y)
+            .attr("width", w / steps + 0.5)
+            .attr("height", h)
             .attr("fill", colorFn(v));
         }
         svg
           .append("text")
-          .attr("x", x + w + 4)
-          .attr("y", y + 4)
+          .attr("x", x - 3)
+          .attr("y", y + 8)
           .style("font-size", "9px")
           .attr("fill", "#555")
-          .text(fmt(hi));
+          .attr("text-anchor", "end")
+          .text(fmt(lo));
         svg
           .append("text")
-          .attr("x", x + w + 4)
-          .attr("y", y + h)
+          .attr("x", x + w + 3)
+          .attr("y", y + 8)
           .style("font-size", "9px")
           .attr("fill", "#555")
-          .text(fmt(lo));
+          .attr("text-anchor", "start")
+          .text(fmt(hi));
       }
 
       function _buildComparison() {
@@ -21925,6 +23941,71 @@
           else if (e.key === "ArrowRight") idx === steps.length - 1 ? close() : show(idx + 1);
           else if (e.key === "ArrowLeft") show(idx - 1);
         });
+
+        /* ── Per-tab Help mode ───────────────────────────────────────────────
+           A toggle that pins a small contextual panel showing help for whatever
+           tab the user is on. Reuses the guided-tour STEP content + the PDF
+           section groups, and follows tab switches live. */
+        (function initHelpMode() {
+          const btn = document.getElementById("helpmode-btn");
+          const panel = document.getElementById("tab-help-panel");
+          if (!btn || !panel) return;
+          const elFig = document.getElementById("tab-help-fig");
+          const elGroup = document.getElementById("tab-help-group");
+          const elTitle = document.getElementById("tab-help-title");
+          const elDesc = document.getElementById("tab-help-desc");
+          const elTips = document.getElementById("tab-help-tips");
+          const elClose = document.getElementById("tab-help-close");
+          const elTour = document.getElementById("tab-help-tour");
+          let on = false;
+
+          function currentTab() {
+            const active = document.querySelector(".tab-btn.active");
+            return active
+              ? active.dataset.tab
+              : typeof activeTab !== "undefined"
+              ? activeTab
+              : "summary";
+          }
+          function stepFor(tab) {
+            return STEPS.find((s) => s.tab === tab) || null;
+          }
+          function renderPanel() {
+            const tab = currentTab();
+            const step = stepFor(tab);
+            const info = (typeof PDF_SECTION_INFO !== "undefined" && PDF_SECTION_INFO[tab]) || {};
+            elGroup.textContent = info.group || "";
+            if (!step) {
+              elFig.innerHTML = FIG[tab] || "";
+              elTitle.textContent = ((tabBtn(tab) && tabBtn(tab).textContent) || tab).trim();
+              elDesc.textContent = info.what || "Help for this view isn't available yet.";
+              elTips.innerHTML = info.how ? `<li>${info.how}</li>` : "";
+              return;
+            }
+            elFig.innerHTML = step.fig || FIG[tab] || "";
+            elTitle.textContent = step.title || "";
+            elDesc.textContent = step.desc || "";
+            elTips.innerHTML = (step.tips || []).map((t) => `<li>${t}</li>`).join("");
+          }
+          function setOn(v) {
+            on = v;
+            btn.classList.toggle("on", on);
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+            panel.classList.toggle("open", on);
+            panel.setAttribute("aria-hidden", on ? "false" : "true");
+            if (on) renderPanel();
+          }
+          btn.addEventListener("click", () => setOn(!on));
+          elClose.addEventListener("click", () => setOn(false));
+          elTour.addEventListener("click", (e) => {
+            e.preventDefault();
+            setOn(false);
+            open();
+          });
+          // Re-render when the user switches tabs while help mode is on.
+          const tabbar = document.getElementById("tabbar");
+          if (tabbar) tabbar.addEventListener("click", () => on && setTimeout(renderPanel, 60));
+        })();
       })();
     </script>
   </body>

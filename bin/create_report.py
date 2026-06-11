@@ -3789,10 +3789,9 @@ _RUN_META_KNOWN_FIELDS = [
     ("host_scientific_name", "Host (Scientific Name)"),
     ("host_disease",         "Host Disease"),
     ("environmental_site",   "Environmental Site"),
-    # ── Geography (country / state-province / county) ─────────────────────────
+    # ── Geography (country / state-province) ──────────────────────────────────
     ("sample_origin_country",                  "Country"),
     ("sample_origin_state_province_territory", "State / Province / Territory"),
-    ("sample_origin_county",                   "County"),
     ("latitude",        "Latitude"),
     ("longitude",       "Longitude"),
     ("depth",           "Depth"),
