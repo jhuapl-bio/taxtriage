@@ -67,8 +67,16 @@ process MINIMAP2_ALIGN {
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     def mmap2_window  = params.mmap2_window ? "-w ${params.mmap2_window}" : ''
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? "-f ${params.mmap2_fraction_filter}" : ''
-    // Off by default; enable --split-prefix only for references too large to index in RAM as one block
-    def split_prefix  = params.split_prefix ? "--split-prefix ${meta.id}.prefix" : ""
+    // --split-prefix either/or failsafe (applies to both align + dehost, since both
+    // are this same module). maxRetries=3 -> attempts 1..4; the "3rd retry" is the
+    // final attempt (task.attempt == 4). On that last attempt we FLIP --split-prefix
+    // relative to what the user asked for, so a run that keeps failing gets one shot
+    // with the opposite indexing strategy:
+    //   - default (params.split_prefix=false): OFF on attempts 1-3, ON on the 3rd retry
+    //   - user passed --split_prefix (true):   ON  on attempts 1-3, OFF on the 3rd retry
+    def on_final_retry  = task.attempt >= 4
+    def use_split_prefix = on_final_retry ? !params.split_prefix : params.split_prefix
+    def split_prefix  = use_split_prefix ? "--split-prefix ${meta.id}.prefix" : ""
 
     // Write minimap2 output to an intermediate file instead of piping into samtools.
     // Decoupling the stages avoids broken-pipe / "truncated file" failures and lets
