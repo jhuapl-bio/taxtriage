@@ -2,10 +2,10 @@ process MINIMAP2_ALIGN {
     tag "$meta.id"
     label 'process_standard'
 
-    conda (params.enable_conda ? 'bioconda::minimap2=2.21 bioconda::samtools=1.12' : null)
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:1679e915ddb9d6b4abda91880c4b48857d471bd8-0' :
-        'biocontainers/mulled-v2-66534bcbb7031a148b13e2ad42583020b9cd25c4:1679e915ddb9d6b4abda91880c4b48857d471bd8-0' }"
+    conda (params.enable_conda ? 'bioconda::minimap2=2.28 bioconda::samtools=1.20' : null)
+    container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/37/37671219cfd244eb9b33db9345d3543ffd83037419a1c57f4648aace493ec2c2/data' :
+        'community.wave.seqera.io/library/minimap2_samtools:b09096fc890429ce' }"
 
     input:
     tuple val(meta), path(reads), path(reference)
@@ -47,42 +47,68 @@ process MINIMAP2_ALIGN {
 
     def input_reads = reads.findAll { it != null }.join(' ')
 
-    // Reserve most CPUs for minimap2; keep sort small
-    def sort_threads = task.cpus > 4 ? 2 : 1
-    def mm2_threads  = Math.max(task.cpus - sort_threads, 1)
+    // minimap2 and samtools now run SEQUENTIALLY (minimap2 writes an intermediate
+    // file, then samtools sorts it), so each stage gets the FULL cpu count and up to
+    // 70% of container RAM -- they no longer run concurrently and compete for memory.
+    def threads = task.cpus
 
-    // Sort memory is PER THREAD, so set it explicitly and conservatively
-    def sort_mem_total_mb      = (task.memory.toMega() * 0.20).longValue()
-    def sort_mem_per_thread_mb = Math.max((sort_mem_total_mb / sort_threads) as long, 768L)
-    sort_mem_per_thread_mb     = Math.min(sort_mem_per_thread_mb, 4096L)
+    // -I / -K are NOT derived automatically anymore: when unset, minimap2 picks its own
+    // defaults and manages memory itself. Only pass them when explicitly overridden via
+    // params.mmap2_I / params.mmap2_K.
+    def I_value = params.mmap2_I ? "-I ${params.mmap2_I}" : ""
+    def K_value = params.mmap2_K ? "-K ${params.mmap2_K}" : ""
+
+    // samtools sort -m is PER THREAD; total (-m * threads) stays within 70% of task RAM.
+    def ram_70pct_mb = (task.memory.toMega() * 0.70).longValue()
+    def sort_mem_per_thread_mb = Math.max((ram_70pct_mb / threads) as long, 768L)
     def S_value = "${sort_mem_per_thread_mb}M"
-
-    // Derive -I and -K from 80% of the container's allocated RAM
-    def ram_80pct_mb = (task.memory.toMega() * 0.80).longValue()
-    def I_gb         = Math.max((ram_80pct_mb / 1024) as long, 1L)
-    def K_mb         = Math.max((ram_80pct_mb / 8) as long, 64L)
-    def I_value      = params.mmap2_I ?: "${I_gb}G"
-    def K_value      = params.mmap2_K ?: "${K_mb}M"
 
     def cigar_paf     = cigar_paf_format && !bam_format ? "-c" : ''
     def set_cigar_bam = cigar_bam && bam_format ? "-L" : ''
     def mmap2_window  = params.mmap2_window ? "-w ${params.mmap2_window}" : ''
     def mmap2_fraction_filter = params.mmap2_fraction_filter ? "-f ${params.mmap2_fraction_filter}" : ''
-    def split_prefix  = params.no_split_prefix ? "" : "--split-prefix ${meta.id}.prefix"
+    // --split-prefix either/or failsafe (applies to both align + dehost, since both
+    // are this same module). maxRetries=3 -> attempts 1..4; the "3rd retry" is the
+    // final attempt (task.attempt == 4). On that last attempt we FLIP --split-prefix
+    // relative to what the user asked for, so a run that keeps failing gets one shot
+    // with the opposite indexing strategy:
+    //   - default (params.split_prefix=false): OFF on attempts 1-3, ON on the 3rd retry
+    //   - user passed --split_prefix (true):   ON  on attempts 1-3, OFF on the 3rd retry
+    def on_final_retry  = task.attempt >= 4
+    def use_split_prefix = on_final_retry ? !params.split_prefix : params.split_prefix
+    def split_prefix  = use_split_prefix ? "--split-prefix ${meta.id}.prefix" : ""
 
-    def bam_output = bam_format
-        ? "-a | samtools sort -@ ${sort_threads} -m ${S_value} -T ${prefix}.tmp -O BAM -o ${prefix}.bam -"
-        : "-o ${prefix}.paf"
+    // Write minimap2 output to an intermediate file instead of piping into samtools.
+    // Decoupling the stages avoids broken-pipe / "truncated file" failures and lets
+    // sort use the full CPU/RAM budget. The intermediate SAM is removed afterwards.
+    def mm2_out   = bam_format ? "-a -o ${prefix}.unsorted.sam" : "-o ${prefix}.paf"
+    def sort_step = bam_format ? """
+    samtools sort -@ ${threads} -m ${S_value} -T ${prefix}.tmp -O BAM -o ${prefix}.bam ${prefix}.unsorted.sam""" : ""
 
     """
+    # Abort on any command failure (and on a failure anywhere in a pipe) so a failed
+    # minimap2 can't silently fall through to samtools sort.
+    set -e -o pipefail
+
+    # cleanup() ALWAYS runs on exit (success, error, or signal) via the EXIT trap,
+    # so intermediate/temp files are removed no matter how the task ends. It preserves
+    # the original exit code so Nextflow's errorStrategy still sees the real status.
+    cleanup() {
+        rc=\$?
+        rm -f ${prefix}.unsorted.sam ${prefix}.tmp*.bam ${meta.id}.prefix.* 2>/dev/null || true
+        exit \$rc
+    }
+    trap cleanup EXIT
+
     minimap2 \\
         $args $mapx \\
-        -t ${mm2_threads} -I ${I_value} -K ${K_value} ${split_prefix} \\
+        -t ${threads} ${I_value} ${K_value} ${split_prefix} \\
         ${reference} \\
         ${input_reads} \\
         ${cigar_paf} ${mmap2_window} ${mmap2_fraction_filter} \\
         ${set_cigar_bam} \\
-        ${bam_output}
+        ${mm2_out}
+    ${sort_step}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
