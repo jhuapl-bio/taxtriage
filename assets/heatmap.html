@@ -1754,6 +1754,38 @@
         background: #fff3bf;
         color: #b45309;
       }
+      /* VF / AMR summary-table cell chips */
+      .vfamr-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+      }
+      .vfamr-chip {
+        display: inline-block;
+        font-size: 0.64rem;
+        font-weight: 700;
+        line-height: 1.5;
+        padding: 0 5px;
+        border-radius: 9px;
+        white-space: nowrap;
+        border: 1px solid transparent;
+      }
+      .vfamr-chip.vfamr-vf {
+        background: #ffe3e3;
+        color: #c92a2a;
+        border-color: #ffc9c9;
+      }
+      .vfamr-chip.vfamr-amr {
+        background: #ffe8cc;
+        color: #d9480f;
+        border-color: #ffd8a8;
+      }
+      .vfamr-cell .vfamr-lvl {
+        font-size: 0.58rem;
+        font-weight: 600;
+        color: #868e96;
+      }
       /* depth-histogram sparkline */
       .spark {
         display: inline-flex;
@@ -15564,6 +15596,7 @@
         { key: "Specimen ID", label: "Sample", align: "left" },
         { key: "Microbial Category", label: "Category", align: "left" },
         { key: "TASS Score", label: "TASS", align: "right", num: true },
+        { key: "_vfamr", label: "VF / AMR", align: "center", nosort: true },
         { key: "% Reads", label: "% Reads", align: "right", num: true },
         { key: "# Reads Aligned", label: "Reads", align: "right", num: true },
         { key: "Breadth %", label: "Breadth %", align: "right", num: true },
@@ -15608,7 +15641,10 @@
         }
         const grouped = document.getElementById("summary-group-sample")?.checked;
         const _sumViewLevel = document.getElementById("view-level")?.value || "Strain";
-        const _visSumCols = _SUM_COLS.filter((c) => !(c.key === "_spark" && _sumViewLevel !== "Strain"));
+        const _visSumCols = _SUM_COLS.filter(
+          (c) =>
+            !(c.key === "_spark" && _sumViewLevel !== "Strain") && !(c.key === "_vfamr" && !HAS_PROT),
+        );
 
         // Sort
         const rows = [...fd];
@@ -15719,6 +15755,7 @@
             `<td>${r["Specimen ID"] || ""}</td>` +
             `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
             `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
+            (HAS_PROT ? `<td style="text-align:center">${_vfamrCellHTML(r)}</td>` : "") +
             `<td style="text-align:right">${num(r["% Reads"]).toFixed(2)}</td>` +
             `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${
               _fmtBig(r["# Reads Aligned"]).short
@@ -15755,7 +15792,8 @@
               e.target.closest(".spark") ||
               e.target.closest("[data-spark]") ||
               e.target.closest("a") ||
-              e.target.closest(".watch-star")
+              e.target.closest(".watch-star") ||
+              e.target.closest(".vfamr-cell")
             )
               return;
             const k = tr.dataset.key;
@@ -15812,6 +15850,27 @@
           _sumOrgTd.addEventListener("mouseleave", hideTip);
         });
 
+        // VF / AMR cell: hover → gene-list tooltip, click → jump to VF/AMR tab
+        // filtered by the row's genus.
+        wrap.querySelectorAll("tbody tr[data-key] .vfamr-cell[data-vfamr]").forEach(function (cell) {
+          const tr = cell.closest("tr[data-key]");
+          const _vfR = tr ? _sumSliceMap.get(tr.dataset.key) : null;
+          if (!_vfR) return;
+          cell.addEventListener("mouseover", function (ev) {
+            ev.stopPropagation();
+            const tip = _vfamrTip(_vfR);
+            if (tip) showTip(tip, ev);
+          });
+          cell.addEventListener("mousemove", moveTip);
+          cell.addEventListener("mouseout", hideTip);
+          cell.addEventListener("click", function (e) {
+            e.stopPropagation();
+            hideTip();
+            const g = cell.dataset.vfamrGenus || _vfR["Genus"] || "";
+            if (g) _jumpToProteins(g);
+          });
+        });
+
         _updateSummaryPager(total, start, end, pages);
       }
 
@@ -15833,6 +15892,128 @@
           document.getElementById("summary-next").disabled = _sumPage >= pages - 1;
           document.getElementById("summary-last").disabled = _sumPage >= pages - 1;
         }
+      }
+
+      /* ─── VF / AMR per-organism index (summary-table column) ────────────────
+         Builds a memoized lookup of Virulence-Factor (per_gene_hits) and AMR
+         (amr_genes) gene hits keyed by BOTH species and genus, so a detection
+         row in the summary table can show a compact "n VF · n AMR" cell that
+         hovers to the gene list and clicks through to the VF / AMR tab. Mirrors
+         the aggregation used by _drawSummaryAnnotation but keyed for fast row
+         lookup. Memoized the same way as _AMR_GENERA (built once after load). */
+      let _VFAMR_INDEX = null;
+      function _vfamrIndex() {
+        if (_VFAMR_INDEX) return _VFAMR_INDEX;
+        const byGenus = new Map();
+        const bySpecies = new Map();
+        const _ensure = (map, key) => {
+          if (!map.has(key)) map.set(key, { vf: new Map(), amr: new Map(), samples: new Set() });
+          return map.get(key);
+        };
+        const _lbl = (r) =>
+          r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+        const _add = (rows, kind) => {
+          (rows || []).forEach((r) => {
+            const gn = String(r.Genus || r.genus || "").trim().toLowerCase();
+            const sp = String(r.Species || r.species || "").trim().toLowerCase();
+            const lbl = _lbl(r);
+            const smp = r["Specimen ID"] || r.Sample || r.sample || null;
+            const stamp = (e) => {
+              const m = kind === "amr" ? e.amr : e.vf;
+              if (lbl) {
+                if (!m.has(lbl)) m.set(lbl, new Set());
+                if (smp) m.get(lbl).add(smp);
+              }
+              if (smp) e.samples.add(smp);
+            };
+            if (gn) stamp(_ensure(byGenus, gn));
+            if (sp) stamp(_ensure(bySpecies, sp));
+          });
+        };
+        _add(PROT.per_gene_hits, "vf");
+        _add(PROT.amr_genes, "amr");
+        _VFAMR_INDEX = { byGenus, bySpecies };
+        return _VFAMR_INDEX;
+      }
+
+      // Resolve the best VF/AMR annotation entry for a detection row: prefer a
+      // species-level match (more specific), fall back to genus-level.
+      function _vfamrForRow(r) {
+        if (!HAS_PROT) return null;
+        const idx = _vfamrIndex();
+        const org = String(r["Detected Organism"] || "").trim().toLowerCase();
+        const gn = String(r["Genus"] || "").trim().toLowerCase();
+        let info = null,
+          level = null;
+        if (org && idx.bySpecies.size) {
+          if (idx.bySpecies.has(org)) {
+            info = idx.bySpecies.get(org);
+            level = "species";
+          } else {
+            // "Genus species" → first two tokens
+            const two = org.split(/\s+/).slice(0, 2).join(" ");
+            if (two && idx.bySpecies.has(two)) {
+              info = idx.bySpecies.get(two);
+              level = "species";
+            }
+          }
+        }
+        if (!info && gn && idx.byGenus.has(gn)) {
+          info = idx.byGenus.get(gn);
+          level = "genus";
+        }
+        if (!info) return null;
+        return { info, level, vf: info.vf.size, amr: info.amr.size };
+      }
+
+      // Compact cell shown in the summary table's "VF / AMR" column.
+      function _vfamrCellHTML(r) {
+        const v = _vfamrForRow(r);
+        if (!v || (!v.vf && !v.amr)) return '<span style="color:#ccc">—</span>';
+        const parts = [];
+        if (v.vf) parts.push(`<span class="vfamr-chip vfamr-vf">${v.vf} VF</span>`);
+        if (v.amr) parts.push(`<span class="vfamr-chip vfamr-amr">${v.amr} AMR</span>`);
+        const lvl = v.level === "species" ? "sp" : "gen";
+        return (
+          `<span class="vfamr-cell" data-vfamr="1" data-vfamr-genus="${r["Genus"] || ""}" ` +
+          `style="cursor:pointer">${parts.join("")}<span class="vfamr-lvl">${lvl}</span></span>`
+        );
+      }
+
+      // Hover tooltip for a VF/AMR summary cell: lists unique gene names with
+      // the number of samples each was seen in, split into VF and AMR sections.
+      function _vfamrTip(r) {
+        const v = _vfamrForRow(r);
+        if (!v) return "";
+        const _section = (heading, m, color) => {
+          if (!m || !m.size) return "";
+          const items = Array.from(m.entries())
+            .map(([n, s]) => [n, s.size])
+            .sort((a, b) => b[1] - a[1]);
+          let t =
+            `<div style="margin-top:5px"><b style="color:${color}">${heading}</b> ` +
+            `<span style="color:#aaa;font-size:0.85em">(${items.length})</span>`;
+          t += `<table style="border-collapse:collapse;margin-top:2px;font-size:0.86em">`;
+          items.slice(0, 10).forEach(([n, c]) => {
+            t +=
+              `<tr><td style="padding-right:12px;color:#e0e0e0"><i>${n}</i></td>` +
+              `<td style="text-align:right;color:#90caf9;white-space:nowrap">${c} sample${c === 1 ? "" : "s"}</td></tr>`;
+          });
+          if (items.length > 10)
+            t += `<tr><td colspan="2" style="color:#aaa;padding-top:2px">…and ${items.length - 10} more</td></tr>`;
+          t += `</table></div>`;
+          return t;
+        };
+        const lvlStyle =
+          v.level === "species" ? "background:#f3e5f5;color:#6a1b9a" : "background:#e8f5e9;color:#2e7d32";
+        let t =
+          `<b>${r["Detected Organism"] || r["Genus"] || ""} — VF / AMR hits</b> ` +
+          `<span style="${lvlStyle};padding:0 4px;border-radius:3px;font-size:0.78em">${v.level}-level</span>`;
+        t += _section("Virulence Factors", v.info.vf, "#e53935");
+        t += _section("AMR Genes", v.info.amr, "#fb8c00");
+        if (!v.vf && !v.amr) return "";
+        t += `<div style="margin-top:6px;color:#90caf9;font-size:0.82em">Click to open in the VF / AMR tab →</div>`;
+        return t;
       }
 
       // Memoized set of genera (lowercased) that have AMR gene hits anywhere.
