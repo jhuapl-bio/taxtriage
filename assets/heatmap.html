@@ -15642,8 +15642,7 @@
         const grouped = document.getElementById("summary-group-sample")?.checked;
         const _sumViewLevel = document.getElementById("view-level")?.value || "Strain";
         const _visSumCols = _SUM_COLS.filter(
-          (c) =>
-            !(c.key === "_spark" && _sumViewLevel !== "Strain") && !(c.key === "_vfamr" && !HAS_PROT),
+          (c) => !(c.key === "_spark" && _sumViewLevel !== "Strain") && !(c.key === "_vfamr" && !HAS_PROT),
         );
 
         // Sort
@@ -15911,11 +15910,22 @@
           return map.get(key);
         };
         const _lbl = (r) =>
-          r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+          r["Gene"] ||
+          r["Gene Name"] ||
+          r.gene_name ||
+          r["Product"] ||
+          r.product ||
+          r["Name"] ||
+          r["Antibiotics"] ||
+          "";
         const _add = (rows, kind) => {
           (rows || []).forEach((r) => {
-            const gn = String(r.Genus || r.genus || "").trim().toLowerCase();
-            const sp = String(r.Species || r.species || "").trim().toLowerCase();
+            const gn = String(r.Genus || r.genus || "")
+              .trim()
+              .toLowerCase();
+            const sp = String(r.Species || r.species || "")
+              .trim()
+              .toLowerCase();
             const lbl = _lbl(r);
             const smp = r["Specimen ID"] || r.Sample || r.sample || null;
             const stamp = (e) => {
@@ -15941,8 +15951,12 @@
       function _vfamrForRow(r) {
         if (!HAS_PROT) return null;
         const idx = _vfamrIndex();
-        const org = String(r["Detected Organism"] || "").trim().toLowerCase();
-        const gn = String(r["Genus"] || "").trim().toLowerCase();
+        const org = String(r["Detected Organism"] || "")
+          .trim()
+          .toLowerCase();
+        const gn = String(r["Genus"] || "")
+          .trim()
+          .toLowerCase();
         let info = null,
           level = null;
         if (org && idx.bySpecies.size) {
@@ -15963,7 +15977,26 @@
           level = "genus";
         }
         if (!info) return null;
-        return { info, level, vf: info.vf.size, amr: info.amr.size };
+        // Restrict the VF/AMR hits to THIS row's sample so a detection only
+        // surfaces genes actually found in that sample — not every sample in
+        // which the organism was detected. The index stamps each gene with the
+        // set of samples it was seen in (keyed by "Specimen ID" for VF hits and
+        // "Sample" for AMR hits, both equal to the detection row's Specimen ID).
+        const smp = r["Specimen ID"] || r.Sample || r.sample || null;
+        let vfMap = info.vf,
+          amrMap = info.amr;
+        if (smp != null) {
+          const _filterBySample = (m) => {
+            const out = new Map();
+            m.forEach((sset, gene) => {
+              if (sset.has(smp)) out.set(gene, sset);
+            });
+            return out;
+          };
+          vfMap = _filterBySample(info.vf);
+          amrMap = _filterBySample(info.amr);
+        }
+        return { info, level, vf: vfMap.size, amr: amrMap.size, vfMap, amrMap };
       }
 
       // Compact cell shown in the summary table's "VF / AMR" column.
@@ -15997,7 +16030,9 @@
           items.slice(0, 10).forEach(([n, c]) => {
             t +=
               `<tr><td style="padding-right:12px;color:#e0e0e0"><i>${n}</i></td>` +
-              `<td style="text-align:right;color:#90caf9;white-space:nowrap">${c} sample${c === 1 ? "" : "s"}</td></tr>`;
+              `<td style="text-align:right;color:#90caf9;white-space:nowrap">${c} sample${
+                c === 1 ? "" : "s"
+              }</td></tr>`;
           });
           if (items.length > 10)
             t += `<tr><td colspan="2" style="color:#aaa;padding-top:2px">…and ${items.length - 10} more</td></tr>`;
@@ -16009,8 +16044,8 @@
         let t =
           `<b>${r["Detected Organism"] || r["Genus"] || ""} — VF / AMR hits</b> ` +
           `<span style="${lvlStyle};padding:0 4px;border-radius:3px;font-size:0.78em">${v.level}-level</span>`;
-        t += _section("Virulence Factors", v.info.vf, "#e53935");
-        t += _section("AMR Genes", v.info.amr, "#fb8c00");
+        t += _section("Virulence Factors", v.vfMap || v.info.vf, "#e53935");
+        t += _section("AMR Genes", v.amrMap || v.info.amr, "#fb8c00");
         if (!v.vf && !v.amr) return "";
         t += `<div style="margin-top:6px;color:#90caf9;font-size:0.82em">Click to open in the VF / AMR tab →</div>`;
         return t;
