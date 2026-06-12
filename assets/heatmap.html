@@ -15642,8 +15642,7 @@
         const grouped = document.getElementById("summary-group-sample")?.checked;
         const _sumViewLevel = document.getElementById("view-level")?.value || "Strain";
         const _visSumCols = _SUM_COLS.filter(
-          (c) =>
-            !(c.key === "_spark" && _sumViewLevel !== "Strain") && !(c.key === "_vfamr" && !HAS_PROT),
+          (c) => !(c.key === "_spark" && _sumViewLevel !== "Strain") && !(c.key === "_vfamr" && !HAS_PROT),
         );
 
         // Sort
@@ -15911,11 +15910,22 @@
           return map.get(key);
         };
         const _lbl = (r) =>
-          r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+          r["Gene"] ||
+          r["Gene Name"] ||
+          r.gene_name ||
+          r["Product"] ||
+          r.product ||
+          r["Name"] ||
+          r["Antibiotics"] ||
+          "";
         const _add = (rows, kind) => {
           (rows || []).forEach((r) => {
-            const gn = String(r.Genus || r.genus || "").trim().toLowerCase();
-            const sp = String(r.Species || r.species || "").trim().toLowerCase();
+            const gn = String(r.Genus || r.genus || "")
+              .trim()
+              .toLowerCase();
+            const sp = String(r.Species || r.species || "")
+              .trim()
+              .toLowerCase();
             const lbl = _lbl(r);
             const smp = r["Specimen ID"] || r.Sample || r.sample || null;
             const stamp = (e) => {
@@ -15941,8 +15951,12 @@
       function _vfamrForRow(r) {
         if (!HAS_PROT) return null;
         const idx = _vfamrIndex();
-        const org = String(r["Detected Organism"] || "").trim().toLowerCase();
-        const gn = String(r["Genus"] || "").trim().toLowerCase();
+        const org = String(r["Detected Organism"] || "")
+          .trim()
+          .toLowerCase();
+        const gn = String(r["Genus"] || "")
+          .trim()
+          .toLowerCase();
         let info = null,
           level = null;
         if (org && idx.bySpecies.size) {
@@ -15997,7 +16011,9 @@
           items.slice(0, 10).forEach(([n, c]) => {
             t +=
               `<tr><td style="padding-right:12px;color:#e0e0e0"><i>${n}</i></td>` +
-              `<td style="text-align:right;color:#90caf9;white-space:nowrap">${c} sample${c === 1 ? "" : "s"}</td></tr>`;
+              `<td style="text-align:right;color:#90caf9;white-space:nowrap">${c} sample${
+                c === 1 ? "" : "s"
+              }</td></tr>`;
           });
           if (items.length > 10)
             t += `<tr><td colspan="2" style="color:#aaa;padding-top:2px">…and ${items.length - 10} more</td></tr>`;
