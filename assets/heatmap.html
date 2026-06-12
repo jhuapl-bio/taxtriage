@@ -15957,46 +15957,55 @@
         const gn = String(r["Genus"] || "")
           .trim()
           .toLowerCase();
-        let info = null,
-          level = null;
+        // Resolve species-level (exact or "Genus species" first-two-token) and
+        // genus-level annotation entries separately, so the tooltip can report
+        // how specific this row's match is (species hits out of the genus total).
+        let speciesInfo = null;
         if (org && idx.bySpecies.size) {
           if (idx.bySpecies.has(org)) {
-            info = idx.bySpecies.get(org);
-            level = "species";
+            speciesInfo = idx.bySpecies.get(org);
           } else {
-            // "Genus species" → first two tokens
             const two = org.split(/\s+/).slice(0, 2).join(" ");
-            if (two && idx.bySpecies.has(two)) {
-              info = idx.bySpecies.get(two);
-              level = "species";
-            }
+            if (two && idx.bySpecies.has(two)) speciesInfo = idx.bySpecies.get(two);
           }
         }
-        if (!info && gn && idx.byGenus.has(gn)) {
-          info = idx.byGenus.get(gn);
-          level = "genus";
-        }
+        const genusInfo = gn && idx.byGenus.has(gn) ? idx.byGenus.get(gn) : null;
+        // Prefer the more specific species match; fall back to genus.
+        const info = speciesInfo || genusInfo;
         if (!info) return null;
+        const level = speciesInfo ? "species" : "genus";
         // Restrict the VF/AMR hits to THIS row's sample so a detection only
         // surfaces genes actually found in that sample — not every sample in
         // which the organism was detected. The index stamps each gene with the
         // set of samples it was seen in (keyed by "Specimen ID" for VF hits and
         // "Sample" for AMR hits, both equal to the detection row's Specimen ID).
         const smp = r["Specimen ID"] || r.Sample || r.sample || null;
-        let vfMap = info.vf,
-          amrMap = info.amr;
-        if (smp != null) {
-          const _filterBySample = (m) => {
-            const out = new Map();
-            m.forEach((sset, gene) => {
-              if (sset.has(smp)) out.set(gene, sset);
-            });
-            return out;
-          };
-          vfMap = _filterBySample(info.vf);
-          amrMap = _filterBySample(info.amr);
-        }
-        return { info, level, vf: vfMap.size, amr: amrMap.size, vfMap, amrMap };
+        const _filterBySample = (m) => {
+          if (!m) return new Map();
+          if (smp == null) return m;
+          const out = new Map();
+          m.forEach((sset, gene) => {
+            if (sset.has(smp)) out.set(gene, sset);
+          });
+          return out;
+        };
+        const vfMap = _filterBySample(info.vf);
+        const amrMap = _filterBySample(info.amr);
+        // Sample-scoped VF+AMR totals for the species and genus entries, used to
+        // compute the species-specificity percentage shown atop the tooltip.
+        const _total = (i) => (i ? _filterBySample(i.vf).size + _filterBySample(i.amr).size : 0);
+        const speciesTotal = _total(speciesInfo);
+        const genusTotal = _total(genusInfo);
+        return {
+          info,
+          level,
+          vf: vfMap.size,
+          amr: amrMap.size,
+          vfMap,
+          amrMap,
+          speciesTotal,
+          genusTotal,
+        };
       }
 
       // Compact cell shown in the summary table's "VF / AMR" column.
@@ -16044,6 +16053,20 @@
         let t =
           `<b>${r["Detected Organism"] || r["Genus"] || ""} — VF / AMR hits</b> ` +
           `<span style="${lvlStyle};padding:0 4px;border-radius:3px;font-size:0.78em">${v.level}-level</span>`;
+        // Species-specificity line: what fraction of this genus's VF/AMR hits
+        // (in this sample) are assigned at the species level. At genus level
+        // there is no species match, so state that explicitly.
+        if (v.level === "species" && v.genusTotal > 0) {
+          const pct = Math.round((v.speciesTotal / v.genusTotal) * 100);
+          t +=
+            `<div style="margin-top:3px;font-size:0.86em;color:#90caf9">` +
+            `<b>${pct}%</b> species match ` +
+            `<span style="color:#aaa">(${v.speciesTotal} of ${v.genusTotal} genus-level hit${
+              v.genusTotal === 1 ? "" : "s"
+            })</span></div>`;
+        } else if (v.level === "genus") {
+          t += `<div style="margin-top:3px;font-size:0.86em;color:#ffb74d">No species-level hits found</div>`;
+        }
         t += _section("Virulence Factors", v.vfMap || v.info.vf, "#e53935");
         t += _section("AMR Genes", v.amrMap || v.info.amr, "#fb8c00");
         if (!v.vf && !v.amr) return "";
