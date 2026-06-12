@@ -3783,12 +3783,27 @@ def create_annotation_genus_cards(species_groups, small_style, available_width, 
 # Any extra fields from --meta CSV are appended alphabetically after these.
 _RUN_META_KNOWN_FIELDS = [
     ("run_id",          "Run ID"),
+    ("sample_id",       "Sample ID"),
+    ("organism",        "Organism"),
+    # ── Host / disease ────────────────────────────────────────────────────────
+    ("host_scientific_name", "Host (Scientific Name)"),
+    ("host_disease",         "Host Disease"),
+    ("environmental_site",   "Environmental Site"),
+    # ── Geography (country / state-province) ──────────────────────────────────
+    ("sample_origin_country",                  "Country"),
+    ("sample_origin_state_province_territory", "State / Province / Territory"),
     ("latitude",        "Latitude"),
     ("longitude",       "Longitude"),
     ("depth",           "Depth"),
     ("salinity",        "Salinity"),
     ("collection_time", "Collection Time"),
     ("location",        "Location"),
+    # ── Submitter / sequencing / instrument info ──────────────────────────────
+    ("submitter_organization_name",    "Submitter Organization"),
+    ("library_preparation_kit",        "Library Prep Kit"),
+    ("sequencing_instrument",          "Sequencing Instrument"),
+    ("sequencing_platform",            "Sequencing Platform"),
+    ("sequencing_protocol_primer_set", "Primer Set"),
 ]
 
 # Pipeline-internal keys that should never appear as user-facing metadata columns.

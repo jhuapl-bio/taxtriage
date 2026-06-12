@@ -62,38 +62,57 @@ def build_index(template_path: Path, json_text: str, check_only: bool = False) -
     """
     html = template_path.read_text(encoding="utf-8")
 
-    # ── 1. Remove commented-out pages.js line if present ──────────────────
-    html = re.sub(r'\s*<!--\s*<script src=["\']pages\.js["\']></script>\s*-->', '', html)
+    # ── 1. Remove the pages.js loader (active or commented) ───────────────
+    # The dataset is inlined below as a BOOTSTRAP block, so pages.js is not
+    # needed on GitHub Pages (and isn't shipped in _site, so leaving the tag
+    # would 404 at runtime).
+    html = re.sub(r'[ \t]*<!--\s*<script src=["\']pages\.js["\']></script>\s*-->[ \t]*\n?', '', html)
+    html = re.sub(r'[ \t]*<script src=["\']pages\.js["\']></script>[ \t]*\n?', '', html)
 
-    # ── 2. Replace heatmap_boot.js loader with inlined BOOTSTRAP block ────
+    # ── 2. Replace the heatmap_boot.js anchor with the inlined BOOTSTRAP ──
     bootstrap_block = (
         f'<script id="BOOTSTRAP" type="application/json">\n'
         f'{json_text}\n'
         f'    </script>'
     )
-    # Handle with or without a preceding HTML comment
-    html, n1 = re.subn(
-        r'<!--[^>]*-->\s*\n\s*<script src=["\']heatmap_boot\.js["\']></script>',
-        bootstrap_block,
-        html,
-        flags=re.DOTALL,
-    )
-    if n1 == 0:
-        html, n2 = re.subn(
-            r'<script src=["\']heatmap_boot\.js["\']></script>',
-            bootstrap_block,
-            html,
+    # The template's anchor may take several forms. Try each in turn and stop
+    # at the first hit. A function replacement is used (not a plain string) so
+    # backslashes/`\g`-like sequences inside the JSON are inserted verbatim and
+    # never interpreted as regex backreferences.
+    #
+    # IMPORTANT: a *commented* anchor (e.g. "<!-- <script src=heatmap_boot.js> -->",
+    # which is exactly what the current template ships) must be matched
+    # including its surrounding <!-- … --> so the BOOTSTRAP block is NOT left
+    # commented out — that was a real bug that made the deployed page blank.
+    _repl = lambda m: bootstrap_block
+    anchor_patterns = [
+        r'<!--\s*<script\s+src=["\']heatmap_boot\.js["\']>\s*</script>\s*-->',   # commented loader
+        r'<!--\s*<script\s+src=["\']heatmap_boot\.js["\']></script>\s*-->',      # commented loader (no space)
+        r'<script\s+src=["\']heatmap_boot\.js["\']>\s*</script>',                # active loader
+        r'<!--\s*<script\s+id=["\']BOOTSTRAP["\'][^>]*>.*?</script>\s*-->',      # commented BOOTSTRAP
+        r'<script\s+id=["\']BOOTSTRAP["\'][^>]*>.*?</script>',                   # existing BOOTSTRAP
+    ]
+    n_anchor = 0
+    for pat in anchor_patterns:
+        html, n_anchor = re.subn(pat, _repl, html, count=1, flags=re.DOTALL)
+        if n_anchor:
+            break
+    if n_anchor == 0:
+        sys.exit(
+            "ERROR: could not find a heatmap_boot.js loader or BOOTSTRAP "
+            "anchor to replace in " + str(template_path)
         )
-        if n2 == 0:
-            # Template already has a BOOTSTRAP block — just update its content
-            pattern = r'(<script\s+id=["\']BOOTSTRAP["\'][^>]*>)(.*?)(</script>)'
-            replacement = r'\g<1>\n' + json_text + r'\n    \g<3>'
-            html, n3 = re.subn(pattern, replacement, html, flags=re.DOTALL)
-            if n3 == 0:
-                sys.exit(
-                    "ERROR: could not find heatmap_boot.js script tag "
-                    "or existing BOOTSTRAP block in " + str(template_path)
-                )
+
+    # ── 2b. Guard: the BOOTSTRAP block must not be inside an HTML comment ──
+    _bs_idx = html.find('<script id="BOOTSTRAP"')
+    if _bs_idx != -1:
+        _open = html.rfind('<!--', 0, _bs_idx)
+        _close = html.rfind('-->', 0, _bs_idx)
+        if _open != -1 and _open > _close:
+            sys.exit(
+                "ERROR: BOOTSTRAP block was inserted inside an HTML comment — "
+                "the generated page would have no data. Check the template anchor."
+            )
 
     # ── 3. Replace window.HEATMAP_BOOT reader with JSON.parse reader ───────
     html = html.replace(

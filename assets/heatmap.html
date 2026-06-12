@@ -10,8 +10,219 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style id="geo-host-extra-css">
+      /* ── Geographic choropleth map ── */
+      #geo-map-wrap {
+        position: relative;
+        width: 100%;
+        height: 560px;
+        border: 1px solid #e3e9f2;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #eef3f9;
+      }
+      #geo-map-svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #geo-map-svg path.geo-region {
+        cursor: pointer;
+        transition: fill 0.15s ease;
+      }
+      #geo-map-svg path.geo-region:hover {
+        stroke: #1f2d3d;
+        stroke-width: 1.1px;
+      }
+      #geo-back {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 500;
+        cursor: pointer;
+        align-items: center;
+        gap: 0.4em;
+        font-size: 0.8em;
+        font-weight: 600;
+        color: #33475b;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #d6deea;
+        border-radius: 6px;
+        padding: 5px 10px;
+        box-shadow: 0 2px 8px rgba(31, 45, 61, 0.14);
+      }
+      #geo-back:hover {
+        background: #eef3fb;
+      }
+      #geo-map-status {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #7a8aa0;
+        font-size: 0.9em;
+        pointer-events: none;
+        text-align: center;
+        padding: 1em;
+      }
+      /* overlay "dropdown" ranked-bar panel floating on the map */
+      .geo-overlay {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 300px;
+        height: 360px;
+        display: flex;
+        flex-direction: column;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #d6deea;
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(31, 45, 61, 0.16);
+        font-size: 0.82em;
+        z-index: 500;
+        overflow: hidden;
+      }
+      .geo-overlay.collapsed {
+        height: auto !important;
+      }
+      .geo-overlay-head {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5em;
+        padding: 8px 11px;
+        cursor: move;
+        user-select: none;
+        font-weight: 600;
+        color: #33475b;
+        background: #f4f7fc;
+        border-bottom: 1px solid #e3e9f2;
+      }
+      .geo-overlay-head .fa-chevron-down {
+        transition: transform 0.2s ease;
+      }
+      .geo-overlay.collapsed .geo-overlay-head .fa-chevron-down {
+        transform: rotate(-90deg);
+      }
+      .geo-overlay-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 8px 10px;
+      }
+      .geo-overlay.collapsed .geo-overlay-body {
+        display: none;
+      }
+      .geo-overlay-grip {
+        position: absolute;
+        right: 1px;
+        bottom: 1px;
+        width: 16px;
+        height: 16px;
+        cursor: nwse-resize;
+        z-index: 3;
+        border-bottom-right-radius: 7px;
+        background: linear-gradient(
+          135deg,
+          transparent 0 8px,
+          #b6c1d0 8px 10px,
+          transparent 10px 11px,
+          #b6c1d0 11px 13px,
+          transparent 13px
+        );
+      }
+      .geo-overlay.collapsed .geo-overlay-grip {
+        display: none;
+      }
+      .geo-legend {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid #d6deea;
+        border-radius: 7px;
+        padding: 7px 10px;
+        z-index: 500;
+        font-size: 0.74em;
+        color: #44515f;
+        box-shadow: 0 2px 8px rgba(31, 45, 61, 0.12);
+      }
+      .geo-legend-bar {
+        height: 9px;
+        width: 150px;
+        border-radius: 3px;
+        margin: 4px 0 2px;
+      }
+      .geo-legend-row {
+        display: flex;
+        justify-content: space-between;
+        font-variant-numeric: tabular-nums;
+      }
+      /* ── Host & Disease symptom × organism matrix ── */
+      #host-matrix-chart {
+        overflow-x: auto;
+      }
+      #host-matrix-chart table.hx-matrix {
+        border-collapse: collapse;
+        font-size: 0.78em;
+      }
+      #host-matrix-chart table.hx-matrix th,
+      #host-matrix-chart table.hx-matrix td {
+        border: 1px solid #e8edf4;
+        padding: 0;
+        text-align: center;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-corner {
+        background: #f4f7fc;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-col {
+        background: #f4f7fc;
+        font-weight: 600;
+        color: #33475b;
+        vertical-align: bottom;
+        height: 118px;
+        white-space: nowrap;
+        padding: 4px 2px;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-col > div {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        margin: 0 auto;
+        max-height: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-row {
+        background: #f4f7fc;
+        font-weight: 600;
+        color: #33475b;
+        text-align: left;
+        padding: 4px 9px;
+        white-space: nowrap;
+        cursor: pointer;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-row:hover {
+        background: #e7eefb;
+      }
+      #host-matrix-chart table.hx-matrix th.hx-row.hx-active {
+        background: #d7e4fb;
+      }
+      #host-matrix-chart table.hx-matrix td.hx-cell {
+        width: 34px;
+        height: 30px;
+        cursor: default;
+      }
+      #host-matrix-chart table.hx-matrix td.hx-cell span {
+        color: #1f2d3d;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
     <!-- <script src="pages.js"></script> -->
-    <!-- <script src="mce.js"></script> -->
     <script src="heatmap_boot.js"></script>
 
     <script>
@@ -45,12 +256,88 @@
       // ── Run metadata ───────────────────────────────────────────────────────
       const RUN_META = BOOT.run_metadata_records || []; // [{sample_name, run_id, latitude, longitude, ...}]
       const HAS_GEO = BOOT.has_geo || false;
+
+      // ── Multi-value metadata normalization ──────────────────────────────────
+      // Some metadata fields (e.g. host_disease) pack a comma-separated list of
+      // values into one cell — "runny stool, cramps, cold-like symptoms". Split
+      // those into arrays so the aggregation/comparison code (which already
+      // handles arrays) counts each value separately instead of treating the
+      // whole string as a single group. Idempotent: arrays and empties pass
+      // through unchanged, so it is safe to run on boot data, uploaded records,
+      // and re-loaded saved states alike.
+      const _MULTI_VALUE_META_FIELDS = ["host_disease"];
+      function _splitMultiMetaValue(v) {
+        if (v == null) return v;
+        if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean);
+        const s = String(v).trim();
+        if (s === "") return v;
+        if (s.indexOf(",") === -1) return s; // single value — keep as a plain string
+        return s
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+      }
+      function _normalizeMetaRecord(rec) {
+        if (!rec || typeof rec !== "object") return rec;
+        _MULTI_VALUE_META_FIELDS.forEach((f) => {
+          if (f in rec) rec[f] = _splitMultiMetaValue(rec[f]);
+        });
+        return rec;
+      }
+      RUN_META.forEach(_normalizeMetaRecord);
     </script>
     <style>
       * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
+      }
+
+      /* ──────────────────────────────────────────────────────────────────────
+         Design tokens. These mirror the palette/spacing already used throughout
+         the file so existing rules render identically; new polish rules (focus
+         rings, scrollbars, the UI-polish layer near the end of this stylesheet)
+         reference them so the look stays consistent and is easy to retune.
+         ────────────────────────────────────────────────────────────────────── */
+      :root {
+        /* brand / accent */
+        --tt-primary: #1565c0;
+        --tt-primary-dark: #0d3c66;
+        --tt-primary-light: #0288d1;
+        --tt-accent: #2196f3;
+        --tt-accent-soft: rgba(33, 150, 243, 0.5);
+
+        /* surfaces & text */
+        --tt-bg: #f4f6f9;
+        --tt-surface: #fff;
+        --tt-text: #222;
+        --tt-text-muted: #555;
+        --tt-text-soft: #777;
+
+        /* borders */
+        --tt-border: #ddd;
+        --tt-border-strong: #ccc;
+
+        /* status */
+        --tt-warn: #f59f00;
+        --tt-danger: #d23f3f;
+        --tt-ok: #2e9e5b;
+
+        /* radii */
+        --tt-radius-sm: 4px;
+        --tt-radius: 8px;
+        --tt-radius-lg: 12px;
+
+        /* elevation */
+        --tt-shadow-sm: 0 1px 2px rgba(13, 42, 71, 0.08);
+        --tt-shadow: 0 2px 8px rgba(13, 42, 71, 0.12);
+        --tt-shadow-lg: 0 12px 32px rgba(13, 42, 71, 0.22);
+
+        /* motion */
+        --tt-transition: 0.15s ease;
+
+        /* focus ring */
+        --tt-focus: #2196f3;
       }
       body {
         font-family:
@@ -730,6 +1017,11 @@
       #pdf-legend-footer {
         display: none;
       }
+      /* Print-only report scaffolding — injected during export, hidden on screen. */
+      .pdf-section-head,
+      .pdf-explainer {
+        display: none;
+      }
       @media print {
         @page {
           size: landscape;
@@ -781,6 +1073,137 @@
           font-size: 10px;
           color: #666;
         }
+        /* ── PDF cover KPI banner (concise, like the Summary tab header) ── */
+        body.report-pdf-printing #pdf-kpi-banner {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin: 12px 0 4px;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi {
+          flex: 1 1 90px;
+          min-width: 84px;
+          border: 1px solid #d9e2ef;
+          border-left: 3px solid #1565c0;
+          border-radius: 4px;
+          padding: 5px 8px;
+          background: #f7fafd;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi.hc {
+          border-left-color: #c62828;
+          background: #fdf4f4;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi-label {
+          font-size: 7.5px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #6b7785;
+          font-weight: 700;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi-value {
+          font-size: 15px;
+          font-weight: 800;
+          color: #14304d;
+          line-height: 1.15;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi.hc .pdf-kpi-value {
+          color: #c62828;
+        }
+        body.report-pdf-printing #pdf-kpi-banner .pdf-kpi-sub {
+          font-size: 7.5px;
+          color: #8a93a3;
+        }
+        /* ── PDF "contents" list of included sections ── */
+        body.report-pdf-printing #pdf-contents {
+          display: block;
+          margin-top: 10px;
+          font-size: 9px;
+          color: #44525f;
+        }
+        body.report-pdf-printing #pdf-contents .pdf-contents-h {
+          font-size: 8.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #1565c0;
+          margin-bottom: 3px;
+        }
+        body.report-pdf-printing #pdf-contents ol {
+          margin: 0;
+          padding-left: 16px;
+          columns: 2;
+          column-gap: 28px;
+        }
+        body.report-pdf-printing #pdf-contents li {
+          margin: 0 0 1px;
+          break-inside: avoid;
+        }
+        /* ── Per-section header injected at the top of each printed pane ── */
+        body.report-pdf-printing .pdf-section-head {
+          display: block;
+          margin: 0 0 8px;
+          padding-bottom: 5px;
+          border-bottom: 1.5px solid #1565c0;
+          break-after: avoid;
+          page-break-after: avoid;
+        }
+        body.report-pdf-printing .pdf-section-head .pdf-section-group {
+          font-size: 8px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #5b8fc9;
+        }
+        body.report-pdf-printing .pdf-section-head .pdf-section-title {
+          font-size: 16px;
+          font-weight: 800;
+          color: #14304d;
+        }
+        body.report-pdf-printing .pdf-section-head .pdf-section-num {
+          display: inline-block;
+          min-width: 18px;
+          height: 18px;
+          line-height: 18px;
+          text-align: center;
+          background: #1565c0;
+          color: #fff;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 700;
+          margin-right: 6px;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        /* ── "What this shows / How to read it" explainer box ── */
+        body.report-pdf-printing .pdf-explainer {
+          display: flex;
+          gap: 14px;
+          margin: 0 0 10px;
+          padding: 7px 10px;
+          background: #f2f7fc;
+          border: 1px solid #dce7f3;
+          border-radius: 5px;
+          font-size: 9px;
+          line-height: 1.4;
+          color: #2f3e4c;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body.report-pdf-printing .pdf-explainer > div {
+          flex: 1 1 0;
+        }
+        body.report-pdf-printing .pdf-explainer .pdf-explainer-h {
+          font-weight: 700;
+          color: #1565c0;
+          text-transform: uppercase;
+          font-size: 7.5px;
+          letter-spacing: 0.05em;
+          margin-bottom: 2px;
+        }
         body.report-pdf-printing #main,
         body.report-pdf-printing #content {
           display: block;
@@ -813,6 +1236,22 @@
         body.report-pdf-printing #compare-body {
           overflow: visible !important;
           max-width: none !important;
+        }
+        body.report-pdf-printing .meta-subpane {
+          display: block !important;
+          overflow: visible !important;
+          margin-bottom: 1.5em;
+          padding-bottom: 1em;
+          border-bottom: 1px solid #e0e0e0;
+        }
+        body.report-pdf-printing #cmp-chart,
+        body.report-pdf-printing #geo-cmp-chart,
+        body.report-pdf-printing #host-cmp-chart {
+          overflow: visible !important;
+        }
+        body.report-pdf-printing .meta-subtabs-pdf-section {
+          break-inside: avoid;
+          page-break-inside: avoid;
         }
         body.report-pdf-printing table {
           width: 100% !important;
@@ -1640,6 +2079,93 @@
         white-space: nowrap;
       }
 
+      /* ── Run Metadata analysis sub-tabs ── */
+      #meta-subtabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid #e0e8f5;
+        margin-top: 1.5em;
+        flex-wrap: wrap;
+      }
+      .meta-subtab {
+        padding: 0.5em 1.2em;
+        border: none;
+        border-bottom: 3px solid transparent;
+        background: none;
+        font-size: 0.87em;
+        font-weight: 600;
+        color: #555;
+        cursor: pointer;
+        margin-bottom: -2px;
+        transition:
+          color 0.15s,
+          border-color 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 0.35em;
+        white-space: nowrap;
+      }
+      .meta-subtab:hover:not(:disabled) {
+        color: #1565c0;
+      }
+      .meta-subtab.active {
+        color: #1565c0;
+        border-bottom-color: #1565c0;
+      }
+      .meta-subtab:disabled {
+        color: #b0b8c6;
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+      .meta-subpane {
+        display: none;
+        padding-top: 1.2em;
+      }
+      .meta-subpane.active {
+        display: block;
+      }
+      .meta-subtab-warn {
+        background: #fff8e1;
+        border: 1px solid #ffe082;
+        border-radius: 6px;
+        padding: 0.65em 1em;
+        margin-bottom: 1em;
+        font-size: 0.84em;
+        color: #6d4c41;
+        display: flex;
+        gap: 0.55em;
+        align-items: flex-start;
+      }
+      .meta-subtab-warn i {
+        color: #f59f00;
+        flex-shrink: 0;
+        margin-top: 0.1em;
+      }
+
+      /* ── Cross-Entry Comparison analysis switch ── */
+      .cmp-atab {
+        border: 1px solid #ccd6e8;
+        background: #f4f8ff;
+        color: #4a5a73;
+        border-radius: 6px;
+        padding: 5px 11px;
+        font-size: 0.82em;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background 0.12s,
+          color 0.12s,
+          border-color 0.12s;
+      }
+      .cmp-atab:hover {
+        background: #e3f0ff;
+      }
+      .cmp-atab.active {
+        background: #1565c0;
+        border-color: #1565c0;
+        color: #fff;
+      }
+
       /* ── Map pane ── */
       #map-split {
         align-items: stretch;
@@ -2074,9 +2600,172 @@
         transform: scale(0.96);
       }
       @media (max-width: 720px) {
-        #help-btn .help-btn-label {
+        #help-btn .help-btn-label,
+        #helpmode-btn .help-btn-label {
           display: none;
         }
+      }
+
+      /* ── Help-mode toggle button (sits left of Guided tour) ── */
+      #helpmode-btn {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45em;
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 999px;
+        padding: 0.32em 0.85em;
+        font-size: 0.72em;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          box-shadow 0.15s,
+          transform 0.1s;
+      }
+      #helpmode-btn:hover {
+        background: rgba(255, 255, 255, 0.32);
+        box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
+      }
+      #helpmode-btn:active {
+        transform: scale(0.96);
+      }
+      /* active (mode on) state */
+      #helpmode-btn.on {
+        background: #fff;
+        color: #1565c0;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+      }
+      #help-btn {
+        margin-left: 0.5em !important;
+      }
+
+      /* ── Per-tab contextual help panel ── */
+      #tab-help-panel {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        width: 320px;
+        max-width: calc(100vw - 32px);
+        max-height: 72vh;
+        overflow-y: auto;
+        z-index: 8500;
+        background: #fff;
+        border: 1px solid #cfdcec;
+        border-radius: 12px;
+        box-shadow: 0 12px 32px rgba(13, 42, 71, 0.22);
+        padding: 14px 16px 12px;
+        font-size: 0.86rem;
+        color: #2f3e4c;
+        transform: translateY(12px);
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+      #tab-help-panel.open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #tab-help-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      #tab-help-eyebrow {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #1565c0;
+      }
+      #tab-help-close {
+        border: none;
+        background: #eef2f7;
+        color: #5a6675;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      #tab-help-close:hover {
+        background: #dde5ee;
+        color: #222;
+      }
+      #tab-help-fig {
+        background: #f3f8fd;
+        border: 1px solid #e1ecf7;
+        border-radius: 8px;
+        padding: 6px;
+        margin-bottom: 10px;
+      }
+      #tab-help-fig svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: 96px;
+      }
+      #tab-help-fig:empty {
+        display: none;
+      }
+      #tab-help-group {
+        font-size: 0.66rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #5b8fc9;
+      }
+      #tab-help-group:empty {
+        display: none;
+      }
+      #tab-help-title {
+        margin: 1px 0 6px;
+        font-size: 1.04rem;
+        color: #14304d;
+      }
+      #tab-help-desc {
+        margin: 0 0 8px;
+        line-height: 1.5;
+        color: #3a4754;
+      }
+      #tab-help-tips {
+        margin: 0 0 10px;
+        padding-left: 1.1em;
+      }
+      #tab-help-tips li {
+        margin-bottom: 4px;
+        line-height: 1.45;
+        color: #44525f;
+      }
+      #tab-help-tips:empty {
+        display: none;
+      }
+      #tab-help-foot {
+        border-top: 1px solid #eef2f7;
+        padding-top: 8px;
+        font-size: 0.74rem;
+        color: #8a93a3;
+      }
+      #tab-help-foot a {
+        color: #1565c0;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      #tab-help-foot a:hover {
+        text-decoration: underline;
+      }
+      /* Hide the panel entirely while the full-screen tour or a print is active. */
+      body.help-active #tab-help-panel,
+      body.report-pdf-printing #tab-help-panel {
+        display: none;
       }
 
       /* ── dimmed backdrop + card ── */
@@ -2345,6 +3034,293 @@
             0 0 30px 10px rgba(33, 150, 243, 0.95);
         }
       }
+
+      /* ═══ Enhanced sidebar search ═══════════════════════════════════════ */
+      #filter-search-box {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin-top: 0.15em;
+      }
+      #filter-search-icon {
+        position: absolute;
+        left: 9px;
+        font-size: 0.82em;
+        color: #90a4ae;
+        pointer-events: none;
+        transition: color 0.15s;
+      }
+      #filter-search-box input#filter-text {
+        width: 100%;
+        padding: 0.42em 1.9em 0.42em 1.95em;
+        border: 1px solid #cfd8e3;
+        border-radius: 7px;
+        font-size: 0.92em;
+        line-height: 1;
+        vertical-align: middle;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      #filter-search-box input#filter-text:focus {
+        outline: none;
+        border-color: #2196f3;
+        box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.16);
+      }
+      #filter-search-box input#filter-text:focus ~ #filter-search-icon,
+      #filter-search-box:focus-within #filter-search-icon {
+        color: #2196f3;
+      }
+      /* invalid / incomplete regex feedback */
+      body.search-invalid #filter-search-box input#filter-text {
+        border-color: #e0a800;
+        box-shadow: 0 0 0 3px rgba(224, 168, 0, 0.16);
+      }
+      #filter-clear {
+        position: absolute;
+        right: 6px;
+        border: none;
+        background: #eceff3;
+        color: #66707d;
+        width: 18px;
+        height: 18px;
+        line-height: 1;
+        border-radius: 50%;
+        font-size: 14px;
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background 0.15s;
+      }
+      #filter-clear:hover {
+        background: #d7dde5;
+        color: #333;
+      }
+      body.has-search #filter-clear {
+        display: inline-flex;
+      }
+      /* ── search footer: status + options toggle ── */
+      #filter-search-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 0.3em;
+        font-size: 0.76em;
+        color: #607d8b;
+        min-height: 1.4em;
+      }
+      #filter-status {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      #filter-status.warn {
+        color: #d18700;
+      }
+      #filter-status.zero {
+        color: #c62828;
+      }
+      #filter-opts-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.9em;
+        color: #90a4ae;
+        padding: 1px 3px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        transition: color 0.15s;
+        white-space: nowrap;
+        margin-left: auto;
+      }
+      #filter-opts-toggle:hover {
+        color: #455a64;
+      }
+      #filter-opts-toggle.open {
+        color: #2196f3;
+      }
+      /* ── collapsible options panel ── */
+      #filter-search-meta {
+        display: none;
+        align-items: center;
+        gap: 0.5em;
+        margin-top: 0.3em;
+        padding: 0.35em 0.5em;
+        font-size: 0.76em;
+        color: #607d8b;
+        background: #f4f7fb;
+        border: 1px solid #dce6f0;
+        border-radius: 6px;
+      }
+      #filter-search-meta.open {
+        display: flex;
+      }
+      #filter-scope {
+        font-size: 0.92em;
+        padding: 1px 4px;
+        border: 1px solid #cfd8e3;
+        border-radius: 5px;
+        background: #fff;
+        color: #455a64;
+        cursor: pointer;
+      }
+      #filter-ic-lbl {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        cursor: pointer;
+        padding: 1px 4px;
+        border: 1px solid #cfd8e3;
+        border-radius: 5px;
+        font-weight: 700;
+        color: #607d8b;
+        user-select: none;
+      }
+      #filter-ic-lbl input {
+        margin: 0;
+      }
+      #filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 0.4em;
+      }
+      #filter-chips:empty {
+        display: none;
+      }
+      .filter-chip {
+        font-size: 0.72em;
+        padding: 2px 8px;
+        border: 1px solid #d4dde7;
+        border-radius: 999px;
+        background: #f4f7fb;
+        color: #41566a;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.13s,
+          border-color 0.13s,
+          color 0.13s;
+      }
+      .filter-chip:hover {
+        background: #e3f0fd;
+        border-color: #90caf9;
+        color: #1565c0;
+      }
+      .filter-chip.recent {
+        font-style: italic;
+      }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         UI POLISH LAYER
+         Placed last in this stylesheet so it wins the cascade. Purely visual /
+         accessibility refinements — no element is moved or hidden, so behaviour
+         is unchanged. Covers: keyboard focus rings, custom scrollbars, reduced-
+         motion support, depth on the banner, a cleaner active-tab treatment,
+         and a few small-screen tweaks.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      /* 1 ─ Visible keyboard focus. Only shows on keyboard navigation
+            (:focus-visible), never on mouse clicks, so it doesn't add noise for
+            pointer users. Components that already draw their own focus ring keep
+            it (their id/class selectors out-specify these element selectors). */
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid var(--tt-focus);
+        outline-offset: 2px;
+        border-radius: var(--tt-radius-sm);
+      }
+      /* Tabs sit on a dark bar — use a light ring so it reads against the blue. */
+      #tabbar .tab-btn:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: -2px;
+      }
+
+      /* 2 ─ Modern, unobtrusive scrollbars (WebKit/Blink + Firefox). */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #c2ccd6 transparent;
+      }
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: #c2ccd6;
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: #9aa7b5;
+        background-clip: padding-box;
+      }
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      /* 3 ─ Respect reduced-motion preferences (accessibility + perf on weak
+            hardware): collapse transitions/animations to near-instant. */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+
+      /* 4 ─ A touch of depth so the banner/tab bar read as a single chrome unit. */
+      #banner {
+        box-shadow: var(--tt-shadow-sm);
+        position: relative;
+        z-index: 2;
+      }
+      #tabbar {
+        box-shadow: var(--tt-shadow-sm);
+        position: relative;
+        z-index: 1;
+        scroll-snap-type: x proximity;
+      }
+      #tabbar .tab-btn {
+        scroll-snap-align: start;
+      }
+
+      /* 5 ─ Cleaner active-tab treatment: keep the recognisable white tab + blue
+            accent, but swap the heavy double neon glow for a crisp ring and a
+            soft lift. Easier on the eyes, same visual hierarchy. */
+      .tab-btn.active {
+        box-shadow: var(--tt-shadow-sm);
+      }
+      .tab-btn {
+        transition:
+          color var(--tt-transition),
+          background var(--tt-transition),
+          box-shadow var(--tt-transition);
+      }
+
+      /* 6 ─ Small-screen breathing room. The tab bar already scrolls
+            horizontally; tighten chrome so more fits before it has to. */
+      @media (max-width: 720px) {
+        #content {
+          padding: 0.6em;
+        }
+        .tab-btn {
+          padding: 0.55em 0.8em;
+        }
+        #banner {
+          font-size: 1em;
+        }
+      }
     </style>
   </head>
   <body>
@@ -2353,14 +3329,41 @@
       TaxTriage Multi-Run Analysis
       <span class="sub" id="banner-sub"></span>
       <button
+        id="helpmode-btn"
+        type="button"
+        title="Help mode — show a help panel for whatever tab you're on"
+        aria-label="Toggle per-tab help mode"
+        aria-pressed="false"
+      >
+        <i class="fas fa-circle-info"></i><span class="help-btn-label">Help mode</span>
+      </button>
+      <button
         id="help-btn"
         type="button"
         title="Take the guided tour — learn what every tab does and how to drive them"
         aria-label="Open the guided help tutorial"
       >
-        <i class="fas fa-circle-question"></i><span class="help-btn-label">Help &amp; Tour</span>
+        <i class="fas fa-graduation-cap"></i><span class="help-btn-label">Guided tour</span>
       </button>
     </div>
+
+    <!-- ── Per-tab contextual help panel (driven by Help mode) ── -->
+    <aside id="tab-help-panel" aria-hidden="true" aria-live="polite">
+      <div id="tab-help-head">
+        <span id="tab-help-eyebrow"><i class="fas fa-circle-info"></i> Help mode</span>
+        <button id="tab-help-close" type="button" title="Turn off help mode" aria-label="Close help panel">
+          &times;
+        </button>
+      </div>
+      <div id="tab-help-fig" aria-hidden="true"></div>
+      <div id="tab-help-group"></div>
+      <h3 id="tab-help-title"></h3>
+      <p id="tab-help-desc"></p>
+      <ul id="tab-help-tips"></ul>
+      <div id="tab-help-foot">
+        Panel follows the active tab. <a href="#" id="tab-help-tour">Take the full guided tour →</a>
+      </div>
+    </aside>
 
     <div id="tabbar">
       <button class="tab-btn active" data-tab="summary"><i class="fas fa-clipboard-list"></i> Summary</button>
@@ -2410,6 +3413,10 @@
         Current report export with active filters, sample visibility, chart selections, and table pagination applied.
       </p>
       <p class="pdf-cover-sub" id="pdf-report-subtext"></p>
+      <!-- Concise KPI banner (mirrors the Summary tab header). Populated by _buildPdfCover(). -->
+      <div id="pdf-kpi-banner"></div>
+      <!-- Ordered list of the report sections included below. Populated by _buildPdfCover(). -->
+      <div id="pdf-contents"></div>
       <!-- Sample-color + TASS-cutoff legend (cover placement). Populated by _buildPdfLegend(). -->
       <div id="pdf-legend"></div>
     </div>
@@ -4033,9 +5040,29 @@
             </table>
           </div>
 
-          <!-- ── Longitudinal Analysis (only shown when collection_time data exists) ── -->
-          <div id="longi-section" style="display: none; margin-top: 2em">
-            <div style="border-top: 2px solid #e0e8f5; padding-top: 1.2em">
+          <!-- ── Analysis sub-tabs ── -->
+          <div id="meta-subtabs">
+            <button class="meta-subtab" data-metasub="longi">
+              <i class="fas fa-chart-line"></i> Longitudinal Analysis
+            </button>
+            <button class="meta-subtab" data-metasub="geo">
+              <i class="fas fa-earth-americas"></i> Geographic Comparison
+            </button>
+            <button class="meta-subtab" data-metasub="host">
+              <i class="fas fa-virus-covid"></i> Host &amp; Disease
+            </button>
+            <button class="meta-subtab" data-metasub="cmp">
+              <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
+            </button>
+          </div>
+
+          <!-- ── Longitudinal Analysis sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-longi">
+            <div id="meta-subtab-warn-longi" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-longi-msg"></span>
+            </div>
+            <div id="longi-section">
               <div class="chart-title" style="margin-bottom: 1em">
                 <i class="fas fa-chart-line"></i> Longitudinal Analysis
               </div>
@@ -4192,6 +5219,347 @@
               </div>
             </div>
           </div>
+          <!-- /meta-subpane-longi -->
+
+          <!-- ── Geographic Comparison sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-geo">
+            <div id="meta-subtab-warn-geo" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-geo-msg"></span>
+            </div>
+            <div id="geo-cmp-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-earth-americas"></i> Geographic Comparison
+              </div>
+              <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                Aggregate the visible detections across samples by country or state / province / territory.
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Level</label>
+                  <select
+                    id="geo-cmp-level"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="sample_origin_country" selected>Country</option>
+                    <option value="sample_origin_state_province_territory">State / Province / Territory</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Metric</label>
+                  <select
+                    id="geo-cmp-metric"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="detections" selected>Detections</option>
+                    <option value="samples">Samples</option>
+                    <option value="reads"># Reads Aligned</option>
+                    <option value="tass">Mean TASS Score</option>
+                  </select>
+                </div>
+              </div>
+              <!-- Large choropleth with a collapsible ranked-bar overlay -->
+              <div id="geo-map-wrap">
+                <svg id="geo-map-svg"></svg>
+                <div id="geo-map-status">Open this tab to load the map…</div>
+                <button type="button" id="geo-back" style="display: none">
+                  <i class="fas fa-arrow-left"></i> Back to countries
+                </button>
+                <div class="geo-overlay collapsed" id="geo-overlay">
+                  <div class="geo-overlay-head" id="geo-overlay-toggle" title="Show / hide ranked list">
+                    <span
+                      ><i class="fas fa-ranking-star"></i> Ranked
+                      <span id="geo-overlay-level-lbl">Countries</span></span
+                    >
+                    <i class="fas fa-chevron-down"></i>
+                  </div>
+                  <div class="geo-overlay-body" id="geo-overlay-body">
+                    <div id="geo-cmp-chart" style="position: relative; overflow: visible"></div>
+                  </div>
+                  <div class="geo-overlay-grip" id="geo-overlay-grip" title="Drag to resize"></div>
+                </div>
+                <div class="geo-legend" id="geo-legend" style="display: none"></div>
+              </div>
+              <div
+                id="geo-cmp-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No country / state metadata in the visible samples.
+              </div>
+              <div style="font-size: 0.74em; color: #9aa6b4; margin-top: 0.5em">
+                <i class="fas fa-circle-info" style="margin-right: 0.3em"></i>
+                Regions are shaded by the selected metric. Hover a country to see its state / territory breakdown.
+                Boundary outlines load from a public map CDN; if offline, the ranked list still works.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-geo -->
+
+          <!-- ── Host &amp; Disease sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-host">
+            <div id="meta-subtab-warn-host" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-host-msg"></span>
+            </div>
+            <div id="host-cmp-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-virus-covid"></i> Host &amp; Disease
+              </div>
+              <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                Aggregate the visible detections by host species, host disease, or environmental site.
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Group by</label>
+                  <select
+                    id="host-cmp-field"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="host_disease" selected>Host Disease</option>
+                    <option value="host_scientific_name">Host (Scientific Name)</option>
+                    <option value="environmental_site">Environmental Site</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Metric</label>
+                  <select
+                    id="host-cmp-metric"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="detections" selected>Detections</option>
+                    <option value="samples">Samples</option>
+                    <option value="reads"># Reads Aligned</option>
+                    <option value="tass">Mean TASS Score</option>
+                  </select>
+                </div>
+              </div>
+              <div id="host-cmp-chart" style="position: relative; overflow: visible"></div>
+              <div
+                id="host-cmp-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No host / disease / site metadata in the visible samples.
+              </div>
+
+              <!-- ── Symptom × Organism matrix ── -->
+              <div
+                id="host-matrix-section"
+                style="margin-top: 1.6em; border-top: 1px solid #eef2f7; padding-top: 1.1em"
+              >
+                <div class="chart-title" style="margin-bottom: 0.35em">
+                  <i class="fas fa-table-cells"></i> Symptom &times; Organism
+                </div>
+                <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                  How many samples carry each organism, broken down by symptom / host disease. Each cell is the number
+                  of samples reporting that symptom in which the organism was detected. Click a symptom row to drill in.
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                  <div style="display: flex; flex-direction: column; gap: 0.3em">
+                    <label style="font-size: 0.81em; font-weight: 600; color: #555">Symptom field</label>
+                    <select
+                      id="host-mx-field"
+                      style="
+                        border: 1px solid #ccd6e8;
+                        border-radius: 6px;
+                        padding: 5px 9px;
+                        font-size: 0.82em;
+                        background: #fff;
+                      "
+                    >
+                      <option value="host_disease" selected>Host Disease / Symptom</option>
+                      <option value="environmental_site">Environmental Site</option>
+                      <option value="host_scientific_name">Host (Scientific Name)</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 0.3em">
+                    <label style="font-size: 0.81em; font-weight: 600; color: #555">Organism level</label>
+                    <select
+                      id="host-mx-level"
+                      style="
+                        border: 1px solid #ccd6e8;
+                        border-radius: 6px;
+                        padding: 5px 9px;
+                        font-size: 0.82em;
+                        background: #fff;
+                      "
+                    >
+                      <option value="Detected Organism" selected>Detected Organism</option>
+                      <option value="Species Name">Species</option>
+                      <option value="Genus Name">Genus</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 0.3em">
+                    <label style="font-size: 0.81em; font-weight: 600; color: #555">Top organisms</label>
+                    <select
+                      id="host-mx-topn"
+                      style="
+                        border: 1px solid #ccd6e8;
+                        border-radius: 6px;
+                        padding: 5px 9px;
+                        font-size: 0.82em;
+                        background: #fff;
+                      "
+                    >
+                      <option value="10">10</option>
+                      <option value="15" selected>15</option>
+                      <option value="25">25</option>
+                      <option value="0">All</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="host-matrix-chart"></div>
+                <div
+                  id="host-matrix-no-data"
+                  style="display: none; text-align: center; padding: 1.6em 1em; color: #999; font-size: 0.88em"
+                >
+                  <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                  No overlap between symptom metadata and detected organisms in the visible samples.
+                </div>
+                <div id="host-drill" style="display: none; margin-top: 1.2em">
+                  <div class="chart-title" style="font-size: 0.92em; margin-bottom: 0.3em">
+                    <i class="fas fa-magnifying-glass-chart"></i>
+                    Organisms in samples with <span id="host-drill-label" style="color: #2b6cb0"></span>
+                  </div>
+                  <div id="host-drill-chart" style="position: relative; overflow: visible"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-host -->
+
+          <!-- ── Cross-Entry Comparison sub-pane ── -->
+          <div class="meta-subpane" id="meta-subpane-cmp">
+            <div id="meta-subtab-warn-cmp" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-cmp-msg"></span>
+            </div>
+            <div id="cmp-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
+              </div>
+              <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
+                Compare the organism-hit profiles across samples or metadata groups in this run — similarity, overlap,
+                and enrichment of genus / species hits using presence, TASS, or coverage.
+              </div>
+
+              <!-- Analysis switcher -->
+              <div id="cmp-analysis-tabs" style="display: flex; gap: 0.4em; flex-wrap: wrap; margin-bottom: 0.9em">
+                <button class="cmp-atab" data-analysis="cosine">Cosine Similarity</button>
+                <button class="cmp-atab" data-analysis="jaccard">Jaccard Overlap</button>
+                <button class="cmp-atab" data-analysis="enrichment">Enrichment</button>
+                <button class="cmp-atab" data-analysis="profile">Profile Heatmap</button>
+              </div>
+
+              <!-- Controls -->
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Compare by</label>
+                  <select
+                    id="cmp-unit"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="group" selected>Metadata group</option>
+                    <option value="sample">Samples</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label id="cmp-field-label" style="font-size: 0.81em; font-weight: 600; color: #555">
+                    Group / label field
+                  </label>
+                  <select
+                    id="cmp-field"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                      min-width: 180px;
+                    "
+                  ></select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label style="font-size: 0.81em; font-weight: 600; color: #555">Level</label>
+                  <select
+                    id="cmp-level"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="genus" selected>Genus</option>
+                    <option value="species">Species</option>
+                  </select>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                  <label id="cmp-value-label" style="font-size: 0.81em; font-weight: 600; color: #555"
+                    >Value basis</label
+                  >
+                  <select
+                    id="cmp-value"
+                    style="
+                      border: 1px solid #ccd6e8;
+                      border-radius: 6px;
+                      padding: 5px 9px;
+                      font-size: 0.82em;
+                      background: #fff;
+                    "
+                  >
+                    <option value="presence" selected>Presence / abundance</option>
+                    <option value="tass">TASS score</option>
+                    <option value="coverage">Coverage (breadth %)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div id="cmp-desc" style="font-size: 0.78em; color: #888; margin-bottom: 0.7em"></div>
+              <div id="cmp-chart" style="position: relative; overflow: auto"></div>
+              <div
+                id="cmp-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                Need at least two entries with organism hits to compare. Try widening the filters or selecting a
+                different field.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-cmp -->
         </div>
       </div>
       <!-- /content -->
@@ -4219,16 +5587,47 @@
             class="info-tip-btn"
             id="filter-text-tip-btn"
             aria-label="Search help"
-            data-tip='<b>Search filter</b> — matches against both Sample ID and Organism name using a <b>regular expression</b>.<br><br><b>Simple substring:</b><br><code>listeria</code> — matches anything containing "listeria"<br><br><b>Wildcard-style (prefix):</b><br><code>listeria.*</code> — organism starting with listeria, any suffix<br><code>^Nano</code> — sample or organism name starting with "Nano"<br><br><b>Multi-match (OR):</b><br><code>hominis|corona</code> — matches either "hominis" or "corona"<br><code>listeria|salmonella|ecoli</code> — any of three terms<br><br><b>Exact species:</b><br><code>^Listeria monocytogenes$</code> — exact name only<br><br><b>Exclude (negate):</b><br>Use the case-insensitive checkbox below to control case. Patterns follow JavaScript RegExp syntax.'
+            data-tip='<b>Search filter</b> — matches Sample ID and/or Organism name. Plain words work as a simple substring search; power users can use full <b>regular expressions</b>.<br><br><b>Simple substring:</b><br><code>listeria</code> — matches anything containing "listeria"<br><br><b>Multi-match (OR):</b><br><code>hominis|corona</code> — matches either term<br><br><b>Anchors / exact:</b><br><code>^Nano</code> — starts with "Nano"<br><code>^Listeria monocytogenes$</code> — exact name only<br><br><b>Scope</b> — limit matching to Sample names, Organism names, or both.<br><b>Shortcut</b> — press <code>/</code> anywhere to jump here, <code>Esc</code> to clear. Patterns follow JavaScript RegExp syntax.'
           >
             &#x24D8;
           </button></label
         >
-        <input id="filter-text" type="text" placeholder="regex e.g. ^Nano or hominis|corona" />
-        <div class="row">
-          <input type="checkbox" id="filter-ic" checked />
-          <label for="filter-ic">Case-insensitive</label>
+        <div id="filter-search-box">
+          <i class="fas fa-magnifying-glass" id="filter-search-icon" aria-hidden="true"></i>
+          <input
+            id="filter-text"
+            type="text"
+            style="font-size: 10px; margin-left: 2px"
+            placeholder="Type to search…  (e.g. listeria or ^Nano)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button type="button" id="filter-clear" title="Clear search (Esc)" aria-label="Clear search">&times;</button>
         </div>
+        <div id="filter-search-footer">
+          <span id="filter-status" aria-live="polite"></span>
+          <button
+            type="button"
+            id="filter-opts-toggle"
+            title="Search options"
+            aria-expanded="false"
+            aria-controls="filter-search-meta"
+          >
+            <i class="fas fa-sliders-h" style="font-size: 0.85em"></i> Options ▾
+          </button>
+        </div>
+        <div id="filter-search-meta" role="group" aria-label="Search options">
+          <select id="filter-scope" title="Which fields the search matches against" aria-label="Search scope">
+            <option value="both" selected>Sample + Organism</option>
+            <option value="sample">Sample only</option>
+            <option value="organism">Organism only</option>
+          </select>
+          <label id="filter-ic-lbl" title="Ignore upper/lower case when matching">
+            <input type="checkbox" id="filter-ic" checked />
+            Aa
+          </label>
+        </div>
+        <div id="filter-chips" aria-label="Quick filters"></div>
         <label id="filter-min-label"
           >Min TASS Score (0–100)
           <button
@@ -4501,7 +5900,9 @@
           <span style="display: block; font-size: 0.76em; margin: 0.25em 0 0.45em; color: #555">
             Drop a metadata .csv or .xlsx here<br />
             <span style="color: #888; font-size: 0.9em"
-              >columns: sample, run_id, latitude, longitude,<br />depth, salinity, collection_time, location</span
+              >columns: sample, run_id, latitude, longitude, depth, salinity, collection_time, location,<br />plus AMD-P
+              fields: sample_origin_country, sample_origin_state_province_territory, host_scientific_name, host_disease,
+              environmental_site, sequencing_instrument, sequencing_platform …</span
             >
           </span>
           <label class="upload-btn" for="meta-upload-input" style="font-size: 0.78em; padding: 0.25em 0.7em"
@@ -4519,6 +5920,30 @@
         <button id="meta-clear-btn" class="upload-clear hidden" onclick="clearMetaData()" style="margin-top: 0.3em">
           &#10005; Clear metadata
         </button>
+
+        <!-- ── Save / load session state ── -->
+        <h3 style="margin-top: 1em">Save / Load State</h3>
+        <span style="display: block; font-size: 0.74em; color: #666; margin-bottom: 0.5em">
+          Save a self-contained snapshot of the current data <em>and</em> all filters, then reload it later to return to
+          exactly this view.
+        </span>
+        <div style="display: flex; gap: 0.4em; flex-wrap: wrap">
+          <button class="upload-btn" onclick="window.ttExportState && window.ttExportState()">
+            <i class="fas fa-download" style="margin-right: 0.35em"></i>Export State
+          </button>
+          <label class="upload-btn" for="state-load-input">
+            <i class="fas fa-upload" style="margin-right: 0.35em"></i>Load State
+          </label>
+          <input
+            type="file"
+            id="state-load-input"
+            accept=".json"
+            style="display: none"
+            onchange="window.ttLoadStateFiles && window.ttLoadStateFiles(this.files)"
+          />
+        </div>
+        <div id="state-status" style="font-size: 0.75em; color: #555; margin-top: 0.4em"></div>
+
         <div id="data-capability-notice" style="display: none"></div>
 
         <!-- ── Legend panel: sample colors + TASS cutoffs ── -->
@@ -5113,22 +6538,25 @@
       });
 
       // Palette for samples
+      // Colorblind-safe categorical palette (Okabe-Ito + Paul Tol muted),
+      // ordered so the earliest-assigned sample colors stay maximally
+      // distinct under deuteranopia/protanopia (no adjacent red↔green).
       const PALETTE = [
-        "#1f77b4",
-        "#ff7f0e",
-        "#2ca02c",
-        "#d62728",
-        "#9467bd",
-        "#8c564b",
-        "#e377c2",
-        "#7f7f7f",
-        "#bcbd22",
-        "#17becf",
-        "#aec7e8",
-        "#ffbb78",
-        "#98df8a",
-        "#ff9896",
-        "#c5b0d5",
+        "#0072B2", // blue
+        "#E69F00", // orange
+        "#009E73", // bluish green
+        "#CC79A7", // reddish purple
+        "#56B4E9", // sky blue
+        "#D55E00", // vermillion
+        "#117733", // dark green
+        "#882255", // wine
+        "#DDCC77", // sand
+        "#AA4499", // purple
+        "#44AA99", // teal
+        "#999933", // olive
+        "#332288", // indigo
+        "#661100", // brown
+        "#6699CC", // steel blue
       ];
 
       /* ═══════════════════════════════════════════════════════════════════════════
@@ -5182,9 +6610,12 @@
           .map(([k, v]) => `${k}:${v}`)
           .join("|");
       }
+      // Search scope + last-known regex validity (surfaced in the sidebar status line).
+      let _searchInvalid = false;
       function filteredData() {
         const txt = document.getElementById("filter-text").value.trim();
         const ic = document.getElementById("filter-ic").checked;
+        const scope = (document.getElementById("filter-scope") || {}).value || "both";
         const viewLevel = (document.getElementById("view-level") || {}).value || "Strain";
         const minV = parseFloat(document.getElementById("filter-min").value) || 0;
         const onlyHC = document.getElementById("filter-hc").checked;
@@ -5206,6 +6637,7 @@
         const cacheKey = [
           txt,
           ic ? 1 : 0,
+          scope,
           minV,
           onlyHC ? 1 : 0,
           onlyP ? 1 : 0,
@@ -5224,14 +6656,37 @@
         ].join("\u0001");
         if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
-        const rx = txt ? new RegExp(txt, ic ? "i" : "") : null;
+        // Compile the search pattern defensively. While the user is still
+        // typing, an incomplete pattern (e.g. "(" or "[a-") would otherwise
+        // throw and break every view. On error we fall back to "no text
+        // filter" (results stay visible) and flag the box as invalid.
+        let rx = null;
+        _searchInvalid = false;
+        if (txt) {
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+            _searchInvalid = true;
+          }
+        }
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
         const anyRescale = _hasAnyRescale();
 
         // Base (non-level, non-threshold) predicates shared by every view.
         function _basePass(r) {
           if (sampleHidden[r["Specimen ID"]]) return false;
-          if (rx && !rx.test(r["Specimen ID"] || "") && !rx.test(r["Detected Organism"] || "")) return false;
+          if (rx) {
+            const inSample = rx.test(r["Specimen ID"] || "");
+            const inOrg = rx.test(r["Detected Organism"] || "");
+            if (scope === "sample") {
+              if (!inSample) return false;
+            } else if (scope === "organism") {
+              if (!inOrg) return false;
+            } else if (!inSample && !inOrg) {
+              return false;
+            }
+          }
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
           const mt = (r["Mol Type"] || "").toLowerCase();
@@ -6231,6 +7686,67 @@
         return btn ? btn.textContent.replace(/\s+/g, " ").trim() : tab;
       }
 
+      /** Renders all enabled metadata sub-tabs so their charts appear in the PDF. */
+      async function _renderMetaSubTabsForPdf() {
+        const subIds = ["longi", "geo", "host", "cmp"];
+        const originalSub = _activeMetaSub;
+        for (const id of subIds) {
+          const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
+          if (!btn || btn.disabled) continue;
+          _switchMetaSub(id);
+          // For the compare sub-tab, render all four analysis types
+          if (id === "cmp" && typeof _buildComparison === "function") {
+            const origAnalysis = _cmpAnalysis;
+            const analyses = ["cosine", "jaccard", "enrichment", "profile"];
+            const chart = document.getElementById("cmp-chart");
+            // Create a print-only container to hold all analysis snapshots
+            let printSnap = document.getElementById("cmp-print-snapshots");
+            if (!printSnap) {
+              printSnap = document.createElement("div");
+              printSnap.id = "cmp-print-snapshots";
+              printSnap.style.cssText = "display:none";
+              const cmpPane = document.getElementById("meta-subpane-cmp");
+              if (cmpPane) cmpPane.appendChild(printSnap);
+            }
+            printSnap.innerHTML = "";
+            for (const analysis of analyses) {
+              _cmpAnalysis = analysis;
+              // Reflect active state on buttons
+              document
+                .querySelectorAll("#cmp-analysis-tabs .cmp-atab")
+                .forEach((b) => b.classList.toggle("active", b.getAttribute("data-analysis") === analysis));
+              _buildComparison();
+              await _pdfDelay(300);
+              if (chart && chart.querySelector("svg")) {
+                const section = document.createElement("div");
+                section.className = "meta-subtabs-pdf-section";
+                section.style.cssText = "margin-bottom:1.2em";
+                const heading = document.createElement("div");
+                heading.style.cssText =
+                  "font-size:0.82em;font-weight:700;color:#1565c0;margin-bottom:0.4em;text-transform:uppercase;letter-spacing:.04em";
+                const labels = {
+                  cosine: "Cosine Similarity",
+                  jaccard: "Jaccard Overlap",
+                  enrichment: "Enrichment",
+                  profile: "Profile Heatmap",
+                };
+                heading.textContent = labels[analysis] || analysis;
+                section.appendChild(heading);
+                Array.from(chart.querySelectorAll("svg")).forEach((svg) => section.appendChild(svg.cloneNode(true)));
+                printSnap.appendChild(section);
+              }
+            }
+            // Restore active analysis
+            _cmpAnalysis = origAnalysis;
+            _buildComparison();
+          } else {
+            await _pdfDelay(id === "longi" ? 400 : 250);
+          }
+        }
+        // Restore original sub-tab
+        if (originalSub) _switchMetaSub(originalSub);
+      }
+
       async function _renderTabsForPdf() {
         const originalTab = activeTab;
         const tabs = _visibleReportTabs();
@@ -6240,7 +7756,13 @@
           _restoreActiveTab(tab);
           if (tab === "runmeta") {
             if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
-            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+            if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+            await _pdfDelay(80);
+            _setPdfProgress("Rendering metadata sub-tabs…", i, tabs.length);
+            await _renderMetaSubTabsForPdf();
+            // Make all rendered sub-tab snapshots visible for print
+            const snap = document.getElementById("cmp-print-snapshots");
+            if (snap) snap.style.display = "";
             await _pdfDelay(80);
           } else if (tab === "map") {
             if (typeof L !== "undefined" && typeof _initMap === "function") {
@@ -6519,6 +8041,196 @@
         });
       }
 
+      /* ── PDF section metadata ─────────────────────────────────────────────
+         Per-tab grouping + plain-language explainers ("what this shows" /
+         "how to read it") injected at the top of each printed pane so the
+         exported report reads as an organized, annotated document rather than
+         a raw dump of plots. */
+      const PDF_SECTION_INFO = {
+        summary: {
+          group: "Overview",
+          what: "Headline run metrics plus the core detection tables — sample count, total reads, percent of reads classified, unique organisms/genera, and the high-confidence calls.",
+          how: "Read the KPI cards left-to-right for run scale and quality. In the detection table, each row is one organism call with its TASS confidence score; red rows are high-consequence pathogens.",
+        },
+        heatmap: {
+          group: "Taxonomic Composition",
+          what: "A samples × organisms grid in which each cell's colour encodes the selected metric (TASS score, reads, or coverage).",
+          how: "Darker cells are higher values. Scan across a row to see which samples share an organism; scan down a column to profile one sample. Empty cells mean the organism was not detected there.",
+        },
+        tass: {
+          group: "Detection Confidence",
+          what: "TASS confidence scores for each detection drawn side-by-side as bars, coloured by sample.",
+          how: "Taller bars are more confident detections. Compare each bar against the TASS cutoff — bars below it are weak calls. Bar colours match the sample legend.",
+        },
+        sunburst: {
+          group: "Taxonomic Composition",
+          what: "A radial view of the taxonomy: inner rings are higher ranks (kingdom→genus), outer rings are species/strains, sized by the chosen metric.",
+          how: "Wider wedges represent a larger share of the metric. Trace a wedge outward to follow a lineage from genus down to strain; the centre is the root of the tree.",
+        },
+        coverage: {
+          group: "Confidence & Coverage",
+          what: "A scatter of genome coverage against TASS score (or read count); each point is one detection, coloured by sample.",
+          how: "Points high and to the right are strong, well-covered detections. Outliers — e.g. many reads but low breadth — sit away from the main cluster and deserve a closer look.",
+        },
+        proteins: {
+          group: "Virulence & Resistance",
+          what: "Virulence-factor (VF) and antimicrobial-resistance (AMR) gene hits detected across the run, summarised by genus with a detailed gene table.",
+          how: "Bars rank genera by gene-hit count; AMR hits flag possible drug resistance. Use the table to see individual gene names and which samples carried them.",
+        },
+        histogram: {
+          group: "Per-Genome Coverage",
+          what: "Per-contig / per-genome read-depth distributions showing how sequencing depth is spread across each reference genome.",
+          how: "Even, full-width coverage indicates a genuine, well-covered genome; spiky or sparse coverage suggests partial or ambiguous mapping. Bin size varies with genome length.",
+        },
+        explore: {
+          group: "Cross-Sample Patterns",
+          what: "Free-form cross-sample charts for spotting multi-metric trends, batch effects, and sample-type patterns across the whole run.",
+          how: "Pick the axes/metrics that answer your question; clusters and trends reveal samples that behave alike or stand apart.",
+        },
+        table: {
+          group: "Detection Records",
+          what: "The complete detections table behind every chart — every organism call with its metrics, in the current filtered view.",
+          how: "Each row is one detection. Key columns: TASS Score (confidence), Breadth % (genome coverage), and # Reads Aligned. Red rows are high-consequence; amber-barred rows were rescued by species/genus roll-up.",
+        },
+        map: {
+          group: "Provenance & Geography",
+          what: "Geographic placement of samples that carry latitude/longitude metadata.",
+          how: "Each pin is a sampling site, coloured by sample. Use it to track spread across locations for surveillance.",
+        },
+        runmeta: {
+          group: "Provenance & Geography",
+          what: "Per-sample run provenance — sample type, sequencing platform, and any uploaded metadata fields — collected in one table.",
+          how: "Use it to confirm each sample's origin and sequencing context when interpreting the detections above.",
+        },
+      };
+
+      function _esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /* Compute the concise KPI set for the PDF cover — mirrors the Summary
+         tab's KPI logic but reads from the current filtered data so the cover
+         reflects exactly what was exported. */
+      function _pdfKpiCards() {
+        const fd = typeof filteredData === "function" ? filteredData() : [];
+        const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+        const totalInput = samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
+        const totalOrg =
+          samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
+          fd.reduce((s, r) => s + (parseFloat(r["# Reads Aligned"]) || 0), 0);
+        let pctClass = totalInput > 0 ? ((totalOrg / totalInput) * 100).toFixed(1) + "%" : "N/A";
+        if (pctClass === "0.0%" && totalOrg > 0) pctClass = "<0.1%";
+        const uniqOrgs = new Set(fd.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
+        const uniqGenera = new Set(fd.map((r) => r["Genus"]).filter(Boolean)).size;
+        const hcCount = new Set(
+          fd.filter((r) => isTruthy(r["High Consequence"])).map((r) => r["Taxonomic ID #"] || r["Detected Organism"]),
+        ).size;
+        const platforms = uniq(
+          samples.map((sn) => (SAMPLE_META[sn] || {}).platform).filter((p) => p && p !== "unknown"),
+        );
+        const cut = _tassCutoffSummary();
+        let cutVal, cutSub;
+        if (cut.mode === "byType" && cut.items.length) {
+          const vals = cut.items.map((it) => Number(it.applied));
+          const same = vals.every((v) => v === vals[0]);
+          if (same) {
+            cutVal = vals[0].toFixed(1);
+            cutSub = cut.items.length === 1 ? cut.items[0].type : "all types";
+          } else {
+            cutVal = `${Math.min(...vals).toFixed(0)}–${Math.max(...vals).toFixed(0)}`;
+            cutSub = "by sample type";
+          }
+        } else {
+          cutVal = cut.global > 0 ? cut.global.toFixed(1) : cut.recommended != null ? cut.recommended.toFixed(1) : "—";
+          cutSub = cut.recommended != null && cut.global <= 0 ? "recommended" : "applied filter";
+        }
+        const tReads = _fmtBig(totalInput);
+        const aReads = _fmtBig(totalOrg);
+        return [
+          { label: "Samples", value: samples.length, sub: platforms.length ? platforms.join(", ") : "in report" },
+          { label: "Total Reads", value: totalInput > 0 ? tReads.short : "N/A", sub: "input reads" },
+          { label: "% Classified", value: pctClass, sub: aReads.short + " aligned" },
+          { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
+          { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
+          { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged", hc: true },
+          { label: "TASS Cutoff", value: cutVal, sub: cutSub },
+        ];
+      }
+
+      /* Build the PDF cover: KPI banner + an ordered "contents" list of the
+         sections that will follow. */
+      function _buildPdfCover() {
+        const bannerEl = document.getElementById("pdf-kpi-banner");
+        if (bannerEl) {
+          bannerEl.innerHTML = _pdfKpiCards()
+            .map(
+              (c) =>
+                `<div class="pdf-kpi${c.hc && c.value !== "0" ? " hc" : ""}">` +
+                `<div class="pdf-kpi-label">${_esc(c.label)}</div>` +
+                `<div class="pdf-kpi-value">${_esc(c.value)}</div>` +
+                (c.sub ? `<div class="pdf-kpi-sub">${_esc(c.sub)}</div>` : "") +
+                `</div>`,
+            )
+            .join("");
+        }
+        const contentsEl = document.getElementById("pdf-contents");
+        if (contentsEl) {
+          const tabs = _visibleReportTabs();
+          const items = tabs
+            .map((tab) => {
+              const info = PDF_SECTION_INFO[tab] || {};
+              const title = _tabLabel(tab);
+              return `<li><b>${_esc(title)}</b>${
+                info.group ? ` <span style="color:#8a93a3">— ${_esc(info.group)}</span>` : ""
+              }</li>`;
+            })
+            .join("");
+          contentsEl.innerHTML = `<div class="pdf-contents-h">In this report</div><ol>${items}</ol>`;
+        }
+      }
+
+      // Track injected nodes so cleanup can remove them.
+      let _pdfInjectedNodes = [];
+      function _clearPdfSections() {
+        _pdfInjectedNodes.forEach((n) => n.parentNode && n.parentNode.removeChild(n));
+        _pdfInjectedNodes = [];
+      }
+
+      /* Prepend a numbered section header + "what / how" explainer to each
+         visible pane so the printed output is grouped and annotated. */
+      function _injectPdfSections() {
+        _clearPdfSections();
+        const tabs = _visibleReportTabs();
+        tabs.forEach((tab, i) => {
+          const pane = document.getElementById(`pane-${tab}`);
+          if (!pane) return;
+          const info = PDF_SECTION_INFO[tab] || {};
+          const title = _tabLabel(tab);
+
+          const head = document.createElement("div");
+          head.className = "pdf-section-head";
+          head.innerHTML =
+            (info.group ? `<div class="pdf-section-group">${_esc(info.group)}</div>` : "") +
+            `<div class="pdf-section-title"><span class="pdf-section-num">${i + 1}</span>${_esc(title)}</div>`;
+
+          pane.insertBefore(head, pane.firstChild);
+          _pdfInjectedNodes.push(head);
+
+          if (info.what || info.how) {
+            const exp = document.createElement("div");
+            exp.className = "pdf-explainer";
+            exp.innerHTML =
+              (info.what ? `<div><div class="pdf-explainer-h">What this shows</div>${_esc(info.what)}</div>` : "") +
+              (info.how ? `<div><div class="pdf-explainer-h">How to read it</div>${_esc(info.how)}</div>` : "");
+            head.insertAdjacentElement("afterend", exp);
+            _pdfInjectedNodes.push(exp);
+          }
+        });
+      }
+
       async function _exportReportPdf() {
         _setPdfProgress("Collecting current report state…", 0, 1);
         const coverSub = document.getElementById("pdf-report-subtext");
@@ -6527,6 +8239,9 @@
           coverSub.textContent = `${_buildBannerSub()} · Exported ${stamp}`;
         }
         await _renderTabsForPdf();
+        // Build the cover KPI banner + contents, then group/annotate each pane.
+        _buildPdfCover();
+        _injectPdfSections();
         _enhanceExports();
         // Scale every plot to the page (vector, no quality loss).
         _optimizeSvgForPrint();
@@ -6548,9 +8263,23 @@
         const cleanup = () => {
           document.body.classList.remove("report-pdf-printing");
           document.body.classList.remove("pdf-legend-footer-on");
+          _clearPdfSections();
+          // Hide the cmp analysis snapshots again after printing
+          const snap = document.getElementById("cmp-print-snapshots");
+          if (snap) snap.style.display = "none";
           _hidePdfProgress();
           window.removeEventListener("afterprint", cleanup);
           _scheduleExportEnhance();
+          // Re-render the longitudinal chart after the print layout is removed so
+          // it measures the correct container width (sidebar back, normal layout).
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              if (typeof _drawLongitudinalPlot === "function") {
+                const longiWrap = document.getElementById("longi-chart-wrap");
+                if (longiWrap && longiWrap.querySelector("svg")) _drawLongitudinalPlot();
+              }
+            }),
+          );
         };
         window.addEventListener("afterprint", cleanup);
         setTimeout(() => {
@@ -10318,6 +12047,22 @@
           return `${cd.organism}||${cd.taxon_id}`;
         }
 
+        // Set of `${Specimen ID}||${Taxonomic ID #}` for visible detections that
+        // pass the TASS cutoff at their OWN level. Used to gate the histogram so
+        // organisms below the cutoff (including roll-up-rescued ones) can't be
+        // selected or charted.
+        function _histPassingTaxa() {
+          const set = new Set();
+          filteredData().forEach((r) => {
+            const pi = typeof rowPassInfo === "function" ? rowPassInfo(r) : null;
+            // Keep rows with no numeric strain TASS (nothing to gate on), else
+            // require a strict own-level pass.
+            if (pi && !isNaN(pi.strain) && !pi.strainPass) return;
+            set.add(`${r["Specimen ID"]}||${r["Taxonomic ID #"]}`);
+          });
+          return set;
+        }
+
         function _buildSelectors() {
           const orgSel = document.getElementById("hist-org-sel");
           const sampleSel = document.getElementById("hist-sample-sel");
@@ -10344,7 +12089,10 @@
             const orgKeys = {};
             const rx = _getTextFilter();
             const q = _getSearchTerm();
-            const visibleTaxa = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Taxonomic ID #"]}`));
+            // Only organisms whose detection clears the TASS cutoff at its own
+            // level are selectable — a below-cutoff organism (even one kept by
+            // species/genus roll-up) must not be pickable here.
+            const visibleTaxa = _histPassingTaxa();
             CONTIG_DATA.forEach((cd) => {
               const orgName = cd.organism || "";
               const sample = cd.sample || "";
@@ -10380,7 +12128,7 @@
             const orgKey = orgSel.value;
             sampleSel.innerHTML = '<option value="">All samples</option>';
             const rx = _getTextFilter();
-            const visibleTaxa = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Taxonomic ID #"]}`));
+            const visibleTaxa = _histPassingTaxa();
             CONTIG_DATA.filter(
               (cd) =>
                 _getOrgKey(cd) === orgKey &&
@@ -10477,7 +12225,7 @@
             return;
           }
 
-          const _fdTaxaKeys = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Taxonomic ID #"]}`));
+          const _fdTaxaKeys = _histPassingTaxa();
           let entries = CONTIG_DATA.filter(
             (cd) =>
               _getOrgKey(cd) === orgKey && !sampleHidden[cd.sample] && _fdTaxaKeys.has(`${cd.sample}||${cd.taxon_id}`),
@@ -11819,12 +13567,108 @@
               if (typeof _initMap === "function") _initMap();
             }, 80);
           } else if (activeTab === "runmeta") {
-            // Rebuild the metadata table each time the tab is activated
+            // Rebuild the metadata table and update sub-tab enabled states
             if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
-            if (typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+            if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
           }
         });
       });
+
+      /* ══════════════════════════════════════════════════════════════════════
+         Tab bar accessibility + keyboard navigation.
+         Additive only — the click handler above still owns activation. This
+         layers on the ARIA tablist pattern (roles, aria-selected) and the
+         expected keyboard behaviour (←/→ move between tabs, Home/End jump to
+         first/last, Enter/Space activate). Hidden + disabled tabs are skipped.
+         A MutationObserver keeps roving tabindex / aria-selected in sync no
+         matter how a tab is activated or shown/hidden elsewhere in the app.
+         ══════════════════════════════════════════════════════════════════════ */
+      (function () {
+        const bar = document.getElementById("tabbar");
+        if (!bar) return;
+        bar.setAttribute("role", "tablist");
+        bar.setAttribute("aria-label", "Analysis views");
+
+        const allTabs = () => Array.from(bar.querySelectorAll(".tab-btn"));
+        // Tabs a keyboard user can actually land on: visible + not disabled.
+        const navTabs = () =>
+          allTabs().filter(
+            (b) => !b.classList.contains("hidden") && !b.classList.contains("tab-disabled") && b.offsetParent !== null,
+          );
+
+        function syncA11y() {
+          allTabs().forEach((b) => {
+            b.setAttribute("role", "tab");
+            const sel = b.classList.contains("active");
+            b.setAttribute("aria-selected", sel ? "true" : "false");
+            // Roving tabindex: only the active tab is in the tab order.
+            b.tabIndex = sel ? 0 : -1;
+            const pane = document.getElementById(`pane-${b.dataset.tab}`);
+            if (pane) {
+              b.setAttribute("aria-controls", `pane-${b.dataset.tab}`);
+              pane.setAttribute("role", "tabpanel");
+            }
+          });
+          // Guarantee at least one focusable tab even if none is active yet.
+          if (!allTabs().some((b) => b.tabIndex === 0)) {
+            const first = navTabs()[0];
+            if (first) first.tabIndex = 0;
+          }
+        }
+
+        function focusTab(tab) {
+          if (!tab) return;
+          tab.tabIndex = 0;
+          tab.focus();
+        }
+
+        bar.addEventListener("keydown", (e) => {
+          const tabs = navTabs();
+          if (!tabs.length) return;
+          const current = document.activeElement;
+          let idx = tabs.indexOf(current);
+          if (idx === -1) idx = tabs.findIndex((b) => b.classList.contains("active"));
+          let next = null;
+          switch (e.key) {
+            case "ArrowRight":
+            case "ArrowDown":
+              next = tabs[(idx + 1) % tabs.length];
+              break;
+            case "ArrowLeft":
+            case "ArrowUp":
+              next = tabs[(idx - 1 + tabs.length) % tabs.length];
+              break;
+            case "Home":
+              next = tabs[0];
+              break;
+            case "End":
+              next = tabs[tabs.length - 1];
+              break;
+            case "Enter":
+            case " ":
+              if (current && current.classList.contains("tab-btn")) {
+                e.preventDefault();
+                current.click();
+              }
+              return;
+            default:
+              return;
+          }
+          if (next) {
+            e.preventDefault();
+            focusTab(next);
+            next.click(); // activate-on-focus, matching the existing click flow
+          }
+        });
+
+        // Re-sync whenever a tab's class (active / hidden / disabled) changes.
+        new MutationObserver(syncA11y).observe(bar, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["class", "style"],
+        });
+        syncA11y();
+      })();
 
       /* ── Summary inner sub-tab switching (Detections / Cross-Sample) ── */
       (function () {
@@ -11838,6 +13682,16 @@
             if (pane) pane.classList.add("active");
             // Trigger xs redraw if switching to cross-sample for the first time
             if (target === "xs" && typeof _drawXS === "function") _drawXS();
+          });
+        });
+      })();
+
+      /* ── Run Metadata analysis sub-tab click handlers ── */
+      (function () {
+        document.querySelectorAll(".meta-subtab").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            if (btn.disabled) return;
+            if (typeof _switchMetaSub === "function") _switchMetaSub(btn.getAttribute("data-metasub"));
           });
         });
       })();
@@ -13081,17 +14935,18 @@
       let _panelSortCol = "TASS Score";
       let _panelSortAsc = false;
       let _mapDrag = null; // drag-resize state
+      // Mirrors PALETTE (colorblind-safe) so map markers match sample colors.
       const _MAP_PALETTE = [
-        "#1f77b4",
-        "#ff7f0e",
-        "#2ca02c",
-        "#d62728",
-        "#9467bd",
-        "#8c564b",
-        "#e377c2",
-        "#7f7f7f",
-        "#bcbd22",
-        "#17becf",
+        "#0072B2",
+        "#E69F00",
+        "#009E73",
+        "#CC79A7",
+        "#56B4E9",
+        "#D55E00",
+        "#117733",
+        "#882255",
+        "#DDCC77",
+        "#AA4499",
       ];
       // Highlight state for "View" button — must live here so init() can call _buildRunMetaTable
       let _runmetaHighlightSample = null;
@@ -16646,6 +18501,10 @@
         _refreshMapMarkerColors();
         if (_selectedSample || _selectedGroup) _refreshMapPanelTable();
         if (_longiBuilt) _buildLongitudinalSection();
+        // Keep the active metadata sub-tab in sync with the active filters.
+        if (activeTab === "runmeta" && _activeMetaSub) {
+          if (typeof _switchMetaSub === "function") _switchMetaSub(_activeMetaSub);
+        }
         _updateCapabilityNotice();
       }
 
@@ -16818,6 +18677,7 @@
       })();
       [
         "filter-ic",
+        "filter-scope",
         "filter-hc",
         "filter-pass",
         "hm-show-vals",
@@ -16828,6 +18688,172 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener("change", redraw);
       });
+
+      /* ═══ Search box enhancements: live status, clear button, quick chips,
+             keyboard shortcut. Reuses filteredData()'s validity flag. ═══ */
+      (function () {
+        const input = document.getElementById("filter-text");
+        const clearBtn = document.getElementById("filter-clear");
+        const statusEl = document.getElementById("filter-status");
+        const scopeEl = document.getElementById("filter-scope");
+        const icEl = document.getElementById("filter-ic");
+        const chipsEl = document.getElementById("filter-chips");
+        if (!input) return;
+
+        // Lightweight, debounced count of what the current pattern matches —
+        // independent of the TASS threshold so it reflects the raw search.
+        function _updateSearchStatus() {
+          const txt = (input.value || "").trim();
+          const hasTxt = txt.length > 0;
+          document.body.classList.toggle("has-search", hasTxt);
+          _renderChips();
+          if (!hasTxt) {
+            document.body.classList.remove("search-invalid");
+            statusEl.textContent = "";
+            statusEl.className = "";
+            return;
+          }
+          const ic = icEl.checked;
+          const scope = scopeEl.value || "both";
+          let rx = null;
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+          }
+          if (!rx) {
+            document.body.classList.add("search-invalid");
+            statusEl.textContent = "incomplete pattern";
+            statusEl.className = "warn";
+            return;
+          }
+          document.body.classList.remove("search-invalid");
+          const orgs = new Set();
+          const samps = new Set();
+          for (let i = 0; i < DATA.length; i++) {
+            const r = DATA[i];
+            const sid = r["Specimen ID"] || "";
+            if (sampleHidden[sid]) continue;
+            const inS = rx.test(sid);
+            const inO = rx.test(r["Detected Organism"] || "");
+            const hit = scope === "sample" ? inS : scope === "organism" ? inO : inS || inO;
+            if (hit) {
+              orgs.add(r["Taxonomic ID #"] || r["Detected Organism"] || "");
+              if (sid) samps.add(sid);
+            }
+          }
+          const nO = orgs.size,
+            nS = samps.size;
+          if (nO === 0) {
+            statusEl.textContent = "no matches";
+            statusEl.className = "zero";
+          } else {
+            statusEl.textContent = `${nO} organism${nO === 1 ? "" : "s"} · ${nS} sample${nS === 1 ? "" : "s"}`;
+            statusEl.className = "";
+          }
+        }
+
+        let _statusTimer = null;
+        function _statusDebounced() {
+          clearTimeout(_statusTimer);
+          _statusTimer = setTimeout(_updateSearchStatus, 120);
+        }
+        input.addEventListener("input", _statusDebounced);
+        scopeEl.addEventListener("change", _updateSearchStatus);
+        icEl.addEventListener("change", _updateSearchStatus);
+
+        // Options panel toggle
+        const optsToggle = document.getElementById("filter-opts-toggle");
+        const metaPanel = document.getElementById("filter-search-meta");
+        if (optsToggle && metaPanel) {
+          optsToggle.addEventListener("click", () => {
+            const open = metaPanel.classList.toggle("open");
+            optsToggle.classList.toggle("open", open);
+            optsToggle.setAttribute("aria-expanded", String(open));
+            optsToggle.querySelector("i") &&
+              (optsToggle.innerHTML = `<i class="fas fa-sliders-h" style="font-size:0.85em"></i> Options ${
+                open ? "▴" : "▾"
+              }`);
+          });
+        }
+
+        // Clear button
+        clearBtn.addEventListener("click", () => {
+          input.value = "";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          _updateSearchStatus();
+          input.focus();
+        });
+
+        // Esc clears while focused; "/" focuses search from anywhere.
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && input.value) {
+            e.preventDefault();
+            input.value = "";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            _updateSearchStatus();
+          }
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "/") return;
+          const t = e.target;
+          const typing =
+            t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+          if (typing) return;
+          if (document.body.classList.contains("help-active")) return;
+          e.preventDefault();
+          input.focus();
+          input.select();
+        });
+
+        // ── Quick-filter chips: recent searches + a one-click "Clear" reset.
+        // The bar stays hidden (CSS :empty) until there is something to show.
+        const _recent = [];
+        function _applyChip(pattern) {
+          input.value = pattern;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          _updateSearchStatus();
+        }
+        function _renderChips() {
+          if (!chipsEl) return;
+          const parts = [];
+          if ((input.value || "").trim()) {
+            parts.push(
+              `<span class="filter-chip" data-pat="" title="Clear the search"><i class="fas fa-xmark" style="font-size:0.85em;margin-right:3px;opacity:.6"></i>Clear</span>`,
+            );
+          }
+          _recent
+            .slice(0, 4)
+            .forEach((p) =>
+              parts.push(
+                `<span class="filter-chip recent" data-pat="${p.replace(
+                  /"/g,
+                  "&quot;",
+                )}" title="Recent: ${p}"><i class="fas fa-clock-rotate-left" style="font-size:0.85em;margin-right:3px;opacity:.6"></i>${
+                  p.length > 16 ? p.slice(0, 15) + "…" : p
+                }</span>`,
+              ),
+            );
+          chipsEl.innerHTML = parts.join("");
+        }
+        chipsEl?.addEventListener("click", (e) => {
+          const chip = e.target.closest(".filter-chip");
+          if (!chip) return;
+          _applyChip(chip.getAttribute("data-pat") || "");
+        });
+        // Remember a committed search (Enter) as a recent chip.
+        input.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          const v = (input.value || "").trim();
+          if (v && !_recent.includes(v)) {
+            _recent.unshift(v);
+            if (_recent.length > 4) _recent.pop();
+            _renderChips();
+          }
+        });
+        _renderChips();
+        _updateSearchStatus();
+      })();
       // Threshold-rollup toggle: drive ROLLUP_PASS + invalidate filter cache.
       (function () {
         const el = document.getElementById("filter-rollup");
@@ -17925,6 +19951,10 @@
         // fromBoot=true means we're restoring from BOOT (replaces everything)
         // fromBoot=false means user-uploaded CSV (merges / overrides by sample_name)
         window._applyMetaRecords = function (newRecords, fromBoot) {
+          // Split comma-packed multi-value fields (e.g. host_disease) into arrays
+          // so they are counted per value. Runs on every entry path (boot restore,
+          // uploaded JSON, metadata CSV, re-loaded saved state).
+          if (typeof _normalizeMetaRecord === "function") (newRecords || []).forEach(_normalizeMetaRecord);
           if (fromBoot) {
             // Full replace: restore to boot state
             RUN_META.length = 0;
@@ -17959,8 +19989,9 @@
           if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
           if (rmBtn) rmBtn.classList.toggle("hidden", RUN_META.length === 0);
 
-          // Rebuild metadata table
+          // Rebuild metadata table + update sub-tab enabled states
           _buildRunMetaTable();
+          if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
 
           // Rebuild / refresh map if it was already initialized
           if (_leafletMap) {
@@ -18121,6 +20152,9 @@
         };
       })();
 
+      // ── Run Metadata analysis sub-tab state ──────────────────────────────
+      let _activeMetaSub = null; // e.g. "longi" | "geo" | "host" | "cmp"
+
       (function init() {
         // Banner subtitle
         document.getElementById("banner-sub").textContent = _buildBannerSub();
@@ -18189,9 +20223,9 @@
         renderTableHeaders();
         redraw();
 
-        // ── Build Run Metadata table + longitudinal section on init
+        // ── Build Run Metadata table + initialize sub-tab states on load
         _buildRunMetaTable();
-        _buildLongitudinalSection();
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
         _initExportEnhancer();
         const pdfBtn = document.getElementById("report-pdf-btn");
         if (pdfBtn) {
@@ -18232,18 +20266,420 @@
       })();
 
       /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  SESSION STATE  (export / import) + GITHUB-PAGES STARTUP DIALOG
+       -     ttExportState()      — serialize current data + all UI filters → JSON
+       -     ttLoadStateFiles()   — read a state JSON file from <input type=file>
+       -     ttLoadState(state)   — apply a parsed state envelope (data + filters)
+       -     _ttApplyBoot(boot)   — replace all live data globals from a BOOT-shape
+       -     _ttCaptureUi/_ttRestoreUi — snapshot & restore every id'd form control
+       -     The GitHub-Pages build (which inlines its dataset as <script
+       -     id="BOOTSTRAP">) shows a startup dialog: Demo (default) / Empty /
+       -     Upload. Pipeline reports (window.HEATMAP_BOOT) skip it entirely.
+═══════════════════════════════════════════════════════════════════════════ */
+      (function () {
+        function _ttSetStateStatus(msg, isError) {
+          var el = document.getElementById("state-status");
+          if (el) {
+            el.textContent = msg;
+            el.style.color = isError ? "#b33" : "#2a7a2a";
+          }
+        }
+
+        // Decode any base64-packed breadth histograms in-place (same as boot).
+        function _ttDecodeContigB64(list) {
+          (list || []).forEach(function (cd) {
+            var bh = cd && cd.breadth_histogram;
+            if (bh && bh.b64 && !bh.bins) {
+              try {
+                var raw = atob(bh.b64);
+                bh.bins = Array.from({ length: raw.length }, function (_, i) {
+                  return raw.charCodeAt(i);
+                });
+              } catch (e) {}
+            }
+          });
+        }
+
+        function _ttEmptyBoot() {
+          return {
+            records: [],
+            all_cols: [],
+            numeric_cols: [],
+            sample_meta: {},
+            prot_data: {},
+            has_prot: false,
+            contig_data: [],
+            best_cutoffs: {},
+            run_metadata_records: [],
+            has_geo: false,
+          };
+        }
+
+        // Replace every live data global from a BOOT-shaped object, then rebuild
+        // the whole UI by reusing the existing clear/restore code paths.
+        function _ttApplyBoot(b) {
+          b = b || {};
+          // Rewrite the BOOT baseline so the well-tested clearUploadedData() /
+          // _applyMetaRecords() restore paths rebuild from the *new* data rather
+          // than resurrecting the original report.
+          BOOT.records = Array.isArray(b.records) ? b.records : [];
+          BOOT.all_cols = Array.isArray(b.all_cols) ? b.all_cols : [];
+          BOOT.numeric_cols = Array.isArray(b.numeric_cols) ? b.numeric_cols : [];
+          BOOT.sample_meta = b.sample_meta || {};
+          BOOT.prot_data = b.prot_data || {};
+          BOOT.has_prot = !!b.has_prot;
+          BOOT.contig_data = Array.isArray(b.contig_data) ? b.contig_data : [];
+          BOOT.best_cutoffs = b.best_cutoffs || {};
+          BOOT.run_metadata_records = Array.isArray(b.run_metadata_records) ? b.run_metadata_records : [];
+          BOOT.has_geo = !!b.has_geo;
+          _ttDecodeContigB64(BOOT.contig_data);
+
+          // Full-replace SAMPLE_META *up front* — before clearUploadedData()'s
+          // redraw — so the summary KPIs (% Classified, Total Reads, which read
+          // total_reads / total_organism_reads from SAMPLE_META) compute against
+          // the new metadata instead of an empty object (which showed "N/A").
+          // _applyMetaRecords(...,true) re-applies BOOT.sample_meta afterward
+          // (idempotent).
+          SAMPLE_META = Object.assign({}, b.sample_meta || {});
+
+          // Re-synthesize the taxonomy hierarchy against the new records.
+          try {
+            _HIERARCHY_SYNTHESIZED = false;
+          } catch (e) {}
+
+          // Detections side: rebuild table/heatmap/etc. from the new BOOT.
+          if (window.clearUploadedData) window.clearUploadedData();
+          // Metadata side: replace RUN_META (also splits host_disease), refresh
+          // map + run-meta tab + sub-tab states.
+          if (window._applyMetaRecords) window._applyMetaRecords(BOOT.run_metadata_records || [], true);
+
+          if (typeof _syncViewLevelOptions === "function") _syncViewLevelOptions();
+          var histBtn = document.getElementById("hist-tab-btn");
+          if (histBtn) histBtn.classList.remove("hidden");
+        }
+        window._ttApplyBoot = _ttApplyBoot;
+
+        // ── Snapshot every id'd form control + sample colors + active tab ──────
+        function _ttCaptureUi() {
+          var ui = { controls: {}, sampleColors: {}, activeTab: null };
+          document.querySelectorAll("input[id], select[id], textarea[id]").forEach(function (el) {
+            if (el.type === "file") return;
+            if (el.type === "checkbox" || el.type === "radio") ui.controls[el.id] = { checked: el.checked };
+            else ui.controls[el.id] = { value: el.value };
+          });
+          try {
+            if (typeof sampleColors !== "undefined" && sampleColors) ui.sampleColors = Object.assign({}, sampleColors);
+          } catch (e) {}
+          try {
+            if (typeof activeTab !== "undefined") ui.activeTab = activeTab;
+          } catch (e) {}
+          return ui;
+        }
+
+        function _ttRestoreUi(ui) {
+          if (!ui) return;
+          // Sample colors first so the redraw below uses them.
+          try {
+            if (ui.sampleColors && typeof sampleColors !== "undefined" && sampleColors) {
+              Object.keys(ui.sampleColors).forEach(function (k) {
+                sampleColors[k] = ui.sampleColors[k];
+              });
+            }
+          } catch (e) {}
+          Object.keys(ui.controls || {}).forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el || el.type === "file") return;
+            var v = ui.controls[id];
+            if (v && Object.prototype.hasOwnProperty.call(v, "checked")) el.checked = v.checked;
+            else if (v && v.value !== undefined) el.value = v.value;
+          });
+          // Keep the TASS min number<->range slider pair in sync.
+          var minEl = document.getElementById("filter-min");
+          var rangeEl = document.getElementById("filter-min-range");
+          if (minEl && rangeEl) rangeEl.value = minEl.value;
+          // Re-apply filters / rerender.
+          try {
+            if (typeof buildTable === "function") buildTable();
+          } catch (e) {}
+          try {
+            if (typeof renderTableHeaders === "function") renderTableHeaders();
+          } catch (e) {}
+          try {
+            if (typeof redraw === "function") redraw();
+          } catch (e) {}
+          try {
+            if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+          } catch (e) {}
+          // Restore the active tab (only if visible + enabled).
+          if (ui.activeTab) {
+            var btn = document.querySelector('.tab-btn[data-tab="' + ui.activeTab + '"]');
+            if (btn && !btn.classList.contains("hidden") && !btn.classList.contains("tab-disabled")) btn.click();
+          }
+        }
+
+        // ── Export: full data snapshot + UI filter state → downloadable JSON ──
+        window.ttExportState = function () {
+          try {
+            var boot = {
+              records: Array.isArray(DATA) ? DATA : [],
+              all_cols: Array.isArray(ALL_COLS) ? ALL_COLS : [],
+              numeric_cols: typeof NUMERIC !== "undefined" && NUMERIC ? Array.from(NUMERIC) : [],
+              sample_meta: typeof SAMPLE_META !== "undefined" && SAMPLE_META ? SAMPLE_META : {},
+              prot_data: typeof PROT !== "undefined" && PROT ? PROT : {},
+              has_prot: !!(typeof HAS_PROT !== "undefined" && HAS_PROT),
+              contig_data: Array.isArray(CONTIG_DATA) ? CONTIG_DATA : [],
+              best_cutoffs: (BOOT && BOOT.best_cutoffs) || {},
+              run_metadata_records: Array.isArray(RUN_META) ? RUN_META : [],
+              has_geo:
+                Array.isArray(RUN_META) &&
+                RUN_META.some(function (r) {
+                  return r.latitude != null && r.longitude != null;
+                }),
+            };
+            var state = {
+              __taxtriage_state__: true,
+              version: 1,
+              exported_at: new Date().toISOString(),
+              boot: boot,
+              ui: _ttCaptureUi(),
+            };
+            var json = JSON.stringify(state);
+            var blob = new Blob([json], { type: "application/json" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            var stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+            a.href = url;
+            a.download = "taxtriage_state_" + stamp + ".json";
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 0);
+            _ttSetStateStatus("✓ State exported (" + boot.records.length + " rows).", false);
+          } catch (e) {
+            _ttSetStateStatus("Export failed: " + (e && e.message ? e.message : e), true);
+          }
+        };
+
+        // ── Apply a parsed state envelope (or a bare BOOT-shaped object) ──────
+        window.ttLoadState = function (state) {
+          if (!state || typeof state !== "object") throw new Error("Not a valid state file");
+          var boot = state.boot || (Array.isArray(state.records) ? state : null);
+          if (!boot) throw new Error("State file has no data payload");
+          _ttApplyBoot(boot);
+          if (state.ui) _ttRestoreUi(state.ui);
+        };
+
+        // ── Read a state JSON file from the sidebar <input type=file> ─────────
+        window.ttLoadStateFiles = function (files) {
+          var f = files && files[0];
+          if (!f) return;
+          _ttSetStateStatus("Loading state…", false);
+          var reader = new FileReader();
+          reader.onload = function (e) {
+            try {
+              var state = JSON.parse(e.target.result);
+              window.ttLoadState(state);
+              _ttSetStateStatus("✓ State loaded from " + f.name + ".", false);
+            } catch (err) {
+              _ttSetStateStatus("Load failed: " + (err && err.message ? err.message : err), true);
+            }
+          };
+          reader.onerror = function () {
+            _ttSetStateStatus("Could not read " + f.name, true);
+          };
+          reader.readAsText(f);
+          var inp = document.getElementById("state-load-input");
+          if (inp) inp.value = "";
+        };
+
+        // ── GitHub-Pages startup dialog: Demo (default) / Empty / Upload ──────
+        function _ttShowPagesDialog() {
+          if (document.getElementById("tt-pages-overlay")) return;
+          var ov = document.createElement("div");
+          ov.id = "tt-pages-overlay";
+          ov.style.cssText =
+            "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;" +
+            "justify-content:center;background:rgba(13,40,66,0.55);backdrop-filter:blur(2px)";
+          ov.innerHTML =
+            '<div role="dialog" aria-modal="true" aria-labelledby="tt-pages-title" ' +
+            'style="background:#fff;border-radius:12px;max-width:460px;width:90%;' +
+            'box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden;font-family:inherit">' +
+            '<div id="tt-pages-title" style="background:#1565c0;color:#fff;padding:14px 18px;' +
+            'font-weight:700;font-size:1.05em"><i class="fas fa-vials" style="margin-right:.5em"></i>' +
+            "TaxTriage Interactive Report</div>" +
+            '<div style="padding:18px;color:#334;line-height:1.5;font-size:.92em">' +
+            '<p style="margin:0 0 14px">Choose how to start. You can change the data source at any ' +
+            "time from the <b>Upload Data</b> panel in the sidebar.</p>" +
+            '<div style="display:flex;flex-direction:column;gap:10px">' +
+            '<button id="tt-pages-demo" style="width:100%;padding:.7em;font-size:.95em;border:none;' +
+            'border-radius:8px;background:#1565c0;color:#fff;cursor:pointer;font-weight:700">' +
+            '<i class="fas fa-flask" style="margin-right:.45em"></i>Load demo data ' +
+            '<span style="opacity:.85;font-weight:500">(recommended)</span></button>' +
+            '<button id="tt-pages-empty" style="width:100%;padding:.7em;font-size:.92em;' +
+            "border:1px solid #b0cce8;border-radius:8px;background:#f5f9ff;color:#1565c0;" +
+            'cursor:pointer;font-weight:600"><i class="fas fa-file" style="margin-right:.45em"></i>' +
+            "Start empty</button>" +
+            '<button id="tt-pages-upload" style="width:100%;padding:.7em;font-size:.92em;' +
+            "border:1px solid #b0cce8;border-radius:8px;background:#fff;color:#1565c0;" +
+            'cursor:pointer;font-weight:600"><i class="fas fa-upload" style="margin-right:.45em"></i>' +
+            "Upload your own data…</button>" +
+            "</div></div></div>";
+          document.body.appendChild(ov);
+          function close() {
+            ov.remove();
+          }
+          var demoBtn = document.getElementById("tt-pages-demo");
+          var emptyBtn = document.getElementById("tt-pages-empty");
+          var upBtn = document.getElementById("tt-pages-upload");
+          if (demoBtn)
+            demoBtn.addEventListener("click", function () {
+              close();
+            }); // demo already loaded on boot
+          if (emptyBtn)
+            emptyBtn.addEventListener("click", function () {
+              _ttApplyBoot(_ttEmptyBoot());
+              close();
+            });
+          if (upBtn)
+            upBtn.addEventListener("click", function () {
+              _ttApplyBoot(_ttEmptyBoot());
+              close();
+              var zone = document.getElementById("upload-zone");
+              if (zone && zone.scrollIntoView) zone.scrollIntoView({ behavior: "smooth", block: "center" });
+              var inp = document.getElementById("file-upload-input");
+              if (inp)
+                setTimeout(function () {
+                  inp.click();
+                }, 250);
+            });
+          ov.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") close();
+          });
+          setTimeout(function () {
+            if (demoBtn) demoBtn.focus();
+          }, 30);
+        }
+
+        // Only the GitHub-Pages build inlines its dataset as <script id="BOOTSTRAP">.
+        // Pipeline reports set window.HEATMAP_BOOT and never carry that element.
+        if (document.getElementById("BOOTSTRAP")) {
+          if (document.readyState === "complete" || document.readyState === "interactive") {
+            setTimeout(_ttShowPagesDialog, 0);
+          } else {
+            window.addEventListener("DOMContentLoaded", function () {
+              setTimeout(_ttShowPagesDialog, 0);
+            });
+          }
+        }
+      })();
+
+      /* ═══════════════════════════════════════════════════════════════════════════
        -  §  TAB: RUN METADATA       (data-tab="runmeta"  —  hidden if no meta)
        -     _buildRunMetaTable()  — renders the metadata grid (one row per
        -     sample, columns from the union of metadata keys present in DATA).
        -     _metaKeyLabel()       — pretty-prints raw keys for column headers.
-       -     The Run Metadata tab also hosts the longitudinal-analysis section
-       -     (next banner) when collection_time + run_id are present.
+       -     _switchMetaSub(id)    — activates a run-metadata analysis sub-tab.
+       -     _updateMetaSubTabStates() — enables/disables sub-tabs based on data.
 ═══════════════════════════════════════════════════════════════════════════ */
+
+      // Activate a sub-tab pane and trigger its chart build.
+      function _switchMetaSub(id) {
+        _activeMetaSub = id;
+        document
+          .querySelectorAll(".meta-subtab")
+          .forEach((b) => b.classList.toggle("active", b.getAttribute("data-metasub") === id));
+        document
+          .querySelectorAll(".meta-subpane")
+          .forEach((p) => p.classList.toggle("active", p.id === `meta-subpane-${id}`));
+        // Trigger the relevant build now that the pane is visible
+        if (id === "longi" && typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
+        if (id === "geo" && typeof _buildGeoComparison === "function") _buildGeoComparison();
+        if (id === "host" && typeof _buildHostDisease === "function") _buildHostDisease();
+        if (id === "cmp" && typeof _buildComparison === "function") _buildComparison();
+      }
+
+      // Inspect RUN_META and enable/disable each sub-tab; auto-switch away from
+      // a disabled tab.  Also shows/hides the per-pane warning banner.
+      function _updateMetaSubTabStates() {
+        // ── Longitudinal: needs at least one record with a parseable collection_time
+        const hasLongi = (RUN_META || []).some((r) => {
+          try {
+            return !!_parseLongiDate(r.collection_time);
+          } catch (e) {
+            return false;
+          }
+        });
+
+        // Inline field lists to avoid TDZ if this is called before the const declarations
+        // lower in the script (_GEO_META_FIELDS / _HOST_META_FIELDS at ~line 19970).
+        const _geoFields = ["sample_origin_country", "sample_origin_state_province_territory"];
+        const _hostFields = ["host_scientific_name", "host_disease", "environmental_site"];
+
+        // ── Geographic: needs at least one geo-origin field
+        const hasGeo = typeof _anyMetaValue === "function" && _anyMetaValue(_geoFields);
+
+        // ── Host & Disease: needs host / disease / site field
+        const hasHost = typeof _anyMetaValue === "function" && _anyMetaValue(_hostFields);
+
+        // ── Cross-Entry: always available (shows internal no-data message when < 2 entries)
+        const hasCmp = true;
+
+        const configs = [
+          {
+            id: "longi",
+            ok: hasLongi,
+            warn: "This tab requires a <b>collection_time</b> column in your metadata samplesheet (ISO date or M/D/YYYY).",
+          },
+          {
+            id: "geo",
+            ok: hasGeo,
+            warn: "This tab requires at least one of: <b>sample_origin_country</b> or <b>sample_origin_state_province_territory</b> in your metadata samplesheet.",
+          },
+          {
+            id: "host",
+            ok: hasHost,
+            warn: "This tab requires at least one of: <b>host_scientific_name</b>, <b>host_disease</b>, or <b>environmental_site</b> in your metadata samplesheet.",
+          },
+          { id: "cmp", ok: hasCmp, warn: "" },
+        ];
+
+        let firstEnabled = null;
+        configs.forEach(({ id, ok, warn }) => {
+          const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);
+          const warnEl = document.getElementById(`meta-subtab-warn-${id}`);
+          const warnMsg = document.getElementById(`meta-subtab-warn-${id}-msg`);
+          if (btn) btn.disabled = !ok;
+          if (warnEl) warnEl.style.display = !ok && warn ? "flex" : "none";
+          if (warnMsg) warnMsg.innerHTML = warn;
+          if (ok && !firstEnabled) firstEnabled = id;
+        });
+
+        // If no active sub-tab yet, or the active one just became disabled → switch
+        const activeBtn = _activeMetaSub && document.querySelector(`.meta-subtab[data-metasub="${_activeMetaSub}"]`);
+        if (!_activeMetaSub || (activeBtn && activeBtn.disabled)) {
+          if (firstEnabled) _switchMetaSub(firstEnabled);
+        }
+      }
+
       // Pretty-print a raw key name → display label
       function _metaKeyLabel(k) {
         const KNOWN = {
           sample_name: "Sample",
           run_id: "Run ID",
+          sample_id: "Sample ID",
+          organism: "Organism",
+          submitter_organization_name: "Submitter Organization",
+          sample_origin_country: "Country",
+          sample_origin_state_province_territory: "State / Province / Territory",
+          host_scientific_name: "Host (Scientific Name)",
+          environmental_site: "Environmental Site",
+          host_disease: "Host Disease",
+          library_preparation_kit: "Library Prep Kit",
+          sequencing_instrument: "Sequencing Instrument",
+          sequencing_protocol_primer_set: "Primer Set",
+          sequencing_platform: "Sequencing Platform",
           latitude: "Latitude",
           longitude: "Longitude",
           depth: "Depth (m)",
@@ -18301,11 +20737,8 @@
         });
 
         const timedSamples = Object.keys(timeMap);
-        if (!timedSamples.length) {
-          section.style.display = "none";
-          return;
-        }
-        section.style.display = "block";
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!timedSamples.length) return;
 
         // Organisms that appear in at least one timed sample
         const eligible = new Set(timedSamples);
@@ -18596,7 +21029,15 @@
         wrap.appendChild(legendDiv);
 
         // ── SVG chart ──
-        const W = Math.max(320, wrap.clientWidth || 520);
+        // If the container has no layout width yet (tab hidden on first render),
+        // defer one animation frame so the browser can compute the real clientWidth.
+        const _rawW = wrap.clientWidth || wrap.offsetWidth || 0;
+        if (!_rawW) {
+          wrap.innerHTML = "";
+          requestAnimationFrame(_drawLongitudinalPlot);
+          return;
+        }
+        const W = Math.max(320, _rawW);
         const H = 290;
         const ML = 62,
           MR = 20,
@@ -18609,6 +21050,7 @@
           .select(wrap)
           .append("svg")
           .attr("viewBox", `0 0 ${W} ${H}`)
+          .attr("height", H)
           .style("width", "100%")
           .style("display", "block")
           .style("overflow", "visible");
@@ -18919,11 +21361,8 @@
         });
 
         const timedSamples = Object.keys(timeMap);
-        if (!timedSamples.length) {
-          section.style.display = "none";
-          return;
-        }
-        section.style.display = "block";
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!timedSamples.length) return;
 
         // Organisms that appear in at least one timed sample
         const eligible = new Set(timedSamples);
@@ -19214,7 +21653,15 @@
         wrap.appendChild(legendDiv);
 
         // ── SVG chart ──
-        const W = Math.max(320, wrap.clientWidth || 520);
+        // If the container has no layout width yet (tab hidden on first render),
+        // defer one animation frame so the browser can compute the real clientWidth.
+        const _rawW = wrap.clientWidth || wrap.offsetWidth || 0;
+        if (!_rawW) {
+          wrap.innerHTML = "";
+          requestAnimationFrame(_drawLongitudinalPlot);
+          return;
+        }
+        const W = Math.max(320, _rawW);
         const H = 290;
         const ML = 62,
           MR = 20,
@@ -19227,6 +21674,7 @@
           .select(wrap)
           .append("svg")
           .attr("viewBox", `0 0 ${W} ${H}`)
+          .attr("height", H)
           .style("width", "100%")
           .style("display", "block")
           .style("overflow", "visible");
@@ -19487,9 +21935,15 @@
       }
 
       function _buildRunMetaTable() {
-        if (!RUN_META || RUN_META.length === 0) return;
         const hdrRow = document.getElementById("runmeta-header-row");
         const tbody = document.getElementById("runmeta-body");
+        // No metadata (e.g. after "Start empty" or loading an empty state):
+        // clear any previously-rendered rows instead of leaving them stale.
+        if (!RUN_META || RUN_META.length === 0) {
+          if (hdrRow) hdrRow.innerHTML = "";
+          if (tbody) tbody.innerHTML = "";
+          return;
+        }
         if (!hdrRow || !tbody) return;
 
         // Discover all keys present across every record, keeping sample_name first
@@ -19500,15 +21954,39 @@
           }),
         );
         // Preferred order for known fields, then any extras alphabetically
-        const KNOWN_ORDER = ["run_id", "latitude", "longitude", "depth", "salinity", "collection_time", "location"];
+        const KNOWN_ORDER = [
+          "run_id",
+          "sample_id",
+          "organism",
+          "host_scientific_name",
+          "host_disease",
+          "environmental_site",
+          "sample_origin_country",
+          "sample_origin_state_province_territory",
+          "latitude",
+          "longitude",
+          "depth",
+          "salinity",
+          "collection_time",
+          "location",
+          "submitter_organization_name",
+          "library_preparation_kit",
+          "sequencing_instrument",
+          "sequencing_platform",
+          "sequencing_protocol_primer_set",
+        ];
         const ordered = [
           "sample_name",
           ...KNOWN_ORDER.filter((k) => keySet.has(k)),
           ...[...keySet].filter((k) => !KNOWN_ORDER.includes(k)).sort(),
         ];
-        // Only show columns that have at least one non-null value and not an object
+        // Only show columns that have at least one non-null value.
+        // Arrays (e.g. host_disease split on commas) are allowed; plain objects are excluded.
         const activeCols = ordered.filter((k) =>
-          RUN_META.some((r) => r[k] != null && r[k] !== "" && typeof r[k] !== "object"),
+          RUN_META.some((r) => {
+            const _v = r[k];
+            return _v != null && _v !== "" && (Array.isArray(_v) || typeof _v !== "object");
+          }),
         );
         hdrRow.innerHTML = activeCols
           .map(
@@ -19526,9 +22004,13 @@
           const cells = activeCols
             .map((k) => {
               const v = rec[k];
-              return `<td style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${
-                v != null ? String(v).replace(/"/g, "&quot;") : ""
-              }">${v != null ? v : "—"}</td>`;
+              const disp = Array.isArray(v) ? v.join(", ") : v != null ? v : "—";
+              const title = Array.isArray(v)
+                ? v.join(", ").replace(/"/g, "&quot;")
+                : v != null
+                ? String(v).replace(/"/g, "&quot;")
+                : "";
+              return `<td style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${disp}</td>`;
             })
             .join("");
           return `<tr id="runmeta-row-${CSS.escape(
@@ -19540,6 +22022,1373 @@
         if (_runmetaHighlightSample) {
           const row = document.getElementById(`runmeta-row-${CSS.escape(_runmetaHighlightSample)}`);
           if (row) setTimeout(() => row.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+        }
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  CATEGORICAL METADATA COMPARISONS  (geo + host/disease bar charts)
+       -     Driven by the AMD-P/Talos standard metadata fields. Each chart groups
+       -     the currently-visible detections by a categorical metadata field
+       -     (country / state, or host / disease / site) and aggregates a
+       -     chosen metric. Sections self-hide when no relevant metadata is present.
+       -     Functions: _aggregateMetaByField, _renderMetaBarChart,
+       -     _buildGeoComparison, _buildHostDisease.
+═══════════════════════════════════════════════════════════════════════════ */
+      const _META_METRIC_LABELS = {
+        samples: "Samples",
+        detections: "Detections",
+        reads: "# Reads Aligned",
+        tass: "Mean TASS Score",
+      };
+      const _GEO_META_FIELDS = ["sample_origin_country", "sample_origin_state_province_territory"];
+      const _HOST_META_FIELDS = ["host_scientific_name", "host_disease", "environmental_site"];
+
+      // True if any RUN_META record has a non-empty value for one of `fields`.
+      function _anyMetaValue(fields) {
+        return (RUN_META || []).some((r) =>
+          fields.some((f) => {
+            const _v = r[f];
+            if (_v == null) return false;
+            if (Array.isArray(_v)) return _v.some((s) => String(s).trim() !== "");
+            return String(_v).trim() !== "";
+          }),
+        );
+      }
+
+      // Group visible detections by a categorical metadata field and aggregate a metric.
+      // Returns [{label, value}] sorted descending by value.
+      // Array field values (e.g. host_disease split on commas) expand into multiple groups.
+      function _aggregateMetaByField(fieldKey, metric, sampleSet) {
+        // sample_name → array of categorical values (always an array for uniform handling)
+        // sampleSet (optional): restrict to these sample_names (used when drilling
+        // into a single country's states).
+        const valBy = {};
+        (RUN_META || []).forEach((r) => {
+          if (sampleSet && !sampleSet.has(r.sample_name)) return;
+          const v = r[fieldKey];
+          if (v == null) return;
+          const vals = Array.isArray(v)
+            ? v.map((s) => String(s).trim()).filter(Boolean)
+            : [String(v).trim()].filter(Boolean);
+          if (vals.length) valBy[r.sample_name] = vals;
+        });
+        if (!Object.keys(valBy).length) return [];
+
+        const groups = {};
+        const ensure = (val) =>
+          (groups[val] = groups[val] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
+
+        if (metric === "samples") {
+          // Count visible (non-hidden) samples per category value
+          Object.entries(valBy).forEach(([s, vals]) => {
+            if (sampleHidden[s]) return;
+            vals.forEach((val) => ensure(val).samples.add(s));
+          });
+        } else {
+          filteredData().forEach((r) => {
+            const s = r["Specimen ID"] || "";
+            const vals = valBy[s];
+            if (!vals) return;
+            vals.forEach((val) => {
+              const g = ensure(val);
+              g.samples.add(s);
+              g.detections += 1;
+              const reads = parseFloat(r["# Reads Aligned"]);
+              if (!isNaN(reads)) g.reads += reads;
+              const tass = parseFloat(r["TASS Score"]);
+              if (!isNaN(tass)) {
+                g.tassSum += tass;
+                g.tassN += 1;
+              }
+            });
+          });
+        }
+
+        const out = Object.entries(groups).map(([label, g]) => {
+          let value;
+          if (metric === "samples") value = g.samples.size;
+          else if (metric === "detections") value = g.detections;
+          else if (metric === "reads") value = g.reads;
+          else value = g.tassN ? g.tassSum / g.tassN : 0;
+          return { label, value };
+        });
+        out.sort((a, b) => b.value - a.value);
+        return out;
+      }
+
+      // Horizontal bar chart for [{label, value}] data into the element `wrapId`.
+      // opts (optional): { width, fitHeight } — when given the chart sizes itself
+      // to the supplied box (used by the resizable map overlay) instead of using
+      // the container's natural width and a fixed row height.
+      function _renderMetaBarChart(wrapId, data, metric, opts) {
+        opts = opts || {};
+        const wrap = document.getElementById(wrapId);
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        if (!data.length) return;
+
+        const isFloat = metric === "tass";
+        const fmt = (v) => (isFloat ? v.toFixed(1) : Math.round(v).toLocaleString());
+
+        const top = data.slice(0, 25);
+        const compact = !!(opts.width || opts.fitHeight);
+        const marginT = 12,
+          marginR = compact ? 46 : 70,
+          marginB = 30;
+        // Width: explicit (overlay) → container → fallback. No hard 420 floor so
+        // the chart can shrink to fit a narrow, resizable panel.
+        const W = Math.max(170, Math.floor(opts.width || wrap.clientWidth || 600));
+        // Row height: when a fit height is supplied, distribute rows to fill it
+        // (clamped so labels stay legible); otherwise use the original sizing.
+        const avail = opts.fitHeight ? Math.max(60, opts.fitHeight - marginT - marginB) : 460;
+        const rowH = Math.max(opts.fitHeight ? 15 : 22, Math.min(38, Math.floor(avail / Math.max(top.length, 1))));
+        // Left margin tracks label length but never eats more than ~55% of width.
+        const marginL = Math.min(
+          Math.max(70, top.reduce((m, d) => Math.max(m, String(d.label).length * 6.0), 0) + 12),
+          Math.floor(W * 0.55),
+        );
+        const chartH = top.length * rowH;
+        const H = chartH + marginT + marginB;
+        const iW = Math.max(20, W - marginL - marginR);
+        const xMax = d3.max(top, (d) => d.value) || 1;
+
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
+        const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
+
+        const x = d3.scaleLinear().domain([0, xMax]).range([0, iW]).nice();
+        const y = d3
+          .scaleBand()
+          .domain(top.map((d) => d.label))
+          .range([0, chartH])
+          .padding(0.2);
+
+        g.append("g").attr("class", "axis").attr("transform", `translate(0,${chartH})`).call(d3.axisBottom(x).ticks(5));
+        g.append("g").attr("class", "axis").call(d3.axisLeft(y).tickSize(0)).select(".domain").remove();
+
+        const color = d3.scaleOrdinal(d3.schemeTableau10);
+        const metricLabel = _META_METRIC_LABELS[metric] || metric;
+
+        top.forEach((d, i) => {
+          g.append("rect")
+            .attr("x", 0)
+            .attr("y", y(d.label))
+            .attr("height", y.bandwidth())
+            .attr("width", x(d.value))
+            .attr("fill", color(i))
+            .attr("rx", 2)
+            .on("mouseover", (ev) => showTip(`<b>${d.label}</b><br>${metricLabel}: ${fmt(d.value)}`, ev))
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
+          g.append("text")
+            .attr("x", x(d.value) + 5)
+            .attr("y", y(d.label) + y.bandwidth() / 2)
+            .attr("dy", "0.35em")
+            .style("font-size", "10px")
+            .attr("fill", "#444")
+            .text(fmt(d.value));
+        });
+      }
+
+      /* ── Choropleth support ─────────────────────────────────────────────────
+       -   Renders a d3-geo Natural-Earth choropleth of the visible detections
+       -   shaded by the selected metric. Country level uses lightweight
+       -   world-atlas TopoJSON; State / Province / Territory level lazily loads
+       -   Natural Earth admin-1 GeoJSON. Boundaries are fetched from public CDNs
+       -   at view time (consistent with the Map tab's online tiles) and the view
+       -   degrades to the ranked bar list if the network is unavailable.
+      ──────────────────────────────────────────────────────────────────────── */
+      const _GEO_CACHE = {};
+      function _geoFetchJSON(key, url) {
+        if (_GEO_CACHE[key] !== undefined) return _GEO_CACHE[key];
+        // Try each URL in turn so a single CDN hiccup doesn't disable the map.
+        const tryNext = (i) => {
+          if (i >= url.length) return Promise.reject(new Error("all geo sources failed"));
+          return d3.json(url[i]).catch(() => tryNext(i + 1));
+        };
+        const p = tryNext(0).catch((e) => {
+          _GEO_CACHE[key] = undefined;
+          throw e;
+        });
+        _GEO_CACHE[key] = p;
+        return p;
+      }
+      // Plain GeoJSON sources (depend only on d3; no topojson needed).
+      function _geoCountries() {
+        return _geoFetchJSON("countries", [
+          "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_110m_admin_0_countries.geojson",
+          "https://cdn.jsdelivr.net/gh/johan/world.geo.json@master/countries.geo.json",
+          "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
+        ]).then((fc) => (fc && fc.features) || []);
+      }
+      function _geoAdmin1() {
+        return _geoFetchJSON("admin1", [
+          "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson",
+          "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_50m_admin_1_states_provinces.geojson",
+          "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson",
+        ]).then((fc) => (fc && fc.features) || []);
+      }
+      function _geoNorm(s) {
+        return String(s == null ? "" : s)
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[.,'’`]/g, "")
+          .replace(/&/g, "and")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/^the /, "");
+      }
+      const _COUNTRY_ALIASES = {
+        "united state of america": "united states of america",
+        "united states": "united states of america",
+        "united states of america": "united states of america",
+        usa: "united states of america",
+        us: "united states of america",
+        "u s a": "united states of america",
+        "u s": "united states of america",
+        uk: "united kingdom",
+        "great britain": "united kingdom",
+        england: "united kingdom",
+        "czech republic": "czechia",
+        "ivory coast": "cote divoire",
+        burma: "myanmar",
+        "south korea": "south korea",
+        "republic of korea": "south korea",
+        "north korea": "north korea",
+        "russian federation": "russia",
+        "democratic republic of the congo": "dem rep congo",
+      };
+      const _US_STATE_ABBR = {
+        AL: "Alabama",
+        AK: "Alaska",
+        AZ: "Arizona",
+        AR: "Arkansas",
+        CA: "California",
+        CO: "Colorado",
+        CT: "Connecticut",
+        DE: "Delaware",
+        FL: "Florida",
+        GA: "Georgia",
+        HI: "Hawaii",
+        ID: "Idaho",
+        IL: "Illinois",
+        IN: "Indiana",
+        IA: "Iowa",
+        KS: "Kansas",
+        KY: "Kentucky",
+        LA: "Louisiana",
+        ME: "Maine",
+        MD: "Maryland",
+        MA: "Massachusetts",
+        MI: "Michigan",
+        MN: "Minnesota",
+        MS: "Mississippi",
+        MO: "Missouri",
+        MT: "Montana",
+        NE: "Nebraska",
+        NV: "Nevada",
+        NH: "New Hampshire",
+        NJ: "New Jersey",
+        NM: "New Mexico",
+        NY: "New York",
+        NC: "North Carolina",
+        ND: "North Dakota",
+        OH: "Ohio",
+        OK: "Oklahoma",
+        OR: "Oregon",
+        PA: "Pennsylvania",
+        RI: "Rhode Island",
+        SC: "South Carolina",
+        SD: "South Dakota",
+        TN: "Tennessee",
+        TX: "Texas",
+        UT: "Utah",
+        VT: "Vermont",
+        VA: "Virginia",
+        WA: "Washington",
+        WV: "West Virginia",
+        WI: "Wisconsin",
+        WY: "Wyoming",
+        DC: "District of Columbia",
+        PR: "Puerto Rico",
+        GU: "Guam",
+        VI: "United States Virgin Islands",
+        AS: "American Samoa",
+        MP: "Northern Mariana Islands",
+      };
+      // Normalized lookup keys for a metadata label, given the geo level.
+      function _geoMatchKeys(field, label) {
+        const out = [];
+        const raw = String(label == null ? "" : label).trim();
+        let n = _geoNorm(raw);
+        if (field === "sample_origin_country") {
+          n = _COUNTRY_ALIASES[n] || n;
+          out.push(n);
+        } else if (field === "sample_origin_state_province_territory") {
+          out.push(n);
+          const up = raw.toUpperCase();
+          if (_US_STATE_ABBR[up]) out.push(_geoNorm(_US_STATE_ABBR[up]));
+        } else {
+          out.push(n);
+        }
+        return out.filter(Boolean);
+      }
+      // Candidate normalized names carried by a boundary feature.
+      function _geoFeatureNames(field, f) {
+        const p = f.properties || {};
+        const cands = [];
+        if (field === "sample_origin_state_province_territory") {
+          [p.name, p.name_en, p.gn_name, p.woe_name, p.name_alt, p.abbrev, p.postal].forEach(
+            (v) => v && cands.push(_geoNorm(v)),
+          );
+        } else {
+          [p.name, p.NAME, p.name_long, p.NAME_LONG, p.admin, p.ADMIN, p.geounit, p.sovereignt, p.SOVEREIGNT].forEach(
+            (v) => {
+              if (!v) return;
+              const n = _geoNorm(v);
+              cands.push(n);
+              if (_COUNTRY_ALIASES[n]) cands.push(_COUNTRY_ALIASES[n]); // normalize map-side names too
+            },
+          );
+        }
+        return cands;
+      }
+      function _geoFeatureMatch(field, f, metaByNorm) {
+        const cands = _geoFeatureNames(field, f);
+        for (const c of cands) if (metaByNorm.has(c)) return metaByNorm.get(c);
+        return null;
+      }
+      // Normalized country name a boundary feature belongs to (for state→country
+      // filtering when drilling). Admin-1 features carry an `admin` country field.
+      function _geoFeatureCountryNorm(f) {
+        const p = f.properties || {};
+        const c =
+          p.admin || p.ADMIN || p.sovereignt || p.SOVEREIGNT || p.geonunit || p.GEOUNIT || p.name || p.NAME || "";
+        const n = _geoNorm(c);
+        return _COUNTRY_ALIASES[n] || n;
+      }
+      // sample_names whose origin country matches a normalized country name.
+      function _geoCountrySampleSet(countryNorm) {
+        const set = new Set();
+        (RUN_META || []).forEach((r) => {
+          let n = _geoNorm(r.sample_origin_country);
+          n = _COUNTRY_ALIASES[n] || n;
+          if (n && n === countryNorm) set.add(r.sample_name);
+        });
+        return set;
+      }
+      // parentField → childField nested aggregation, keyed by normalized parent.
+      function _aggregateMetaNested(parentField, childField, metric) {
+        const toArr = (v) =>
+          v == null
+            ? []
+            : Array.isArray(v)
+            ? v.map((x) => String(x).trim()).filter(Boolean)
+            : [String(v).trim()].filter(Boolean);
+        const recBy = {};
+        (RUN_META || []).forEach((r) => {
+          const p = toArr(r[parentField]);
+          if (!p.length) return;
+          recBy[r.sample_name] = { parents: p, children: toArr(r[childField]) };
+        });
+        const parents = {};
+        const eP = (p) =>
+          (parents[p] = parents[p] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0, kids: {} });
+        const eK = (P, c) =>
+          (P.kids[c] = P.kids[c] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
+        if (metric === "samples") {
+          Object.entries(recBy).forEach(([s, o]) => {
+            if (sampleHidden[s]) return;
+            o.parents.forEach((p) => {
+              const P = eP(p);
+              P.samples.add(s);
+              (o.children.length ? o.children : ["—"]).forEach((c) => eK(P, c).samples.add(s));
+            });
+          });
+        } else {
+          filteredData().forEach((row) => {
+            const s = row["Specimen ID"] || "";
+            const o = recBy[s];
+            if (!o) return;
+            const reads = parseFloat(row["# Reads Aligned"]);
+            const tass = parseFloat(row["TASS Score"]);
+            o.parents.forEach((p) => {
+              const P = eP(p);
+              P.samples.add(s);
+              P.detections += 1;
+              if (!isNaN(reads)) P.reads += reads;
+              if (!isNaN(tass)) {
+                P.tassSum += tass;
+                P.tassN += 1;
+              }
+              (o.children.length ? o.children : ["—"]).forEach((c) => {
+                const K = eK(P, c);
+                K.samples.add(s);
+                K.detections += 1;
+                if (!isNaN(reads)) K.reads += reads;
+                if (!isNaN(tass)) {
+                  K.tassSum += tass;
+                  K.tassN += 1;
+                }
+              });
+            });
+          });
+        }
+        const val = (g) =>
+          metric === "samples"
+            ? g.samples.size
+            : metric === "detections"
+            ? g.detections
+            : metric === "reads"
+            ? g.reads
+            : g.tassN
+            ? g.tassSum / g.tassN
+            : 0;
+        const out = {};
+        Object.entries(parents).forEach(([pLabel, P]) => {
+          const children = Object.entries(P.kids)
+            .map(([c, g]) => ({ label: c, value: val(g) }))
+            .filter((d) => d.label !== "—")
+            .sort((a, b) => b.value - a.value);
+          out[_geoNorm(pLabel)] = { label: pLabel, value: val(P), children };
+        });
+        return out;
+      }
+
+      let _geoNested = {};
+      function _geoRenderLegend(el, color, maxV, metric) {
+        if (!el) return;
+        const fmt = (v) => (metric === "tass" ? (+v).toFixed(1) : Math.round(v).toLocaleString());
+        const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => color(t * maxV));
+        el.style.display = "block";
+        el.innerHTML =
+          `<div style="font-weight:600;margin-bottom:1px">${_META_METRIC_LABELS[metric] || metric}</div>` +
+          `<div class="geo-legend-bar" style="background:linear-gradient(to right, ${stops.join(",")})"></div>` +
+          `<div class="geo-legend-row"><span>0</span><span>${fmt(maxV)}</span></div>`;
+      }
+      function _geoHover(ev, f, field, metric, metaByNorm) {
+        const p = f.properties || {};
+        const nm = p.name || p.NAME || p.name_en || p.admin || "—";
+        const lbl = _META_METRIC_LABELS[metric] || metric;
+        const fmt = (v) => (metric === "tass" ? (+v).toFixed(1) : Math.round(v).toLocaleString());
+        const m = _geoFeatureMatch(field, f, metaByNorm);
+        let html = `<b>${nm}</b>`;
+        if (m) {
+          html += `<br>${lbl}: ${fmt(m.value)}`;
+          const nested = _geoNested[_geoNorm(m.label)];
+          if (nested && nested.children && nested.children.length) {
+            const childName = field === "sample_origin_country" ? "States / territories" : "Counties";
+            html += `<br><span style="color:#9fb0c3;font-size:0.9em">${childName}:</span>`;
+            nested.children.slice(0, 6).forEach((c) => {
+              html += `<br>&nbsp;&nbsp;${c.label}: ${fmt(c.value)}`;
+            });
+            if (nested.children.length > 6) html += `<br>&nbsp;&nbsp;…and ${nested.children.length - 6} more`;
+          }
+        } else {
+          html += `<br><span style="color:#9fb0c3">no data</span>`;
+        }
+        showTip(html, ev);
+      }
+      function _geoDrawChoropleth(field, metric, ctx) {
+        ctx = ctx || {};
+        const wrap = document.getElementById("geo-map-wrap");
+        const svgEl = document.getElementById("geo-map-svg");
+        const statusEl = document.getElementById("geo-map-status");
+        const legendEl = document.getElementById("geo-legend");
+        if (!wrap || !svgEl || typeof d3.geoNaturalEarth1 !== "function") return;
+        const W = wrap.clientWidth || 760;
+        const H = wrap.clientHeight || 560;
+        const setStatus = (msg) => {
+          if (!statusEl) return;
+          statusEl.style.display = msg ? "flex" : "none";
+          statusEl.textContent = msg || "";
+        };
+        const flat = _aggregateMetaByField(field, metric, ctx.sampleSet);
+        const metaByNorm = new Map();
+        flat.forEach((d) => {
+          _geoMatchKeys(field, d.label).forEach((k) => {
+            if (!metaByNorm.has(k)) metaByNorm.set(k, d);
+          });
+        });
+        const maxV = d3.max(flat, (d) => d.value) || 1;
+        const color = d3.scaleSequential(d3.interpolateYlOrRd).domain([0, maxV]);
+        const childField =
+          !ctx.drill && field === "sample_origin_country" ? "sample_origin_state_province_territory" : null;
+        _geoNested = childField ? _aggregateMetaNested(field, childField, metric) : {};
+
+        const svg = d3.select(svgEl).attr("viewBox", `0 0 ${W} ${H}`).attr("preserveAspectRatio", "xMidYMid meet");
+        svg.selectAll("*").remove();
+        if (legendEl) legendEl.style.display = "none";
+        const isState = field === "sample_origin_state_province_territory";
+        setStatus("Loading boundaries…");
+        const loader = isState ? _geoAdmin1() : _geoCountries();
+        loader
+          .then((all) => {
+            if (!all || !all.length) {
+              setStatus("Map boundaries unavailable — use the ranked list →");
+              return;
+            }
+            setStatus("");
+            // When drilling into one country, restrict admin-1 polygons to it and
+            // zoom the projection to those regions.
+            let features = all;
+            if (ctx.drill) {
+              const sub = all.filter((f) => _geoFeatureCountryNorm(f) === ctx.drill.norm);
+              if (sub.length) features = sub;
+            }
+            const fc = { type: "FeatureCollection", features };
+            const proj = d3.geoNaturalEarth1().fitSize([W, H], fc);
+            const path = d3.geoPath(proj);
+            const sel = svg
+              .append("g")
+              .selectAll("path")
+              .data(features)
+              .join("path")
+              .attr("class", "geo-region")
+              .attr("d", path)
+              .attr("stroke", "#ffffff")
+              .attr("stroke-width", isState ? 0.3 : 0.4)
+              .attr("fill", (f) => {
+                const m = _geoFeatureMatch(field, f, metaByNorm);
+                return m ? color(m.value) : "#dfe6ef";
+              })
+              .on("mouseover", (ev, f) => _geoHover(ev, f, field, metric, metaByNorm))
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+            // At country level, clicking a country drills down to its states.
+            if (field === "sample_origin_country" && !ctx.drill) {
+              sel.style("cursor", "pointer").on("click", (ev, f) => {
+                hideTip();
+                let n = _geoFeatureNames(field, f)[0] || "";
+                n = _COUNTRY_ALIASES[n] || n;
+                const p = f.properties || {};
+                const label = p.name || p.NAME || p.admin || n;
+                _geoDrill = { norm: n, label };
+                if (typeof _geoRedraw === "function") _geoRedraw();
+              });
+            }
+            _geoRenderLegend(legendEl, color, maxV, metric);
+          })
+          .catch(() => {
+            setStatus("Map boundaries unavailable (offline?) — use the ranked list →");
+            if (legendEl) legendEl.style.display = "none";
+          });
+      }
+
+      // Current ranked-bar data, kept so the overlay can re-render to fit on resize
+      // without recomputing the aggregation.
+      let _geoBarData = [];
+      let _geoBarMetric = "detections";
+      // Drill state: when set, the map is showing one country's states/territories.
+      let _geoDrill = null;
+      let _geoRedraw = null; // the active draw() closure, callable from map clicks
+      function _geoFitOverlayBar() {
+        const body = document.getElementById("geo-overlay-body");
+        if (!body) return;
+        _renderMetaBarChart("geo-cmp-chart", _geoBarData, _geoBarMetric, {
+          width: body.clientWidth - 2,
+          fitHeight: body.clientHeight - 2,
+        });
+      }
+      // Make the overlay panel draggable (by its header) and resizable (corner
+      // grip), constrained to stay within the map div. Re-fits the bar on resize.
+      function _geoMakeOverlayInteractive() {
+        const wrap = document.getElementById("geo-map-wrap");
+        const ov = document.getElementById("geo-overlay");
+        const head = document.getElementById("geo-overlay-toggle");
+        const grip = document.getElementById("geo-overlay-grip");
+        if (!wrap || !ov || !head || ov._interactive) return;
+        ov._interactive = true;
+        let mode = null,
+          sx = 0,
+          sy = 0,
+          ox = 0,
+          oy = 0,
+          ow = 0,
+          oh = 0,
+          moved = false;
+        const onMove = (e) => {
+          if (!mode) return;
+          const wr = wrap.getBoundingClientRect();
+          const dx = e.clientX - sx;
+          const dy = e.clientY - sy;
+          if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+          if (mode === "move") {
+            let nl = Math.max(0, Math.min(ox + dx, wr.width - ow));
+            let nt = Math.max(0, Math.min(oy + dy, wr.height - oh));
+            ov.style.left = nl + "px";
+            ov.style.top = nt + "px";
+            ov.style.right = "auto";
+          } else {
+            let nw = Math.max(190, Math.min(ow + dx, wr.width - ox));
+            let nh = Math.max(150, Math.min(oh + dy, wr.height - oy));
+            ov.style.width = nw + "px";
+            ov.style.height = nh + "px";
+            _geoFitOverlayBar();
+          }
+          e.preventDefault();
+        };
+        const onUp = () => {
+          if (mode === "resize") _geoFitOverlayBar();
+          mode = null;
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+        };
+        const start = (e, m) => {
+          mode = m;
+          moved = false;
+          const r = ov.getBoundingClientRect();
+          const wr = wrap.getBoundingClientRect();
+          sx = e.clientX;
+          sy = e.clientY;
+          ox = r.left - wr.left;
+          oy = r.top - wr.top;
+          ow = r.width;
+          oh = r.height;
+          // pin to left/top so movement is absolute within the map div
+          ov.style.left = ox + "px";
+          ov.style.top = oy + "px";
+          ov.style.right = "auto";
+          document.addEventListener("pointermove", onMove);
+          document.addEventListener("pointerup", onUp);
+          e.preventDefault();
+        };
+        head.addEventListener("pointerdown", (e) => {
+          if (e.target.closest(".geo-overlay-grip")) return;
+          start(e, "move");
+        });
+        if (grip) grip.addEventListener("pointerdown", (e) => start(e, "resize"));
+        // Collapse on a genuine click (not the end of a drag).
+        head.addEventListener("click", () => {
+          if (moved) {
+            moved = false;
+            return;
+          }
+          ov.classList.toggle("collapsed");
+          if (!ov.classList.contains("collapsed")) _geoFitOverlayBar();
+        });
+      }
+
+      function _buildGeoComparison() {
+        const section = document.getElementById("geo-cmp-section");
+        if (!section) return;
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!_anyMetaValue(_GEO_META_FIELDS)) return;
+        const levelSel = document.getElementById("geo-cmp-level");
+        const metricSel = document.getElementById("geo-cmp-metric");
+        const noData = document.getElementById("geo-cmp-no-data");
+        const lvlLbl = document.getElementById("geo-overlay-level-lbl");
+        const LBL = {
+          sample_origin_country: "Countries",
+          sample_origin_state_province_territory: "States / Territories",
+        };
+        const backBtn = document.getElementById("geo-back");
+        const draw = () => {
+          let field = (levelSel && levelSel.value) || "sample_origin_country";
+          const metric = (metricSel && metricSel.value) || "detections";
+          // A drill overrides to state level, restricted to the picked country.
+          let sampleSet = null;
+          let drill = null;
+          if (_geoDrill) {
+            field = "sample_origin_state_province_territory";
+            if (levelSel) levelSel.value = field;
+            sampleSet = _geoCountrySampleSet(_geoDrill.norm);
+            drill = _geoDrill;
+          }
+          const data = _aggregateMetaByField(field, metric, sampleSet);
+          if (noData) noData.style.display = data.length ? "none" : "block";
+          if (lvlLbl) lvlLbl.textContent = drill ? `${drill.label} — states` : LBL[field] || "Regions";
+          if (backBtn) backBtn.style.display = drill ? "inline-flex" : "none";
+          _geoBarData = data;
+          _geoBarMetric = metric;
+          _geoFitOverlayBar();
+          _geoDrawChoropleth(field, metric, { drill, sampleSet });
+        };
+        _geoRedraw = draw;
+        if (!section._wired) {
+          section._wired = true;
+          // Manually changing the level clears any active country drill.
+          if (levelSel)
+            levelSel.addEventListener("change", () => {
+              _geoDrill = null;
+              draw();
+            });
+          if (metricSel) metricSel.addEventListener("change", draw);
+          if (backBtn)
+            backBtn.addEventListener("click", () => {
+              _geoDrill = null;
+              if (levelSel) levelSel.value = "sample_origin_country";
+              draw();
+            });
+          _geoMakeOverlayInteractive();
+        }
+        draw();
+      }
+
+      function _buildHostDisease() {
+        const section = document.getElementById("host-cmp-section");
+        if (!section) return;
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+        if (!_anyMetaValue(_HOST_META_FIELDS)) return;
+        const fieldSel = document.getElementById("host-cmp-field");
+        const metricSel = document.getElementById("host-cmp-metric");
+        const noData = document.getElementById("host-cmp-no-data");
+        const draw = () => {
+          const field = (fieldSel && fieldSel.value) || "host_disease";
+          const metric = (metricSel && metricSel.value) || "detections";
+          const data = _aggregateMetaByField(field, metric);
+          if (noData) noData.style.display = data.length ? "none" : "block";
+          _renderMetaBarChart("host-cmp-chart", data, metric);
+        };
+        if (!section._wired) {
+          section._wired = true;
+          if (fieldSel) fieldSel.addEventListener("change", draw);
+          if (metricSel) metricSel.addEventListener("change", draw);
+        }
+        draw();
+        if (typeof _buildHostMatrix === "function") _buildHostMatrix();
+      }
+
+      /* ── Symptom × Organism matrix + drill-down ──────────────────────────────
+       -   For each symptom (host_disease value) counts the number of distinct
+       -   visible samples in which each organism was detected — e.g. how many
+       -   "cold-like symptoms" samples contain RSV, or how many "diarrhea"
+       -   samples contain E. coli. Rows = symptoms, columns = organisms, cell =
+       -   sample count. Clicking a symptom row drills into a per-organism bar.
+      ──────────────────────────────────────────────────────────────────────── */
+      function _hostMatrixData(symField, orgField) {
+        const toArr = (v) =>
+          v == null
+            ? []
+            : Array.isArray(v)
+            ? v.map((x) => String(x).trim()).filter(Boolean)
+            : [String(v).trim()].filter(Boolean);
+        const symBy = {};
+        (RUN_META || []).forEach((r) => {
+          const vals = toArr(r[symField]);
+          if (vals.length) symBy[r.sample_name] = vals;
+        });
+        if (!Object.keys(symBy).length) return null;
+        // sample → set of detected organisms (visible detections only)
+        const orgBy = {};
+        filteredData().forEach((row) => {
+          const s = row["Specimen ID"] || "";
+          if (!symBy[s]) return;
+          const o = String(row[orgField] == null ? "" : row[orgField]).trim();
+          if (!o) return;
+          (orgBy[s] = orgBy[s] || new Set()).add(o);
+        });
+        // symptom → organism → Set(samples)
+        const cells = {};
+        Object.entries(symBy).forEach(([s, syms]) => {
+          if (sampleHidden[s]) return;
+          const orgs = orgBy[s];
+          if (!orgs || !orgs.size) return;
+          syms.forEach((sym) => {
+            cells[sym] = cells[sym] || {};
+            orgs.forEach((o) => {
+              (cells[sym][o] = cells[sym][o] || new Set()).add(s);
+            });
+          });
+        });
+        const symList = [];
+        const orgCount = {};
+        Object.entries(cells).forEach(([sym, om]) => {
+          let t = 0;
+          Object.entries(om).forEach(([o, set]) => {
+            const n = set.size;
+            om[o] = n; // collapse Set → count
+            t += n;
+            orgCount[o] = (orgCount[o] || 0) + n;
+          });
+          symList.push({ sym, total: t });
+        });
+        if (!symList.length || !Object.keys(orgCount).length) return null;
+        symList.sort((a, b) => b.total - a.total);
+        const orgList = Object.entries(orgCount)
+          .map(([o, n]) => ({ o, n }))
+          .sort((a, b) => b.n - a.n);
+        return { cells, symList, orgList };
+      }
+
+      function _renderHostMatrix(model, topN, onRowClick) {
+        const wrap = document.getElementById("host-matrix-chart");
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        const orgs = topN > 0 ? model.orgList.slice(0, topN) : model.orgList;
+        let maxCell = 1;
+        model.symList.forEach((s) =>
+          orgs.forEach((o) => {
+            const v = model.cells[s.sym][o.o] || 0;
+            if (v > maxCell) maxCell = v;
+          }),
+        );
+        const color = d3.scaleSequential(d3.interpolateBlues).domain([0, maxCell * 1.15]);
+        const tbl = document.createElement("table");
+        tbl.className = "hx-matrix";
+        const thead = document.createElement("thead");
+        const hr = document.createElement("tr");
+        const corner = document.createElement("th");
+        corner.className = "hx-corner";
+        corner.textContent = "Symptom \\ Organism";
+        hr.appendChild(corner);
+        orgs.forEach((o) => {
+          const th = document.createElement("th");
+          th.className = "hx-col";
+          const d = document.createElement("div");
+          d.textContent = o.o;
+          d.title = o.o + " — " + o.n + " sample-hits total";
+          th.appendChild(d);
+          hr.appendChild(th);
+        });
+        thead.appendChild(hr);
+        tbl.appendChild(thead);
+        const tb = document.createElement("tbody");
+        model.symList.forEach((s) => {
+          const tr = document.createElement("tr");
+          const rh = document.createElement("th");
+          rh.className = "hx-row";
+          rh.textContent = s.sym;
+          rh.title = s.sym + " — click to drill in";
+          rh.addEventListener("click", () => {
+            tb.querySelectorAll("th.hx-row").forEach((x) => x.classList.remove("hx-active"));
+            rh.classList.add("hx-active");
+            onRowClick(s.sym);
+          });
+          tr.appendChild(rh);
+          orgs.forEach((o) => {
+            const td = document.createElement("td");
+            td.className = "hx-cell";
+            const v = model.cells[s.sym][o.o] || 0;
+            if (v > 0) {
+              td.style.background = color(v);
+              const sp = document.createElement("span");
+              if (v > maxCell * 0.6) sp.style.color = "#fff";
+              sp.textContent = v;
+              td.appendChild(sp);
+              td.title = `${s.sym} × ${o.o}: ${v} sample${v === 1 ? "" : "s"}`;
+            }
+            tr.appendChild(td);
+          });
+          tb.appendChild(tr);
+        });
+        tbl.appendChild(tb);
+        wrap.appendChild(tbl);
+      }
+
+      function _hostDrill(model, sym) {
+        const box = document.getElementById("host-drill");
+        const lbl = document.getElementById("host-drill-label");
+        if (!box) return;
+        const om = model.cells[sym] || {};
+        const data = Object.entries(om)
+          .map(([o, n]) => ({ label: o, value: n }))
+          .sort((a, b) => b.value - a.value);
+        if (lbl) lbl.textContent = sym;
+        box.style.display = data.length ? "block" : "none";
+        _renderMetaBarChart("host-drill-chart", data, "samples");
+      }
+
+      function _buildHostMatrix() {
+        const section = document.getElementById("host-matrix-section");
+        if (!section) return;
+        const fieldSel = document.getElementById("host-mx-field");
+        const levelSel = document.getElementById("host-mx-level");
+        const topnSel = document.getElementById("host-mx-topn");
+        const noData = document.getElementById("host-matrix-no-data");
+        const drill = document.getElementById("host-drill");
+        const draw = () => {
+          const symField = (fieldSel && fieldSel.value) || "host_disease";
+          const orgField = (levelSel && levelSel.value) || "Detected Organism";
+          const topN = parseInt((topnSel && topnSel.value) || "15", 10) || 0;
+          if (drill) drill.style.display = "none";
+          const model = _hostMatrixData(symField, orgField);
+          const ok = !!(model && model.symList.length && model.orgList.length);
+          if (noData) noData.style.display = ok ? "none" : "block";
+          const wrap = document.getElementById("host-matrix-chart");
+          if (wrap && !ok) wrap.innerHTML = "";
+          if (!ok) return;
+          _renderHostMatrix(model, topN, (sym) => _hostDrill(model, sym));
+        };
+        if (!section._wired) {
+          section._wired = true;
+          [fieldSel, levelSel, topnSel].forEach((sel) => sel && sel.addEventListener("change", draw));
+        }
+        draw();
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+       -  §  CROSS-ENTRY COMPARISON  (organism-profile similarity / enrichment)
+       -     Compares the organism-hit profiles of either individual samples or
+       -     aggregated metadata groups (country, host disease, …) within a run.
+       -     Analyses: cosine similarity, Jaccard overlap, enrichment (log2 fold
+       -     vs the rest), and a raw profile heatmap. Profiles are built at genus
+       -     or species level from presence/abundance, TASS, or coverage.
+       -     Functions: _cmpAvailableFields, _cmpBuildProfiles, _cmpCosine,
+       -     _cmpJaccard, _cmpEnrichment, _cmpRenderSquare, _cmpRenderRect,
+       -     _buildComparison.
+═══════════════════════════════════════════════════════════════════════════ */
+      let _cmpAnalysis = "profile";
+      let _cmpWired = false;
+
+      // Candidate metadata fields (ordered) offered in the field selector.
+      // NOTE: exposed via a *hoisted function declaration* (not a `const`) so it
+      // is reachable even when _cmpAvailableFields() runs during init() — before
+      // execution reaches this point in the script. A plain `const` here threw a
+      // temporal-dead-zone ReferenceError ("Cannot access '_CMP_FIELD_ORDER'
+      // before initialization") that aborted init() and left the report blank.
+      function _cmpFieldOrder() {
+        return [
+          "sample_origin_country",
+          "sample_origin_state_province_territory",
+          "host_disease",
+          "host_scientific_name",
+          "environmental_site",
+          "sequencing_instrument",
+          "sequencing_platform",
+          "library_preparation_kit",
+          "submitter_organization_name",
+          "organism",
+          "run_id",
+          "location",
+        ];
+      }
+
+      // Metadata fields that actually have ≥1 non-empty value across RUN_META.
+      // Array values (e.g. host_disease) are considered populated if any element is non-empty.
+      function _cmpAvailableFields() {
+        return _cmpFieldOrder().filter((f) =>
+          (RUN_META || []).some((r) => {
+            const _v = r[f];
+            if (_v == null) return false;
+            if (Array.isArray(_v)) return _v.some((s) => String(s).trim() !== "");
+            return String(_v).trim() !== "";
+          }),
+        );
+      }
+
+      // Build per-entry organism profiles.
+      // Returns { entries:[{id,label,group}], taxa:[...], profile:{id:{taxon:value}}, unit, value }
+      function _cmpBuildProfiles() {
+        const unit = (document.getElementById("cmp-unit") || {}).value || "sample";
+        const field = (document.getElementById("cmp-field") || {}).value || "";
+        const level = (document.getElementById("cmp-level") || {}).value || "genus";
+        const value = (document.getElementById("cmp-value") || {}).value || "presence";
+
+        // sample_name → metadata field value
+        const fieldBy = {};
+        (RUN_META || []).forEach((r) => {
+          const v = r[field];
+          if (v != null && String(v).trim() !== "") fieldBy[r.sample_name] = String(v).trim();
+        });
+
+        const taxonOf = (r) =>
+          level === "genus"
+            ? (r["Genus Name"] || r["Genus"] || "").trim()
+            : (r["Species Name"] || r["Detected Organism"] || "").trim();
+
+        // The contribution of a single detection row, given the value basis.
+        const valOf = (r) => {
+          if (value === "tass") {
+            const t = level === "genus" ? parseFloat(r["Genus TASS"]) : parseFloat(r["Species TASS"]);
+            const fallback = parseFloat(r["TASS Score"]);
+            return Math.max(isNaN(t) ? 0 : t, isNaN(fallback) ? 0 : fallback);
+          }
+          if (value === "coverage") {
+            const b = parseFloat(r["Breadth %"]);
+            const c = parseFloat(r["Coverage"]);
+            return Math.max(isNaN(b) ? 0 : b, isNaN(c) ? 0 : c);
+          }
+          // presence / abundance → read count (presence implied by >0)
+          const reads = parseFloat(r["# Reads Aligned"]);
+          return isNaN(reads) ? 1 : Math.max(reads, 1);
+        };
+
+        // How to combine multiple rows of the same taxon within an entry.
+        const combine = value === "presence" ? (a, b) => a + b : (a, b) => Math.max(a, b);
+
+        const profile = {}; // entryId → {taxon → value}
+        const entryGroup = {}; // entryId → metadata group value (for sample mode coloring)
+        const taxaSet = new Set();
+
+        filteredData().forEach((r) => {
+          const sample = r["Specimen ID"] || "";
+          if (!sample || sampleHidden[sample]) return;
+          const taxon = taxonOf(r);
+          if (!taxon) return;
+          let entryId;
+          if (unit === "group") {
+            entryId = fieldBy[sample];
+            if (entryId == null) return; // sample has no value for this field → excluded
+          } else {
+            entryId = sample;
+            if (fieldBy[sample] != null) entryGroup[entryId] = fieldBy[sample];
+          }
+          const v = valOf(r);
+          if (!profile[entryId]) profile[entryId] = {};
+          profile[entryId][taxon] = profile[entryId][taxon] == null ? v : combine(profile[entryId][taxon], v);
+          taxaSet.add(taxon);
+        });
+
+        const entries = Object.keys(profile)
+          .sort((a, b) => a.localeCompare(b))
+          .map((id) => ({ id, label: id, group: unit === "group" ? id : entryGroup[id] || null }));
+
+        return {
+          unit,
+          value,
+          field,
+          level,
+          entries,
+          taxa: [...taxaSet],
+          profile,
+        };
+      }
+
+      // Cosine similarity between two {taxon:value} maps.
+      function _cmpCosine(a, b) {
+        let dot = 0,
+          na = 0,
+          nb = 0;
+        for (const k in a) {
+          na += a[k] * a[k];
+          if (b[k] != null) dot += a[k] * b[k];
+        }
+        for (const k in b) nb += b[k] * b[k];
+        if (na === 0 || nb === 0) return 0;
+        return dot / (Math.sqrt(na) * Math.sqrt(nb));
+      }
+
+      // Jaccard overlap of the presence sets of two {taxon:value} maps.
+      function _cmpJaccard(a, b) {
+        const sa = new Set(Object.keys(a).filter((k) => a[k] > 0));
+        const sb = new Set(Object.keys(b).filter((k) => b[k] > 0));
+        if (!sa.size && !sb.size) return 0;
+        let inter = 0;
+        sa.forEach((k) => {
+          if (sb.has(k)) inter++;
+        });
+        const uni = sa.size + sb.size - inter;
+        return uni === 0 ? 0 : inter / uni;
+      }
+
+      // Enrichment: per entry × taxon log2 fold-change of mean value vs all OTHER entries.
+      // Returns { taxa:[topTaxa], matrix:{entryId:{taxon:log2fc}} }
+      function _cmpEnrichment(pf) {
+        const { entries, taxa, profile } = pf;
+        const eps = 1e-6;
+        const meanOver = (ids, taxon) => {
+          if (!ids.length) return 0;
+          let s = 0;
+          ids.forEach((id) => (s += (profile[id] && profile[id][taxon]) || 0));
+          return s / ids.length;
+        };
+        const allIds = entries.map((e) => e.id);
+        const matrix = {};
+        const score = {}; // taxon → max |log2fc| (for ranking)
+        entries.forEach((e) => {
+          matrix[e.id] = {};
+          const others = allIds.filter((id) => id !== e.id);
+          taxa.forEach((t) => {
+            const mIn = (profile[e.id] && profile[e.id][t]) || 0;
+            const mOut = meanOver(others, t);
+            const fc = Math.log2((mIn + eps) / (mOut + eps));
+            matrix[e.id][t] = fc;
+            score[t] = Math.max(score[t] || 0, Math.abs(fc));
+          });
+        });
+        const topTaxa = [...taxa].sort((a, b) => (score[b] || 0) - (score[a] || 0)).slice(0, 25);
+        return { taxa: topTaxa, matrix };
+      }
+
+      // ── Square (entry × entry) similarity heatmap ──────────────────────────
+      function _cmpRenderSquare(wrap, entries, simFn, fmt) {
+        wrap.innerHTML = "";
+        const ids = entries.map((e) => e.id);
+        const n = ids.length;
+        const cell = Math.max(16, Math.min(40, Math.floor(560 / n)));
+        const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
+        const marginL = Math.min(280, Math.max(90, labelLen * 7.5));
+        const marginT = Math.min(220, Math.max(70, labelLen * 5.6));
+        const W = marginL + n * cell + 20; // no right-side legend
+        const H = marginT + n * cell + 76; // extra bottom space for horizontal legend
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
+        const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
+        const color = d3.scaleSequential(d3.interpolateBlues).domain([0, 1]);
+
+        // Precompute matrix
+        const M = ids.map((a) =>
+          ids.map((b) =>
+            simFn(
+              entries.find((e) => e.id === a),
+              entries.find((e) => e.id === b),
+            ),
+          ),
+        );
+
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            const v = M[i][j];
+            g.append("rect")
+              .attr("x", j * cell)
+              .attr("y", i * cell)
+              .attr("width", cell - 1)
+              .attr("height", cell - 1)
+              .attr("rx", 2)
+              .attr("fill", color(v))
+              .on("mouseover", (ev) =>
+                showTip(`<b>${entries[i].label}</b> vs <b>${entries[j].label}</b><br>Similarity: ${fmt(v)}`, ev),
+              )
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+            if (cell >= 28) {
+              g.append("text")
+                .attr("x", j * cell + (cell - 1) / 2)
+                .attr("y", i * cell + (cell - 1) / 2)
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .style("font-size", "9px")
+                .attr("fill", v > 0.6 ? "#fff" : "#333")
+                .text(fmt(v));
+            }
+          }
+        }
+        // Row labels
+        entries.forEach((e, i) => {
+          g.append("text")
+            .attr("x", -6)
+            .attr("y", i * cell + (cell - 1) / 2)
+            .attr("dy", "0.35em")
+            .attr("text-anchor", "end")
+            .style("font-size", "10px")
+            .attr("fill", "#333")
+            .text(e.label.length > 28 ? e.label.slice(0, 27) + "…" : e.label);
+        });
+        // Column labels (rotated)
+        entries.forEach((e, j) => {
+          g.append("text")
+            .attr("transform", `translate(${j * cell + (cell - 1) / 2}, -6) rotate(-45)`)
+            .attr("text-anchor", "start")
+            .style("font-size", "10px")
+            .attr("fill", "#333")
+            .text(e.label.length > 24 ? e.label.slice(0, 23) + "…" : e.label);
+        });
+        // Legend — horizontal bar below the matrix
+        _cmpColorLegend(svg, marginL, marginT + n * cell + 22, color, 0, 1, fmt);
+      }
+
+      // ── Rectangular (entry × taxon) heatmap (profile or enrichment) ─────────
+      function _cmpRenderRect(wrap, entries, taxa, getVal, colorFn, fmt, domain) {
+        wrap.innerHTML = "";
+        const nR = entries.length,
+          nC = taxa.length;
+        if (!nC) return;
+        const cellW = Math.max(16, Math.min(34, Math.floor(620 / nC)));
+        const cellH = Math.max(16, Math.min(34, Math.floor(420 / Math.max(nR, 1))));
+        const taxLen = taxa.reduce((m, t) => Math.max(m, String(t).length), 0);
+        const labelLen = entries.reduce((m, e) => Math.max(m, String(e.label).length), 0);
+        const marginL = Math.min(280, Math.max(100, labelLen * 7.5));
+        const marginT = Math.min(240, Math.max(80, taxLen * 5.8));
+        const W = marginL + nC * cellW + 20; // no right-side legend; minimal right padding
+        const H = marginT + nR * cellH + 76; // extra bottom room for horizontal legend
+        const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).style("overflow", "visible");
+        const g = svg.append("g").attr("transform", `translate(${marginL},${marginT})`);
+
+        entries.forEach((e, i) => {
+          taxa.forEach((t, j) => {
+            const v = getVal(e.id, t);
+            g.append("rect")
+              .attr("x", j * cellW)
+              .attr("y", i * cellH)
+              .attr("width", cellW - 1)
+              .attr("height", cellH - 1)
+              .attr("rx", 2)
+              .attr("fill", colorFn(v))
+              .on("mouseover", (ev) => showTip(`<b>${e.label}</b><br>${t}: ${fmt(v)}`, ev))
+              .on("mousemove", moveTip)
+              .on("mouseout", hideTip);
+          });
+          g.append("text")
+            .attr("x", -6)
+            .attr("y", i * cellH + (cellH - 1) / 2)
+            .attr("dy", "0.35em")
+            .attr("text-anchor", "end")
+            .style("font-size", "10px")
+            .attr("fill", "#333")
+            .text(e.label.length > 28 ? e.label.slice(0, 27) + "…" : e.label);
+        });
+        taxa.forEach((t, j) => {
+          g.append("text")
+            .attr("transform", `translate(${j * cellW + (cellW - 1) / 2}, -6) rotate(-45)`)
+            .attr("text-anchor", "start")
+            .style("font-size", "9.5px")
+            .attr("fill", "#333")
+            .text(t.length > 26 ? t.slice(0, 25) + "…" : t);
+        });
+        // Place the color legend horizontally below the heatmap cells
+        _cmpColorLegend(svg, marginL, marginT + nR * cellH + 22, colorFn, domain[0], domain[1], fmt);
+      }
+
+      // Horizontal color-scale legend (below the heatmap cells).
+      function _cmpColorLegend(svg, x, y, colorFn, lo, hi, fmt) {
+        const w = 140,
+          h = 10,
+          steps = 40;
+        for (let i = 0; i < steps; i++) {
+          const t = i / (steps - 1);
+          const v = lo + (hi - lo) * t;
+          svg
+            .append("rect")
+            .attr("x", x + t * w)
+            .attr("y", y)
+            .attr("width", w / steps + 0.5)
+            .attr("height", h)
+            .attr("fill", colorFn(v));
+        }
+        svg
+          .append("text")
+          .attr("x", x - 3)
+          .attr("y", y + 8)
+          .style("font-size", "9px")
+          .attr("fill", "#555")
+          .attr("text-anchor", "end")
+          .text(fmt(lo));
+        svg
+          .append("text")
+          .attr("x", x + w + 3)
+          .attr("y", y + 8)
+          .style("font-size", "9px")
+          .attr("fill", "#555")
+          .attr("text-anchor", "start")
+          .text(fmt(hi));
+      }
+
+      function _buildComparison() {
+        const section = document.getElementById("cmp-section");
+        if (!section) return;
+        const fields = _cmpAvailableFields();
+
+        const unitSel = document.getElementById("cmp-unit");
+        const fieldSel = document.getElementById("cmp-field");
+        const levelSel = document.getElementById("cmp-level");
+        const valueSel = document.getElementById("cmp-value");
+        const fieldLabel = document.getElementById("cmp-field-label");
+        const desc = document.getElementById("cmp-desc");
+        const noData = document.getElementById("cmp-no-data");
+        const chart = document.getElementById("cmp-chart");
+
+        // Populate field selector (preserve current selection if still valid)
+        if (fieldSel) {
+          const prev = fieldSel.value;
+          fieldSel.innerHTML = fields.map((f) => `<option value="${f}">${_metaKeyLabel(f)}</option>`).join("");
+          if (fields.includes(prev)) fieldSel.value = prev;
+        }
+
+        // Wire controls once
+        if (!_cmpWired) {
+          _cmpWired = true;
+          [unitSel, fieldSel, levelSel, valueSel].forEach((el) => {
+            if (el) el.addEventListener("change", _buildComparison);
+          });
+          document.querySelectorAll("#cmp-analysis-tabs .cmp-atab").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              _cmpAnalysis = btn.getAttribute("data-analysis");
+              _buildComparison();
+            });
+          });
+        }
+
+        // Reflect active analysis on the buttons + relevance of controls
+        document.querySelectorAll("#cmp-analysis-tabs .cmp-atab").forEach((btn) => {
+          btn.classList.toggle("active", btn.getAttribute("data-analysis") === _cmpAnalysis);
+        });
+        // Jaccard ignores the value basis (presence only)
+        if (valueSel) valueSel.disabled = _cmpAnalysis === "jaccard";
+        // Group mode needs a field; sample mode uses field only as a label
+        if (fieldLabel) {
+          const u = (unitSel || {}).value || "sample";
+          fieldLabel.textContent = u === "group" ? "Group by field" : "Label / color field";
+          if (fieldSel) fieldSel.style.opacity = u === "group" && !fields.length ? 0.5 : 1;
+        }
+
+        const pf = _cmpBuildProfiles();
+
+        if (pf.entries.length < 2) {
+          if (chart) chart.innerHTML = "";
+          if (noData) noData.style.display = "block";
+          if (desc) desc.textContent = "";
+          return;
+        }
+        if (noData) noData.style.display = "none";
+
+        const lvl = pf.level === "genus" ? "genus" : "species";
+        const valLbl =
+          pf.value === "tass" ? "TASS score" : pf.value === "coverage" ? "coverage (breadth %)" : "read abundance";
+        const unitLbl = pf.unit === "group" ? `${_metaKeyLabel(pf.field)} groups` : "samples";
+
+        if (_cmpAnalysis === "cosine") {
+          if (desc)
+            desc.textContent = `Cosine similarity between ${unitLbl} based on ${lvl}-level ${valLbl} profiles (1 = identical, 0 = no shared signal). ${pf.entries.length} entries × ${pf.taxa.length} taxa.`;
+          _cmpRenderSquare(
+            chart,
+            pf.entries,
+            (a, b) => _cmpCosine(pf.profile[a.id], pf.profile[b.id]),
+            (v) => v.toFixed(2),
+          );
+        } else if (_cmpAnalysis === "jaccard") {
+          if (desc)
+            desc.textContent = `Jaccard overlap between ${unitLbl} based on shared ${lvl}-level hits (presence/absence). ${pf.entries.length} entries × ${pf.taxa.length} taxa.`;
+          _cmpRenderSquare(
+            chart,
+            pf.entries,
+            (a, b) => _cmpJaccard(pf.profile[a.id], pf.profile[b.id]),
+            (v) => v.toFixed(2),
+          );
+        } else if (_cmpAnalysis === "enrichment") {
+          const enr = _cmpEnrichment(pf);
+          const maxAbs = Math.max(
+            1,
+            ...enr.taxa.map((t) => Math.max(...pf.entries.map((e) => Math.abs(enr.matrix[e.id][t] || 0)))),
+          );
+          const color = d3.scaleSequential(d3.interpolateRdBu).domain([maxAbs, -maxAbs]);
+          if (desc)
+            desc.textContent = `Enrichment (log₂ fold-change of ${lvl}-level ${valLbl}, each entry vs. the rest). Red = enriched, blue = depleted. Top ${enr.taxa.length} most differential taxa.`;
+          _cmpRenderRect(
+            chart,
+            pf.entries,
+            enr.taxa,
+            (id, t) => enr.matrix[id][t] || 0,
+            (v) => color(v),
+            (v) => (v >= 0 ? "+" : "") + v.toFixed(2),
+            [-maxAbs, maxAbs],
+          );
+        } else {
+          // profile heatmap
+          const totals = {};
+          pf.taxa.forEach((t) => {
+            totals[t] = pf.entries.reduce((s, e) => s + ((pf.profile[e.id] && pf.profile[e.id][t]) || 0), 0);
+          });
+          const topTaxa = [...pf.taxa].sort((a, b) => totals[b] - totals[a]).slice(0, 30);
+          const vmax = Math.max(
+            1,
+            ...topTaxa.map((t) => Math.max(...pf.entries.map((e) => (pf.profile[e.id] && pf.profile[e.id][t]) || 0))),
+          );
+          const color = d3.scaleSequential(d3.interpolateYlGnBu).domain([0, vmax]);
+          const isInt = pf.value === "presence";
+          const fmt = (v) => (isInt ? Math.round(v).toLocaleString() : v.toFixed(1));
+          if (desc)
+            desc.textContent = `${lvl.charAt(0).toUpperCase() + lvl.slice(1)}-level ${valLbl} per ${
+              pf.unit === "group" ? "group" : "sample"
+            } (top ${topTaxa.length} taxa by total).`;
+          _cmpRenderRect(
+            chart,
+            pf.entries,
+            topTaxa,
+            (id, t) => (pf.profile[id] && pf.profile[id][t]) || 0,
+            (v) => (v > 0 ? color(v) : "#f3f5f8"),
+            fmt,
+            [0, vmax],
+          );
         }
       }
 
@@ -20176,7 +24025,7 @@
         buildSampleList();
         _computeBslLevels();
         _buildRunMetaTable();
-        _buildLongitudinalSection();
+        if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
         // Rebuild histogram selectors so the rename is visible immediately
         if (window._resetHistSelectors) window._resetHistSelectors();
         redraw();
@@ -20766,6 +24615,67 @@
           else if (e.key === "ArrowRight") idx === steps.length - 1 ? close() : show(idx + 1);
           else if (e.key === "ArrowLeft") show(idx - 1);
         });
+
+        /* ── Per-tab Help mode ───────────────────────────────────────────────
+           A toggle that pins a small contextual panel showing help for whatever
+           tab the user is on. Reuses the guided-tour STEP content + the PDF
+           section groups, and follows tab switches live. */
+        (function initHelpMode() {
+          const btn = document.getElementById("helpmode-btn");
+          const panel = document.getElementById("tab-help-panel");
+          if (!btn || !panel) return;
+          const elFig = document.getElementById("tab-help-fig");
+          const elGroup = document.getElementById("tab-help-group");
+          const elTitle = document.getElementById("tab-help-title");
+          const elDesc = document.getElementById("tab-help-desc");
+          const elTips = document.getElementById("tab-help-tips");
+          const elClose = document.getElementById("tab-help-close");
+          const elTour = document.getElementById("tab-help-tour");
+          let on = false;
+
+          function currentTab() {
+            const active = document.querySelector(".tab-btn.active");
+            return active ? active.dataset.tab : typeof activeTab !== "undefined" ? activeTab : "summary";
+          }
+          function stepFor(tab) {
+            return STEPS.find((s) => s.tab === tab) || null;
+          }
+          function renderPanel() {
+            const tab = currentTab();
+            const step = stepFor(tab);
+            const info = (typeof PDF_SECTION_INFO !== "undefined" && PDF_SECTION_INFO[tab]) || {};
+            elGroup.textContent = info.group || "";
+            if (!step) {
+              elFig.innerHTML = FIG[tab] || "";
+              elTitle.textContent = ((tabBtn(tab) && tabBtn(tab).textContent) || tab).trim();
+              elDesc.textContent = info.what || "Help for this view isn't available yet.";
+              elTips.innerHTML = info.how ? `<li>${info.how}</li>` : "";
+              return;
+            }
+            elFig.innerHTML = step.fig || FIG[tab] || "";
+            elTitle.textContent = step.title || "";
+            elDesc.textContent = step.desc || "";
+            elTips.innerHTML = (step.tips || []).map((t) => `<li>${t}</li>`).join("");
+          }
+          function setOn(v) {
+            on = v;
+            btn.classList.toggle("on", on);
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+            panel.classList.toggle("open", on);
+            panel.setAttribute("aria-hidden", on ? "false" : "true");
+            if (on) renderPanel();
+          }
+          btn.addEventListener("click", () => setOn(!on));
+          elClose.addEventListener("click", () => setOn(false));
+          elTour.addEventListener("click", (e) => {
+            e.preventDefault();
+            setOn(false);
+            open();
+          });
+          // Re-render when the user switches tabs while help mode is on.
+          const tabbar = document.getElementById("tabbar");
+          if (tabbar) tabbar.addEventListener("click", () => on && setTimeout(renderPanel, 60));
+        })();
       })();
     </script>
   </body>

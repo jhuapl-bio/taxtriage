@@ -645,28 +645,59 @@ def main():
     with open(args.template, "r", encoding="utf-8") as fh:
         tpl = fh.read()
 
-    # Option 1: replace an existing external script tag
-    html, n_replaced = re.subn(
-        r'<script[^>]+src=["\']heatmap_boot\.js["\'][^>]*>\s*</script>',
-        bootstrap_script,
-        tpl,
-        count=1,
-        flags=re.IGNORECASE,
+    # Use a function replacement (not a plain string) so backslashes / `\g`-like
+    # sequences inside the JSON payload are inserted verbatim and never treated
+    # as regex backreferences.
+    _repl = lambda m: bootstrap_script
+
+    # ── Strip the pages.js demo loader (active or commented) ──────────────────
+    # The real dataset is injected inline below. pages.js is not copied next to
+    # the report, so a leftover tag 404s in the browser console.
+    html = re.sub(
+        r'[ \t]*<!--\s*<script[^>]+src=["\']pages\.js["\'][^>]*>\s*</script>\s*-->[ \t]*\n?',
+        '', tpl, flags=re.IGNORECASE,
+    )
+    html = re.sub(
+        r'[ \t]*<script[^>]+src=["\']pages\.js["\'][^>]*>\s*</script>[ \t]*\n?',
+        '', html, flags=re.IGNORECASE,
     )
 
-    if not n_replaced:
-        # Option 2: replace old inline BOOTSTRAP block if present
-        html, n_replaced = re.subn(
-            r'<script id="BOOTSTRAP"[^>]*>.*?</script>',
-            bootstrap_script,
-            tpl,
-            count=1,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
+    # ── Inject the inline bootstrap at the heatmap_boot.js anchor ─────────────
+    # Handle the commented placeholder, an active tag, or an existing BOOTSTRAP
+    # block. A *commented* anchor MUST be matched together with its <!-- … -->
+    # so the boot script is not left commented out — that would blank the report.
+    anchor_patterns = [
+        r'<!--\s*<script[^>]+src=["\']heatmap_boot\.js["\'][^>]*>\s*</script>\s*-->',
+        r'<script[^>]+src=["\']heatmap_boot\.js["\'][^>]*>\s*</script>',
+        r'<!--\s*<script id=["\']BOOTSTRAP["\'][^>]*>.*?</script>\s*-->',
+        r'<script id=["\']BOOTSTRAP["\'][^>]*>.*?</script>',
+    ]
+    n_replaced = 0
+    for pat in anchor_patterns:
+        html, n_replaced = re.subn(pat, _repl, html, count=1, flags=re.DOTALL | re.IGNORECASE)
+        if n_replaced:
+            break
+
+    if not n_replaced and "__BOOTSTRAP_SCRIPT__" in html:
+        # Fallback: explicit placeholder token.
+        html = html.replace("__BOOTSTRAP_SCRIPT__", bootstrap_script)
+        n_replaced = 1
 
     if not n_replaced:
-        # Option 3: replace a placeholder if your template has one
-        html = tpl.replace("__BOOTSTRAP_SCRIPT__", bootstrap_script)
+        raise SystemExit(
+            "[make_report] ERROR: no heatmap_boot.js / BOOTSTRAP anchor found in template"
+        )
+
+    # ── Guard: the boot script must not have landed inside an HTML comment ────
+    _idx = html.find("window.HEATMAP_BOOT =")
+    if _idx != -1:
+        _open = html.rfind("<!--", 0, _idx)
+        _close = html.rfind("-->", 0, _idx)
+        if _open != -1 and _open > _close:
+            raise SystemExit(
+                "[make_report] ERROR: bootstrap script was inserted inside an HTML "
+                "comment — the report would be blank. Check the template anchor."
+            )
 
     with open(args.output, "w", encoding="utf-8") as fh:
         fh.write(html)
