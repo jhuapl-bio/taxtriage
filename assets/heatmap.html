@@ -15790,9 +15790,7 @@
             `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
             `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
               r,
-            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(
-              r,
-            )}</span>` +
+            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(r)}</span>` +
             // Star sits inline, right after the organism text.
             `${_watchStarHTML(r, true, null, true)}` +
             // Right-anchored group: level badge (flush right), then the pin hint
@@ -16190,8 +16188,12 @@
         const onlyHC = document.getElementById("filter-hc").checked;
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
         const mcFilter = mcSel.length ? new Set(mcSel) : null;
-        const mtDNA = document.getElementById("filter-mt-dna") ? document.getElementById("filter-mt-dna").checked : true;
-        const mtRNA = document.getElementById("filter-mt-rna") ? document.getElementById("filter-mt-rna").checked : true;
+        const mtDNA = document.getElementById("filter-mt-dna")
+          ? document.getElementById("filter-mt-dna").checked
+          : true;
+        const mtRNA = document.getElementById("filter-mt-rna")
+          ? document.getElementById("filter-mt-rna").checked
+          : true;
         const mtBoth = document.getElementById("filter-mt-both")
           ? document.getElementById("filter-mt-both").checked
           : true;
