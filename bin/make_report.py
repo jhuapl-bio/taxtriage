@@ -226,6 +226,13 @@ def _flatten_organism(org, sample_name, sample_type, total_reads,
         "MapQ Score":          round(float(org.get("mapq_score", 0) or 0), 3),
         "Disparity Score":     round(float(org.get("disparity", 0) or 0), 3),
         "Diamond Identity":    round(float(org.get("diamond_identity", 0) or 0), 1),
+        # MicrobeRT (mmbert) classifier probability + model name. mmbert is a
+        # 0–1 probability; surfaced here as a 0–100 % to match the PDF report.
+        # Kept None when absent so the column renders blank rather than 0.
+        "MicrobeRT Probability": (round(float(org.get("mmbert")) * 100, 2)
+                                  if org.get("mmbert") not in (None, "")
+                                  else None),
+        "MicrobeRT Model":     org.get("mmbert_model") or "",
         "K2 Reads":            int(org.get("k2_reads", 0) or 0),
         "RPM":                 round(float(org.get("rpm", 0) or 0), 2),
         "RPKM":                round(float(org.get("rpkm", 0) or 0), 4),

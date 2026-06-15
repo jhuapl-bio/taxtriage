@@ -1715,6 +1715,34 @@
       #summary-top-wrap tr.rescued-row td {
         box-shadow: inset 3px 0 0 #f59f00;
       }
+      /* Below-cutoff detections kept visible only because VF/AMR genes were
+         found for the organism's genus in this sample. Rendered faded + a thin
+         red rail so they read as "suppressed by score, surfaced by annotation". */
+      #summary-top-wrap tr.below-cutoff-row td,
+      #table-body tr.below-cutoff-row td {
+        opacity: 0.6;
+        font-style: italic;
+        background: rgba(176, 0, 32, 0.05);
+        box-shadow: inset 3px 0 0 #c2185b;
+      }
+      #summary-top-wrap tr.below-cutoff-row:hover td,
+      #table-body tr.below-cutoff-row:hover td {
+        opacity: 0.9;
+      }
+      .below-cutoff-badge {
+        display: inline-block;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 0 4px;
+        margin-left: 5px;
+        border-radius: 3px;
+        vertical-align: middle;
+        line-height: 1.5;
+        background: #fce4ec;
+        color: #ad1457;
+        border: 1px solid #ad145744;
+        font-style: normal;
+      }
       /* group header rows */
       #summary-top-wrap tr.grp-row td {
         background: #eef3fb;
@@ -3642,6 +3670,10 @@
                   >
                   = strain below TASS cutoff, kept by parent roll-up</span
                 >.
+                <span id="sum-below-cutoff-legend" style="display: none">
+                  <span class="below-cutoff-badge">↓ below cutoff</span>
+                  = below TASS cutoff but shown because VF/AMR genes were detected for its genus in-sample ·
+                </span>
                 <span id="sum-level-legend-simple">
                   <i class="fas fa-star" style="color: #f59f00"></i>
                   Click to target an organism for follow-up across tabs.
@@ -4777,6 +4809,10 @@
             ></span>
             = meets TASS threshold independently ·
             <span style="border-left: 3px solid #f59f00; padding-left: 4px">amber bar</span> = rescued or pinned row
+            <span id="tbl-below-cutoff-legend" style="display: none">
+              · <span class="below-cutoff-badge">↓ below cutoff</span> = below TASS cutoff but shown because VF/AMR
+              genes were detected for its genus in-sample
+            </span>
           </div>
           <div id="tbl-wrap">
             <table id="data-table">
@@ -5748,6 +5784,21 @@
             class="info-tip-btn"
             aria-label="About Roll-up Threshold"
             data-tip="<b>Roll-up Threshold</b><br>When enabled, a strain is kept visible if its parent <i>species</i> or <i>genus</i> aggregation passes the TASS cutoff — even if the strain's own score is below the threshold.<br><br>This prevents high-confidence parent-level calls from disappearing just because an individual strain is under-detected. Rescued strains are marked with a colored triangle in the charts.<br><br><i>Affects all data views.</i>"
+          >
+            &#x24D8;
+          </button>
+        </div>
+        <div class="row" id="below-vfamr-row" style="margin-top: 0.2em; display: none">
+          <input type="checkbox" id="filter-below-vfamr" checked />
+          <label
+            for="filter-below-vfamr"
+            title="When an organism is filtered out by the TASS cutoff but virulence-factor (VF) or AMR genes were detected for its genus in the same sample, still show it as a faded row in the detection tables."
+            >Show below-cutoff organisms with VF/AMR hits</label
+          >
+          <button
+            class="info-tip-btn"
+            aria-label="About below-cutoff VF/AMR rows"
+            data-tip="<b>Below-cutoff VF/AMR detections</b><br>Organisms whose TASS score falls below the cutoff are normally hidden. When protein annotation (<code>--annotate</code>) is enabled and one or more Virulence-Factor or AMR genes were detected for the organism's genus <i>in the same sample</i>, this option re-surfaces that organism as a <b>faded</b> row in the Detections table and the full Table tab — flagging potential pathogen signal that the score alone would suppress.<br><br>These faded rows appear <i>only</i> in the detection tables; KPIs, charts and the heatmap stay restricted to detections that pass the cutoff.<br><br><i>On by default; uncheck to disable.</i>"
           >
             &#x24D8;
           </button>
@@ -12992,6 +13043,7 @@
       function _renderOneRow(row) {
         const tr = document.createElement("tr");
         if (isTruthy(row["High Consequence"])) tr.classList.add("hc-row");
+        if (row.__belowCutoffVFAMR) tr.classList.add("below-cutoff-row");
         const _rk = _tblRowKey(row);
         if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
         tr.addEventListener("click", (e) => {
@@ -13049,6 +13101,16 @@
                 mt === "dna" ? "#1565c0" : "#6a1b9a"
               };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
               contentSpan.appendChild(mtBadge);
+            }
+            if (row.__belowCutoffVFAMR) {
+              const _bc = document.createElement("span");
+              _bc.className = "below-cutoff-badge";
+              _bc.textContent = "↓ below cutoff";
+              const _pi = rowPassInfo(row);
+              _bc.title =
+                `TASS ${isNaN(_pi.strain) ? "—" : _pi.strain.toFixed(1)} is below the cutoff (${_pi.thr}) — ` +
+                `hidden by score, but shown because VF/AMR genes were detected for this organism's genus in this sample.`;
+              contentSpan.appendChild(_bc);
             }
             td.appendChild(contentSpan);
             // Star sits inline, right after the organism text.
@@ -13234,6 +13296,9 @@
 
       function populateTable() {
         let fd = filteredData();
+        // Append faded below-cutoff rows that carry VF/AMR hits (toggle-gated).
+        const _belowExtra = _belowCutoffExtraRows();
+        if (_belowExtra.length) fd = fd.concat(_belowExtra);
         const _tblGrouped = document.getElementById("tbl-group-sample")?.checked;
         if (_tblGrouped) {
           // Group by Sample: primary sort follows _sampleOrder (right-panel order),
@@ -15606,6 +15671,9 @@
 
       function _renderSummaryTable(fd) {
         const wrap = document.getElementById("summary-top-wrap");
+        // Append faded below-cutoff rows that carry VF/AMR hits (toggle-gated).
+        const _belowExtra = _belowCutoffExtraRows();
+        if (_belowExtra.length) fd = fd.concat(_belowExtra);
         // Show rollup hint only when rescued rows are actually present
         const _sumRollupHint = document.getElementById("sum-rollup-hint");
         if (_sumRollupHint) {
@@ -15717,12 +15785,14 @@
             : "";
           html +=
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
-              _sumPinned.has(key) ? " row-pinned" : ""
-            }">` +
+              r.__belowCutoffVFAMR ? " below-cutoff-row" : ""
+            }${_sumPinned.has(key) ? " row-pinned" : ""}">` +
             `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
             `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
               r,
-            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}</span>` +
+            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(
+              r,
+            )}</span>` +
             // Star sits inline, right after the organism text.
             `${_watchStarHTML(r, true, null, true)}` +
             // Right-anchored group: level badge (flush right), then the pin hint
@@ -16093,6 +16163,100 @@
           .trim()
           .toLowerCase();
         return g && _AMR_GENERA.has(g);
+      }
+
+      /* ─── Below-cutoff organisms with VF/AMR hits ───────────────────────────
+         Returns flagged copies of DATA rows that the TASS cutoff would normally
+         hide (they fail the threshold gate at every rolled-up level) BUT for
+         which one or more Virulence-Factor / AMR genes were detected for the
+         organism's genus IN THE SAME SAMPLE. These are surfaced as faded rows in
+         the two detection tables only (Summary → Detections and the Table tab) —
+         never injected into filteredData(), so KPIs, charts and the heatmap stay
+         restricted to detections that pass the cutoff.
+
+         Requires:  --annotate data present (HAS_PROT) AND the sidebar toggle
+         (#filter-below-vfamr) on. Mirrors the base predicates of filteredData()
+         so the faded rows honour every active sidebar filter. */
+      function _belowCutoffExtraRows() {
+        const tgl = document.getElementById("filter-below-vfamr");
+        if (!HAS_PROT || !tgl || !tgl.checked) return [];
+        const onlyP = document.getElementById("filter-pass").checked;
+        // "Passes threshold only" is incompatible with showing failing rows.
+        if (onlyP) return [];
+        const txt = document.getElementById("filter-text").value.trim();
+        const ic = document.getElementById("filter-ic").checked;
+        const scope = (document.getElementById("filter-scope") || {}).value || "both";
+        const viewLevel = (document.getElementById("view-level") || {}).value || "Strain";
+        const onlyHC = document.getElementById("filter-hc").checked;
+        const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
+        const mcFilter = mcSel.length ? new Set(mcSel) : null;
+        const mtDNA = document.getElementById("filter-mt-dna") ? document.getElementById("filter-mt-dna").checked : true;
+        const mtRNA = document.getElementById("filter-mt-rna") ? document.getElementById("filter-mt-rna").checked : true;
+        const mtBoth = document.getElementById("filter-mt-both")
+          ? document.getElementById("filter-mt-both").checked
+          : true;
+        let rx = null;
+        if (txt) {
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+          }
+        }
+        const anyRescale = _hasAnyRescale();
+        const out = [];
+        for (const r of DATA) {
+          if ((r["Level"] || "Strain") !== viewLevel) continue;
+          if (sampleHidden[r["Specimen ID"]]) continue;
+          if (rx) {
+            const inS = rx.test(r["Specimen ID"] || "");
+            const inO = rx.test(r["Detected Organism"] || "");
+            if (scope === "sample") {
+              if (!inS) continue;
+            } else if (scope === "organism") {
+              if (!inO) continue;
+            } else if (!inS && !inO) {
+              continue;
+            }
+          }
+          if (onlyHC && !isTruthy(r["High Consequence"])) continue;
+          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+          const mt = (r["Mol Type"] || "").toLowerCase();
+          if (mt === "dna" && !mtDNA) continue;
+          if (mt === "rna" && !mtRNA) continue;
+          if (mt !== "dna" && mt !== "rna" && !mtBoth) continue;
+          if (watchFilterMode !== "all" && watchlist.size) {
+            const watched = watchlist.has(_watchKey(r));
+            if (watchFilterMode === "only" && !watched) continue;
+            if (watchFilterMode === "hide" && watched) continue;
+          }
+          // Must be EXCLUDED by the threshold gate — otherwise it's already
+          // visible in filteredData() and must not be duplicated here.
+          const pi = rowPassInfo(r);
+          if (isNaN(pi.strain)) continue;
+          const excluded = ROLLUP_PASS ? !pi.effectivePass : pi.strain < pi.thr;
+          if (!excluded) continue;
+          // Must carry at least one VF or AMR gene hit in its own sample.
+          const v = _vfamrForRow(r);
+          if (!v || (!v.vf && !v.amr)) continue;
+          const inj = anyRescale ? applyRescale(Object.assign({}, r)) : Object.assign({}, r);
+          inj.__belowCutoffVFAMR = true;
+          out.push(inj);
+        }
+        return out;
+      }
+
+      // Small badge appended to the organism cell of a faded below-cutoff row.
+      function _belowCutoffBadgeHTML(r) {
+        if (!r || !r.__belowCutoffVFAMR) return "";
+        const pi = rowPassInfo(r);
+        const sc = !isNaN(pi.strain) ? pi.strain.toFixed(1) : "—";
+        const thr = pi.thr;
+        return (
+          `<span class="below-cutoff-badge" title="TASS ${sc} is below the cutoff (${thr}) — hidden by score, ` +
+          `but shown because VF/AMR genes were detected for this organism's genus in this sample. ` +
+          `Uncheck &quot;Show below-cutoff organisms with VF/AMR hits&quot; to hide.">&#x2193; below cutoff</span>`
+        );
       }
 
       // Wire summary detection-table controls (pager + group + page-size).
@@ -18729,6 +18893,14 @@
       }
       function redraw() {
         _invalidateFilterCache();
+        // The below-cutoff VF/AMR toggle + legends are only meaningful with
+        // annotation data present.
+        const _bvr = document.getElementById("below-vfamr-row");
+        if (_bvr) _bvr.style.display = HAS_PROT ? "" : "none";
+        ["sum-below-cutoff-legend", "tbl-below-cutoff-legend"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = HAS_PROT ? "" : "none";
+        });
         // Reset table to page 0 whenever filters change so the user
         // doesn't land on an empty page after narrowing results.
         _tblResetPage();
@@ -18919,6 +19091,7 @@
         "filter-scope",
         "filter-hc",
         "filter-pass",
+        "filter-below-vfamr",
         "hm-show-vals",
         "filter-mt-dna",
         "filter-mt-rna",
