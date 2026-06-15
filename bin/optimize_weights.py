@@ -1599,18 +1599,49 @@ def low_abundance_confidence(numreads, total_reads, genome_length_bp,
     return 1.0 / (1.0 + math.exp(-x))
 def calculate_mmbert_prob(
     mmbert_dict = {},
-    taxid = None
+    taxid = None,
+    accessions = None,
 ):
-    if taxid in mmbert_dict:
-        avg = mmbert_dict[taxid].get('avg')
-        model = mmbert_dict[taxid].get('model')
+    """Resolve a MicroBERT (mmbert) probability + model for one organism.
 
-        if avg is not None:
-            mmbert_avgs = avg
-        if model is not None:
-            mmbert_models = model
-        # print(f"MicrobeRT results for {taxid}: Avg Probability: {mmbert_avgs}, Models: {(mmbert_models) if mmbert_models else 'N/A'}")
-        return mmbert_avgs, mmbert_models
+    Preferred path: `mmbert_dict` is keyed by reference accession (the per-accession
+    profile from map_clusters_to_taxa.py). We average each matching accession's `avg`
+    weighted by its read-support count `n`, so an organism's score reflects the model's
+    confidence over the reads that actually aligned to its reference(s).
+
+    Fallback: legacy `mmbert_dict` keyed by the model's predicted taxid — looked up by
+    the organism's own `taxid`.
+    """
+    # ── Accession-based lookup (preferred) ────────────────────────────────────
+    if accessions:
+        num = 0.0
+        wsum = 0.0
+        model = None
+        for acc in accessions:
+            entry = mmbert_dict.get(str(acc))
+            if not entry:
+                continue
+            avg = entry.get('avg')
+            if avg is None:
+                continue
+            try:
+                avg = float(avg)
+            except (TypeError, ValueError):
+                continue
+            try:
+                w = float(entry.get('n', 1) or 1)
+            except (TypeError, ValueError):
+                w = 1.0
+            num += avg * w
+            wsum += w
+            if model is None and entry.get('model'):
+                model = entry.get('model')
+        if wsum > 0:
+            return num / wsum, model
+
+    # ── Legacy taxid-based lookup (back-compat) ───────────────────────────────
+    if taxid is not None and taxid in mmbert_dict:
+        return mmbert_dict[taxid].get('avg'), mmbert_dict[taxid].get('model')
     return None, None
 
 def calculate_mean(diamond_list, key):
@@ -1665,9 +1696,19 @@ def calculate_aggregate_scores(
         sampletype= sampletype,
         total_reads = total_reads,
     )
+    # Collect this organism's reference accession(s). Strain entries carry
+    # 'accessions' directly; species/genus group entries don't, so gather them
+    # from nested members so group-level rows can also receive an mmbert value.
+    _accs = list(data.get('accessions') or [])
+    if not _accs and isinstance(data.get('members'), list):
+        for _m in data['members']:
+            _accs.extend(_m.get('accessions') or [])
+            for _mm in (_m.get('members') or []):
+                _accs.extend(_mm.get('accessions') or [])
     data['mmbert'], data['mmbert_model'] = calculate_mmbert_prob(
         mmbert_dict = mmbert_dict,
-        taxid = data.get('key', None)
+        taxid = data.get('key', None),
+        accessions = _accs,
     )
     data['zscore'] = zscore
     data['hmp_percentile'] = hmp_percentile

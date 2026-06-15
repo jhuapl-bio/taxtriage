@@ -30,6 +30,7 @@ process MICROBERT_PARSE {
     output:
     tuple val(meta), path("*microbert.annotations.tsv"), optional: false, emit: annotations
     tuple val(meta), path("*microbert.report.tsv"), optional: false, emit: report
+    tuple val(meta), path("*microbert.accession.tsv"), optional: false, emit: accession_report
 
     when:
     task.ext.when == null || task.ext.when
@@ -38,12 +39,14 @@ process MICROBERT_PARSE {
 
     outfile = "${meta.id}.microbert.annotations.tsv"
     outreport = "${meta.id}.microbert.report.tsv"
+    outacc = "${meta.id}.microbert.accession.tsv"
 
     """
         map_clusters_to_taxa.py \\
             --fasta  ${reps} \\
             --json ${predictions} \\
             --taxa-report ${outreport} \\
+            --accession-report ${outacc} \\
             --clusters ${clusters} \\
             --out ${outfile} \\
             --modelname ${modelname} \\

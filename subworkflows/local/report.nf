@@ -87,7 +87,9 @@ workflow REPORT {
             MICROBERT_PARSE(
                 ch_parse_files.combine(ch_basename_microbert)
             )
-            ch_report_microbert = MICROBERT_PARSE.out.report
+            // Feed match_paths the per-accession profile so MicrobeRT probabilities
+            // attach to detected organisms via their reference accession(s).
+            ch_report_microbert = MICROBERT_PARSE.out.accession_report
         } else {
             ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILEmicrobert") ] }
         }

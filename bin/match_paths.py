@@ -1579,9 +1579,20 @@ def main():
         print("Loading MicroBERT data from", args.microbert)
         # import the tsv as a dictionary
         mmbert = pd.read_csv(args.microbert, sep='\t', header=0)
-        # set the taxid col to str
-        mmbert['taxid'] = mmbert['taxid'].astype(str)
-        mmbert_dict = mmbert.set_index('taxid').T.to_dict()
+        cols = set(mmbert.columns)
+        if 'accession' in cols:
+            # Per-accession profile (preferred): keyed by reference accession so the
+            # probability attaches to the DETECTED organism via its accession(s),
+            # rather than the model's predicted-taxid namespace.
+            mmbert['accession'] = mmbert['accession'].astype(str)
+            mmbert_dict = mmbert.set_index('accession').to_dict('index')
+        elif 'taxid' in cols:
+            # Legacy rank×taxid profile: keyed by the model's predicted taxid.
+            mmbert['taxid'] = mmbert['taxid'].astype(str)
+            mmbert_dict = mmbert.set_index('taxid').T.to_dict()
+        else:
+            print("WARNING: MicroBERT file has neither 'accession' nor 'taxid' column; "
+                  "skipping MicroBERT annotation.", file=sys.stderr)
 
     # taxdump/taxdump_names were already loaded early (before determine_conflicts)
     # for the LCA rollup maps; only load here if that early load was skipped.
