@@ -106,9 +106,14 @@ if (matches) {
 //     validateBt2Scoremin(params.bt2_scoremin)
 // }
 
-// if skip_kraken2 and reference_fasta is empty AND organisms is empty and organisms_file is empty print and exit that organisms is required
-if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
-    exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
+// Require Kraken2 DB unless Kraken2 is skipped
+if (!params.skip_kraken2 && !params.db) {
+    exit 1, "If --skip_kraken2 is false, you must provide --db"
+}
+
+// If Kraken2 is skipped, require at least one alternate source
+if (params.skip_kraken2 && !params.reference_fasta && !params.organisms && !params.organisms_file) {
+    exit 1, "If --skip_kraken2 is true, you must provide at least one of: --reference_fasta, --organisms, or --organisms_file"
 }
 
 // if params.pathogens, check if file ends with .tsv or .txt
