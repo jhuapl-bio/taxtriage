@@ -23,50 +23,23 @@ workflow  REFERENCE_PREP {
     ch_accessions = Channel.empty()
     ch_prepfiles = Channel.empty()
 
-    ch_features = ch_samples.map{ meta, report -> {
-            return [ meta,  []]
-        }
-    }
-
-    ch_cds_to_taxids = ch_samples.map{ meta, report -> {
-            return [ meta,  []]
-        }
-    }
-    ch_fastas = ch_samples.map{ meta, report -> {
-            return [ meta,  []]
-        }
-    }
-
-    ch_cds = ch_samples.map{ meta, report -> {
-            return [ meta,  []]
-        }
-    }
+    ch_features      = ch_samples.map{ meta, report -> [meta, []] }
+    ch_cds_to_taxids = ch_samples.map{ meta, report -> [meta, []] }
+    ch_fastas        = ch_samples.map{ meta, report -> [meta, []] }
+    ch_cds           = ch_samples.map{ meta, report -> [meta, []] }
 
     ch_bedfiles = ch_samples.map { meta, report ->
         return [meta, []]
     }
 
-    ch_mapped_assemblies = ch_samples.map{ meta, report -> {
-            return [meta, [], [], []  ]
-        }
-    }
-
-    ch_reports_to_download = ch_samples.map{ meta, report -> {
-            if (report){
-                return [meta,  report  ]
-            } else {
-                return [meta, []]
-            }
-    }
-    }
+    ch_mapped_assemblies   = ch_samples.map{ meta, report -> [meta, [], [], []] }
+    ch_reports_to_download = ch_samples.map{ meta, report -> report ? [meta, report] : [meta, []] }
     if (params.organisms_file){
         // check if params.organisms is a file or a string
         ch_organisms = Channel.fromPath(params.organisms_file, checkIfExists: true)
-        ch_reports_to_download = ch_reports_to_download.combine(ch_organisms).map{
-            meta, report, organisms -> {
-                report.add(organisms)
-                return [meta, report]
-            }
+        ch_reports_to_download = ch_reports_to_download.combine(ch_organisms).map{ meta, report, organisms ->
+            report.add(organisms)
+            [meta, report]
         }
     }
     if (params.organisms) {
@@ -79,11 +52,9 @@ workflow  REFERENCE_PREP {
 
         ch_reports_to_download = ch_reports_to_download.combine(
             ch_organisms
-        ).map{
-            meta, report, organisms -> {
-                report.add(organisms)
-                return [meta, report]
-            }
+        ).map{ meta, report, organisms ->
+            report.add(organisms)
+            [meta, report]
         }
     }
 
@@ -102,11 +73,9 @@ workflow  REFERENCE_PREP {
             )
             // add ch_reference_fasta to all ch_fastas
             // add ch_reference_fasta to all ch_fastas
-            ch_fastas = ch_fastas.combine(ch_reference_fasta.collect()).map{
-                meta, fastas, fasta -> {
-                    fastas.add(fasta)
-                    return [meta, fastas]
-                }
+            ch_fastas = ch_fastas.combine(ch_reference_fasta.collect()).map{ meta, fastas, fasta ->
+                fastas.add(fasta)
+                [meta, fastas]
             }
 
             if (params.use_bt2) {
@@ -150,10 +119,7 @@ workflow  REFERENCE_PREP {
                 // Case when `use_bt2` is false, just add the fastas directly
                 ch_mapped_assemblies.combine(ch_reference_fasta.collect().toList()).map {
                     meta, fastas, listmaps, listids, fasta ->
-                        fasta.each{ f -> {
-                                return fastas.add([f])
-                            }
-                        }
+                        fasta.each{ f -> fastas.add([f]) }
                         return [meta, fastas, listmaps, listids]
                 }.set { ch_mapped_assemblies }
             }
@@ -168,18 +134,14 @@ workflow  REFERENCE_PREP {
 
             // Combine the maps into the third list (listmaps) of the ch_mapped_assemblies structure
             ch_mapped_assemblies.combine(merged_map.toList())
-            .map{
-                meta, fastas, listmaps, listids, map -> {
-                    listmaps.addAll(map)
-                    return [meta, fastas, listmaps, listids]
-                }
+            .map{ meta, fastas, listmaps, listids, map ->
+                listmaps.addAll(map)
+                [meta, fastas, listmaps, listids]
             }.combine(
                 merged_map_ids.toList()
-            ).map{
-                meta, fastas, listmaps, listids, ids -> {
-                    listids.addAll(ids)
-                    return [meta, fastas, listmaps, listids]
-                }
+            ).map{ meta, fastas, listmaps, listids, ids ->
+                listids.addAll(ids)
+                [meta, fastas, listmaps, listids]
             }.set{ ch_mapped_assemblies }
         }
     }
@@ -210,11 +172,10 @@ workflow  REFERENCE_PREP {
         // merge all the fasta outputs from the DOWNLOAD_ASSEMBLY process into ch_fastas on id meta.
         // remainder:true keeps samples with no downloaded fasta (no top hits) in ch_fastas.
         ch_fastas = ch_fastas.join(DOWNLOAD_ASSEMBLY.out.fasta, remainder: true)
-            .map { meta, fastas, fasta -> {
+            .map { meta, fastas, fasta ->
                 if (fasta != null) fastas.add(fasta)
-                return [meta, fastas]
+                [meta, fastas]
             }
-        }
 
         // Use remainder:true (left joins) so that samples without a downloaded
         // assembly (i.e. those whose top hits were all filtered out) are NOT
@@ -224,13 +185,12 @@ workflow  REFERENCE_PREP {
             .join(merged_index, remainder: true)
             .join(DOWNLOAD_ASSEMBLY.out.gcfids, remainder: true)
             .join(DOWNLOAD_ASSEMBLY.out.mapfile, remainder: true)
-            .map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile -> {
+            .map { meta, fastas, listmaps, listids, fasta, gcfids, mapfile ->
                 if (mapfile != null) listmaps.add(mapfile)
                 if (gcfids  != null) listids.add(gcfids)
                 if (fasta   != null) fastas.add([fasta])
-                return [meta, fastas, listmaps, listids]
+                [meta, fastas, listmaps, listids]
             }
-        }
     }
 
     COMBINE_MAPFILES(
@@ -238,10 +198,8 @@ workflow  REFERENCE_PREP {
     )
 
     ch_mapped_assemblies = ch_mapped_assemblies.join(COMBINE_MAPFILES.out.mergefiles)
-        .map {
-            meta, fastas, listmaps, listids, mergedmap, mergedids -> {
-                return [ meta, fastas, mergedmap, mergedids ]
-            }
+        .map { meta, fastas, listmaps, listids, mergedmap, mergedids ->
+            [meta, fastas, mergedmap, mergedids]
         }
 
     ch_custom_accession_map = params.custom_accession_map
@@ -291,9 +249,8 @@ workflow  REFERENCE_PREP {
     }
     ch_mapped_assemblies = MAP_TAXID_ASSEMBLY.out.taxidmerged.join(
         ch_mapped_assemblies.map{meta, fastas, mergedmap, mergedids -> return [meta, fastas, mergedids] }
-    ).map{ meta, mergedmap, fastas, mergedids -> {
-            return [meta, fastas, mergedmap, mergedids]
-    }
+    ).map{ meta, mergedmap, fastas, mergedids ->
+        [meta, fastas, mergedmap, mergedids]
     }
     emit:
         versions = ch_versions

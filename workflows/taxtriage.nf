@@ -950,11 +950,17 @@ workflow TAXTRIAGE {
     }
 
     // ── Completion handler (moved inside workflow for NF v25+ compatibility) ──
+    // Capture references explicitly to avoid delegate-resolution surprises in onComplete.
+    def wf_meta             = workflow
+    def run_params          = params
+    def run_summary_params  = summary_params
+    def run_multiqc_report  = multiqc_report
+
     workflow.onComplete {
-        if (params.email || params.email_on_fail) {
-            NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+        if (run_params?.email || run_params?.email_on_fail) {
+            NfcoreTemplate.email(wf_meta, run_params, run_summary_params, projectDir, log, run_multiqc_report)
         }
-        NfcoreTemplate.summary(workflow, params, log)
+        NfcoreTemplate.summary(wf_meta, run_params, log)
     }
 }
 

@@ -66,13 +66,8 @@ workflow ASSEMBLY {
             }
             // if paired end then make a reads1 and reads2, else do single reads input
             MEGAHIT(
-                branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd,  reads -> {
-                        if (meta.single_end) {
-                            return [meta, reads, []]
-                        } else {
-                            return [meta, reads[0], reads[1]]
-                        }
-                    }
+                branchedChannels.shortreads.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads ->
+                    meta.single_end ? [meta, reads, []] : [meta, reads[0], reads[1]]
                 }
             )
             ch_versions = ch_versions.mix(MEGAHIT.out.versions)
@@ -123,14 +118,8 @@ workflow ASSEMBLY {
                 )
                 ch_versions = ch_versions.mix(MAP_PROT_ASSEMBLY.out.versions)
                 ch_diamond_analysis = ch_diamond_analysis.join(MAP_PROT_ASSEMBLY.out.promap, remainder: true)
-                ch_diamond_analysis = ch_diamond_analysis.map{
-                    meta, nullfile, promap-> {
-                        if (promap == null){
-                            return [meta, ch_empty_file]
-                        } else {
-                            return [meta, promap]
-                        }
-                    }
+                ch_diamond_analysis = ch_diamond_analysis.map{ meta, nullfile, promap ->
+                    promap == null ? [meta, ch_empty_file] : [meta, promap]
                 }
                 // for any meta.id missing from diamond analysis, add empty file
 
@@ -140,9 +129,8 @@ workflow ASSEMBLY {
                 ch_diamond_analysis = postalignmentfiles.map{ [it[0], ch_empty_file] }
             }
         } else {
-            postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads  -> {
-                    return [ meta,  ch_empty_file]
-            }
+            postalignmentfiles.map{ meta, bam, bai, mapping, bed, cds, features, mapcd, reads ->
+                [meta, ch_empty_file]
             }.set{ ch_diamond_output }
 
         }
