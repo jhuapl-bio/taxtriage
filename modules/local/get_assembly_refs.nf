@@ -23,15 +23,9 @@ process GET_ASSEMBLIES {
         'biocontainers/gnu-wget:1.18--h36e9172_9' }"
 
 
-
-
-    input:
-
-
-
     output:
-    path("assembly_summary_refseq.txt"), optional: false, emit: assembly
-    path "versions.yml"           , emit: versions
+        path("assembly_summary_refseq.txt"), optional: false, emit: assembly
+        path "versions.yml"           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when

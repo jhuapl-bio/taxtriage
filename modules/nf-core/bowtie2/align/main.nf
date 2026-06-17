@@ -27,7 +27,7 @@ process BOWTIE2_ALIGN {
     
     def args2 = task.ext.args2 ?: ""
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def minmapq = minmapq ? " -q ${minmapq} " :  ""
+    def minmapq_arg = minmapq ? " -q ${minmapq} " :  ""
     def unaligned = ""
     def I_value = "${(task.memory.toMega() * Math.min(0.8 / task.cpus, 0.8)).longValue()}M"
     def S_value = "${(task.memory.toMega() * Math.min(0.15 / task.cpus, 0.15)).longValue()}M"
@@ -41,7 +41,7 @@ process BOWTIE2_ALIGN {
         unaligned = save_unaligned ? "--un-conc-gz ${prefix}.unmapped.fastq.gz" : ""
         reads_args = "-1 ${reads[0]} -2 ${reads[1]}"
     }
-    def samtools_command = sort_bam ? "sort -m ${S_value}  | samtools view -b -h $minmapq -o ${prefix}.bam" : "view  $minmapq -b -h -o ${prefix}.bam"
+    def samtools_command = sort_bam ? "sort -m ${S_value}  | samtools view -b -h $minmapq_arg -o ${prefix}.bam" : "view  $minmapq_arg -b -h -o ${prefix}.bam"
     def extension_pattern = /(--output-fmt|-O)+\s+(\S+)/
     def extension = (args2 ==~ extension_pattern) ? (args2 =~ extension_pattern)[0][2].toLowerCase() : "bam"
 

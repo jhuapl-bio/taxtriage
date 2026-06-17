@@ -22,6 +22,80 @@ class NfcoreSchema {
     }
 
     //
+    // Coerce CLI-provided string parameters to their schema-declared types.
+    //
+    // Nextflow 26.04+ (syntax parser v2) no longer infers the type of params
+    // given on the command line: every `--param value` arrives as a String.
+    // This breaks two things:
+    //   1. JSON-schema validation below, which rejects a String where the
+    //      schema declares `boolean`/`integer`/`number`
+    //      (e.g. "* --annotate: expected type: Boolean, found: String (true)").
+    //   2. Downstream logic, because in Groovy the String "false" is truthy,
+    //      so `if (params.annotate)` would be true even for `--annotate false`.
+    //
+    // This casts String values back to Boolean/Integer/Number based on the
+    // schema and writes them into `params`, restoring the v1 behaviour so that
+    // boolean flags like `--annotate` work from the CLI again.
+    //
+    public static void coerceParamsToSchemaTypes(workflow, params, log, schema_filename='nextflow_schema.json') {
+        def json = new File(getSchemaPath(workflow, schema_filename=schema_filename)).text
+        def Map schemaParams = (Map) new JsonSlurper().parseText(json).get('definitions')
+
+        // Map of paramName -> schema-declared type. The type may be a plain
+        // string (e.g. "boolean") or an array (e.g. ["number", "null"] for an
+        // optional numeric param); in the array case we use the first non-null
+        // type for coercion.
+        def types = [:]
+        for (group in schemaParams) {
+            for (p in group.value['properties']) {
+                if (p.value instanceof Map && p.value.containsKey('type')) {
+                    def t = p.value['type']
+                    if (t instanceof List) {
+                        t = t.find { it != 'null' }
+                    }
+                    if (t != null) {
+                        types[p.key] = t
+                    }
+                }
+            }
+        }
+
+        for (entry in types) {
+            def key  = entry.key
+            def type = entry.value
+            if (!params.containsKey(key)) {
+                continue
+            }
+            def val = params.get(key)
+            if (!(val instanceof String)) {
+                continue
+            }
+            try {
+                if (type == 'boolean') {
+                    def lc = val.trim().toLowerCase()
+                    if (lc == 'true') {
+                        params.put(key, true)
+                    } else if (lc == 'false') {
+                        params.put(key, false)
+                    }
+                } else if (type == 'integer') {
+                    if (val.isInteger()) {
+                        params.put(key, val.toInteger())
+                    }
+                } else if (type == 'number') {
+                    if (val.isNumber()) {
+                        params.put(key, val.toDouble())
+                    }
+                }
+            } catch (Exception e) {
+                // Leave the value untouched; validateParameters() will report a
+                // clear, schema-based error if the value is genuinely invalid.
+                log.debug "Could not coerce --${key} ('${val}') to ${type}: ${e.message}"
+            }
+        }
+    }
+
+    //
     // Function to loop over all parameters defined in schema and check
     // whether the given parameters adhere to the specifications
     //
@@ -152,6 +226,51 @@ class NfcoreSchema {
         // Convert to JSONObject
         def jsonParams = new JsonBuilder(cleanedParams)
         JSONObject params_json = new JSONObject(jsonParams.toString())
+
+        // Nextflow 26.04+ (syntax parser v2) delivers every CLI param as a
+        // String, which makes the JSON-schema validator reject flags whose
+        // schema type is boolean/integer/number (e.g.
+        // "* --annotate: expected type: Boolean, found: String (true)").
+        // The global `params` map is read-only at run time, so we cast the
+        // values on this local validation copy instead. The schema type may be
+        // a plain string ("boolean") or an array (["number","null"]); in the
+        // array case we use the first non-null type.
+        for (group in schemaParams) {
+            for (p in group.value['properties']) {
+                def key = p.key
+                if (!(p.value instanceof Map) || !p.value.containsKey('type') || !params_json.has(key)) {
+                    continue
+                }
+                def type = p.value['type']
+                if (type instanceof List) {
+                    type = type.find { it != 'null' }
+                }
+                def val = params_json.get(key)
+                if (!(val instanceof String)) {
+                    continue
+                }
+                try {
+                    if (type == 'boolean') {
+                        def lc = val.trim().toLowerCase()
+                        if (lc == 'true') {
+                            params_json.put(key, true)
+                        } else if (lc == 'false') {
+                            params_json.put(key, false)
+                        }
+                    } else if (type == 'integer') {
+                        if (val.isInteger()) {
+                            params_json.put(key, val.toInteger())
+                        }
+                    } else if (type == 'number') {
+                        if (val.isNumber()) {
+                            params_json.put(key, val.toDouble())
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug "Could not coerce --${key} ('${val}') to ${type}: ${e.message}"
+                }
+            }
+        }
 
         // Validate
         try {

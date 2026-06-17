@@ -32,6 +32,14 @@ process CREATE_COMPARISON_REPORT {
     // Optional protein-annotation XLSX files from ORGANISM_MERGE_REPORT --output_annot_xlsx
     // Pass a NO_FILE placeholder when protein annotations are not available
     path(protein_annotations)
+    // Optional novelty files from NOVELTY_COLLECT: per-sample + combined JSON/XLSX. The combined
+    // all.novelty.json within this set drives the Novelty panel; the rest become download links.
+    // Pass a NO_FILE placeholder when novelty detection did not run. Single input (not two) so the
+    // combined json isn't staged twice -> avoids an "input file name collision" on all.novelty.json.
+    path(novelty_files)
+    // Optional embedding files from NOVEL_HOMOLOGS: per-sample *.umap.tsv, *.cluster_summary.tsv,
+    // and *.clusters.tsv. Pass a NO_FILE placeholder when the step did not run.
+    path(embedding_files)
 
     output:
         path "versions.yml"           , emit: versions
@@ -70,12 +78,34 @@ process CREATE_COMPARISON_REPORT {
     def pident = params.pident ? " --pident ${params.pident} " : " "
     def mintass = params.mintass ? " --mintass ${params.mintass} " : " "
 
+    // ── Novelty panel feed + download links ───────────────────────────────────
+    // One staged set of files: pick the combined all.novelty.json as the -n feed and expose the
+    // whole set as download links. Filter NO_FILE placeholders and Nextflow '~' rename artifacts.
+    def nov_list = novelty_files instanceof List ? novelty_files : [novelty_files]
+    def nov_valid = nov_list.findAll { f ->
+        f && !f.name.startsWith('NO_FILE') && !f.name.startsWith('~') &&
+        (f.name.endsWith('.json') || f.name.endsWith('.xlsx'))
+    }
+    def nov_combined = nov_valid.find { it.name == 'all.novelty.json' }
+    def nov_arg = nov_combined ? "-n ${nov_combined}" : ''
+    def nov_dl_files = nov_valid.join(' ')
+    def nov_dl_arg = nov_dl_files ? "--novelty-downloads ${nov_dl_files}" : ''
+
+    // ── Embedding / UMAP cluster files (NOVEL_HOMOLOGS) ──────────────────────
+    def emb_list = embedding_files instanceof List ? embedding_files : [embedding_files]
+    def emb_valid = emb_list.findAll { f ->
+        f && !f.name.startsWith('NO_FILE') && !f.name.startsWith('~') &&
+        (f.name.endsWith('.umap.tsv') || f.name.endsWith('.cluster_summary.tsv') || f.name.endsWith('.clusters.tsv'))
+    }
+    def emb_arg = emb_valid ? "--embedding ${emb_valid.join(' ')}" : ''
 
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
-        ${prot_arg} ${pident} ${mintass}
+        ${prot_arg} ${pident} ${mintass} \\
+        ${nov_arg} ${nov_dl_arg} \\
+        ${emb_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

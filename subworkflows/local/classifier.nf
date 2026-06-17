@@ -124,13 +124,9 @@ workflow CLASSIFIER {
             // NOT silently dropped and still reach DOWNLOAD_ASSEMBLY.
             ch_organisms_to_download = ch_organisms_to_download.join(
                 ch_organisms, remainder: true
-            ).map{
-                meta, report, organisms -> {
-                    if (organisms != null) {
-                        report.add(organisms)
-                    }
-                    return [meta, report]
-                }
+            ).map{ meta, report, organisms ->
+                if (organisms != null) { report.add(organisms) }
+                [meta, report]
             }
         }
         else if (!params.skip_kraken2){
@@ -222,30 +218,20 @@ workflow CLASSIFIER {
             // NOT silently dropped and still reach DOWNLOAD_ASSEMBLY.
             ch_organisms_to_download = ch_organisms_to_download.join(
                 ch_organisms, remainder: true
-            ).map{
-                meta, report, organisms -> {
-                    if (organisms != null) {
-                        report.add(organisms)
-                    }
-                    return [meta, report]
-                }
+            ).map{ meta, report, organisms ->
+                if (organisms != null) { report.add(organisms) }
+                [meta, report]
             }
         } else {
             // set ch_kraken2_report to meta, null
-            ch_kraken2_report = ch_reads.map{ meta, reads -> {
-                    return [ meta,  ch_empty_file]
-                }
-            }
+            ch_kraken2_report = ch_reads.map{ meta, reads -> [meta, ch_empty_file] }
         }
         if (params.metaphlan) {
             METAPHLAN_METAPHLAN(
                 ch_reads,
                 params.metaphlan
             )
-            ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> {
-                    return [ meta, file, 'metaphlan' ]
-                }
-            }
+            ch_metaphlan_report = METAPHLAN_METAPHLAN.out.profile.map{ meta, file -> [meta, file, 'metaphlan'] }
 
             TAXPASTA_STANDARDISE(
                 ch_metaphlan_report,
