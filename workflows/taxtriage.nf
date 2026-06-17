@@ -187,6 +187,11 @@ include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
 include { INSILICO } from '../subworkflows/local/insilico'
 include { PROTEINS } from '../subworkflows/local/proteins'
+include { NOVELTY } from '../subworkflows/local/novelty'
+// Shared MicrobeRT clustering, lifted up to the workflow level so its output can feed BOTH
+// the MicrobeRT classifier (in REPORT) and the Pyrodigal->mmseqs taxonomy novelty branch.
+include { CLUSTER_ALIGNMENT } from '../modules/local/cluster_alignment'
+include { MMSEQS_EASYCLUSTER } from '../modules/local/mmseqs2_easycluster'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -199,6 +204,7 @@ include { PROTEINS } from '../subworkflows/local/proteins'
 //
 
 include { DOWNLOAD_DB } from '../modules/local/download_db'
+include { MMSEQS_DOWNLOADDB } from '../modules/local/mmseqs_downloaddb'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
 include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
@@ -868,6 +874,71 @@ workflow TAXTRIAGE {
 
         }
 
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // SHARED MicrobeRT CLUSTERING
+        // One CLUSTER_ALIGNMENT -> MMSEQS_EASYCLUSTER pass, computed here (before both NOVELTY and
+        // REPORT) so its representatives feed BOTH consumers:
+        //   * REPORT  -> MICROBERT_PREDICT / MICROBERT_PARSE   (the MicrobeRT classifier)
+        //   * NOVELTY -> PYRODIGAL -> MMSEQS_TAXONOMY          (the novelty taxonomy branch)
+        // Only runs under --microbert; otherwise the channels stay empty and NOVELTY falls back
+        // to its de-novo-contig path while REPORT emits the MicrobeRT placeholder.
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        ch_microbert_reps     = Channel.empty()
+        ch_microbert_clusters = Channel.empty()
+        if (params.microbert) {
+            CLUSTER_ALIGNMENT(
+                ALIGNMENT.out.bams.map { meta, bam, csi -> [meta, bam] }
+            )
+            MMSEQS_EASYCLUSTER(
+                CLUSTER_ALIGNMENT.out.fasta
+            )
+            ch_microbert_reps     = MMSEQS_EASYCLUSTER.out.representatives
+            ch_microbert_clusters = MMSEQS_EASYCLUSTER.out.tsv
+            ch_versions = ch_versions.mix(MMSEQS_EASYCLUSTER.out.versions)
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // NOVELTY: reference-free / open-set detection on the closed-set residual
+        // (reads that aligned to NO reference + de novo contigs) via translated-search LCA.
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // Per-sample novelty outputs, surfaced to REPORT so they can be collected into the
+        // interactive HTML report (panel + downloadable JSON/XLSX). Empty unless --detect_novelty.
+        ch_novelty_summary    = Channel.empty()
+        ch_novelty_candidates = Channel.empty()
+        // Embedding files (*.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv) from NOVEL_HOMOLOGS.
+        // Collected into a flat list so CREATE_COMPARISON_REPORT can stage them all at once.
+        // Populated inside the detect_novelty block below when a NOVEL_HOMOLOGS module is wired up.
+        ch_embedding_files = Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
+        if (params.detect_novelty) {
+            // Resolve the seqTaxDB local-first (like --db); otherwise download + cache it
+            // once via `mmseqs databases` (storeDir-cached, reused across runs and on -resume).
+            def ch_novelty_db
+            if (params.novelty_db && file(params.novelty_db).exists()) {
+                println "Novelty: using local mmseqs seqTaxDB at ${params.novelty_db}"
+                ch_novelty_db = Channel.value(file(params.novelty_db, checkIfExists: true))
+            } else {
+                def novelty_dbname = params.novelty_db ?: 'UniProtKB'
+                println "Novelty: seqTaxDB '${novelty_dbname}' not found locally; will download via " +
+                        "'mmseqs databases' (cached at ${params.novelty_db_cache})."
+                MMSEQS_DOWNLOADDB(novelty_dbname)
+                ch_versions = ch_versions.mix(MMSEQS_DOWNLOADDB.out.versions)
+                ch_novelty_db = MMSEQS_DOWNLOADDB.out.db.first()
+            }
+
+            NOVELTY(
+                ALIGNMENT.out.bams,     // [meta, bam, csi] reference-merged per sample
+                ch_kraken2_report,      // [meta, kreport]  from CLASSIFIER
+                ch_denovo,              // [meta, contigs]  ASSEMBLY.out.ch_denovo_assembly
+                ch_novelty_db,
+                ch_microbert_reps       // [meta, rep_seq.fasta] shared MicrobeRT cluster reps (empty unless --microbert)
+            )
+            ch_versions = ch_versions.mix(NOVELTY.out.versions)
+            ch_novelty_summary    = NOVELTY.out.summary       // [meta, *.novelty.summary.tsv]
+            ch_novelty_candidates = NOVELTY.out.candidates    // [meta, *.novelty.candidates.tsv]
+            // TODO: when NOVEL_HOMOLOGS gets a proper NF module, replace the placeholder below with:
+            //   ch_embedding_files = NOVELTY.out.embedding_files.flatten().collect()
+        }
+
         // Add placeholder assembly analysis entries for insilico samples so
         // they are not filtered out by the inner join in input_alignment_files
         if (params.generate_iss || params.generate_nanosim) {
@@ -909,7 +980,12 @@ workflow TAXTRIAGE {
                 ch_assembly_txt,
                 ch_taxdump_dir,
                 all_samples,
-                ch_meta_csv
+                ch_meta_csv,
+                ch_microbert_reps,      // [meta, rep_seq.fasta] shared MicrobeRT cluster reps
+                ch_microbert_clusters,  // [meta, *.tsv]          shared MicrobeRT cluster membership
+                ch_novelty_summary,     // [meta, *.novelty.summary.tsv]
+                ch_novelty_candidates,  // [meta, *.novelty.candidates.tsv]
+                ch_embedding_files      // flat: *.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }

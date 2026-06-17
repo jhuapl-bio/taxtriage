@@ -367,6 +367,10 @@
       // Embedding / novelty payload from NOVEL_HOMOLOGS (umap, clusters, summary, novelty).
       const EMBED = BOOT.embedding || { samples: {} };
       let HAS_EMBED = BOOT.has_embedding || false;
+      // Reference-free novelty payload from NOVELTY_COLLECT (per-sample summary + candidate taxa).
+      const NOVELTY = BOOT.novelty || { samples: {} };
+      const NOVELTY_DL = BOOT.novelty_downloads || [];
+      let HAS_NOVELTY = BOOT.has_novelty || false;
       let CONTIG_DATA = BOOT.contig_data || []; // [{sample, organism, taxon_id, contigs, depth_histogram}]
       // Decode any base64-encoded breadth histograms baked into the BOOT data.
       // (Uploaded JSON entries are decoded later via _decodeBreadthHist in _extractContigs.)
@@ -2089,6 +2093,100 @@
         border-color: #1565c0;
         color: #fff;
       }
+      /* ── Novelty sub-tabs ── */
+      #novelty-subtab-bar {
+        display: flex; gap: 0.35em; margin-bottom: 0.7em; flex-wrap: wrap;
+      }
+      .nov-subtab {
+        padding: 0.26em 0.72em; border: 1px solid #cfd8dc; border-radius: 5px;
+        background: #fff; color: #455a64; font-size: 0.82em; font-weight: 600;
+        cursor: pointer; white-space: nowrap;
+      }
+      .nov-subtab:hover { background: #eceff1; }
+      .nov-subtab.active { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+      /* ── Novelty method-coverage / genus-compare toggle ── */
+      .nov-seg { display: inline-flex; border: 1px solid #cfd8dc; border-radius: 6px; overflow: hidden; }
+      .nov-seg-btn {
+        padding: 0.24em 0.7em; border: 0; background: #fff; color: #455a64;
+        font-size: 0.8em; font-weight: 600; cursor: pointer; white-space: nowrap;
+        border-right: 1px solid #cfd8dc;
+      }
+      .nov-seg-btn:last-child { border-right: 0; }
+      .nov-seg-btn:hover { background: #eceff1; }
+      .nov-seg-btn.active { background: #1c7ed6; color: #fff; }
+      /* stacked method-coverage bars */
+      .nov-mc-row { display: flex; align-items: center; gap: 0.6em; margin: 0.25em 0; }
+      .nov-mc-name { min-width: 9em; font-size: 0.82em; font-weight: 600; color: #37474f;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .nov-mc-bar { flex: 1; display: flex; height: 16px; border-radius: 4px; overflow: hidden;
+        background: #f1f3f5; box-shadow: inset 0 0 0 1px #e9ecef; }
+      .nov-mc-seg { height: 100%; cursor: default; transition: filter .12s; }
+      .nov-mc-seg:hover { filter: brightness(1.12) saturate(1.2); }
+      .nov-mc-total { min-width: 6.5em; text-align: right; font-size: 0.76em; color: #868e96; }
+      .nov-mc-legend { display: flex; flex-wrap: wrap; gap: 0.5em 1.1em; margin: 0.5em 0 0.2em; font-size: 0.76em; color: #555; }
+      .nov-mc-legend span { display: inline-flex; align-items: center; gap: 0.35em; }
+      .nov-mc-swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+      /* genus-compare sparkbar cells */
+      .nov-gc-bar { display: inline-block; height: 7px; border-radius: 3px; vertical-align: middle; }
+      .nov-gc-track { display: inline-block; width: 56px; height: 7px; background: #f1f3f5;
+        border-radius: 3px; overflow: hidden; vertical-align: middle; }
+      .nov-gc-src { font-size: 0.72em; font-weight: 700; padding: 0 5px; border-radius: 8px; }
+      /* ── Novelty cell tooltip ── */
+      #nov-cell-tip {
+        position: fixed; z-index: 9999; pointer-events: none;
+        background: #fff; border: 1px solid #dee2e6; border-radius: 6px;
+        padding: 7px 10px; box-shadow: 0 3px 12px rgba(0,0,0,.14);
+        font-size: 0.79em; line-height: 1.5; max-width: 240px;
+        display: none;
+      }
+      #nov-cell-tip .nct-label { font-weight: 700; color: #1a3a5c; margin-bottom: 3px; }
+      #nov-cell-tip .nct-val { color: #e65100; font-weight: 600; margin-bottom: 4px; }
+      #nov-cell-tip .nct-bar-wrap {
+        background: #f1f3f5; border-radius: 3px; height: 8px; margin: 4px 0 2px; overflow: hidden;
+      }
+      #nov-cell-tip .nct-bar { height: 100%; border-radius: 3px; transition: width .2s; }
+      #nov-cell-tip .nct-desc { color: #6c757d; font-size: 0.93em; }
+      /* ── Novelty cluster explorer ── */
+      #nov-clx-wrap {
+        display: flex; gap: 0; height: 520px; border: 1px solid #dee2e6; border-radius: 6px; overflow: hidden;
+      }
+      #nov-clx-canvas-area { flex: 1; position: relative; background: #fafbfc; }
+      #nov-clx-canvas-area canvas { display: block; width: 100%; height: 100%; }
+      #nov-clx-sidebar {
+        width: 210px; flex-shrink: 0; background: #f8f9fa; border-left: 1px solid #dee2e6;
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      #nov-clx-sidebar h4 {
+        font-size: 0.78em; font-weight: 700; color: #495057; padding: 7px 10px 5px;
+        border-bottom: 1px solid #dee2e6; margin: 0;
+      }
+      #nov-clx-list { overflow-y: auto; flex: 1; }
+      .nov-clx-item {
+        padding: 6px 10px; border-bottom: 1px solid #e9ecef; cursor: pointer; font-size: 0.78em;
+      }
+      .nov-clx-item:hover { background: #e9ecef; }
+      .nov-clx-item.active { background: #fff3e0; }
+      .nov-clx-item .nci-head { display: flex; justify-content: space-between; margin-bottom: 2px; }
+      .nov-clx-item .nci-id { font-weight: 700; }
+      .nov-clx-item .nci-sz { color: #868e96; }
+      .nov-clx-tag {
+        display: inline-block; font-size: 0.85em; padding: 0 4px; border-radius: 3px;
+        border: 1px solid; margin: 1px 1px 0 0; white-space: nowrap;
+      }
+      .nov-clx-tag.novel { background: #fff4e6; border-color: #f59f00; color: #d9480f; }
+      .nov-clx-tag.known { background: #ebfbee; border-color: #69db7c; color: #2b8a3e; }
+      .nov-clx-tag.ref { background: #e7f5ff; border-color: #74c0fc; color: #1864ab; }
+      #nov-clx-controls {
+        display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center;
+        padding: 6px 0 8px; font-size: 0.8em; color: #495057;
+      }
+      #nov-clx-controls label { display: flex; align-items: center; gap: 4px; }
+      #nov-clx-tip {
+        position: fixed; z-index: 9999; pointer-events: none;
+        background: #fff; border: 1px solid #dee2e6; border-radius: 6px;
+        padding: 7px 10px; box-shadow: 0 3px 12px rgba(0,0,0,.14);
+        font-size: 0.78em; line-height: 1.5; max-width: 220px; display: none;
+      }
       #xs-body {
         margin-top: 0.4em;
         min-height: 60px;
@@ -3780,6 +3878,14 @@
       >
         <i class="fas fa-diagram-project"></i> Embeddings
       </button>
+      <button
+        class="tab-btn hidden"
+        id="novelty-tab-btn"
+        data-tab="novelty"
+        title="Reference-free novelty detection: per-sample novelty score/flag and candidate taxa from the translated-search (mmseqs) LCA."
+      >
+        <i class="fas fa-lightbulb"></i> Novelty
+      </button>
       <button class="tab-btn" data-tab="explore" title="Cross-sample exploratory charts for multi-metric patterns.">
         <i class="fas fa-magnifying-glass-chart"></i> Explore
       </button>
@@ -4797,6 +4903,131 @@
               </table>
             </div>
           </div>
+        </div>
+
+        <!-- NOVELTY DETECTION (reference-free translated-search LCA) -->
+        <div class="pane" id="pane-novelty">
+
+          <!-- sub-tab bar -->
+          <div id="novelty-subtab-bar">
+            <button class="nov-subtab active" data-nsub="overview">
+              <i class="fas fa-table" style="margin-right:0.3em"></i>Overview
+            </button>
+            <button class="nov-subtab" data-nsub="clusters">
+              <i class="fas fa-circle-nodes" style="margin-right:0.3em"></i>Cluster Explorer
+            </button>
+          </div>
+
+          <!-- ── Overview sub-pane ── -->
+          <div id="novelty-sub-overview">
+            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+              Reference-free / open-set novelty for the closed-set residual (reads that aligned to no
+              reference). Each sample gets a <b>novelty score</b> (higher = more divergent from known
+              references) and a <b>flag</b> when that score crosses the run threshold. The candidate
+              table lists the genus-or-higher taxa the translated-search LCA could still assign. Use
+              the <b>downloads</b> for the raw per-sample / combined JSON and XLSX.
+            </div>
+
+            <div class="chart-wrap" style="margin-bottom: 0.9em">
+              <div class="chart-title" style="margin: 0 0 0.4em">Per-sample novelty</div>
+              <div style="overflow-x: auto">
+                <table class="data-table" id="novelty-summary-table" style="font-size: 0.82em; width: 100%">
+                  <thead id="novelty-summary-head"></thead>
+                  <tbody id="novelty-summary-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="chart-wrap" style="margin-bottom: 0.9em">
+              <div style="display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.4em">
+                <div class="chart-title" style="margin: 0">Candidate taxa</div>
+                <label style="font-size: 0.8em; color: #555">
+                  sample
+                  <select id="novelty-sample-sel" style="font-size: 0.9em"></select>
+                </label>
+                <span id="novelty-cand-count" style="font-size: 0.78em; color: #888"></span>
+              </div>
+              <div style="overflow-x: auto">
+                <table class="data-table" id="novelty-cand-table" style="font-size: 0.82em; width: 100%">
+                  <thead id="novelty-cand-head"></thead>
+                  <tbody id="novelty-cand-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- ── Method coverage + Genus comparison (TASS vs mmseqs rescue) ── -->
+            <div class="chart-wrap" style="margin-bottom: 0.9em">
+              <div style="display:flex;align-items:center;gap:0.6em;margin-bottom:0.5em;flex-wrap:wrap">
+                <div class="chart-title" style="margin:0">Where the reads landed — alignment / TASS vs mmseqs rescue</div>
+                <div id="nov-cmp-toggle" class="nov-seg" role="tablist">
+                  <button type="button" class="nov-seg-btn active" data-cmp="coverage"
+                    title="Per sample: the fraction of reads explained by each method (reference alignment that feeds TASS, kraken2-only, mmseqs species / higher-rank rescue) vs. dark matter.">
+                    <i class="fas fa-layer-group" style="margin-right:0.3em"></i>Method coverage
+                  </button>
+                  <button type="button" class="nov-seg-btn" data-cmp="genus"
+                    title="For the selected sample: genus-by-genus, the closed-set TASS score / coverage / % reads next to what the mmseqs translated-search LCA places — including genera mmseqs rescues that the reference set never aligned.">
+                    <i class="fas fa-code-compare" style="margin-right:0.3em"></i>Genus: TASS vs MMseqs
+                  </button>
+                </div>
+                <span id="nov-cmp-hint" style="font-size:0.78em;color:#888"></span>
+              </div>
+              <div id="nov-cmp-coverage"></div>
+              <div id="nov-cmp-genus" style="display:none"></div>
+            </div>
+
+            <div class="chart-wrap">
+              <div class="chart-title" style="margin: 0 0 0.4em">
+                <i class="fas fa-file-download" style="margin-right: 0.35em"></i>Downloads
+              </div>
+              <div id="novelty-downloads" style="display: flex; flex-wrap: wrap; gap: 0.5em; font-size: 0.85em"></div>
+            </div>
+          </div><!-- /novelty-sub-overview -->
+
+          <!-- ── Cluster Explorer sub-pane ── -->
+          <div id="novelty-sub-clusters" style="display:none">
+            <div style="font-size:0.75rem;color:#6c757d;margin-bottom:0.5rem">
+              Protein-embedding UMAP cluster view of novel ORFs. Each enclosure circle is one HDBSCAN cluster;
+              novel-family clusters are highlighted. Singletons (cluster&nbsp;=&nbsp;−1) are hidden by default.
+            </div>
+            <div id="nov-clx-controls">
+              <label>Sample:
+                <select id="nov-clx-sample" style="font-size:0.9em"></select>
+              </label>
+              <label><input type="checkbox" id="nov-clx-hide-sing" checked> Hide singletons</label>
+              <label>Min cluster size:
+                <input type="range" id="nov-clx-min-sz" min="1" max="30" value="1" style="width:80px;vertical-align:middle">
+                <span id="nov-clx-min-sz-val" style="font-weight:700;color:#1864ab">1</span>
+              </label>
+              <label>Color:
+                <select id="nov-clx-color" style="font-size:0.9em">
+                  <option value="cluster">Cluster</option>
+                  <option value="novelty">Novel status</option>
+                  <option value="set">Query / Ref</option>
+                </select>
+              </label>
+              <label>Tags:
+                <select id="nov-clx-tags" style="font-size:0.9em">
+                  <option value="ref_class">Ref class</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
+              <span id="nov-clx-stats" style="margin-left:auto;color:#868e96;font-size:0.9em"></span>
+            </div>
+            <div id="nov-clx-wrap">
+              <div id="nov-clx-canvas-area">
+                <canvas id="nov-clx-canvas"></canvas>
+              </div>
+              <div id="nov-clx-sidebar">
+                <h4>Clusters <span id="nov-clx-count" style="font-weight:400;color:#868e96"></span></h4>
+                <div id="nov-clx-list"></div>
+              </div>
+            </div>
+          </div><!-- /novelty-sub-clusters -->
+
+          <!-- shared floating tooltip for cell hover -->
+          <div id="nov-cell-tip"></div>
+          <!-- floating tooltip for cluster canvas -->
+          <div id="nov-clx-tip"></div>
         </div>
 
         <!-- HISTOGRAMS -->
@@ -14267,9 +14498,11 @@
           btn.classList.add("active");
           activeTab = btn.dataset.tab;
           document.getElementById(`pane-${activeTab}`).classList.add("active");
-          // Only render the new tab if its data is stale; otherwise the
-          // previous render is still valid and we skip the work entirely.
-          if (_TAB_DIRTY[activeTab]) _drawTab(activeTab);
+          // Render the new tab if its data is stale OR it has never been drawn.
+          // The "never drawn" guard is critical: if report init threw before
+          // redraw() marked tabs dirty, the dirty flag is still its initial false
+          // and the pane would otherwise render nothing on click.
+          if (_TAB_DIRTY[activeTab] || !_TAB_RENDERED[activeTab]) _drawTab(activeTab);
 
           // ── Tab-specific init (runs after pane is visible) ──────────────
           if (activeTab === "map") {
@@ -15752,7 +15985,14 @@
         map: false,
         runmeta: false,
         embed: false,
+        novelty: false,
       };
+      // Tracks whether each pane has EVER been drawn. The dirty flags above only get
+      // flipped true by redraw() (inside __ttRunInit); if init throws before reaching
+      // redraw() — e.g. an environment quirk in buildTable/_computeBslLevels — a lazily
+      // drawn pane (novelty, embed, …) would stay clean and a click would render nothing.
+      // This guard guarantees a first click always draws the pane regardless.
+      const _TAB_RENDERED = {};
       /* ═══════════════════════════════════════════════════════════════════════════
        -  §  TAB: SUMMARY            (data-tab="summary"  —  the default tab)
        -     drawSummary() — overall run overview. Mirrors the high-level
@@ -20420,6 +20660,817 @@
         return String(v);
       }
 
+      // ── NOVELTY DETECTION panel ───────────────────────────────────────────────
+      // Reads BOOT.novelty ({samples: {<s>: {summary, candidates}}}) + BOOT.novelty_downloads.
+      function _novEsc(v) {
+        if (v == null) return "";
+        return String(v).replace(/[&<>"']/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]),
+        );
+      }
+      function _novFmt(v) {
+        if (v == null || v === "") return "";
+        if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(4);
+        return String(v);
+      }
+      const _NOV_SUMMARY_COLS = [
+        ["sample", "Sample"],
+        ["novelty_score", "Novelty score"],
+        ["novelty_flag", "Flag"],
+        ["dark_fraction", "Dark fraction"],
+        ["highrank_only_fraction", "High-rank-only"],
+        ["lowident_tail_mass", "Low-identity tail"],
+        ["total_reads", "Residual reads"],
+      ];
+      const _NOV_SUMMARY_META = {
+        novelty_score: {
+          desc: "Composite score (higher = more divergent from known references). Typically 0–10+; samples above ~3 are flagged.",
+          color: "#e8590c", range: [0, 10], pct: true,
+        },
+        dark_fraction: {
+          desc: "Fraction of residual reads with no translated-search hit at any identity threshold. High values suggest truly unknown biology.",
+          color: "#6741d9", range: [0, 1], pct: true,
+        },
+        highrank_only_fraction: {
+          desc: "Fraction of reads where the best LCA could only be resolved to a high taxonomic rank (phylum/kingdom). Indicates distant but classifiable hits.",
+          color: "#1c7ed6", range: [0, 1], pct: true,
+        },
+        lowident_tail_mass: {
+          desc: "Mass of reads in the low-identity tail of the cosine-distance distribution. Elevated values point to divergent homologs.",
+          color: "#2f9e44", range: [0, 0.5], pct: true,
+        },
+        total_reads: {
+          desc: "Residual read count entering novelty analysis (reads that did not align to any reference).",
+          color: "#1864ab", range: null, pct: false,
+        },
+      };
+      const _NOV_CAND_COLS = [
+        ["taxid", "Tax ID"],
+        ["rank", "Rank"],
+        ["name", "Name"],
+        ["reads", "Reads"],
+        ["frac_of_sample", "Frac of sample"],
+      ];
+      let _novState = { sample: null, subtab: "overview" };
+
+      // ── shared floating cell tooltip element ─────────────────────────────────
+      function _novCellTip() { return document.getElementById("nov-cell-tip"); }
+
+      function _novShowCellTip(ev, label, value, meta, barFrac) {
+        const tip = _novCellTip(); if (!tip) return;
+        let html = `<div class="nct-label">${_novEsc(label)}</div>`;
+        if (value !== null && value !== undefined)
+          html += `<div class="nct-val">${_novEsc(String(value))}</div>`;
+        if (barFrac !== null && barFrac !== undefined && isFinite(barFrac)) {
+          const pct = Math.min(100, Math.max(0, barFrac * 100)).toFixed(1);
+          const col = (meta && meta.color) || "#1c7ed6";
+          html += `<div class="nct-bar-wrap"><div class="nct-bar" style="width:${pct}%;background:${col}"></div></div>`;
+          html += `<div style="font-size:0.85em;color:#868e96;margin-bottom:2px">${pct}% of range</div>`;
+        }
+        if (meta && meta.desc) html += `<div class="nct-desc">${_novEsc(meta.desc)}</div>`;
+        tip.innerHTML = html;
+        _novPositionTip(tip, ev);
+        tip.style.display = "block";
+      }
+      function _novHideCellTip() {
+        const tip = _novCellTip(); if (tip) tip.style.display = "none";
+      }
+      function _novPositionTip(tip, ev) {
+        const x = ev.clientX + 14, y = ev.clientY + 14;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        tip.style.left = (x + 250 > vw ? x - 270 : x) + "px";
+        tip.style.top  = (y + 180 > vh ? y - 190 : y) + "px";
+      }
+
+      function _novSamples() {
+        return (NOVELTY && NOVELTY.samples) || {};
+      }
+
+      function _drawNoveltySummary() {
+        const samples = _novSamples();
+        const names = Object.keys(samples).sort();
+        const head = document.getElementById("novelty-summary-head");
+        const body = document.getElementById("novelty-summary-body");
+        if (!head || !body) return;
+        // Compute per-column max for scaling bars
+        const colMax = {};
+        _NOV_SUMMARY_COLS.forEach(([k]) => {
+          const vals = names.map((s) => +((samples[s] || {}).summary || {})[k]).filter(isFinite);
+          colMax[k] = vals.length ? Math.max(...vals) : 1;
+        });
+        head.innerHTML =
+          "<tr>" + _NOV_SUMMARY_COLS.map(([, lbl]) => `<th>${_novEsc(lbl)}</th>`).join("") + "</tr>";
+        body.innerHTML = names
+          .map((s) => {
+            const sm = (samples[s] || {}).summary || { sample: s };
+            const flagged = Number(sm.novelty_flag) === 1;
+            return (
+              `<tr${flagged ? ' style="background:#fff4e6"' : ""}>` +
+              _NOV_SUMMARY_COLS.map(([k, lbl]) => {
+                if (k === "novelty_flag") {
+                  return `<td style="text-align:center">${
+                    flagged
+                      ? '<span title="Flagged as novel" style="color:#e8590c;font-weight:600">● novel</span>'
+                      : '<span style="color:#adb5bd">—</span>'
+                  }</td>`;
+                }
+                const raw = sm[k];
+                const num = +raw;
+                const meta = _NOV_SUMMARY_META[k];
+                const displayed = _novFmt(raw);
+                // Inline mini-bar for numeric columns
+                let cell = `<td data-nov-col="${_novEsc(k)}" data-nov-label="${_novEsc(lbl)}" data-nov-val="${_novEsc(displayed)}" style="cursor:default">`;
+                if (meta && isFinite(num) && num > 0) {
+                  const range = meta.range || [0, colMax[k] || 1];
+                  const frac = Math.min(1, (num - range[0]) / Math.max(1e-9, range[1] - range[0]));
+                  const pct = (frac * 100).toFixed(0);
+                  cell += `<div style="display:flex;align-items:center;gap:5px">`;
+                  cell += `<span style="min-width:4.5em;text-align:right">${_novEsc(displayed)}</span>`;
+                  cell += `<span style="flex:1;min-width:40px;max-width:90px;background:#f1f3f5;border-radius:3px;height:7px;overflow:hidden">`;
+                  cell += `<span style="display:block;height:100%;width:${pct}%;background:${meta.color};border-radius:3px"></span>`;
+                  cell += `</span></div>`;
+                } else {
+                  cell += `<span>${_novEsc(displayed)}</span>`;
+                }
+                cell += `</td>`;
+                return cell;
+              }).join("") +
+              "</tr>"
+            );
+          })
+          .join("");
+
+        // Attach tooltip listeners to cells with data-nov-col
+        body.querySelectorAll("td[data-nov-col]").forEach((td) => {
+          td.addEventListener("mouseenter", (ev) => {
+            const k = td.dataset.novCol, lbl = td.dataset.novLabel, valStr = td.dataset.novVal;
+            const meta = _NOV_SUMMARY_META[k];
+            const num = parseFloat(valStr);
+            let frac = null;
+            if (meta && isFinite(num)) {
+              const range = meta.range || [0, 1];
+              frac = Math.min(1, (num - range[0]) / Math.max(1e-9, range[1] - range[0]));
+            }
+            _novShowCellTip(ev, lbl, valStr, meta, frac);
+          });
+          td.addEventListener("mousemove", (ev) => {
+            const tip = _novCellTip(); if (tip && tip.style.display !== "none") _novPositionTip(tip, ev);
+          });
+          td.addEventListener("mouseleave", _novHideCellTip);
+        });
+      }
+
+      function _drawNoveltyCandidates() {
+        const samples = _novSamples();
+        const sel = document.getElementById("novelty-sample-sel");
+        const head = document.getElementById("novelty-cand-head");
+        const body = document.getElementById("novelty-cand-body");
+        const countEl = document.getElementById("novelty-cand-count");
+        if (!sel || !head || !body) return;
+        const cur = _novState.sample || sel.value;
+        const blocks = samples[cur] || {};
+        const rows = blocks.candidates || [];
+        // Pre-compute max reads and frac for bar scaling
+        const maxReads = rows.length ? Math.max(1, ...rows.map((r) => +r.reads || 0)) : 1;
+        const maxFrac  = rows.length ? Math.max(1e-9, ...rows.map((r) => +r.frac_of_sample || 0)) : 1;
+        head.innerHTML =
+          "<tr>" + _NOV_CAND_COLS.map(([, lbl]) => `<th>${_novEsc(lbl)}</th>`).join("") + "</tr>";
+        if (!rows.length) {
+          body.innerHTML = `<tr><td colspan="${_NOV_CAND_COLS.length}" style="color:#888;text-align:center;padding:0.8em">No candidate taxa for this sample.</td></tr>`;
+        } else {
+          body.innerHTML = rows.map((r) => {
+            const rankColor = { species:"#2f9e44", genus:"#1c7ed6", family:"#f59f00", order:"#9c36b5", class:"#e03131", phylum:"#1864ab" }[r.rank] || "#495057";
+            return "<tr>" + _NOV_CAND_COLS.map(([k]) => {
+              if (k === "rank") {
+                return `<td><span style="color:${rankColor};font-weight:600">${_novEsc(_novFmt(r[k]))}</span></td>`;
+              }
+              if (k === "name") {
+                return `<td style="font-style:italic">${_novEsc(_novFmt(r[k]))}</td>`;
+              }
+              if (k === "reads") {
+                const v = +r[k] || 0;
+                const pct = (v / maxReads * 100).toFixed(0);
+                return `<td data-cand-key="reads" data-cand-name="${_novEsc(_novFmt(r.name))}" data-cand-rank="${_novEsc(r.rank)}" data-cand-val="${v}" data-cand-pct="${pct}" style="cursor:default">
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <span style="min-width:4em;text-align:right">${_novEsc(_novFmt(r[k]))}</span>
+                    <span style="flex:1;min-width:40px;max-width:80px;background:#f1f3f5;border-radius:3px;height:7px;overflow:hidden">
+                      <span style="display:block;height:100%;width:${pct}%;background:#1c7ed6;border-radius:3px"></span>
+                    </span>
+                  </div></td>`;
+              }
+              if (k === "frac_of_sample") {
+                const v = +r[k] || 0;
+                const pct = (v / maxFrac * 100).toFixed(0);
+                const dispPct = (v * 100).toFixed(3);
+                return `<td data-cand-key="frac" data-cand-name="${_novEsc(_novFmt(r.name))}" data-cand-rank="${_novEsc(r.rank)}" data-cand-val="${_novEsc(_novFmt(r[k]))}" data-cand-pct="${pct}" style="cursor:default">
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <span style="min-width:5em;text-align:right">${dispPct}%</span>
+                    <span style="flex:1;min-width:40px;max-width:80px;background:#f1f3f5;border-radius:3px;height:7px;overflow:hidden">
+                      <span style="display:block;height:100%;width:${pct}%;background:#2f9e44;border-radius:3px"></span>
+                    </span>
+                  </div></td>`;
+              }
+              return `<td>${_novEsc(_novFmt(r[k]))}</td>`;
+            }).join("") + "</tr>";
+          }).join("");
+        }
+        if (countEl) countEl.textContent = `${rows.length} candidate${rows.length === 1 ? "" : "s"}`;
+
+        // Tooltip for candidate cells with inline bars
+        body.querySelectorAll("td[data-cand-key]").forEach((td) => {
+          td.addEventListener("mouseenter", (ev) => {
+            const key = td.dataset.candKey, name = td.dataset.candName, rank = td.dataset.candRank;
+            const val = td.dataset.candVal, pct = +td.dataset.candPct / 100;
+            const isReads = key === "reads";
+            const meta = { desc: `${isReads ? "Reads" : "Fraction of sample"} assigned to ${rank} ${name}`, color: isReads ? "#1c7ed6" : "#2f9e44" };
+            _novShowCellTip(ev, (isReads ? "Reads" : "Frac of sample") + ` — ${name}`, val, meta, pct);
+          });
+          td.addEventListener("mousemove", (ev) => {
+            const tip = _novCellTip(); if (tip && tip.style.display !== "none") _novPositionTip(tip, ev);
+          });
+          td.addEventListener("mouseleave", _novHideCellTip);
+        });
+      }
+
+      function _drawNoveltyDownloads() {
+        const wrap = document.getElementById("novelty-downloads");
+        if (!wrap) return;
+        if (!NOVELTY_DL.length) {
+          wrap.innerHTML = '<span style="color:#888">No downloadable files.</span>';
+          return;
+        }
+        const icon = (k) => (k === "xlsx" ? "fa-file-excel" : "fa-file-code");
+        wrap.innerHTML = NOVELTY_DL.map(
+          (d) =>
+            `<a href="${_novEsc(d.filename)}" download class="ncbi-link" ` +
+            `style="display:inline-flex;align-items:center;gap:0.35em;padding:0.3em 0.6em;` +
+            `border:1px solid #d0d7de;border-radius:6px;text-decoration:none;color:#0b5ed7" ` +
+            `title="Download ${_novEsc(d.filename)}">` +
+            `<i class="fas ${icon(d.kind)}"></i> ${_novEsc(d.label)} · ${_novEsc(d.kind.toUpperCase())}</a>`,
+        ).join("");
+      }
+
+      // ── Method coverage + Genus comparison (TASS vs mmseqs rescue) ───────────
+      let _novCmpMode = "coverage";
+      let _novCmpToggleWired = false;
+
+      function _novWireCmpToggle() {
+        if (_novCmpToggleWired) return;
+        _novCmpToggleWired = true;
+        document.querySelectorAll("#nov-cmp-toggle .nov-seg-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            _novCmpMode = btn.dataset.cmp;
+            document.querySelectorAll("#nov-cmp-toggle .nov-seg-btn")
+              .forEach((b) => b.classList.toggle("active", b === btn));
+            const cov = document.getElementById("nov-cmp-coverage");
+            const gen = document.getElementById("nov-cmp-genus");
+            if (cov) cov.style.display = _novCmpMode === "coverage" ? "" : "none";
+            if (gen) gen.style.display = _novCmpMode === "genus" ? "" : "none";
+            if (_novCmpMode === "coverage") _drawNoveltyMethodCoverage();
+            else _drawNoveltyGenusCompare();
+          });
+        });
+      }
+
+      // disjoint read-accounting buckets (sum ≈ 1). Older novelty JSON without the
+      // extended count columns degrades to the fraction fields it does carry.
+      const _NOV_MC_SEGS = [
+        { key: "align",  label: "Aligned to reference (TASS)", color: "#1c7ed6",
+          desc: "Reads that mapped to a pulled reference — these are what the closed-set TASS scores are built from." },
+        { key: "k2only", label: "Kraken2-classified only",     color: "#adb5bd",
+          desc: "Classified by kraken2 but not aligned to a reference and not placed by mmseqs — known taxa with no reference in the run." },
+        { key: "mmSp",   label: "mmseqs → species",            color: "#2f9e44",
+          desc: "Residual (unaligned) reads/ORFs the translated-search LCA placed at species-or-finer." },
+        { key: "mmHr",   label: "mmseqs → genus+ (rescued)",   color: "#f59f00",
+          desc: "Residual reads/ORFs mmseqs could only place above species (genus and higher) — the rescue bucket that the candidate table lists." },
+        { key: "dark",   label: "Dark matter",                 color: "#343a40",
+          desc: "Explained by nothing: not aligned, not classified by kraken2, not placed by mmseqs." },
+      ];
+
+      function _novMcFractions(sm) {
+        const T = +sm.total_reads || 0;
+        const R = +sm.ref_aligned, k2 = +sm.k2_classified;
+        const Sp = +sm.mmseqs_assigned_species, Hr = +sm.mmseqs_assigned_highrank;
+        const fAlign = isFinite(+sm.ref_aligned_frac) ? +sm.ref_aligned_frac : (T ? (R || 0) / T : 0);
+        const fHr    = (T && isFinite(Hr)) ? Hr / T : (+sm.highrank_only_fraction || 0);
+        const fMm    = isFinite(+sm.mmseqs_frac) ? +sm.mmseqs_frac
+                       : (T && isFinite(Sp) && isFinite(Hr) ? (Sp + Hr) / T : fHr);
+        const fSp    = Math.max(0, fMm - fHr);
+        const fK2    = isFinite(+sm.k2_frac) ? +sm.k2_frac : (T ? (k2 || 0) / T : 0);
+        const fK2only = Math.max(0, fK2 - fAlign);
+        const fDark  = Math.max(0, +sm.dark_fraction || 0);
+        const clamp = (x) => Math.max(0, Math.min(1, x || 0));
+        const reads = (f) => (T ? Math.round(f * T) : null);
+        return {
+          align: clamp(fAlign), k2only: clamp(fK2only), mmSp: clamp(fSp),
+          mmHr: clamp(fHr), dark: clamp(fDark), _T: T, _reads: reads,
+        };
+      }
+
+      function _drawNoveltyMethodCoverage() {
+        const host = document.getElementById("nov-cmp-coverage");
+        if (!host) return;
+        const samples = _novSamples();
+        const names = Object.keys(samples).sort();
+        if (!names.length) { host.innerHTML = '<div style="color:#888;font-size:0.82em">No novelty samples.</div>'; return; }
+        const legend = '<div class="nov-mc-legend">' + _NOV_MC_SEGS.map(
+          (s) => `<span><span class="nov-mc-swatch" style="background:${s.color}"></span>${_novEsc(s.label)}</span>`
+        ).join("") + "</div>";
+        const rows = names.map((s) => {
+          const sm = (samples[s] || {}).summary || {};
+          const fr = _novMcFractions(sm);
+          const flagged = Number(sm.novelty_flag) === 1;
+          const segs = _NOV_MC_SEGS.map((seg) => {
+            const f = fr[seg.key] || 0;
+            if (f <= 0) return "";
+            const rd = fr._reads(f);
+            const rdTxt = rd != null ? `${rd.toLocaleString()} reads` : "";
+            return `<div class="nov-mc-seg" style="width:${(f * 100).toFixed(2)}%;background:${seg.color}"
+              data-mc-label="${_novEsc(seg.label)}" data-mc-pct="${(f * 100).toFixed(1)}"
+              data-mc-reads="${_novEsc(rdTxt)}" data-mc-color="${seg.color}"
+              data-mc-desc="${_novEsc(seg.desc)}"></div>`;
+          }).join("");
+          const rescued = ((fr.mmSp + fr.mmHr) * 100).toFixed(1);
+          return `<div class="nov-mc-row">
+            <div class="nov-mc-name" title="${_novEsc(s)}">${flagged ? '<span style="color:#e8590c">●</span> ' : ""}${_novEsc(s)}</div>
+            <div class="nov-mc-bar">${segs}</div>
+            <div class="nov-mc-total" title="mmseqs rescued ${rescued}% of all reads">${fr._T ? fr._T.toLocaleString() : "—"} rds · +${rescued}%</div>
+          </div>`;
+        }).join("");
+        host.innerHTML = legend + rows;
+        host.querySelectorAll(".nov-mc-seg").forEach((el) => {
+          el.addEventListener("mouseenter", (ev) => {
+            const lbl = el.dataset.mcLabel, pct = +el.dataset.mcPct, reads = el.dataset.mcReads;
+            _novShowCellTip(ev, lbl, `${pct}%${reads ? " · " + reads : ""}`,
+              { color: el.dataset.mcColor, desc: el.dataset.mcDesc }, pct / 100);
+          });
+          el.addEventListener("mousemove", (ev) => {
+            const tip = _novCellTip(); if (tip && tip.style.display !== "none") _novPositionTip(tip, ev);
+          });
+          el.addEventListener("mouseleave", _novHideCellTip);
+        });
+      }
+
+      // closed-set genus rollup for one sample, from the main TASS records (BOOT.records)
+      function _novClosedGenus(sample) {
+        const out = {};
+        (DATA || []).forEach((r) => {
+          if ((r["Specimen ID"] || r.sample) !== sample) return;
+          const g = (r["Genus Name"] || r["Genus"] || "").trim();
+          if (!g) return;
+          const key = g.toLowerCase();
+          const o = out[key] || (out[key] = { name: g, tass: 0, cov: 0, reads: 0, pct: 0 });
+          const gt = +r["Genus TASS"] || 0;
+          if (gt > o.tass) o.tass = gt;
+          // only sum strain-level rows so species/genus summary rows don't double count
+          if ((r["Level"] || "Strain") === "Strain") {
+            o.reads += +r["# Reads Aligned"] || 0;
+            o.pct   += +r["% Reads"] || 0;
+            const cv = +r["Coverage"] || 0;
+            if (cv > o.cov) o.cov = cv;
+          }
+        });
+        return out;
+      }
+
+      function _drawNoveltyGenusCompare() {
+        const host = document.getElementById("nov-cmp-genus");
+        if (!host) return;
+        const s = _novState.sample;
+        const samples = _novSamples();
+        const cand = ((samples[s] || {}).candidates || []).filter((c) => (c.rank || "").toLowerCase() === "genus");
+        const mm = {};
+        cand.forEach((c) => { mm[(c.name || "").trim().toLowerCase()] = c; });
+        const closed = _novClosedGenus(s);
+        const keys = Array.from(new Set([...Object.keys(closed), ...Object.keys(mm)]));
+        if (!keys.length) {
+          host.innerHTML = `<div style="color:#888;font-size:0.82em;padding:0.4em 0">No genus-level closed-set rows or mmseqs genus candidates for <b>${_novEsc(s || "—")}</b>.</div>`;
+          return;
+        }
+        const maxReads = Math.max(1, ...cand.map((c) => +c.reads || 0));
+        const rowsData = keys.map((k) => {
+          const c = closed[k], m = mm[k];
+          const tass = c ? c.tass : 0;
+          const mFoh = m ? (+m.frac_of_highrank || 0) : 0;
+          const score = Math.max(tass / 100, mFoh);
+          return { k, name: (c && c.name) || (m && m.name) || k, c, m, tass, mFoh, score };
+        }).sort((a, b) => b.score - a.score);
+
+        const srcTag = (c, m) => c && m
+          ? '<span class="nov-gc-src" style="background:#e7f5ff;color:#1864ab">Both</span>'
+          : c
+            ? '<span class="nov-gc-src" style="background:#fff4e6;color:#d9480f">Aligned only</span>'
+            : '<span class="nov-gc-src" style="background:#ebfbee;color:#2b8a3e">Rescued (mmseqs)</span>';
+
+        const tassCell = (rd) => {
+          if (!rd.c) return '<td style="color:#adb5bd">—</td>';
+          const tass = rd.tass, cov = rd.c.cov;
+          const tcol = tass >= 70 ? "#2f9e44" : tass >= 40 ? "#f59f00" : "#e8590c";
+          return `<td data-gc-tip="TASS ${tass.toFixed(1)} · best-member coverage ${cov.toFixed(1)}%"
+            data-gc-frac="${(tass / 100).toFixed(3)}" data-gc-color="${tcol}" data-gc-label="Genus TASS — ${_novEsc(rd.name)}" style="cursor:default;white-space:nowrap">
+            <b style="color:${tcol}">${tass.toFixed(1)}</b>
+            <span class="nov-gc-track"><span class="nov-gc-bar" style="width:${Math.min(100, tass).toFixed(0)}%;background:${tcol}"></span></span>
+            <span style="font-size:0.74em;color:#868e96">cov ${cov.toFixed(0)}%</span></td>`;
+        };
+        const pctCell = (rd) => rd.c
+          ? `<td style="white-space:nowrap;font-size:0.82em">${(rd.c.pct).toFixed(3)}%</td>`
+          : '<td style="color:#adb5bd">—</td>';
+        const mmCell = (rd) => {
+          if (!rd.m) return '<td style="color:#adb5bd">—</td>';
+          const reads = +rd.m.reads || 0, w = (reads / maxReads * 100).toFixed(0);
+          return `<td data-gc-tip="${reads} placed hit(s) · ${(rd.mFoh * 100).toFixed(1)}% of all genus+ placements"
+            data-gc-frac="${rd.mFoh.toFixed(3)}" data-gc-color="#f59f00" data-gc-label="mmseqs hits — ${_novEsc(rd.name)}" style="cursor:default;white-space:nowrap">
+            <b style="color:#e8590c">${reads}</b>
+            <span class="nov-gc-track"><span class="nov-gc-bar" style="width:${w}%;background:#f59f00"></span></span>
+            <span style="font-size:0.74em;color:#868e96">${(rd.mFoh * 100).toFixed(1)}%</span></td>`;
+        };
+
+        host.innerHTML = `
+          <div style="font-size:0.74rem;color:#6c757d;margin:0 0 0.45em">
+            Genus-level cross-check for <b>${_novEsc(s || "—")}</b>: the closed-set <b>TASS</b> score / coverage / % reads (left)
+            beside what the reference-free <b>mmseqs</b> translated search places (right). Rows mmseqs finds but the reference set
+            never aligned are tagged <span style="color:#2b8a3e;font-weight:600">Rescued</span> — exactly the limited-reference / mock case.
+          </div>
+          <div style="overflow-x:auto">
+          <table class="data-table" style="font-size:0.82em;width:100%">
+            <thead><tr>
+              <th>Genus</th><th>Source</th><th>Genus TASS · cov</th><th>% reads (aligned)</th><th>mmseqs hits · % placed</th>
+            </tr></thead>
+            <tbody>
+            ${rowsData.map((rd) => `<tr>
+              <td style="font-style:italic;font-weight:600">${_novEsc(rd.name)}</td>
+              <td>${srcTag(rd.c, rd.m)}</td>
+              ${tassCell(rd)}
+              ${pctCell(rd)}
+              ${mmCell(rd)}
+            </tr>`).join("")}
+            </tbody>
+          </table></div>`;
+
+        host.querySelectorAll("td[data-gc-tip]").forEach((td) => {
+          td.addEventListener("mouseenter", (ev) => {
+            _novShowCellTip(ev, td.dataset.gcLabel, td.dataset.gcTip,
+              { color: td.dataset.gcColor }, +td.dataset.gcFrac);
+          });
+          td.addEventListener("mousemove", (ev) => {
+            const tip = _novCellTip(); if (tip && tip.style.display !== "none") _novPositionTip(tip, ev);
+          });
+          td.addEventListener("mouseleave", _novHideCellTip);
+        });
+      }
+
+      // ── Novelty Cluster Explorer (canvas-based UMAP) ─────────────────────────
+      const _novClx = {
+        wired: false, sample: null, hideSing: true, minSz: 1,
+        colorBy: "cluster", tags: "ref_class", hl: null,
+        tx: 0, ty: 0, scale: 1, drag: false, lmx: 0, lmy: 0,
+      };
+      const _NOV_CLX_PALETTE = [
+        "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
+        "#edc948","#b07aa1","#ff9da7","#9c755f","#fd8d3c",
+        "#6baed6","#74c476","#9e9ac8","#7fcdbb","#fa9fb5",
+        "#a1d99b","#bcbddc","#fdae6b","#c7e9b4","#abd9e9",
+      ];
+      function _novClxHash(s) {
+        let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+        return _NOV_CLX_PALETTE[Math.abs(h) % _NOV_CLX_PALETTE.length];
+      }
+      function _novClxColor(p, colorBy, clusterCol) {
+        if (colorBy === "set") return p.set === "query" ? "#1c7ed6" : "#adb5bd";
+        if (colorBy === "novelty") {
+          const nv = p._novelty || p.cluster_novelty || "";
+          return nv === "novel_family" ? "#e8590c" : nv === "novel_singleton" ? "#f59f00" : "#adb5bd";
+        }
+        const cid = String(p.cluster_id);
+        if (cid === "-1" || !cid) return "#ced4da";
+        return clusterCol[cid] || "#adb5bd";
+      }
+
+      function _novClxBuildColors(pts) {
+        const ids = Array.from(new Set(pts.map((p) => String(p.cluster_id)).filter((c) => c !== "-1")));
+        const col = {};
+        ids.forEach((c) => { col[c] = _novClxHash("c" + c); });
+        return col;
+      }
+
+      function _drawNoveltyClusterExplorer() {
+        const samples = _embedSamples(); // reuse EMBED data
+        const names = Object.keys(samples).sort();
+        if (!names.length) {
+          document.getElementById("nov-clx-canvas-area").innerHTML =
+            '<div style="padding:2em;color:#868e96;text-align:center">No embedding data available.</div>';
+          return;
+        }
+        const sampleSel = document.getElementById("nov-clx-sample");
+        const hideSingCk = document.getElementById("nov-clx-hide-sing");
+        const minSzSlider = document.getElementById("nov-clx-min-sz");
+        const minSzVal = document.getElementById("nov-clx-min-sz-val");
+        const colorSel = document.getElementById("nov-clx-color");
+        const tagSel = document.getElementById("nov-clx-tags");
+        const statsEl = document.getElementById("nov-clx-stats");
+        const canvas = document.getElementById("nov-clx-canvas");
+        const area = document.getElementById("nov-clx-canvas-area");
+        const tip = document.getElementById("nov-clx-tip");
+        if (!canvas || !area) return;
+
+        if (!_novClx.wired) {
+          sampleSel.innerHTML = names.map((n) => `<option value="${_novEsc(n)}">${_novEsc(n)}</option>`).join("");
+          _novClx.sample = names[0]; _novClx.wired = true;
+          sampleSel.value = _novClx.sample;
+          sampleSel.addEventListener("change", () => { _novClx.sample = sampleSel.value; _novClx.tx=0;_novClx.ty=0;_novClx.scale=1;_novClx.hl=null; _novClxRender(); });
+          hideSingCk.addEventListener("change", () => { _novClx.hideSing = hideSingCk.checked; _novClxRender(); });
+          minSzSlider.addEventListener("input", () => { _novClx.minSz = +minSzSlider.value; minSzVal.textContent = _novClx.minSz; _novClxRender(); });
+          colorSel.addEventListener("change", () => { _novClx.colorBy = colorSel.value; _novClxRender(); });
+          tagSel.addEventListener("change", () => { _novClx.tags = tagSel.value; _novClxRender(); });
+          canvas.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const r = canvas.getBoundingClientRect();
+            const mx = e.clientX - r.left, my = e.clientY - r.top;
+            const f = e.deltaY < 0 ? 1.15 : 1/1.15;
+            _novClx.tx = mx + (_novClx.tx - mx) * f;
+            _novClx.ty = my + (_novClx.ty - my) * f;
+            _novClx.scale *= f; _novClxRender();
+          }, { passive: false });
+          canvas.addEventListener("mousedown", (e) => {
+            _novClx.drag = true;
+            const r = canvas.getBoundingClientRect();
+            _novClx.lmx = e.clientX - r.left; _novClx.lmy = e.clientY - r.top;
+            canvas.style.cursor = "grabbing";
+          });
+          canvas.addEventListener("mouseup", () => { _novClx.drag = false; canvas.style.cursor = "crosshair"; });
+          canvas.addEventListener("mouseleave", () => { _novClx.drag = false; if (tip) tip.style.display = "none"; });
+          canvas.addEventListener("mousemove", (e) => {
+            const r = canvas.getBoundingClientRect();
+            const mx = e.clientX - r.left, my = e.clientY - r.top;
+            if (_novClx.drag) {
+              _novClx.tx += mx - _novClx.lmx; _novClx.ty += my - _novClx.lmy;
+              _novClx.lmx = mx; _novClx.lmy = my; _novClxRender(); return;
+            }
+            _novClxHover(e, mx, my);
+          });
+        }
+
+        // Size canvas to parent
+        canvas.width = area.clientWidth || 560;
+        canvas.height = area.clientHeight || 500;
+        _novClxFit();
+        _novClxRender();
+      }
+
+      function _novClxFit() {
+        const blocks = _embedSamples()[_novClx.sample] || {};
+        const pts = (blocks.umap || []);
+        if (!pts.length) return;
+        const canvas = document.getElementById("nov-clx-canvas");
+        if (!canvas) return;
+        const W = canvas.width, H = canvas.height, pad = 30;
+        const xs = pts.map((p) => +p.x), ys = pts.map((p) => +p.y);
+        const xmin = Math.min(...xs), xmax = Math.max(...xs);
+        const ymin = Math.min(...ys), ymax = Math.max(...ys);
+        const sx = (W - pad*2) / Math.max(1e-9, xmax-xmin);
+        const sy = (H - pad*2) / Math.max(1e-9, ymax-ymin);
+        _novClx.scale = Math.min(sx, sy) * 0.88;
+        _novClx.tx = W/2 - ((xmax+xmin)/2) * _novClx.scale;
+        _novClx.ty = H/2 - ((ymax+ymin)/2) * _novClx.scale;
+      }
+
+      // Per-sample cached data (rebuilt on sample switch, reused across renders)
+      const _novClxCache = {};
+      function _novClxGetCache() {
+        const s = _novClx.sample;
+        if (_novClxCache[s]) return _novClxCache[s];
+        const blocks = _embedSamples()[s] || {};
+        // Parse umap points once
+        const pts = (blocks.umap || []).map((p) => ({
+          id: p.id, set: p.set, cid: String(p.cluster_id),
+          _x: +p.x, _y: +p.y,
+        })).filter((p) => isFinite(p._x) && isFinite(p._y));
+        // Build novelty map from clusters array
+        const novMap = {};
+        (blocks.clusters || []).forEach((r) => {
+          if (r.query_id != null) novMap[String(r.query_id)] = r.novel_flag || "";
+        });
+        pts.forEach((p) => { p._novelty = p.set === "query" ? (novMap[p.id] || "") : ""; });
+        // Index summary rows by cluster_id (includes pre-computed cx/cy/r from Python)
+        const sumMap = {};
+        (blocks.summary || []).forEach((r) => { sumMap[String(r.cluster_id)] = r; });
+        // Pre-build stable colour map
+        const clusterCol = _novClxBuildColors(pts);
+        _novClxCache[s] = { pts, sumMap, clusterCol, blocks };
+        return _novClxCache[s];
+      }
+
+      function _novClxRender() {
+        const canvas = document.getElementById("nov-clx-canvas");
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        const W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        const { pts, sumMap, clusterCol, blocks } = _novClxGetCache();
+        const toS = (x, y) => [x * _novClx.scale + _novClx.tx, y * _novClx.scale + _novClx.ty];
+
+        // Filter visible points
+        const vis = pts.filter((p) => {
+          if (_novClx.hideSing && p.cid === "-1") return false;
+          const sz = p.cid === "-1" ? 1 : +(sumMap[p.cid] || {}).size || 1;
+          return sz >= _novClx.minSz;
+        });
+
+        // Collect visible cluster ids (no iteration over all points — use sumMap)
+        const visClusterIds = new Set();
+        vis.forEach((p) => { if (p.cid !== "-1") visClusterIds.add(p.cid); });
+
+        // Draw enclosure circles using PRE-COMPUTED cx/cy/r from Python (no recompute!)
+        ctx.save();
+        visClusterIds.forEach((c) => {
+          const sum = sumMap[c];
+          if (!sum || sum.cx == null) return;
+          const sz = +(sum.size || 0);
+          if (sz < _novClx.minSz) return;
+          const [sx, sy] = toS(+sum.cx, +sum.cy);
+          const r = Math.max(6, +sum.r * _novClx.scale);
+          const isHl = _novClx.hl === c;
+          const col = clusterCol[c] || "#adb5bd";
+          ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.fillStyle = col + (isHl ? "28" : "0f");
+          ctx.fill();
+          ctx.strokeStyle = col + (isHl ? "cc" : "55");
+          ctx.lineWidth = isHl ? 2 : 0.8;
+          ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+          // Tag label
+          if (_novClx.tags !== "none" && r > 12) {
+            let label = "";
+            if (_novClx.tags === "ref_class")
+              label = sum.dominant_ref_class || (String(sum.novel_family) === "1" ? "novel" : "");
+            if (label) {
+              const fs = Math.min(Math.max(r * 0.18, 8), 11);
+              ctx.font = `${fs}px sans-serif`;
+              const tw = ctx.measureText(label).width;
+              ctx.fillStyle = "rgba(255,255,255,0.82)";
+              ctx.fillRect(sx - tw / 2 - 2, sy - fs / 2 - 1, tw + 4, fs + 2);
+              ctx.fillStyle = col;
+              ctx.textAlign = "center"; ctx.textBaseline = "middle";
+              ctx.fillText(label, sx, sy);
+            }
+          }
+        });
+        ctx.restore();
+
+        // Draw points — sort ref behind query once per render
+        const sorted = vis.slice().sort((a, b) => (a.set === "query" ? 1 : 0) - (b.set === "query" ? 1 : 0));
+        sorted.forEach((p) => {
+          const [sx, sy] = toS(p._x, p._y);
+          const isSing = p.cid === "-1";
+          const isHl = _novClx.hl !== null && p.cid === _novClx.hl;
+          const r = isSing ? 1.5 : (isHl ? 4.5 : 2.5);
+          const col = _novClxColor(p, _novClx.colorBy, clusterCol);
+          ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.fillStyle = col + (isSing ? "88" : isHl ? "ff" : "cc");
+          ctx.fill();
+        });
+
+        // Stats + sidebar
+        const nQuery = vis.filter((p) => p.set === "query").length;
+        const statsEl = document.getElementById("nov-clx-stats");
+        if (statsEl) statsEl.textContent = `${nQuery} query ORFs · ${visClusterIds.size} clusters`;
+        _novClxRenderSidebar(visClusterIds, sumMap, clusterCol, blocks);
+      }
+
+      function _novClxRenderSidebar(visClusterIds, sumMap, clusterCol, blocks) {
+        const list = document.getElementById("nov-clx-list");
+        const countEl = document.getElementById("nov-clx-count");
+        if (!list) return;
+
+        const sorted = Array.from(visClusterIds)
+          .map((c) => ({ c, sum: sumMap[c] || {} }))
+          .filter(({ sum }) => +(sum.size || 0) >= _novClx.minSz)
+          .sort((a, b) => +(b.sum.size || 0) - +(a.sum.size || 0))
+          .slice(0, 150);
+
+        if (countEl) countEl.textContent = `(${sorted.length})`;
+        list.innerHTML = "";
+        sorted.forEach(({ c, sum }) => {
+          const col = clusterCol[c] || "#adb5bd";
+          const novel = String(sum.novel_family) === "1" || sum.novel_family === 1;
+          const refClass = sum.dominant_ref_class || "";
+          const sz = +(sum.size || 0);
+          const div = document.createElement("div");
+          div.className = "nov-clx-item" + (_novClx.hl === c ? " active" : "");
+          let tags = novel
+            ? `<span class="nov-clx-tag novel">novel</span>`
+            : `<span class="nov-clx-tag known">known</span>`;
+          if (refClass) tags += ` <span class="nov-clx-tag ref">${_novEsc(refClass)}</span>`;
+          div.innerHTML = `<div class="nci-head"><span class="nci-id" style="color:${col}">● ${_novEsc(c)}</span><span class="nci-sz">${sz} seqs</span></div><div>${tags}</div>`;
+          div.addEventListener("click", () => {
+            _novClx.hl = (_novClx.hl === c) ? null : c;
+            // pan to cluster centroid using pre-computed cx/cy from sumMap
+            if (_novClx.hl && sum.cx != null) {
+              const canvas = document.getElementById("nov-clx-canvas");
+              if (canvas) {
+                _novClx.tx = canvas.width / 2 - +sum.cx * _novClx.scale;
+                _novClx.ty = canvas.height / 2 - +sum.cy * _novClx.scale;
+              }
+            }
+            _novClxRender();
+          });
+          list.appendChild(div);
+        });
+      }
+
+      function _novClxHover(ev, mx, my) {
+        const tip = document.getElementById("nov-clx-tip");
+        const { pts, sumMap } = _novClxGetCache();
+        const toD = (sx, sy) => [(sx - _novClx.tx) / _novClx.scale, (sy - _novClx.ty) / _novClx.scale];
+        const [dx, dy] = toD(mx, my);
+        let best = null, bestD = Infinity;
+        pts.forEach((p) => {
+          if (_novClx.hideSing && p.cid === "-1") return;
+          const d = (p._x-dx)**2 + (p._y-dy)**2;
+          if (d < bestD) { bestD = d; best = p; }
+        });
+        if (!best || !tip) return;
+        const canvas = document.getElementById("nov-clx-canvas");
+        const [sx, sy] = [best._x * _novClx.scale + _novClx.tx, best._y * _novClx.scale + _novClx.ty];
+        const screenD = Math.hypot(sx-mx, sy-my);
+        if (screenD > 22) { tip.style.display = "none"; return; }
+        const sum = sumMap[best.cid] || null;
+        const novel = sum && (String(sum.novel_family) === "1" || sum.novel_family === 1);
+        tip.innerHTML = `<b>${_novEsc(String(best.id))}</b><br>`
+          + `${_novEsc(best.set)} · cluster ${_novEsc(best.cid)}`
+          + (sum ? `<br>size ${sum.size}` + (sum.dominant_ref_class ? ` · ${_novEsc(sum.dominant_ref_class)}` : "") : "")
+          + (novel ? `<br><span style="color:#e8590c;font-weight:600">novel family</span>` : "");
+        tip.style.left = (ev.clientX + 14) + "px";
+        tip.style.top = (ev.clientY + 14) + "px";
+        tip.style.display = "block";
+      }
+
+      // ── Novelty subtab switching ─────────────────────────────────────────────
+      let _novSubtabsWired = false;
+      function _novWireSubtabs() {
+        if (_novSubtabsWired) return;
+        _novSubtabsWired = true;
+        document.querySelectorAll(".nov-subtab").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            _novState.subtab = btn.dataset.nsub;
+            document.querySelectorAll(".nov-subtab").forEach((b) => b.classList.toggle("active", b === btn));
+            document.getElementById("novelty-sub-overview").style.display = _novState.subtab === "overview" ? "" : "none";
+            document.getElementById("novelty-sub-clusters").style.display = _novState.subtab === "clusters" ? "" : "none";
+            if (_novState.subtab === "clusters") {
+              // Resize canvas then render
+              const area = document.getElementById("nov-clx-canvas-area");
+              const canvas = document.getElementById("nov-clx-canvas");
+              if (canvas && area) {
+                canvas.width = area.clientWidth || 560;
+                canvas.height = area.clientHeight || 500;
+              }
+              _drawNoveltyClusterExplorer();
+            }
+          });
+        });
+      }
+
+      function drawNovelty() {
+        const samples = _novSamples();
+        const names = Object.keys(samples).sort();
+        const sel = document.getElementById("novelty-sample-sel");
+        if (sel) {
+          // Prefer samples that actually have candidates; fall back to all.
+          const withCand = names.filter((s) => (samples[s].candidates || []).length);
+          const opts = (withCand.length ? withCand : names);
+          if (!_novState.sample || !samples[_novState.sample]) {
+            _novState.sample = opts[0] || names[0] || null;
+          }
+          sel.innerHTML = opts.map((s) => `<option value="${_novEsc(s)}">${_novEsc(s)}</option>`).join("");
+          if (_novState.sample) sel.value = _novState.sample;
+          sel.onchange = () => {
+            _novState.sample = sel.value;
+            _drawNoveltyCandidates();
+            _drawNoveltyGenusCompare();
+          };
+        }
+        // Each sub-render is isolated so one failure can't blank the whole panel;
+        // any error is surfaced in-place instead of silently leaving an empty tab.
+        const _novSafe = (label, fn, targetId) => {
+          try { fn(); }
+          catch (e) {
+            console.error(`[novelty] ${label} failed:`, e);
+            const el = targetId && document.getElementById(targetId);
+            if (el) el.innerHTML =
+              `<div style="color:#c92a2a;font-size:0.8em;padding:0.5em">` +
+              `Could not render ${_novEsc(label)}: ${_novEsc(e && e.message || String(e))}</div>`;
+          }
+        };
+        _novSafe("sub-tabs", _novWireSubtabs);
+        _novSafe("view toggle", _novWireCmpToggle);
+        _novSafe("per-sample summary", _drawNoveltySummary, "novelty-summary-body");
+        _novSafe("candidate taxa", _drawNoveltyCandidates, "novelty-cand-body");
+        _novSafe("method coverage", _drawNoveltyMethodCoverage, "nov-cmp-coverage");
+        _novSafe("genus comparison", _drawNoveltyGenusCompare, "nov-cmp-genus");
+        _novSafe("downloads", _drawNoveltyDownloads, "novelty-downloads");
+        if (_novState.subtab === "clusters") _novSafe("cluster explorer", _drawNoveltyClusterExplorer);
+      }
+
       function _drawTab(tab) {
         switch (tab) {
           case "summary":
@@ -20449,11 +21500,15 @@
           case "embed":
             if (HAS_EMBED) drawEmbed();
             break;
+          case "novelty":
+            if (HAS_NOVELTY) drawNovelty();
+            break;
           case "table":
             populateTable();
             break;
         }
         _TAB_DIRTY[tab] = false;
+        _TAB_RENDERED[tab] = true;
         _scheduleExportEnhance();
       }
       function redraw() {
@@ -22262,6 +23317,10 @@
         HAS_EMBED = !!(EMBED && EMBED.samples && Object.keys(EMBED.samples).length);
         const embedBtn = document.getElementById("embed-tab-btn");
         if (embedBtn) embedBtn.classList.toggle("hidden", !HAS_EMBED);
+
+        HAS_NOVELTY = !!(NOVELTY && NOVELTY.samples && Object.keys(NOVELTY.samples).length);
+        const noveltyBtn = document.getElementById("novelty-tab-btn");
+        if (noveltyBtn) noveltyBtn.classList.toggle("hidden", !HAS_NOVELTY);
 
         // Show Map / Run Metadata tabs — always derived from live RUN_META, never from
         // the stale HAS_GEO constant, so real reports without metadata stay hidden.

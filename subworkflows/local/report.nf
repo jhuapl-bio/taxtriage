@@ -25,9 +25,8 @@ include { ORGANISM_MERGE_REPORT } from '../../modules/local/report_merge'
 include { ORGANISM_MERGE_REPORT as SINGLE_REPORT } from '../../modules/local/report_merge'
 include { CREATE_COMPARISON_REPORT } from '../../modules/local/create_comparison_report'
 include { COMBINE_SAMPLES_JSON } from '../../modules/local/combine_samples_json'
+include { NOVELTY_COLLECT } from '../../modules/local/novelty_collect'
 include { MICROBERT_PREDICT } from '../../modules/local/microbert_predict'
-include { CLUSTER_ALIGNMENT } from '../../modules/local/cluster_alignment'
-include { MMSEQS_EASYCLUSTER } from '../../modules/local/mmseqs2_easycluster'
 include { MICROBERT_PARSE } from '../../modules/local/microbert_parse'
 
 workflow REPORT {
@@ -39,6 +38,11 @@ workflow REPORT {
         ch_taxdump_dir
         all_samples
         ch_meta_csv
+        ch_microbert_reps      // [meta, rep_seq.fasta] shared MicrobeRT cluster reps (from MMSEQS_EASYCLUSTER)
+        ch_microbert_clusters  // [meta, *.tsv]          shared MicrobeRT cluster membership
+        ch_novelty_summary     // [meta, *.novelty.summary.tsv]    (empty unless --detect_novelty)
+        ch_novelty_candidates  // [meta, *.novelty.candidates.tsv] (empty unless --detect_novelty)
+        ch_embedding_files     // flat list of *.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv (empty unless --detect_novelty + NOVEL_HOMOLOGS ran)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -73,17 +77,13 @@ workflow REPORT {
             // get the basename of the model
             ch_basename_microbert = ch_microbert_model.map { path -> path.getName() }
             // ch_microbert_model = ch_microbert_model.map { path -> path.parent }
-            CLUSTER_ALIGNMENT(
-                ch_bams
-            )
-            MMSEQS_EASYCLUSTER(
-                CLUSTER_ALIGNMENT.out.fasta,
-            )
-
+            // CLUSTER_ALIGNMENT -> MMSEQS_EASYCLUSTER now run once at the workflow level and are
+            // passed in (ch_microbert_reps / ch_microbert_clusters) so the same cluster also feeds
+            // the NOVELTY Pyrodigal->taxonomy branch.
             MICROBERT_PREDICT(
-                MMSEQS_EASYCLUSTER.out.representatives.combine(ch_microbert_model)
+                ch_microbert_reps.combine(ch_microbert_model)
             )
-            ch_parse_files = MMSEQS_EASYCLUSTER.out.representatives.join(MICROBERT_PREDICT.out.predictions).join(MMSEQS_EASYCLUSTER.out.tsv)
+            ch_parse_files = ch_microbert_reps.join(MICROBERT_PREDICT.out.predictions).join(ch_microbert_clusters)
             MICROBERT_PARSE(
                 ch_parse_files.combine(ch_basename_microbert)
             )
@@ -279,10 +279,38 @@ workflow REPORT {
                 .collect()
                 .ifEmpty { file("$projectDir/assets/NO_FILE_prot") }
 
+            // ── Novelty artifacts: collect per-sample NOVELTY_SCORE TSVs into the
+            //    combined JSON feed (Novelty panel) + per-sample/combined JSON+XLSX
+            //    download links. Runs only under --detect_novelty; otherwise the
+            //    report gets a NO_FILE placeholder and the panel stays hidden.
+            //    A SINGLE channel carries all novelty files (incl. all.novelty.json) so the
+            //    combined json is staged once -> no input-file-name collision in the report.
+            ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE"))
+            if (params.detect_novelty) {
+                ch_nov_summaries = ch_novelty_summary
+                    .map { meta, f -> f }.collect()
+                    .ifEmpty { file("$projectDir/assets/NO_FILE") }
+                ch_nov_cands = ch_novelty_candidates
+                    .map { meta, f -> f }.collect()
+                    .ifEmpty { file("$projectDir/assets/NO_FILE") }
+
+                NOVELTY_COLLECT( ch_nov_summaries, ch_nov_cands )
+
+                // All per-sample + combined json/xlsx files for the panel feed + download links.
+                // flatten() first: each glob output emits a LIST of files, so flatten to
+                // individual items before collecting into one flat list for staging.
+                ch_novelty_files = NOVELTY_COLLECT.out.json_files
+                    .mix(NOVELTY_COLLECT.out.xlsx_files)
+                    .flatten()
+                    .collect()
+            }
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
-                ch_prot_annotations
+                ch_prot_annotations,
+                ch_novelty_files,
+                ch_embedding_files
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report
