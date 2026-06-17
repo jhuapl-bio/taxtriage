@@ -100,6 +100,32 @@ include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
 */
 
 workflow TAXTRIAGE {
+    // ── NF v26: boolean flags arrive as strings; coerce before schema validation ──
+    [
+        'annotate', 'centrifuge', 'trim', 'downsample', 'low_memory',
+        'download_taxdump', 'download_db', 'add_irregular_top_hits',
+        'save_output_fastqs', 'save_unaligned', 'remove_commensal',
+        'save_k2_read_assignment', 'save_classified_fastq',
+        'include_singletons_hostremoval', 'include_singletons_removal',
+        'split_prefix', 'use_megahit_longreads', 'use_bt2', 'use_hisat2',
+        'use_diamond', 'use_denovo', 'skip_report', 'skip_consensus',
+        'skip_variants', 'skip_realignment', 'skip_confidence',
+        'enable_genbank', 'get_pathogens', 'conf_sens', 'disable_auto_weights',
+        'auto_score_power', 'fuzzy', 'refresh_download', 'igenomes_ignore',
+        'recursive_reference', 'decompress_pre_megahit', 'skip_plots',
+        'skip_stats', 'skip_fastp', 'skip_kraken2', 'skip_refpull',
+        'skip_krona', 'skip_features', 'skip_pathogens', 'unknown_sample',
+        'ignore_missing', 'reference_assembly', 'pathogenicity', 'get_features',
+        'get_variants', 'compress_species', 'fast', 'enable_matrix', 'no_subkey',
+        'sort_alphabetical', 'show_potentials', 'show_opportunistics',
+        'show_commensals', 'show_unidentified', 'integrate_strain_table',
+        'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
+        'help', 'validate_params', 'show_hidden_params', 'enable_conda',
+        'detect_novelty'
+    ].each { p ->
+        if (params[p] instanceof String) { params[p] = params[p].toBoolean() }
+    }
+
     // ── Initialisation (moved from top level for NF v25+ compatibility) ──────────
     def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
     WorkflowTaxtriage.initialise(params, log)
