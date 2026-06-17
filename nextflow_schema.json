@@ -87,39 +87,22 @@
                     "type": "string",
                     "description": "1",
                     "fa_icon": "fas fa-file-signature",
-                    "enum": [
-                        "blood",
-                        "skin",
-                        "stool",
-                        "nasal",
-                        "unknown",
-                        "sterile"
-                    ]
+                    "enum": ["blood", "skin", "stool", "nasal", "unknown", "sterile"]
                 },
                 "platform": {
                     "type": "string",
                     "description": "Sequencing platform.  If left blank it retrieves the platform from the samplesheet",
                     "fa_icon": "fas fa-file-signature",
-                    "enum": [
-                        "ILLUMINA",
-                        "OXFORD",
-                        "PACBIO"
-                    ]
+                    "enum": ["ILLUMINA", "OXFORD", "PACBIO"]
                 }
             },
-            "required": [
-                "outdir"
-            ],
+            "required": ["outdir"],
             "anyOf": [
                 {
-                    "required": [
-                        "input"
-                    ]
+                    "required": ["input"]
                 },
                 {
-                    "required": [
-                        "fastq_1"
-                    ]
+                    "required": ["fastq_1"]
                 }
             ],
             "errorMessage": {
@@ -139,10 +122,7 @@
                     "default": "9606"
                 },
                 "subsample": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Pull a random number of reads from the reads to be analyzed. Useful for testing only. ",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -198,10 +178,7 @@
                     "default": null
                 },
                 "microbert_maxlen": {
-                    "type": [
-                        "integer",
-                        "null"
-                    ],
+                    "type": ["integer", "null"],
                     "description": "What max length you would like to use for microbert clustering. Default is 2000. We do not recommend going above 5k bp",
                     "fa_icon": "fas fa-file-signature",
                     "default": null
@@ -245,27 +222,18 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "top_hits_count": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "default": 5,
                     "description": "Top N organisms to report per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_confidence": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Kraken2 confidence, default (empty) is 0.0. Must be between 0 and 1",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "k2_minimum_hit_groups": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Kraken2 minimum hit groups for LCA to be called",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -316,26 +284,17 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "annotate_proteins": {
-                    "type": [
-                        "string",
-                        "null"
-                    ],
+                    "type": ["string", "null"],
                     "description": "A FASTA file of proteins to pull annotations for with DIAMOND BLASTX. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "annotate_meta": {
-                    "type": [
-                        "string",
-                        "null"
-                    ],
+                    "type": ["string", "null"],
                     "description": "A metadata file that contains the headers of the proteins in the --annotate_proteins file and the relevant metadata you want to pull for those proteins. This is used in conjunction with --use_diamond. It can be a custom file or one of the following presets: nr, refseq, or pathogens",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "pident": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Minimum percent identity for DIAMOND BLASTX. Must be between 0 and 100. This is used in conjunction with --annotate_proteins.",
                     "fa_icon": "fas fa-file-signature",
                     "default": 75
@@ -426,10 +385,7 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "min_conf": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Minimum Confidence for reporting.",
                     "hint": "This is the minimum confidence (0-100 scale) for a given taxa to be reported in the final report. Must be between 0 and 100. All items, regardless of conf, will still be present in the annotation txt file.",
                     "fa_icon": "fas fa-file-signature"
@@ -440,91 +396,58 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "gini_weight": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Gini Weight to the TASS Score. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "breadth_weight": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Minimum Log-based breadth weight for TASS Score calculation",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "minhash_weight": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Weight for minhash filtering. It is the combination of % of reads removed + % of breadth new  / 2 ",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mapq_weight": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "MapQ Weight to the TASS Score. If filtering on 20+, this will likely all be 1 or close to 1. Disabled by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "disparity_score_weight": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "The weight for giving more of a bonus for more prevalent organisms. Unused by default",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "hmp_weight": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "TASS Score weight for HMP percentile, recommend disabling if sample is unknown",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "dispersion_factor": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "TASS Score Dispersion factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "alpha": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "TASS Score Alpha. This is the measure of how much weight to put on the breadth vs depth of coverage for a given alignment to an organism. The higher the alpha, the more weight put on breadth rather than depth.",
                     "fa_icon": "fas fa-file-signature",
                     "default": 1
                 },
                 "reward_factor": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "TASS Score Reward factor. This is the measure of how spread out the depths/coverages are in an alignment to an organism. The more spread out or evenly distributed the regions, the higher the score.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mapq_gini_power": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Power exponent for MAPQ-adjusted Gini. gini *= highmapq_fraction^power. Penalizes Gini score for organisms dominated by low-MAPQ reads. Default: 1.0. Set to 0 to disable.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mapq_breadth_power": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads \u2192 breadth scaled by 0.1).",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -535,10 +458,7 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "score_power": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Power transform (gamma) applied to TASS scores. Values < 1 lift compressed scores (e.g. 0.09^0.5=0.30). Preserves monotonic ordering so thresholds still separate TP/FP. Default: no transform.",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -549,10 +469,7 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "jump_threshold": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "Jump Threshold",
                     "hint": "Set a manual jump threshold for a region definition. If the change in depth is greater or less than the current for the upcoming region, then define the new region.",
                     "fa_icon": "fas fa-file-signature"
@@ -597,19 +514,13 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "min_mapq_host": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "default": null,
                     "description": "Minimum MapQ Score for host alignment. If null, the default value will be used.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "zscore_accepted": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "default": null,
                     "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
                     "description": "Minimum zscore for outline assumptions from HHS",
@@ -632,28 +543,19 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_fraction_filter": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "default": null,
                     "description": "filter out top FLOAT fraction of repetitive minimizers",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_I": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "default": null,
                     "description": "minimap2 -I parameter to set the index batch size. Increase if you have a lot of RAM and want faster runtimes",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_K": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
+                    "type": ["number", "null"],
                     "description": "minimap2 -K parameter to set the batch size for processing query sequences. IT dynamically sets it to 80% of total across total threads. Increase if you have a lot of RAM and want faster runtimes",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -697,10 +599,7 @@
                     "type": "string",
                     "description": "Assembly text file format. Can be a kraken2 fasta (kraken2) or the one pulled from ncbi (ncbi)",
                     "fa_icon": "fas fa-folder-open",
-                    "enum": [
-                        "kraken2",
-                        "ncbi"
-                    ],
+                    "enum": ["kraken2", "ncbi"],
                     "default": "ncbi"
                 },
                 "reference_fasta": {
@@ -723,10 +622,7 @@
                     "fa_icon": "fas fa-ban"
                 },
                 "thresholds_json": {
-                    "type": [
-                        "string",
-                        "null"
-                    ],
+                    "type": ["string", "null"],
                     "format": "file-path",
                     "schema": "assets/schema_input.json",
                     "default": null,
@@ -1107,14 +1003,10 @@
             "then": {
                 "anyOf": [
                     {
-                        "required": [
-                            "db"
-                        ]
+                        "required": ["db"]
                     },
                     {
-                        "required": [
-                            "download_db"
-                        ]
+                        "required": ["download_db"]
                     }
                 ],
                 "errorMessage": {
@@ -1124,19 +1016,13 @@
             "else": {
                 "anyOf": [
                     {
-                        "required": [
-                            "reference_fasta"
-                        ]
+                        "required": ["reference_fasta"]
                     },
                     {
-                        "required": [
-                            "organisms"
-                        ]
+                        "required": ["organisms"]
                     },
                     {
-                        "required": [
-                            "organisms_file"
-                        ]
+                        "required": ["organisms_file"]
                     }
                 ],
                 "errorMessage": {
