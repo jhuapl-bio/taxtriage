@@ -16,13 +16,14 @@ fold the result into the existing confidence scoring as a novelty score + candid
 
 ## Files and where they go
 
-| Sketch file | Destination in repo |
-|---|---|
-| `extract_unmapped.nf` | `modules/local/extract_unmapped.nf` |
-| `mmseqs_taxonomy.nf` | `modules/local/mmseqs_taxonomy.nf` |
-| `novelty_score.nf` | `modules/local/novelty_score.nf` |
-| `novelty_score.py` | `bin/novelty_score.py` (chmod +x) |
-| `novelty.nf` | `subworkflows/local/novelty.nf` |
+| Sketch file            | Destination in repo                  |
+| ---------------------- | ------------------------------------ |
+| `mmseqs_downloaddb.nf` | `modules/local/mmseqs_downloaddb.nf` |
+| `extract_unmapped.nf`  | `modules/local/extract_unmapped.nf`  |
+| `mmseqs_taxonomy.nf`   | `modules/local/mmseqs_taxonomy.nf`   |
+| `novelty_score.nf`     | `modules/local/novelty_score.nf`     |
+| `novelty_score.py`     | `bin/novelty_score.py` (chmod +x)    |
+| `novelty.nf`           | `subworkflows/local/novelty.nf`      |
 
 (The `../../modules/...` include paths in `novelty.nf` assume it lives in
 `subworkflows/local/`; same for the relative bin call.)

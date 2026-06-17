@@ -96,10 +96,17 @@
                     "enum": ["ILLUMINA", "OXFORD", "PACBIO"]
                 }
             },
-            "required": ["db", "outdir"],
-            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }],
+            "required": ["outdir"],
+            "anyOf": [
+                {
+                    "required": ["input"]
+                },
+                {
+                    "required": ["fastq_1"]
+                }
+            ],
             "errorMessage": {
-                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
+                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure outdir has a value."
             }
         },
         "prelim_and_qc": {
@@ -332,7 +339,6 @@
                     "description": "Skip the variant report",
                     "fa_icon": "fas fa-file-signature"
                 },
-
                 "skip_realignment": {
                     "type": "boolean",
                     "description": "Dont do re-alignment post kraken2 classification",
@@ -442,7 +448,7 @@
                 },
                 "mapq_breadth_power": {
                     "type": ["number", "null"],
-                    "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads → breadth scaled by 0.1).",
+                    "description": "Power exponent for MAPQ-adjusted breadth. breadth *= highmapq_fraction^power. Higher values penalize low-MAPQ organisms more aggressively. Default: 1.0 (e.g. 10% high-MAPQ reads \u2192 breadth scaled by 0.1).",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "auto_score_power": {
@@ -514,7 +520,8 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "zscore_accepted": {
-                    "type": "number",
+                    "type": ["number", "null"],
+                    "default": null,
                     "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
                     "description": "Minimum zscore for outline assumptions from HHS",
                     "fa_icon": "fas fa-file-signature"
@@ -536,12 +543,14 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_fraction_filter": {
-                    "type": "number",
+                    "type": ["number", "null"],
+                    "default": null,
                     "description": "filter out top FLOAT fraction of repetitive minimizers",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_I": {
                     "type": ["number", "null"],
+                    "default": null,
                     "description": "minimap2 -I parameter to set the index batch size. Increase if you have a lot of RAM and want faster runtimes",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -935,11 +944,91 @@
                     "fa_icon": "fas fa-file-signature"
                 }
             }
+        },
+        "novelty_options": {
+            "title": "Novelty detection options",
+            "type": "object",
+            "description": "Reference-free / open-set detection of organisms with no near neighbour in the DB.",
+            "default": "",
+            "properties": {
+                "detect_novelty": {
+                    "type": "boolean",
+                    "description": "Enable the reference-free novelty branch (translated-search LCA on the closed-set residual).",
+                    "default": false
+                },
+                "novelty_db": {
+                    "type": "string",
+                    "description": "mmseqs seqTaxDB: a database NAME to auto-download via `mmseqs databases` (e.g. UniProtKB, UniRef50, GTDB), or a local path to a prebuilt db directory.",
+                    "default": "UniProtKB"
+                },
+                "novelty_db_cache": {
+                    "type": "string",
+                    "description": "storeDir cache directory for downloaded mmseqs databases; persists across runs and on -resume."
+                },
+                "novelty_db_prefix": {
+                    "type": "string",
+                    "description": "Base name of the seqTaxDB files inside the db directory.",
+                    "default": "seqTaxDB"
+                },
+                "novelty_flag_z": {
+                    "type": "number",
+                    "description": "Novelty score threshold (in sigma) above which a sample is flagged.",
+                    "default": 2.0
+                },
+                "novelty_weights": {
+                    "type": "string",
+                    "description": "Comma-separated weights w_dark,w_rank,w_idnt for the novelty score components.",
+                    "default": "0.5,0.3,0.2"
+                },
+                "novelty_idnt_cut": {
+                    "type": "number",
+                    "description": "Amino-acid percent-identity cutoff below which a best hit counts toward the low-identity (divergent) tail.",
+                    "default": 50.0
+                }
+            }
         }
     },
     "allOf": [
         {
             "$ref": "#/definitions/input_output_options"
+        },
+        {
+            "if": {
+                "properties": {
+                    "skip_kraken2": {
+                        "const": false
+                    }
+                }
+            },
+            "then": {
+                "anyOf": [
+                    {
+                        "required": ["db"]
+                    },
+                    {
+                        "required": ["download_db"]
+                    }
+                ],
+                "errorMessage": {
+                    "anyOf": "When --skip_kraken2 is not set, provide either --db (path or download key) or --download_db to auto-download a database."
+                }
+            },
+            "else": {
+                "anyOf": [
+                    {
+                        "required": ["reference_fasta"]
+                    },
+                    {
+                        "required": ["organisms"]
+                    },
+                    {
+                        "required": ["organisms_file"]
+                    }
+                ],
+                "errorMessage": {
+                    "anyOf": "When --skip_kraken2 is true, provide at least one of --reference_fasta, --organisms, or --organisms_file."
+                }
+            }
         }
     ]
 }

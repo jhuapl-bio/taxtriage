@@ -22,151 +22,9 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.FileVisitOption
+// NF v26 does not support Groovy `import` declarations; fully-qualified names are used inline below.
 
-def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
-// Validate input parameters
-WorkflowTaxtriage.initialise(params, log)
-// println "Initialising taxtriage workflow with parameters: ${workflow}"
-// def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
-
-// print wfsummary to json file to working directory
-// TODO nf-core: Add all file path parameters for the pipeline to the list below
-// Check input path parameters to see if they exist
-def checkPathParamList = [
-    params.input,
-]
-
-if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== 'docker'){
-    exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
-}
-
-
-// check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
-if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
-    exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
-}
-
-println "Working Directory: ${workflow.workDir}"
-
-// Either use an existing samplesheet file or build one from fastq parameters
-if (params.fastq_1) {
-    // check that fastq_1 exists
-    if (!file(params.fastq_1).exists()) {
-        exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
-    }
-    if (params.fastq_2){
-        // check that fastq_2 exists
-        if (!file(params.fastq_2).exists()) {
-            exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
-        }
-    }
-} else if (params.input) {
-    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
-} else {
-    ex
-    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
-}
-
-if (params.minq) {
-    ch_minq_shortreads = params.minq
-    ch_minq_longreads = params.minq
-} else {
-    ch_minq_shortreads = 20
-    ch_minq_longreads = 7
-    println 'Min Quality set to default'
-}
-
-// if params.save_fastq_classified then set ch_save_fastq_classified to true
-// else set ch_save_fastq_classified to false
-ch_save_fastq_classified = params.save_classified_fastq ? true : false
-ch_assembly_txt = null
-ch_kraken_reference = false
-
-def validateBt2Scoremin(String scoremin) {
-    def pattern = /^(G|L),-?\d+(\.\d+)?,-?\d+(\.\d+)?$/
-    if (!scoremin || !pattern.matcher(scoremin).matches()) {
-        error "ERROR: The parameter 'bt2_scoremin' is in an incorrect format or not provided. It should be 'G' or 'L' followed by two comma-separated values (e.g., 'G,-10,-2')."
-    }
-}
-String value = "G,-10,-2"
-boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
-ch_empty_file = file("$projectDir/assets/NO_FILE")
-
-if (matches) {
-    println("The value matches the pattern.")
-} else {
-    println("The value does not match the pattern.")
-}
-// if (params.bt2_scoremin) {
-//     // Call the validation function early in the script
-//     validateBt2Scoremin(params.bt2_scoremin)
-// }
-
-// if skip_kraken2 and reference_fasta is empty AND organisms is empty and organisms_file is empty print and exit that organisms is required
-if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
-    exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
-}
-
-// if params.pathogens, check if file ends with .tsv or .txt
-//// Get Pathogen sheet by default
-ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
-if (params.pathogens) {
-    if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
-        ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
-    } else {
-        exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
-    }
-}
-if (!params.assembly) {
-    println 'No assembly file given, downloading the standard NCBI RefSeq summary' + (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
-    ch_assembly_txt = null
-} else {
-    println "Assembly file present, using it to pull genomes from... ${params.assembly}"
-    def _assembly_files = [file(params.assembly, checkIfExists: true)]
-    if (params.assembly_summary_genbank) {
-        println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
-        _assembly_files << file(params.assembly_summary_genbank, checkIfExists: true)
-    }
-    ch_assembly_txt = _assembly_files.size() == 1 ? _assembly_files[0] : _assembly_files
-}
-
-if (!params.assembly_file_type) {
-    ch_assembly_file_type = 'ncbi'
-} else {
-    ch_assembly_file_type = params.assembly_file_type
-}
-
-
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    CONFIG FILES
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
-
-// // // //
-// // // // MODULE: MultiQC
-// // // //
-workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-ch_workflow_summary = Channel.value(workflow_summary)
-ch_multiqc_config        = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
-ch_multiqc_css       = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExists: true)
-ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
-ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
-ch_multiqc_files = Channel.empty()
-ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-
-ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
-
-// // // //
-// // // // MODULE:  Pathogens
-// // // //
-
-// // // //
-// // // //
+// (All former top-level statements moved inside workflow TAXTRIAGE below — NF v25+ requirement)
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -180,13 +38,17 @@ ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_expla
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
 include { REPORT } from '../subworkflows/local/report'
-include { READSFILTER } from '../subworkflows/local/filter_reads'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
 include { INSILICO } from '../subworkflows/local/insilico'
 include { PROTEINS } from '../subworkflows/local/proteins'
+include { NOVELTY } from '../subworkflows/local/novelty'
+// Shared MicrobeRT clustering, lifted up to the workflow level so its output can feed BOTH
+// the MicrobeRT classifier (in REPORT) and the Pyrodigal->mmseqs taxonomy novelty branch.
+include { CLUSTER_ALIGNMENT } from '../modules/local/cluster_alignment'
+include { MMSEQS_EASYCLUSTER } from '../modules/local/mmseqs2_easycluster'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -199,6 +61,7 @@ include { PROTEINS } from '../subworkflows/local/proteins'
 //
 
 include { DOWNLOAD_DB } from '../modules/local/download_db'
+include { MMSEQS_DOWNLOADDB } from '../modules/local/mmseqs_downloaddb'
 include { DOWNLOAD_TAXTAB } from '../modules/local/download_taxtab'
 include { DOWNLOAD_PATHOGENS } from '../modules/local/download_pathogens'
 include { DOWNLOAD_TAXDUMP } from '../modules/local/download_taxdump'
@@ -235,10 +98,135 @@ include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-// Info required for completion email and summary
-def multiqc_report = []
-
 workflow TAXTRIAGE {
+    // ── NF v26: boolean flags arrive as strings; coerce before schema validation ──
+    [
+        'annotate', 'centrifuge', 'trim', 'downsample', 'low_memory',
+        'download_taxdump', 'download_db', 'add_irregular_top_hits',
+        'save_output_fastqs', 'save_unaligned', 'remove_commensal',
+        'save_k2_read_assignment', 'save_classified_fastq',
+        'include_singletons_hostremoval', 'include_singletons_removal',
+        'split_prefix', 'use_megahit_longreads', 'use_bt2', 'use_hisat2',
+        'use_diamond', 'use_denovo', 'skip_report', 'skip_consensus',
+        'skip_variants', 'skip_realignment', 'skip_confidence',
+        'enable_genbank', 'get_pathogens', 'conf_sens', 'disable_auto_weights',
+        'auto_score_power', 'fuzzy', 'refresh_download', 'igenomes_ignore',
+        'recursive_reference', 'decompress_pre_megahit', 'skip_plots',
+        'skip_stats', 'skip_fastp', 'skip_kraken2', 'skip_refpull',
+        'skip_krona', 'skip_features', 'skip_pathogens', 'unknown_sample',
+        'ignore_missing', 'reference_assembly', 'pathogenicity', 'get_features',
+        'get_variants', 'compress_species', 'fast', 'enable_matrix', 'no_subkey',
+        'sort_alphabetical', 'show_potentials', 'show_opportunistics',
+        'show_commensals', 'show_unidentified', 'integrate_strain_table',
+        'skip_multiqc', 'email_on_fail', 'plaintext_email', 'monochrome_logs',
+        'help', 'validate_params', 'show_hidden_params', 'enable_conda',
+        'detect_novelty'
+    ].each { p ->
+        if (params[p] instanceof String) { params[p] = params[p].toBoolean() }
+    }
+
+    // ── Initialisation (moved from top level for NF v25+ compatibility) ──────────
+    def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
+    WorkflowTaxtriage.initialise(params, log)
+
+    def checkPathParamList = [ params.input ]
+
+    if (workflow.containerEngine != 'singularity' && workflow.containerEngine != 'docker') {
+        exit 1, "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
+    }
+
+    if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
+        exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
+    }
+
+    println "Working Directory: ${workflow.workDir}"
+
+    if (params.fastq_1) {
+        if (!file(params.fastq_1).exists()) {
+            exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
+        }
+        if (params.fastq_2) {
+            if (!file(params.fastq_2).exists()) {
+                exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
+            }
+        }
+    } else if (params.input) {
+        if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
+    } else {
+        exit 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+    }
+
+    if (params.minq) {
+        ch_minq_shortreads = params.minq
+        ch_minq_longreads  = params.minq
+    } else {
+        ch_minq_shortreads = 20
+        ch_minq_longreads  = 7
+        println 'Min Quality set to default'
+    }
+
+    ch_save_fastq_classified = params.save_classified_fastq ? true : false
+    ch_assembly_txt          = null
+    ch_kraken_reference      = false
+
+    String  value   = 'G,-10,-2'
+    boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
+    ch_empty_file   = file("$projectDir/assets/NO_FILE")
+
+    if (matches) { println('The value matches the pattern.') }
+    else          { println('The value does not match the pattern.') }
+
+    // Require Kraken2 DB unless Kraken2 is skipped
+    if (!params.skip_kraken2 && !params.db && !params.download_db) {
+        exit 1, "If --skip_kraken2 is false, you must provide --db or --download_db"
+    }
+
+    if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+        exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
+    }
+
+    ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
+    if (params.pathogens) {
+        if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
+            ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
+        } else {
+            exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
+        }
+    }
+
+    if (!params.assembly) {
+        println 'No assembly file given, downloading the standard NCBI RefSeq summary' + (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
+        ch_assembly_txt = null
+    } else {
+        println "Assembly file present, using it to pull genomes from... ${params.assembly}"
+        def _assembly_files = [file(params.assembly, checkIfExists: true)]
+        if (params.assembly_summary_genbank) {
+            println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
+            _assembly_files << file(params.assembly_summary_genbank, checkIfExists: true)
+        }
+        ch_assembly_txt = _assembly_files.size() == 1 ? _assembly_files[0] : _assembly_files
+    }
+
+    if (!params.assembly_file_type) {
+        ch_assembly_file_type = 'ncbi'
+    } else {
+        ch_assembly_file_type = params.assembly_file_type
+    }
+
+    workflow_summary          = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+    ch_workflow_summary       = Channel.value(workflow_summary)
+    ch_multiqc_config         = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
+    ch_multiqc_css            = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExists: true)
+    ch_multiqc_custom_config  = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
+    ch_multiqc_logo           = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo,   checkIfExists: true) : Channel.empty()
+    ch_multiqc_files          = Channel.empty()
+    ch_multiqc_files          = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    ch_merged_table_config    = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
+    // ── End initialisation ───────────────────────────────────────────────────────
+
+    // Info required for completion email and summary
+    def multiqc_report = []
+
     supported_dbs = [
         'flukraken2': [
             'url': 'https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz',
@@ -306,9 +294,9 @@ workflow TAXTRIAGE {
             // Use Files.walk to traverse the directory recursively
             def fastaFiles = []
             if (params.recursive_reference){
-                Files.walk(path)
+                java.nio.file.Files.walk(path)
                     .filter { p ->
-                        Files.isRegularFile(p) &&
+                        java.nio.file.Files.isRegularFile(p) &&
                         (p.fileName.toString().toLowerCase().endsWith('.fa') || p.fileName.toString().toLowerCase().endsWith('.fasta'))
                     }
                     .forEach { p -> fastaFiles << file(p.toString()) } // Use Nextflow's 'file' for consistency
@@ -484,10 +472,7 @@ workflow TAXTRIAGE {
     ch_reads       = reads_by_type.fastq
 
     // ch_pass_files tracks every sample (FASTQ + FASTA) through to REPORT
-    ch_pass_files = ch_reads.mix(ch_fasta_reads).map{ meta, reads -> {
-            return [ meta ]
-        }
-    }
+    ch_pass_files = ch_reads.mix(ch_fasta_reads).map{ meta, reads -> [ meta ] }
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
@@ -683,11 +668,7 @@ workflow TAXTRIAGE {
     // todo - add alignment for contigs
     ch_mapped_assemblies = Channel.empty()
     ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
-    ch_mapped_assemblies = ch_preppedfiles.map{
-        meta, fastas, map, gcfids -> {
-            return [meta, map]
-        }
-    }
+    ch_mapped_assemblies = ch_preppedfiles.map{ meta, fastas, map, gcfids -> [meta, map] }
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
@@ -772,19 +753,12 @@ workflow TAXTRIAGE {
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
-        ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
-                return [meta, fastas, map]
-            }
-        })
+        ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> [meta, fastas, map] })
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ALIGNMENT(
             ch_prepfiles
         )
-        ch_postalignmentfiles = ch_reads.map{
-            meta, reads -> {
-                return [meta, null, null, null, null, null, null,  []]
-            }
-        }
+        ch_postalignmentfiles = ch_reads.map{ meta, reads -> [meta, null, null, null, null, null, null, []] }
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bedgraphs = ALIGNMENT.out.bedgraphs
@@ -829,11 +803,7 @@ workflow TAXTRIAGE {
         .join(REFERENCE_PREP.out.features)
         .join(REFERENCE_PREP.out.ch_cds_to_taxids)
         .join(
-            ch_filtered_reads.map{
-                meta, reads -> {
-                    return [meta, reads]
-                }
-            }
+            ch_filtered_reads.map{ meta, reads -> [meta, reads] }
         )
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ASSEMBLY(
@@ -866,6 +836,71 @@ workflow TAXTRIAGE {
                     [meta, real_file ?: placeholder]
             }
 
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // SHARED MicrobeRT CLUSTERING
+        // One CLUSTER_ALIGNMENT -> MMSEQS_EASYCLUSTER pass, computed here (before both NOVELTY and
+        // REPORT) so its representatives feed BOTH consumers:
+        //   * REPORT  -> MICROBERT_PREDICT / MICROBERT_PARSE   (the MicrobeRT classifier)
+        //   * NOVELTY -> PYRODIGAL -> MMSEQS_TAXONOMY          (the novelty taxonomy branch)
+        // Only runs under --microbert; otherwise the channels stay empty and NOVELTY falls back
+        // to its de-novo-contig path while REPORT emits the MicrobeRT placeholder.
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        ch_microbert_reps     = Channel.empty()
+        ch_microbert_clusters = Channel.empty()
+        if (params.microbert) {
+            CLUSTER_ALIGNMENT(
+                ALIGNMENT.out.bams.map { meta, bam, csi -> [meta, bam] }
+            )
+            MMSEQS_EASYCLUSTER(
+                CLUSTER_ALIGNMENT.out.fasta
+            )
+            ch_microbert_reps     = MMSEQS_EASYCLUSTER.out.representatives
+            ch_microbert_clusters = MMSEQS_EASYCLUSTER.out.tsv
+            ch_versions = ch_versions.mix(MMSEQS_EASYCLUSTER.out.versions)
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // NOVELTY: reference-free / open-set detection on the closed-set residual
+        // (reads that aligned to NO reference + de novo contigs) via translated-search LCA.
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // Per-sample novelty outputs, surfaced to REPORT so they can be collected into the
+        // interactive HTML report (panel + downloadable JSON/XLSX). Empty unless --detect_novelty.
+        ch_novelty_summary    = Channel.empty()
+        ch_novelty_candidates = Channel.empty()
+        // Embedding files (*.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv) from NOVEL_HOMOLOGS.
+        // Collected into a flat list so CREATE_COMPARISON_REPORT can stage them all at once.
+        // Populated inside the detect_novelty block below when a NOVEL_HOMOLOGS module is wired up.
+        ch_embedding_files = Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
+        if (params.detect_novelty) {
+            // Resolve the seqTaxDB local-first (like --db); otherwise download + cache it
+            // once via `mmseqs databases` (storeDir-cached, reused across runs and on -resume).
+            def ch_novelty_db
+            if (params.novelty_db && file(params.novelty_db).exists()) {
+                println "Novelty: using local mmseqs seqTaxDB at ${params.novelty_db}"
+                ch_novelty_db = Channel.value(file(params.novelty_db, checkIfExists: true))
+            } else {
+                def novelty_dbname = params.novelty_db ?: 'UniProtKB'
+                println "Novelty: seqTaxDB '${novelty_dbname}' not found locally; will download via " +
+                        "'mmseqs databases' (cached at ${params.novelty_db_cache})."
+                MMSEQS_DOWNLOADDB(novelty_dbname)
+                ch_versions = ch_versions.mix(MMSEQS_DOWNLOADDB.out.versions)
+                ch_novelty_db = MMSEQS_DOWNLOADDB.out.db.first()
+            }
+
+            NOVELTY(
+                ALIGNMENT.out.bams,     // [meta, bam, csi] reference-merged per sample
+                ch_kraken2_report,      // [meta, kreport]  from CLASSIFIER
+                ch_denovo,              // [meta, contigs]  ASSEMBLY.out.ch_denovo_assembly
+                ch_novelty_db,
+                ch_microbert_reps       // [meta, rep_seq.fasta] shared MicrobeRT cluster reps (empty unless --microbert)
+            )
+            ch_versions = ch_versions.mix(NOVELTY.out.versions)
+            ch_novelty_summary    = NOVELTY.out.summary       // [meta, *.novelty.summary.tsv]
+            ch_novelty_candidates = NOVELTY.out.candidates    // [meta, *.novelty.candidates.tsv]
+            // TODO: when NOVEL_HOMOLOGS gets a proper NF module, replace the placeholder below with:
+            //   ch_embedding_files = NOVELTY.out.embedding_files.flatten().collect()
         }
 
         // Add placeholder assembly analysis entries for insilico samples so
@@ -909,7 +944,12 @@ workflow TAXTRIAGE {
                 ch_assembly_txt,
                 ch_taxdump_dir,
                 all_samples,
-                ch_meta_csv
+                ch_meta_csv,
+                ch_microbert_reps,      // [meta, rep_seq.fasta] shared MicrobeRT cluster reps
+                ch_microbert_clusters,  // [meta, *.tsv]          shared MicrobeRT cluster membership
+                ch_novelty_summary,     // [meta, *.novelty.summary.tsv]
+                ch_novelty_candidates,  // [meta, *.novelty.candidates.tsv]
+                ch_embedding_files      // flat: *.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }
@@ -938,19 +978,20 @@ workflow TAXTRIAGE {
         multiqc_report = MULTIQC.out.report.toList()
         ch_versions    = ch_versions.mix(MULTIQC.out.versions)
     }
-}
 
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    COMPLETION EMAIL AND SUMMARY
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
+    // ── Completion handler (moved inside workflow for NF v25+ compatibility) ──
+    // Capture references explicitly to avoid delegate-resolution surprises in onComplete.
+    def wf_meta             = workflow
+    def run_params          = params
+    def run_summary_params  = summary_params
+    def run_multiqc_report  = multiqc_report
 
-workflow.onComplete {
-    if (params.email || params.email_on_fail) {
-        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+    workflow.onComplete {
+        if (run_params?.email || run_params?.email_on_fail) {
+            NfcoreTemplate.email(wf_meta, run_params, run_summary_params, projectDir, log, run_multiqc_report)
+        }
+        NfcoreTemplate.summary(wf_meta, run_params, log)
     }
-    NfcoreTemplate.summary(workflow, params, log)
 }
 
 /*

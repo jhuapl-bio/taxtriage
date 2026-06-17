@@ -53,6 +53,11 @@ class WorkflowMain {
             System.exit(0)
         }
 
+        // Nextflow 26.04+ (syntax parser v2) passes all CLI params as strings.
+        // Cast them back to their schema-declared types (boolean/integer/number)
+        // so flags like `--annotate` validate and behave correctly.
+        NfcoreSchema.coerceParamsToSchemaTypes(workflow, params, log)
+
         // Validate workflow parameters via the JSON schema
         if (params.validate_params) {
             NfcoreSchema.validateParameters(workflow, params, log)

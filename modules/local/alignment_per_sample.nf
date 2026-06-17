@@ -67,22 +67,22 @@ process ALIGNMENT_PER_SAMPLE {
     def mapq_gini_power = params.mapq_gini_power != null ? " --mapq_gini_power ${params.mapq_gini_power} " : " "
     def output = "${meta.id}.paths.json"
     def id = meta.id
-    def minmapq = minmapq ? " --minmapq ${minmapq} " :  ""
+    def minmapq_arg = minmapq ? " --minmapq ${minmapq} " :  ""
     def type = meta.type ? " -t ${meta.type} " : " -t Unknown "
     def min_reads_align = params.min_reads_align  ? " -r ${params.min_reads_align} " : " -r 3 "
     // def assemblyi = assembly ? " -j ${assembly} " : " "
     def read_count = meta.read_count && meta.read_count > 0 ? " --readcount ${meta.read_count} " : " "
     def cpu_count = task.cpus ? " -X ${task.cpus} "  : ""
     def k2 = k2_report.name == "NO_FILE" ? " " : " --k2 ${k2_report} "
-    def mapping = mapping.name != "NO_FILE" ? "-m $mapping " : " "
-    def bedgraph = bedgraph.name != "NO_FILE_bedgraph" ? "-b $bedgraph" :  " "
+    def mapping_arg  = mapping.name  != "NO_FILE"         ? "-m $mapping"  : " "
+    def bedgraph_arg = bedgraph.name != "NO_FILE_bedgraph" ? "-b $bedgraph" : " "
     def diamond_output = ch_diamond_analysis.name != "NO_FILE2" ? " --diamond $ch_diamond_analysis" : " "
     def output_dir = "search_results"
     def compress_species = params.rank ? " --rank ${params.rank} " : " "
     def pident = params.pident ? " --pident ${params.pident} " : " "
 
     /* groovylint-disable-next-line UnnecessaryCollectCall */
-    def fastas = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
+    def fastas_arg = fastas && fastas.size() > 0 ? " -f ${fastas} " : " "
     def reward_factor = params.reward_factor ? " --reward_factor ${params.reward_factor} " : "  "
     def dispersion_factor = params.dispersion_factor ? " --dispersion_factor ${params.dispersion_factor} " : " "
     def fast = params.fast ? "  " : " --compare_references "
@@ -115,19 +115,19 @@ process ALIGNMENT_PER_SAMPLE {
 
     match_paths.py \\
         -i $bamfiles \\
-        -o $output $bedgraph \\
+        -o $output $bedgraph_arg \\
         -s $id \\
         $type $read_count \\
-        --output_dir $output_dir $fastas $cpu_count \\
+        --output_dir $output_dir $fastas_arg $cpu_count \\
         --scaled 8000 \\
         $alpha \\
         --min_threshold 0.002 \\
-        -p $pathogens_list  $mapping $k2 $gap_allowance $jump_threshold \\
+        -p $pathogens_list  $mapping_arg $k2 $gap_allowance $jump_threshold \\
         --min_similarity_comparable 0.8 --taxid_removal_stats \\
         $breadth_weight $disparity_score_weight $gini_weight $minhash_weight $mapq_weight $hmp_weight \\
         $auto_score_power $score_power $depth_concentration_power \\
         --fast \\
-        $min_reads_align $compress_species $mbert_report $minmapq $fast $taxonomy $enable_matrix $ani_threshold \\
+        $min_reads_align $compress_species $mbert_report $minmapq_arg $fast $taxonomy $enable_matrix $ani_threshold \\
         $workflow_revision $commitID $platform $sampletype_thresholds \\
         $ctrl_type $neg_ctrls $pos_ctrls $insilico_ctrls $reward_factor $dispersion_factor \\
         $mapq_breadth_power $mapq_gini_power \\
