@@ -16,14 +16,14 @@ fold the result into the existing confidence scoring as a novelty score + candid
 
 ## Files and where they go
 
-| Sketch file | Destination in repo |
-|---|---|
+| Sketch file            | Destination in repo                  |
+| ---------------------- | ------------------------------------ |
 | `mmseqs_downloaddb.nf` | `modules/local/mmseqs_downloaddb.nf` |
-| `extract_unmapped.nf` | `modules/local/extract_unmapped.nf` |
-| `mmseqs_taxonomy.nf` | `modules/local/mmseqs_taxonomy.nf` |
-| `novelty_score.nf` | `modules/local/novelty_score.nf` |
-| `novelty_score.py` | `bin/novelty_score.py` (chmod +x) |
-| `novelty.nf` | `subworkflows/local/novelty.nf` |
+| `extract_unmapped.nf`  | `modules/local/extract_unmapped.nf`  |
+| `mmseqs_taxonomy.nf`   | `modules/local/mmseqs_taxonomy.nf`   |
+| `novelty_score.nf`     | `modules/local/novelty_score.nf`     |
+| `novelty_score.py`     | `bin/novelty_score.py` (chmod +x)    |
+| `novelty.nf`           | `subworkflows/local/novelty.nf`      |
 
 (The `../../modules/...` include paths in `novelty.nf` assume it lives in
 `subworkflows/local/`; same for the relative bin call.)
@@ -52,7 +52,7 @@ downstream references `<dir>/seqTaxDB` no matter which source db was chosen.
 
 **Caching.** The module uses `storeDir "${params.novelty_db_cache}/<db_name>"`. `storeDir`
 persists the finished db to that folder and **skips the process whenever the files already
-exist** — so the multi-GB download happens once and is reused by `-resume` (within a run) *and*
+exist** — so the multi-GB download happens once and is reused by `-resume` (within a run) _and_
 by every later run (across runs). The per-db-name subfolder means switching `--novelty_db`
 won't clobber a previously downloaded db.
 
@@ -95,7 +95,7 @@ novelty = w_dark * z(dark_fraction)
         + w_idnt * z(lowident_tail_mass)
 ```
 
-- **dark_fraction** — reads explained by *nothing* (not K2-classified, not ref-aligned, not
+- **dark_fraction** — reads explained by _nothing_ (not K2-classified, not ref-aligned, not
   protein-assigned). A spike vs. baseline = "the DB doesn't have anything like this."
 - **highrank_only_fraction** — reads the translated search places only at genus/family/
   order, never species. The direct "we see it at the genus level" signal.
@@ -107,6 +107,7 @@ in-run across-sample distribution (`--baseline auto` with `--run-summaries`). Fl
 `novelty >= 2.0` (≈ 2σ out) by default.
 
 Outputs per sample:
+
 - `*.novelty.summary.tsv` — one row, joins to your mqc/confidence tables by sample id.
 - `*.novelty.candidates.tsv` — one row per genus+ candidate taxon with read support.
 
@@ -175,7 +176,7 @@ single-pass version; the `run_summaries` input is already plumbed for the 2-pass
    both "give me a genus call" and "flag the weird sample" with minimal change.
 2. Add `lowident_tail_mass` once `convertalis` pident is flowing.
 3. Pool in de novo contigs (already emitted by ASSEMBLY) for more signal on flagged samples.
-4. Later: RdRp palmprint (palmscan) / phylogenetic placement (EPA-ng) for *characterizing*
+4. Later: RdRp palmprint (palmscan) / phylogenetic placement (EPA-ng) for _characterizing_
    the flagged novelty — a separate module that consumes `candidates.tsv`.
 
 ## DB note
