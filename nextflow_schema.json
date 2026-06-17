@@ -30,7 +30,10 @@
                     "description": "Path to database for Kraken2. If using with --download-db, choose from download options {minikraken2, flukraken2}"
                 },
                 "annotate": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "default": false,
                     "description": "Enable annotation of VF and AMR and Transporter Genes.",
                     "help_text": "Requires --annotate_proteins and --annotate_meta. If set to true, it will annotate the VF, AMR, and Transporter Genes that are present in the --annotate_proteins file. This is disabled by default because it adds a lot of time to the pipeline runtime. Not to be confused with get_features, which is a more general annotation of pulling metadata for any proteins in the --annotate_proteins file rather than just VF and AMR and Transporter Genes.",
@@ -43,7 +46,10 @@
                     "description": "Path to database for Metaphlan"
                 },
                 "centrifuge": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-book",
                     "description": "Enable centrifuge classifier instead of kraken2. Set db with --db as always"
                 },
@@ -74,7 +80,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "trim": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Whether or not to trim your fastq file(s)",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -107,8 +116,21 @@
                     ]
                 }
             },
-            "required": ["outdir"],
-            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }],
+            "required": [
+                "outdir"
+            ],
+            "anyOf": [
+                {
+                    "required": [
+                        "input"
+                    ]
+                },
+                {
+                    "required": [
+                        "fastq_1"
+                    ]
+                }
+            ],
             "errorMessage": {
                 "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure outdir has a value."
             }
@@ -134,7 +156,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "downsample": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Downsample your fastq file(s) using khmer",
                     "fa_icon": "fas fa-file-signature"
                 }
@@ -153,17 +178,26 @@
                     "default": "10239:10:S 2:10:S 4751:5:S"
                 },
                 "low_memory": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-book",
                     "description": "Dont load db to memory, run from I/O"
                 },
                 "download_taxdump": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-download",
                     "description": "Download the ncbi taxonomy database and decompress it. "
                 },
                 "download_db": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-download",
                     "description": "Download the preset database indicated in --db to --outdir."
                 },
@@ -174,7 +208,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "add_irregular_top_hits": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Add irregular distribution genomes to the top hits",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -207,27 +244,42 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "save_output_fastqs": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-book",
                     "description": "Save all read classifications as a txt file"
                 },
                 "save_unaligned": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-book",
                     "description": "Save all unaligned reads as a txt file for reflex analysis"
                 },
                 "remove_commensal": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "fa_icon": "fas fa-book",
                     "description": "Save all read classifications as a txt file"
                 },
                 "save_k2_read_assignment": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Save the kraken2 per-read classification output file. Default is FALSE",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "save_classified_fastq": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Save classified fastqs from k2 and use them downstream - all classified are passed, unclassified are discarded",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -280,25 +332,37 @@
                     "default": null
                 },
                 "include_singletons_hostremoval": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "-f 12 instead of -f 4 for removing hostreads.  Removes reads where BOTH reads are unmapped instead of just one side",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
                 "include_singletons_removal": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Keep singleton (unpaired) reads in paired-end datasets after host removal. By default (false), singletons are discarded. Has no effect on single-end reads. Automatically overridden to false when --use_denovo or --use_diamond is specified.",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
                 "split_prefix": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Enable minimap2 --split-prefix (multi-part index, writes temp files). Off by default; only enable when the reference is too large to index in RAM as a single block.",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
                 "use_megahit_longreads": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Use MEGAHIT for Long Reads (Oxford or Pacbio) instead of the default",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -333,47 +397,74 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "use_bt2": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Dont use minimap2 for short reads, use bowtie2 instead",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "use_hisat2": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Dont use minimap2 for short reads, use hisat2 instead. This process takes much much longer than bt2 or minimap2",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "use_diamond": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Use DIAMOND BLASTX on the following BAM from the alignment step(s)",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "use_denovo": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Use De Novo Assembly. Default is Flye for Longreads and Megahit for short",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_report": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip the pathogen report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_consensus": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip the consensus report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_variants": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip the variant report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_realignment": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Dont do re-alignment post kraken2 classification",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_confidence": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Dont do confidence metrics post-alignment",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -393,21 +484,30 @@
                     "fa_icon": "fas fa-file-csv"
                 },
                 "enable_genbank": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "default": false,
                     "description": "Enable automatic pulling of the GenBank assembly summary (assembly_summary_genbank.txt) from NCBI. Disabled by default; only RefSeq is pulled unless this is toggled on.",
                     "help_text": "When set, GET_ASSEMBLIES downloads https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt in addition to the RefSeq summary.",
                     "fa_icon": "fas fa-database"
                 },
                 "get_pathogens": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "schema": "assets/schema_input.json",
                     "description": "Pull remote pathogens reference file from GH",
                     "help_text": "Available at: https://github.com/jhuapl-bio/datasets/raw/main/references/pathogens.fasta.gz",
                     "fa_icon": "fas fa-file-csv"
                 },
                 "conf_sens": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Sensitive mode for confidence metrics. Uses all BAM query alignments rather than the reference from the alignment. Considered I/O intensive and much slower.  ",
                     "hint": "Useful if there are a lot of variants present in the alignments, otherwise keep disabled",
                     "fa_icon": "fas fa-file-signature"
@@ -422,7 +522,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "disable_auto_weights": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Disable the automatic setting of TASS Score weights based on sample type and platform. If set to true, it uses the default weights for all sample types rather than adjusting them based on the sample type-specific thresholds determined in our testing.",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -516,7 +619,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "auto_score_power": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Automatically compute score_power after optimization so that the mean TP TASS score hits the optimize_tp_target. Requires --optimize and --optimize_tp_target. Overrides score_power if both are set.",
                     "default": false,
                     "fa_icon": "fas fa-file-signature"
@@ -573,7 +679,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "fuzzy": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Fuzzy matching for organism names",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -647,7 +756,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "refresh_download": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Redownload all references from NCBI",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -665,7 +777,10 @@
                     "fa_icon": "fas fa-cloud-download-alt"
                 },
                 "igenomes_ignore": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Do not load the iGenomes reference config.",
                     "fa_icon": "fas fa-ban",
                     "hidden": true,
@@ -690,12 +805,18 @@
                     "fa_icon": "fas fa-file-csv"
                 },
                 "recursive_reference": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Search for the FASTA files in a directory from the --reference_fasta param",
                     "fa_icon": "fas fa-ban"
                 },
                 "decompress_pre_megahit": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Decompress your fastq file(s) pre assembly with megahit only",
                     "help_text": "For a minor bug on cluster environments where megahit can't work on compressed files",
                     "fa_icon": "fas fa-ban"
@@ -730,119 +851,188 @@
             "description": "Not all steps are required to make a report, choose what to skip upfront. Be aware some analysis plots will be missing depending on what you skip.",
             "properties": {
                 "skip_plots": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_stats": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip generating stats for each individual taxa per sample",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_fastp": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip QC trimming",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_kraken2": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip Kraken2. Will not work with \"unknown taxa\" mode. You must provide a reference FASTA if this is toggled on.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_refpull": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip downloading references from NCBI",
                     "hint": "Must provide a local reference fasta file. This is only useful if you want K2 outputs in tandem with a local ref file output",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_krona": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip Krona Plots",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_features": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip the feature download step(s). Used during the protein alignment step",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "skip_pathogens": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip the pathogen detection step(s)",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
                 "unknown_sample": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Dont consider HMP distributions",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "ignore_missing": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Ignore Missing K2 or DIAMOND Scores for final TASS Score confidence",
                     "fa_icon": "fas fa-ban"
                 },
                 "reference_assembly": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Perform Reference-Based Assembly. Performs variant analysis by default (mandatory)",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "pathogenicity": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Align your assembly (denovo) to pathogen references for pathogenicity analysis. Returns a TSV set for both VFs and AMR hits",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "get_features": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Start generating annotations from alignments that take place. Requires LOTS of RAM for large data files/genomes",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "get_variants": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Start generating variant call analysis relative to aligned reads to references",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "compress_species": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Compress taxonomy at species level within the ODR or MultiQC.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "fast": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Instead of building minhash signatures from the .fna file references, compare only across the reads/queries aligned",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "enable_matrix": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Enable the generation of the final report matrix for high ANI similarity. The column will be included in the report if so.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "no_subkey": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Dont use the subkey odr, puts each row as a strain rather than grouping them into a parent taxid. This can be useful for looking at strain level differences, but can be very unwieldy if there are a lot of strains that are above the ANI threshold for potential organisms.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "sort_alphabetical": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Sort the tables on alphabetical order rather than TASS. If disabled, it sorts on TASS score descending",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_potentials": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Show all known/listed potential organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_opportunistics": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Show all known/listed opportunistic organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_commensals": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Show all known/listed commensal organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_unidentified": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Show all non or non-identification organisms in the final discovery report",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -859,13 +1049,19 @@
                     "default": 1.0
                 },
                 "integrate_strain_table": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Integrate the strain level table into the main table rather than as a separate table. This is the table that has all the strains that are above the ANI threshold for potential organisms. This is disabled by default because it can be very large and unwieldy if there are a lot of potential organisms.",
                     "fa_icon": "fas fa-file-signature",
                     "default": false
                 },
                 "skip_multiqc": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Skip upfront QC plotting to save time",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -891,32 +1087,50 @@
                     "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
                 },
                 "email_on_fail": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "only email if set to true",
                     "fa_icon": "fas fa-envelope"
                 },
                 "plaintext_email": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Send email in plaintext",
                     "fa_icon": "fas fa-envelope"
                 },
                 "monochrome_logs": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Monochrome logs",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "help": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Print help message",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "validate_params": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Validate parameters",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "show_hidden_params": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Show hidden parameters",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -955,7 +1169,10 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "enable_conda": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Enable Conda. This is disabled atm. ",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -1034,7 +1251,10 @@
             "default": "",
             "properties": {
                 "detect_novelty": {
-                    "type": "boolean",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Enable the reference-free novelty branch (translated-search LCA on the closed-set residual).",
                     "default": false
                 },
@@ -1083,16 +1303,39 @@
                 }
             },
             "then": {
-                "anyOf": [{ "required": ["db"] }, { "required": ["download_db"] }],
+                "anyOf": [
+                    {
+                        "required": [
+                            "db"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "download_db"
+                        ]
+                    }
+                ],
                 "errorMessage": {
                     "anyOf": "When --skip_kraken2 is not set, provide either --db (path or download key) or --download_db to auto-download a database."
                 }
             },
             "else": {
                 "anyOf": [
-                    { "required": ["reference_fasta"] },
-                    { "required": ["organisms"] },
-                    { "required": ["organisms_file"] }
+                    {
+                        "required": [
+                            "reference_fasta"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "organisms"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "organisms_file"
+                        ]
+                    }
                 ],
                 "errorMessage": {
                     "anyOf": "When --skip_kraken2 is true, provide at least one of --reference_fasta, --organisms, or --organisms_file."
