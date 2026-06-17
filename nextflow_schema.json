@@ -107,24 +107,10 @@
                     ]
                 }
             },
-            "required": [
-                "db",
-                "outdir"
-            ],
-            "anyOf": [
-                {
-                    "required": [
-                        "input"
-                    ]
-                },
-                {
-                    "required": [
-                        "fastq_1"
-                    ]
-                }
-            ],
+            "required": ["outdir"],
+            "anyOf": [{ "required": ["input"] }, { "required": ["fastq_1"] }],
             "errorMessage": {
-                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure that db and outdir have a value."
+                "anyOf": "Either the 'input' parameter or the 'fastq_1' parameter must be provided. Also, ensure outdir has a value."
             }
         },
         "prelim_and_qc": {
@@ -1089,7 +1075,29 @@
             "$ref": "#/definitions/input_output_options"
         },
         {
-            "$ref": "#/definitions/novelty_options"
+            "if": {
+                "properties": {
+                    "skip_kraken2": {
+                        "const": false
+                    }
+                }
+            },
+            "then": {
+                "anyOf": [{ "required": ["db"] }, { "required": ["download_db"] }],
+                "errorMessage": {
+                    "anyOf": "When --skip_kraken2 is not set, provide either --db (path or download key) or --download_db to auto-download a database."
+                }
+            },
+            "else": {
+                "anyOf": [
+                    { "required": ["reference_fasta"] },
+                    { "required": ["organisms"] },
+                    { "required": ["organisms_file"] }
+                ],
+                "errorMessage": {
+                    "anyOf": "When --skip_kraken2 is true, provide at least one of --reference_fasta, --organisms, or --organisms_file."
+                }
+            }
         }
     ]
 }

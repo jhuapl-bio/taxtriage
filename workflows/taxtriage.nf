@@ -151,6 +151,11 @@ workflow TAXTRIAGE {
     if (matches) { println('The value matches the pattern.') }
     else          { println('The value does not match the pattern.') }
 
+    // Require Kraken2 DB unless Kraken2 is skipped
+    if (!params.skip_kraken2 && !params.db && !params.download_db) {
+        exit 1, "If --skip_kraken2 is false, you must provide --db or --download_db"
+    }
+
     if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
         exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
     }
