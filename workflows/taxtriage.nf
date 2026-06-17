@@ -22,151 +22,9 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.FileVisitOption
+// NF v26 does not support Groovy `import` declarations; fully-qualified names are used inline below.
 
-def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
-// Validate input parameters
-WorkflowTaxtriage.initialise(params, log)
-// println "Initialising taxtriage workflow with parameters: ${workflow}"
-// def wfsummary = NfcoreSchema.generateJSONSchema(workflow)
-
-// print wfsummary to json file to working directory
-// TODO nf-core: Add all file path parameters for the pipeline to the list below
-// Check input path parameters to see if they exist
-def checkPathParamList = [
-    params.input,
-]
-
-if (workflow.containerEngine !== 'singularity' && workflow.containerEngine !== 'docker'){
-    exit 1 , "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
-}
-
-
-// check that the params.classifiers is either kraken2 or centrifuge or metaphlan4
-if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
-    exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
-}
-
-println "Working Directory: ${workflow.workDir}"
-
-// Either use an existing samplesheet file or build one from fastq parameters
-if (params.fastq_1) {
-    // check that fastq_1 exists
-    if (!file(params.fastq_1).exists()) {
-        exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
-    }
-    if (params.fastq_2){
-        // check that fastq_2 exists
-        if (!file(params.fastq_2).exists()) {
-            exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
-        }
-    }
-} else if (params.input) {
-    if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
-} else {
-    ex
-    it 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
-}
-
-if (params.minq) {
-    ch_minq_shortreads = params.minq
-    ch_minq_longreads = params.minq
-} else {
-    ch_minq_shortreads = 20
-    ch_minq_longreads = 7
-    println 'Min Quality set to default'
-}
-
-// if params.save_fastq_classified then set ch_save_fastq_classified to true
-// else set ch_save_fastq_classified to false
-ch_save_fastq_classified = params.save_classified_fastq ? true : false
-ch_assembly_txt = null
-ch_kraken_reference = false
-
-def validateBt2Scoremin(String scoremin) {
-    def pattern = /^(G|L),-?\d+(\.\d+)?,-?\d+(\.\d+)?$/
-    if (!scoremin || !pattern.matcher(scoremin).matches()) {
-        error "ERROR: The parameter 'bt2_scoremin' is in an incorrect format or not provided. It should be 'G' or 'L' followed by two comma-separated values (e.g., 'G,-10,-2')."
-    }
-}
-String value = "G,-10,-2"
-boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
-ch_empty_file = file("$projectDir/assets/NO_FILE")
-
-if (matches) {
-    println("The value matches the pattern.")
-} else {
-    println("The value does not match the pattern.")
-}
-// if (params.bt2_scoremin) {
-//     // Call the validation function early in the script
-//     validateBt2Scoremin(params.bt2_scoremin)
-// }
-
-// if skip_kraken2 and reference_fasta is empty AND organisms is empty and organisms_file is empty print and exit that organisms is required
-if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
-    exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
-}
-
-// if params.pathogens, check if file ends with .tsv or .txt
-//// Get Pathogen sheet by default
-ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
-if (params.pathogens) {
-    if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
-        ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
-    } else {
-        exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
-    }
-}
-if (!params.assembly) {
-    println 'No assembly file given, downloading the standard NCBI RefSeq summary' + (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
-    ch_assembly_txt = null
-} else {
-    println "Assembly file present, using it to pull genomes from... ${params.assembly}"
-    def _assembly_files = [file(params.assembly, checkIfExists: true)]
-    if (params.assembly_summary_genbank) {
-        println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
-        _assembly_files << file(params.assembly_summary_genbank, checkIfExists: true)
-    }
-    ch_assembly_txt = _assembly_files.size() == 1 ? _assembly_files[0] : _assembly_files
-}
-
-if (!params.assembly_file_type) {
-    ch_assembly_file_type = 'ncbi'
-} else {
-    ch_assembly_file_type = params.assembly_file_type
-}
-
-
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    CONFIG FILES
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
-
-// // // //
-// // // // MODULE: MultiQC
-// // // //
-workflow_summary    = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
-ch_workflow_summary = Channel.value(workflow_summary)
-ch_multiqc_config        = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
-ch_multiqc_css       = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExists: true)
-ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
-ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo, checkIfExists: true) : Channel.empty()
-ch_multiqc_files = Channel.empty()
-ch_multiqc_files = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-
-ch_merged_table_config        = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
-
-// // // //
-// // // // MODULE:  Pathogens
-// // // //
-
-// // // //
-// // // //
+// (All former top-level statements moved inside workflow TAXTRIAGE below — NF v25+ requirement)
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -241,10 +99,104 @@ include { BBMAP_BBNORM } from '../modules/nf-core/bbmap/bbnorm/main'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-// Info required for completion email and summary
-def multiqc_report = []
-
 workflow TAXTRIAGE {
+    // ── Initialisation (moved from top level for NF v25+ compatibility) ──────────
+    def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
+    WorkflowTaxtriage.initialise(params, log)
+
+    def checkPathParamList = [ params.input ]
+
+    if (workflow.containerEngine != 'singularity' && workflow.containerEngine != 'docker') {
+        exit 1, "Neither Docker or Singularity was selected as the container engine. Please specify with `-profile docker` or `-profile singularity`. Exiting..."
+    }
+
+    if (params.classifier != 'kraken2' && params.classifier != 'centrifuge' && params.classifier != 'metaphlan') {
+        exit 1, "Classifier must be either kraken2, centrifuge or metaphlan"
+    }
+
+    println "Working Directory: ${workflow.workDir}"
+
+    if (params.fastq_1) {
+        if (!file(params.fastq_1).exists()) {
+            exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
+        }
+        if (params.fastq_2) {
+            if (!file(params.fastq_2).exists()) {
+                exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
+            }
+        }
+    } else if (params.input) {
+        if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
+    } else {
+        exit 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+    }
+
+    if (params.minq) {
+        ch_minq_shortreads = params.minq
+        ch_minq_longreads  = params.minq
+    } else {
+        ch_minq_shortreads = 20
+        ch_minq_longreads  = 7
+        println 'Min Quality set to default'
+    }
+
+    ch_save_fastq_classified = params.save_classified_fastq ? true : false
+    ch_assembly_txt          = null
+    ch_kraken_reference      = false
+
+    String  value   = 'G,-10,-2'
+    boolean matches = value.matches('^(G|L),-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$')
+    ch_empty_file   = file("$projectDir/assets/NO_FILE")
+
+    if (matches) { println('The value matches the pattern.') }
+    else          { println('The value does not match the pattern.') }
+
+    if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+        exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
+    }
+
+    ch_pathogens = Channel.fromPath("$projectDir/assets/pathogen_sheet.csv", checkIfExists: true)
+    if (params.pathogens) {
+        if (params.pathogens.endsWith('.csv') || params.pathogens.endsWith('.txt')) {
+            ch_pathogens = Channel.fromPath(params.pathogens, checkIfExists: true)
+        } else {
+            exit 1, "Pathogens file must end with .csv or .txt i.e. it is a .csv (comma-delimited) file!"
+        }
+    }
+
+    if (!params.assembly) {
+        println 'No assembly file given, downloading the standard NCBI RefSeq summary' + (params.enable_genbank ? ' and GenBank summary (--enable_genbank)' : ' (GenBank pulling disabled; enable with --enable_genbank)')
+        ch_assembly_txt = null
+    } else {
+        println "Assembly file present, using it to pull genomes from... ${params.assembly}"
+        def _assembly_files = [file(params.assembly, checkIfExists: true)]
+        if (params.assembly_summary_genbank) {
+            println "GenBank assembly file also provided: ${params.assembly_summary_genbank}"
+            _assembly_files << file(params.assembly_summary_genbank, checkIfExists: true)
+        }
+        ch_assembly_txt = _assembly_files.size() == 1 ? _assembly_files[0] : _assembly_files
+    }
+
+    if (!params.assembly_file_type) {
+        ch_assembly_file_type = 'ncbi'
+    } else {
+        ch_assembly_file_type = params.assembly_file_type
+    }
+
+    workflow_summary          = WorkflowTaxtriage.paramsSummaryMultiqc(workflow, summary_params)
+    ch_workflow_summary       = Channel.value(workflow_summary)
+    ch_multiqc_config         = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
+    ch_multiqc_css            = Channel.fromPath("$projectDir/assets/mqc.css", checkIfExists: true)
+    ch_multiqc_custom_config  = params.multiqc_config ? Channel.fromPath(params.multiqc_config, checkIfExists: true) : Channel.empty()
+    ch_multiqc_logo           = params.multiqc_logo   ? Channel.fromPath(params.multiqc_logo,   checkIfExists: true) : Channel.empty()
+    ch_multiqc_files          = Channel.empty()
+    ch_multiqc_files          = ch_multiqc_files.mix(ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
+    ch_merged_table_config    = Channel.fromPath("$projectDir/assets/table_explanation_mqc.yml", checkIfExists: true)
+    // ── End initialisation ───────────────────────────────────────────────────────
+
+    // Info required for completion email and summary
+    def multiqc_report = []
+
     supported_dbs = [
         'flukraken2': [
             'url': 'https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz',
@@ -312,9 +264,9 @@ workflow TAXTRIAGE {
             // Use Files.walk to traverse the directory recursively
             def fastaFiles = []
             if (params.recursive_reference){
-                Files.walk(path)
+                java.nio.file.Files.walk(path)
                     .filter { p ->
-                        Files.isRegularFile(p) &&
+                        java.nio.file.Files.isRegularFile(p) &&
                         (p.fileName.toString().toLowerCase().endsWith('.fa') || p.fileName.toString().toLowerCase().endsWith('.fasta'))
                     }
                     .forEach { p -> fastaFiles << file(p.toString()) } // Use Nextflow's 'file' for consistency
@@ -490,10 +442,7 @@ workflow TAXTRIAGE {
     ch_reads       = reads_by_type.fastq
 
     // ch_pass_files tracks every sample (FASTQ + FASTA) through to REPORT
-    ch_pass_files = ch_reads.mix(ch_fasta_reads).map{ meta, reads -> {
-            return [ meta ]
-        }
-    }
+    ch_pass_files = ch_reads.mix(ch_fasta_reads).map{ meta, reads -> [ meta ] }
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
@@ -689,11 +638,7 @@ workflow TAXTRIAGE {
     // todo - add alignment for contigs
     ch_mapped_assemblies = Channel.empty()
     ch_preppedfiles = REFERENCE_PREP.out.ch_preppedfiles
-    ch_mapped_assemblies = ch_preppedfiles.map{
-        meta, fastas, map, gcfids -> {
-            return [meta, map]
-        }
-    }
+    ch_mapped_assemblies = ch_preppedfiles.map{ meta, fastas, map, gcfids -> [meta, map] }
     ch_accessions = Channel.empty()
     ch_bedfiles = Channel.empty()
     ch_bedfiles_or_default = Channel.empty()
@@ -778,19 +723,12 @@ workflow TAXTRIAGE {
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     if (!params.skip_realignment) {
-        ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> {
-                return [meta, fastas, map]
-            }
-        })
+        ch_prepfiles = ch_reads.join(ch_preppedfiles.map{ meta, fastas, map, gcfids -> [meta, fastas, map] })
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ALIGNMENT(
             ch_prepfiles
         )
-        ch_postalignmentfiles = ch_reads.map{
-            meta, reads -> {
-                return [meta, null, null, null, null, null, null,  []]
-            }
-        }
+        ch_postalignmentfiles = ch_reads.map{ meta, reads -> [meta, null, null, null, null, null, null, []] }
         ch_covfiles = ALIGNMENT.out.stats
         ch_alignment_stats = ALIGNMENT.out.stats
         ch_bedgraphs = ALIGNMENT.out.bedgraphs
@@ -835,11 +773,7 @@ workflow TAXTRIAGE {
         .join(REFERENCE_PREP.out.features)
         .join(REFERENCE_PREP.out.ch_cds_to_taxids)
         .join(
-            ch_filtered_reads.map{
-                meta, reads -> {
-                    return [meta, reads]
-                }
-            }
+            ch_filtered_reads.map{ meta, reads -> [meta, reads] }
         )
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ASSEMBLY(
@@ -1014,19 +948,14 @@ workflow TAXTRIAGE {
         multiqc_report = MULTIQC.out.report.toList()
         ch_versions    = ch_versions.mix(MULTIQC.out.versions)
     }
-}
 
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    COMPLETION EMAIL AND SUMMARY
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
-
-workflow.onComplete {
-    if (params.email || params.email_on_fail) {
-        NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+    // ── Completion handler (moved inside workflow for NF v25+ compatibility) ──
+    workflow.onComplete {
+        if (params.email || params.email_on_fail) {
+            NfcoreTemplate.email(workflow, params, summary_params, projectDir, log, multiqc_report)
+        }
+        NfcoreTemplate.summary(workflow, params, log)
     }
-    NfcoreTemplate.summary(workflow, params, log)
 }
 
 /*

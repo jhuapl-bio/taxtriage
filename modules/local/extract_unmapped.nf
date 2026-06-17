@@ -25,7 +25,7 @@ process EXTRACT_UNMAPPED {
 
     output:
     tuple val(meta), path("*.unmapped.fastq.gz")                          , emit: reads
-    tuple val(meta), env(TOTAL), env(MAPPED), env(K2CLASS)                , emit: counts
+    tuple val(meta), env('TOTAL'), env('MAPPED'), env('K2CLASS')           , emit: counts
     path "versions.yml"                                                   , emit: versions
 
     when:

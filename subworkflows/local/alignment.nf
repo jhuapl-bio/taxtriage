@@ -12,7 +12,7 @@ include { SAMTOOLS_FAIDX } from '../../modules/nf-core/samtools/faidx/main'
 include { SAMTOOLS_INDEX } from '../../modules/nf-core/samtools/index/main'
 include { SAMTOOLS_MERGE } from '../../modules/nf-core/samtools/merge/main'
 include { SAMTOOLS_COVERAGE } from '../../modules/nf-core/samtools/coverage/main'
-include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage'
+include { SAMTOOLS_HIST_COVERAGE  }  from '../../modules/local/samtools_hist_coverage.nf'
 include { BCFTOOLS_CONSENSUS } from '../../modules/nf-core/bcftools/consensus/main'
 include { BCFTOOLS_MPILEUP } from '../../modules/nf-core/bcftools/mpileup/main'
 include { BCFTOOLS_INDEX  } from '../../modules/nf-core/bcftools/index/main'
@@ -51,31 +51,30 @@ workflow ALIGNMENT {
     def idx = 0
 
     ch_aligners
-        .flatMap { meta, fastq, fastas, _ ->
+        .flatMap { meta, fastq, fastas, _unused ->
             // Print 'fastas' for debugging purposes
 
             def outputs = []
 
             // Flatten 'fastas' by one level if it's nested
             def flattenedFastas = fastas.collectMany { it }
-            flattenedFastas.each { fastaItem -> {
-                    // if fastaItem is a list
-                    if (fastaItem instanceof List) {
-                        // If the item is a list of files, return each file separately
-                        def fasta = fastaItem[0]
-                        def id = "${meta.id}.${fasta.getBaseName()}"
-                        def mm = meta.collectEntries{ k, v -> [k, v] }
-                        mm.id = id
-                        mm.oid = meta.id
-                        outputs << [mm, fastq, fastaItem]
-                    } else {
-                        // If the item is a single file, return it as is
-                        def id = "${meta.id}.${fastaItem.getBaseName()}"
-                        def mm = meta.collectEntries{ k, v -> [k, v] }
-                        mm.id = id
-                        mm.oid = meta.id
-                        outputs.add([mm, fastq, fastaItem])
-                    }
+            flattenedFastas.each { fastaItem ->
+                // if fastaItem is a list
+                if (fastaItem instanceof List) {
+                    // If the item is a list of files, return each file separately
+                    def fasta = fastaItem[0]
+                    def id = "${meta.id}.${fasta.getBaseName()}"
+                    def mm = meta.collectEntries{ k, v -> [k, v] }
+                    mm.id = id
+                    mm.oid = meta.id
+                    outputs << [mm, fastq, fastaItem]
+                } else {
+                    // If the item is a single file, return it as is
+                    def id = "${meta.id}.${fastaItem.getBaseName()}"
+                    def mm = meta.collectEntries{ k, v -> [k, v] }
+                    mm.id = id
+                    mm.oid = meta.id
+                    outputs.add([mm, fastq, fastaItem])
                 }
             }
             // Return the collected outputs
@@ -87,6 +86,7 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment,
             true,
             true,
+            params.minmapq ?: 0,
         )
         collected_bams = BOWTIE2_ALIGN.out.aligned
         ch_versions = ch_versions.mix(BOWTIE2_ALIGN.out.versions)
@@ -96,6 +96,7 @@ workflow ALIGNMENT {
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fastq] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] },
             ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, null ] },
+            params.minmapq ?: 0,
         )
         ch_versions = ch_versions.mix(HISAT2_ALIGN.out.versions)
 
@@ -124,7 +125,7 @@ workflow ALIGNMENT {
         ch_bam_with_fasta = sorted_bams.join(ch_fasta_files_for_alignment.map{ m, fastq, fasta -> [m, fasta] })
 
         BEDTOOLS_BAMTOBED(
-            ch_bam_with_fasta.map{ m, bam, _ -> [m, bam] },
+            ch_bam_with_fasta.map{ m, bam, _unused -> [m, bam] },
         )
         // join ch_bam_With_fasta to BEDTOOLS_BAMTOBED
         ch_beds = ch_bam_with_fasta.join(BEDTOOLS_BAMTOBED.out.bed)
