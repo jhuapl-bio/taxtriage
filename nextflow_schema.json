@@ -606,7 +606,11 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "zscore_accepted": {
-                    "type": "number",
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "default": null,
                     "hint": "This is the value (minimum) accepted when calculating distribution filtering from HHS data for a given sample type match. Value is + and -",
                     "description": "Minimum zscore for outline assumptions from HHS",
                     "fa_icon": "fas fa-file-signature"
@@ -628,7 +632,11 @@
                     "fa_icon": "fas fa-file-signature"
                 },
                 "mmap2_fraction_filter": {
-                    "type": "number",
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "default": null,
                     "description": "filter out top FLOAT fraction of repetitive minimizers",
                     "fa_icon": "fas fa-file-signature"
                 },
@@ -637,6 +645,7 @@
                         "number",
                         "null"
                     ],
+                    "default": null,
                     "description": "minimap2 -I parameter to set the index batch size. Increase if you have a lot of RAM and want faster runtimes",
                     "fa_icon": "fas fa-file-signature"
                 },
