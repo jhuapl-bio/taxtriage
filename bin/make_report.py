@@ -99,15 +99,7 @@ def parse_args(argv=None):
         help="Optional: per-sample + combined novelty JSON/XLSX files to expose as download links. "
              "Only their basenames are used (the files are published alongside the report).",
     )
-    parser.add_argument(
-        "--embedding", nargs="*", default=[], metavar="FILE",
-        help="Optional: per-sample *.umap.tsv, *.cluster_summary.tsv, and *.clusters.tsv files "
-             "from NOVEL_HOMOLOGS. When present, the report shows a Cluster Explorer subtab "
-             "in the Novelty panel. Pass all files together; they are matched by sample name "
-             "(the stem before the first dot).",
-    )
     return parser.parse_args(argv)
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # JSON ingestion
@@ -527,160 +519,6 @@ def load_novelty(novelty_json, download_paths):
     return payload, downloads
 
 
-def load_embedding(embed_files, max_scatter_pts=8000, max_singleton_pts=1500):
-    """
-    Read per-sample *.umap.tsv, *.cluster_summary.tsv, and *.clusters.tsv files
-    produced by the NOVEL_HOMOLOGS process and return a compact embedding payload:
-
-      {
-        "samples": {
-          "<sample>": {
-            "umap":    [{"id","set","cluster_id","x","y"}, ...],   # sampled
-            "summary": [{"cluster_id","size","novel_family","dominant_ref_class",
-                         "mean_outlier_score","cx","cy","r"}, ...],  # with centroid
-            "clusters": [{"query_id","cluster_id","novel_flag","outlier_score",
-                          "cluster_size"}, ...],               # for hover/colour
-          }
-        }
-      }
-
-    Performance strategy:
-      - Pre-compute cluster centroid (cx, cy) and enclosure radius (r) in Python so
-        the JS never has to iterate all points to draw circles.
-      - Keep all non-singleton clustered points (usually <20k) for the scatter.
-      - Randomly sample singletons down to max_singleton_pts.
-      - Total scatter points capped at max_scatter_pts (excess singletons trimmed first).
-    Returns {"samples": {}} when nothing usable is provided.
-    """
-    import math as _math
-    import random as _random
-
-    payload = {"samples": {}}
-    if not embed_files:
-        return payload
-
-    # Group files by sample name (stem before first dot that isn't a known suffix)
-    umap_files, summary_files, cluster_files = {}, {}, {}
-    for p in (embed_files or []):
-        p = (p or "").strip()
-        if not p or not os.path.isfile(p):
-            continue
-        base = os.path.basename(p)
-        if base.startswith("NO_FILE") or base.startswith("~"):
-            continue
-        # Derive sample name: everything before the first recognised suffix
-        for suffix in (".umap.tsv", ".cluster_summary.tsv", ".clusters.tsv"):
-            if base.endswith(suffix):
-                sname = base[: -len(suffix)]
-                if suffix == ".umap.tsv":
-                    umap_files[sname] = p
-                elif suffix == ".cluster_summary.tsv":
-                    summary_files[sname] = p
-                elif suffix == ".clusters.tsv":
-                    cluster_files[sname] = p
-                break
-
-    all_samples = set(umap_files) | set(summary_files) | set(cluster_files)
-    for sname in sorted(all_samples):
-        s_data = {}
-
-        # ── cluster_summary ──────────────────────────────────────────────────
-        summary_rows = []
-        if sname in summary_files:
-            try:
-                df = pd.read_csv(summary_files[sname], sep="\t", dtype=str)
-                summary_rows = df.where(pd.notnull(df), None).to_dict(orient="records")
-            except Exception as exc:
-                print(f"[make_report] WARNING: cannot read {summary_files[sname]}: {exc}",
-                      file=sys.stderr)
-
-        # ── clusters (per-ORF novelty/cluster assignment) ────────────────────
-        cluster_rows = []
-        if sname in cluster_files:
-            try:
-                df = pd.read_csv(cluster_files[sname], sep="\t", dtype=str)
-                keep = [c for c in ("query_id", "cluster_id", "novel_flag",
-                                    "outlier_score", "cluster_size") if c in df.columns]
-                cluster_rows = df[keep].where(pd.notnull(df[keep]), None).to_dict(orient="records")
-            except Exception as exc:
-                print(f"[make_report] WARNING: cannot read {cluster_files[sname]}: {exc}",
-                      file=sys.stderr)
-
-        # ── umap (x/y coordinates) + pre-compute centroids ──────────────────
-        umap_rows = []
-        if sname in umap_files:
-            try:
-                df = pd.read_csv(umap_files[sname], sep="\t", dtype=str)
-                df["_x"] = pd.to_numeric(df["x"], errors="coerce")
-                df["_y"] = pd.to_numeric(df["y"], errors="coerce")
-                df = df.dropna(subset=["_x", "_y"])
-
-                # Separate singletons (cluster_id == -1) from clustered points
-                df["_cid"] = df["cluster_id"].astype(str)
-                clustered  = df[df["_cid"] != "-1"]
-                singletons = df[df["_cid"] == "-1"]
-
-                # Pre-compute centroid + 90th-pct enclosure radius per cluster
-                centroid_map = {}
-                for cid, grp in clustered.groupby("_cid"):
-                    cx = grp["_x"].mean()
-                    cy = grp["_y"].mean()
-                    dists = sorted(
-                        ((grp["_x"] - cx)**2 + (grp["_y"] - cy)**2).pow(0.5).tolist()
-                    )
-                    idx90 = min(len(dists) - 1, int(0.9 * len(dists)))
-                    r = round(dists[idx90] * 1.25 + 0.05, 4)
-                    centroid_map[cid] = {"cx": round(cx, 4), "cy": round(cy, 4), "r": r}
-
-                # Merge centroids into summary rows
-                for row in summary_rows:
-                    cid = str(row.get("cluster_id", ""))
-                    if cid in centroid_map:
-                        row.update(centroid_map[cid])
-
-                # Sample singletons
-                sing_sample = singletons
-                if len(singletons) > max_singleton_pts:
-                    sing_sample = singletons.sample(max_singleton_pts, random_state=42)
-
-                # Budget for clustered points: max_scatter_pts minus singletons
-                clustered_budget = max(max_scatter_pts - len(sing_sample), 500)
-                clust_sample = clustered
-                if len(clustered) > clustered_budget:
-                    # Proportional stratified sample: at least 1 pt per cluster
-                    n_clusters = clustered["_cid"].nunique()
-                    min_per = max(1, min(3, clustered_budget // max(1, n_clusters)))
-                    remain = clustered_budget - n_clusters * min_per
-                    if remain < 0:
-                        remain = 0
-                    sampled_parts = []
-                    for cid, grp in clustered.groupby("_cid"):
-                        quota = min_per
-                        if remain > 0 and len(grp) > min_per:
-                            extra = max(0, round(remain * len(grp) / max(1, len(clustered))))
-                            quota = min_per + extra
-                        sampled_parts.append(grp.sample(min(quota, len(grp)), random_state=42))
-                    clust_sample = pd.concat(sampled_parts)
-
-                pts = pd.concat([clust_sample, sing_sample]).reset_index(drop=True)
-
-                cols = [c for c in ("id", "set", "cluster_id", "x", "y") if c in pts.columns]
-                umap_rows = pts[cols].where(pd.notnull(pts[cols]), None).to_dict(orient="records")
-
-            except Exception as exc:
-                print(f"[make_report] WARNING: cannot read {umap_files[sname]}: {exc}",
-                      file=sys.stderr)
-
-        if umap_rows or summary_rows or cluster_rows:
-            s_data["umap"]    = umap_rows
-            s_data["summary"] = summary_rows
-            s_data["clusters"] = cluster_rows
-            payload["samples"][sname] = s_data
-            n_pts = len(umap_rows)
-            n_cl  = len(summary_rows)
-            print(f"[make_report] Embedding [{sname}]: {n_pts} scatter pts, {n_cl} clusters")
-
-    return payload
 
 
 def load_protein_annotations(paths, pident=0):
@@ -819,11 +657,6 @@ def main():
           f"({len(novelty_data.get('samples', {}))} sample(s), "
           f"{len(novelty_downloads)} download link(s))")
 
-    # ── embedding / UMAP cluster data (NOVEL_HOMOLOGS) ───────────────────────
-    embedding_data = load_embedding(args.embedding)
-    has_embedding = bool(embedding_data.get("samples"))
-    print(f"[make_report] Embedding loaded: {has_embedding} "
-          f"({len(embedding_data.get('samples', {}))} sample(s))")
 
     # ── extract run-level metadata for map / metadata panel ──────────────────
     # These fields are part of the fixed pipeline/sample identity — not run metadata.
@@ -876,8 +709,6 @@ def main():
         "novelty":               novelty_data,                 # {samples: {<s>: {summary, candidates}}}
         "has_novelty":           has_novelty,                  # true if any novelty sample present
         "novelty_downloads":     novelty_downloads,            # [{label, kind, filename}] for links
-        "embedding":             embedding_data,               # {samples: {<s>: {umap, summary, clusters}}}
-        "has_embedding":         has_embedding,                # true if any embedding data present
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

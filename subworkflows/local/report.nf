@@ -42,7 +42,6 @@ workflow REPORT {
         ch_microbert_clusters  // [meta, *.tsv]          shared MicrobeRT cluster membership
         ch_novelty_summary     // [meta, *.novelty.summary.tsv]    (empty unless --detect_novelty)
         ch_novelty_candidates  // [meta, *.novelty.candidates.tsv] (empty unless --detect_novelty)
-        ch_embedding_files     // flat list of *.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv (empty unless --detect_novelty + NOVEL_HOMOLOGS ran)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -309,8 +308,7 @@ workflow REPORT {
                 ch_comparison_jsons,
                 ch_template,
                 ch_prot_annotations,
-                ch_novelty_files,
-                ch_embedding_files
+                ch_novelty_files
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

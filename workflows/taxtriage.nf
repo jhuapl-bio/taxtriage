@@ -869,10 +869,6 @@ workflow TAXTRIAGE {
         // interactive HTML report (panel + downloadable JSON/XLSX). Empty unless --detect_novelty.
         ch_novelty_summary    = Channel.empty()
         ch_novelty_candidates = Channel.empty()
-        // Embedding files (*.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv) from NOVEL_HOMOLOGS.
-        // Collected into a flat list so CREATE_COMPARISON_REPORT can stage them all at once.
-        // Populated inside the detect_novelty block below when a NOVEL_HOMOLOGS module is wired up.
-        ch_embedding_files = Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
         if (params.detect_novelty) {
             // Resolve the seqTaxDB local-first (like --db); otherwise download + cache it
             // once via `mmseqs databases` (storeDir-cached, reused across runs and on -resume).
@@ -899,8 +895,6 @@ workflow TAXTRIAGE {
             ch_versions = ch_versions.mix(NOVELTY.out.versions)
             ch_novelty_summary    = NOVELTY.out.summary       // [meta, *.novelty.summary.tsv]
             ch_novelty_candidates = NOVELTY.out.candidates    // [meta, *.novelty.candidates.tsv]
-            // TODO: when NOVEL_HOMOLOGS gets a proper NF module, replace the placeholder below with:
-            //   ch_embedding_files = NOVELTY.out.embedding_files.flatten().collect()
         }
 
         // Add placeholder assembly analysis entries for insilico samples so
@@ -948,8 +942,7 @@ workflow TAXTRIAGE {
                 ch_microbert_reps,      // [meta, rep_seq.fasta] shared MicrobeRT cluster reps
                 ch_microbert_clusters,  // [meta, *.tsv]          shared MicrobeRT cluster membership
                 ch_novelty_summary,     // [meta, *.novelty.summary.tsv]
-                ch_novelty_candidates,  // [meta, *.novelty.candidates.tsv]
-                ch_embedding_files      // flat: *.umap.tsv, *.cluster_summary.tsv, *.clusters.tsv
+                ch_novelty_candidates   // [meta, *.novelty.candidates.tsv]
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }

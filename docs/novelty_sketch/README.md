@@ -49,7 +49,7 @@ novelty = w_dark * z(dark_fraction)
         + w_idnt * z(lowident_tail_mass)
 ```
 
-- **dark_fraction** — reads explained by *nothing* (not K2-classified, not ref-aligned, not
+- **dark_fraction** — reads explained by _nothing_ (not K2-classified, not ref-aligned, not
   protein-assigned). A spike vs. baseline = "the DB doesn't have anything like this."
 - **highrank_only_fraction** — reads the translated search places only at genus/family/
   order, never species. This is the direct "we see it at the genus level" signal.
@@ -62,6 +62,7 @@ in-run across-sample distribution (`--baseline auto` with `--run-summaries`). Fl
 you can tune per platform without code changes.
 
 Outputs per sample:
+
 - `*.novelty.summary.tsv` — one row, joins to your mqc/confidence tables by sample id.
 - `*.novelty.candidates.tsv` — one row per genus+ candidate taxon with read support.
 
@@ -129,7 +130,7 @@ single-pass version; the `run_summaries` input is already plumbed for the 2-pass
    both "give me a genus call" and "flag the weird sample" with minimal change.
 2. Add `lowident_tail_mass` once `convertalis`/diamond pident is flowing.
 3. Pool in de novo contigs (already emitted by ASSEMBLY) for more signal on flagged samples.
-4. Later: RdRp palmprint (palmscan) / phylogenetic placement (EPA-ng) for *characterizing*
+4. Later: RdRp palmprint (palmscan) / phylogenetic placement (EPA-ng) for _characterizing_
    the flagged novelty — a separate module that consumes `candidates.tsv`.
 
 ## DB note
@@ -139,4 +140,7 @@ default (sensitive, manageable size); build once and cache, point `params.novelt
 Kaiju (nr_euk or RVDB) is a drop-in alternative — swap the module, see the commented block
 at the bottom of `mmseqs_taxonomy.nf`. For Kaiju, use match-length/read-length as the
 divergence proxy instead of pident in `novelty_score.py`.
+
+```
+
 ```
