@@ -1,48 +1,49 @@
 //
-// NOVELTY subworkflow  (ORF-first path)
+// NOVELTY subworkflow  (contig-first path, pluggable backend)
 //
-// Reference-free / open-set novelty branch. Consumes the closed-set residual: reads that
-// aligned to NONE of the pulled references, optionally pooled with de novo contigs.
+// Reference-free / open-set novelty branch. Classifies the de novo assembly built from ALL
+// post-QC reads (aligned or not) -- the same contigs handed to the annotation branch -- rather
+// than only the unmapped residual. This lets the search report organisms that DID align to a
+// pulled reference (e.g. targeted Ebola) alongside anything novel.
 //
-// Shared-cluster path (when --microbert is set):
-//   MicrobeRT MMSEQS_EASYCLUSTER reps (passed in) → PYRODIGAL → MMSEQS_TAXONOMY
-//   The clustering is computed once upstream and reused by both the MicrobeRT classifier
-//   and this branch, so de novo contigs / MMSEQS_EASYCLUSTER_NOVELTY are bypassed here.
+// The backend is chosen by --novelty (params.novelty). ALL backends consume the de novo contigs
+// DIRECTLY -- there is no Pyrodigal ORF prediction step any more:
 //
-// Preferred path (no --microbert, contigs available via --use_denovo):
-//   contigs → PYRODIGAL (metagenome ORF prediction)
-//           → MMSEQS_EASYCLUSTER_NOVELTY (protein deduplication, ~90 % id)
-//           → MMSEQS_TAXONOMY (protein-protein LCA against seqTaxDB)
+//   --novelty mmseqs2 : de novo contigs -> MMSEQS_TAXONOMY (translated LCA; mmseqs extracts ORFs
+//                       internally, so nucleotide contigs are fine -- just slower than feeding it
+//                       predicted proteins, which is the tradeoff we accept for dropping Pyrodigal)
+//   --novelty kaiju   : de novo contigs -> KAIJU (greedy translated search; self-translates)
+//   --novelty bracken : de novo contigs -> KRAKEN2_NOVELTY -> BRACKEN (count-weighted abundance)
 //
-// This is orders-of-magnitude faster than feeding raw reads to mmseqs taxonomy because:
-//   1. Contigs are longer → Pyrodigal predicts actual ORFs rather than 6-frame guessing
-//   2. Clustering removes near-identical proteins before the expensive DB search
-//   3. The search is protein-protein rather than nucleotide → internal 6-frame per read
+// Every backend emits the SAME contract for the score: a per-query (or count-weighted) LCA tsv,
+// an optional best-hit table with %identity, and a kraken-style report.
 //
-// Fallback path (no contigs — --use_denovo not set):
-//   unmapped reads → MMSEQS_TAXONOMY (nucleotide translated-search, existing behaviour)
+// Shared-cluster path (--microbert): the MicrobeRT MMSEQS_EASYCLUSTER reps are used as the query
+// instead of the raw contigs. They are still nucleotide fasta, so the same backends apply.
 //
-// Self-contained: it extracts the unmapped reads and the read accounting itself, so the only
-// thing the caller has to provide is the standard ALIGNMENT/CLASSIFIER outputs + the DB.
+// EXTRACT_UNMAPPED produces only the read-accounting counts that NOVELTY_SCORE needs as
+// denominators -- it does not extract a read stream for taxonomy.
 //
 
-include { EXTRACT_UNMAPPED                          } from '../../modules/local/extract_unmapped'
-include { PYRODIGAL                                 } from '../../modules/local/pyrodigal'
-include { MMSEQS_EASYCLUSTER as MMSEQS_EASYCLUSTER_NOVELTY } from '../../modules/local/mmseqs2_easycluster'
-include { MMSEQS_TAXONOMY                           } from '../../modules/local/mmseqs_taxonomy'
-include { NOVELTY_SCORE                             } from '../../modules/local/novelty_score'
+include { EXTRACT_UNMAPPED } from '../../modules/local/extract_unmapped'
+include { MMSEQS_TAXONOMY  } from '../../modules/local/mmseqs_taxonomy'
+include { KAIJU            } from '../../modules/local/kaiju'
+include { KRAKEN2_KRAKEN2 as KRAKEN2_NOVELTY } from '../../modules/nf-core/kraken2/kraken2/main'
+include { BRACKEN          } from '../../modules/local/bracken'
+include { NOVELTY_SCORE    } from '../../modules/local/novelty_score'
 
 workflow NOVELTY {
     take:
         ch_bams            // [meta, bam, csi]   ALIGNMENT.out.bams (reference-merged per sample)
         ch_kraken2_report  // [meta, kreport]    CLASSIFIER.out.ch_kraken2_report (or NO_FILE)
         ch_denovo          // [meta, contigs]    ASSEMBLY.out.ch_denovo_assembly (may be empty)
-        ch_seqtaxdb        // staged seqTaxDB directory (resolved local-or-downloaded by caller)
+        ch_novelty_db      // staged novelty db DIRECTORY (resolved local-or-downloaded by caller)
         ch_precluster_reps // [meta, rep_seq.fasta] shared MicrobeRT cluster reps (empty unless --microbert)
 
     main:
         ch_versions = Channel.empty()
         ch_empty    = file("$projectDir/assets/NO_FILE")
+        def method  = params.novelty   // 'mmseqs2' | 'kaiju' | 'bracken'
 
         // Skip controls -- a flagged negative control is a process signal, not a sample call.
         ch_bams_nc = ch_bams.filter { meta, bam, csi -> !(meta.control == true) }
@@ -52,89 +53,86 @@ workflow NOVELTY {
             .join(ch_kraken2_report)
             .map { meta, bam, csi, kr -> [meta, bam, csi, kr] }
 
+        // Read accounting only (no read extraction): supplies NOVELTY_SCORE's denominators.
         EXTRACT_UNMAPPED(ch_extract_in)
         ch_versions = ch_versions.mix(EXTRACT_UNMAPPED.out.versions)
 
         // Fold the counts onto meta so NOVELTY_SCORE has its denominators.
-        ch_meta_counts = EXTRACT_UNMAPPED.out.counts.map { meta, total, mapped, k2 ->
-            def m = meta + [ total_reads   : (total as Integer),
-                             ref_aligned   : (mapped as Integer),
-                             k2_classified : (k2 as Integer) ]
+        ch_meta_counts = EXTRACT_UNMAPPED.out.counts.map { meta, total, mapped, unmapped, k2 ->
+            def m = meta + [ total_reads   : (total    as Integer),
+                             ref_aligned   : (mapped   as Integer),
+                             ref_unaligned : (unmapped as Integer),
+                             k2_classified : (k2       as Integer) ]
             [m.id, m]
         }
 
         // ---------------------------------------------------------------------------------
-        // Choose the Pyrodigal input depending on whether the shared MicrobeRT cluster is
-        // available (--microbert). Two mutually-exclusive paths, each with a SINGLE call site
-        // per process so the DSL2 graph stays valid:
-        //
-        //   --microbert ON  (shared-cluster path):
-        //       MMSEQS_EASYCLUSTER reps (nucleotide) -> PYRODIGAL -> MMSEQS_TAXONOMY
-        //       The clustering already happened upstream and is reused here, so the de novo
-        //       contigs and MMSEQS_EASYCLUSTER_NOVELTY are bypassed entirely.
-        //
-        //   --microbert OFF (fallback path, unchanged):
-        //       de novo contigs -> PYRODIGAL -> MMSEQS_EASYCLUSTER_NOVELTY -> MMSEQS_TAXONOMY,
-        //       with a reads-only fallback for samples that produced no contigs.
+        // Query source. Two mutually-exclusive paths, each with a SINGLE map so the DSL2
+        // graph stays valid:
+        //   --microbert ON  : reuse the shared MicrobeRT cluster reps.
+        //   --microbert OFF : the full de novo contigs (all post-QC reads, aligned or not).
+        // The folded-counts meta is attached so it rides through to NOVELTY_SCORE.
         // ---------------------------------------------------------------------------------
-        ch_reads_query = Channel.empty()
         if (params.microbert) {
-            // Attach the count-enriched meta (controls drop out via the inner join with
-            // ch_meta_counts, which is derived from the non-control BAMs).
-            ch_pyrodigal_in = ch_precluster_reps
+            ch_query = ch_precluster_reps
                 .map { meta, reps -> [meta.id, reps] }
                 .join(ch_meta_counts)                                      // [id, reps, meta]
                 .map { id, reps, meta -> [meta, reps] }
         } else {
-            ch_reads_keyed  = EXTRACT_UNMAPPED.out.reads.map { meta, r -> [meta.id, r] }
-            ch_denovo_keyed = ch_denovo.map                  { meta, c -> [meta.id, c] }
-
-            ch_joined = ch_reads_keyed
-                .join(ch_meta_counts)                                      // [id, reads, meta]
-                .join(ch_denovo_keyed, remainder: true)                   // [id, reads, meta, contigs?]
-                .filter { row -> row[1] != null && row[2] != null }       // require reads + meta
-
-            ch_joined.branch { row ->
-                with_contigs : row.size() > 3 && row[3] != null && row[3].name != 'NO_FILE'
-                reads_only   : true
-            }.set { ch_branched }
-
-            ch_pyrodigal_in = ch_branched.with_contigs.map { row -> [ row[2], row[3] ] }
-            // Reads-only fallback (no contigs): translated-search the raw reads directly.
-            ch_reads_query  = ch_branched.reads_only.map  { row -> [ row[2], [row[1]] ] }
+            ch_query = ch_denovo
+                .map { meta, c -> [meta.id, c] }
+                .join(ch_meta_counts)                                      // [id, contigs, meta]
+                .filter { id, c, meta -> c != null && c.name != 'NO_FILE' } // require real contigs
+                .map { id, c, meta -> [meta, c] }
         }
 
-        // Predict ORFs in metagenome mode; outputs .faa protein sequences. Single call site.
-        PYRODIGAL(ch_pyrodigal_in)
-        ch_versions = ch_versions.mix(PYRODIGAL.out.versions)
+        // ---------------------------------------------------------------------------------
+        // Backend dispatch. Each branch ends by setting ch_lca / ch_tophit / ch_report so the
+        // scoring + emit below has a single call site per process.
+        // ---------------------------------------------------------------------------------
+        ch_lca    = Channel.empty()
+        ch_tophit = Channel.empty()
+        ch_report = Channel.empty()
 
-        if (params.microbert) {
-            // Reps were already clustered upstream, so go straight to taxonomy.
-            ch_taxonomy_input = PYRODIGAL.out.proteins
-        } else {
-            // Cluster predicted proteins to remove redundancy before the DB search.
-            // Aliased MMSEQS_EASYCLUSTER so modules.config can give it protein identity
-            // thresholds without touching the annotation/MicrobeRT clustering settings.
-            MMSEQS_EASYCLUSTER_NOVELTY(PYRODIGAL.out.proteins)
-            ch_versions = ch_versions.mix(MMSEQS_EASYCLUSTER_NOVELTY.out.versions)
-
-            // Merge ORF reps with the reads-only fallback before taxonomy.
-            ch_taxonomy_input = MMSEQS_EASYCLUSTER_NOVELTY.out.representatives.mix(ch_reads_query)
+        if (method == 'kaiju') {
+            KAIJU(ch_query, ch_novelty_db)
+            ch_versions = ch_versions.mix(KAIJU.out.versions)
+            ch_lca    = KAIJU.out.lca
+            ch_tophit = KAIJU.out.tophit
+            ch_report = KAIJU.out.report
         }
-
-        MMSEQS_TAXONOMY(ch_taxonomy_input, ch_seqtaxdb)
-        ch_versions = ch_versions.mix(MMSEQS_TAXONOMY.out.versions)
+        else if (method == 'bracken') {
+            // Kraken2 over the contigs first, then bracken re-estimates abundance.
+            // Contigs are always a single FASTA -- force single_end:true so the module
+            // does not add --paired (which requires two files and would cause Kraken2 to fail).
+            ch_query_se = ch_query.map { meta, contigs -> [ meta + [single_end: true], contigs ] }
+            KRAKEN2_NOVELTY(ch_query_se, ch_novelty_db, false, false)
+            ch_versions = ch_versions.mix(KRAKEN2_NOVELTY.out.versions)
+            BRACKEN(KRAKEN2_NOVELTY.out.report, ch_novelty_db)
+            ch_versions = ch_versions.mix(BRACKEN.out.versions)
+            ch_lca    = BRACKEN.out.lca
+            ch_tophit = BRACKEN.out.tophit
+            ch_report = BRACKEN.out.report
+        }
+        else {
+            // default / 'mmseqs2': translated LCA straight on the contigs.
+            MMSEQS_TAXONOMY(ch_query, ch_novelty_db)
+            ch_versions = ch_versions.mix(MMSEQS_TAXONOMY.out.versions)
+            ch_lca    = MMSEQS_TAXONOMY.out.lca
+            ch_tophit = MMSEQS_TAXONOMY.out.tophit
+            ch_report = MMSEQS_TAXONOMY.out.report
+        }
 
         // Single-pass scoring. The run_summaries input is already plumbed for a future
-        // two-pass across-sample z-score mode.
-        ch_score_in = MMSEQS_TAXONOMY.out.lca.join(MMSEQS_TAXONOMY.out.tophit)
-
+        // two-pass across-sample z-score mode. NOVELTY_SCORE reads params.novelty to decide
+        // whether the LCA carries a count column (bracken) or one row per query (mmseqs/kaiju).
+        ch_score_in = ch_lca.join(ch_tophit)
         NOVELTY_SCORE(ch_score_in, ch_empty)
         ch_versions = ch_versions.mix(NOVELTY_SCORE.out.versions)
 
     emit:
         summary    = NOVELTY_SCORE.out.summary      // [meta, *.novelty.summary.tsv]
         candidates = NOVELTY_SCORE.out.candidates   // [meta, *.novelty.candidates.tsv]
-        report     = MMSEQS_TAXONOMY.out.report     // kraken-style, reusable by krona/kreport
+        report     = ch_report                      // kraken-style, reusable by krona/kreport
         versions   = ch_versions
 }

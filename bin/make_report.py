@@ -28,6 +28,8 @@ Optionally accepts one or more protein-annotation XLSX files produced by the
 """
 
 import argparse
+import csv
+import datetime
 import glob
 import json
 import math
@@ -58,6 +60,15 @@ def parse_args(argv=None):
         help="Optional: protein-annotation XLSX file(s) produced by "
              "--annotate_proteins / --annotate_meta. "
              "Do NOT pass files from use_diamond or get_features here.",
+    )
+    parser.add_argument(
+        "--annotate_reports", nargs="*", default=[],
+        metavar="TSV",
+        help="Optional: standalone per-sample annotation report TSV(s) produced by "
+             "annotate_report.py (published under <outdir>/annotate/<sample>.annotate_report.tsv). "
+             "These carry de-novo / unaligned VF-AMR hits for samples that have NO reference "
+             "alignment, so their annotation is otherwise lost from the merged report. Only "
+             "samples NOT already present in --protein_annotations are supplemented (no double-count).",
     )
     parser.add_argument(
         "--mintass", default=1.0, type=float,
@@ -98,6 +109,19 @@ def parse_args(argv=None):
         "--novelty-downloads", nargs="*", default=[], metavar="FILE",
         help="Optional: per-sample + combined novelty JSON/XLSX files to expose as download links. "
              "Only their basenames are used (the files are published alongside the report).",
+    )
+    parser.add_argument(
+        "--pathogens", default=None, metavar="CSV",
+        help="Optional: pathogen reference sheet (assets/pathogen_sheet.csv). When given, novelty "
+             "candidates and VF/AMR hits are cross-referenced against it so the report can flag "
+             "listed pathogens that have NO reference alignment (taxid, then name, then genus rollup).",
+    )
+    parser.add_argument(
+        "--vfamr-taxids", default=None, metavar="TSV",
+        help="Optional: bvbrc specialty-gene reference TSV "
+             "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
+             "each VF/AMR hit's taxids from its Source ID so pathogen matching can key on taxid "
+             "instead of the merged sheet's (often mis-parsed) Genus/Species text.",
     )
     return parser.parse_args(argv)
 
@@ -482,7 +506,7 @@ def load_novelty(novelty_json, download_paths):
                       "filename": <basename>}, ...] for the report's download links.
     Returns ({"samples": {}}, []) when nothing usable is provided.
     """
-    payload = {"samples": {}}
+    payload = {"samples": {}, "classifier": ""}
     if novelty_json:
         p = novelty_json.strip()
         if p and os.path.isfile(p):
@@ -490,6 +514,7 @@ def load_novelty(novelty_json, download_paths):
                 with open(p, encoding="utf-8") as fh:
                     data = json.load(fh)
                 payload["samples"] = data.get("samples", {}) or {}
+                payload["classifier"] = data.get("classifier", "") or ""
             except Exception as exc:  # noqa: BLE001
                 print(f"[make_report] WARNING: cannot read novelty json {p}: {exc}",
                       file=sys.stderr)
@@ -519,6 +544,223 @@ def load_novelty(novelty_json, download_paths):
     return payload, downloads
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Pathogen reference sheet (assets/pathogen_sheet.csv)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Severity ranking used when a genus rolls up many species with mixed status.
+_PATH_SEVERITY = {"primary": 4, "opportunistic": 3, "potential": 2, "commensal": 1}
+
+# Ranks for which a first-token / name genus rollup is meaningful. Deliberately
+# excludes "no rank" so phage / environmental / clade entries (e.g. "Bacillus
+# phage SPBc2") are NOT mis-attributed to a host genus. Exact taxid/name matches
+# still apply to every candidate regardless of rank.
+_PATH_ROLLUP_RANKS = {"genus", "species", "subspecies", "strain", "serotype", "serovar"}
+
+
+def load_pathogens(path):
+    """
+    Read the pathogen reference sheet into compact lookups the report can use to
+    flag novelty candidates and VF/AMR hits that correspond to listed pathogens
+    even when nothing aligned. Returns:
+
+      {
+        "by_taxid": {"<taxid>": {n,c,s,hc,g}, ...},   # exact NCBI taxid
+        "by_name":  {"<lower name>": {n,c,s,hc,g}, ...},
+        "by_genus": {"<lower genus>": {c,hc,n}, ...},  # genus rollup (most-severe class)
+      }
+
+    where each record carries: n=name, c=general_classification (lower),
+    s=status, hc=high_consequence (bool), g=genus (lower).
+    Returns empty lookups when no sheet is supplied or it cannot be read.
+    """
+    out = {"by_taxid": {}, "by_name": {}, "by_genus": {}}
+    if not path:
+        return out
+    p = path.strip()
+    if not p or not os.path.isfile(p):
+        if p:
+            print(f"[make_report] WARNING: pathogen sheet not found: {p}", file=sys.stderr)
+        return out
+
+    by_taxid, by_name, by_genus = out["by_taxid"], out["by_name"], out["by_genus"]
+    try:
+        with open(p, newline="", encoding="utf-8-sig") as fh:
+            for r in csv.DictReader(fh):
+                taxid = (r.get("taxid") or "").strip()
+                name = (r.get("name") or "").strip()
+                cls = (r.get("general_classification") or "").strip().lower()
+                status = (r.get("status") or "").strip()
+                hc = (r.get("high_consequence") or "").strip().upper() in ("TRUE", "1", "YES", "Y")
+                genus = (r.get("genus") or "").strip()
+                gl = genus.lower()
+                rec = {"n": name, "c": cls, "s": status, "hc": hc, "g": gl}
+                if taxid:
+                    by_taxid.setdefault(taxid, rec)
+                if name:
+                    by_name.setdefault(name.lower(), rec)
+                if gl:
+                    g = by_genus.get(gl)
+                    if g is None:
+                        by_genus[gl] = {"c": cls, "hc": hc, "n": 1}
+                    else:
+                        g["n"] += 1
+                        if _PATH_SEVERITY.get(cls, 0) > _PATH_SEVERITY.get(g["c"], 0):
+                            g["c"] = cls
+                        g["hc"] = g["hc"] or hc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[make_report] WARNING: cannot read pathogen sheet {p}: {exc}", file=sys.stderr)
+    return out
+
+
+def _match_pathogen(taxid, name, rank, paths):
+    """
+    Resolve a (taxid, name, rank) triple against the pathogen lookups.
+    Order: exact taxid -> exact name -> genus rollup (genus-rank uses the name;
+    species/strain uses the first name token). Returns a compact descriptor or None.
+    """
+    by_taxid, by_name, by_genus = paths["by_taxid"], paths["by_name"], paths["by_genus"]
+    taxid = str(taxid or "").strip()
+    name = str(name or "").strip()
+    rank = str(rank or "").strip().lower()
+
+    if taxid and taxid in by_taxid:
+        h = by_taxid[taxid]
+        return {"match": "taxid", "name": h["n"], "class": h["c"], "status": h["s"], "hc": bool(h["hc"])}
+    if name and name.lower() in by_name:
+        h = by_name[name.lower()]
+        return {"match": "name", "name": h["n"], "class": h["c"], "status": h["s"], "hc": bool(h["hc"])}
+    if name and by_genus and rank in _PATH_ROLLUP_RANKS:
+        if rank == "genus":
+            gkey = name.lower()
+        else:
+            # First-token rollup for species/strain. Skip phage/host-virus/satellite
+            # species (e.g. "Escherichia phage D6") so they are NOT mis-attributed to
+            # the host bacterial genus; an exact taxid/name match would already win.
+            low = name.lower()
+            gkey = "" if any(w in low for w in (" phage", "prophage", " virus", " satellite")) \
+                else name.split()[0].lower()
+        if gkey and gkey in by_genus:
+            g = by_genus[gkey]
+            return {"match": "genus", "name": gkey.capitalize(), "class": g["c"],
+                    "status": "", "hc": bool(g["hc"]), "genus_n": g.get("n", 0)}
+    return None
+
+
+def annotate_novelty_pathogens(novelty_data, paths):
+    """
+    Stamp each novelty candidate that corresponds to a listed pathogen with a
+    `pathogen` descriptor (in place). No-op when no pathogen sheet was loaded.
+    Returns the number of candidates flagged.
+    """
+    if not (paths["by_taxid"] or paths["by_name"] or paths["by_genus"]):
+        return 0
+    n = 0
+    for _sname, sdata in (novelty_data.get("samples") or {}).items():
+        for c in (sdata.get("candidates") or []):
+            hit = _match_pathogen(c.get("taxid"), c.get("name"), c.get("rank"), paths)
+            if hit:
+                c["pathogen"] = hit
+                n += 1
+    return n
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# VF/AMR taxid resolution (bvbrc specialty-gene reference) + pathogen stamping
+# ──────────────────────────────────────────────────────────────────────────────
+
+def load_source_taxids(path):
+    """
+    Read the bvbrc specialty-gene reference TSV into a lookup
+        source_id -> {"species_taxid": .., "taxon_id": .., "genus_taxid": ..}
+    so VF/AMR hits (which carry a Source ID but lose their taxids in the merged
+    Per-Gene Hits / AMR Genes sheets) can be re-associated with a canonical taxid.
+    Returns {} when no file is supplied / readable.
+    """
+    out = {}
+    if not path:
+        return out
+    p = path.strip()
+    if not p or not os.path.isfile(p):
+        if p:
+            print(f"[make_report] WARNING: VF/AMR source-taxid TSV not found: {p}", file=sys.stderr)
+        return out
+    try:
+        with open(p, newline="", encoding="utf-8-sig") as fh:
+            rdr = csv.DictReader(fh, delimiter="\t")
+            for row in rdr:
+                sid = (row.get("source_id") or "").strip()
+                if not sid or sid in out:
+                    continue
+                out[sid] = {
+                    "species_taxid": (row.get("species_taxid") or "").strip(),
+                    "taxon_id": (row.get("taxon_id") or "").strip(),
+                    "genus_taxid": (row.get("genus_taxid") or "").strip(),
+                }
+    except Exception as exc:  # noqa: BLE001
+        print(f"[make_report] WARNING: cannot read VF/AMR source-taxid TSV {p}: {exc}", file=sys.stderr)
+    return out
+
+
+def _match_pathogen_taxids(taxids, name, genus, paths):
+    """
+    Pathogen-sheet match for a VF/AMR hit. Tries, in order: each candidate taxid
+    (species_taxid → taxon_id → genus_taxid) against the sheet's taxid index, then
+    the species name (exact, then 'Genus species' two-token), then the genus name.
+    Returns a compact descriptor (carrying the canonical sheet genus, so genus
+    rollup works even when the merged sheet's Genus column is mis-parsed) or None.
+    """
+    by_taxid, by_name, by_genus = paths["by_taxid"], paths["by_name"], paths["by_genus"]
+    for t in taxids:
+        t = str(t or "").strip()
+        if t and t in by_taxid:
+            h = by_taxid[t]
+            return {"match": "taxid", "name": h["n"], "class": h["c"], "status": h["s"],
+                    "hc": bool(h["hc"]), "genus": h["g"], "taxid": t}
+    nl = str(name or "").strip().lower()
+    if nl and nl in by_name:
+        h = by_name[nl]
+        return {"match": "name", "name": h["n"], "class": h["c"], "status": h["s"],
+                "hc": bool(h["hc"]), "genus": h["g"]}
+    if nl:
+        two = " ".join(nl.split()[:2])
+        if two and two in by_name:
+            h = by_name[two]
+            return {"match": "name", "name": h["n"], "class": h["c"], "status": h["s"],
+                    "hc": bool(h["hc"]), "genus": h["g"]}
+    gl = str(genus or "").strip().lower()
+    if gl and gl in by_genus:
+        g = by_genus[gl]
+        return {"match": "genus", "name": gl.capitalize(), "class": g["c"], "status": "",
+                "hc": bool(g["hc"]), "genus": gl, "genus_n": g.get("n", 0)}
+    return None
+
+
+def annotate_protein_pathogens(prot_data, source_taxids, paths):
+    """
+    Stamp each VF/AMR row (Per-Gene Hits + AMR Genes) with a `pathogen` descriptor
+    and the taxids resolved from its Source ID (via the bvbrc reference). Lets the
+    report flag listed pathogens by canonical taxid instead of relying on the merged
+    sheet's (often mis-parsed) Genus/Species text. Returns the number of rows flagged.
+    """
+    if not (paths["by_taxid"] or paths["by_name"] or paths["by_genus"]):
+        return 0
+    n = 0
+    for key in ("per_gene_hits", "amr_genes"):
+        for r in (prot_data.get(key) or []):
+            sid = str(r.get("Source ID") or r.get("source_id") or "").strip()
+            st = source_taxids.get(sid, {})
+            taxids = [st.get("species_taxid"), st.get("taxon_id"), st.get("genus_taxid")]
+            if any(taxids):
+                r["taxids"] = {k: v for k, v in st.items() if v}
+            hit = _match_pathogen_taxids(
+                taxids, r.get("Species") or r.get("species"),
+                r.get("Genus") or r.get("genus"), paths,
+            )
+            if hit:
+                r["pathogen"] = hit
+                n += 1
+    return n
 
 
 def load_protein_annotations(paths, pident=0):
@@ -562,6 +804,156 @@ def load_protein_annotations(paths, pident=0):
                 if '%id' in df.columns:
                     df = df[df['%id'].astype(float) >= pident].copy()
                 out[key].extend(df.to_dict(orient="records"))
+    return out
+
+
+def _is_amr_annotation(prop, antibiotics_class, antibiotics, source):
+    """Heuristic: does an annotation row describe Antimicrobial Resistance?
+
+    The merged report keeps VF / Drug Target / Transporter hits in "Per-Gene Hits"
+    and AMR hits in "AMR Genes". The standalone annotate_report.tsv mixes them in
+    one table, so route each row by its property / antibiotics fields / source.
+    """
+    def _s(v):
+        if v is None:
+            return ""
+        if isinstance(v, float) and math.isnan(v):
+            return ""
+        return str(v)
+    p = _s(prop).strip().lower()
+    if any(w in p for w in ("resist", "amr", "antibiotic", "antimicrobial")):
+        return True
+    if _s(antibiotics_class).strip() or _s(antibiotics).strip():
+        return True
+    if any(w in _s(source).strip().lower() for w in ("card", "ncbiamr", "resfinder", "argannot", "amrfinder")):
+        return True
+    return False
+
+
+def load_standalone_annotations(paths, covered_samples, pident=0):
+    """
+    Build supplemental VF/AMR annotation rows from standalone annotate_report.tsv
+    files (annotate_report.py output) for samples NOT already represented in the
+    merged protein-annotation XLSX. Samples with no reference alignment never get
+    an organism hierarchy, so their de-novo annotation is otherwise dropped.
+
+    Returns a dict shaped like load_protein_annotations()
+    ({genus_summary, per_gene_hits, sample_overview, amr_genes}). Rows are emitted
+    in the same column shape the report's prot_data expects, so they merge cleanly
+    and still get pathogen-stamped by annotate_protein_pathogens().
+    """
+    out = {"genus_summary": [], "per_gene_hits": [], "sample_overview": [], "amr_genes": []}
+    covered = {str(s) for s in (covered_samples or set())}
+    # genus rollup accumulator: (sample, genus, property) -> {genes:set, ids:[%id], evals:[]}
+    roll = {}
+
+    expanded = []
+    for path in (paths or []):
+        path = (path or "").strip()
+        if not path:
+            continue
+        if os.path.isfile(path):
+            expanded.append(path)
+        else:
+            expanded.extend(glob.glob(path))
+
+    for path in expanded:
+        name = os.path.basename(path)
+        if name.startswith("NO_FILE") or name.startswith("~"):
+            continue
+        # Recover the sample name from "<sample>.annotate_report.tsv/.xlsx".
+        sample = name.split(".annotate_report")[0]
+        if not sample or sample in covered:
+            continue  # already supplied by the merged XLSX — avoid double counting
+        try:
+            if path.endswith(".xlsx") or path.endswith(".xls"):
+                df = pd.read_excel(path, dtype=str)
+            else:
+                df = pd.read_csv(path, sep="\t", dtype=str)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[make_report] WARNING: cannot read annotate report {path}: {exc}", file=sys.stderr)
+            continue
+        df = df.where(pd.notnull(df), None)
+        for r in df.to_dict(orient="records"):
+            def g(*keys):
+                for k in keys:
+                    v = r.get(k)
+                    if v is None or v == "":
+                        continue
+                    # Empty cells can survive as NaN floats despite dtype=str.
+                    if isinstance(v, float) and math.isnan(v):
+                        continue
+                    return v
+                return None
+            pid_raw = g("pident", "%id")
+            try:
+                if pid_raw is not None and float(pid_raw) < pident:
+                    continue
+            except (TypeError, ValueError):
+                pass
+            prop = g("property", "Property")
+            abx_class = g("antibiotics_class", "Antibiotics Class")
+            abx = g("antibiotics", "Antibiotics")
+            source = g("source", "Source")
+            gene = g("gene_name", "Gene", "Gene Name")
+            genus = g("genus", "Genus") or "Unknown"
+            species = g("species", "Species")
+            row = {
+                "Specimen ID":       sample,
+                "Genus":             genus,
+                "Species":           species,
+                "Gene":              gene,
+                "Product":           g("product", "Product"),
+                "Property":          prop,
+                "Description":       g("function", "product", "Description"),
+                "Antibiotics Class": abx_class,
+                "Antibiotics":       abx,
+                "Source":            source,
+                "Source ID":         g("source_id", "Source ID"),
+                "%id":               pid_raw,
+                "E-value":           g("evalue", "E-value"),
+                "Bitscore":          g("bitscore", "Bitscore"),
+                "Reference Organism": g("organism", "Reference Organism"),
+                "Level":             g("level", "Level"),
+                "taxids": {
+                    k: v for k, v in {
+                        "species_taxid": g("species_taxid"),
+                        "taxon_id":      g("taxon_id"),
+                        "genus_taxid":   g("genus_taxid"),
+                    }.items() if v
+                },
+            }
+            if _is_amr_annotation(prop, abx_class, abx, source):
+                out["amr_genes"].append(row)
+            else:
+                out["per_gene_hits"].append(row)
+            # genus rollup
+            rk = (sample, genus, prop or "")
+            acc = roll.setdefault(rk, {"genes": set(), "ids": [], "evals": []})
+            if gene:
+                acc["genes"].add(str(gene))
+            try:
+                acc["ids"].append(float(pid_raw))
+            except (TypeError, ValueError):
+                pass
+            ev = g("evalue", "E-value")
+            if ev is not None:
+                acc["evals"].append(str(ev))
+
+    for (sample, genus, prop), acc in roll.items():
+        ids = acc["ids"]
+        out["genus_summary"].append({
+            "Sample":         sample,
+            "Genus":          genus,
+            "Property":       prop,
+            "Genes":          ", ".join(sorted(acc["genes"])) if acc["genes"] else None,
+            "# Hits":         str(len(acc["evals"]) or len(acc["genes"]) or 1),
+            "Best %id":       (str(round(max(ids), 1)) if ids else None),
+            "Avg %id":        (str(round(sum(ids) / len(ids), 1)) if ids else None),
+            "Avg E-value":    (acc["evals"][0] if acc["evals"] else None),
+            "Median E-value": (acc["evals"][len(acc["evals"]) // 2] if acc["evals"] else None),
+        })
+
     return out
 
 
@@ -650,12 +1042,55 @@ def main():
     print(f"[make_report] Protein annotations loaded: {has_prot} "
           f"({sum(len(v) for v in prot_data.values())} total rows)")
 
+    # ── standalone annotation reports (de-novo / unaligned samples) ────────────
+    # Samples with no reference alignment never get an organism hierarchy, so their
+    # VF/AMR annotation is absent from the merged XLSX. Supplement prot_data from the
+    # per-sample annotate_report.tsv files for any sample not already covered.
+    if args.annotate_reports:
+        covered = set()
+        for _k in ("per_gene_hits", "amr_genes", "genus_summary", "sample_overview"):
+            for _r in prot_data.get(_k, []):
+                _s = _r.get("Specimen ID") or _r.get("Sample") or _r.get("sample")
+                if _s not in (None, ""):
+                    covered.add(str(_s))
+        supp = load_standalone_annotations(args.annotate_reports, covered, pident=args.pident)
+        _n_supp = sum(len(v) for v in supp.values())
+        if _n_supp:
+            for _k in prot_data:
+                prot_data[_k].extend(supp.get(_k, []))
+            has_prot = any(len(v) > 0 for v in prot_data.values())
+            _supp_samples = sorted({
+                (r.get("Specimen ID") or r.get("Sample") or r.get("sample"))
+                for k in ("per_gene_hits", "amr_genes") for r in supp.get(k, [])
+            } - {None, ""})
+            print(f"[make_report] Supplemented annotation for {len(_supp_samples)} unaligned "
+                  f"sample(s) from standalone reports: {_supp_samples} ({_n_supp} rows)")
+        else:
+            print("[make_report] No standalone annotation rows to supplement "
+                  "(all samples already covered or files empty)")
+
     # ── novelty detection (reference-free LCA) ────────────────────────────────
     novelty_data, novelty_downloads = load_novelty(args.novelty, args.novelty_downloads)
     has_novelty = bool(novelty_data.get("samples"))
     print(f"[make_report] Novelty loaded: {has_novelty} "
           f"({len(novelty_data.get('samples', {}))} sample(s), "
           f"{len(novelty_downloads)} download link(s))")
+
+    # ── pathogen reference cross-reference ────────────────────────────────────
+    # Load the pathogen sheet, pre-flag novelty candidates that are listed
+    # pathogens, and ship the lookups so the report can also flag VF/AMR hits
+    # (genus/species) that have no reference alignment.
+    pathogens = load_pathogens(args.pathogens)
+    has_pathogens = bool(pathogens["by_taxid"] or pathogens["by_name"] or pathogens["by_genus"])
+    n_flagged = annotate_novelty_pathogens(novelty_data, pathogens) if has_pathogens else 0
+    # Resolve VF/AMR taxids from the bvbrc reference (Source ID -> taxids) and stamp
+    # each VF/AMR row with its pathogen match by canonical taxid.
+    source_taxids = load_source_taxids(args.vfamr_taxids) if has_pathogens else {}
+    n_prot_flagged = annotate_protein_pathogens(prot_data, source_taxids, pathogens) if has_pathogens else 0
+    print(f"[make_report] Pathogen sheet loaded: {has_pathogens} "
+          f"({len(pathogens['by_taxid'])} taxid / {len(pathogens['by_genus'])} genus entries; "
+          f"{n_flagged} novelty candidate(s), {n_prot_flagged} VF/AMR row(s) flagged; "
+          f"{len(source_taxids)} bvbrc source-id taxids)")
 
 
     # ── extract run-level metadata for map / metadata panel ──────────────────
@@ -709,6 +1144,9 @@ def main():
         "novelty":               novelty_data,                 # {samples: {<s>: {summary, candidates}}}
         "has_novelty":           has_novelty,                  # true if any novelty sample present
         "novelty_downloads":     novelty_downloads,            # [{label, kind, filename}] for links
+        "pathogens":             pathogens,                    # {by_taxid, by_name, by_genus} pathogen lookups
+        "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
+        "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

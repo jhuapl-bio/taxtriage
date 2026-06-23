@@ -951,19 +951,38 @@
             "description": "Reference-free / open-set detection of organisms with no near neighbour in the DB.",
             "default": "",
             "properties": {
-                "detect_novelty": {
-                    "type": "boolean",
-                    "description": "Enable the reference-free novelty branch (translated-search LCA on the closed-set residual).",
-                    "default": false
+                "novelty": {
+                    "type": "string",
+                    "description": "Novelty backend (also the master switch). One of mmseqs2, kaiju, or bracken; unset = off. All three classify the de novo assembly directly (no Pyrodigal).",
+                    "enum": ["mmseqs2", "kaiju", "bracken"],
+                    "default": ""
                 },
                 "novelty_db": {
                     "type": "string",
-                    "description": "mmseqs seqTaxDB: a database NAME to auto-download via `mmseqs databases` (e.g. UniProtKB, UniRef50, GTDB), or a local path to a prebuilt db directory.",
+                    "description": "DB selector for the chosen --novelty backend: a NAME to auto-download or a local path/dir. mmseqs2: an mmseqs db name (e.g. Kalamari, UniProtKB) or a seqTaxDB path. kaiju: an alias (viruses, nr, refseq, nr_euk, refseq_nr, refseq_ref, progenomes, fungi, plasmids, rvdb), an exact *.tgz filename, a full URL, or a local dir. bracken: an alias (standard[_8gb|_16gb], viral, minusb, pluspf[_8gb|_16gb], pluspfp[_8gb|_16gb], core_nt, gtdb, eupathdb, ncbi_reference; 'k2_' prefix optional), an exact *.tar.gz filename, a full URL, or a local kraken2 db dir.",
                     "default": "UniProtKB"
                 },
                 "novelty_db_cache": {
                     "type": "string",
                     "description": "storeDir cache directory for downloaded mmseqs databases; persists across runs and on -resume."
+                },
+                "novelty_kaiju_db_cache": {
+                    "type": "string",
+                    "description": "storeDir cache directory for auto-downloaded kaiju indexes; persists across runs and on -resume."
+                },
+                "novelty_kraken2_db_cache": {
+                    "type": "string",
+                    "description": "storeDir cache directory for auto-downloaded Kraken2+Bracken databases; persists across runs and on -resume."
+                },
+                "novelty_kaiju_db_baseurl": {
+                    "type": "string",
+                    "description": "Base URL of the kaiju prebuilt index bucket used to resolve --novelty_db aliases.",
+                    "default": "https://kaiju-idx.s3.eu-central-1.amazonaws.com"
+                },
+                "novelty_kraken2_db_baseurl": {
+                    "type": "string",
+                    "description": "Base URL of the Kraken2/Bracken prebuilt index bucket (genome-idx) used to resolve --novelty_db aliases.",
+                    "default": "https://genome-idx.s3.amazonaws.com/kraken"
                 },
                 "novelty_db_prefix": {
                     "type": "string",
@@ -982,8 +1001,30 @@
                 },
                 "novelty_idnt_cut": {
                     "type": "number",
-                    "description": "Amino-acid percent-identity cutoff below which a best hit counts toward the low-identity (divergent) tail.",
+                    "description": "Amino-acid percent-identity cutoff below which a best hit counts toward the low-identity (divergent) tail (mmseqs2 backend only).",
                     "default": 50.0
+                },
+                "novelty_kaiju_mode": {
+                    "type": "string",
+                    "description": "Kaiju backend run mode: 'greedy' (-a greedy -e 5; nearest-neighbour species on divergent contigs, more sensitive) or 'mem' (-a mem; exact maximum-exact-matches only, avoids long conserved contigs collapsing to the genus LCA).",
+                    "default": "greedy",
+                    "enum": ["greedy", "mem"]
+                },
+                "novelty_min_reads": {
+                    "type": "integer",
+                    "description": "Candidate floor: minimum hits (contigs for kaiju/mmseqs2, reads for bracken) required to report a taxon in the novelty candidates table. Set to 1 to surface single-contig hits; 1 also disables the depth-scaled cutoff.",
+                    "default": 2,
+                    "minimum": 1
+                },
+                "novelty_bracken_readlen": {
+                    "type": "integer",
+                    "description": "Bracken backend: read length (-r) selecting which databaseNmers.kmer_distrib to use.",
+                    "default": 100
+                },
+                "novelty_bracken_level": {
+                    "type": "string",
+                    "description": "Bracken backend: taxonomic rank level (-l), e.g. S (species), G (genus).",
+                    "default": "S"
                 }
             }
         }

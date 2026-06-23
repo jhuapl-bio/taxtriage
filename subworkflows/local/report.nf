@@ -40,8 +40,9 @@ workflow REPORT {
         ch_meta_csv
         ch_microbert_reps      // [meta, rep_seq.fasta] shared MicrobeRT cluster reps (from MMSEQS_EASYCLUSTER)
         ch_microbert_clusters  // [meta, *.tsv]          shared MicrobeRT cluster membership
-        ch_novelty_summary     // [meta, *.novelty.summary.tsv]    (empty unless --detect_novelty)
-        ch_novelty_candidates  // [meta, *.novelty.candidates.tsv] (empty unless --detect_novelty)
+        ch_novelty_summary     // [meta, *.novelty.summary.tsv]    (empty unless --novelty)
+        ch_novelty_candidates  // [meta, *.novelty.candidates.tsv] (empty unless --novelty)
+        ch_annotate_reports    // [meta, *.annotate_report.tsv]    (de-novo VF/AMR; NO_FILE unless --annotate)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -280,12 +281,12 @@ workflow REPORT {
 
             // ── Novelty artifacts: collect per-sample NOVELTY_SCORE TSVs into the
             //    combined JSON feed (Novelty panel) + per-sample/combined JSON+XLSX
-            //    download links. Runs only under --detect_novelty; otherwise the
+            //    download links. Runs only under --novelty; otherwise the
             //    report gets a NO_FILE placeholder and the panel stays hidden.
             //    A SINGLE channel carries all novelty files (incl. all.novelty.json) so the
             //    combined json is staged once -> no input-file-name collision in the report.
             ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE"))
-            if (params.detect_novelty) {
+            if (params.novelty) {
                 ch_nov_summaries = ch_novelty_summary
                     .map { meta, f -> f }.collect()
                     .ifEmpty { file("$projectDir/assets/NO_FILE") }
@@ -304,11 +305,31 @@ workflow REPORT {
                     .collect()
             }
 
+            // bvbrc specialty-gene reference TSV (source_id -> taxids) for VF/AMR pathogen
+            // matching by canonical taxid. Mirrors the resolution in proteins.nf.
+            def vfamr_taxid_path = params.annotate_meta
+                ?: "$projectDir/assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv"
+            ch_vfamr_taxids = Channel.fromPath(vfamr_taxid_path, checkIfExists: true)
+
+            // ── Standalone annotate_report.tsv files (de-novo / unaligned VF-AMR) ─
+            // Carry annotation for samples that never aligned a reference, whose hits
+            // are otherwise dropped from the merged XLSX. Drop NO_FILE placeholders;
+            // fall back to a single NO_FILE so the report runs without --annotate.
+            ch_annotate_report_files = ch_annotate_reports
+                .map { meta, f -> f }
+                .flatten()
+                .filter { f -> f && !f.name.startsWith('NO_FILE') }
+                .collect()
+                .ifEmpty { file("$projectDir/assets/NO_FILE") }
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
                 ch_prot_annotations,
-                ch_novelty_files
+                ch_novelty_files,
+                pathogens_list.first(),
+                ch_vfamr_taxids.first(),
+                ch_annotate_report_files
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

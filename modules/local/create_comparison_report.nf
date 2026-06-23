@@ -37,6 +37,17 @@ process CREATE_COMPARISON_REPORT {
     // Pass a NO_FILE placeholder when novelty detection did not run. Single input (not two) so the
     // combined json isn't staged twice -> avoids an "input file name collision" on all.novelty.json.
     path(novelty_files)
+    // Pathogen reference sheet (assets/pathogen_sheet.csv or --pathogens override). Used to flag
+    // listed pathogens that have NO reference alignment but appear in novelty / VF-AMR results.
+    // Pass a NO_FILE placeholder to disable the cross-reference.
+    path(pathogens_sheet)
+    // bvbrc specialty-gene reference TSV (source_id -> taxids). Lets VF/AMR pathogen matching
+    // key on canonical taxid instead of the merged sheet's Genus/Species text. NO_FILE to skip.
+    path(vfamr_taxid_tsv)
+    // Standalone per-sample annotate_report.tsv files (annotate_report.py output). Carry de-novo /
+    // unaligned VF-AMR hits for samples with NO reference alignment, whose annotation is otherwise
+    // dropped from the merged XLSX. Pass a NO_FILE placeholder to disable. Single collected channel.
+    path(annotate_reports)
 
     output:
         path "versions.yml"           , emit: versions
@@ -88,12 +99,42 @@ process CREATE_COMPARISON_REPORT {
     def nov_dl_files = nov_valid.join(' ')
     def nov_dl_arg = nov_dl_files ? "--novelty-downloads ${nov_dl_files}" : ''
 
+    // Pathogen sheet cross-reference (skip on NO_FILE placeholder / '~' rename artifact).
+    def path_arg = ''
+    if (pathogens_sheet && !pathogens_sheet.name.startsWith('NO_FILE') && !pathogens_sheet.name.startsWith('~')) {
+        path_arg = "--pathogens ${pathogens_sheet}"
+    }
+
+    // bvbrc source-id -> taxids reference for VF/AMR pathogen matching by taxid.
+    def vfamr_tax_arg = ''
+    if (vfamr_taxid_tsv && !vfamr_taxid_tsv.name.startsWith('NO_FILE') && !vfamr_taxid_tsv.name.startsWith('~')) {
+        vfamr_tax_arg = "--vfamr-taxids ${vfamr_taxid_tsv}"
+    }
+
+    // ── Standalone annotate_report.tsv files (de-novo / unaligned VF-AMR) ──────
+    // Supplement annotation for samples with no reference alignment. Filter NO_FILE
+    // placeholders and Nextflow '~' same-name conflict copies; dedupe by basename.
+    def annot_arg = ''
+    if (annotate_reports) {
+        def annot_list = annotate_reports instanceof List ? annotate_reports : [annotate_reports]
+        def seen_annot = [] as Set
+        def valid_annot = annot_list.findAll { f ->
+            f && !f.name.startsWith('NO_FILE') && !f.name.startsWith('~') &&
+            (f.name.endsWith('.tsv') || f.name.endsWith('.xlsx')) &&
+            seen_annot.add(f.name)
+        }
+        def annot_files = valid_annot.join(' ')
+        if (annot_files) {
+            annot_arg = "--annotate_reports ${annot_files}"
+        }
+    }
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
         ${prot_arg} ${pident} ${mintass} \\
-        ${nov_arg} ${nov_dl_arg}
+        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

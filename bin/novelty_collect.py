@@ -24,7 +24,7 @@ import json
 import os
 import sys
 
-SUMMARY_COLS = ["sample", "total_reads", "dark_fraction", "highrank_only_fraction",
+SUMMARY_COLS = ["sample", "classifier", "total_reads", "dark_fraction", "highrank_only_fraction",
                 "lowident_tail_mass", "z_dark", "z_highrank", "z_lowident",
                 "novelty_score", "novelty_flag",
                 "ref_aligned", "k2_classified", "mmseqs_assigned",
@@ -174,7 +174,16 @@ def main(argv=None):
                     blocks.get("candidates", []))
 
     # ---- combined artifacts ----
-    combined = {"taxtriage_novelty": True, "version": "1.0", "samples": samples}
+    # Surface the novelty backend at the top level so the report can label the tab without
+    # digging into a sample. One run = one --novelty method, so the first non-empty wins.
+    classifier = ""
+    for blocks in samples.values():
+        c = (blocks.get("summary") or {}).get("classifier")
+        if c:
+            classifier = c
+            break
+    combined = {"taxtriage_novelty": True, "version": "1.0",
+                "classifier": classifier, "samples": samples}
     _write_json(os.path.join(a.outdir, f"{a.combined_prefix}.json"), combined)
 
     all_summary = [b["summary"] for b in samples.values() if b.get("summary")]

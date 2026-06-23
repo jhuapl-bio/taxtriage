@@ -35,6 +35,13 @@ process NOVELTY_SCORE {
     def flag_z    = params.novelty_flag_z   ?: 2.0
     def weights   = params.novelty_weights  ?: '0.5,0.3,0.2'
     def idnt_cut  = params.novelty_idnt_cut ?: 50.0
+    // bracken emits a count-weighted LCA (col 4 = taxon read count); mmseqs2/kaiju are per-query.
+    def count_col = params.novelty == 'bracken' ? '--count-col 4' : ''
+    // Candidate floor. min_reads=1 surfaces single-contig hits (each deep dilution assembles to
+    // ~1 viral contig); in that case also zero the depth-scaled cutoff so it cannot re-raise the
+    // floor above 1 on deep samples.
+    def min_reads = (params.novelty_min_reads ?: 2) as Integer
+    def min_frac  = min_reads <= 1 ? '--min-cand-frac 0' : ''
     """
     novelty_score.py \\
         -s ${meta.id} \\
@@ -46,6 +53,9 @@ process NOVELTY_SCORE {
         --flag-threshold ${flag_z} \\
         --weights ${weights} \\
         --idnt-cut ${idnt_cut} \\
+        --classifier ${params.novelty} \\
+        --min-reads ${min_reads} ${min_frac} \\
+        ${count_col} \\
         ${baseline} ${args} \\
         -o ${meta.id}
 

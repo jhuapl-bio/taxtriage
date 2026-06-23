@@ -67,6 +67,10 @@ def parse_args(argv=None):
                    help="reads aligned to a reference fasta in the alignment subworkflow")
     p.add_argument("--idnt-col", type=int, default=2,
                    help="0-based column of percent identity in --tophit (default 2 = mmseqs)")
+    p.add_argument("--count-col", type=int, default=None,
+                   help="0-based column in --lca holding a per-row read count (count-weighted "
+                        "backends like bracken). When unset, each LCA row counts as 1 "
+                        "(per-query backends like mmseqs2/kaiju).")
     p.add_argument("--idnt-cut", type=float, default=50.0,
                    help="aa %% identity below which a hit counts toward the low-identity tail")
     p.add_argument("--min-reads", type=int, default=2,
@@ -88,18 +92,32 @@ def parse_args(argv=None):
     p.add_argument("--weights", default="0.5,0.3,0.2",
                    help="w_dark,w_rank,w_idnt")
     p.add_argument("--flag-threshold", type=float, default=2.0)
+    p.add_argument("--classifier", default="",
+                   help="novelty backend that produced the LCA (mmseqs2|kaiju|bracken); "
+                        "passed through to the report so the Novelty tab can label its source.")
     p.add_argument("-o", "--out-prefix", required=True)
     return p.parse_args(argv)
 
 
-def read_lca(path):
-    """Return (reads_assigned_total, counts_by_taxon, highrank_only_reads).
+def read_lca(path, count_col=None):
+    """Return (reads_assigned_total, by_taxon_highrank, by_taxon_species, highrank_only_reads).
 
-    counts_by_taxon[(taxid, rank, name)] = n_reads, restricted to high ranks.
+    by_taxon_highrank[(taxid, rank, name)] = n — genus/family/order/class/phylum hits only.
+    by_taxon_species[(taxid, rank, name)] = n — species/no-rank hits with a real taxid.
+
+    Both dicts count contigs (kaiju/mmseqs2) or reads (bracken) per taxon.  They are kept
+    separate so the novelty *score* uses only the high-rank pool (unchanged behaviour) while
+    the candidates *table* can surface species-level protein hits too — those represent taxa
+    that the reference alignment never saw, which is exactly the novelty signal.
+
+    Per-query backends (mmseqs2/kaiju) emit one row per query, so each row weighs 1.
+    Count-weighted backends (bracken) pass `count_col`: each row carries its own read
+    count, so a single row stands in for that many reads.
     """
     assigned = 0
     highrank_only = 0
-    by_taxon = defaultdict(int)
+    by_taxon_highrank = defaultdict(int)
+    by_taxon_species = defaultdict(int)
     with open(path) as fh:
         for line in fh:
             cols = line.rstrip("\n").split("\t")
@@ -108,11 +126,24 @@ def read_lca(path):
             taxid, rank, name = cols[1], cols[2].strip().lower(), cols[3]
             if taxid in ("0", "", "no rank") and rank in ("", "no rank"):
                 continue  # unassigned -> contributes to dark matter, counted elsewhere
-            assigned += 1
+            if count_col is not None and len(cols) > count_col:
+                try:
+                    w = int(float(cols[count_col]))
+                except ValueError:
+                    w = 1
+            else:
+                w = 1
+            if w <= 0:
+                continue
+            assigned += w
             if rank in HIGH_RANKS:
-                highrank_only += 1
-                by_taxon[(taxid, rank, name)] += 1
-    return assigned, by_taxon, highrank_only
+                highrank_only += w
+                by_taxon_highrank[(taxid, rank, name)] += w
+            elif rank in SPECIES_RANKS and taxid not in ("0", ""):
+                # Species-level protein hits: real taxid but not genus+ — still potentially
+                # novel (protein search found them; reference alignment did not).
+                by_taxon_species[(taxid, rank, name)] += w
+    return assigned, by_taxon_highrank, by_taxon_species, highrank_only
 
 
 def lowident_tail(path, idnt_col, cut):
@@ -179,7 +210,7 @@ def main(argv=None):
     a = parse_args(argv)
     w_dark, w_rank, w_idnt = (float(x) for x in a.weights.split(","))
 
-    assigned, by_taxon, highrank_only = read_lca(a.lca)
+    assigned, by_taxon, by_taxon_species, highrank_only = read_lca(a.lca, a.count_col)
     tail_frac, tail_n = lowident_tail(a.tophit, a.idnt_col, a.idnt_cut)
 
     total = max(a.total_reads, 1)
@@ -213,7 +244,7 @@ def main(argv=None):
 
     # ---- summary row (one line; joins to mqc/confidence by sample) ----
     summary_path = f"{a.out_prefix}.novelty.summary.tsv"
-    cols = ["sample", "total_reads", "dark_fraction", "highrank_only_fraction",
+    cols = ["sample", "classifier", "total_reads", "dark_fraction", "highrank_only_fraction",
             "lowident_tail_mass", "z_dark", "z_highrank", "z_lowident",
             "novelty_score", "novelty_flag",
             # extended method-accounting columns (additive; older readers ignore them)
@@ -223,7 +254,7 @@ def main(argv=None):
     with open(summary_path, "w", newline="") as fh:
         wri = csv.writer(fh, delimiter="\t")
         wri.writerow(cols)
-        wri.writerow([a.sample, total,
+        wri.writerow([a.sample, a.classifier, total,
                       f"{dark_fraction:.4f}", f"{highrank_only_fraction:.4f}", f"{tail_frac:.4f}",
                       f"{z['dark_fraction']:.3f}", f"{z['highrank_only_fraction']:.3f}", f"{z['lowident_tail_mass']:.3f}",
                       f"{novelty:.3f}", int(flagged),
@@ -231,37 +262,54 @@ def main(argv=None):
                       assigned_species, assigned_highrank,
                       f"{ref_aligned_frac:.4f}", f"{k2_frac:.4f}", f"{mmseqs_frac:.4f}"])
 
-    # ---- candidate genus+ taxa (sorted by support) ----
-    # Depth-scaled cutoff. `highrank_only` is the count of all placeable (genus+) hits;
-    # it is the correct denominator because `n` is in the same unit as the LCA rows
-    # (reads OR ORFs/contigs), NOT in total_reads. A fixed absolute floor (old --min-reads=10)
-    # wiped out every candidate for shallow/long-read samples where the deepest genus group
-    # might only hold a handful of ORFs. Scaling against the placeable pool keeps deep runs
-    # strict while still surfacing the top genera in a 3k-read mock.
+    # ---- candidate taxa (sorted by support) ----
+    # Two pools are written:
+    #   1. Genus+ (high-rank-only) hits — taxa the protein search could place at genus or above
+    #      but not to species.  These are the classic "novel genus" signal.
+    #   2. Species-level hits — taxa the protein search placed at species (or no rank with a
+    #      real taxid) that the reference alignment never saw.  For kaiju/mmseqs2 these are
+    #      protein-search species hits on assembled contigs; they represent real biology that
+    #      just wasn't in the reference DB.
+    #
+    # Depth-scaled cutoff for genus+ pool: `highrank_only` is the count of all placeable
+    # (genus+) hits; scaling against it keeps deep runs strict while still surfacing the top
+    # genera in shallow / long-read / ORF-level samples.
     import math
-    eff_min = max(a.min_reads, math.ceil(a.min_cand_frac * highrank_only))
+    eff_min_highrank = max(a.min_reads, math.ceil(a.min_cand_frac * highrank_only))
+    # Species pool uses a simpler absolute floor; these hits are already species-resolved so
+    # depth-scaling is less critical.
+    eff_min_species = a.min_reads
     cand_path = f"{a.out_prefix}.novelty.candidates.tsv"
     n_written = 0
     with open(cand_path, "w", newline="") as fh:
         wri = csv.writer(fh, delimiter="\t")
+        # frac_of_sample: contig-count / total-residual-reads for kaiju/mmseqs2 (note: mixed
+        #   units; kept for backward compat but the report labels it as "ctgs / residual reads"
+        #   when the classifier is contig-based).
+        # frac_of_highrank: share of all genus+-placeable hits (genus+ pool only; empty for
+        #   species entries where the concept doesn't apply).
         wri.writerow(["sample", "taxid", "rank", "name", "reads",
                       "frac_of_sample", "frac_of_highrank"])
         for (taxid, rank, name), n in sorted(by_taxon.items(), key=lambda kv: -kv[1]):
-            if n >= eff_min:
-                # frac_of_sample: share of total reads (tiny for ORF-level counting, kept for
-                #   backward compat). frac_of_highrank: share of placeable hits -- the honest
-                #   "how dominant is this genus among what mmseqs could place" number the
-                #   comparison views key on.
+            if n >= eff_min_highrank:
                 foh = (n / highrank_only) if highrank_only else 0.0
                 wri.writerow([a.sample, taxid, rank, name, n,
                               f"{n/total:.4f}", f"{foh:.4f}"])
+                n_written += 1
+        # Species-level protein hits (not in reference alignment, resolved to species by the
+        # protein classifier).  frac_of_highrank left empty — these aren't in the genus+ pool.
+        for (taxid, rank, name), n in sorted(by_taxon_species.items(), key=lambda kv: -kv[1]):
+            if n >= eff_min_species:
+                wri.writerow([a.sample, taxid, rank, name, n,
+                              f"{n/total:.4f}", ""])
                 n_written += 1
 
     sys.stderr.write(
         f"[novelty] {a.sample}: dark={dark_fraction:.3f} "
         f"highrank_only={highrank_only_fraction:.3f} idtail={tail_frac:.3f} "
         f"score={novelty:.2f} flag={int(flagged)} "
-        f"| candidates={n_written} (eff_min={eff_min} of {highrank_only} placeable hits)\n"
+        f"| candidates={n_written} (genus+ eff_min={eff_min_highrank} of {highrank_only} placeable; "
+        f"species eff_min={eff_min_species} of {assigned - highrank_only} species hits)\n"
     )
 
 

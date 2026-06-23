@@ -368,6 +368,72 @@
       const NOVELTY = BOOT.novelty || { samples: {} };
       const NOVELTY_DL = BOOT.novelty_downloads || [];
       let HAS_NOVELTY = BOOT.has_novelty || false;
+      // Pathogen reference lookups (assets/pathogen_sheet.csv) used to flag listed
+      // pathogens that have NO reference alignment but DO appear in novelty candidates
+      // (pre-stamped server-side as candidate.pathogen) or in VF/AMR hits (matched here
+      // by species/genus name). Shape: {by_taxid:{}, by_name:{}, by_genus:{}}.
+      const PATHO = BOOT.pathogens || { by_taxid: {}, by_name: {}, by_genus: {} };
+      const HAS_PATHO = !!BOOT.has_pathogens;
+
+      // Which backend produced the novelty results (mmseqs2 | kaiju | bracken). Prefer the
+      // top-level field; fall back to any sample's summary.classifier for older feeds.
+      function _noveltyClassifier() {
+        let c = (NOVELTY && NOVELTY.classifier) || "";
+        if (!c && NOVELTY && NOVELTY.samples) {
+          for (const s of Object.values(NOVELTY.samples)) {
+            const cc = s && s.summary && s.summary.classifier;
+            if (cc) { c = cc; break; }
+          }
+        }
+        return String(c || "").toLowerCase();
+      }
+      // Per-backend display label + one-line method description for the Novelty tab.
+      const _NOVELTY_METHODS = {
+        mmseqs2: {
+          label: "MMseqs2",
+          short: "MMseqs",
+          desc: "translated-search LCA (mmseqs taxonomy) on the de novo contigs — open-set, reports a best-hit %identity tail.",
+        },
+        kaiju: {
+          label: "Kaiju",
+          short: "Kaiju",
+          desc: "greedy translated search (Kaiju) on the de novo contigs — open-set; no per-hit %identity, so the low-identity tail component is 0.",
+        },
+        bracken: {
+          label: "Kraken2 + Bracken",
+          short: "Bracken",
+          desc: "k-mer classification (Kraken2) with Bracken abundance re-estimation on the de novo contigs — closed-set; counts are weighted per taxon.",
+        },
+      };
+      function _noveltyMethodInfo() {
+        const c = _noveltyClassifier();
+        return _NOVELTY_METHODS[c] || { label: c ? c : "—", short: c ? c : "novelty", desc: "" };
+      }
+      // Short, capitalized backend label used inline across the Novelty tab (column headers,
+      // bucket names, tooltips) so everything tracks the active --novelty mode instead of
+      // always reading "mmseqs". Falls back to "novelty" when no classifier is known.
+      function _novClsShort() {
+        return _noveltyMethodInfo().short || "novelty";
+      }
+      // Lowercase form for mid-sentence prose ("placed by kaiju", "X kaiju-only").
+      function _novClsLc() {
+        return _novClsShort().toLowerCase();
+      }
+      // The unit label for what the novelty classifier counted: "contigs" for kaiju/mmseqs2
+      // (which classify de novo assembled contigs, not raw reads), "reads" for bracken
+      // (which classifies reads directly via Kraken2 k-mers).
+      function _novUnit() {
+        const c = _noveltyClassifier();
+        return c === "bracken" ? "reads" : "contigs";
+      }
+      function _novUnitCap() {
+        const u = _novUnit();
+        return u.charAt(0).toUpperCase() + u.slice(1);
+      }
+      // Short abbreviation for tight UI spaces ("ctgs" vs "rds").
+      function _novUnitShort() {
+        return _novUnit() === "contigs" ? "ctgs" : "rds";
+      }
       let CONTIG_DATA = BOOT.contig_data || []; // [{sample, organism, taxon_id, contigs, depth_histogram}]
       // Decode any base64-encoded breadth histograms baked into the BOOT data.
       // (Uploaded JSON entries are decoded later via _decodeBreadthHist in _extractContigs.)
@@ -1909,6 +1975,60 @@
         border: 1px solid #ad145744;
         font-style: normal;
       }
+      /* Sub-threshold rows that still have reference alignments — faded, blue rail
+         so they read as "below score, but reference reads aligned". */
+      #summary-top-wrap tr.below-cutoff-aligned-row td,
+      #table-body tr.below-cutoff-aligned-row td {
+        opacity: 0.6;
+        font-style: italic;
+        background: rgba(21, 101, 192, 0.05);
+        box-shadow: inset 3px 0 0 #1565c0;
+      }
+      #summary-top-wrap tr.below-cutoff-aligned-row:hover td,
+      #table-body tr.below-cutoff-aligned-row:hover td {
+        opacity: 0.9;
+      }
+      /* Below-cutoff rows with NO alignment but a novelty genus/species hit —
+         faded, orange rail so they read as "no reference, novelty signal". */
+      #summary-top-wrap tr.novelty-noalign-row td,
+      #table-body tr.novelty-noalign-row td {
+        opacity: 0.65;
+        font-style: italic;
+        background: rgba(232, 89, 12, 0.06);
+        box-shadow: inset 3px 0 0 #e8590c;
+      }
+      #summary-top-wrap tr.novelty-noalign-row:hover td,
+      #table-body tr.novelty-noalign-row:hover td {
+        opacity: 0.95;
+      }
+      .subthr-aligned-badge {
+        display: inline-block;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 0 4px;
+        margin-left: 5px;
+        border-radius: 3px;
+        vertical-align: middle;
+        line-height: 1.5;
+        background: #e3f2fd;
+        color: #1565c0;
+        border: 1px solid #1565c044;
+        font-style: normal;
+      }
+      .novelty-noalign-badge {
+        display: inline-block;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 0 4px;
+        margin-left: 5px;
+        border-radius: 3px;
+        vertical-align: middle;
+        line-height: 1.5;
+        background: #fff4e6;
+        color: #e8590c;
+        border: 1px solid #e8590c44;
+        font-style: normal;
+      }
       /* VF/AMR-only indicator rows — sample has no passing detections but does
          carry virulence / resistance gene hits. Amber rail to read as a warning. */
       #summary-top-wrap tr.vfamr-only-row td,
@@ -1925,6 +2045,37 @@
       }
       .vfamr-only-link:hover {
         background: #fff3bf !important;
+      }
+      /* Novelty-only indicator rows — sample has no passing detections but
+         does carry novelty genus evidence (mmseqs/closed-set comparison). */
+      #summary-top-wrap tr.novelty-only-row td,
+      #table-body tr.novelty-only-row td {
+        background: rgba(63, 81, 181, 0.08);
+        box-shadow: inset 3px 0 0 #3949ab;
+        color: #273469;
+        font-size: 0.84em;
+        padding: 6px 10px;
+      }
+      #summary-top-wrap tr.novelty-only-row:hover td,
+      #table-body tr.novelty-only-row:hover td {
+        background: rgba(63, 81, 181, 0.14);
+      }
+      .novelty-only-link:hover {
+        background: #e8eaf6 !important;
+      }
+      /* Empty-sample indicator rows — sample was loaded but has zero detections or
+         all organisms fell below the TASS cutoff, with no VF/AMR or novelty evidence. */
+      #summary-top-wrap tr.empty-only-row td,
+      #table-body tr.empty-only-row td {
+        background: rgba(108, 117, 125, 0.06);
+        box-shadow: inset 3px 0 0 #adb5bd;
+        color: #4b5563;
+        font-size: 0.84em;
+        padding: 6px 10px;
+      }
+      #summary-top-wrap tr.empty-only-row:hover td,
+      #table-body tr.empty-only-row:hover td {
+        background: rgba(108, 117, 125, 0.12);
       }
       /* group header rows */
       #summary-top-wrap tr.grp-row td {
@@ -2116,6 +2267,34 @@
         border-color: #2e7d32;
         color: #fff;
       }
+      /* Classifier badge: which backend (mmseqs2 / kaiju / bracken) produced the results. */
+      .nov-classifier-badge {
+        margin-left: auto;
+        align-self: center;
+        display: none; /* shown by drawNovelty once a classifier is known */
+        align-items: center;
+        gap: 0.35em;
+        padding: 0.24em 0.7em;
+        border-radius: 999px;
+        font-size: 0.78em;
+        font-weight: 600;
+        white-space: nowrap;
+        border: 1px solid #b9c4ca;
+        background: #eef3f6;
+        color: #37474f;
+      }
+      .nov-classifier-badge .nov-cls-dot {
+        width: 0.6em;
+        height: 0.6em;
+        border-radius: 50%;
+        background: #607d8b;
+      }
+      .nov-classifier-badge[data-cls="mmseqs2"] { background:#e8f0fe; border-color:#9cb6ef; color:#1a3a8f; }
+      .nov-classifier-badge[data-cls="mmseqs2"] .nov-cls-dot { background:#3b5bdb; }
+      .nov-classifier-badge[data-cls="kaiju"]   { background:#e9f7ef; border-color:#9bd6b4; color:#1b5e3a; }
+      .nov-classifier-badge[data-cls="kaiju"]   .nov-cls-dot { background:#2e7d32; }
+      .nov-classifier-badge[data-cls="bracken"] { background:#fdf0e6; border-color:#e6b88a; color:#8a4b15; }
+      .nov-classifier-badge[data-cls="bracken"] .nov-cls-dot { background:#e8770e; }
       /* ── Novelty method-coverage / genus-compare toggle ── */
       .nov-seg {
         display: inline-flex;
@@ -2223,6 +2402,26 @@
         font-weight: 700;
         padding: 0 5px;
         border-radius: 8px;
+      }
+      .nov-gc-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3em;
+        font-size: 0.72em;
+        font-weight: 700;
+        padding: 0.06em 0.55em;
+        border-radius: 10px;
+        cursor: default;
+        transition: filter 0.12s;
+      }
+      .nov-gc-chip:hover {
+        filter: brightness(1.08) saturate(1.12);
+      }
+      .nov-gc-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35em 0.55em;
+        margin: 0.05em 0 0.5em;
       }
       /* ── Novelty cell tooltip ── */
       #nov-cell-tip {
@@ -2351,6 +2550,13 @@
         text-align: right;
         font-variant-numeric: tabular-nums;
         cursor: default;
+        /* numbers now live in the hover tooltip — keep cells a consistent,
+           clickable swatch size even though they render empty. */
+        min-width: 2.4em;
+      }
+      td.cmp-cell:hover {
+        outline: 2px solid #37474f;
+        outline-offset: -2px;
       }
       tr.cmp-grp-start td {
         border-top: 2px solid #b0bec5;
@@ -3082,6 +3288,40 @@
       }
       #help-btn {
         margin-left: 0.5em !important;
+      }
+
+      /* ── Pipeline info button ── */
+      #pipeline-info-btn {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45em;
+        background: rgba(255, 255, 255, 0.12);
+        color: #cde4ff;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px;
+        padding: 0.32em 0.85em;
+        font-size: 0.72em;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        cursor: help;
+        transition:
+          background 0.15s,
+          box-shadow 0.15s,
+          transform 0.1s;
+      }
+      #pipeline-info-btn i {
+        font-size: 1.1em;
+      }
+      #pipeline-info-btn:hover {
+        background: rgba(255, 255, 255, 0.22);
+        color: #fff;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
+      }
+      @media (max-width: 720px) {
+        #pipeline-info-btn .info-btn-label {
+          display: none;
+        }
       }
 
       /* ── Per-tab contextual help panel ── */
@@ -3878,6 +4118,13 @@
       TaxTriage Multi-Run Analysis
       <span class="sub" id="banner-sub"></span>
       <button
+        id="pipeline-info-btn"
+        type="button"
+        aria-label="Show pipeline run metadata"
+      >
+        <i class="fas fa-circle-info"></i><span class="info-btn-label">Run info</span>
+      </button>
+      <button
         id="helpmode-btn"
         type="button"
         title="Help mode — show a help panel for whatever tab you're on"
@@ -3948,7 +4195,7 @@
         class="tab-btn hidden"
         id="novelty-tab-btn"
         data-tab="novelty"
-        title="Reference-free novelty detection: per-sample novelty score/flag and candidate taxa from the translated-search (mmseqs) LCA."
+        title="Reference-free novelty detection: per-sample novelty score/flag and candidate taxa from the selected novelty classifier."
       >
         <i class="fas fa-lightbulb"></i> Novelty
       </button>
@@ -4171,6 +4418,10 @@
                   <span class="below-cutoff-badge">↓ below cutoff</span>
                   = below TASS cutoff but shown because VF/AMR genes were detected for its genus in-sample ·
                 </span>
+                <span id="sum-novelty-only-legend" style="display: none">
+                  <span style="border-left: 3px solid #3949ab; padding-left: 4px">blue row</span>
+                  = no passing detections, but novelty genus evidence exists for the sample
+                </span>
                 <span id="sum-level-legend-simple">
                   <i class="fas fa-star" style="color: #f59f00"></i>
                   Click to target an organism for follow-up across tabs.
@@ -4277,8 +4528,15 @@
                   <option value="15" selected>15</option>
                   <option value="25">25</option>
                 </select>
+                <label
+                  style="display: inline-flex; align-items: center; gap: 0.3em; cursor: pointer"
+                  title="Show numeric values on the bars. Per-segment numbers are only drawn where they fit (no overlap); the rest stay on hover. The per-genus total always shows at the bar end."
+                >
+                  <input type="checkbox" id="summary-genus-values" />
+                  Show values
+                </label>
               </div>
-              <div id="summary-genus-wrap"></div>
+              <div id="summary-genus-wrap" style="overflow-x: auto"></div>
             </div>
           </div>
           <!-- end sum-inner-genera -->
@@ -4869,15 +5127,17 @@
             <button class="nov-subtab active" data-nsub="overview">
               <i class="fas fa-table" style="margin-right: 0.3em"></i>Overview
             </button>
+            <!-- Which novelty backend produced these results (set in drawNovelty) -->
+            <span id="nov-classifier-badge" class="nov-classifier-badge" title="Novelty classifier used for this run"></span>
           </div>
 
           <!-- ── Overview sub-pane ── -->
           <div id="novelty-sub-overview">
-            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
-              Reference-free / open-set novelty for the closed-set residual (reads that aligned to no reference). Each
+            <div id="novelty-overview-desc" style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
+              Reference-free / open-set novelty for the closed-set residual (reads that aligned to no reference, assembled into contigs for contig-based classifiers). Each
               sample gets a <b>novelty score</b> (higher = more divergent from known references) and a <b>flag</b> when
               that score crosses the run threshold. The candidate table lists the genus-or-higher taxa the
-              translated-search LCA could still assign. Use the <b>downloads</b> for the raw per-sample / combined JSON
+              classifier could still assign. Use the <b>downloads</b> for the raw per-sample / combined JSON
               and XLSX.
             </div>
 
@@ -4960,6 +5220,29 @@
                   <select id="novelty-sample-sel" style="font-size: 0.9em"></select>
                 </label>
                 <span id="novelty-cand-count" style="font-size: 0.78em; color: #888"></span>
+                <label style="font-size: 0.8em; color: #555; margin-left: auto; white-space: nowrap">
+                  Rows per page:
+                  <select
+                    id="novelty-cand-page-size"
+                    style="padding: 0.15em 0.3em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em"
+                  >
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="250">250</option>
+                    <option value="0">All</option>
+                  </select>
+                </label>
+                <div id="novelty-cand-pager" style="display: flex; align-items: center; gap: 0.3em">
+                  <button id="novelty-cand-first" class="pg-btn" title="First page">«</button>
+                  <button id="novelty-cand-prev" class="pg-btn" title="Previous page">‹</button>
+                  <span
+                    id="novelty-cand-page-label"
+                    style="min-width: 6em; text-align: center; white-space: nowrap; font-size: 0.78em"
+                  ></span>
+                  <button id="novelty-cand-next" class="pg-btn" title="Next page">›</button>
+                  <button id="novelty-cand-last" class="pg-btn" title="Last page">»</button>
+                </div>
               </div>
               <div style="overflow-x: auto">
                 <table class="data-table" id="novelty-cand-table" style="font-size: 0.82em; width: 100%">
@@ -4972,25 +5255,27 @@
             <!-- ── Method coverage + Genus comparison (TASS vs mmseqs rescue) ── -->
             <div class="chart-wrap" style="margin-bottom: 0.9em">
               <div style="display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.5em; flex-wrap: wrap">
-                <div class="chart-title" style="margin: 0">
-                  Where the reads landed — alignment / TASS vs mmseqs rescue
+                <div class="chart-title" id="nov-cmp-title" style="margin: 0">
+                  Where the reads landed — alignment / TASS vs novelty rescue
                 </div>
                 <div id="nov-cmp-toggle" class="nov-seg" role="tablist">
                   <button
                     type="button"
                     class="nov-seg-btn active"
+                    id="nov-cmp-btn-coverage"
                     data-cmp="coverage"
-                    title="Per sample: the fraction of reads explained by each method (reference alignment that feeds TASS, kraken2-only, mmseqs species / higher-rank rescue) vs. dark matter."
+                    title="Per sample: the fraction of reads explained by each method (reference alignment that feeds TASS, kraken2-only, novelty species / higher-rank rescue) vs. dark matter."
                   >
                     <i class="fas fa-layer-group" style="margin-right: 0.3em"></i>Method coverage
                   </button>
                   <button
                     type="button"
                     class="nov-seg-btn"
+                    id="nov-cmp-btn-genus"
                     data-cmp="genus"
-                    title="For the selected sample: genus-by-genus, the closed-set TASS score / coverage / % reads next to what the mmseqs translated-search LCA places — including genera mmseqs rescues that the reference set never aligned."
+                    title="For the selected sample: genus-by-genus, the closed-set TASS score / coverage / % reads next to what the novelty classifier places — including genera it rescues that the reference set never aligned."
                   >
-                    <i class="fas fa-code-compare" style="margin-right: 0.3em"></i>Genus: TASS vs MMseqs
+                    <i class="fas fa-code-compare" style="margin-right: 0.3em"></i>Genus: TASS vs Novelty
                   </button>
                 </div>
                 <span id="nov-cmp-hint" style="font-size: 0.78em; color: #888"></span>
@@ -5476,6 +5761,10 @@
             <span id="tbl-below-cutoff-legend" style="display: none">
               · <span class="below-cutoff-badge">↓ below cutoff</span> = below TASS cutoff but shown because VF/AMR
               genes were detected for its genus in-sample
+            </span>
+            <span id="tbl-novelty-only-legend" style="display: none">
+              · <span style="border-left: 3px solid #3949ab; padding-left: 4px">blue row</span> = no passing
+              detections, but novelty genus evidence exists for that sample
             </span>
           </div>
           <div id="tbl-wrap">
@@ -6510,6 +6799,21 @@
             class="info-tip-btn"
             aria-label="About below-cutoff VF/AMR rows"
             data-tip="<b>Below-cutoff VF/AMR detections</b><br>Organisms whose TASS score falls below the cutoff are normally hidden. When protein annotation (<code>--annotate</code>) is enabled and one or more Virulence-Factor or AMR genes were detected for the organism's genus <i>in the same sample</i>, this option re-surfaces that organism as a <b>faded</b> row in the Detections table and the full Table tab — flagging potential pathogen signal that the score alone would suppress.<br><br>These faded rows appear <i>only</i> in the detection tables; KPIs, charts and the heatmap stay restricted to detections that pass the cutoff.<br><br><i>On by default; uncheck to disable.</i>"
+          >
+            &#x24D8;
+          </button>
+        </div>
+        <div class="row" id="novelty-sub-row" style="margin-top: 0.2em; display: none">
+          <input type="checkbox" id="filter-novelty-sub" />
+          <label
+            for="filter-novelty-sub"
+            title="Surface organisms hidden by the TASS cutoff that still carry signal: those with reference alignments below the cutoff, and those with no alignment but a genus/species-level novelty hit in the same sample."
+            >Show sub-threshold &amp; novelty-supported organisms</label
+          >
+          <button
+            class="info-tip-btn"
+            aria-label="About sub-threshold / novelty rows"
+            data-tip="<b>Sub-threshold &amp; novelty-supported detections</b><br>Organisms below the TASS cutoff are normally hidden. With this on, two extra kinds of row are re-surfaced as <b>faded</b> rows in the Detections table and the full Table tab:<br><br>&bull; <span style='color:#1565c0;font-weight:600'>&darr; sub-threshold (aligned)</span> — below the cutoff but with reference reads aligned.<br>&bull; <span style='color:#e8590c;font-weight:600'>&#10022; novelty, no alignment</span> — no reference alignment, but the novelty classifier placed this organism's genus/species in the same sample.<br><br>The Novelty column shows the matching signal. These rows appear <i>only</i> in the detection tables; KPIs, charts and the heatmap stay restricted to detections that pass the cutoff.<br><br><i>Off by default; check to enable.</i>"
           >
             &#x24D8;
           </button>
@@ -9234,7 +9538,7 @@
          sampleHidden in bulk and call redraw() ONCE — the per-sample eye
          icons are refreshed by buildSampleList(). */
       function toggleAllSamples() {
-        const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+        const samples = Array.from(_allSampleIds()).filter(Boolean);
         if (!samples.length) return;
         const anyVisible = samples.some((id) => !sampleHidden[id]);
         const next = anyVisible; // true = hide all; false = show all
@@ -9252,7 +9556,7 @@
       function _syncToggleAllSamplesBtn() {
         const btn = document.getElementById("toggle-all-samples-btn");
         if (!btn) return;
-        const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+        const samples = Array.from(_allSampleIds()).filter(Boolean);
         if (!samples.length) {
           btn.disabled = true;
           btn.style.opacity = "0.5";
@@ -9273,8 +9577,69 @@
         }
       }
 
+      // Authoritative list of every sample processed in the run — NOT just those
+      // with detections. Samples with no Kraken2/alignment hits never appear in
+      // DATA (records), but they are still present in SAMPLE_META (per-sample
+      // metadata is emitted for every sample) and may carry novelty / VF-AMR
+      // evidence. Union all sources so the right-panel lists every sample.
+      function _allSampleIds() {
+        const ids = new Set();
+        (DATA || []).forEach((r) => {
+          const s = r["Specimen ID"] || "";
+          if (s) ids.add(s);
+        });
+        // Every sample that produced per-sample metadata (includes zero-hit samples).
+        Object.keys(SAMPLE_META || {}).forEach((s) => {
+          if (s) ids.add(s);
+        });
+        // Samples that only surfaced via novelty detection.
+        try {
+          const nov = (NOVELTY && NOVELTY.samples) || {};
+          Object.keys(nov).forEach((s) => {
+            if (s) ids.add(s);
+          });
+        } catch (e) {}
+        // Samples that only carry VF/AMR annotation rows.
+        try {
+          const scanProt = (rows) =>
+            (rows || []).forEach((r) => {
+              const s = r["Specimen ID"] || r.Sample || r.sample;
+              if (s) ids.add(s);
+            });
+          scanProt(PROT.per_gene_hits);
+          scanProt(PROT.amr_genes);
+        } catch (e) {}
+        return ids;
+      }
+
+      // True when a sample has no usable detections — few reads, no alignment, or
+      // no rows in DATA. These samples still appear in the list but their plots /
+      // scores can be unreliable, so the row gets a warning icon. Returns a
+      // {warn, msg} object; warn=false means the sample looks fine.
+      const _LOW_READ_THRESHOLD = 1000; // total reads below this == "few reads"
+      function _sampleDataWarning(id) {
+        const meta = SAMPLE_META[id] || {};
+        const totalReads = parseInt(meta.total_reads) || 0;
+        const alignedReads = parseInt(meta.aligned_reads) || 0;
+        const hasRows = (DATA || []).some((r) => (r["Specimen ID"] || "") === id);
+        const noAlign = alignedReads === 0;
+        const fewReads = totalReads > 0 && totalReads < _LOW_READ_THRESHOLD;
+        if (!noAlign && hasRows && !fewReads) return { warn: false, msg: "" };
+        const bits = [];
+        if (!hasRows || noAlign) bits.push("no alignment hits");
+        if (fewReads) bits.push(`only ${totalReads.toLocaleString()} reads`);
+        if (!bits.length && !hasRows) bits.push("no detections");
+        const detail = bits.length ? ` (${bits.join(" · ")})` : "";
+        return {
+          warn: true,
+          msg:
+            `<b>${id}</b>${detail}<br>` +
+            `<span style="color:#ccc">Few reads or no alignments — heatmap, TASS and coverage plots for this sample may be empty or unreliable.</span>`,
+        };
+      }
+
       function buildSampleList() {
-        const rawSamples = uniq(DATA.map((r) => r["Specimen ID"] || ""))
+        const rawSamples = Array.from(_allSampleIds())
           .filter(Boolean)
           .sort();
 
@@ -9381,6 +9746,24 @@
           span.addEventListener("mousemove", moveTip);
           span.addEventListener("mouseout", hideTip);
 
+          // ── Low-reads / no-alignment warning icon ──────────────────────
+          // Surfaced for samples with few reads or no alignment hits so the user
+          // knows their plots/scores may be unreliable. Uses the app's instant
+          // tooltip (showTip/moveTip/hideTip) to explain the caveat on hover.
+          const _warn = _sampleDataWarning(id);
+          let warnIcon = null;
+          if (_warn.warn) {
+            warnIcon = document.createElement("i");
+            warnIcon.className = "fas fa-triangle-exclamation sample-warn-icon";
+            warnIcon.style.color = "#e0a800";
+            warnIcon.style.fontSize = "0.82em";
+            warnIcon.style.cursor = "help";
+            warnIcon.style.marginRight = "2px";
+            warnIcon.addEventListener("mouseover", (ev) => showTip(_warn.msg, ev));
+            warnIcon.addEventListener("mousemove", moveTip);
+            warnIcon.addEventListener("mouseout", hideTip);
+          }
+
           // ── Eye toggle button ──────────────────────────────────────────
           const btn = document.createElement("button");
           btn.className = "eye-btn";
@@ -9482,6 +9865,7 @@
 
           div.appendChild(colorIn);
           div.appendChild(span);
+          if (warnIcon) div.appendChild(warnIcon);
           div.appendChild(editBtn);
           div.appendChild(rescaleBtn);
           div.appendChild(btn);
@@ -13805,6 +14189,41 @@
         return `${row["Specimen ID"]}||${row["Detected Organism"]}||${row["Taxonomic ID #"]}`;
       }
       function _renderOneRow(row) {
+        // Novelty-only indicator row: sample has no passing detections but carries
+        // novelty genus evidence from translated-search / closed-set compare.
+        if (row.__noveltyOnly) {
+          const itr = document.createElement("tr");
+          itr.className = "novelty-only-row";
+          const itd = document.createElement("td");
+          itd.colSpan = visibleCols.length || 1;
+          itd.innerHTML = _noveltyOnlyMessageHTML(row["Specimen ID"], row.__novelty);
+          const _s = row.__novelty;
+          const _msg = itd.querySelector(".novelty-only-msg");
+          if (_msg) {
+            _msg.addEventListener("mouseover", (ev) => showTip(_noveltyOnlyTip(row["Specimen ID"], _s), ev));
+            _msg.addEventListener("mousemove", moveTip);
+            _msg.addEventListener("mouseout", hideTip);
+          }
+          const _lnk = itd.querySelector(".novelty-only-link");
+          if (_lnk)
+            _lnk.addEventListener("click", (e) => {
+              e.stopPropagation();
+              hideTip();
+              _noveltyOnlyOpen(row["Specimen ID"]);
+            });
+          itr.appendChild(itd);
+          return itr;
+        }
+        // Empty-sample indicator row: no detections, no VF/AMR, no novelty evidence.
+        if (row.__emptyOnly) {
+          const itr = document.createElement("tr");
+          itr.className = "empty-only-row";
+          const itd = document.createElement("td");
+          itd.colSpan = visibleCols.length || 1;
+          itd.innerHTML = _emptyOnlyMessageHTML(row["Specimen ID"], row.__emptyMeta);
+          itr.appendChild(itd);
+          return itr;
+        }
         // VF/AMR-only indicator row: sample has no passing detections but carries
         // virulence / resistance gene hits. Render a single spanning cell.
         if (row.__vfamrOnly) {
@@ -13833,6 +14252,8 @@
         const tr = document.createElement("tr");
         if (isTruthy(row["High Consequence"])) tr.classList.add("hc-row");
         if (row.__belowCutoffVFAMR) tr.classList.add("below-cutoff-row");
+        if (row.__belowCutoffAligned) tr.classList.add("below-cutoff-aligned-row");
+        if (row.__noveltyNoAlign) tr.classList.add("novelty-noalign-row");
         const _rk = _tblRowKey(row);
         if (_tblPinned.has(_rk)) tr.classList.add("row-pinned");
         tr.addEventListener("click", (e) => {
@@ -13900,6 +14321,11 @@
                 `TASS ${isNaN(_pi.strain) ? "—" : _pi.strain.toFixed(1)} is below the cutoff (${_pi.thr}) — ` +
                 `hidden by score, but shown because VF/AMR genes were detected for this organism's genus in this sample.`;
               contentSpan.appendChild(_bc);
+            }
+            if (row.__belowCutoffAligned || row.__noveltyNoAlign) {
+              const _stb = document.createElement("span");
+              _stb.innerHTML = _subThresholdBadgeHTML(row);
+              while (_stb.firstChild) contentSpan.appendChild(_stb.firstChild);
             }
             td.appendChild(contentSpan);
             // Star sits inline, right after the organism text.
@@ -14113,9 +14539,18 @@
         // Append faded below-cutoff rows that carry VF/AMR hits (toggle-gated).
         const _belowExtra = _belowCutoffExtraRows();
         if (_belowExtra.length) fd = fd.concat(_belowExtra);
+        // Append faded sub-threshold (aligned) + no-alignment novelty rows (toggle-gated).
+        const _novSubExtra = _noveltySubThresholdExtraRows();
+        if (_novSubExtra.length) fd = fd.concat(_novSubExtra);
         // Append indicator rows for samples with VF/AMR hits but no detection rows.
         const _vfOnly = _vfamrOnlySampleRows(fd);
         if (_vfOnly.length) fd = fd.concat(_vfOnly);
+        // Append novelty-only indicator rows for samples lacking visible detections.
+        const _novOnly = _noveltyOnlySampleRows(fd);
+        if (_novOnly.length) fd = fd.concat(_novOnly);
+        // Append empty-sample indicator rows for samples with no detections at all.
+        const _emptyOnly = _emptyOnlySampleRows(fd);
+        if (_emptyOnly.length) fd = fd.concat(_emptyOnly);
         const _tblGrouped = document.getElementById("tbl-group-sample")?.checked;
         if (_tblGrouped) {
           // Group by Sample: primary sort follows _sampleOrder (right-panel order),
@@ -16504,27 +16939,263 @@
       }
 
       const _SUM_COLS = [
-        { key: "Detected Organism", label: "Organism", align: "left" },
-        { key: "_spark", label: "Breadth of Coverage", align: "center", nosort: true },
-        { key: "Specimen ID", label: "Sample", align: "left" },
-        { key: "Microbial Category", label: "Category", align: "left" },
-        { key: "TASS Score", label: "TASS", align: "right", num: true },
-        { key: "_vfamr", label: "VF / AMR", align: "center", nosort: true },
-        { key: "% Reads", label: "% Reads", align: "right", num: true },
-        { key: "# Reads Aligned", label: "Reads", align: "right", num: true },
-        { key: "Breadth %", label: "Breadth %", align: "right", num: true },
-        { key: "Sample Type", label: "Sample Type", align: "left" },
-        { key: "_kw", label: "Keywords", align: "left", nosort: true },
+        {
+          key: "Detected Organism",
+          label: "Organism",
+          align: "left",
+          tip:
+            "<b>Organism</b><br>Detected organism name for this row at the current view level (Strain/Species/Genus).<br><br><span style='color:#ccc'>Includes badges for risk/level/rescue context. Click row to pin for comparison.</span>",
+        },
+        {
+          key: "_spark",
+          label: "Breadth of Coverage",
+          align: "center",
+          nosort: true,
+          tip:
+            "<b>Breadth of Coverage</b><br>Mini coverage sparkline for this detection. It summarizes where reads cover the reference genome (position-based breadth).<br><br><span style='color:#ccc'>Hover the sparkline for quick distribution context. Click it to jump to the Histogram tab for full detail.</span>",
+        },
+        {
+          key: "Specimen ID",
+          label: "Sample",
+          align: "left",
+          tip:
+            "<b>Sample</b><br>Specimen identifier this detection belongs to.<br><br><span style='color:#ccc'>Use with grouping and filters to compare organisms within or across samples.</span>",
+        },
+        {
+          key: "Microbial Category",
+          label: "Category",
+          align: "left",
+          tip:
+            "<b>Category</b><br>Microbial category assigned to the detection (for triage/risk grouping).<br><br><span style='color:#ccc'>Useful for narrowing views to clinically relevant classes.</span>",
+        },
+        {
+          key: "TASS Score",
+          label: "TASS",
+          align: "right",
+          num: true,
+          tip:
+            "<b>TASS Score</b><br>Taxonomic Assignment Scoring System confidence score for the row (higher is stronger evidence).<br><br><span style='color:#ccc'>This is the primary score used by the cutoff filter. Rows below cutoff are hidden unless rescued by rollup logic or VF/AMR exceptions.</span>",
+        },
+        {
+          key: "_rescue",
+          label: "Rescue",
+          align: "center",
+          nosort: true,
+          tip:
+            "<b>Rescue</b><br>Shows whether a row passes on its own or is kept via rollup.<br><br><span style='color:#ccc'><b>pass</b>: row TASS passes cutoff.<br><b>↑ species / ↑ genus</b>: row TASS is below cutoff, but parent Species/Genus TASS passes.<br><b>below</b>: no rescue at current threshold.</span>",
+        },
+        {
+          key: "_vfamr",
+          label: "VF / AMR",
+          align: "center",
+          nosort: true,
+          tip:
+            "<b>VF / AMR</b><br>Presence/count summary of virulence-factor and antimicrobial-resistance gene hits linked to this detection's genus/sample context.<br><br><span style='color:#ccc'>Hover cells to see gene details. Click to jump to the VF/AMR view filtered to the relevant genus.</span>",
+        },
+        {
+          key: "_novelty",
+          label: "Novelty",
+          align: "center",
+          nosort: true,
+          tip:
+            "<b>Novelty</b><br>Indicates whether this organism's genus or species has reference-free novelty signal in the same sample, based on the Novelty tab classifier.<br><br><span style='color:#ccc'><b>● gen</b>: genus-level novelty candidate detected.<br><b>● sp</b>: species-level novelty candidate detected.<br><b>—</b>: no novelty signal for this lineage.<br><br>Matched by name (taxid when available). Open the Novelty tab for full details.</span>",
+        },
+        {
+          key: "% Reads",
+          label: "% Reads",
+          align: "right",
+          num: true,
+          tip:
+            "<b>% Reads</b><br>Percent of reads in the sample attributed to this detection row.<br><br><span style='color:#ccc'>Higher values indicate larger representation in that sample.</span>",
+        },
+        {
+          key: "# Reads Aligned",
+          label: "Reads",
+          align: "right",
+          num: true,
+          tip:
+            "<b>Reads</b><br>Absolute read count aligned/assigned to this row.<br><br><span style='color:#ccc'>Pair with % Reads to compare abundance across different sequencing depths.</span>",
+        },
+        {
+          key: "Breadth %",
+          label: "Breadth %",
+          align: "right",
+          num: true,
+          tip:
+            "<b>Breadth %</b><br>Percent of the reference breadth covered by reads for this row.<br><br><span style='color:#ccc'>Higher breadth generally increases confidence that the organism signal is real.</span>",
+        },
+        {
+          key: "Sample Type",
+          label: "Sample Type",
+          align: "left",
+          tip:
+            "<b>Sample Type</b><br>Body site / specimen-type metadata for the sample.<br><br><span style='color:#ccc'>Can change applied TASS cutoff when per-type thresholds are enabled.</span>",
+        },
+        {
+          key: "_kw",
+          label: "Keywords",
+          align: "left",
+          nosort: true,
+          tip:
+            "<b>Keywords</b><br>Quick tags extracted from organism metadata and annotations (e.g., AMR, virulence, respiratory).<br><br><span style='color:#ccc'>A rapid scan aid for triage and communication.</span>",
+        },
       ];
+
+      function _summaryRescueCellHTML(row, rowKey) {
+        const pi = rowPassInfo(row);
+        if (!pi || isNaN(pi.strain)) return '<span style="color:#adb5bd">-</span>';
+
+        const strainTxt = isNaN(pi.strain) ? "?" : pi.strain.toFixed(1);
+        const speciesTxt = isNaN(pi.species) ? "?" : pi.species.toFixed(1);
+        const genusTxt = isNaN(pi.genus) ? "?" : pi.genus.toFixed(1);
+        const rkAttr = rowKey ? ` data-rk="${String(rowKey).replace(/"/g, "&quot;")}"` : "";
+
+        if (pi.rescued && pi.rescueLevel === "genus") {
+          return `<span class="sum-rescue-chip"${rkAttr} style="display:inline-block;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;line-height:1.5;background:#f3e5f5;color:#6a1b9a;cursor:help"
+            title="Rescued at genus level: row TASS ${strainTxt} is below cutoff ${pi.thr}, but Genus TASS ${genusTxt} passes. Species TASS ${speciesTxt}.">&#x2191; genus</span>`;
+        }
+        if (pi.rescued) {
+          return `<span class="sum-rescue-chip"${rkAttr} style="display:inline-block;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;line-height:1.5;background:#ffe0b2;color:#c2410c;cursor:help"
+            title="Rescued at species level: row TASS ${strainTxt} is below cutoff ${pi.thr}, but Species TASS ${speciesTxt} passes. Genus TASS ${genusTxt}.">&#x2191; species</span>`;
+        }
+        if (pi.strainPass) {
+          return `<span class="sum-rescue-chip"${rkAttr} style="display:inline-block;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;line-height:1.5;background:#e8f5e9;color:#2e7d32;cursor:help"
+            title="Passes on own evidence: row TASS ${strainTxt} is at or above cutoff ${pi.thr}.">pass</span>`;
+        }
+        return `<span class="sum-rescue-chip"${rkAttr} style="display:inline-block;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;line-height:1.5;background:#ffebee;color:#c62828;cursor:help"
+          title="Below cutoff: row TASS ${strainTxt}, cutoff ${pi.thr}. Species TASS ${speciesTxt}; Genus TASS ${genusTxt}.">below</span>`;
+      }
+
+      function _summaryRescueTipHTML(row) {
+        const pi = rowPassInfo(row);
+        if (!pi || isNaN(pi.strain)) return null;
+
+        const sName = row["Specimen ID"] || "";
+        const org = row["Detected Organism"] || "Unknown";
+        const lvl = row["Level"] || "Strain";
+        const taxid = row["Taxonomic ID #"] || "";
+        const strain = isNaN(pi.strain) ? 0 : pi.strain;
+        const species = isNaN(pi.species) ? 0 : pi.species;
+        const genus = isNaN(pi.genus) ? 0 : pi.genus;
+        const status = pi.rescued
+          ? `Rescued by ${pi.rescueLevel}`
+          : pi.strainPass
+          ? "Passes on own evidence"
+          : "Below cutoff";
+        const statusColor = pi.rescued ? "#c2410c" : pi.strainPass ? "#2e7d32" : "#c62828";
+        const maxDen = Math.max(1, pi.thr, strain, species, genus);
+        const bar = (v, color) =>
+          `<span style="display:inline-block;width:64px;height:6px;background:#eceff1;border-radius:3px;overflow:hidden;vertical-align:middle;margin-left:6px"><span style="display:inline-block;height:100%;width:${Math.min(100, (Math.max(0, v) / maxDen) * 100).toFixed(1)}%;background:${color}"></span></span>`;
+
+        let html =
+          `<div style="font-weight:700;margin-bottom:4px;color:#90caf9">Rescue Summary</div>` +
+          `<div style="margin-bottom:5px"><i>${_novEsc(org)}</i><br><span style="color:#b0bec5">${_novEsc(
+            sName,
+          )}</span><span style="color:#90a4ae"> · ${_novEsc(lvl)}${taxid ? ` · taxid ${_novEsc(String(taxid))}` : ""}</span></div>` +
+          `<div style="font-size:0.9em;margin-bottom:6px"><b style="color:${statusColor}">${status}</b> · cutoff <b>${pi.thr.toFixed(
+            1,
+          )}</b></div>` +
+          `<table style="border-collapse:collapse;font-size:0.82em;width:100%">` +
+          `<tr><td style="padding:1px 8px 1px 0;color:#ffd580">Strain</td><td style="padding:1px 0;text-align:right">${strain.toFixed(
+            1,
+          )}${bar(strain, "#1971c2")}</td></tr>` +
+          `<tr><td style="padding:1px 8px 1px 0;color:#ffd580">Species</td><td style="padding:1px 0;text-align:right">${species.toFixed(
+            1,
+          )}${bar(species, "#c2410c")}</td></tr>` +
+          `<tr><td style="padding:1px 8px 1px 0;color:#ffd580">Genus</td><td style="padding:1px 0;text-align:right">${genus.toFixed(
+            1,
+          )}${bar(genus, "#6a1b9a")}</td></tr>` +
+          `</table>`;
+
+        // Row-linked novelty context (per relevant genus), so values differ per row.
+        const genusNameRaw = (row["Genus Name"] || row["Genus"] || "").trim();
+        const genusKey = genusNameRaw.toLowerCase();
+        if (genusKey) {
+          const closed = _novClosedGenus(sName) || {};
+          const c = closed[genusKey] || null;
+          const cand = (((_novSamples()[sName] || {}).candidates || []).filter(
+            (x) => (x.rank || "").toLowerCase() === "genus",
+          ) || []).find((x) => ((x.name || "").trim().toLowerCase() || "") === genusKey);
+          const bucket = c && cand ? "Both" : c ? "Aligned only" : cand ? `${_novClsShort()} only` : "No genus novelty evidence";
+          const bucketColor = c && cand ? "#1864ab" : c ? "#d9480f" : cand ? "#2b8a3e" : "#9e9e9e";
+          const cReads = c ? +c.reads || 0 : 0;
+          const cPct = c ? +c.pct || 0 : 0;
+          const mmReads = cand ? +cand.reads || 0 : 0;
+          const mmFracS = cand ? (+cand.frac_of_sample || 0) * 100 : 0;
+          const mmFracHr = cand ? (+cand.frac_of_highrank || 0) * 100 : 0;
+          html +=
+            `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.16)">` +
+            `<div style="font-weight:700;color:#90caf9;margin-bottom:3px">Row-linked Genus Context</div>` +
+            `<div style="font-size:0.8em;color:#cfd8dc;margin-bottom:3px"><i>${_novEsc(genusNameRaw)}</i> · <b style="color:${bucketColor}">${_novEsc(
+              bucket,
+            )}</b></div>` +
+            `<table style="border-collapse:collapse;font-size:0.8em;width:100%">` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#90caf9">Aligned reads</td><td style="text-align:right">${
+              c ? cReads.toLocaleString() : "-"
+            }</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#90caf9">Aligned % reads</td><td style="text-align:right">${
+              c ? cPct.toFixed(3) + "%" : "-"
+            }</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#f59f00">${_novEsc(_novClsShort())} ${_novUnit()}</td><td style="text-align:right">${
+              cand ? mmReads.toLocaleString() : "-"
+            }</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#f59f00">${_novEsc(_novClsShort())} % of ${_novUnit()}</td><td style="text-align:right">${
+              cand ? mmFracS.toFixed(3) + "%" : "-"
+            }</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#f59f00">${_novEsc(_novClsShort())} % genus+ pool</td><td style="text-align:right">${
+              cand ? mmFracHr.toFixed(1) + "%" : "-"
+            }</td></tr>` +
+            `</table>` +
+            `</div>`;
+        }
+
+        const ns = _novSamples();
+        const nSm = (ns && ns[sName] && ns[sName].summary) || null;
+        if (nSm && typeof _novMcFractions === "function") {
+          const fr = _novMcFractions(nSm);
+          const pct = (x) => `${((x || 0) * 100).toFixed(1)}%`;
+          html +=
+            `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.16)">` +
+            `<div style="font-weight:700;color:#90caf9;margin-bottom:3px">Sample-level Method Split</div>` +
+            `<table style="border-collapse:collapse;font-size:0.8em;width:100%">` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#90caf9">Aligned</td><td style="text-align:right">${pct(
+              fr.align,
+            )}</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#2f9e44">${_novEsc(_novClsShort())} (all)</td><td style="text-align:right">${pct(
+              (fr.mmSp || 0) + (fr.mmHr || 0),
+            )}</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#f59f00">${_novEsc(_novClsShort())} genus+</td><td style="text-align:right">${pct(
+              fr.mmHr,
+            )}</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#9e9e9e">Kraken2 only</td><td style="text-align:right">${pct(
+              fr.k2only,
+            )}</td></tr>` +
+            `<tr><td style="padding:1px 8px 1px 0;color:#b71c1c">Dark matter</td><td style="text-align:right">${pct(
+              fr.dark,
+            )}</td></tr>` +
+            `</table>` +
+            `</div>`;
+        }
+        return html;
+      }
 
       function _renderSummaryTable(fd) {
         const wrap = document.getElementById("summary-top-wrap");
         // Append faded below-cutoff rows that carry VF/AMR hits (toggle-gated).
         const _belowExtra = _belowCutoffExtraRows();
         if (_belowExtra.length) fd = fd.concat(_belowExtra);
+        // Append faded sub-threshold (aligned) + no-alignment novelty rows (toggle-gated).
+        const _novSubExtra = _noveltySubThresholdExtraRows();
+        if (_novSubExtra.length) fd = fd.concat(_novSubExtra);
         // Append indicator rows for samples with VF/AMR hits but no detection rows.
         const _vfOnlySum = _vfamrOnlySampleRows(fd);
         if (_vfOnlySum.length) fd = fd.concat(_vfOnlySum);
+        // Append novelty-only indicator rows for samples with novelty genus evidence.
+        const _novOnlySum = _noveltyOnlySampleRows(fd);
+        if (_novOnlySum.length) fd = fd.concat(_novOnlySum);
+        // Append empty-sample indicator rows for samples with no detections at all.
+        const _emptyOnlySum = _emptyOnlySampleRows(fd);
+        if (_emptyOnlySum.length) fd = fd.concat(_emptyOnlySum);
         // Show rollup hint only when rescued rows are actually present
         const _sumRollupHint = document.getElementById("sum-rollup-hint");
         if (_sumRollupHint) {
@@ -16561,7 +17232,9 @@
         const grouped = document.getElementById("summary-group-sample")?.checked;
         const _sumViewLevel = document.getElementById("view-level")?.value || "Strain";
         const _visSumCols = _SUM_COLS.filter(
-          (c) => !(c.key === "_spark" && _sumViewLevel !== "Strain") && !(c.key === "_vfamr" && !HAS_PROT),
+          (c) => !(c.key === "_spark" && _sumViewLevel !== "Strain") &&
+                 !(c.key === "_vfamr" && !HAS_PROT) &&
+                 !(c.key === "_novelty" && !HAS_NOVELTY),
         );
 
         // Sort
@@ -16605,9 +17278,13 @@
         _visSumCols.forEach((c) => {
           const sortable = !c.nosort;
           const ind = c.key === _sumSortCol ? `<span class="sort-ind">${_sumSortAsc ? "▲" : "▼"}</span>` : "";
-          html += `<th class="${sortable ? "sortable" : ""}" data-col="${c.key}" style="text-align:${c.align}">${
-            c.label
-          }${ind}</th>`;
+          const tipAttr = c.tip ? ` data-sum-tip="${String(c.tip).replace(/"/g, "&quot;")}"` : "";
+          const titleAttr = c.tip
+            ? ` title="${String(c.label).replace(/"/g, "&quot;")} column details"`
+            : "";
+          html += `<th class="${sortable ? "sortable" : ""}" data-col="${c.key}"${tipAttr}${titleAttr} style="text-align:${
+            c.align
+          }">${c.label}${ind}</th>`;
         });
         html += "</tr></thead><tbody>";
 
@@ -16623,6 +17300,23 @@
             html +=
               `<tr class="vfamr-only-row" data-vfamr-sample="${String(r["Specimen ID"]).replace(/"/g, "&quot;")}">` +
               `<td colspan="${_visSumCols.length}">${_vfamrOnlyMessageHTML(r["Specimen ID"], r.__vfamr)}</td></tr>`;
+            return;
+          }
+          // Novelty-only indicator row (sample has no passing detections).
+          if (r.__noveltyOnly) {
+            html +=
+              `<tr class="novelty-only-row" data-novelty-sample="${String(r["Specimen ID"]).replace(
+                /"/g,
+                "&quot;",
+              )}">` +
+              `<td colspan="${_visSumCols.length}">${_noveltyOnlyMessageHTML(r["Specimen ID"], r.__novelty)}</td></tr>`;
+            return;
+          }
+          // Empty-sample indicator row (no detections and no VF/AMR or novelty evidence).
+          if (r.__emptyOnly) {
+            html +=
+              `<tr class="empty-only-row" data-empty-sample="${String(r["Specimen ID"]).replace(/"/g, "&quot;")}">` +
+              `<td colspan="${_visSumCols.length}">${_emptyOnlyMessageHTML(r["Specimen ID"], r.__emptyMeta)}</td></tr>`;
             return;
           }
           const cat = r["Microbial Category"] || "Unknown";
@@ -16644,11 +17338,13 @@
           html +=
             `<tr data-key="${key}" class="${hc ? "hc-row" : ""}${_rescued_s ? " rescued-row" : ""}${
               r.__belowCutoffVFAMR ? " below-cutoff-row" : ""
+            }${r.__belowCutoffAligned ? " below-cutoff-aligned-row" : ""}${
+              r.__noveltyNoAlign ? " novelty-noalign-row" : ""
             }${_sumPinned.has(key) ? " row-pinned" : ""}">` +
             `<td style="position:relative;padding-right:70px;padding-left:4px;white-space:nowrap;overflow:hidden;">` +
             `<span style="display:inline-block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;max-width:100%">${_orgBadges(
               r,
-            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(r)}</span>` +
+            )}<i>${r["Detected Organism"] || ""}</i>${_ncbiLink(r)}${_rescueBadge}${_belowCutoffBadgeHTML(r)}${_subThresholdBadgeHTML(r)}</span>` +
             // Star sits inline, right after the organism text.
             `${_watchStarHTML(r, true, null, true)}` +
             // Right-anchored group: level badge (flush right), then the pin hint
@@ -16680,7 +17376,9 @@
             `<td>${r["Specimen ID"] || ""}</td>` +
             `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
             `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
+            `<td style="text-align:center">${_summaryRescueCellHTML(r, key)}</td>` +
             (HAS_PROT ? `<td style="text-align:center">${_vfamrCellHTML(r)}</td>` : "") +
+            (HAS_NOVELTY ? `<td style="text-align:center">${_noveltyCellHTML(r)}</td>` : "") +
             `<td style="text-align:right">${num(r["% Reads"]).toFixed(2)}</td>` +
             `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${
               _fmtBig(r["# Reads Aligned"]).short
@@ -16709,6 +17407,19 @@
             _sumPage = 0;
             _renderSummaryTable(filteredData());
           });
+        });
+        // Column help tooltips for key summary headers.
+        wrap.querySelectorAll("thead th[data-sum-tip]").forEach((th) => {
+          th.style.cursor = "help";
+          th.addEventListener("mouseover", (ev) => showTip(th.dataset.sumTip, ev));
+          th.addEventListener("mousemove", moveTip);
+          th.addEventListener("mouseout", hideTip);
+        });
+        // Novelty chip hover tooltips in the summary table body.
+        wrap.querySelectorAll("tbody span[data-sum-tip]").forEach((el) => {
+          el.addEventListener("mouseover", (ev) => showTip(el.dataset.sumTip, ev));
+          el.addEventListener("mousemove", moveTip);
+          el.addEventListener("mouseout", hideTip);
         });
         // Wire row pin (click) — ignore clicks on the spark, group rows, links, and star icon
         wrap.querySelectorAll("tbody tr[data-key]").forEach((tr) => {
@@ -16775,6 +17486,18 @@
           _sumOrgTd.addEventListener("mouseleave", hideTip);
         });
 
+        // Rescue badge hover: compact rescue diagnostics + trimmed novelty-style split.
+        wrap.querySelectorAll(".sum-rescue-chip[data-rk]").forEach(function (chip) {
+          const _r = _sumSliceMap.get(chip.getAttribute("data-rk"));
+          if (!_r) return;
+          chip.addEventListener("mouseover", function (ev) {
+            const tip = _summaryRescueTipHTML(_r);
+            if (tip) showTip(tip, ev);
+          });
+          chip.addEventListener("mousemove", moveTip);
+          chip.addEventListener("mouseout", hideTip);
+        });
+
         // VF / AMR cell: hover → gene-list tooltip, click → jump to VF/AMR tab
         // filtered by the row's genus.
         wrap.querySelectorAll("tbody tr[data-key] .vfamr-cell[data-vfamr]").forEach(function (cell) {
@@ -16818,6 +17541,31 @@
               _vfamrOnlyOpen(s);
             });
         });
+
+        // Novelty-only indicator rows: hover → genus status summary, open novelty.
+        const _novOnlyMap = new Map();
+        slice.forEach((r) => {
+          if (r.__noveltyOnly) _novOnlyMap.set(String(r["Specimen ID"]), r.__novelty);
+        });
+        wrap.querySelectorAll("tbody tr.novelty-only-row[data-novelty-sample]").forEach((tr) => {
+          const smp = tr.getAttribute("data-novelty-sample");
+          const s = _novOnlyMap.get(smp);
+          const msg = tr.querySelector(".novelty-only-msg");
+          if (msg) {
+            msg.addEventListener("mouseover", (ev) => showTip(_noveltyOnlyTip(smp, s), ev));
+            msg.addEventListener("mousemove", moveTip);
+            msg.addEventListener("mouseout", hideTip);
+          }
+          const lnk = tr.querySelector(".novelty-only-link");
+          if (lnk)
+            lnk.addEventListener("click", (e) => {
+              e.stopPropagation();
+              hideTip();
+              _noveltyOnlyOpen(smp);
+            });
+        });
+
+        // Empty-only indicator rows have no interactive tip — nothing to wire.
 
         _updateSummaryPager(total, start, end, pages);
       }
@@ -16968,6 +17716,63 @@
         return (
           `<span class="vfamr-cell" data-vfamr="1" data-vfamr-genus="${r["Genus"] || ""}" ` +
           `style="cursor:pointer">${parts.join("")}<span class="vfamr-lvl">${lvl}</span></span>`
+        );
+      }
+
+      function _noveltyCellHTML(r) {
+        if (!HAS_NOVELTY) return '<span style="color:#ccc">—</span>';
+        const sName = r["Specimen ID"] || "";
+        const ns = _novSamples();
+        const sampleNov = ns[sName] || {};
+        const candidates = sampleNov.candidates || [];
+        if (!candidates.length) return '<span style="color:#ccc">—</span>';
+
+        // Primary: taxid match (candidates have taxid field).
+        const rowTaxid = String(r["Taxonomic ID #"] || "").trim();
+        const subkeyTaxid = String(r["Subkey"] || "").trim();
+
+        // Secondary: name match (lowercased).
+        const genusNameRaw = (r["Genus Name"] || r["Genus"] || "").trim();
+        const speciesNameRaw = (r["Species Name"] || "").trim();
+        const genusKey = genusNameRaw.toLowerCase();
+        const speciesKey = speciesNameRaw.toLowerCase();
+
+        // Check for species-level novelty candidate.
+        const speciesCand = candidates.find((c) => {
+          if ((c.rank || "").toLowerCase() !== "species") return false;
+          if (rowTaxid && c.taxid && String(c.taxid) === rowTaxid) return true;
+          if (subkeyTaxid && c.taxid && String(c.taxid) === subkeyTaxid) return true;
+          return speciesKey && (c.name || "").trim().toLowerCase() === speciesKey;
+        });
+
+        // Check for genus-level novelty candidate.
+        const genusCand = candidates.find((c) => {
+          if ((c.rank || "").toLowerCase() !== "genus") return false;
+          return genusKey && (c.name || "").trim().toLowerCase() === genusKey;
+        });
+
+        if (!speciesCand && !genusCand) return '<span style="color:#ccc">—</span>';
+
+        const lvl = speciesCand ? "sp" : "gen";
+        const cand = speciesCand || genusCand;
+        const fracPct = cand.frac_of_highrank != null
+          ? (parseFloat(cand.frac_of_highrank) * 100).toFixed(1) + "% of genus+ pool"
+          : cand.frac_of_sample != null
+          ? (parseFloat(cand.frac_of_sample) * 100).toFixed(3) + "% of sample"
+          : "";
+        const reads = cand.reads ? parseInt(cand.reads).toLocaleString() + ` ${_novUnit()}` : "";
+        const tipParts = [
+          `<b style="color:#f76707">Novelty signal — ${lvl === "sp" ? "species" : "genus"} level</b>`,
+          `<i>${_novEsc(cand.name || genusNameRaw)}</i>`,
+          reads && fracPct ? `${reads} · ${fracPct}` : reads || fracPct,
+          `<span style="color:#aaa;font-size:0.85em">Classifier: ${_novEsc(_novClsShort())}</span>`,
+        ].filter(Boolean).join("<br>");
+
+        return (
+          `<span style="display:inline-block;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;` +
+          `line-height:1.5;background:#fff4e6;color:#e8590c;cursor:help" ` +
+          `data-sum-tip="${String(tipParts).replace(/"/g, "&quot;")}" ` +
+          `title="Novelty ${lvl === "sp" ? "species" : "genus"}-level signal detected">● ${lvl}</span>`
         );
       }
 
@@ -17149,7 +17954,8 @@
           `(<span style="color:#6a1b9a;font-weight:600">${s.vf} VF</span>, ` +
           `<span style="color:#c2410c;font-weight:600">${s.amr} AMR</span>)${generaTxt}.</span>` +
           `<button type="button" class="vfamr-only-link" style="margin-left:.3em;border:1px solid #f0c36d;background:#fff;color:#b45309;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:.92em;white-space:nowrap">View VF/AMR →</button>` +
-          `</span>`
+          `</span>` +
+          _pathEvidenceHTML(sample)
         );
       }
       // Hover tooltip listing the genes found for a VF/AMR-only sample.
@@ -17172,6 +17978,585 @@
       function _vfamrOnlyOpen(s) {
         const g = s && s.genera && s.genera.size ? [...s.genera][0] : "";
         if (typeof _jumpToProteins === "function") _jumpToProteins(g || "");
+      }
+
+      function _sampleCutoffById(sample) {
+        const r = (DATA || []).find((x) => (x["Specimen ID"] || x.sample) === sample);
+        if (r) return thresholdForRow(r);
+        return parseFloat((document.getElementById("filter-min") || { value: 0 }).value) || 0;
+      }
+
+      function _noveltySampleSummary() {
+        if (!HAS_NOVELTY) return {};
+        const out = {};
+        const samples = _novSamples();
+        Object.keys(samples || {}).forEach((smp) => {
+          const candRows = ((samples[smp] || {}).candidates || []).filter((c) => (c.rank || "").toLowerCase() === "genus");
+          const mm = {};
+          candRows.forEach((c) => {
+            mm[(c.name || "").trim().toLowerCase()] = c;
+          });
+          const closed = _novClosedGenus(smp) || {};
+          const keys = Array.from(new Set([...Object.keys(closed), ...Object.keys(mm)]));
+          if (!keys.length) return;
+
+          const thr = _sampleCutoffById(smp);
+          let pass = 0,
+            below = 0,
+            mmOnly = 0;
+          const genera = keys
+            .map((k) => {
+              const c = closed[k] || null;
+              const m = mm[k] || null;
+              const tass = c ? +c.tass || 0 : NaN;
+              const src = c && m ? "both" : c ? "aligned_only" : "mmseqs_only";
+              let status = "novelty-only";
+              if (c) {
+                if (!isNaN(tass) && tass >= thr) {
+                  status = "pass";
+                  pass++;
+                } else {
+                  status = "below";
+                  below++;
+                }
+              } else {
+                mmOnly++;
+              }
+              return {
+                name: (c && c.name) || (m && m.name) || k,
+                src,
+                status,
+                tass: c ? tass : null,
+                readsAligned: c ? +c.reads || 0 : 0,
+                pctAligned: c ? +c.pct || 0 : 0,
+                mmHits: m ? +m.reads || 0 : 0,
+                mmFracSample: m ? (+m.frac_of_sample || 0) * 100 : 0,
+              };
+            })
+            .sort((a, b) => {
+              const rank = { pass: 3, below: 2, "novelty-only": 1 };
+              const d = (rank[b.status] || 0) - (rank[a.status] || 0);
+              if (d) return d;
+              return (b.tass || 0) - (a.tass || 0);
+            });
+
+          const sm = (samples[smp] || {}).summary || {};
+          out[smp] = {
+            cutoff: thr,
+            total: genera.length,
+            pass,
+            below,
+            mmOnly,
+            darkPct: (+sm.dark_fraction || 0) * 100,
+            genera,
+          };
+        });
+        return out;
+      }
+
+      function _noveltyOnlySampleRows(fdRows) {
+        if (!HAS_NOVELTY) return [];
+        const summary = _noveltySampleSummary();
+        const ids = Object.keys(summary);
+        if (!ids.length) return [];
+        // Only count real detection rows as "present"; allow synthetic indicator
+        // rows (VF/AMR-only, novelty-only) to coexist for the same sample.
+        const present = new Set(
+          (fdRows || [])
+            .filter((r) => !r.__vfamrOnly && !r.__noveltyOnly)
+            .map((r) => r["Specimen ID"]),
+        );
+        const txt = (document.getElementById("filter-text") || { value: "" }).value.trim();
+        const ic = (document.getElementById("filter-ic") || { checked: true }).checked;
+        const scope = (document.getElementById("filter-scope") || {}).value || "both";
+        let rx = null;
+        if (txt) {
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+          }
+        }
+        const out = [];
+        ids.forEach((smp) => {
+          if (sampleHidden[smp]) return;
+          if (present.has(smp)) return;
+          if (rx && scope === "organism") return;
+          if (rx && scope !== "organism" && !rx.test(smp)) return;
+          out.push({ "Specimen ID": smp, "Detected Organism": "", __noveltyOnly: true, __novelty: summary[smp] });
+        });
+        return out;
+      }
+
+      function _noveltyOnlyMessageHTML(sample, s) {
+        s = s || { total: 0, pass: 0, below: 0, mmOnly: 0, darkPct: 0, genera: [] };
+        const esc = (x) =>
+          String(x == null ? "" : x)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        const top = (s.genera || [])
+          .slice(0, 4)
+          .map((g) => `<i>${esc(g.name)}</i>`)
+          .join(", ");
+        const topTxt = top ? ` · top genera: ${top}${(s.genera || []).length > 4 ? ` +${(s.genera || []).length - 4}` : ""}` : "";
+        return (
+          `<span class="novelty-only-msg" style="display:inline-flex;align-items:center;gap:.5em;flex-wrap:wrap;cursor:help">` +
+          `<i class="fas fa-lightbulb" style="color:#3949ab"></i>` +
+          `<span><b>No passing detections for this sample</b> — novelty genus evidence in ${s.total} genus(es)` +
+          ` (<span style="color:#2e7d32;font-weight:600">${s.pass} pass</span>, ` +
+          `<span style="color:#c62828;font-weight:600">${s.below} below</span>, ` +
+          `<span style="color:#ef6c00;font-weight:600">${s.mmOnly} ${_novClsLc()}-only</span>)` +
+          `${topTxt} · dark matter ${(+s.darkPct || 0).toFixed(1)}%.</span>` +
+          `<button type="button" class="novelty-only-link" style="margin-left:.3em;border:1px solid #9fa8da;background:#fff;color:#303f9f;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:.92em;white-space:nowrap">View Novelty →</button>` +
+          `</span>` +
+          _pathEvidenceHTML(sample)
+        );
+      }
+
+      function _noveltyOnlyTip(sample, s) {
+        s = s || { cutoff: 0, genera: [] };
+        const esc = (x) =>
+          String(x == null ? "" : x)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        const rows = (s.genera || []).slice(0, 14);
+        let html =
+          `<b>${esc(sample)}</b><br>` +
+          `<span style="color:#9fb0c3">Novelty genus status (cutoff ${(+s.cutoff || 0).toFixed(1)})</span>` +
+          `<table style="border-collapse:collapse;margin-top:4px;font-size:0.84em">` +
+          `<tr><th style="text-align:left;padding-right:10px;color:#90caf9">Genus</th>` +
+          `<th style="text-align:right;padding-right:10px;color:#90caf9">Status</th>` +
+          `<th style="text-align:right;padding-right:10px;color:#90caf9">Genus TASS</th>` +
+          `<th style="text-align:right;color:#90caf9">${esc(_novClsShort())} hits</th></tr>`;
+        rows.forEach((g) => {
+          const stCol =
+            g.status === "pass"
+              ? "#2e7d32"
+              : g.status === "below"
+              ? "#c62828"
+              : "#ef6c00";
+          html +=
+            `<tr><td style="padding-right:10px"><i>${esc(g.name)}</i></td>` +
+            `<td style="text-align:right;padding-right:10px;color:${stCol}">${esc(g.status)}</td>` +
+            `<td style="text-align:right;padding-right:10px">${g.tass == null ? "-" : (+g.tass).toFixed(1)}</td>` +
+            `<td style="text-align:right">${g.mmHits ? Number(g.mmHits).toLocaleString() : "-"}</td></tr>`;
+        });
+        if ((s.genera || []).length > rows.length)
+          html += `<tr><td colspan="4" style="padding-top:2px;color:#aaa">…and ${(s.genera || []).length - rows.length} more</td></tr>`;
+        html += `</table>`;
+        return html;
+      }
+
+      function _noveltyOnlyOpen(sample) {
+        const btn = document.getElementById("novelty-tab-btn") || document.querySelector('.tab-btn[data-tab="novelty"]');
+        if (!btn || btn.classList.contains("hidden") || btn.classList.contains("tab-disabled")) return;
+        btn.click();
+        _novState.sample = sample;
+        _novCmpMode = "genus";
+        setTimeout(() => {
+          const sel = document.getElementById("novelty-sample-sel");
+          if (sel) sel.value = sample;
+          const gBtn = document.querySelector('#nov-cmp-toggle .nov-seg-btn[data-cmp="genus"]');
+          if (gBtn) gBtn.click();
+          else {
+            _drawNoveltyCandidates();
+            _drawNoveltyGenusCompare();
+          }
+        }, 0);
+      }
+
+      function _emptyOnlySampleRows(fdRows) {
+        const allSamples = Object.keys(SAMPLE_META || {});
+        if (!allSamples.length) return [];
+        // Exclude samples already represented — including other indicator rows so we
+        // don't double-render a sample that has VF/AMR-only or novelty-only evidence.
+        const present = new Set(
+          (fdRows || [])
+            .filter((r) => !r.__emptyOnly)
+            .map((r) => r["Specimen ID"]),
+        );
+        const txt = (document.getElementById("filter-text") || { value: "" }).value.trim();
+        const ic = (document.getElementById("filter-ic") || { checked: true }).checked;
+        const scope = (document.getElementById("filter-scope") || {}).value || "both";
+        let rx = null;
+        if (txt) {
+          try { rx = new RegExp(txt, ic ? "i" : ""); } catch (e) { rx = null; }
+        }
+        const out = [];
+        allSamples.forEach((smp) => {
+          if (sampleHidden[smp]) return;
+          if (present.has(smp)) return;
+          if (rx && scope === "organism") return;
+          if (rx && scope !== "organism" && !rx.test(smp)) return;
+          out.push({
+            "Specimen ID": smp,
+            "Detected Organism": "",
+            __emptyOnly: true,
+            __emptyMeta: SAMPLE_META[smp] || {},
+          });
+        });
+        return out;
+      }
+
+      // ── Pathogen cross-reference (no-alignment evidence) ─────────────────────
+      // Listed pathogens can surface with ZERO reference alignment when they appear
+      // only in reference-free novelty candidates or in VF/AMR gene hits. These
+      // helpers flag those cases on the sample-level indicator rows.
+      const _PATH_SEV = { primary: 4, opportunistic: 3, potential: 2, commensal: 1 };
+      function _pathClassColor(c) {
+        return (
+          { primary: "#c62828", opportunistic: "#ef6c00", potential: "#1565c0", commensal: "#2e7d32" }[
+            String(c || "").toLowerCase()
+          ] || "#6a1b9a"
+        );
+      }
+      function _pathByName(name) {
+        if (!name) return null;
+        const r = PATHO.by_name[String(name).trim().toLowerCase()];
+        return r ? { name: r.n, class: r.c, hc: !!r.hc, status: r.s, match: "name", genus: r.g } : null;
+      }
+      function _pathByGenus(genus) {
+        if (!genus) return null;
+        const g = PATHO.by_genus[String(genus).trim().toLowerCase()];
+        return g ? { name: String(genus), class: g.c, hc: !!g.hc, match: "genus", genusTotal: g.n } : null;
+      }
+      // Client-side pathogen matcher for a (taxid, name, rank) triple — mirrors the
+      // server's bin/make_report.py _match_pathogen so the report flags listed pathogens
+      // even on reports generated without the server pre-stamp. Order: exact taxid →
+      // exact name → genus rollup. Genus rollup uses the candidate name (genus rank) or
+      // its first token (species/strain), and is skipped for phage/host-virus/satellite
+      // names so they are not mis-attributed to a host genus. (Note: a virus species like
+      // "Bundibugyo virus" whose NCBI genus is "Orthoebolavirus" can only match by exact
+      // taxid or via a genus-rank "Orthoebolavirus" candidate — its name does not contain
+      // the genus, so first-token rollup intentionally won't reach it.)
+      const _PATH_ROLLUP_RANKS = new Set([
+        "genus", "species", "subspecies", "strain", "serotype", "serovar",
+      ]);
+      function _matchPathTaxon(taxid, name, rank) {
+        if (!HAS_PATHO) return null;
+        taxid = String(taxid == null ? "" : taxid).trim();
+        name = String(name == null ? "" : name).trim();
+        rank = String(rank == null ? "" : rank).trim().toLowerCase();
+        if (taxid && PATHO.by_taxid[taxid]) {
+          const h = PATHO.by_taxid[taxid];
+          return { match: "taxid", name: h.n, cls: h.c, status: h.s, hc: !!h.hc, genus: h.g };
+        }
+        const nl = name.toLowerCase();
+        if (nl && PATHO.by_name[nl]) {
+          const h = PATHO.by_name[nl];
+          return { match: "name", name: h.n, cls: h.c, status: h.s, hc: !!h.hc, genus: h.g };
+        }
+        if (name && _PATH_ROLLUP_RANKS.has(rank)) {
+          let gkey = "";
+          if (rank === "genus") gkey = nl;
+          else if (!/ phage|prophage| virus| satellite/.test(nl)) gkey = name.split(/\s+/)[0].toLowerCase();
+          if (gkey && PATHO.by_genus[gkey]) {
+            const g = PATHO.by_genus[gkey];
+            return {
+              match: "genus",
+              name: gkey.charAt(0).toUpperCase() + gkey.slice(1),
+              cls: g.c,
+              hc: !!g.hc,
+              genus: gkey,
+              genusTotal: g.n,
+            };
+          }
+        }
+        return null;
+      }
+      // Novelty candidates for a sample that correspond to listed pathogens. Matched
+      // client-side (falls back to the server-stamped candidate.pathogen). Returns a
+      // list sorted high-consequence/severity/reads first.
+      function _sampleNoveltyPathogens(sample) {
+        if (!HAS_PATHO || !HAS_NOVELTY) return [];
+        const cands = ((_novSamples()[sample] || {}).candidates) || [];
+        const out = [];
+        const seen = new Set();
+        cands.forEach((c) => {
+          let p = _matchPathTaxon(c.taxid, c.name, c.rank);
+          if (!p && c.pathogen) {
+            p = { match: c.pathogen.match, name: c.pathogen.name, cls: c.pathogen.class, hc: !!c.pathogen.hc };
+          }
+          if (!p) return;
+          const key = String(c.taxid || c.name || "");
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push({
+            name: c.name || p.name,
+            taxid: c.taxid,
+            rank: c.rank,
+            cls: p.cls,
+            hc: !!p.hc,
+            match: p.match,
+            genus: p.genus || "",
+            genusTotal: p.genusTotal || 0,
+            reads: +c.reads || 0,
+          });
+        });
+        out.sort(
+          (a, b) =>
+            b.hc - a.hc ||
+            (_PATH_SEV[b.cls] || 0) - (_PATH_SEV[a.cls] || 0) ||
+            b.reads - a.reads,
+        );
+        return out;
+      }
+      // VF/AMR gene hits in this sample whose organism is a listed pathogen. Prefers the
+      // server-stamped row.pathogen (matched by canonical taxid resolved from the hit's
+      // Source ID via the bvbrc reference — robust to mis-parsed Genus/Species text), and
+      // falls back to client-side species/genus name matching. By construction these rows
+      // only appear for samples with no passing/aligned detections, so every hit here is
+      // "no-alignment" evidence.
+      function _sampleVfamrPathogens(sample) {
+        if (!HAS_PATHO || !HAS_PROT) return [];
+        const byOrg = new Map();
+        const scan = (rows, kind) => {
+          (rows || []).forEach((r) => {
+            const s = r["Specimen ID"] || r.Sample || r.sample || null;
+            if (sample && s !== sample) return;
+            const sp = String(r.Species || r.species || "").trim();
+            const gn = String(r.Genus || r.genus || "").trim();
+            let hit = null;
+            let level = "species";
+            let key = "s:" + sp.toLowerCase();
+            // 1) server-stamped pathogen match (by canonical taxid / name / genus).
+            if (r.pathogen) {
+              const p = r.pathogen;
+              hit = { class: p.class, hc: !!p.hc, name: p.name, genus: p.genus };
+              level = p.match === "genus" ? "genus" : "species";
+              key = (p.taxid ? "t:" + p.taxid : (p.genus ? "g:" + p.genus : "s:" + sp.toLowerCase()));
+            }
+            // 2) fall back to client-side name/genus matching.
+            if (!hit) {
+              hit = _pathByName(sp);
+              if (!hit && sp) {
+                const two = sp.split(/\s+/).slice(0, 2).join(" ");
+                hit = _pathByName(two);
+              }
+              if (hit) { hit = { class: hit.class, hc: hit.hc, name: hit.name, genus: hit.genus }; }
+            }
+            if (!hit) {
+              const g = _pathByGenus(gn);
+              if (g) { hit = { class: g.class, hc: g.hc, name: g.name, genus: gn.toLowerCase() }; level = "genus"; key = "g:" + gn.toLowerCase(); }
+            }
+            if (!hit) return;
+            const label = level === "species" ? (sp || hit.name) : (gn || hit.name);
+            let e = byOrg.get(key);
+            if (!e) {
+              e = { org: label, level, cls: hit.class, hc: !!hit.hc, genus: hit.genus || "", vf: 0, amr: 0 };
+              byOrg.set(key, e);
+            }
+            if (kind === "amr") e.amr += 1;
+            else e.vf += 1;
+          });
+        };
+        scan(PROT.per_gene_hits, "vf");
+        scan(PROT.amr_genes, "amr");
+        const out = [...byOrg.values()];
+        out.sort(
+          (a, b) => b.hc - a.hc || (_PATH_SEV[b.cls] || 0) - (_PATH_SEV[a.cls] || 0),
+        );
+        return out;
+      }
+      // Kraken2-classified taxa for a sample that are listed pathogens but had NO
+      // reference alignment (K2 Reads > 0, # Reads Aligned == 0). These rows already
+      // exist in DATA (carried from paths.json per organism) but may sit below the TASS
+      // cutoff; this surfaces them as no-alignment pathogen evidence regardless.
+      function _sampleKraken2Pathogens(sample) {
+        if (!HAS_PATHO) return [];
+        const out = [];
+        const seen = new Set();
+        (DATA || []).forEach((r) => {
+          if ((r["Specimen ID"] || r.sample) !== sample) return;
+          const k2 = +r["K2 Reads"] || 0;
+          const aligned = +r["# Reads Aligned"] || 0;
+          if (k2 <= 0 || aligned > 0) return; // Kraken2-classified but not aligned
+          const taxid = r["Taxonomic ID #"] || r["Subkey"] || "";
+          const name = r["Detected Organism"] || r["Species Name"] || "";
+          const genus = r["Genus"] || r["Genus Name"] || "";
+          let p = _matchPathTaxon(taxid, name, "species");
+          if (!p) p = _matchPathTaxon("", genus, "genus");
+          if (!p) return;
+          const key = String(taxid || name);
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push({
+            name: name || p.name,
+            taxid,
+            cls: p.cls,
+            hc: !!p.hc,
+            match: p.match,
+            genus: p.genus || genus.toLowerCase(),
+            reads: k2,
+          });
+        });
+        out.sort(
+          (a, b) =>
+            b.hc - a.hc || (_PATH_SEV[b.cls] || 0) - (_PATH_SEV[a.cls] || 0) || b.reads - a.reads,
+        );
+        return out;
+      }
+      // Per-genus rollup: "x / y listed-pathogen taxa under genus G seen with no
+      // alignment". y = number of listed pathogen species the sheet has under that genus;
+      // x = how many distinct ones this sample surfaced (via novelty / Kraken2).
+      function _pathGenusRollup(items) {
+        const byGenus = new Map();
+        (items || []).forEach((p) => {
+          const g = (p.genus || "").toLowerCase();
+          if (!g) return;
+          let e = byGenus.get(g);
+          if (!e) {
+            e = { genus: g, seen: new Set(), total: (PATHO.by_genus[g] || {}).n || 0, cls: p.cls, hc: !!p.hc };
+            byGenus.set(g, e);
+          }
+          e.seen.add(String(p.taxid || p.name));
+          if ((_PATH_SEV[p.cls] || 0) > (_PATH_SEV[e.cls] || 0)) e.cls = p.cls;
+          e.hc = e.hc || !!p.hc;
+        });
+        return [...byGenus.values()]
+          .filter((e) => e.total > 0)
+          .sort((a, b) => b.hc - a.hc || (_PATH_SEV[b.cls] || 0) - (_PATH_SEV[a.cls] || 0));
+      }
+      function _pathChip(label, sub, cls, hc, esc) {
+        const col = _pathClassColor(cls);
+        return (
+          `<span style="display:inline-flex;align-items:center;gap:.3em;border:1px solid ${col};` +
+          `border-radius:4px;padding:0 6px;font-size:.9em;color:${col};background:${col}14">` +
+          (hc ? `<i class="fas fa-triangle-exclamation" title="high-consequence agent"></i> ` : "") +
+          `<b>${esc(label)}</b>` +
+          (sub ? `<span style="color:#777;font-weight:400">${esc(sub)}</span>` : "") +
+          (cls
+            ? `<span style="color:${col};font-weight:700;text-transform:uppercase;font-size:.8em">${esc(cls)}</span>`
+            : "") +
+          `</span>`
+        );
+      }
+      // Combined "listed pathogen — no alignment" evidence block for a sample, drawn from
+      // three reference-free / no-alignment sources: novelty LCA candidates, Kraken2
+      // classifications that never aligned, and VF/AMR gene hits. Adds a per-genus rollup
+      // (x / y listed-pathogen taxa under a genus). Returns "" when there is no evidence.
+      function _pathEvidenceHTML(sample) {
+        if (!HAS_PATHO) return "";
+        const esc = (x) =>
+          String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const nov = _sampleNoveltyPathogens(sample);
+        const k2 = _sampleKraken2Pathogens(sample);
+        const vf = _sampleVfamrPathogens(sample);
+        if (!nov.length && !k2.length && !vf.length) return "";
+        const N = 6; // chips shown per source before "+N more"
+        let html =
+          `<div class="path-evidence" style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:.4em;align-items:center;margin-top:5px">` +
+          `<span style="color:#b71c1c;font-weight:700"><i class="fas fa-biohazard"></i> Listed pathogen — no alignment:</span>`;
+        const _section = (label, items, render) => {
+          if (!items.length) return;
+          html += `<span style="color:#555;font-weight:600;font-size:.9em">${label}:</span>`;
+          items.slice(0, N).forEach(render);
+          if (items.length > N) html += `<span style="color:#777">+${items.length - N} more</span>`;
+        };
+        _section("novelty", nov, (p) => {
+          const sub = `tax ${p.taxid || "?"} · ${p.rank || "?"}` + (p.match === "genus" ? " · genus rollup" : "");
+          html += _pathChip(p.name, sub, p.cls, p.hc, esc);
+        });
+        _section("Kraken2", k2, (p) => {
+          html += _pathChip(p.name, `tax ${p.taxid || "?"} · ${(+p.reads).toLocaleString()} K2 reads`, p.cls, p.hc, esc);
+        });
+        _section("VF/AMR", vf, (p) => {
+          const parts = [];
+          if (p.vf) parts.push(`${p.vf} VF`);
+          if (p.amr) parts.push(`${p.amr} AMR`);
+          html += _pathChip(p.org, `${parts.join(" / ")} · ${p.level}`, p.cls, p.hc, esc);
+        });
+        // Per-genus rollup across novelty + Kraken2 + VF/AMR evidence (VF/AMR items map to
+        // their canonical sheet genus via the taxid match, so e.g. Zaire/Orthoebolavirus
+        // hits roll up correctly even when the merged sheet's Genus text is mis-parsed).
+        const vfForRoll = vf.map((p) => ({ taxid: p.org, name: p.org, genus: p.genus, cls: p.cls, hc: p.hc }));
+        const roll = _pathGenusRollup(nov.concat(k2).concat(vfForRoll));
+        if (roll.length) {
+          html += `<span style="flex-basis:100%;height:0"></span>`; // line break within the flex row
+          html += `<span style="color:#555;font-weight:600;font-size:.9em"><i class="fas fa-sitemap"></i> genus rollup:</span>`;
+          roll.slice(0, 8).forEach((g) => {
+            const col = _pathClassColor(g.cls);
+            const gname = g.genus.charAt(0).toUpperCase() + g.genus.slice(1);
+            html +=
+              `<span title="listed pathogen taxa seen with no alignment / total listed pathogen species in this genus" ` +
+              `style="display:inline-flex;align-items:center;gap:.3em;border:1px dashed ${col};border-radius:4px;padding:0 6px;font-size:.88em;color:${col}">` +
+              (g.hc ? `<i class="fas fa-triangle-exclamation"></i> ` : "") +
+              `<i>${esc(gname)}</i> <b>${g.seen.size}/${g.total}</b> pathogenic</span>`;
+          });
+        }
+        html += `</div>`;
+        return html;
+      }
+
+      function _emptyOnlyMessageHTML(sample, meta) {
+        meta = meta || {};
+        const esc = (x) =>
+          String(x == null ? "" : x)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        const totalReads = parseInt(meta.total_reads) || 0;
+        const alignedReads = parseInt(meta.aligned_reads) || 0;
+        const numKeys = parseInt(meta.num_keys) || 0;
+        const numSubkeys = parseInt(meta.num_subkeys) || 0;
+        const numToplevel = parseInt(meta.num_toplevelkeys) || 0;
+        const hadOrgs = numKeys > 0 || numSubkeys > 0 || numToplevel > 0;
+        const alignPct = totalReads > 0 ? ((alignedReads / totalReads) * 100).toFixed(1) : null;
+
+        let reason, icon, color;
+        if (!hadOrgs && alignedReads === 0) {
+          reason = "No Kraken2 hits · no alignment hits";
+          icon = "fa-circle-xmark";
+          color = "#9ca3af";
+        } else if (!hadOrgs) {
+          const aLabel = alignPct !== null
+            ? `${alignedReads.toLocaleString()} reads aligned (${alignPct}%)`
+            : `${alignedReads.toLocaleString()} reads aligned`;
+          reason = `No organisms detected · ${aLabel}`;
+          icon = "fa-circle-minus";
+          color = "#6b7280";
+        } else {
+          const orgLabel = numKeys
+            ? `${numKeys} strain${numKeys !== 1 ? "s" : ""}`
+            : numSubkeys
+            ? `${numSubkeys} species`
+            : `${numToplevel} genus-level`;
+          reason = `All detections below TASS cutoff · ${orgLabel} in report, none passing`;
+          icon = "fa-circle-arrow-down";
+          color = "#b45309";
+        }
+
+        const parts = [];
+        if (totalReads) parts.push(`${totalReads.toLocaleString()} total reads`);
+        if (hadOrgs && alignedReads && alignPct !== null)
+          parts.push(`${alignedReads.toLocaleString()} aligned (${alignPct}%)`);
+        const platform = meta.platform && meta.platform !== "unknown" ? esc(meta.platform) : null;
+        if (platform) parts.push(platform);
+        const ct = meta.control_type && meta.control_type !== "none"
+          ? esc(meta.control_type) + " control"
+          : null;
+        if (ct) parts.push(ct);
+
+        // Pathogen evidence with no alignment (novelty candidates / VF-AMR hits). When
+        // present, suppress the "no VF/AMR · no novelty signal" tail — it would
+        // contradict the evidence shown below.
+        const pathEv = _pathEvidenceHTML(sample);
+        return (
+          `<span class="empty-only-msg" style="display:inline-flex;align-items:center;gap:.5em;flex-wrap:wrap">` +
+          `<i class="fas ${icon}" style="color:${color}"></i>` +
+          `<span><b>${esc(sample)}</b>: ${reason}` +
+          (parts.length
+            ? ` · <span style="color:#6b7280;font-size:.92em">${parts.join(" · ")}</span>`
+            : "") +
+          (!pathEv && (HAS_PROT || HAS_NOVELTY)
+            ? ` — ${[HAS_PROT ? "no VF/AMR" : "", HAS_NOVELTY ? "no novelty signal" : ""].filter(Boolean).join(" · ")}`
+            : "") +
+          `</span>` +
+          `</span>` +
+          pathEv
+        );
       }
 
       function _belowCutoffExtraRows() {
@@ -17260,6 +18645,143 @@
         );
       }
 
+      // Does this detection row have a matching novelty candidate (species or genus)
+      // in its own sample? Mirrors the matching used by _noveltyCellHTML so a row's
+      // novelty signal and its "surfaced because…" reason stay consistent. Returns
+      // {cand, lvl} ("sp" | "gen") or null.
+      function _rowNoveltyMatch(r) {
+        if (!HAS_NOVELTY) return null;
+        const candidates = ((_novSamples()[r["Specimen ID"] || ""] || {}).candidates) || [];
+        if (!candidates.length) return null;
+        const rowTaxid = String(r["Taxonomic ID #"] || "").trim();
+        const subkeyTaxid = String(r["Subkey"] || "").trim();
+        const genusKey = (r["Genus Name"] || r["Genus"] || "").trim().toLowerCase();
+        const speciesKey = (r["Species Name"] || "").trim().toLowerCase();
+        const orgKey = (r["Detected Organism"] || "").trim().toLowerCase();
+        const speciesCand = candidates.find((c) => {
+          if ((c.rank || "").toLowerCase() !== "species") return false;
+          if (rowTaxid && c.taxid && String(c.taxid) === rowTaxid) return true;
+          if (subkeyTaxid && c.taxid && String(c.taxid) === subkeyTaxid) return true;
+          const cn = (c.name || "").trim().toLowerCase();
+          return cn && (cn === speciesKey || cn === orgKey);
+        });
+        const genusCand = candidates.find((c) => {
+          if ((c.rank || "").toLowerCase() !== "genus") return false;
+          return genusKey && (c.name || "").trim().toLowerCase() === genusKey;
+        });
+        if (speciesCand) return { cand: speciesCand, lvl: "sp" };
+        if (genusCand) return { cand: genusCand, lvl: "gen" };
+        return null;
+      }
+
+      // Extra rows surfaced by the "sub-threshold & novelty-supported" toggle:
+      //   • below-cutoff rows that still have reference alignments  (__belowCutoffAligned)
+      //   • below-cutoff rows with NO alignment but a novelty genus/species match
+      //     in the same sample                                       (__noveltyNoAlign)
+      // Mirrors the sidebar-filter predicates of _belowCutoffExtraRows() so the same
+      // text/category/HC/mol-type filters apply. Rows already surfaced by the VF/AMR
+      // toggle are skipped to avoid duplicates.
+      function _noveltySubThresholdExtraRows() {
+        const tgl = document.getElementById("filter-novelty-sub");
+        if (!tgl || !tgl.checked) return [];
+        const onlyP = document.getElementById("filter-pass").checked;
+        if (onlyP) return []; // "passes only" is incompatible with showing failing rows
+        const txt = document.getElementById("filter-text").value.trim();
+        const ic = document.getElementById("filter-ic").checked;
+        const scope = (document.getElementById("filter-scope") || {}).value || "both";
+        const viewLevel = (document.getElementById("view-level") || {}).value || "Strain";
+        const onlyHC = document.getElementById("filter-hc").checked;
+        const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
+        const mcFilter = mcSel.length ? new Set(mcSel) : null;
+        const mtDNA = document.getElementById("filter-mt-dna") ? document.getElementById("filter-mt-dna").checked : true;
+        const mtRNA = document.getElementById("filter-mt-rna") ? document.getElementById("filter-mt-rna").checked : true;
+        const mtBoth = document.getElementById("filter-mt-both") ? document.getElementById("filter-mt-both").checked : true;
+        let rx = null;
+        if (txt) {
+          try {
+            rx = new RegExp(txt, ic ? "i" : "");
+          } catch (e) {
+            rx = null;
+          }
+        }
+        // Skip rows already shown by the VF/AMR below-cutoff toggle.
+        const vfTgl = document.getElementById("filter-below-vfamr");
+        const vfOn = HAS_PROT && vfTgl && vfTgl.checked;
+        const anyRescale = _hasAnyRescale();
+        const out = [];
+        for (const r of DATA) {
+          if ((r["Level"] || "Strain") !== viewLevel) continue;
+          if (sampleHidden[r["Specimen ID"]]) continue;
+          if (rx) {
+            const inS = rx.test(r["Specimen ID"] || "");
+            const inO = rx.test(r["Detected Organism"] || "");
+            if (scope === "sample") {
+              if (!inS) continue;
+            } else if (scope === "organism") {
+              if (!inO) continue;
+            } else if (!inS && !inO) {
+              continue;
+            }
+          }
+          if (onlyHC && !isTruthy(r["High Consequence"])) continue;
+          if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+          const mt = (r["Mol Type"] || "").toLowerCase();
+          if (mt === "dna" && !mtDNA) continue;
+          if (mt === "rna" && !mtRNA) continue;
+          if (mt !== "dna" && mt !== "rna" && !mtBoth) continue;
+          if (watchFilterMode !== "all" && watchlist.size) {
+            const watched = watchlist.has(_watchKey(r));
+            if (watchFilterMode === "only" && !watched) continue;
+            if (watchFilterMode === "hide" && watched) continue;
+          }
+          // Must be EXCLUDED by the threshold gate — otherwise it's already visible.
+          const pi = rowPassInfo(r);
+          if (isNaN(pi.strain)) continue;
+          const excluded = ROLLUP_PASS ? !pi.effectivePass : pi.strain < pi.thr;
+          if (!excluded) continue;
+          const aligned = (+r["# Reads Aligned"] || 0) > 0;
+          const nov = _rowNoveltyMatch(r);
+          // Surface only rows that carry signal: aligned (below cutoff) or novelty-backed.
+          if (!aligned && !nov) continue;
+          // Don't duplicate rows already surfaced by the VF/AMR toggle.
+          if (vfOn) {
+            const v = _vfamrForRow(r);
+            if (v && (v.vf || v.amr)) continue;
+          }
+          const inj = anyRescale ? applyRescale(Object.assign({}, r)) : Object.assign({}, r);
+          if (aligned) inj.__belowCutoffAligned = true;
+          else inj.__noveltyNoAlign = true;
+          if (nov) {
+            inj.__noveltyMatch = true;
+            inj.__noveltyMatchLvl = nov.lvl;
+          }
+          out.push(inj);
+        }
+        return out;
+      }
+
+      // Badge(s) for a sub-threshold / novelty-supported row, appended to the
+      // organism cell so the reason it's visible is obvious.
+      function _subThresholdBadgeHTML(r) {
+        if (!r || (!r.__belowCutoffAligned && !r.__noveltyNoAlign)) return "";
+        const pi = rowPassInfo(r);
+        const sc = !isNaN(pi.strain) ? pi.strain.toFixed(1) : "—";
+        let html = "";
+        if (r.__belowCutoffAligned) {
+          const reads = _fmtInt(r["# Reads Aligned"]);
+          html +=
+            `<span class="subthr-aligned-badge" title="TASS ${sc} is below the cutoff (${pi.thr}) — hidden by score, ` +
+            `but ${reads} reference read(s) aligned in this sample.">&#x2193; sub-threshold (aligned)</span>`;
+        }
+        if (r.__noveltyNoAlign) {
+          html +=
+            `<span class="novelty-noalign-badge" title="No reference alignment, but the novelty classifier placed this ` +
+            `organism's ${r.__noveltyMatchLvl === "gen" ? "genus" : "species"} in this sample (TASS ${sc}).">` +
+            `&#10022; novelty, no alignment</span>`;
+        }
+        return html;
+      }
+
       // Wire summary detection-table controls (pager + group + page-size).
       (function _initSummaryTableControls() {
         function _go(n) {
@@ -17343,6 +18865,7 @@
         wrap.innerHTML = "";
         const metric = (document.getElementById("summary-genus-metric") || {}).value || "# Reads Aligned";
         const topN = parseInt((document.getElementById("summary-genus-topn") || {}).value || "15", 10);
+        const showValues = !!(document.getElementById("summary-genus-values") || {}).checked;
 
         const rows = fd.filter((r) => r["Genus"]);
         if (!rows.length) {
@@ -17430,7 +18953,24 @@
           const [genus, info] = entry;
           const y = i * rowH;
 
-          // genus label
+          // Build a per-genus hover tip (total + per-sample breakdown) so the value
+          // detail lives on hover instead of as an on-chart label.
+          const _metricLbl = metric === "count" ? "# organisms" : metric;
+          const _totLbl = metric === "TASS Score" ? "max" : "total";
+          const _fmtV = (val) =>
+            metric === "count" ? val + " organism(s)" : metric === "TASS Score" ? (+val).toFixed(1) : _fmtInt(val);
+          const _visTot = visGenera[genus] || 0;
+          const _bd = visibleSamples
+            .map((sn) => [sn, info.perSample[sn] || 0])
+            .filter((s) => s[1] > 0)
+            .sort((a, b) => b[1] - a[1]);
+          const _genusTip =
+            `<b>${genus}</b><br><span style="color:#9bb">${_totLbl} ${_metricLbl}:</span> <b>${_fmtV(_visTot)}</b>` +
+            (_bd.length
+              ? `<br><br><b>Per sample:</b><br>` + _bd.map(([sn, val]) => `• ${sn}: <b>${_fmtV(val)}</b>`).join("<br>")
+              : "");
+
+          // genus label (hover shows the full breakdown)
           svg
             .append("text")
             .attr("x", mL - 8)
@@ -17440,15 +18980,24 @@
             .style("font-size", "11px")
             .style("font-style", "italic")
             .style("fill", "#333")
-            .text(genus.length > 22 ? genus.slice(0, 21) + "…" : genus);
+            .style("cursor", "pointer")
+            .text(genus.length > 22 ? genus.slice(0, 21) + "…" : genus)
+            .on("mouseover", (ev) => showTip(_genusTip, ev))
+            .on("mousemove", moveTip)
+            .on("mouseout", hideTip);
 
           let xacc = 0;
           const segs = visibleSamples.map((sn) => [sn, info.perSample[sn] || 0]).filter((s) => s[1] > 0);
+          // Short label for a segment/total value (compact so it fits on the bar).
+          const _segLbl = (val) =>
+            metric === "count" ? String(val) : metric === "TASS Score" ? (+val).toFixed(1) : _fmtBig(val).short;
           segs.forEach(([sn, val]) => {
+            const segX = x(xacc);
+            const segW = Math.max(0, x(xacc + val) - x(xacc));
             g.append("rect")
-              .attr("x", x(xacc))
+              .attr("x", segX)
               .attr("y", y + 3)
-              .attr("width", Math.max(0, x(xacc + val) - x(xacc)))
+              .attr("width", segW)
               .attr("height", rowH - 6)
               .attr("fill", color(sn))
               .attr("stroke", "#fff")
@@ -17457,20 +19006,43 @@
               )
               .on("mousemove", moveTip)
               .on("mouseout", hideTip);
-            xacc += val;
+            // Per-segment value — only drawn when "Show values" is on AND the segment
+            // is wide enough to hold the text, so labels never overlap each other.
+            // Narrow segments stay legible via hover. ~6 px per char + padding.
+            if (showValues) {
+              const _txt = _segLbl(val);
+              if (segW >= _txt.length * 6 + 6) {
+                g.append("text")
+                  .attr("x", segX + segW / 2)
+                  .attr("y", y + rowH / 2)
+                  .attr("text-anchor", "middle")
+                  .attr("dominant-baseline", "middle")
+                  .style("font-size", "9px")
+                  .style("font-weight", "600")
+                  .style("fill", "#fff")
+                  .style("pointer-events", "none")
+                  .text(_txt);
+              }
+            }
           });
 
-          // visible total label — sits 6 px right of the bar end; mR is wide
-          // enough that even the longest label clears the legend.
-          const visTotal = visGenera[genus] || 0;
-          if (visTotal > 0) {
-            g.append("text")
-              .attr("x", x(visTotal) + 6)
-              .attr("y", y + rowH / 2)
-              .attr("dominant-baseline", "middle")
-              .style("font-size", "10px")
-              .style("fill", "#666")
-              .text(metric === "TASS Score" ? visTotal.toFixed(1) : _fmtInt(visTotal));
+          // Per-genus total at the bar end — one per row, so these never overlap
+          // each other. Only shown when "Show values" is on. Clamped left of the
+          // legend so the number can't collide with it.
+          if (showValues) {
+            const _visTotG = visGenera[genus] || 0;
+            if (_visTotG > 0) {
+              const _tx = Math.min(x(_visTotG) + 6, iW + 44);
+              g.append("text")
+                .attr("x", _tx)
+                .attr("y", y + rowH / 2)
+                .attr("dominant-baseline", "middle")
+                .style("font-size", "10px")
+                .style("font-weight", "700")
+                .style("fill", "#455a64")
+                .style("pointer-events", "none")
+                .text(_segLbl(_visTotG));
+            }
           }
         });
 
@@ -18062,10 +19634,12 @@
             ` <i class="fas fa-chart-column cmp-org-covicon"></i></td>`;
           metrics.forEach((m) => {
             const v = +o[m.key] || 0;
-            html += `<td class="cmp-cell" style="background:${cellBg(m, v)};color:${txtColor(
+            // On-chart numbers removed — the colour ramp carries the relative value
+            // and the exact figure (plus per-sample breakdown) is shown on hover.
+            html += `<td class="cmp-cell" style="background:${cellBg(
               m,
               v,
-            )};cursor:pointer" data-oi="${oi}" data-mk="${m.key}">${m.fmt(v)}</td>`;
+            )};cursor:pointer" data-oi="${oi}" data-mk="${m.key}"></td>`;
           });
           html += "</tr>";
         });
@@ -18214,7 +19788,13 @@
       function _cmpSampleTip(o, m, agg) {
         const all = (agg.sampleList || []).slice();
         const det = new Set(o.samples || []);
-        const head = `<b><i>${o.name}</i></b> &nbsp;<span style="color:#9bb">${m.label}</span><br>`;
+        // Lead with the exact value for this cell — it's no longer printed on the
+        // matrix, so the tooltip is now the primary place to read it.
+        const _cellVal = m.fmt(+o[m.key] || 0);
+        const head =
+          `<b><i>${o.name}</i></b><br>` +
+          `<span style="color:#9bb">${m.label}:</span> <b>${_cellVal}</b>` +
+          `<span style="color:#9bb;font-size:.85em"> — ${m.desc}</span><br>`;
         const cap = (arr, n = 14) => {
           const s = arr
             .slice(0, n)
@@ -19089,14 +20669,8 @@
             .attr("fill", col)
             .attr("opacity", 0.85)
             .attr("rx", 2);
-          svg
-            .append("text")
-            .attr("x", mL + prevW + 4)
-            .attr("y", y)
-            .attr("dominant-baseline", "middle")
-            .style("font-size", "9px")
-            .style("fill", "#607d8b")
-            .text(`${r.sampleCount}/${agg.totalSamples}`);
+          // On-chart count label removed — the prevalence (count / total / %) and
+          // full TASS spread are shown on hover over the row instead.
           // box & whisker for TASS
           const s = [...r.tassVals].sort((a, b) => a - b);
           if (!s.length) return;
@@ -19490,6 +21064,23 @@
                 : `<b>${orgs[i].name}</b> ✕ <b>${orgs[j].name}</b><br>${
                     shared[i][j]
                   } shared sample(s) · avg ${metricLabel}: ${fmtVal(v)}`;
+            // Append the actual sample names behind the number so the detail lives
+            // on hover. Diagonal = where this organism was detected; off-diagonal =
+            // the samples the pair shares.
+            const _capList = (arr, n = 14) => {
+              const a = [...arr].sort();
+              const s = a.slice(0, n).map((x) => "• " + x).join("<br>");
+              return a.length > n ? s + `<br><span style="color:#999">+${a.length - n} more…</span>` : s;
+            };
+            let _coocExtra = "";
+            if (i === j) {
+              if (orgs[i].samples && orgs[i].samples.size)
+                _coocExtra = `<br><span style="color:#9bb">Detected in:</span><br>${_capList(orgs[i].samples)}`;
+            } else if (shared[i][j] > 0) {
+              const _sh = [...orgs[i].samples].filter((s) => orgs[j].samples.has(s));
+              _coocExtra = `<br><span style="color:#9bb">Shared samples:</span><br>${_capList(_sh)}`;
+            }
+            const _coocTip = tipText + _coocExtra;
             svg
               .append("rect")
               .attr("x", mL + j * cell)
@@ -19499,7 +21090,7 @@
               .attr("fill", v > 0 ? color(v) : "#f5f7fa")
               .attr("stroke", i === j ? "#37474f" : "none")
               .style("cursor", "pointer")
-              .on("mouseover", (ev) => showTip(tipText, ev))
+              .on("mouseover", (ev) => showTip(_coocTip, ev))
               .on("mousemove", moveTip)
               .on("mouseout", hideTip);
           }
@@ -19908,7 +21499,7 @@
           pct: true,
         },
         total_reads: {
-          desc: "Residual read count entering novelty analysis (reads that did not align to any reference).",
+          desc: "Total residual reads entering novelty analysis (reads that did not align to any reference). For contig-based classifiers (kaiju, mmseqs2) these reads are assembled into contigs before classification.",
           color: "#1864ab",
           range: null,
           pct: false,
@@ -19918,10 +21509,42 @@
         ["taxid", "Tax ID"],
         ["rank", "Rank"],
         ["name", "Name"],
-        ["reads", "Reads"],
-        ["frac_of_sample", "Frac of sample"],
+        ["reads", _novUnitCap()],
+        ["frac_of_sample", _novUnit() === "contigs" ? "Ctgs / residual reads" : "Frac of residual"],
       ];
       let _novState = { sample: null, subtab: "overview" };
+      let _novCandPage = 0;
+      function _novCandPageSize() {
+        const sel = document.getElementById("novelty-cand-page-size");
+        return sel ? parseInt(sel.value) || 0 : 25;
+      }
+      // Wire candidate-table pager + page-size (static markup, so safe at parse time).
+      (function _initNoveltyCandControls() {
+        const go = (n) => {
+          _novCandPage = n;
+          _drawNoveltyCandidates();
+        };
+        const acts = {
+          first: () => go(0),
+          prev: () => go(_novCandPage - 1),
+          next: () => go(_novCandPage + 1),
+          last: () => {
+            const rows = ((_novSamples()[_novState.sample] || {}).candidates || []).length;
+            const ps = _novCandPageSize();
+            go(ps > 0 ? Math.max(0, Math.ceil(rows / ps) - 1) : 0);
+          },
+        };
+        Object.entries(acts).forEach(([k, fn]) => {
+          const el = document.getElementById("novelty-cand-" + k);
+          if (el) el.addEventListener("click", fn);
+        });
+        const ps = document.getElementById("novelty-cand-page-size");
+        if (ps)
+          ps.addEventListener("change", () => {
+            _novCandPage = 0;
+            _drawNoveltyCandidates();
+          });
+      })();
 
       // ── shared floating cell tooltip element ─────────────────────────────────
       function _novCellTip() {
@@ -20086,14 +21709,23 @@
         const cur = _novState.sample || sel.value;
         const blocks = samples[cur] || {};
         const rows = blocks.candidates || [];
-        // Pre-compute max reads and frac for bar scaling
+        // Pre-compute max reads and frac for bar scaling (over the full set so bars
+        // stay comparable across pages, not just within the visible page).
         const maxReads = rows.length ? Math.max(1, ...rows.map((r) => +r.reads || 0)) : 1;
         const maxFrac = rows.length ? Math.max(1e-9, ...rows.map((r) => +r.frac_of_sample || 0)) : 1;
         head.innerHTML = "<tr>" + _NOV_CAND_COLS.map(([, lbl]) => `<th>${_novEsc(lbl)}</th>`).join("") + "</tr>";
+        // ── pagination ──────────────────────────────────────────────────────
+        const total = rows.length;
+        const pageSize = _novCandPageSize();
+        const pages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+        _novCandPage = Math.max(0, Math.min(_novCandPage, pages - 1));
+        const start = pageSize > 0 ? _novCandPage * pageSize : 0;
+        const end = pageSize > 0 ? Math.min(start + pageSize, total) : total;
+        const pageRows = pageSize > 0 ? rows.slice(start, end) : rows;
         if (!rows.length) {
           body.innerHTML = `<tr><td colspan="${_NOV_CAND_COLS.length}" style="color:#888;text-align:center;padding:0.8em">No candidate taxa for this sample.</td></tr>`;
         } else {
-          body.innerHTML = rows
+          body.innerHTML = pageRows
             .map((r) => {
               const rankColor =
                 {
@@ -20155,7 +21787,32 @@
             })
             .join("");
         }
-        if (countEl) countEl.textContent = `${rows.length} candidate${rows.length === 1 ? "" : "s"}`;
+        if (countEl) {
+          countEl.textContent = total
+            ? pageSize > 0 && pages > 1
+              ? `${start + 1}–${end} of ${total} candidate${total === 1 ? "" : "s"}`
+              : `${total} candidate${total === 1 ? "" : "s"}`
+            : "";
+        }
+
+        // Pager controls (hidden when everything fits on one page).
+        const pager = document.getElementById("novelty-cand-pager");
+        if (pager) {
+          const showPager = pageSize > 0 && pages > 1;
+          pager.style.display = showPager ? "flex" : "none";
+          if (showPager) {
+            const lbl = document.getElementById("novelty-cand-page-label");
+            if (lbl) lbl.textContent = `Page ${_novCandPage + 1} of ${pages}`;
+            const first = document.getElementById("novelty-cand-first");
+            const prev = document.getElementById("novelty-cand-prev");
+            const next = document.getElementById("novelty-cand-next");
+            const last = document.getElementById("novelty-cand-last");
+            if (first) first.disabled = _novCandPage === 0;
+            if (prev) prev.disabled = _novCandPage === 0;
+            if (next) next.disabled = _novCandPage >= pages - 1;
+            if (last) last.disabled = _novCandPage >= pages - 1;
+          }
+        }
 
         // Tooltip for candidate cells with inline bars
         body.querySelectorAll("td[data-cand-key]").forEach((td) => {
@@ -20167,10 +21824,10 @@
               pct = +td.dataset.candPct / 100;
             const isReads = key === "reads";
             const meta = {
-              desc: `${isReads ? "Reads" : "Fraction of sample"} assigned to ${rank} ${name}`,
+              desc: `${isReads ? _novUnitCap() : "Fraction of sample reads"} assigned to ${rank} ${name}`,
               color: isReads ? "#1c7ed6" : "#2f9e44",
             };
-            _novShowCellTip(ev, (isReads ? "Reads" : "Frac of sample") + ` — ${name}`, val, meta, pct);
+            _novShowCellTip(ev, (isReads ? _novUnitCap() : "Frac of sample") + ` — ${name}`, val, meta, pct);
           });
           td.addEventListener("mousemove", (ev) => {
             const tip = _novCellTip();
@@ -20223,38 +21880,46 @@
 
       // disjoint read-accounting buckets (sum ≈ 1). Older novelty JSON without the
       // extended count columns degrades to the fraction fields it does carry.
-      const _NOV_MC_SEGS = [
-        {
-          key: "align",
-          label: "Aligned to reference (TASS)",
-          color: "#1c7ed6",
-          desc: "Reads that mapped to a pulled reference — these are what the closed-set TASS scores are built from.",
-        },
-        {
-          key: "k2only",
-          label: "Kraken2-classified only",
-          color: "#adb5bd",
-          desc: "Classified by kraken2 but not aligned to a reference and not placed by mmseqs — known taxa with no reference in the run.",
-        },
-        {
-          key: "mmSp",
-          label: "mmseqs → species",
-          color: "#2f9e44",
-          desc: "Residual (unaligned) reads/ORFs the translated-search LCA placed at species-or-finer.",
-        },
-        {
-          key: "mmHr",
-          label: "mmseqs → genus+ (rescued)",
-          color: "#f59f00",
-          desc: "Residual reads/ORFs mmseqs could only place above species (genus and higher) — the rescue bucket that the candidate table lists.",
-        },
-        {
-          key: "dark",
-          label: "Dark matter",
-          color: "#343a40",
-          desc: "Explained by nothing: not aligned, not classified by kraken2, not placed by mmseqs.",
-        },
-      ];
+      // disjoint read-accounting buckets (sum ≈ 1). Built per-call so the classifier-specific
+      // buckets ("<backend> → species", "<backend> → genus+") track the active --novelty mode.
+      function _novMcSegs() {
+        const cls = _novClsShort();
+        const lc = _novClsLc();
+        return [
+          {
+            key: "align",
+            label: "Aligned to reference (TASS)",
+            color: "#1c7ed6",
+            desc: "Reads that mapped to a pulled reference — these are what the closed-set TASS scores are built from.",
+          },
+          {
+            key: "k2only",
+            label: "Kraken2-classified only",
+            color: "#adb5bd",
+            desc: `Classified by kraken2 but not aligned to a reference and not placed by ${lc} — known taxa with no reference in the run.`,
+          },
+          {
+            key: "mmSp",
+            label: `${cls} → species`,
+            color: "#2f9e44",
+            unit: _novUnit(),
+            desc: `Residual (unaligned) ${_novUnit()} ${cls} placed at species-or-finer.`,
+          },
+          {
+            key: "mmHr",
+            label: `${cls} → genus+ (rescued)`,
+            color: "#f59f00",
+            unit: _novUnit(),
+            desc: `Residual ${_novUnit()} ${lc} could only place above species (genus and higher) — the rescue bucket that the candidate table lists.`,
+          },
+          {
+            key: "dark",
+            label: "Dark matter",
+            color: "#343a40",
+            desc: `Explained by nothing: not aligned, not classified by kraken2, not placed by ${lc}.`,
+          },
+        ];
+      }
 
       function _novMcFractions(sm) {
         const T = +sm.total_reads || 0;
@@ -20297,7 +21962,7 @@
         }
         const legend =
           '<div class="nov-mc-legend">' +
-          _NOV_MC_SEGS
+          _novMcSegs()
             .map(
               (s) =>
                 `<span><span class="nov-mc-swatch" style="background:${s.color}"></span>${_novEsc(s.label)}</span>`,
@@ -20309,12 +21974,12 @@
             const sm = (samples[s] || {}).summary || {};
             const fr = _novMcFractions(sm);
             const flagged = Number(sm.novelty_flag) === 1;
-            const segs = _NOV_MC_SEGS
+            const segs = _novMcSegs()
               .map((seg) => {
                 const f = fr[seg.key] || 0;
                 if (f <= 0) return "";
                 const rd = fr._reads(f);
-                const rdTxt = rd != null ? `${rd.toLocaleString()} reads` : "";
+                const rdTxt = rd != null ? `${rd.toLocaleString()} ${seg.unit || "reads"}` : "";
                 return `<div class="nov-mc-seg" style="width:${(f * 100).toFixed(2)}%;background:${seg.color}"
               data-mc-label="${_novEsc(seg.label)}" data-mc-pct="${(f * 100).toFixed(1)}"
               data-mc-reads="${_novEsc(rdTxt)}" data-mc-color="${seg.color}"
@@ -20327,7 +21992,7 @@
               flagged ? '<span style="color:#e8590c">●</span> ' : ""
             }${_novEsc(s)}</div>
             <div class="nov-mc-bar">${segs}</div>
-            <div class="nov-mc-total" title="mmseqs rescued ${rescued}% of all reads">${
+            <div class="nov-mc-total" title="${_novEsc(_novClsShort())} rescued ${rescued}% of all reads">${
               fr._T ? fr._T.toLocaleString() : "—"
             } rds · +${rescued}%</div>
           </div>`;
@@ -20336,7 +22001,7 @@
         host.innerHTML = legend + rows;
         // Pre-compute run-wide average fraction per method bucket for tooltip context
         const mcRunAvg = {};
-        _NOV_MC_SEGS.forEach((seg) => {
+        _novMcSegs().forEach((seg) => {
           const fracs = names.map((s) => {
             const sm = (samples[s] || {}).summary || {};
             return _novMcFractions(sm)[seg.key] || 0;
@@ -20350,7 +22015,7 @@
               pct = +el.dataset.mcPct,
               reads = el.dataset.mcReads;
             // Find which bucket this segment belongs to for run-avg context
-            const segKey = _NOV_MC_SEGS.find((s) => s.label === lbl);
+            const segKey = _novMcSegs().find((s) => s.label === lbl);
             const runAvg = segKey ? mcRunAvg[segKey.key] : null;
             _novShowCellTip(
               ev,
@@ -20396,6 +22061,7 @@
         if (!host) return;
         const s = _novState.sample;
         const samples = _novSamples();
+        const summary = (samples[s] || {}).summary || {};
         const cand = ((samples[s] || {}).candidates || []).filter((c) => (c.rank || "").toLowerCase() === "genus");
         const mm = {};
         cand.forEach((c) => {
@@ -20404,7 +22070,7 @@
         const closed = _novClosedGenus(s);
         const keys = Array.from(new Set([...Object.keys(closed), ...Object.keys(mm)]));
         if (!keys.length) {
-          host.innerHTML = `<div style="color:#888;font-size:0.82em;padding:0.4em 0">No genus-level closed-set rows or mmseqs genus candidates for <b>${_novEsc(
+          host.innerHTML = `<div style="color:#888;font-size:0.82em;padding:0.4em 0">No genus-level closed-set rows or ${_novEsc(_novClsLc())} genus candidates for <b>${_novEsc(
             s || "—",
           )}</b>.</div>`;
           return;
@@ -20417,16 +22083,109 @@
             const tass = c ? c.tass : 0;
             const mFoh = m ? +m.frac_of_highrank || 0 : 0;
             const score = Math.max(tass / 100, mFoh);
-            return { k, name: (c && c.name) || (m && m.name) || k, c, m, tass, mFoh, score };
+            const bucket = c && m ? "both" : c ? "aligned_only" : "mmseqs_only";
+            return { k, name: (c && c.name) || (m && m.name) || k, c, m, tass, mFoh, score, bucket };
           })
           .sort((a, b) => b.score - a.score);
 
-        const srcTag = (c, m) =>
-          c && m
-            ? '<span class="nov-gc-src" style="background:#e7f5ff;color:#1864ab">Both</span>'
-            : c
-            ? '<span class="nov-gc-src" style="background:#fff4e6;color:#d9480f">Aligned only</span>'
-            : '<span class="nov-gc-src" style="background:#ebfbee;color:#2b8a3e">Rescued (mmseqs)</span>';
+        const _gcCls = _novClsShort();
+        const _gcClsLc = _novClsLc();
+        const _gcBucketMeta = {
+          both: {
+            label: "Both",
+            short: "Both",
+            color: "#1864ab",
+            bg: "#e7f5ff",
+            desc: `This genus is supported by both closed-set reference alignment (TASS) and ${_gcClsLc} assignment.`,
+          },
+          aligned_only: {
+            label: "Aligned only",
+            short: "Aligned only",
+            color: "#d9480f",
+            bg: "#fff4e6",
+            desc: `This genus appears in reference-aligned closed-set detections but has no genus-level ${_gcClsLc} candidate in novelty output.`,
+          },
+          mmseqs_only: {
+            label: `${_gcCls} only`,
+            short: `${_gcCls} only`,
+            color: "#2b8a3e",
+            bg: "#ebfbee",
+            desc: `This genus appears only in ${_gcClsLc} novelty candidates (reference set did not align it).`,
+          },
+          dark: {
+            label: "Dark matter",
+            short: "Dark matter",
+            color: "#343a40",
+            bg: "#f1f3f5",
+            desc: `Residual reads not explained by reference alignment, kraken2 classification, or ${_gcClsLc} assignment; this bucket has no genus label.`,
+          },
+        };
+        const bucketCounts = rowsData.reduce(
+          (acc, rd) => {
+            acc[rd.bucket] = (acc[rd.bucket] || 0) + 1;
+            return acc;
+          },
+          { both: 0, aligned_only: 0, mmseqs_only: 0 },
+        );
+        const genusRows = Math.max(1, rowsData.length);
+        const totalReads = +summary.total_reads || 0;
+        const darkFrac = Math.max(0, +summary.dark_fraction || 0);
+        const darkReads = totalReads ? Math.round(darkFrac * totalReads) : null;
+
+        const _gcLegendChip = (key, label, tip, frac, extra = "") => {
+          const m = _gcBucketMeta[key];
+          return `<span class="nov-gc-chip" style="background:${m.bg};color:${m.color}" data-gc-badge="1"
+            data-gc-label="${_novEsc(label)}" data-gc-tip="${_novEsc(tip)}" data-gc-frac="${(isFinite(frac) ? frac : 0).toFixed(
+            3,
+          )}" data-gc-color="${m.color}" data-gc-desc="${_novEsc(m.desc)}">${_novEsc(m.short)}${extra}</span>`;
+        };
+
+        const legendHtml = `<div class="nov-gc-legend">
+          ${_gcLegendChip(
+            "dark",
+            `Dark matter - ${_novEsc(s || "sample")}`,
+            `${darkReads != null ? darkReads.toLocaleString() + " reads" : "No read count"} - ${(darkFrac * 100).toFixed(
+              1,
+            )}% of novelty input reads are unassigned to any method/genus.`,
+            darkFrac,
+          )}
+          ${_gcLegendChip(
+            "aligned_only",
+            "Genus bucket - aligned only",
+            `${bucketCounts.aligned_only} genus row(s) in this sample are closed-set only.`,
+            bucketCounts.aligned_only / genusRows,
+            `<span style="font-size:0.9em;opacity:0.9">(${bucketCounts.aligned_only})</span>`,
+          )}
+          ${_gcLegendChip(
+            "mmseqs_only",
+            `Genus bucket - ${_gcCls} only`,
+            `${bucketCounts.mmseqs_only} genus row(s) in this sample are novelty-only (${_gcClsLc} rescue).`,
+            bucketCounts.mmseqs_only / genusRows,
+            `<span style="font-size:0.9em;opacity:0.9">(${bucketCounts.mmseqs_only})</span>`,
+          )}
+          ${_gcLegendChip(
+            "both",
+            "Genus bucket - both",
+            `${bucketCounts.both} genus row(s) in this sample are supported by both aligned and ${_gcClsLc} evidence.`,
+            bucketCounts.both / genusRows,
+            `<span style="font-size:0.9em;opacity:0.9">(${bucketCounts.both})</span>`,
+          )}
+        </div>`;
+
+        const srcTag = (rd) => {
+          const m = _gcBucketMeta[rd.bucket] || _gcBucketMeta.mmseqs_only;
+          const label = `Genus bucket - ${m.label} - ${rd.name}`;
+          const tip =
+            rd.bucket === "both"
+              ? `Supported by both closed-set alignment and ${_gcClsLc} assignment.`
+              : rd.bucket === "aligned_only"
+              ? `Detected only by closed-set reference alignment (no ${_gcClsLc} genus candidate here).`
+              : `Detected only by ${_gcClsLc} novelty assignment (no aligned genus row).`;
+          return `<span class="nov-gc-chip" style="background:${m.bg};color:${m.color}" data-gc-badge="1"
+            data-gc-label="${_novEsc(label)}" data-gc-tip="${_novEsc(tip)}"
+            data-gc-frac="${(bucketCounts[rd.bucket] / genusRows).toFixed(3)}" data-gc-color="${m.color}"
+            data-gc-desc="${_novEsc(m.desc)}">${_novEsc(m.short)}</span>`;
+        };
 
         const tassCell = (rd) => {
           if (!rd.c) return '<td style="color:#adb5bd">—</td>';
@@ -20452,7 +22211,7 @@
           const reads = +rd.m.reads || 0,
             w = ((reads / maxReads) * 100).toFixed(0);
           return `<td data-gc-tip="${reads} placed hit(s) · ${(rd.mFoh * 100).toFixed(1)}% of all genus+ placements"
-            data-gc-frac="${rd.mFoh.toFixed(3)}" data-gc-color="#f59f00" data-gc-label="mmseqs hits — ${_novEsc(
+            data-gc-frac="${rd.mFoh.toFixed(3)}" data-gc-color="#f59f00" data-gc-label="${_novEsc(_gcCls)} hits — ${_novEsc(
               rd.name,
             )}" style="cursor:default;white-space:nowrap">
             <b style="color:#e8590c">${reads}</b>
@@ -20465,20 +22224,21 @@
             Genus-level cross-check for <b>${_novEsc(
               s || "—",
             )}</b>: the closed-set <b>TASS</b> score / coverage / % reads (left)
-            beside what the reference-free <b>mmseqs</b> translated search places (right). Rows mmseqs finds but the reference set
+            beside what the reference-free <b>${_novEsc(_gcCls)}</b> search places (right). Rows ${_novEsc(_gcClsLc)} finds but the reference set
             never aligned are tagged <span style="color:#2b8a3e;font-weight:600">Rescued</span> — exactly the limited-reference / mock case.
           </div>
+          ${legendHtml}
           <div style="overflow-x:auto">
           <table class="data-table" style="font-size:0.82em;width:100%">
             <thead><tr>
-              <th>Genus</th><th>Source</th><th>Genus TASS · cov</th><th>% reads (aligned)</th><th>mmseqs hits · % placed</th>
+              <th>Genus</th><th>Bucket</th><th>Genus TASS - cov</th><th>% reads (aligned)</th><th>${_novEsc(_gcCls)} hits - % placed</th>
             </tr></thead>
             <tbody>
             ${rowsData
               .map(
                 (rd) => `<tr>
               <td style="font-style:italic;font-weight:600">${_novEsc(rd.name)}</td>
-              <td>${srcTag(rd.c, rd.m)}</td>
+              <td>${srcTag(rd)}</td>
               ${tassCell(rd)}
               ${pctCell(rd)}
               ${mmCell(rd)}
@@ -20503,6 +22263,23 @@
             if (tip && tip.style.display !== "none") _novPositionTip(tip, ev);
           });
           td.addEventListener("mouseleave", _novHideCellTip);
+        });
+        host.querySelectorAll("[data-gc-badge='1']").forEach((el) => {
+          el.addEventListener("mouseenter", (ev) => {
+            const frac = +el.dataset.gcFrac;
+            _novShowCellTip(
+              ev,
+              el.dataset.gcLabel,
+              el.dataset.gcTip,
+              { color: el.dataset.gcColor, desc: el.dataset.gcDesc },
+              isFinite(frac) ? frac : null,
+            );
+          });
+          el.addEventListener("mousemove", (ev) => {
+            const tip = _novCellTip();
+            if (tip && tip.style.display !== "none") _novPositionTip(tip, ev);
+          });
+          el.addEventListener("mouseleave", _novHideCellTip);
         });
       }
 
@@ -20876,6 +22653,41 @@
         });
       }
 
+      // Stamp the classifier badge + method-aware description onto the Novelty tab.
+      function _drawNoveltyClassifier() {
+        const info = _noveltyMethodInfo();
+        const cls = _noveltyClassifier();
+        const badge = document.getElementById("nov-classifier-badge");
+        if (badge) {
+          if (cls) {
+            badge.dataset.cls = cls;
+            badge.innerHTML =
+              `<span class="nov-cls-dot"></span>Classifier: ${_novEsc(info.label)}`;
+            badge.style.display = "inline-flex";
+          } else {
+            badge.style.display = "none";
+          }
+        }
+        const desc = document.getElementById("novelty-overview-desc");
+        if (desc && info.desc) {
+          desc.innerHTML =
+            `Reference-free novelty on the de novo assembly. Backend: <b>${_novEsc(info.label)}</b> — ${_novEsc(info.desc)} ` +
+            `Each sample gets a <b>novelty score</b> (higher = more divergent from known references) and a <b>flag</b> when ` +
+            `that score crosses the run threshold. The candidate table lists the genus-or-higher taxa the classifier could ` +
+            `still assign. Use the <b>downloads</b> for the raw per-sample / combined JSON and XLSX.`;
+        }
+        // Method-coverage / genus-compare section titles + the genus toggle label.
+        const cmpTitle = document.getElementById("nov-cmp-title");
+        if (cmpTitle && cls) {
+          cmpTitle.textContent = `Where the reads landed — alignment / TASS vs ${info.short} rescue`;
+        }
+        const genusBtn = document.getElementById("nov-cmp-btn-genus");
+        if (genusBtn && cls) {
+          genusBtn.innerHTML =
+            `<i class="fas fa-code-compare" style="margin-right: 0.3em"></i>Genus: TASS vs ${_novEsc(info.short)}`;
+        }
+      }
+
       function drawNovelty() {
         const samples = _novSamples();
         const names = Object.keys(samples).sort();
@@ -20891,6 +22703,7 @@
           if (_novState.sample) sel.value = _novState.sample;
           sel.onchange = () => {
             _novState.sample = sel.value;
+            _novCandPage = 0;
             _drawNoveltyCandidates();
             _drawNoveltyGenusCompare();
           };
@@ -20910,6 +22723,7 @@
           }
         };
         _novSafe("sub-tabs", _novWireSubtabs);
+        _novSafe("classifier badge", _drawNoveltyClassifier, "nov-classifier-badge");
         _novSafe("view toggle", _novWireCmpToggle);
         _novSafe("novelty score chart", _drawNoveltyScoreChart, "nov-score-canvas");
         _novSafe("per-sample summary", _drawNoveltySummary, "novelty-summary-body");
@@ -20962,9 +22776,17 @@
         // annotation data present.
         const _bvr = document.getElementById("below-vfamr-row");
         if (_bvr) _bvr.style.display = HAS_PROT ? "" : "none";
+        // The sub-threshold / novelty toggle is meaningful whenever novelty data is
+        // present (it also surfaces below-cutoff aligned rows regardless of novelty).
+        const _nsr = document.getElementById("novelty-sub-row");
+        if (_nsr) _nsr.style.display = HAS_NOVELTY ? "" : "none";
         ["sum-below-cutoff-legend", "tbl-below-cutoff-legend"].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.style.display = HAS_PROT ? "" : "none";
+        });
+        ["sum-novelty-only-legend", "tbl-novelty-only-legend"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = HAS_NOVELTY ? "" : "none";
         });
         // Reset table to page 0 whenever filters change so the user
         // doesn't land on an empty page after narrowing results.
@@ -21157,6 +22979,7 @@
         "filter-hc",
         "filter-pass",
         "filter-below-vfamr",
+        "filter-novelty-sub",
         "hm-show-vals",
         "filter-mt-dna",
         "filter-mt-rna",
@@ -21568,7 +23391,7 @@
         if (el) el.addEventListener("change", redraw);
       });
       // Summary tab genera-comparison controls
-      ["summary-genus-metric", "summary-genus-topn"].forEach((id) => {
+      ["summary-genus-metric", "summary-genus-topn", "summary-genus-values"].forEach((id) => {
         const el = document.getElementById(id);
         if (el)
           el.addEventListener("change", () => {
@@ -28041,6 +29864,50 @@
           document.body.classList.remove("help-active");
           if (returnTab) gotoTab(returnTab);
         }
+
+        // ── Pipeline info button: hover tooltip ───────────────────────────────
+        (function initPipelineInfo() {
+          const btn = document.getElementById("pipeline-info-btn");
+          if (!btn) return;
+
+          // Collect unique revision/commit pairs across all samples.
+          const revisions = [...new Set(
+            Object.values(SAMPLE_META).map(m => m.workflow_revision).filter(v => v && v !== "NA" && v !== "local" && v !== "null")
+          )];
+          const commits = [...new Set(
+            Object.values(SAMPLE_META).map(m => m.commit_id).filter(v => v && v !== "NA" && v !== "local" && v !== "null")
+          )];
+          const platforms = [...new Set(
+            Object.values(SAMPLE_META).map(m => m.platform).filter(v => v && v !== "unknown")
+          )];
+          const generatedAt = (typeof BOOT !== "undefined" && BOOT.report_generated_at) || null;
+
+          const _fmtDate = (iso) => {
+            try {
+              return new Date(iso).toLocaleString(undefined, {
+                year: "numeric", month: "short", day: "numeric",
+                hour: "2-digit", minute: "2-digit", timeZoneName: "short"
+              });
+            } catch(e) { return iso; }
+          };
+
+          const row = (label, val, color) =>
+            `<tr><td style="padding:2px 10px 2px 0;color:${color||'#90caf9'};white-space:nowrap">${label}</td>` +
+            `<td style="padding:2px 0;color:#e0e0e0;font-family:monospace;font-size:0.95em">${val}</td></tr>`;
+
+          let tip = `<b style="color:#90caf9">TaxTriage Run Info</b><br>` +
+            `<table style="margin-top:6px;border-collapse:collapse;min-width:220px">`;
+          tip += row("Branch / revision", revisions.length ? revisions.join(", ") : "—");
+          tip += row("Commit", commits.length ? commits.join(", ") : "—");
+          tip += row("Samples", Object.keys(SAMPLE_META).length || "—", "#ffd580");
+          if (platforms.length) tip += row("Platform(s)", platforms.join(", "), "#a5d6a7");
+          tip += row("Report built", generatedAt ? _fmtDate(generatedAt) : "—", "#ce93d8");
+          tip += `</table>`;
+
+          btn.addEventListener("mouseover", (ev) => showTip(tip, ev));
+          btn.addEventListener("mousemove", moveTip);
+          btn.addEventListener("mouseout", hideTip);
+        })();
 
         document.getElementById("help-btn")?.addEventListener("click", open);
         btnSkip?.addEventListener("click", close);
