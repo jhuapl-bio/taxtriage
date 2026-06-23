@@ -953,9 +953,14 @@
             "properties": {
                 "novelty": {
                     "type": "string",
-                    "description": "Novelty backend (also the master switch). One of mmseqs2, kaiju, or bracken; unset = off. All three classify the de novo assembly directly (no Pyrodigal).",
+                    "description": "Novelty backend (also the master switch). One of mmseqs2, kaiju, or bracken; unset = off. By default all three classify the de novo assembly directly; see --novelty_gene to predict genes first.",
                     "enum": ["mmseqs2", "kaiju", "bracken"],
                     "default": ""
+                },
+                "novelty_gene": {
+                    "type": "boolean",
+                    "description": "Run Pyrodigal ORF prediction on the contigs first and feed the predicted nucleotide CDS (.fna) to the novelty backend instead of the raw contigs. Each gene becomes its own query, so a single near-complete genome contributes several LCA rows instead of one. Default off (backends consume contigs directly).",
+                    "default": false
                 },
                 "novelty_db": {
                     "type": "string",

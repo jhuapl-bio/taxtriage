@@ -42,6 +42,8 @@ process NOVELTY_SCORE {
     // floor above 1 on deep samples.
     def min_reads = (params.novelty_min_reads ?: 2) as Integer
     def min_frac  = min_reads <= 1 ? '--min-cand-frac 0' : ''
+    // Tell the scorer (and thus the report) whether the query unit was predicted genes vs contigs.
+    def gene_mode = params.novelty_gene ? '--gene-mode' : ''
     """
     novelty_score.py \\
         -s ${meta.id} \\
@@ -55,6 +57,7 @@ process NOVELTY_SCORE {
         --idnt-cut ${idnt_cut} \\
         --classifier ${params.novelty} \\
         --min-reads ${min_reads} ${min_frac} \\
+        ${gene_mode} \\
         ${count_col} \\
         ${baseline} ${args} \\
         -o ${meta.id}

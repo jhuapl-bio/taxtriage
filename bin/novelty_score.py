@@ -95,6 +95,10 @@ def parse_args(argv=None):
     p.add_argument("--classifier", default="",
                    help="novelty backend that produced the LCA (mmseqs2|kaiju|bracken); "
                         "passed through to the report so the Novelty tab can label its source.")
+    p.add_argument("--gene-mode", action="store_true",
+                   help="set when the query was Pyrodigal-predicted genes (--novelty_gene) rather "
+                        "than whole contigs; the report uses this to label counts as genes/seqs "
+                        "instead of contigs.")
     p.add_argument("-o", "--out-prefix", required=True)
     return p.parse_args(argv)
 
@@ -244,7 +248,7 @@ def main(argv=None):
 
     # ---- summary row (one line; joins to mqc/confidence by sample) ----
     summary_path = f"{a.out_prefix}.novelty.summary.tsv"
-    cols = ["sample", "classifier", "total_reads", "dark_fraction", "highrank_only_fraction",
+    cols = ["sample", "classifier", "gene_mode", "total_reads", "dark_fraction", "highrank_only_fraction",
             "lowident_tail_mass", "z_dark", "z_highrank", "z_lowident",
             "novelty_score", "novelty_flag",
             # extended method-accounting columns (additive; older readers ignore them)
@@ -254,7 +258,7 @@ def main(argv=None):
     with open(summary_path, "w", newline="") as fh:
         wri = csv.writer(fh, delimiter="\t")
         wri.writerow(cols)
-        wri.writerow([a.sample, a.classifier, total,
+        wri.writerow([a.sample, a.classifier, int(a.gene_mode), total,
                       f"{dark_fraction:.4f}", f"{highrank_only_fraction:.4f}", f"{tail_frac:.4f}",
                       f"{z['dark_fraction']:.3f}", f"{z['highrank_only_fraction']:.3f}", f"{z['lowident_tail_mass']:.3f}",
                       f"{novelty:.3f}", int(flagged),
