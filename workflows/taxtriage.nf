@@ -396,6 +396,120 @@ workflow TAXTRIAGE {
     ch_accession_mapping  = Channel.empty()
     ch_organisms = Channel.empty()
     ch_pass_files = Channel.empty()
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // NOVELTY DB — resolved/downloaded up front (FIRST PASS), like the main Kraken2 DOWNLOAD_DB.
+    // Doing this here (rather than just before NOVELTY, deep in the run) means a missing local
+    // path or a failed download fails the pipeline EARLY instead of killing it mid-run.
+    // The resolved directory rides in `ch_novelty_db` and is consumed later by the NOVELTY call.
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    def novelty_method = null
+    ch_novelty_db = Channel.empty()
+    if (params.novelty) {
+        // Validate the backend selector up front so a typo fails fast with a clear message.
+        novelty_method = params.novelty.toString().toLowerCase()
+        if (!(novelty_method in ['mmseqs2', 'kaiju', 'bracken'])) {
+            exit 1, "Invalid --novelty '${params.novelty}'. Choose one of: mmseqs2, kaiju, bracken."
+        }
+
+        // Resolve the novelty DB. Every backend is local-first, else auto-download by a
+        // generic name (cached via storeDir): mmseqs2 via `mmseqs databases`, kaiju via the
+        // kaiju-idx bucket, bracken via the genome-idx (Kraken2+Bracken) bucket.
+        //
+        // CRITICAL distinction (so a local path never gets mistaken for a download alias):
+        //   * a value that LOOKS LIKE A PATH (contains '/', or starts with '.', '~' )
+        //     MUST resolve to something on disk -- if it doesn't, that's a hard error, NOT a
+        //     fall-through to download.
+        //   * a BARE TOKEN ('viruses', 'k2_standard', 'Kalamari', or unset) is an alias and is
+        //     handed to the backend's downloader.
+        def novelty_db_in   = params.novelty_db?.toString()?.trim()
+        def novelty_is_path = novelty_db_in && (novelty_db_in.contains('/') ||
+                                                novelty_db_in.startsWith('.') ||
+                                                novelty_db_in.startsWith('~'))
+
+        // Local resolver: accepts a directory, a file inside the db dir, or a db PREFIX
+        // (e.g. '<dir>/kaiju_db_viruses_2024-08-15' -> '<dir>/...fmi'); returns the containing
+        // DIRECTORY, which is the contract KAIJU / KRAKEN2 / BRACKEN expect.
+        def resolveLocalDir = { String p ->
+            if (!p) return null
+            def f = file(p)
+            if (f.exists()) return f.isDirectory() ? f : f.parent
+            // tolerate a db prefix without its extension (kaiju '.fmi', kraken '.k2d')
+            def hit = ['.fmi', '.k2d', '.tar.gz', '.tgz'].collect { ext -> file(p + ext) }.find { g -> g.exists() }
+            if (hit) return hit.parent
+            // last resort: the user pointed INTO an existing db folder with a prefix whose
+            // real files are named differently -> hand back the containing directory.
+            def par = f.parent
+            if (par && par.exists() && par.isDirectory()) return par
+            return null
+        }
+
+        if (novelty_method == 'mmseqs2') {
+            // mmseqs consumes the seqTaxDB by PREFIX (a file path), not a directory.
+            if (novelty_db_in && file(novelty_db_in).exists()) {
+                println "Novelty (mmseqs2): using local seqTaxDB at ${novelty_db_in}"
+                ch_novelty_db = Channel.value(file(novelty_db_in, checkIfExists: true))
+            } else if (novelty_is_path) {
+                exit 1, "Novelty (mmseqs2): --novelty_db looks like a path but was not found on " +
+                        "disk: '${novelty_db_in}'. Point it at an existing seqTaxDB, or pass a " +
+                        "bare db name (e.g. Kalamari, UniProtKB) to auto-download."
+            } else {
+                def novelty_dbname = novelty_db_in ?: 'UniProtKB'
+                println "Novelty (mmseqs2): seqTaxDB '${novelty_dbname}' not local; will " +
+                        "download via 'mmseqs databases' (cached at ${params.novelty_db_cache})."
+                MMSEQS_DOWNLOADDB(novelty_dbname)
+                ch_versions = ch_versions.mix(MMSEQS_DOWNLOADDB.out.versions)
+                ch_novelty_db = MMSEQS_DOWNLOADDB.out.db
+            }
+        } else if (novelty_method == 'kaiju') {
+            // Only resolve locally for path-like or actually-existing inputs; a bare token
+            // ('test', 'viruses', ...) is an alias for the downloader, NOT a local dir.
+            def local_dir = (novelty_is_path || (novelty_db_in && file(novelty_db_in).exists()))
+                            ? resolveLocalDir.call(novelty_db_in) : null
+            if (local_dir) {
+                println "Novelty (kaiju): using local DB directory at ${local_dir}"
+                ch_novelty_db = Channel.value(file(local_dir, checkIfExists: true))
+            } else if (novelty_is_path) {
+                exit 1, "Novelty (kaiju): --novelty_db looks like a path but no kaiju db was " +
+                        "found at '${novelty_db_in}'. Expected a directory (or db prefix) holding " +
+                        "*.fmi, nodes.dmp and names.dmp. To auto-download instead, pass a bare " +
+                        "alias (viruses, nr, refseq, ...)."
+            } else {
+                // 'Kalamari' is the mmseqs-only default sentinel -> fall back to a small kaiju db.
+                def kaiju_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viruses' : novelty_db_in
+                def kaiju_where = kaiju_name.equalsIgnoreCase('test') ?
+                        'staged in the work directory' :
+                        "cached at ${params.novelty_kaiju_db_cache}"
+                println "Novelty (kaiju): index '${kaiju_name}' not local; will download a " +
+                        "prebuilt kaiju index (${kaiju_where})."
+                KAIJU_DOWNLOADDB(kaiju_name)
+                ch_versions = ch_versions.mix(KAIJU_DOWNLOADDB.out.versions)
+                ch_novelty_db = KAIJU_DOWNLOADDB.out.db
+            }
+        } else {
+            // bracken: the db is a kraken2 db DIRECTORY (with bracken kmer_distrib files).
+            // Only resolve locally for path-like or actually-existing inputs; a bare token
+            // ('test', 'viral', ...) is an alias for the downloader, NOT a local dir.
+            def local_dir = (novelty_is_path || (novelty_db_in && file(novelty_db_in).exists()))
+                            ? resolveLocalDir.call(novelty_db_in) : null
+            if (local_dir) {
+                println "Novelty (bracken): using local DB directory at ${local_dir}"
+                ch_novelty_db = Channel.value(file(local_dir, checkIfExists: true))
+            } else if (novelty_is_path) {
+                exit 1, "Novelty (bracken): --novelty_db looks like a path but no kraken2 db was " +
+                        "found at '${novelty_db_in}'. Expected a directory holding hash.k2d / " +
+                        "opts.k2d / taxo.k2d and database*mers.kmer_distrib. To auto-download " +
+                        "instead, pass a bare alias (k2_standard, viral, pluspf, ...)."
+            } else {
+                def k2_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viral' : novelty_db_in
+                println "Novelty (bracken): db '${k2_name}' not local; will download a " +
+                        "prebuilt Kraken2+Bracken db (cached at ${params.novelty_kraken2_db_cache})."
+                KRAKEN2_DOWNLOADDB(k2_name)
+                ch_versions = ch_versions.mix(KRAKEN2_DOWNLOADDB.out.versions)
+                ch_novelty_db = KRAKEN2_DOWNLOADDB.out.db
+            }
+        }
+    }
     // // // //
     // // // //
     // // // //
@@ -871,102 +985,8 @@ workflow TAXTRIAGE {
         ch_novelty_summary    = Channel.empty()
         ch_novelty_candidates = Channel.empty()
         if (params.novelty) {
-            // Validate the backend selector up front so a typo fails fast with a clear message.
-            def novelty_method = params.novelty.toString().toLowerCase()
-            if (!(novelty_method in ['mmseqs2', 'kaiju', 'bracken'])) {
-                exit 1, "Invalid --novelty '${params.novelty}'. Choose one of: mmseqs2, kaiju, bracken."
-            }
-
-            // Resolve the novelty DB. Every backend is local-first, else auto-download by a
-            // generic name (cached via storeDir): mmseqs2 via `mmseqs databases`, kaiju via the
-            // kaiju-idx bucket, bracken via the genome-idx (Kraken2+Bracken) bucket.
-            //
-            // CRITICAL distinction (so a local path never gets mistaken for a download alias):
-            //   * a value that LOOKS LIKE A PATH (contains '/', or starts with '.', '~' )
-            //     MUST resolve to something on disk -- if it doesn't, that's a hard error, NOT a
-            //     fall-through to download.
-            //   * a BARE TOKEN ('viruses', 'k2_standard', 'Kalamari', or unset) is an alias and is
-            //     handed to the backend's downloader.
-            def novelty_db_in   = params.novelty_db?.toString()?.trim()
-            def novelty_is_path = novelty_db_in && (novelty_db_in.contains('/') ||
-                                                    novelty_db_in.startsWith('.') ||
-                                                    novelty_db_in.startsWith('~'))
-
-            // Local resolver: accepts a directory, a file inside the db dir, or a db PREFIX
-            // (e.g. '<dir>/kaiju_db_viruses_2024-08-15' -> '<dir>/...fmi'); returns the containing
-            // DIRECTORY, which is the contract KAIJU / KRAKEN2 / BRACKEN expect.
-            def resolveLocalDir = { String p ->
-                if (!p) return null
-                def f = file(p)
-                if (f.exists()) return f.isDirectory() ? f : f.parent
-                // tolerate a db prefix without its extension (kaiju '.fmi', kraken '.k2d')
-                def hit = ['.fmi', '.k2d', '.tar.gz', '.tgz'].collect { ext -> file(p + ext) }.find { g -> g.exists() }
-                if (hit) return hit.parent
-                // last resort: the user pointed INTO an existing db folder with a prefix whose
-                // real files are named differently -> hand back the containing directory.
-                def par = f.parent
-                if (par && par.exists() && par.isDirectory()) return par
-                return null
-            }
-
-            def ch_novelty_db
-            if (novelty_method == 'mmseqs2') {
-                // mmseqs consumes the seqTaxDB by PREFIX (a file path), not a directory.
-                if (novelty_db_in && file(novelty_db_in).exists()) {
-                    println "Novelty (mmseqs2): using local seqTaxDB at ${novelty_db_in}"
-                    ch_novelty_db = Channel.value(file(novelty_db_in, checkIfExists: true))
-                } else if (novelty_is_path) {
-                    exit 1, "Novelty (mmseqs2): --novelty_db looks like a path but was not found on " +
-                            "disk: '${novelty_db_in}'. Point it at an existing seqTaxDB, or pass a " +
-                            "bare db name (e.g. Kalamari, UniProtKB) to auto-download."
-                } else {
-                    def novelty_dbname = novelty_db_in ?: 'UniProtKB'
-                    println "Novelty (mmseqs2): seqTaxDB '${novelty_dbname}' not local; will " +
-                            "download via 'mmseqs databases' (cached at ${params.novelty_db_cache})."
-                    MMSEQS_DOWNLOADDB(novelty_dbname)
-                    ch_versions = ch_versions.mix(MMSEQS_DOWNLOADDB.out.versions)
-                    ch_novelty_db = MMSEQS_DOWNLOADDB.out.db.first()
-                }
-            } else if (novelty_method == 'kaiju') {
-                def local_dir = resolveLocalDir.call(novelty_db_in)
-                if (local_dir) {
-                    println "Novelty (kaiju): using local DB directory at ${local_dir}"
-                    ch_novelty_db = Channel.value(file(local_dir, checkIfExists: true))
-                } else if (novelty_is_path) {
-                    exit 1, "Novelty (kaiju): --novelty_db looks like a path but no kaiju db was " +
-                            "found at '${novelty_db_in}'. Expected a directory (or db prefix) holding " +
-                            "*.fmi, nodes.dmp and names.dmp. To auto-download instead, pass a bare " +
-                            "alias (viruses, nr, refseq, ...)."
-                } else {
-                    // 'Kalamari' is the mmseqs-only default sentinel -> fall back to a small kaiju db.
-                    def kaiju_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viruses' : novelty_db_in
-                    println "Novelty (kaiju): index '${kaiju_name}' not local; will download a " +
-                            "prebuilt kaiju index (cached at ${params.novelty_kaiju_db_cache})."
-                    KAIJU_DOWNLOADDB(kaiju_name)
-                    ch_versions = ch_versions.mix(KAIJU_DOWNLOADDB.out.versions)
-                    ch_novelty_db = KAIJU_DOWNLOADDB.out.db.first()
-                }
-            } else {
-                // bracken: the db is a kraken2 db DIRECTORY (with bracken kmer_distrib files).
-                def local_dir = resolveLocalDir.call(novelty_db_in)
-                if (local_dir) {
-                    println "Novelty (bracken): using local DB directory at ${local_dir}"
-                    ch_novelty_db = Channel.value(file(local_dir, checkIfExists: true))
-                } else if (novelty_is_path) {
-                    exit 1, "Novelty (bracken): --novelty_db looks like a path but no kraken2 db was " +
-                            "found at '${novelty_db_in}'. Expected a directory holding hash.k2d / " +
-                            "opts.k2d / taxo.k2d and database*mers.kmer_distrib. To auto-download " +
-                            "instead, pass a bare alias (k2_standard, viral, pluspf, ...)."
-                } else {
-                    def k2_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viral' : novelty_db_in
-                    println "Novelty (bracken): db '${k2_name}' not local; will download a " +
-                            "prebuilt Kraken2+Bracken db (cached at ${params.novelty_kraken2_db_cache})."
-                    KRAKEN2_DOWNLOADDB(k2_name)
-                    ch_versions = ch_versions.mix(KRAKEN2_DOWNLOADDB.out.versions)
-                    ch_novelty_db = KRAKEN2_DOWNLOADDB.out.db.first()
-                }
-            }
-
+            // The novelty DB was resolved/downloaded up front as a FIRST PASS (see above), so
+            // ch_novelty_db is already staged here -- nothing to download mid-run.
             NOVELTY(
                 ALIGNMENT.out.bams,     // [meta, bam, csi] reference-merged per sample
                 ch_kraken2_report,      // [meta, kreport]  from CLASSIFIER

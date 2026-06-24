@@ -1121,6 +1121,40 @@ def main():
         for r in run_metadata_records
     )
 
+    # ── derive global pipeline revision / commit ─────────────────────────────
+    # Mirrors the ODR PDF logic: pick first non-empty value; "local" is valid
+    # for commit_id; "NA" is treated as absent for both fields.
+    def _first_val(vals, exclude_upper=("NA", "NULL", "NONE", "")):
+        for v in vals:
+            sv = str(v).strip() if v is not None else ""
+            if sv.upper() not in exclude_upper:
+                return sv
+        return None
+
+    _all_revisions = [m.get("workflow_revision") for m in sample_meta.values()]
+    _all_commits   = [m.get("commit_id")         for m in sample_meta.values()]
+
+    # revision: None when all NA → display as "Not Specified or Local Build"
+    pipeline_revision = _first_val(_all_revisions)
+    # commit: "local" is a valid value (not filtered); None only if all NA/empty
+    pipeline_commit   = _first_val(_all_commits)
+
+    # When commit is None or "local", try git to get the actual hash
+    if not pipeline_commit or pipeline_commit.lower() == "local":
+        try:
+            import subprocess as _sp
+            _git_hash = _sp.check_output(
+                ["git", "rev-parse", "HEAD"], stderr=_sp.DEVNULL, cwd=os.path.dirname(__file__)
+            ).decode().strip()
+            if _git_hash:
+                pipeline_commit = _git_hash
+        except Exception:
+            pass
+        if not pipeline_commit:
+            pipeline_commit = "local"
+
+    print(f"[make_report] Pipeline revision: {pipeline_revision or 'Not Specified or Local Build'}  commit: {pipeline_commit}")
+
     # ── collect best_cutoffs for UI pre-population ────────────────────────────
     best_cutoffs_payload = _collect_best_cutoffs(sample_meta)
     if best_cutoffs_payload:
@@ -1147,6 +1181,8 @@ def main():
         "pathogens":             pathogens,                    # {by_taxid, by_name, by_genus} pathogen lookups
         "has_pathogens":         has_pathogens,                # true if a pathogen sheet was loaded
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
+        "pipeline_commit":       pipeline_commit,              # global commit hash or None
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

@@ -12,6 +12,7 @@
 // like MMSEQS_DOWNLOADDB so the KAIJU module can consume it unchanged.
 //
 // Accepted db_name forms (case-insensitive for the aliases):
+//   * 'test'     -> tiny git-lfs-hosted index for CI / -profile test (parity with kraken2 'test')
 //   * an alias   -> 'viruses' (a.k.a. 'viral'), 'nr', 'nr_euk', 'refseq', 'refseq_nr',
 //                   'refseq_ref', 'progenomes', 'fungi', 'plasmids', 'rvdb'
 //   * an exact file -> 'kaiju_db_viruses_2024-08-15.tgz' (joined onto the base bucket URL)
@@ -24,7 +25,10 @@ process KAIJU_DOWNLOADDB {
     tag "$db_name"
     label 'process_medium'
 
-    storeDir { "${params.novelty_kaiju_db_cache}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}" }
+    // 'test' is a tiny CI index -> no persistent storeDir; it just lives in work/ like the
+    // main kraken2 'test' download. Real indexes still persist to the per-name dbs/kaiju cache.
+    storeDir { db_name.toString().equalsIgnoreCase('test') ? null :
+               "${params.novelty_kaiju_db_cache}/${db_name.toString().replaceAll('[^A-Za-z0-9._-]', '_')}" }
 
     conda "conda-forge::gnu-wget=1.18"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -58,6 +62,8 @@ process KAIJU_DOWNLOADDB {
     case "\$name" in
         http://*|https://*)  url="\$name" ;;                 # full URL, verbatim
         *.tgz|*.tar.gz)      url="\$base/\$name" ;;          # exact filename on the base bucket
+        [Tt][Ee][Ss][Tt])   # tiny git-lfs-hosted index for CI / -profile test (parity with kraken2 'test')
+            url='https://github.com/Merritt-Brian/databases/raw/refs/heads/main/kaiju/test_kaiju.tar.gz' ;;
         *)
             case "\$key" in
                 viruses|viral) rel='2024/kaiju_db_viruses_2024-08-15.tgz' ;;
@@ -72,7 +78,7 @@ process KAIJU_DOWNLOADDB {
                 rvdb)          rel='2024/kaiju_db_rvdb_2024-12-20.tgz' ;;
                 *)
                     echo "ERROR: unknown kaiju db name '\$name'." >&2
-                    echo "Valid aliases: viruses (viral), nr, nr_euk, refseq, refseq_nr," >&2
+                    echo "Valid aliases: test, viruses (viral), nr, nr_euk, refseq, refseq_nr," >&2
                     echo "  refseq_ref, progenomes, fungi, plasmids, rvdb. Or pass an exact" >&2
                     echo "  *.tgz filename or a full URL." >&2
                     exit 1 ;;

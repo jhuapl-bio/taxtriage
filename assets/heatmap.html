@@ -393,11 +393,11 @@
       // Gene mode (--novelty_gene): the query fed to the backend was Pyrodigal-predicted genes,
       // not whole de novo contigs. Read the top-level flag, falling back to any sample summary.
       function _novGeneMode() {
-        if (NOVELTY && NOVELTY.gene_mode != null) return !!(+NOVELTY.gene_mode);
+        if (NOVELTY && NOVELTY.gene_mode != null) return !!+NOVELTY.gene_mode;
         if (NOVELTY && NOVELTY.samples) {
           for (const s of Object.values(NOVELTY.samples)) {
             const g = s && s.summary && s.summary.gene_mode;
-            if (g != null && g !== "") return !!(+g);
+            if (g != null && g !== "") return !!+g;
           }
         }
         return false;
@@ -427,8 +427,7 @@
         // the method blurb so the description matches the count unit shown elsewhere on the tab.
         if (_novGeneMode() && info.desc) {
           return Object.assign({}, info, {
-            desc: info.desc.replace(/the de novo contigs/g,
-              "Pyrodigal-predicted genes (de novo contigs → ORFs)"),
+            desc: info.desc.replace(/the de novo contigs/g, "Pyrodigal-predicted genes (de novo contigs → ORFs)"),
           });
         }
         return info;
@@ -2420,12 +2419,25 @@
         display: inline-flex;
         align-items: center;
         gap: 0.35em;
+        cursor: pointer;
+        user-select: none;
+        border-radius: 3px;
+        padding: 0.1em 0.35em;
+        transition: opacity 0.15s;
+      }
+      .nov-mc-legend span:hover {
+        background: #f1f3f5;
+      }
+      .nov-mc-legend span.nov-mc-hidden {
+        opacity: 0.38;
+        text-decoration: line-through;
       }
       .nov-mc-swatch {
         width: 11px;
         height: 11px;
         border-radius: 2px;
         display: inline-block;
+        flex-shrink: 0;
       }
       /* genus-compare sparkbar cells */
       .nov-gc-bar {
@@ -21562,10 +21574,14 @@
         ["rank", "Rank"],
         ["name", "Name"],
         ["reads", _novUnitCap()],
-        ["frac_of_sample",
-          _novUnit() === "contigs" ? "Ctgs / residual reads"
-          : _novUnit() === "genes" ? "Genes / residual reads"
-          : "Frac of residual"],
+        [
+          "frac_of_sample",
+          _novUnit() === "contigs"
+            ? "Ctgs / residual reads"
+            : _novUnit() === "genes"
+            ? "Genes / residual reads"
+            : "Frac of residual",
+        ],
       ];
       let _novState = { sample: null, subtab: "overview" };
       let _novCandPage = 0;
@@ -21913,6 +21929,7 @@
       // ── Method coverage + Genus comparison (TASS vs mmseqs rescue) ───────────
       let _novCmpMode = "coverage";
       let _novCmpToggleWired = false;
+      let _novMcHidden = new Set(); // keys toggled off in method-coverage legend
 
       function _novWireCmpToggle() {
         if (_novCmpToggleWired) return;
@@ -22015,12 +22032,15 @@
           host.innerHTML = '<div style="color:#888;font-size:0.82em">No novelty samples.</div>';
           return;
         }
+        const allSegs = _novMcSegs();
+        const visibleSegs = allSegs.filter((s) => !_novMcHidden.has(s.key));
         const legend =
           '<div class="nov-mc-legend">' +
-          _novMcSegs()
+          allSegs
             .map(
               (s) =>
-                `<span><span class="nov-mc-swatch" style="background:${s.color}"></span>${_novEsc(s.label)}</span>`,
+                `<span data-mc-key="${_novEsc(s.key)}" class="${_novMcHidden.has(s.key) ? "nov-mc-hidden" : ""}">` +
+                `<span class="nov-mc-swatch" style="background:${s.color}"></span>${_novEsc(s.label)}</span>`,
             )
             .join("") +
           "</div>";
@@ -22029,13 +22049,16 @@
             const sm = (samples[s] || {}).summary || {};
             const fr = _novMcFractions(sm);
             const flagged = Number(sm.novelty_flag) === 1;
-            const segs = _novMcSegs()
+            // Sum visible fractions to rescale bars proportionally
+            const visSum = visibleSegs.reduce((acc, seg) => acc + (fr[seg.key] || 0), 0) || 1;
+            const segs = visibleSegs
               .map((seg) => {
                 const f = fr[seg.key] || 0;
                 if (f <= 0) return "";
                 const rd = fr._reads(f);
                 const rdTxt = rd != null ? `${rd.toLocaleString()} ${seg.unit || "reads"}` : "";
-                return `<div class="nov-mc-seg" style="width:${(f * 100).toFixed(2)}%;background:${seg.color}"
+                const displayPct = ((f / visSum) * 100).toFixed(2);
+                return `<div class="nov-mc-seg" style="width:${displayPct}%;background:${seg.color}"
               data-mc-label="${_novEsc(seg.label)}" data-mc-pct="${(f * 100).toFixed(1)}"
               data-mc-reads="${_novEsc(rdTxt)}" data-mc-color="${seg.color}"
               data-mc-desc="${_novEsc(seg.desc)}"></div>`;
@@ -22054,6 +22077,21 @@
           })
           .join("");
         host.innerHTML = legend + rows;
+
+        // Wire up legend click-to-hide toggle
+        host.querySelectorAll(".nov-mc-legend span[data-mc-key]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const key = el.dataset.mcKey;
+            if (_novMcHidden.has(key)) {
+              _novMcHidden.delete(key);
+            } else {
+              // Don't allow hiding all segments
+              const allKeys = allSegs.map((s) => s.key);
+              if (_novMcHidden.size < allKeys.length - 1) _novMcHidden.add(key);
+            }
+            _drawNoveltyMethodCoverage();
+          });
+        });
         // Pre-compute run-wide average fraction per method bucket for tooltip context
         const mcRunAvg = {};
         _novMcSegs().forEach((seg) => {
@@ -22735,9 +22773,7 @@
             ? "Pyrodigal-predicted genes from the de novo assembly"
             : "the de novo assembly";
           desc.innerHTML =
-            `Reference-free novelty on ${queryDesc}. Backend: <b>${_novEsc(info.label)}</b> — ${_novEsc(
-              info.desc,
-            )} ` +
+            `Reference-free novelty on ${queryDesc}. Backend: <b>${_novEsc(info.label)}</b> — ${_novEsc(info.desc)} ` +
             `Each sample gets a <b>novelty score</b> (higher = more divergent from known references) and a <b>flag</b> when ` +
             `that score crosses the run threshold. The candidate table lists the genus-or-higher taxa the classifier could ` +
             `still assign. Use the <b>downloads</b> for the raw per-sample / combined JSON and XLSX.`;
@@ -29937,21 +29973,47 @@
           const btn = document.getElementById("pipeline-info-btn");
           if (!btn) return;
 
-          // Collect unique revision/commit pairs across all samples.
-          const revisions = [
-            ...new Set(
-              Object.values(SAMPLE_META)
-                .map((m) => m.workflow_revision)
-                .filter((v) => v && v !== "NA" && v !== "local" && v !== "null"),
-            ),
-          ];
-          const commits = [
-            ...new Set(
-              Object.values(SAMPLE_META)
-                .map((m) => m.commit_id)
-                .filter((v) => v && v !== "NA" && v !== "local" && v !== "null"),
-            ),
-          ];
+          // Prefer global BOOT fields (set by make_report.py); fall back to
+          // scanning per-sample SAMPLE_META for older reports that lack them.
+          const _naVal = (v) => !v || v === "NA" || v === "null" || v === "NULL" || v === "none";
+
+          let revisionDisplay,
+            commits = [];
+          const _bootRev = (typeof BOOT !== "undefined" && BOOT.pipeline_revision) || null;
+          const _bootCommit = (typeof BOOT !== "undefined" && BOOT.pipeline_commit) || null;
+
+          // Helper: is a git hash (7–40 hex chars)?
+          const _isHash = (v) => v && /^[0-9a-f]{7,40}$/i.test(v);
+          // Format commit: clickable link for real hashes, plain text for "local"/short ids
+          const _fmtCommit = (v) =>
+            _isHash(v)
+              ? `<a href="https://github.com/jhuapl-bio/taxtriage/commit/${v}" ` +
+                `target="_blank" style="color:#90caf9">${v}</a>`
+              : v || "";
+
+          if (_bootRev !== null && _bootRev !== undefined) {
+            // Global value from BOOT (preferred path — always present in new reports)
+            revisionDisplay = _bootRev && !_naVal(_bootRev) ? _bootRev : "Not Specified or Local Build";
+            if (_bootCommit && !_naVal(_bootCommit)) commits = [_bootCommit];
+          } else {
+            // Fallback: scan SAMPLE_META (older reports / uploaded JSON)
+            const allRevisions = [
+              ...new Set(
+                Object.values(SAMPLE_META)
+                  .map((m) => m.workflow_revision)
+                  .filter((v) => v && !_naVal(v)),
+              ),
+            ];
+            const allCommits = [
+              ...new Set(
+                Object.values(SAMPLE_META)
+                  .map((m) => m.commit_id)
+                  .filter((v) => v && !_naVal(v)),
+              ),
+            ];
+            revisionDisplay = allRevisions.length ? allRevisions.join(", ") : "Not Specified or Local Build";
+            commits = allCommits;
+          }
           const platforms = [
             ...new Set(
               Object.values(SAMPLE_META)
@@ -29983,8 +30045,8 @@
           let tip =
             `<b style="color:#90caf9">TaxTriage Run Info</b><br>` +
             `<table style="margin-top:6px;border-collapse:collapse;min-width:220px">`;
-          tip += row("Branch / revision", revisions.length ? revisions.join(", ") : "—");
-          tip += row("Commit", commits.length ? commits.join(", ") : "—");
+          tip += row("Branch / revision", revisionDisplay || "—");
+          if (commits.length) tip += row("Commit", commits.map(_fmtCommit).join(", "));
           tip += row("Samples", Object.keys(SAMPLE_META).length || "—", "#ffd580");
           if (platforms.length) tip += row("Platform(s)", platforms.join(", "), "#a5d6a7");
           tip += row("Report built", generatedAt ? _fmtDate(generatedAt) : "—", "#ce93d8");
