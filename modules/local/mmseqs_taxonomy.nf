@@ -23,7 +23,7 @@ process MMSEQS_TAXONOMY {
         'staphb/mmseqs2' }"
 
     input:
-    tuple val(meta), path(query)          // unmapped/unclassified reads OR de novo contigs (fasta/fastq)
+    tuple val(meta), path(query)          // predicted ORF proteins (.faa) from Pyrodigal (full de novo contigs)
     path  db                              // staged seqTaxDB DIRECTORY (contains <prefix>* files)
 
     output:

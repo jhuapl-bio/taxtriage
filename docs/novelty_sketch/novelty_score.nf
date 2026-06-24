@@ -17,7 +17,7 @@ process NOVELTY_SCORE {
         'biocontainers/biopython:1.75' }"
 
     input:
-    // meta carries the read-accounting ints folded on by EXTRACT_UNMAPPED (see subworkflow)
+    // meta carries the read-accounting ints we already know (see subworkflow wiring)
     tuple val(meta), path(lca), path(tophit)
     path  run_summaries        // optional sibling-sample baseline; NO_FILE when first pass
 
@@ -30,21 +30,8 @@ process NOVELTY_SCORE {
     task.ext.when == null || task.ext.when
 
     script:
-    def args      = task.ext.args ?: ''
-    def baseline  = run_summaries.name != 'NO_FILE' ? "--run-summaries ${run_summaries}" : ''
-    def flag_z    = params.novelty_flag_z   ?: 2.0
-    def weights   = params.novelty_weights  ?: '0.5,0.3,0.2'
-    def idnt_cut  = params.novelty_idnt_cut ?: 50.0
-    // bracken emits a count-weighted LCA (col 4 = taxon read count); mmseqs2/kaiju are per-query.
-    def count_col = params.novelty == 'bracken' ? '--count-col 4' : ''
-    // Candidate floor. min_reads=1 surfaces single-contig hits (each deep dilution assembles to
-    // ~1 viral contig); in that case also zero the depth-scaled cutoff so it cannot re-raise the
-    // floor above 1 on deep samples.
-    def min_reads = (params.novelty_min_reads ?: 2) as Integer
-    def min_frac  = min_reads <= 1 ? '--min-cand-frac 0' : ''
-    // Tell the scorer (and thus the report) whether the query unit was predicted genes vs contigs.
-    // Genes are the default; --disable_gene switches the query to raw contigs.
-    def gene_mode = params.disable_gene ? '' : '--gene-mode'
+    def args     = task.ext.args ?: ''
+    def baseline = run_summaries.name != 'NO_FILE' ? "--run-summaries ${run_summaries}" : ''
     """
     novelty_score.py \\
         -s ${meta.id} \\
@@ -53,14 +40,8 @@ process NOVELTY_SCORE {
         --total-reads ${meta.total_reads ?: 0} \\
         --k2-classified ${meta.k2_classified ?: 0} \\
         --ref-aligned ${meta.ref_aligned ?: 0} \\
-        --flag-threshold ${flag_z} \\
-        --weights ${weights} \\
-        --idnt-cut ${idnt_cut} \\
-        --classifier ${params.novelty} \\
-        --min-reads ${min_reads} ${min_frac} \\
-        ${gene_mode} \\
-        ${count_col} \\
-        ${baseline} ${args} \\
+        ${baseline} \\
+        ${args} \\
         -o ${meta.id}
 
     cat <<-END_VERSIONS > versions.yml

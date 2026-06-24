@@ -24,7 +24,7 @@ import json
 import os
 import sys
 
-SUMMARY_COLS = ["sample", "total_reads", "dark_fraction", "highrank_only_fraction",
+SUMMARY_COLS = ["sample", "classifier", "gene_mode", "total_reads", "dark_fraction", "highrank_only_fraction",
                 "lowident_tail_mass", "z_dark", "z_highrank", "z_lowident",
                 "novelty_score", "novelty_flag",
                 "ref_aligned", "k2_classified", "mmseqs_assigned",
@@ -54,7 +54,7 @@ def _coerce(key, val):
             return int(f) if f.is_integer() else f
         except (TypeError, ValueError):
             return val
-    if key == "novelty_flag" and val not in (None, ""):
+    if key in ("novelty_flag", "gene_mode") and val not in (None, ""):
         try:
             return int(val)
         except (TypeError, ValueError):
@@ -174,7 +174,24 @@ def main(argv=None):
                     blocks.get("candidates", []))
 
     # ---- combined artifacts ----
-    combined = {"taxtriage_novelty": True, "version": "1.0", "samples": samples}
+    # Surface the novelty backend at the top level so the report can label the tab without
+    # digging into a sample. One run = one --novelty method, so the first non-empty wins.
+    classifier = ""
+    for blocks in samples.values():
+        c = (blocks.get("summary") or {}).get("classifier")
+        if c:
+            classifier = c
+            break
+    # Gene mode (default on; off under --disable_gene): query was Pyrodigal-predicted genes, not
+    # whole contigs. Surface at the top level so the report can switch its count-unit labels
+    # (genes/seqs <-> contigs).
+    gene_mode = 0
+    for blocks in samples.values():
+        if int((blocks.get("summary") or {}).get("gene_mode") or 0):
+            gene_mode = 1
+            break
+    combined = {"taxtriage_novelty": True, "version": "1.0",
+                "classifier": classifier, "gene_mode": gene_mode, "samples": samples}
     _write_json(os.path.join(a.outdir, f"{a.combined_prefix}.json"), combined)
 
     all_summary = [b["summary"] for b in samples.values() if b.get("summary")]

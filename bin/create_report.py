@@ -3823,6 +3823,10 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
     are appended alphabetically.  If no sample has any metadata the sheet is
     not added.
 
+    A "Pipeline Info" block is prepended showing the workflow revision/branch
+    and commit hash.  For local builds (revision == "NA") the commit hash is
+    resolved via git when possible.
+
     Parameters
     ----------
     output_path : str
@@ -3833,6 +3837,35 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
     """
     if not per_sample_meta:
         return
+
+    # ── Derive global pipeline revision / commit from per-sample values ──────
+    # Mirrors ODR PDF logic: "local" is valid for commit; "NA" is absent.
+    def _first_val(vals, exclude_upper=("NA", "NULL", "NONE", "")):
+        for v in vals:
+            sv = str(v).strip() if v is not None else ""
+            if sv.upper() not in exclude_upper:
+                return sv
+        return None
+
+    _all_revs     = [m.get("workflow_revision") for m in per_sample_meta.values()]
+    _all_commits  = [m.get("commit_id")         for m in per_sample_meta.values()]
+    _pipeline_rev = _first_val(_all_revs)    # None → "Not Specified or Local Build"
+    _pipeline_cmt = _first_val(_all_commits) # "local" kept as valid
+
+    if not _pipeline_cmt or _pipeline_cmt.lower() == "local":
+        try:
+            import subprocess as _sp, os as _os
+            _git_hash = _sp.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=_sp.DEVNULL,
+                cwd=_os.path.dirname(_os.path.abspath(__file__)),
+            ).decode().strip()
+            if _git_hash:
+                _pipeline_cmt = _git_hash
+        except Exception:
+            pass
+        if not _pipeline_cmt:
+            _pipeline_cmt = "local"
 
     # Collect the full set of metadata keys across all samples,
     # excluding pipeline-internal keys.
@@ -3877,9 +3910,12 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
 
     ws = wb.create_sheet("Metadata")
 
-    HDR_FILL = PatternFill("solid", fgColor="1565C0")
-    HDR_FONT = Font(bold=True, color="FFFFFF", size=10)
-    ALT_FILL = PatternFill("solid", fgColor="E3F2FD")
+    HDR_FILL  = PatternFill("solid", fgColor="1565C0")
+    HDR_FONT  = Font(bold=True, color="FFFFFF", size=10)
+    ALT_FILL  = PatternFill("solid", fgColor="E3F2FD")
+    INFO_FILL = PatternFill("solid", fgColor="263238")   # dark header for pipeline block
+    INFO_FONT = Font(bold=True, color="FFFFFF", size=10)
+    INFO_LBL  = Font(bold=True, color="546E7A", size=9)  # muted label font
     THIN = Border(
         left=Side(style='thin', color='BDBDBD'),
         right=Side(style='thin', color='BDBDBD'),
@@ -3889,15 +3925,37 @@ def _add_metadata_sheet_to_xlsx(output_path, per_sample_meta):
     CENTER = Alignment(horizontal='center', vertical='top', wrap_text=True)
     LEFT   = Alignment(horizontal='left',   vertical='top', wrap_text=True)
 
+    # ── Pipeline Info block (rows 1–3) ────────────────────────────────────────
+    _rev_display = _pipeline_rev if _pipeline_rev else "Not Specified or Local Build"
+
+    ws.append(["Pipeline Info"])          # row 1 — section header
+    ws["A1"].font      = INFO_FONT
+    ws["A1"].fill      = INFO_FILL
+    ws["A1"].alignment = LEFT
+
+    ws.append(["Branch / Revision", _rev_display])
+    _rev_row = ws.max_row
+    ws[f"A{_rev_row}"].font = INFO_LBL
+    ws[f"B{_rev_row}"].alignment = LEFT
+
+    if _pipeline_cmt:
+        ws.append(["Commit", _pipeline_cmt])
+        _cmt_row = ws.max_row
+        ws[f"A{_cmt_row}"].font = INFO_LBL
+        ws[f"B{_cmt_row}"].alignment = LEFT
+    ws.append([])  # blank separator row
+
+    # ── Per-sample metadata table ─────────────────────────────────────────────
     headers = ["Sample"] + [label for _, label in ordered_fields]
     ws.append(headers)
-    for cell in ws[1]:
+    _hdr_row = ws.max_row
+    for cell in ws[_hdr_row]:
         cell.font      = HDR_FONT
         cell.fill      = HDR_FILL
         cell.alignment = CENTER
         cell.border    = THIN
 
-    for i, (sample_name, meta) in enumerate(sorted(per_sample_meta.items()), start=2):
+    for i, (sample_name, meta) in enumerate(sorted(per_sample_meta.items()), start=_hdr_row + 1):
         def _cell_val(v):
             if isinstance(v, (dict, list)):
                 return json.dumps(v)
