@@ -390,8 +390,9 @@
         }
         return String(c || "").toLowerCase();
       }
-      // Gene mode (--novelty_gene): the query fed to the backend was Pyrodigal-predicted genes,
-      // not whole de novo contigs. Read the top-level flag, falling back to any sample summary.
+      // Gene mode (default on; off under --disable_gene): the query fed to the backend was
+      // Pyrodigal-predicted genes, not whole de novo contigs. Read the top-level flag, falling
+      // back to any sample summary.
       function _novGeneMode() {
         if (NOVELTY && NOVELTY.gene_mode != null) return !!+NOVELTY.gene_mode;
         if (NOVELTY && NOVELTY.samples) {
@@ -443,8 +444,8 @@
         return _novClsShort().toLowerCase();
       }
       // The unit label for what the novelty classifier counted: "reads" for bracken (which
-      // classifies reads directly via Kraken2 k-mers); otherwise "genes" when --novelty_gene fed
-      // Pyrodigal-predicted genes, else "contigs" (kaiju/mmseqs2 on de novo assembled contigs).
+      // classifies reads directly via Kraken2 k-mers); otherwise "genes" by default (Pyrodigal-
+      // predicted genes), or "contigs" under --disable_gene (kaiju/mmseqs2 on de novo contigs).
       function _novUnit() {
         const c = _noveltyClassifier();
         if (c === "bracken") return "reads";
@@ -679,6 +680,40 @@
       .tab-btn.tab-disabled:hover {
         background: rgba(255, 255, 255, 0.04);
         color: #c9daf8;
+      }
+      /* Optional tabs (shown only when their data / flags are present) carry a
+         very subtle hue shift from the normal blue so they read as conditional,
+         and each pane shows an .optional-hint explaining how to enable it. */
+      .tab-btn.tab-optional:not(.active) {
+        background: linear-gradient(180deg, rgba(125, 175, 225, 0.16), rgba(125, 175, 225, 0.04));
+      }
+      .tab-btn.tab-optional:not(.active):hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .optional-hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5em;
+        font-size: 0.76rem;
+        line-height: 1.35;
+        color: #5a6b7b;
+        background: rgba(33, 150, 243, 0.06);
+        border-left: 3px solid rgba(33, 150, 243, 0.35);
+        border-radius: 0 6px 6px 0;
+        padding: 0.5em 0.7em;
+        margin: 0 0 0.7rem;
+      }
+      .optional-hint .fa-circle-info {
+        margin-top: 0.15em;
+        color: #2196f3;
+        flex: 0 0 auto;
+      }
+      .optional-hint code {
+        background: rgba(13, 60, 102, 0.09);
+        padding: 0.05em 0.35em;
+        border-radius: 4px;
+        font-size: 0.95em;
+        white-space: nowrap;
       }
       .info-tip-btn {
         display: inline-flex;
@@ -4226,10 +4261,10 @@
         <i class="fas fa-layer-group"></i> Coverage
       </button>
       <button
-        class="tab-btn hidden"
+        class="tab-btn tab-optional hidden"
         data-tab="proteins"
         id="prot-tab-btn"
-        title="VF/AMR and transporter gene hits with charts and table."
+        title="VF/AMR and transporter gene hits with charts and table. Enabled with --annotate."
       >
         <i class="fas fa-dna"></i> VF / AMR
       </button>
@@ -4246,10 +4281,10 @@
         ></i>
       </button>
       <button
-        class="tab-btn hidden"
+        class="tab-btn tab-optional hidden"
         id="novelty-tab-btn"
         data-tab="novelty"
-        title="Reference-free novelty detection: per-sample novelty score/flag and candidate taxa from the selected novelty classifier."
+        title="Reference-free novelty detection: per-sample novelty score/flag and candidate taxa from the selected novelty classifier. Enabled with --novelty (e.g. --novelty kaiju)."
       >
         <i class="fas fa-lightbulb"></i> Novelty
       </button>
@@ -4257,10 +4292,20 @@
         <i class="fas fa-magnifying-glass-chart"></i> Explore
       </button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
-      <button class="tab-btn hidden" id="map-tab-btn" data-tab="map">
+      <button
+        class="tab-btn tab-optional hidden"
+        id="map-tab-btn"
+        data-tab="map"
+        title="Sample collection map. Enabled when samples carry latitude/longitude metadata."
+      >
         <i class="fas fa-map-location-dot"></i> Map
       </button>
-      <button class="tab-btn hidden" id="runmeta-tab-btn" data-tab="runmeta">
+      <button
+        class="tab-btn tab-optional hidden"
+        id="runmeta-tab-btn"
+        data-tab="runmeta"
+        title="Per-sample run metadata. Available whenever samples or metadata are present."
+      >
         <i class="fas fa-tags"></i> Run Metadata
       </button>
     </div>
@@ -4865,6 +4910,13 @@
 
         <!-- PROTEINS / VF / AMR -->
         <div class="pane" id="pane-proteins">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Optional tab.</strong> This view appears when the run includes <code>--annotate</code>, which
+              annotates the de novo assembly for virulence-factor, AMR, and transporter genes.</span
+            >
+          </div>
           <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.6rem">
             Virulence, AMR, and transporter gene hits summarized by genus, plus a searchable annotation table.
           </div>
@@ -5176,6 +5228,14 @@
 
         <!-- NOVELTY DETECTION (reference-free translated-search LCA) -->
         <div class="pane" id="pane-novelty">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Optional tab.</strong> This view appears when a novelty backend is enabled, e.g.
+              <code>--novelty kaiju</code> (or <code>--novelty mmseqs2</code> / <code>--novelty bracken</code>). The
+              active backend is shown in the badge to the right.</span
+            >
+          </div>
           <!-- sub-tab bar -->
           <div id="novelty-subtab-bar">
             <button class="nov-subtab active" data-nsub="overview">
@@ -5837,6 +5897,14 @@
 
         <!-- MAP PANE -->
         <div class="pane" id="pane-map">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Optional tab.</strong> This view appears when samples carry <code>latitude</code> /
+              <code>longitude</code> values. Add them as metadata columns in your samplesheet — or in the
+              <strong>Run Metadata</strong> tab — to plot collection sites.</span
+            >
+          </div>
           <div class="chart-wrap" style="padding-bottom: 0.5em">
             <div class="chart-title"><i class="fas fa-map-location-dot"></i> Sample Collection Map</div>
             <p style="margin: 0 0 0.3em; font-size: 0.85em; color: #555">
@@ -6107,6 +6175,14 @@
 
         <!-- RUN METADATA PANE -->
         <div class="pane" id="pane-runmeta">
+          <div class="optional-hint">
+            <i class="fas fa-circle-info"></i>
+            <span
+              ><strong>Optional tab.</strong> This view appears whenever samples or metadata are present. Add per-sample
+              metadata columns here — including <code>latitude</code> / <code>longitude</code>, which also enable the
+              <strong>Map</strong> tab.</span
+            >
+          </div>
           <div class="chart-wrap" style="padding-bottom: 0.5em">
             <div class="chart-title"><i class="fas fa-tags"></i> Run Metadata</div>
           </div>
@@ -13300,6 +13376,12 @@
           });
           _ttApplyRowAnnotations();
         }
+        // Hide "Specimen ID" column when "Group by Sample" is active — it's
+        // redundant because rows are already separated by sample group headers.
+        const _grpChecked = document.getElementById("tbl-group-sample")?.checked;
+        if (_grpChecked) {
+          visibleCols = visibleCols.filter((c) => c !== "Specimen ID");
+        }
       }
 
       function renderTableHeaders() {
@@ -14726,6 +14808,8 @@
         if (_tblGrpEl)
           _tblGrpEl.addEventListener("change", () => {
             _tblPage = 0;
+            buildTable();
+            renderTableHeaders();
             populateTable();
           });
 

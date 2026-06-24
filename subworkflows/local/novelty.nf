@@ -6,21 +6,21 @@
 // than only the unmapped residual. This lets the search report organisms that DID align to a
 // pulled reference (e.g. targeted Ebola) alongside anything novel.
 //
-// The backend is chosen by --novelty (params.novelty). By default ALL backends consume the de novo
-// contigs DIRECTLY. Optionally (--novelty_gene) a Pyrodigal ORF-prediction step is inserted first
-// and the predicted nucleotide CDS (.fna) become the query instead of the raw contigs. This trades
-// a little runtime for finer granularity: one whole-genome contig becomes one query per gene, so a
-// single near-complete genome contributes several LCA rows (counts) instead of one -- closer to a
-// per-gene BLAST view and friendlier to the contig-count-based novelty score.
+// The backend is chosen by --novelty (params.novelty). By DEFAULT a Pyrodigal ORF-prediction step
+// runs first and the predicted nucleotide CDS (.fna) become the query: one whole-genome contig
+// becomes one query per gene, so a single near-complete genome contributes several LCA rows (counts)
+// instead of one -- closer to a per-gene BLAST view and friendlier to the contig-count-based novelty
+// score. Passing --disable_gene skips Pyrodigal and feeds the raw de novo contigs DIRECTLY instead,
+// trading granularity for a little less runtime.
 //
-//   --novelty mmseqs2 : contigs (or genes) -> MMSEQS_TAXONOMY (translated LCA; mmseqs extracts ORFs
+//   --novelty mmseqs2 : genes (or contigs) -> MMSEQS_TAXONOMY (translated LCA; mmseqs extracts ORFs
 //                       internally, so nucleotide input is fine -- predicted genes are just cleaner
 //                       and faster than whole contigs)
-//   --novelty kaiju   : contigs (or genes) -> KAIJU (greedy translated search; self-translates)
-//   --novelty bracken : contigs (or genes) -> KRAKEN2_NOVELTY -> BRACKEN (count-weighted abundance)
+//   --novelty kaiju   : genes (or contigs) -> KAIJU (greedy translated search; self-translates)
+//   --novelty bracken : genes (or contigs) -> KRAKEN2_NOVELTY -> BRACKEN (count-weighted abundance)
 //
-// --novelty_gene OFF (default) : query = de novo contigs (current behaviour, unchanged)
-// --novelty_gene ON            : query = PYRODIGAL predicted genes (.fna) over those same contigs
+// --disable_gene OFF (default) : query = PYRODIGAL predicted genes (.fna) over the de novo contigs
+// --disable_gene ON            : query = de novo contigs directly (one query per contig)
 //
 // Every backend emits the SAME contract for the score: a per-query (or count-weighted) LCA tsv,
 // an optional best-hit table with %identity, and a kraken-style report.
@@ -95,12 +95,12 @@ workflow NOVELTY {
         }
 
         // ---------------------------------------------------------------------------------
-        // Optional gene-prediction step (--novelty_gene). When on, Pyrodigal predicts ORFs on
+        // Gene-prediction step (default ON; skip with --disable_gene). Pyrodigal predicts ORFs on
         // the selected query (contigs or MicrobeRT reps) and the predicted nucleotide CDS (.fna)
         // replace the contigs as the per-query unit for every backend. meta is preserved so the
         // folded read-accounting counts still ride through to NOVELTY_SCORE.
         // ---------------------------------------------------------------------------------
-        if (params.novelty_gene) {
+        if (!params.disable_gene) {
             PYRODIGAL(ch_query)
             ch_versions = ch_versions.mix(PYRODIGAL.out.versions)
             ch_query = PYRODIGAL.out.genes            // [meta, *.fna] predicted nucleotide CDS

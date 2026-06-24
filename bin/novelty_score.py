@@ -96,9 +96,9 @@ def parse_args(argv=None):
                    help="novelty backend that produced the LCA (mmseqs2|kaiju|bracken); "
                         "passed through to the report so the Novelty tab can label its source.")
     p.add_argument("--gene-mode", action="store_true",
-                   help="set when the query was Pyrodigal-predicted genes (--novelty_gene) rather "
-                        "than whole contigs; the report uses this to label counts as genes/seqs "
-                        "instead of contigs.")
+                   help="set when the query was Pyrodigal-predicted genes (the default; the "
+                        "pipeline omits this flag only under --disable_gene, which classifies whole "
+                        "contigs). The report uses this to label counts as genes/seqs vs contigs.")
     p.add_argument("-o", "--out-prefix", required=True)
     return p.parse_args(argv)
 

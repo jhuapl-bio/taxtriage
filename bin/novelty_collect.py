@@ -182,8 +182,9 @@ def main(argv=None):
         if c:
             classifier = c
             break
-    # Gene mode (--novelty_gene): query was Pyrodigal-predicted genes, not whole contigs. Surface
-    # at the top level so the report can switch its count-unit labels (contigs -> genes/seqs).
+    # Gene mode (default on; off under --disable_gene): query was Pyrodigal-predicted genes, not
+    # whole contigs. Surface at the top level so the report can switch its count-unit labels
+    # (genes/seqs <-> contigs).
     gene_mode = 0
     for blocks in samples.values():
         if int((blocks.get("summary") or {}).get("gene_mode") or 0):
