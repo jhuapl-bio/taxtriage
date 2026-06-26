@@ -6817,6 +6817,27 @@
           >
             <i class="fas fa-sliders-h" style="font-size: 0.85em"></i> Options ▾
           </button>
+          <button
+            type="button"
+            id="tooltip-toggle-btn"
+            title="Toggle tooltips on/off"
+            style="
+              background: none;
+              border: 1px solid #ccd6e8;
+              border-radius: 4px;
+              cursor: pointer;
+              color: #1565c0;
+              font-size: 0.85em;
+              padding: 2px 6px;
+              line-height: 1;
+              display: inline-flex;
+              align-items: center;
+              gap: 0.3em;
+            "
+          >
+            <i class="fas fa-comment-dots"></i>
+            <span id="tooltip-toggle-label" style="font-size: 0.9em">Tooltips on</span>
+          </button>
         </div>
         <div id="filter-search-meta" role="group" aria-label="Search options">
           <select id="filter-scope" title="Which fields the search matches against" aria-label="Search scope">
@@ -6876,9 +6897,10 @@
                 style="
                   font-size: 0.72em;
                   padding: 2px 7px;
-                  border: 1px solid #ccc;
+                  border: 1px solid #ccd6e8;
                   border-radius: 4px;
-                  background: #f5f5f5;
+                  background: #fff;
+                  color: #1565c0;
                   cursor: pointer;
                 "
               >
@@ -8059,8 +8081,11 @@
         return isNaN(n) ? 0 : n;
       }
 
+      let tooltipsEnabled = true;
+
       const tooltip = document.getElementById("tooltip");
       function showTip(html, event) {
+        if (!tooltipsEnabled) return;
         tooltip.innerHTML = html;
         // Park at 0,0 before measuring so offsetWidth reflects the true
         // unconstrained width (not a clipped value from the previous position).
@@ -24808,6 +24833,28 @@
           pdfBtn.addEventListener("mouseenter", (ev) => showTip(pdfBtn.dataset.tip, ev));
           pdfBtn.addEventListener("mousemove", moveTip);
           pdfBtn.addEventListener("mouseleave", hideTip);
+        }
+
+        // ── Tooltip toggle button ──────────────────────────────────────────
+        const _ttBtn = document.getElementById("tooltip-toggle-btn");
+        const _ttLabel = document.getElementById("tooltip-toggle-label");
+        if (_ttBtn) {
+          const _updateTtBtn = () => {
+            _ttBtn.title = tooltipsEnabled ? "Tooltips on — click to disable" : "Tooltips off — click to enable";
+            _ttBtn.style.color = tooltipsEnabled ? "#1565c0" : "#999";
+            _ttBtn.style.borderColor = tooltipsEnabled ? "#ccd6e8" : "#ddd";
+            _ttBtn.querySelector("i").className = tooltipsEnabled ? "fas fa-comment-dots" : "fas fa-comment-slash";
+            if (_ttLabel) {
+              _ttLabel.textContent = tooltipsEnabled ? "Tooltips on" : "Tooltips off";
+              _ttLabel.style.color = tooltipsEnabled ? "inherit" : "#aaa";
+            }
+          };
+          _updateTtBtn();
+          _ttBtn.addEventListener("click", () => {
+            tooltipsEnabled = !tooltipsEnabled;
+            if (!tooltipsEnabled) hideTip();
+            _updateTtBtn();
+          });
         }
 
         // ── Wire up sortable map-panel column headers ──────────────────────
