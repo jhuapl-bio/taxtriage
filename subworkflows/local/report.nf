@@ -320,7 +320,7 @@ workflow REPORT {
                 .flatten()
                 .filter { f -> f && !f.name.startsWith('NO_FILE') }
                 .collect()
-                .ifEmpty { file("$projectDir/assets/NO_FILE") }
+                .ifEmpty { file("$projectDir/assets/NO_FILE_annotate_report") }
 
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
