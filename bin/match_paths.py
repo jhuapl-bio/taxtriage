@@ -916,18 +916,15 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
     unaligned = 0
     aligned_reads = 0
     total_reads = 0
-    primary_counts = defaultdict(int)
-    secondary_counts = defaultdict(int)
+    secondary_queries = set()
 
-    # Pre-pass: count primary/secondary alignments per read to gate MAPQ=0 reads
+    # Pre-pass: record reads with secondary alignments to gate MAPQ=0 reads
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_count:
         for read in bam_count.fetch(until_eof=True):
             if read.is_unmapped:
                 continue
             if read.is_secondary or read.is_supplementary:
-                secondary_counts[read.query_name] += 1
-                continue
-            primary_counts[read.query_name] += 1
+                secondary_queries.add(read.query_name)
     # for each of the reads, check which ones have more than 1 count
     with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
         # get total reads
@@ -999,7 +996,7 @@ def count_reference_hits(bam_file_path,alignments_to_remove=None, reference_leng
                 #     print(read.mapping_quality, read)
                 allow_low_mapq = (
                     read.mapping_quality == 0
-                    and secondary_counts.get(read.query_name, 0) > 0
+                    and read.query_name in secondary_queries
                 )
                 # if"NC_002695.2" in read.query_name:
                 #     print(read.query_qualities)
