@@ -4007,7 +4007,9 @@
         cursor: pointer;
         text-align: left;
         line-height: 1.4;
-        transition: border-color 0.15s, background 0.15s;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
       }
       #filter-kingdom-btn:hover {
         border-color: #90caf9;
@@ -4030,7 +4032,9 @@
         line-height: 1.4;
         flex-shrink: 0;
       }
-      #filter-kingdom-btn.has-sel .fk-badge { display: inline-block; }
+      #filter-kingdom-btn.has-sel .fk-badge {
+        display: inline-block;
+      }
       #filter-kingdom-panel {
         display: none;
         position: absolute;
@@ -4040,12 +4044,14 @@
         background: #fff;
         border: 1px solid #c5cdd6;
         border-radius: 6px;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.13);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.13);
         z-index: 999;
         padding: 5px 0;
         min-width: 160px;
       }
-      #filter-kingdom-panel.open { display: block; }
+      #filter-kingdom-panel.open {
+        display: block;
+      }
       .fk-option {
         display: flex;
         align-items: center;
@@ -4057,8 +4063,10 @@
         user-select: none;
         transition: background 0.1s;
       }
-      .fk-option:hover { background: #edf4fd; }
-      .fk-option input[type=checkbox] {
+      .fk-option:hover {
+        background: #edf4fd;
+      }
+      .fk-option input[type="checkbox"] {
         margin: 0;
         width: 12px;
         height: 12px;
@@ -4086,7 +4094,9 @@
         border: none;
         padding: 0;
       }
-      #fk-clear-btn:hover { color: #1565c0; }
+      #fk-clear-btn:hover {
+        color: #1565c0;
+      }
 
       /* ══════════════════════════════════════════════════════════════════════
          UI POLISH LAYER
@@ -7162,21 +7172,67 @@
         </div>
 
         <!-- Kingdom / Domain multiselect dropdown -->
-        <label style="margin-top: 0.5em; font-size: 0.82em; font-weight: 600; color: #374151; display: block">Kingdom / Domain</label>
+        <label style="margin-top: 0.5em; font-size: 0.82em; font-weight: 600; color: #374151; display: block"
+          >Kingdom / Domain</label
+        >
         <div id="filter-kingdom-wrap">
           <button type="button" id="filter-kingdom-btn" aria-haspopup="listbox" aria-expanded="false">
             <span class="fk-label">All kingdoms</span>
             <span class="fk-badge" id="fk-badge">0</span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0;opacity:0.5"><path d="M2 3.5l3 3 3-3" stroke="#555" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink: 0; opacity: 0.5">
+              <path d="M2 3.5l3 3 3-3" stroke="#555" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
           </button>
           <div id="filter-kingdom-panel" role="listbox" aria-multiselectable="true">
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="Bacteria" /><span class="fk-dot" style="background:#e57373"></span>Bacteria</label>
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="Viruses" /><span class="fk-dot" style="background:#ffb74d"></span>Viruses</label>
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="Archaea" /><span class="fk-dot" style="background:#9575cd"></span>Archaea</label>
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="Fungi" /><span class="fk-dot" style="background:#a1887f"></span>Fungi</label>
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="Plantae" /><span class="fk-dot" style="background:#66bb6a"></span>Plants</label>
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="Animalia" /><span class="fk-dot" style="background:#42a5f5"></span>Animals</label>
-            <label class="fk-option"><input type="checkbox" class="fk-cb" value="OtherEuk" /><span class="fk-dot" style="background:#bdbdbd"></span>Other Eukaryota</label>
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Bacteria" /><span
+                class="fk-dot"
+                style="background: #e57373"
+              ></span
+              ><span style="margin-left: 2px">Bacteria</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Viruses" /><span
+                class="fk-dot"
+                style="background: #ffb74d"
+              ></span
+              ><span style="margin-left: 2px">Viruses</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Archaea" /><span
+                class="fk-dot"
+                style="background: #9575cd"
+              ></span
+              ><span style="margin-left: 2px">Archaea</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Fungi" /><span
+                class="fk-dot"
+                style="background: #a1887f"
+              ></span
+              ><span style="margin-left: 2px">Fungi</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Plantae" /><span
+                class="fk-dot"
+                style="background: #66bb6a"
+              ></span
+              ><span style="margin-left: 2px">Plants</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Animalia" /><span
+                class="fk-dot"
+                style="background: #42a5f5"
+              ></span
+              ><span style="margin-left: 2px">Animals</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="OtherEuk" /><span
+                class="fk-dot"
+                style="background: #bdbdbd"
+              ></span
+              ><span style="margin-left: 2px">Other Eukaryota</span></label
+            >
             <div id="fk-clear-row"><button type="button" id="fk-clear-btn">Clear all</button></div>
           </div>
         </div>
@@ -7985,6 +8041,30 @@
           .map(([k, v]) => `${k}:${v}`)
           .join("|");
       }
+      // Classify a data row into a kingdom/domain filter bucket.
+      function _rowKingdomBucket(r) {
+        const domain = (r["Domain"] || "").trim();
+        const kingdom = (r["Kingdom"] || "").trim();
+        if (domain === "Bacteria") return "Bacteria";
+        if (domain === "Archaea") return "Archaea";
+        if (domain === "Viruses" || domain === "Virus") return "Viruses";
+        if (domain === "Eukaryota") {
+          const kl = kingdom.toLowerCase();
+          if (kl.includes("fung") || kl.includes("mycota")) return "Fungi";
+          if (kl.includes("plant") || kl.includes("viridiplant") || kl.includes("streptophyt")) return "Plantae";
+          if (kl.includes("animal") || kl.includes("metazoa")) return "Animalia";
+          return "OtherEuk";
+        }
+        // Fallback: infer from kingdom string when Domain is absent
+        const kl = kingdom.toLowerCase();
+        if (kl.includes("bacteri")) return "Bacteria";
+        if (kl.includes("virus") || kl.includes("virae")) return "Viruses";
+        if (kl.includes("archae")) return "Archaea";
+        if (kl.includes("fung")) return "Fungi";
+        if (kl.includes("plant") || kl.includes("viridiplant")) return "Plantae";
+        if (kl.includes("animal") || kl.includes("metazoa")) return "Animalia";
+        return null;
+      }
       // Search scope + last-known regex validity (surfaced in the sidebar status line).
       let _searchInvalid = false;
       function filteredData() {
@@ -8050,31 +8130,6 @@
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
         const kingdomFilter = kingdomSel.length > 0 ? new Set(kingdomSel) : null;
         const anyRescale = _hasAnyRescale();
-
-        // Classify a row into one of the kingdom/domain filter buckets.
-        function _rowKingdomBucket(r) {
-          const domain = (r["Domain"] || "").trim();
-          const kingdom = (r["Kingdom"] || "").trim();
-          if (domain === "Bacteria") return "Bacteria";
-          if (domain === "Archaea") return "Archaea";
-          if (domain === "Viruses" || domain === "Virus") return "Viruses";
-          if (domain === "Eukaryota") {
-            const kl = kingdom.toLowerCase();
-            if (kl.includes("fung") || kl.includes("mycota")) return "Fungi";
-            if (kl.includes("plant") || kl.includes("viridiplant") || kl.includes("streptophyt")) return "Plantae";
-            if (kl.includes("animal") || kl.includes("metazoa")) return "Animalia";
-            return "OtherEuk";
-          }
-          // Fallback: infer from kingdom string when Domain is absent
-          const kl = kingdom.toLowerCase();
-          if (kl.includes("bacteri")) return "Bacteria";
-          if (kl.includes("virus") || kl.includes("virae")) return "Viruses";
-          if (kl.includes("archae")) return "Archaea";
-          if (kl.includes("fung")) return "Fungi";
-          if (kl.includes("plant") || kl.includes("viridiplant")) return "Plantae";
-          if (kl.includes("animal") || kl.includes("metazoa")) return "Animalia";
-          return null;
-        }
 
         // Base (non-level, non-threshold) predicates shared by every view.
         function _basePass(r) {
