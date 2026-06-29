@@ -27,8 +27,13 @@ process CREATE_COMPARISON_REPORT {
     input:
     // One or more .paths.json files from ALIGNMENT_PER_SAMPLE (collected across all samples)
     path(json_files)
-    // HTML template (heatmap.html)
+    // HTML template (heatmap.html) — a thin shell that references its CSS/JS as
+    // external parts under assets/src/. make_report.py inlines them into one
+    // self-contained report.
     path(template)
+    // The assets/src directory (css/ + js/) staged next to the template so the
+    // template's external references resolve inside the task workdir.
+    path(src_assets)
     // Optional protein-annotation XLSX files from ORGANISM_MERGE_REPORT --output_annot_xlsx
     // Pass a NO_FILE placeholder when protein annotations are not available
     path(protein_annotations)

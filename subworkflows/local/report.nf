@@ -266,6 +266,9 @@ workflow REPORT {
             )
 
             ch_template = Channel.fromPath("$projectDir/assets/heatmap.html", checkIfExists: true)
+            // heatmap.html is a thin shell; stage its external parts (assets/src:
+            // css/ + js/) alongside it so make_report.py can inline them.
+            ch_template_src = Channel.fromPath("$projectDir/assets/src", checkIfExists: true)
 
             // ── Collect all per-sample JSON files for the comparison report ───────
             // Use only non-control samples to avoid skewing the multi-run heatmap
@@ -325,6 +328,7 @@ workflow REPORT {
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
+                ch_template_src,
                 ch_prot_annotations,
                 ch_novelty_files,
                 pathogens_list.first(),

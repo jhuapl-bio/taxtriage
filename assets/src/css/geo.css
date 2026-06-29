@@ -1,0 +1,334 @@
+/* ── Geographic choropleth map ── */
+#geo-map-wrap {
+  position: relative;
+  width: 100%;
+  height: 560px;
+  border: 1px solid #e3e9f2;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef3f9;
+}
+#geo-map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#geo-map-svg path.geo-region {
+  cursor: pointer;
+  transition: fill 0.15s ease;
+}
+#geo-map-svg path.geo-region:hover {
+  stroke: #1f2d3d;
+  stroke-width: 1.1px;
+}
+#geo-back {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 500;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: #33475b;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d6deea;
+  border-radius: 6px;
+  padding: 5px 10px;
+  box-shadow: 0 2px 8px rgba(31, 45, 61, 0.14);
+}
+#geo-back:hover {
+  background: #eef3fb;
+}
+#geo-map-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a8aa0;
+  font-size: 0.9em;
+  pointer-events: none;
+  text-align: center;
+  padding: 1em;
+}
+/* overlay "dropdown" ranked-bar panel floating on the map */
+.geo-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 300px;
+  height: 360px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d6deea;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(31, 45, 61, 0.16);
+  font-size: 0.82em;
+  z-index: 500;
+  overflow: hidden;
+}
+.geo-overlay.collapsed {
+  height: auto !important;
+}
+.geo-overlay-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  padding: 8px 11px;
+  cursor: move;
+  user-select: none;
+  font-weight: 600;
+  color: #33475b;
+  background: #f4f7fc;
+  border-bottom: 1px solid #e3e9f2;
+}
+.geo-overlay-head .fa-chevron-down {
+  transition: transform 0.2s ease;
+}
+.geo-overlay.collapsed .geo-overlay-head .fa-chevron-down {
+  transform: rotate(-90deg);
+}
+.geo-overlay-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px;
+}
+.geo-overlay.collapsed .geo-overlay-body {
+  display: none;
+}
+/* Floating, draggable pin windows over the choropleth (multiple allowed). */
+.geo-pin-win {
+  position: absolute;
+  width: 250px;
+  max-width: 96%;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #c4d2e6;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(31, 45, 61, 0.22);
+  z-index: 600;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.geo-pin-win-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4em;
+  padding: 5px 8px;
+  background: #1565c0;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.78em;
+  cursor: grab;
+  user-select: none;
+}
+.geo-pin-win-head:active {
+  cursor: grabbing;
+}
+.geo-pin-win-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.geo-pin-win-close {
+  flex-shrink: 0;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.geo-pin-win-close:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+.geo-pin-win-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 7px 9px;
+  overflow: auto;
+  background: #f7faff;
+}
+.geo-pin-win-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 0 50%,
+    #9bb3d4 50% 60%,
+    transparent 60% 70%,
+    #9bb3d4 70% 80%,
+    transparent 80%
+  );
+  border-bottom-right-radius: 8px;
+}
+.geo-pin-table td {
+  padding: 2px 4px;
+  border-bottom: 1px solid #e6edf6;
+  vertical-align: top;
+}
+.geo-pin-table td:first-child {
+  color: #607089;
+  font-weight: 600;
+  white-space: nowrap;
+  width: 1%;
+  padding-right: 10px;
+}
+.geo-org-scroll {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #e6edf6;
+  border-radius: 5px;
+}
+.geo-org-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74em;
+}
+.geo-org-table th {
+  position: sticky;
+  top: 0;
+  background: #eef3fb;
+  color: #41506a;
+  font-weight: 700;
+  padding: 3px 6px;
+  text-align: center;
+  white-space: nowrap;
+  z-index: 1;
+}
+.geo-org-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid #eef1f5;
+}
+.geo-org-table td.org {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.geo-overlay-grip {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 3;
+  border-bottom-right-radius: 7px;
+  background: linear-gradient(
+    135deg,
+    transparent 0 8px,
+    #b6c1d0 8px 10px,
+    transparent 10px 11px,
+    #b6c1d0 11px 13px,
+    transparent 13px
+  );
+}
+.geo-overlay.collapsed .geo-overlay-grip {
+  display: none;
+}
+.geo-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d6deea;
+  border-radius: 7px;
+  padding: 7px 10px;
+  z-index: 500;
+  font-size: 0.74em;
+  color: #44515f;
+  box-shadow: 0 2px 8px rgba(31, 45, 61, 0.12);
+}
+.geo-legend-bar {
+  height: 9px;
+  width: 150px;
+  border-radius: 3px;
+  margin: 4px 0 2px;
+}
+.geo-legend-row {
+  display: flex;
+  justify-content: space-between;
+  width: 150px; /* match the bar so the end labels align to the gradient ends */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.geo-legend-row span:last-child {
+  text-align: right;
+}
+/* ── Host & Disease symptom × organism matrix ── */
+#host-matrix-chart {
+  overflow-x: auto;
+}
+#host-matrix-chart table.hx-matrix {
+  border-collapse: collapse;
+  font-size: 0.78em;
+}
+#host-matrix-chart table.hx-matrix th,
+#host-matrix-chart table.hx-matrix td {
+  border: 1px solid #e8edf4;
+  padding: 0;
+  text-align: center;
+}
+#host-matrix-chart table.hx-matrix th.hx-corner {
+  background: #f4f7fc;
+}
+#host-matrix-chart table.hx-matrix th.hx-col {
+  background: #f4f7fc;
+  font-weight: 600;
+  color: #33475b;
+  vertical-align: bottom;
+  height: 118px;
+  white-space: nowrap;
+  padding: 4px 2px;
+}
+#host-matrix-chart table.hx-matrix th.hx-col > div {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  margin: 0 auto;
+  max-height: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#host-matrix-chart table.hx-matrix th.hx-row {
+  background: #f4f7fc;
+  font-weight: 600;
+  color: #33475b;
+  text-align: left;
+  padding: 4px 9px;
+  white-space: nowrap;
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#host-matrix-chart table.hx-matrix th.hx-row:hover {
+  background: #e7eefb;
+}
+#host-matrix-chart table.hx-matrix th.hx-row.hx-active {
+  background: #d7e4fb;
+}
+#host-matrix-chart table.hx-matrix td.hx-cell {
+  width: 34px;
+  height: 30px;
+  cursor: default;
+}
+#host-matrix-chart table.hx-matrix td.hx-cell span {
+  color: #1f2d3d;
+  font-variant-numeric: tabular-nums;
+}

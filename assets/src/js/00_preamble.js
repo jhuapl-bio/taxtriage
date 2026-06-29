@@ -1,0 +1,43 @@
+/* ----------------------------------------------------------------------------
+       -                                                                          -
+       -   TAXTRIAGE  HEATMAP REPORT  —  CLIENT-SIDE LOGIC                        -
+       -                                                                          -
+       -   ──────────────────  TABLE OF CONTENTS  ─────────────────────────────   -
+       -                                                                          -
+       -   FOUNDATIONS                                                            -
+       -     §  GLOBAL STATE                ... DATA / SHARED VARS          -
+       -     §  UTILITIES                   ... small helpers, tooltips     -
+       -     §  SAMPLE SIDEBAR              ... right-panel sample list     -
+       -     §  HELPERS                     ... rankLabel etc.              -
+       -                                                                          -
+       -   TABS  (one block per tab; ordered as they appear in the UI)            -
+       -     §  TAB: HEATMAP                ... main D3 heatmap grid        -
+       -     §  TAB: TASS COMPARISON        ... grouped bar chart           -
+       -     §  TAB: SUNBURST               ... taxonomy partition chart    -
+       -     §  TAB: COVERAGE               ... breadth/depth scatter       -
+       -     §  TAB: VF / AMR               ... protein annotation tables   -
+       -                                                  + per-organism compare  -
+       -     §  TAB: TABLE                  ... flat data table             -
+       -     §  TAB: HISTOGRAM              ... per-contig depth dist.      -
+       -     §  TAB: EXPLORE                ... bubble/radar/chord/loll/corr -
+       -     §  TAB: RUN METADATA           ... metadata grid + longi.      -
+       -     §  TAB: MAP                    ... Leaflet sample map          -
+       -                                                                          -
+       -   ORCHESTRATION                                                          -
+       -     §  HEATMAP VALUE COL SELECTOR  ... static dropdown init        -
+       -     §  TAB SWITCHING               ... .tab-btn click handler      -
+       -     §  REDRAW DISPATCHER           ... _drawTab() + redraw()       -
+       -     §  FILTER LISTENERS            ... change/input → redraw       -
+       -     §  INIT                        ... initial bootstrap           -
+       -                                                                          -
+       -   UI CHROME                                                              -
+       -     §  RESIZABLE DETAIL PANEL      ... protein detail drag         -
+       -     §  RESIZABLE RIGHT SIDEBAR     ... sample sidebar drag         -
+       -                                                                          -
+       -   DATA INGEST                                                            -
+       -     §  FILE UPLOAD                 ... drag-drop xlsx / json       -
+       -     §  META CSV                    ... drag-drop metadata csv      -
+       -                                                                          -
+       -   Tip: jump by searching for "-  TAB:" or "-  §" to land on a banner.    -
+       -                                                                          -
+       ---------------------------------------------------------------------------- */
