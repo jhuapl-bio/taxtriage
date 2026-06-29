@@ -3988,6 +3988,116 @@
         font-style: italic;
       }
 
+      /* ── Kingdom/Domain dropdown multiselect ─────────────────────────── */
+      #filter-kingdom-wrap {
+        position: relative;
+        margin-top: 0.5em;
+      }
+      #filter-kingdom-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        width: 100%;
+        padding: 3px 7px;
+        font-size: 0.78em;
+        border: 1px solid #c5cdd6;
+        border-radius: 5px;
+        background: #f7f9fb;
+        color: #374151;
+        cursor: pointer;
+        text-align: left;
+        line-height: 1.4;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      #filter-kingdom-btn:hover {
+        border-color: #90caf9;
+        background: #edf4fd;
+      }
+      #filter-kingdom-btn .fk-label {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #filter-kingdom-btn .fk-badge {
+        display: none;
+        background: #1565c0;
+        color: #fff;
+        font-size: 0.8em;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 0 5px;
+        line-height: 1.4;
+        flex-shrink: 0;
+      }
+      #filter-kingdom-btn.has-sel .fk-badge {
+        display: inline-block;
+      }
+      #filter-kingdom-panel {
+        display: none;
+        position: absolute;
+        top: calc(100% + 3px);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1px solid #c5cdd6;
+        border-radius: 6px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.13);
+        z-index: 999;
+        padding: 5px 0;
+        min-width: 160px;
+      }
+      #filter-kingdom-panel.open {
+        display: block;
+      }
+      .fk-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        font-size: 0.78em;
+        cursor: pointer;
+        color: #374151;
+        user-select: none;
+        transition: background 0.1s;
+      }
+      .fk-option:hover {
+        background: #edf4fd;
+      }
+      .fk-option input[type="checkbox"] {
+        margin: 0;
+        width: 12px;
+        height: 12px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .fk-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      #fk-clear-row {
+        display: flex;
+        justify-content: flex-end;
+        padding: 3px 10px 1px;
+        border-top: 1px solid #eee;
+        margin-top: 3px;
+      }
+      #fk-clear-btn {
+        font-size: 0.72em;
+        color: #888;
+        cursor: pointer;
+        background: none;
+        border: none;
+        padding: 0;
+      }
+      #fk-clear-btn:hover {
+        color: #1565c0;
+      }
+
       /* ══════════════════════════════════════════════════════════════════════
          UI POLISH LAYER
          Placed last in this stylesheet so it wins the cascade. Purely visual /
@@ -6960,7 +7070,7 @@
           </button>
         </div>
         <div class="row" id="novelty-sub-row" style="margin-top: 0.2em; display: none">
-          <input type="checkbox" id="filter-novelty-sub" />
+          <input type="checkbox" id="filter-novelty-sub" checked />
           <label
             for="filter-novelty-sub"
             title="Surface organisms hidden by the TASS cutoff that still carry signal: those with reference alignments below the cutoff, and those with no alignment but a genus/species-level novelty hit in the same sample."
@@ -7059,6 +7169,72 @@
         </select>
         <div style="font-size: 0.72em; color: #888; margin-top: -0.15em; margin-bottom: 0.35em">
           Ctrl/&#8984; click to multi-select; deselect all to show all
+        </div>
+
+        <!-- Kingdom / Domain multiselect dropdown -->
+        <label style="margin-top: 0.5em; font-size: 0.82em; font-weight: 600; color: #374151; display: block"
+          >Kingdom / Domain</label
+        >
+        <div id="filter-kingdom-wrap">
+          <button type="button" id="filter-kingdom-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span class="fk-label">All kingdoms</span>
+            <span class="fk-badge" id="fk-badge">0</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink: 0; opacity: 0.5">
+              <path d="M2 3.5l3 3 3-3" stroke="#555" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
+          <div id="filter-kingdom-panel" role="listbox" aria-multiselectable="true">
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Bacteria" /><span
+                class="fk-dot"
+                style="background: #e57373"
+              ></span
+              ><span style="margin-left: 2px">Bacteria</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Viruses" /><span
+                class="fk-dot"
+                style="background: #ffb74d"
+              ></span
+              ><span style="margin-left: 2px">Viruses</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Archaea" /><span
+                class="fk-dot"
+                style="background: #9575cd"
+              ></span
+              ><span style="margin-left: 2px">Archaea</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Fungi" /><span
+                class="fk-dot"
+                style="background: #a1887f"
+              ></span
+              ><span style="margin-left: 2px">Fungi</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Plantae" /><span
+                class="fk-dot"
+                style="background: #66bb6a"
+              ></span
+              ><span style="margin-left: 2px">Plants</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="Animalia" /><span
+                class="fk-dot"
+                style="background: #42a5f5"
+              ></span
+              ><span style="margin-left: 2px">Animals</span></label
+            >
+            <label class="fk-option"
+              ><input type="checkbox" class="fk-cb" value="OtherEuk" /><span
+                class="fk-dot"
+                style="background: #bdbdbd"
+              ></span
+              ><span style="margin-left: 2px">Other Eukaryota</span></label
+            >
+            <div id="fk-clear-row"><button type="button" id="fk-clear-btn">Clear all</button></div>
+          </div>
         </div>
 
         <h3 style="display: flex; align-items: center; justify-content: space-between; gap: 0.4em">
@@ -7865,6 +8041,30 @@
           .map(([k, v]) => `${k}:${v}`)
           .join("|");
       }
+      // Classify a data row into a kingdom/domain filter bucket.
+      function _rowKingdomBucket(r) {
+        const domain = (r["Domain"] || "").trim();
+        const kingdom = (r["Kingdom"] || "").trim();
+        if (domain === "Bacteria") return "Bacteria";
+        if (domain === "Archaea") return "Archaea";
+        if (domain === "Viruses" || domain === "Virus") return "Viruses";
+        if (domain === "Eukaryota") {
+          const kl = kingdom.toLowerCase();
+          if (kl.includes("fung") || kl.includes("mycota")) return "Fungi";
+          if (kl.includes("plant") || kl.includes("viridiplant") || kl.includes("streptophyt")) return "Plantae";
+          if (kl.includes("animal") || kl.includes("metazoa")) return "Animalia";
+          return "OtherEuk";
+        }
+        // Fallback: infer from kingdom string when Domain is absent
+        const kl = kingdom.toLowerCase();
+        if (kl.includes("bacteri")) return "Bacteria";
+        if (kl.includes("virus") || kl.includes("virae")) return "Viruses";
+        if (kl.includes("archae")) return "Archaea";
+        if (kl.includes("fung")) return "Fungi";
+        if (kl.includes("plant") || kl.includes("viridiplant")) return "Plantae";
+        if (kl.includes("animal") || kl.includes("metazoa")) return "Animalia";
+        return null;
+      }
       // Search scope + last-known regex validity (surfaced in the sidebar status line).
       let _searchInvalid = false;
       function filteredData() {
@@ -7885,6 +8085,7 @@
         const mtBoth = document.getElementById("filter-mt-both")
           ? document.getElementById("filter-mt-both").checked
           : true;
+        const kingdomSel = Array.from(document.querySelectorAll(".fk-cb:checked")).map((cb) => cb.value);
 
         // Fingerprint everything that can change the result. Note: DATA.length
         // covers most upload-driven changes; if you ever mutate DATA in place
@@ -7900,6 +8101,7 @@
           mtDNA ? 1 : 0,
           mtRNA ? 1 : 0,
           mtBoth ? 1 : 0,
+          kingdomSel.join(","),
           _hashHidden(),
           _hashRescale(),
           DATA.length,
@@ -7926,6 +8128,7 @@
           }
         }
         const mcFilter = mcSel.length > 0 ? new Set(mcSel) : null; // null = no filter
+        const kingdomFilter = kingdomSel.length > 0 ? new Set(kingdomSel) : null;
         const anyRescale = _hasAnyRescale();
 
         // Base (non-level, non-threshold) predicates shared by every view.
@@ -7944,6 +8147,10 @@
           }
           if (onlyHC && !isTruthy(r["High Consequence"])) return false;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) return false;
+          if (kingdomFilter) {
+            const bucket = _rowKingdomBucket(r);
+            if (!bucket || !kingdomFilter.has(bucket)) return false;
+          }
           const mt = (r["Mol Type"] || "").toLowerCase();
           if (mt === "dna" && !mtDNA) return false;
           if (mt === "rna" && !mtRNA) return false;
@@ -18737,6 +18944,8 @@
         const onlyHC = document.getElementById("filter-hc").checked;
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
         const mcFilter = mcSel.length ? new Set(mcSel) : null;
+        const kingdomSel2 = Array.from(document.querySelectorAll(".fk-cb:checked")).map((cb) => cb.value);
+        const kingdomFilter2 = kingdomSel2.length ? new Set(kingdomSel2) : null;
         const mtDNA = document.getElementById("filter-mt-dna")
           ? document.getElementById("filter-mt-dna").checked
           : true;
@@ -18772,6 +18981,10 @@
           }
           if (onlyHC && !isTruthy(r["High Consequence"])) continue;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+          if (kingdomFilter2) {
+            const b2 = _rowKingdomBucket(r);
+            if (!b2 || !kingdomFilter2.has(b2)) continue;
+          }
           const mt = (r["Mol Type"] || "").toLowerCase();
           if (mt === "dna" && !mtDNA) continue;
           if (mt === "rna" && !mtRNA) continue;
@@ -18858,6 +19071,8 @@
         const onlyHC = document.getElementById("filter-hc").checked;
         const mcSel = Array.from(document.getElementById("filter-mc").selectedOptions).map((o) => o.value);
         const mcFilter = mcSel.length ? new Set(mcSel) : null;
+        const kingdomSel3 = Array.from(document.querySelectorAll(".fk-cb:checked")).map((cb) => cb.value);
+        const kingdomFilter3 = kingdomSel3.length ? new Set(kingdomSel3) : null;
         const mtDNA = document.getElementById("filter-mt-dna")
           ? document.getElementById("filter-mt-dna").checked
           : true;
@@ -18896,6 +19111,10 @@
           }
           if (onlyHC && !isTruthy(r["High Consequence"])) continue;
           if (mcFilter && !mcFilter.has(r["Microbial Category"] || "Unknown")) continue;
+          if (kingdomFilter3) {
+            const b3 = _rowKingdomBucket(r);
+            if (!b3 || !kingdomFilter3.has(b3)) continue;
+          }
           const mt = (r["Mol Type"] || "").toLowerCase();
           if (mt === "dna" && !mtDNA) continue;
           if (mt === "rna" && !mtRNA) continue;
@@ -23587,6 +23806,58 @@
         }
       }
       document.getElementById("filter-mc").addEventListener("change", redraw);
+
+      // ── Kingdom / Domain dropdown multiselect ──────────────────────────
+      (function () {
+        const btn = document.getElementById("filter-kingdom-btn");
+        const panel = document.getElementById("filter-kingdom-panel");
+        const badge = document.getElementById("fk-badge");
+        const clearBtn = document.getElementById("fk-clear-btn");
+        const checkboxes = Array.from(document.querySelectorAll(".fk-cb"));
+
+        function updateBtn() {
+          const sel = checkboxes.filter((cb) => cb.checked);
+          if (sel.length === 0) {
+            btn.querySelector(".fk-label").textContent = "All kingdoms";
+            btn.classList.remove("has-sel");
+          } else {
+            const names = sel.map((cb) => cb.closest(".fk-option").textContent.trim());
+            const label = names.length <= 2 ? names.join(", ") : names.slice(0, 2).join(", ") + "\u2026";
+            btn.querySelector(".fk-label").textContent = label;
+            badge.textContent = sel.length;
+            btn.classList.add("has-sel");
+          }
+          btn.setAttribute("aria-expanded", panel.classList.contains("open") ? "true" : "false");
+        }
+
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          panel.classList.toggle("open");
+          btn.setAttribute("aria-expanded", panel.classList.contains("open") ? "true" : "false");
+        });
+
+        document.addEventListener("click", (e) => {
+          if (!btn.contains(e.target) && !panel.contains(e.target)) {
+            panel.classList.remove("open");
+            btn.setAttribute("aria-expanded", "false");
+          }
+        });
+
+        checkboxes.forEach((cb) => {
+          cb.addEventListener("change", () => {
+            updateBtn();
+            _invalidateFilterCache();
+            redraw();
+          });
+        });
+
+        clearBtn.addEventListener("click", () => {
+          checkboxes.forEach((cb) => (cb.checked = false));
+          updateBtn();
+          _invalidateFilterCache();
+          redraw();
+        });
+      })();
       [
         "hm-value-col",
         "hm-rank",
