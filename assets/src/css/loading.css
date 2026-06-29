@@ -1,0 +1,87 @@
+      #tt-loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.1em;
+        background: linear-gradient(160deg, #0d2842 0%, #14528f 100%);
+        color: #eaf2fb;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        text-align: center;
+        padding: 1.5em;
+        transition: opacity 0.4s ease;
+      }
+      #tt-loading-overlay.tt-hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #tt-loading-overlay .tt-spinner {
+        position: relative;
+        width: 88px;
+        height: 88px;
+      }
+      #tt-loading-overlay .tt-spinner .tt-ring {
+        position: absolute;
+        inset: 0;
+        border: 5px solid rgba(255, 255, 255, 0.18);
+        border-top-color: #7fc4ff;
+        border-radius: 50%;
+        animation: tt-spin 0.9s linear infinite;
+      }
+      #tt-loading-overlay .tt-spinner .tt-logo {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.1em;
+        color: #bfe0ff;
+        animation: tt-pulse 1.6s ease-in-out infinite;
+      }
+      #tt-loading-overlay .tt-title {
+        font-size: 1.35em;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+      }
+      #tt-loading-overlay .tt-msg {
+        font-size: 0.92em;
+        max-width: 30em;
+        line-height: 1.5;
+        color: #b9d2ec;
+      }
+      #tt-loading-overlay .tt-sub {
+        font-size: 0.78em;
+        color: #8fb2d6;
+      }
+      @keyframes tt-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes tt-pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.85;
+        }
+        50% {
+          transform: scale(1.12);
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #tt-loading-overlay .tt-spinner .tt-ring {
+          animation-duration: 2.4s;
+        }
+        #tt-loading-overlay .tt-spinner .tt-logo {
+          animation: none;
+        }
+      }

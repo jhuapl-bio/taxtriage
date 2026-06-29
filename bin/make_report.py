@@ -1191,8 +1191,11 @@ def main():
     bootstrap_script = f"<script>\nwindow.HEATMAP_BOOT = {bootstrap_json};\n</script>"
 
     # ── render template ───────────────────────────────────────────────────────
-    with open(args.template, "r", encoding="utf-8") as fh:
-        tpl = fh.read()
+    # heatmap.html is a thin shell that references its CSS/JS as external parts
+    # under assets/src/. inline_template() folds those back in so the report is
+    # one self-contained file. (See bin/report_template.py.)
+    from report_template import inline_template
+    tpl = inline_template(args.template)
 
     # Use a function replacement (not a plain string) so backslashes / `\g`-like
     # sequences inside the JSON payload are inserted verbatim and never treated

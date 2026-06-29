@@ -32,6 +32,11 @@ BOOT_JS     = REPO_ROOT / "assets" / "heatmap_boot.js"
 TEMPLATE    = REPO_ROOT / "assets" / "heatmap.html"
 INDEX_HTML  = REPO_ROOT / "_site"  / "index.html"
 
+# heatmap.html is a thin shell; inline_template() (in bin/) folds its external
+# src/css + src/js parts back inline before the data is injected below.
+sys.path.insert(0, str(REPO_ROOT / "bin"))
+from report_template import inline_template
+
 # Node snippet: evaluates a heatmap boot JS file and emits minified JSON.
 _NODE_SCRIPT = r"""
 const fs = require('fs');
@@ -60,7 +65,7 @@ def build_index(template_path: Path, json_text: str, check_only: bool = False) -
 
     Returns True if docs/index.html was (or would be) changed.
     """
-    html = template_path.read_text(encoding="utf-8")
+    html = inline_template(template_path)
 
     # ── 1. Remove the pages.js loader (active or commented) ───────────────
     # The dataset is inlined below as a BOOTSTRAP block, so pages.js is not

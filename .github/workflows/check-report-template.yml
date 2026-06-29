@@ -1,0 +1,41 @@
+name: Check report template assembles
+
+# assets/heatmap.html is a thin shell that references external parts under
+# assets/src/. This guard fails the build if a referenced CSS/JS part is missing
+# or a reference can't be resolved — i.e. if the template can't be assembled into
+# the self-contained file the nextflow report (bin/make_report.py) and GitHub
+# Pages (scripts/inline_boot_json.py) both depend on.
+
+on:
+  push:
+    paths:
+      - "assets/heatmap.html"
+      - "assets/src/**"
+      - "bin/report_template.py"
+  pull_request:
+    paths:
+      - "assets/heatmap.html"
+      - "assets/src/**"
+      - "bin/report_template.py"
+  workflow_dispatch:
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Assemble self-contained report (resolve all parts)
+        run: python bin/report_template.py -o /tmp/report.html
+
+      - name: Each JS part must parse standalone
+        run: |
+          for f in assets/src/js/*.js; do
+            node --check "$f"
+          done
