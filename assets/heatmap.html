@@ -14,10 +14,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="src/css/geo.css" data-style-id="geo-host-extra-css" />
-    <script src="pages.js"></script>
+    <!-- <script src="pages.js"></script> -->
     <!-- <script src="heatmap_boot.js"></script> -->
-
-    <script src="src/js/early.js"></script>
     <link rel="stylesheet" href="src/css/main.css" />
   </head>
   <body>
@@ -2795,7 +2793,7 @@
           </button>
         </div>
         <div class="row" id="novelty-sub-row" style="margin-top: 0.2em; display: none">
-          <input type="checkbox" id="filter-novelty-sub" checked />
+          <input type="checkbox" id="filter-novelty-sub" />
           <label
             for="filter-novelty-sub"
             title="Surface organisms hidden by the TASS cutoff that still carry signal: those with reference alignments below the cutoff, and those with no alignment but a genus/species-level novelty hit in the same sample."
@@ -3346,6 +3344,8 @@
       </div>
     </div>
 
+    <script src="pages.js"></script>
+    <script src="src/js/early.js"></script>
     <script src="src/js/00_preamble.js"></script>
     <script src="src/js/01_global_state.js"></script>
     <script src="src/js/02_utilities.js"></script>

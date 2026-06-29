@@ -5,7 +5,7 @@ body markup (banner, tabs, panels, overlays), and `<link>` / `<script src>`
 references to the external CSS and JS in this directory. It is directly
 openable in a browser (with `assets/heatmap_boot.js` present for demo data).
 
-The previous single ~30k-line file lives on only as the *generated*
+The previous single ~30k-line file lives on only as the _generated_
 self-contained output; it is no longer committed.
 
 ## What's here
@@ -37,10 +37,10 @@ separate scripts), and keep the numeric ordering correct.
 inline (each `<link>` → `<style>`, each `<script src>` → `<script>`) to yield a
 single portable file. Both builders call it:
 
-| Builder | Output | Used by |
-| --- | --- | --- |
-| `bin/make_report.py` | `all.comparison.report.html` | nextflow pipeline |
-| `scripts/inline_boot_json.py` | `_site/index.html` | GitHub Pages deploy |
+| Builder                       | Output                       | Used by             |
+| ----------------------------- | ---------------------------- | ------------------- |
+| `bin/make_report.py`          | `all.comparison.report.html` | nextflow pipeline   |
+| `scripts/inline_boot_json.py` | `_site/index.html`           | GitHub Pages deploy |
 
 In the pipeline, `assets/src/` is staged next to `heatmap.html` in the report
 task's workdir (see `modules/local/create_comparison_report.nf` and

@@ -1,4 +1,4 @@
-      /* ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
        -  §  REDRAW DISPATCHER
        -     _TAB_DIRTY  — { tab → bool } flags tracking which tabs need a
        -                   re-render after state changes.
@@ -8,4 +8,3 @@
        -     This is what makes filter changes feel instant — hidden tabs are
        -     not redrawn until the user switches to them.
 ═══════════════════════════════════════════════════════════════════════════ */
-
