@@ -691,6 +691,27 @@ function _ttCommitMetaCell(td) {
       SAMPLE_META[rec.sample_name][key] = rec[key];
     }
   } catch (e) {}
+  // When lat/lon changes and both coordinates are now valid, clear the
+  // auto-derived geographic fields so _ttAutofillGeoFromCoords will
+  // refill them from the new position instead of skipping because they
+  // are already set.  Without this, moving a sample to a different
+  // country never updates the choropleth.
+  if (key === "latitude" || key === "longitude") {
+    const _lat = parseFloat(rec.latitude),
+      _lon = parseFloat(rec.longitude);
+    if (!isNaN(_lat) && !isNaN(_lon)) {
+      rec.sample_origin_country = null;
+      rec.sample_origin_state_province_territory = null;
+      rec.location = null;
+      try {
+        if (typeof SAMPLE_META !== "undefined" && SAMPLE_META && SAMPLE_META[rec.sample_name]) {
+          SAMPLE_META[rec.sample_name].sample_origin_country = null;
+          SAMPLE_META[rec.sample_name].sample_origin_state_province_territory = null;
+          SAMPLE_META[rec.sample_name].location = null;
+        }
+      } catch (e) {}
+    }
+  }
   // Propagate the edit to all metadata plots + the marker map WITHOUT
   // rebuilding the table (so the user can keep editing adjacent cells).
   _ttRefreshMetaDerived(key);

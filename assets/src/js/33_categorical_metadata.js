@@ -506,9 +506,15 @@ function _ttAutofillGeoFromCoords(opts) {
         if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
         if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
         if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
-        if (typeof _activeMetaSub !== "undefined" && _activeMetaSub && typeof _switchMetaSub === "function") {
+        // Switch to the geo sub-tab whenever autofill just populated geographic
+        // fields — the most useful thing to show after a lat/lon edit is the
+        // updated choropleth.  Fall back to the previously-active sub-tab if
+        // the geo sub-tab is still disabled (e.g. no boundary data available).
+        const _geoSubBtn = document.querySelector('.meta-subtab[data-metasub="geo"]');
+        const _targetSub = _geoSubBtn && !_geoSubBtn.disabled ? "geo" : _activeMetaSub;
+        if (typeof _targetSub !== "undefined" && _targetSub && typeof _switchMetaSub === "function") {
           try {
-            _switchMetaSub(_activeMetaSub);
+            _switchMetaSub(_targetSub);
           } catch (e) {}
         }
         if (typeof _rebuildMapMarkers === "function") {
