@@ -116,8 +116,46 @@ def read_input_file(input_file):
     return pd.read_csv(input_file, sep='\t', header=None, names=["Acc", "Assembly", "Organism_Name", "Description"])
 
 def read_reference_file(ref_file):
-    # skip the first line for ref_file
-    return pd.read_csv(ref_file, sep='\t', skiprows=1)
+    """Read an NCBI assembly_summary_*.txt (refseq or genbank) robustly.
+
+    The file is strictly tab-delimited, but occasional rows contain a stray
+    extra (or missing) tab, so pandas' C parser aborts with e.g.
+    "Error tokenizing data. C error: Expected 38 fields ..., saw 39".
+    Fields such as asm_submitter also contain multiple consecutive spaces
+    (e.g. GCF_040364225.1's "... Evaluation  (NBRC).") which must never be
+    treated as delimiters.
+
+    Rather than drop the offending rows (which would silently lose
+    assemblies), parse manually: skip the leading comment line, take the
+    column names from the header line, then split every data line on tab
+    ONLY and pad/collapse each row to exactly the header width so the frame
+    is always rectangular and no accession is lost.
+    """
+    with open(ref_file, 'r', newline='') as fh:
+        # First line is a free-text comment ("# See ftp ..."); skip it,
+        # matching the previous skiprows=1 behaviour.
+        fh.readline()
+        header_line = fh.readline().rstrip('\r\n')
+        columns = header_line.split('\t')
+        ncol = len(columns)
+
+        rows = []
+        for line in fh:
+            if not line.strip():
+                continue
+            fields = line.rstrip('\r\n').split('\t')
+            if len(fields) < ncol:
+                # Missing trailing columns -> pad with empty strings.
+                fields = fields + [''] * (ncol - len(fields))
+            elif len(fields) > ncol:
+                # Surplus fields: keep the leading columns (which hold the
+                # accession/taxid/ftp values downstream needs) intact and
+                # fold the extras back into the final column so nothing is
+                # discarded.
+                fields = fields[:ncol - 1] + ['\t'.join(fields[ncol - 1:])]
+            rows.append(fields)
+
+    return pd.DataFrame(rows, columns=columns)
 
 def _clean_taxid(value):
     """Render a taxid as a clean string ('2697049' not '2697049.0', '' for NaN)."""

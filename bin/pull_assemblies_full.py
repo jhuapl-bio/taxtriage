@@ -13,7 +13,9 @@ def process_assembly_summary(filename):
             if line.startswith('#'):
                 continue  # Skip header lines
 
-            cols = line.strip().split('\t')
+            # Split strictly on tab (rstrip only the newline) so multi-space
+            # fields such as asm_submitter are not broken across columns.
+            cols = line.rstrip('\r\n').split('\t')
             taxid = cols[5]
             refseq_category = cols[4]
             assembly_level = cols[11]
@@ -42,7 +44,7 @@ def process_assembly_summary(filename):
 def download_files(output_lines, download_dir):
     downloaded_files = []
     for line in output_lines:
-        cols = line.strip().split('\t')
+        cols = line.rstrip('\r\n').split('\t')
         ftp_url = cols[19]
         taxid = cols[5]
         if ftp_url:

@@ -165,7 +165,10 @@ def main():
         for line in f:
             if line.startswith("#"):
                 continue
-            line = line.strip().split("\t")
+            # Strip only the line ending, then split strictly on tab so that
+            # fields containing multiple spaces (e.g. asm_submitter) are not
+            # broken across columns.
+            line = line.rstrip("\r\n").split("\t")
             gcf = line[0]
             url = line[19]
             taxid = line[5]

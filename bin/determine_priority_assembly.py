@@ -1,6 +1,8 @@
 import re
 def determine_priority_assembly(line):
-    cols = line.strip().split("\t")
+    # Strip only the line ending, then split strictly on tab so multi-space
+    # fields (e.g. asm_submitter) are not broken across columns.
+    cols = line.rstrip("\r\n").split("\t")
     if len(cols) > 7:
         name = cols[7]
         level = cols[4]
