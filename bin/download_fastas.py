@@ -257,8 +257,11 @@ def import_assembly_file(
                 continue
 
             for line in f:
-                line = line.strip()
-                if not line:
+                # Strip only the line ending (not spaces) so that multi-space
+                # fields such as asm_submitter are preserved, then split
+                # strictly on tab.
+                line = line.rstrip("\r\n")
+                if not line.strip():
                     continue
 
                 linesplit = line.split("\t")

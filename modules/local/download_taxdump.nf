@@ -33,6 +33,6 @@ process DOWNLOAD_TAXDUMP {
     script: // This script is bundled with the pipeline, in nf-core/taxtriage/bin/
     def url = 'https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz'
     """
-    wget $url -O taxdump.tar.gz && tar -xvzf  taxdump.tar.gz && rm taxdump.tar.gz
+    wget $url --no-check-certificate -O taxdump.tar.gz && tar -xvzf  taxdump.tar.gz && rm taxdump.tar.gz
     """
 }

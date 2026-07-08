@@ -95,8 +95,10 @@ def main():
         lines = assembly_file.readlines()
         for line in lines:
             if line.startswith("#"):
-                pass
-            cols = line.split("\t")
+                continue  # skip NCBI assembly_summary header/comment lines
+            # Split strictly on tab: fields such as asm_submitter may contain
+            # multiple consecutive spaces and must not be split on whitespace.
+            cols = line.rstrip("\r\n").split("\t")
             if len(cols) > 7:
                 name = cols[7]
                 strain = cols[8]

@@ -3,7 +3,9 @@ import os
 def read_file_1(file_path):
     """Reads the first file and extracts the 5th column."""
     with open(file_path, 'r') as file:
-        return {line.split()[4] for line in file}
+        # Split strictly on tab: these are tab-delimited files whose fields
+        # (e.g. organism / submitter names) may contain multiple spaces.
+        return {line.rstrip("\r\n").split("\t")[4] for line in file}
 
 def read_file_2(file_path):
     """Reads the second file and extracts the 2nd column (delimited by '|')."""
@@ -20,7 +22,14 @@ def read_file_3(file_path):
     id_to_url = {}
     with open(file_path, 'r') as file:
         for line in file:
-            parts = line.split()
+            if line.startswith("#"):
+                continue  # skip NCBI assembly_summary header/comment lines
+            # Split strictly on tab. Fields such as asm_submitter can contain
+            # multiple consecutive spaces (e.g. GCF_040364225.1's
+            # "Biological Resource Center, National Institute of Technology and
+            # Evaluation (NBRC).") which a generic whitespace split would
+            # wrongly treat as column delimiters and shift every column.
+            parts = line.rstrip("\r\n").split("\t")
             # if lengths of columns is greater than 18 then yield the 5th and 19th column
             if len(parts) > 20:
                 ftp_site = parts[20]
