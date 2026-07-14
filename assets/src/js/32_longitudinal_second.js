@@ -12,6 +12,29 @@
        -     errors when build is called during page bootstrap.
 ═══════════════════════════════════════════════════════════════════════════ */
 
+// ── Run-metadata table pagination state ──────────────────────────────
+// The metadata grid holds one row per sample; for large runs we page the
+// rows so the tab stays responsive. All rows stay in the DOM (so edit
+// indices, highlight-scroll and full-table export keep working) —
+// pagination only toggles per-row visibility.
+let _runmetaPage = 1;
+const _RUNMETA_PAGE_SIZE = 25;
+
+// Standard metadata columns always shown in the Run Metadata table, even
+// when the samplesheet supplied no value for any of them. This gives the
+// user empty, editable cells to fill in and guarantees the geo /
+// longitudinal / host sub-tabs have the fields they analyse.
+const _STANDARD_META_COLS = [
+  "sample_origin_country",
+  "sample_origin_state_province_territory",
+  "latitude",
+  "longitude",
+  "collection_time",
+  "host_scientific_name",
+  "host_disease",
+  "environmental_site",
+];
+
 function _parseLongiDate(s) {
   if (!s) return null;
   const str = String(s).trim();
@@ -739,12 +762,15 @@ function _wireRunMetaToolbar() {
       const raw = (window.prompt("New metadata column name (e.g. notes, collected_by):", "") || "").trim();
       if (!raw) return;
       const key = raw.toLowerCase().replace(/\s+/g, "_");
-      const exists = RUN_META.some((r) => key in r) || TT_ANNOT.metaCols.includes(key);
+      const _isHidden = (TT_ANNOT.hiddenCols || []).includes(key);
+      const exists = !_isHidden && (RUN_META.some((r) => key in r) || TT_ANNOT.metaCols.includes(key));
       if (exists) {
         alert("A metadata column “" + raw + "” already exists.");
         return;
       }
-      TT_ANNOT.metaCols.push(key);
+      // Re-adding a previously removed column simply un-hides it.
+      if (_isHidden) TT_ANNOT.hiddenCols = TT_ANNOT.hiddenCols.filter((k) => k !== key);
+      if (!TT_ANNOT.metaCols.includes(key)) TT_ANNOT.metaCols.push(key);
       if (RUN_META.length === 0) _ttSeedMetaRowsForAllSamples();
       // Ensure the key is present on records so the column renders.
       RUN_META.forEach((r) => {
@@ -770,7 +796,14 @@ function _wireRunMetaToolbar() {
         alert("No metadata to export yet. Add rows / columns first.");
         return;
       }
-      if (typeof _openTableExport === "function") _openTableExport(tbl);
+      // Pagination hides off-page rows with display:none, which the table
+      // exporter skips. Clone the table with every row made visible so the
+      // export always contains all samples, not just the current page.
+      const exportTbl = tbl.cloneNode(true);
+      exportTbl.querySelectorAll("tr").forEach((tr) => (tr.style.display = ""));
+      // Drop the header ✕ remove buttons so they don't leak into column names.
+      exportTbl.querySelectorAll(".runmeta-col-remove").forEach((el) => el.remove());
+      if (typeof _openTableExport === "function") _openTableExport(exportTbl);
     });
 }
 
@@ -783,6 +816,11 @@ function _buildRunMetaTable() {
   if (!RUN_META || RUN_META.length === 0) {
     if (hdrRow) hdrRow.innerHTML = "";
     if (tbody) tbody.innerHTML = "";
+    const pager = document.getElementById("runmeta-pager");
+    if (pager) {
+      pager.innerHTML = "";
+      pager.style.display = "none";
+    }
     return;
   }
   if (!hdrRow || !tbody) return;
@@ -796,6 +834,10 @@ function _buildRunMetaTable() {
   );
   // Always surface user-added metadata columns, even if still empty.
   TT_ANNOT.metaCols.forEach((k) => keySet.add(k));
+  // Always surface the standard metadata columns (country, lat/long,
+  // collection_time, host / disease, …) even when the samplesheet supplied
+  // none of them, so users have empty cells to fill in.
+  _STANDARD_META_COLS.forEach((k) => keySet.add(k));
   // Preferred order for known fields, then any extras alphabetically
   const KNOWN_ORDER = [
     "run_id",
@@ -824,25 +866,49 @@ function _buildRunMetaTable() {
     ...[...keySet].filter((k) => !KNOWN_ORDER.includes(k)).sort(),
   ];
   // Only show columns that have at least one non-null value — EXCEPT the
-  // sample_name key and any user-added columns (TT_ANNOT.metaCols), which
-  // are always shown so the user has empty cells to type into.
-  const _alwaysShow = new Set(["sample_name", ...TT_ANNOT.metaCols]);
+  // sample_name key, the standard metadata columns, and any user-added
+  // columns (TT_ANNOT.metaCols), which are always shown so the user has
+  // empty cells to type into.
+  const _alwaysShow = new Set(["sample_name", ..._STANDARD_META_COLS, ...TT_ANNOT.metaCols]);
+  const _hidden = new Set(TT_ANNOT.hiddenCols || []);
   const activeCols = ordered.filter(
     (k) =>
-      _alwaysShow.has(k) ||
-      RUN_META.some((r) => {
-        const _v = r[k];
-        return _v != null && _v !== "" && (Array.isArray(_v) || typeof _v !== "object");
-      }),
+      // sample_name is never removable; every other column can be hidden
+      // via the header ✕ (stored in TT_ANNOT.hiddenCols).
+      (k === "sample_name" || !_hidden.has(k)) &&
+      (_alwaysShow.has(k) ||
+        RUN_META.some((r) => {
+          const _v = r[k];
+          return _v != null && _v !== "" && (Array.isArray(_v) || typeof _v !== "object");
+        })),
   );
   hdrRow.innerHTML = activeCols
-    .map(
-      (k) =>
-        `<th style="background:#1565C0;color:#fff;padding:6px 10px;text-align:left;white-space:nowrap;font-weight:600">${_metaKeyLabel(
-          k,
-        )}</th>`,
-    )
+    .map((k) => {
+      // Every column except the sample_name key gets a ✕ to remove it.
+      const removeBtn =
+        k !== "sample_name"
+          ? `<span class="runmeta-col-remove" data-col="${k}" title="Remove this column" role="button" tabindex="0">&times;</span>`
+          : "";
+      return `<th style="background:#1565C0;color:#fff;padding:6px 10px;text-align:left;white-space:nowrap;font-weight:600"><span class="runmeta-col-label">${_metaKeyLabel(
+        k,
+      )}</span>${removeBtn}</th>`;
+    })
     .join("");
+
+  // Wire the per-column remove (✕) buttons.
+  hdrRow.querySelectorAll(".runmeta-col-remove").forEach((el) => {
+    const _do = () => _ttRemoveMetaColumn(el.dataset.col);
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _do();
+    });
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        _do();
+      }
+    });
+  });
 
   tbody.innerHTML = RUN_META.map((rec, i) => {
     const isHighlighted = rec.sample_name === _runmetaHighlightSample;
@@ -886,9 +952,116 @@ function _buildRunMetaTable() {
     });
   });
 
+  // ── Pagination ──────────────────────────────────────────────────────
+  // If a sample is highlighted, jump to the page that contains it so the
+  // scroll-into-view below lands on a visible row.
+  if (_runmetaHighlightSample) {
+    const _hi = RUN_META.findIndex((r) => r.sample_name === _runmetaHighlightSample);
+    if (_hi >= 0) _runmetaPage = Math.floor(_hi / _RUNMETA_PAGE_SIZE) + 1;
+  }
+  _applyRunMetaPage();
+
   // Scroll highlighted row into view
   if (_runmetaHighlightSample) {
     const row = document.getElementById(`runmeta-row-${CSS.escape(_runmetaHighlightSample)}`);
     if (row) setTimeout(() => row.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
   }
+
+  // Point the user at the "Rows for all samples" button whenever some
+  // samples still have no metadata row.
+  _updateRunMetaAddRowsHint();
+}
+
+// Count samples in DATA that don't yet have a metadata row (non-mutating).
+function _runMetaMissingSampleCount() {
+  const have = new Set((RUN_META || []).map((r) => r.sample_name));
+  const ids = (typeof uniq === "function" ? uniq((DATA || []).map((r) => r["Specimen ID"] || "")) : []).filter(Boolean);
+  return ids.reduce((n, id) => (have.has(id) ? n : n + 1), 0);
+}
+
+// Pulse-highlight the "Rows for all samples" button (and show a callout)
+// when one or more samples are missing a metadata row. Clears once every
+// sample has a row.
+function _updateRunMetaAddRowsHint() {
+  const btn = document.getElementById("runmeta-add-rows");
+  const hint = document.getElementById("runmeta-add-rows-hint");
+  const missing = _runMetaMissingSampleCount();
+  if (btn) btn.classList.toggle("runmeta-pulse", missing > 0);
+  if (hint) {
+    hint.style.display = missing > 0 ? "inline-flex" : "none";
+    if (missing > 0) {
+      hint.querySelector("span").textContent = `${missing} sample${
+        missing === 1 ? "" : "s"
+      } missing a row — click to add`;
+    }
+  }
+}
+
+// Remove (hide) a metadata column from the table. sample_name can't be
+// removed. User-added columns are also dropped from TT_ANNOT.metaCols.
+function _ttRemoveMetaColumn(key) {
+  if (!key || key === "sample_name") return;
+  const label = typeof _metaKeyLabel === "function" ? _metaKeyLabel(key) : key;
+  if (!window.confirm(`Remove the “${label}” column from the metadata table?`)) return;
+  TT_ANNOT.hiddenCols = TT_ANNOT.hiddenCols || [];
+  if (!TT_ANNOT.hiddenCols.includes(key)) TT_ANNOT.hiddenCols.push(key);
+  // Drop from user-added columns so it isn't re-surfaced as always-shown.
+  TT_ANNOT.metaCols = (TT_ANNOT.metaCols || []).filter((k) => k !== key);
+  _buildRunMetaTable();
+}
+
+// Show only the current page of metadata rows and (re)render the pager.
+// All rows remain in the DOM; off-page rows are simply hidden.
+function _applyRunMetaPage() {
+  const tbody = document.getElementById("runmeta-body");
+  if (!tbody) return;
+  const rows = Array.from(tbody.children);
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / _RUNMETA_PAGE_SIZE));
+  if (_runmetaPage > totalPages) _runmetaPage = totalPages;
+  if (_runmetaPage < 1) _runmetaPage = 1;
+  const start = (_runmetaPage - 1) * _RUNMETA_PAGE_SIZE;
+  const end = start + _RUNMETA_PAGE_SIZE;
+  rows.forEach((tr, i) => {
+    tr.style.display = i >= start && i < end ? "" : "none";
+  });
+  _renderRunMetaPager(total, totalPages, start, end);
+}
+
+// Navigate to a specific page of the metadata table.
+function _gotoRunMetaPage(n) {
+  _runmetaPage = n;
+  _applyRunMetaPage();
+}
+
+// Build the pager control below the metadata table. Hidden when a single
+// page holds every row.
+function _renderRunMetaPager(total, totalPages, start, end) {
+  const pager = document.getElementById("runmeta-pager");
+  if (!pager) return;
+  if (total <= _RUNMETA_PAGE_SIZE) {
+    pager.innerHTML = "";
+    pager.style.display = "none";
+    return;
+  }
+  pager.style.display = "flex";
+  const shownFrom = start + 1;
+  const shownTo = Math.min(end, total);
+  const btn = (label, page, disabled, title) =>
+    `<button type="button" class="runmeta-page-btn" data-page="${page}"${disabled ? " disabled" : ""}${
+      title ? ` title="${title}"` : ""
+    }>${label}</button>`;
+  pager.innerHTML =
+    `<span style="color:#555;margin-right:auto">Showing ${shownFrom}–${shownTo} of ${total} samples</span>` +
+    btn('<i class="fas fa-angle-double-left"></i>', 1, _runmetaPage === 1, "First page") +
+    btn('<i class="fas fa-angle-left"></i>', _runmetaPage - 1, _runmetaPage === 1, "Previous page") +
+    `<span style="padding:0 0.6em;color:#333">Page ${_runmetaPage} / ${totalPages}</span>` +
+    btn('<i class="fas fa-angle-right"></i>', _runmetaPage + 1, _runmetaPage === totalPages, "Next page") +
+    btn('<i class="fas fa-angle-double-right"></i>', totalPages, _runmetaPage === totalPages, "Last page");
+  pager.querySelectorAll(".runmeta-page-btn").forEach((b) => {
+    b.addEventListener("click", () => {
+      const p = parseInt(b.dataset.page, 10);
+      if (!isNaN(p)) _gotoRunMetaPage(p);
+    });
+  });
 }

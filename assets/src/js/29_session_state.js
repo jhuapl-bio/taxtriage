@@ -72,6 +72,7 @@
     TT_ANNOT.rowCols = Array.isArray(_ann.rowCols) ? _ann.rowCols : [];
     TT_ANNOT.rowData = _ann.rowData && typeof _ann.rowData === "object" ? _ann.rowData : {};
     TT_ANNOT.metaCols = Array.isArray(_ann.metaCols) ? _ann.metaCols : [];
+    TT_ANNOT.hiddenCols = Array.isArray(_ann.hiddenCols) ? _ann.hiddenCols : [];
 
     // Full-replace SAMPLE_META *up front* — before clearUploadedData()'s
     // redraw — so the summary KPIs (% Classified, Total Reads, which read
@@ -181,6 +182,7 @@
           rowCols: TT_ANNOT.rowCols.slice(),
           rowData: TT_ANNOT.rowData,
           metaCols: TT_ANNOT.metaCols.slice(),
+          hiddenCols: (TT_ANNOT.hiddenCols || []).slice(),
         },
       };
       var state = {

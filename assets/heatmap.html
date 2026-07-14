@@ -2025,6 +2025,10 @@
             >
               <i class="fas fa-table-list"></i> Rows for all samples
             </button>
+            <span id="runmeta-add-rows-hint" class="runmeta-add-rows-hint" style="display: none">
+              <i class="fas fa-arrow-left"></i>
+              <span>Click to add rows for all samples</span>
+            </span>
             <button
               id="runmeta-fill-geo"
               type="button"
@@ -2053,6 +2057,11 @@
               <tbody id="runmeta-body"></tbody>
             </table>
           </div>
+          <!-- ── Metadata table pager (populated by _renderRunMetaPager) ── -->
+          <div
+            id="runmeta-pager"
+            style="display: none; align-items: center; gap: 0.35em; margin: 0.5em 0 0; font-size: 0.82em"
+          ></div>
 
           <!-- ── Analysis sub-tabs ── -->
           <div id="meta-subtabs">

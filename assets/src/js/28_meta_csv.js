@@ -274,6 +274,11 @@ function __ttRunInit() {
   redraw();
 
   // ── Build Run Metadata table + initialize sub-tab states on load
+  // Seed an editable metadata row for every sample by default so the table
+  // is populated on load even when the samplesheet supplied no metadata.
+  // Only adds rows for samples that don't already have one (existing
+  // metadata is preserved).
+  if (typeof _ttSeedMetaRowsForAllSamples === "function") _ttSeedMetaRowsForAllSamples();
   _buildRunMetaTable();
   if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
   // Auto-fill country / state / location from coordinates for any samples

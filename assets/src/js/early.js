@@ -172,8 +172,9 @@ const TT_ANNOT =
         rowCols: BOOT.annotations.rowCols || [],
         rowData: BOOT.annotations.rowData || {},
         metaCols: BOOT.annotations.metaCols || [],
+        hiddenCols: BOOT.annotations.hiddenCols || [],
       }
-    : { rowCols: [], rowData: {}, metaCols: [] };
+    : { rowCols: [], rowData: {}, metaCols: [], hiddenCols: [] };
 
 // Mirror stored row annotations back onto the live DATA rows so that the
 // existing sort / filter / DOM-based table export paths see them as plain
