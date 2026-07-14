@@ -157,7 +157,8 @@ workflow  REFERENCE_PREP {
             ch_to_download.map {
                 meta, report ->  return [ meta, report ]
             },
-            ch_assembly_txt
+            ch_assembly_txt,
+            ch_pathogens_file.first()
         )
 
         if (params.use_bt2) {
