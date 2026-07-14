@@ -122,9 +122,9 @@ function _addMapClusterControl() {
         '<label style="display:block;cursor:pointer"><input type="radio" name="tt-cluster-mode" value="list" checked> List samples</label>' +
         '<label style="display:block;cursor:pointer"><input type="radio" name="tt-cluster-mode" value="expand"> Zoom / expand</label>';
       L.DomEvent.disableClickPropagation(div);
-      div.querySelectorAll('input[name="tt-cluster-mode"]').forEach((el) =>
-        el.addEventListener("change", (e) => _setMapClusterMode(e.target.value)),
-      );
+      div
+        .querySelectorAll('input[name="tt-cluster-mode"]')
+        .forEach((el) => el.addEventListener("change", (e) => _setMapClusterMode(e.target.value)));
       return div;
     },
   });

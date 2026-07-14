@@ -2300,50 +2300,53 @@
                   id="geo-precise-no-data"
                   style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
                 >
-                  <i class="fas fa-map-location-dot" style="font-size: 1.6em; display: block; margin-bottom: 0.4em; opacity: 0.4"></i>
-                  No <code>latitude</code> / <code>longitude</code> in the visible samples. Add coordinate columns in the
-                  table above (or switch the Level to Country / State) to map your samples.
+                  <i
+                    class="fas fa-map-location-dot"
+                    style="font-size: 1.6em; display: block; margin-bottom: 0.4em; opacity: 0.4"
+                  ></i>
+                  No <code>latitude</code> / <code>longitude</code> in the visible samples. Add coordinate columns in
+                  the table above (or switch the Level to Country / State) to map your samples.
                 </div>
               </div>
 
               <!-- ── Aggregated (country / state) choropleth view ── -->
               <div id="geo-agg-wrap" style="display: none">
-              <!-- Large choropleth with a collapsible ranked-bar overlay -->
-              <div id="geo-map-wrap">
-                <svg id="geo-map-svg"></svg>
-                <div id="geo-map-status">Open this tab to load the map…</div>
-                <button type="button" id="geo-back" style="display: none">
-                  <i class="fas fa-arrow-left"></i> Back to countries
-                </button>
-                <div class="geo-overlay collapsed" id="geo-overlay">
-                  <div class="geo-overlay-head" id="geo-overlay-toggle" title="Show / hide ranked list">
-                    <span
-                      ><i class="fas fa-ranking-star"></i> Ranked
-                      <span id="geo-overlay-level-lbl">Countries</span></span
-                    >
-                    <i class="fas fa-chevron-down"></i>
+                <!-- Large choropleth with a collapsible ranked-bar overlay -->
+                <div id="geo-map-wrap">
+                  <svg id="geo-map-svg"></svg>
+                  <div id="geo-map-status">Open this tab to load the map…</div>
+                  <button type="button" id="geo-back" style="display: none">
+                    <i class="fas fa-arrow-left"></i> Back to countries
+                  </button>
+                  <div class="geo-overlay collapsed" id="geo-overlay">
+                    <div class="geo-overlay-head" id="geo-overlay-toggle" title="Show / hide ranked list">
+                      <span
+                        ><i class="fas fa-ranking-star"></i> Ranked
+                        <span id="geo-overlay-level-lbl">Countries</span></span
+                      >
+                      <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="geo-overlay-body" id="geo-overlay-body">
+                      <div id="geo-cmp-chart" style="position: relative; overflow: visible"></div>
+                    </div>
+                    <div class="geo-overlay-grip" id="geo-overlay-grip" title="Drag to resize"></div>
                   </div>
-                  <div class="geo-overlay-body" id="geo-overlay-body">
-                    <div id="geo-cmp-chart" style="position: relative; overflow: visible"></div>
-                  </div>
-                  <div class="geo-overlay-grip" id="geo-overlay-grip" title="Drag to resize"></div>
+                  <div class="geo-legend" id="geo-legend" style="display: none"></div>
                 </div>
-                <div class="geo-legend" id="geo-legend" style="display: none"></div>
-              </div>
-              <div
-                id="geo-cmp-no-data"
-                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
-              >
-                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
-                No country / state metadata in the visible samples.
-              </div>
-              <div style="font-size: 0.74em; color: #9aa6b4; margin-top: 0.5em">
-                <i class="fas fa-circle-info" style="margin-right: 0.3em"></i>
-                Regions are shaded by the selected metric. Hover a country to see its state / territory breakdown. Click
-                a country to drill into its states; <b>Shift-click</b> (or right-click) any region to <b>pin</b> it and
-                see a full info table in the ranked panel. Boundary outlines load from a public map CDN; if offline, the
-                ranked list still works.
-              </div>
+                <div
+                  id="geo-cmp-no-data"
+                  style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+                >
+                  <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                  No country / state metadata in the visible samples.
+                </div>
+                <div style="font-size: 0.74em; color: #9aa6b4; margin-top: 0.5em">
+                  <i class="fas fa-circle-info" style="margin-right: 0.3em"></i>
+                  Regions are shaded by the selected metric. Hover a country to see its state / territory breakdown.
+                  Click a country to drill into its states; <b>Shift-click</b> (or right-click) any region to
+                  <b>pin</b> it and see a full info table in the ranked panel. Boundary outlines load from a public map
+                  CDN; if offline, the ranked list still works.
+                </div>
               </div>
               <!-- /geo-agg-wrap -->
             </div>
