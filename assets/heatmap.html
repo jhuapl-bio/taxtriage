@@ -13,6 +13,10 @@
     <!-- Leaflet (CARTO Voyager tiles — no Referer restrictions) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet.markercluster — zoom-based clustering: overlapping sample dots
+         merge into a numbered bubble that separates again as you zoom in. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <link rel="stylesheet" href="src/css/geo.css" data-style-id="geo-host-extra-css" />
     <!-- <script src="pages.js"></script> -->
     <!-- <script src="heatmap_boot.js"></script> -->
@@ -126,20 +130,12 @@
       </button>
       <button class="tab-btn" data-tab="table"><i class="fas fa-table"></i> Table</button>
       <button
-        class="tab-btn tab-optional hidden"
-        id="map-tab-btn"
-        data-tab="map"
-        title="Sample collection map. Enabled when samples carry latitude/longitude metadata."
-      >
-        <i class="fas fa-map-location-dot"></i> Map
-      </button>
-      <button
-        class="tab-btn tab-optional hidden"
+        class="tab-btn"
         id="runmeta-tab-btn"
         data-tab="runmeta"
-        title="Per-sample run metadata. Available whenever samples or metadata are present."
+        title="Per-sample metadata and mapping. Add latitude/longitude or country/state here to plot samples."
       >
-        <i class="fas fa-tags"></i> Run Metadata
+        <i class="fas fa-map-location-dot"></i> Metadata &amp; Mapping
       </button>
     </div>
 
@@ -1728,23 +1724,10 @@
           </div>
         </div>
 
-        <!-- MAP PANE -->
-        <div class="pane" id="pane-map">
-          <div class="optional-hint">
-            <i class="fas fa-circle-info"></i>
-            <span
-              ><strong>Optional tab.</strong> This view appears when samples carry <code>latitude</code> /
-              <code>longitude</code> values. Add them as metadata columns in your samplesheet — or in the
-              <strong>Run Metadata</strong> tab — to plot collection sites.</span
-            >
-          </div>
-          <div class="chart-wrap" style="padding-bottom: 0.5em">
-            <div class="chart-title"><i class="fas fa-map-location-dot"></i> Sample Collection Map</div>
-            <p style="margin: 0 0 0.3em; font-size: 0.85em; color: #555">
-              Sample locations plotted from latitude / longitude metadata. Click a marker to view organisms for that
-              sample (respects active sidebar filters).
-            </p>
-          </div>
+        <!-- MAP HOST — hidden container. #map-split below is moved at runtime
+             into the "Precise (lat/long)" view of the Mapping & Geography
+             sub-tab (see _ensureMapInPreciseWrap in the map JS). -->
+        <div id="map-host" style="display: none">
           <!-- map-split: map + resize-handle + side panel -->
           <div id="map-split" style="display: flex; height: 560px; position: relative; overflow: hidden">
             <!-- map fills all space; panel shares space when open -->
@@ -2077,7 +2060,7 @@
               <i class="fas fa-chart-line"></i> Longitudinal Analysis
             </button>
             <button class="meta-subtab" data-metasub="geo">
-              <i class="fas fa-earth-americas"></i> Geographic Comparison
+              <i class="fas fa-earth-americas"></i> Mapping &amp; Geography
             </button>
             <button class="meta-subtab" data-metasub="host">
               <i class="fas fa-virus-covid"></i> Host &amp; Disease
@@ -2260,10 +2243,12 @@
             </div>
             <div id="geo-cmp-section">
               <div class="chart-title" style="margin-bottom: 0.35em">
-                <i class="fas fa-earth-americas"></i> Geographic Comparison
+                <i class="fas fa-earth-americas"></i> Mapping &amp; Geography
               </div>
               <div style="font-size: 0.8em; color: #777; margin-bottom: 0.9em">
-                Aggregate the visible detections across samples by country or state / province / territory.
+                Plot samples at their precise coordinates, or aggregate the visible detections by country or state /
+                province / territory. Add <code>latitude</code> / <code>longitude</code> or
+                <code>sample_origin_country</code> / <code>…state…</code> in the table above to populate this view.
               </div>
               <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
                 <div style="display: flex; flex-direction: column; gap: 0.3em">
@@ -2278,13 +2263,12 @@
                       background: #fff;
                     "
                   >
-                    <option value="sample_origin_state_province_territory" selected>
-                      State / Province / Territory
-                    </option>
+                    <option value="precise" selected>Precise (lat/long)</option>
                     <option value="sample_origin_country">Country</option>
+                    <option value="sample_origin_state_province_territory">State / Province / Territory</option>
                   </select>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 0.3em">
+                <div id="geo-metric-field" style="display: flex; flex-direction: column; gap: 0.3em">
                   <label style="font-size: 0.81em; font-weight: 600; color: #555">Metric</label>
                   <select
                     id="geo-cmp-metric"
@@ -2303,6 +2287,27 @@
                   </select>
                 </div>
               </div>
+
+              <!-- ── Precise (lat/long) view — the per-sample Leaflet map is
+                   moved here at runtime from #map-host. ── -->
+              <div id="geo-precise-wrap">
+                <p style="margin: 0 0 0.5em; font-size: 0.85em; color: #555">
+                  Sample locations plotted from latitude / longitude metadata. Click a marker (or a cluster) to view
+                  organisms for those samples — respects active sidebar filters.
+                </p>
+                <div id="geo-precise-slot"></div>
+                <div
+                  id="geo-precise-no-data"
+                  style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+                >
+                  <i class="fas fa-map-location-dot" style="font-size: 1.6em; display: block; margin-bottom: 0.4em; opacity: 0.4"></i>
+                  No <code>latitude</code> / <code>longitude</code> in the visible samples. Add coordinate columns in the
+                  table above (or switch the Level to Country / State) to map your samples.
+                </div>
+              </div>
+
+              <!-- ── Aggregated (country / state) choropleth view ── -->
+              <div id="geo-agg-wrap" style="display: none">
               <!-- Large choropleth with a collapsible ranked-bar overlay -->
               <div id="geo-map-wrap">
                 <svg id="geo-map-svg"></svg>
@@ -2339,6 +2344,8 @@
                 see a full info table in the ranked panel. Boundary outlines load from a public map CDN; if offline, the
                 ranked list still works.
               </div>
+              </div>
+              <!-- /geo-agg-wrap -->
             </div>
           </div>
           <!-- /meta-subpane-geo -->

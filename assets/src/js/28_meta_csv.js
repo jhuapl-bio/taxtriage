@@ -84,75 +84,18 @@
       });
     }
 
-    // Recompute HAS_GEO and update tab visibility
-    const hasGeo = RUN_META.some((r) => r.latitude != null && r.longitude != null);
-    const mapBtn = document.getElementById("map-tab-btn");
+    // The Metadata & Mapping tab is always available now; just keep it shown.
     const rmBtn = document.getElementById("runmeta-tab-btn");
-    if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
-    const _rmHasSamples = (DATA || []).some((r) => r["Specimen ID"]);
-    if (rmBtn) rmBtn.classList.toggle("hidden", RUN_META.length === 0 && !_rmHasSamples);
+    if (rmBtn) rmBtn.classList.remove("hidden");
 
     // Rebuild metadata table + update sub-tab enabled states
     _buildRunMetaTable();
     if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
 
-    // Rebuild / refresh map if it was already initialized
-    if (_leafletMap) {
-      _markerLayer && _markerLayer.clearLayers();
-      _markerObjects = {};
-      _selectedSample = null;
-      closeMapPanel();
-      // Re-add markers
-      const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
-      const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
-      sampleNames.forEach((n, i) => {
-        if (!sampleColors[n]) sampleColors[n] = PALETTE[i % PALETTE.length];
-      });
-      const bounds = [];
-      const _lg = {};
-      geoRows.forEach((rec) => {
-        const lat = parseFloat(rec.latitude),
-          lon = parseFloat(rec.longitude);
-        if (isNaN(lat) || isNaN(lon)) return;
-        const k = `${lat.toFixed(3)}_${lon.toFixed(3)}`;
-        if (!_lg[k]) _lg[k] = { lat, lon, recs: [] };
-        _lg[k].recs.push(rec);
-      });
-      Object.entries(_lg).forEach(([locKey, grp]) => {
-        const { lat, lon, recs } = grp;
-        const isSingle = recs.length === 1;
-        const colors = recs.map((r) => sampleColors[r.sample_name] || "#1565C0");
-        const mk = L.marker([lat, lon], { icon: isSingle ? _svgDot(colors[0], false) : _pieSvg(colors, false) });
-        mk.on("click", () => {
-          Object.values(_markerObjects).forEach((obj) => {
-            if (!obj.marker) return;
-            if (obj.recs && obj.recs.length > 1) {
-              obj.marker.setIcon(
-                _pieSvg(
-                  obj.recs.map((r) => sampleColors[r.sample_name] || "#1565C0"),
-                  false,
-                ),
-              );
-            } else {
-              obj.marker.setIcon(_svgDot(obj.color || "#1565C0", false));
-            }
-          });
-          _selectedSample = recs[0].sample_name;
-          mk.setIcon(isSingle ? _svgDot(colors[0], true) : _pieSvg(colors, true));
-          _renderMapGroupPanel(recs);
-        });
-        mk.addTo(_markerLayer);
-        _markerObjects[locKey] = { marker: mk, recs, color: colors[0] };
-        if (isSingle) _markerObjects[recs[0].sample_name] = _markerObjects[locKey];
-        bounds.push([lat, lon]);
-      });
-      if (bounds.length > 0) {
-        _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
-      }
-      setTimeout(() => _leafletMap.invalidateSize(), 50);
-    } else if (hasGeo) {
-      // Map tab is now visible but not yet initialized — will init on tab click
-    }
+    // Rebuild the map markers if the map was already initialized, then refresh
+    // the precise-map view (in the Mapping & Geography sub-tab) if it's open.
+    if (_leafletMap && typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+    if (typeof _geoRedraw === "function") _geoRedraw();
   };
 
   // ── Status helpers ────────────────────────────────────────────────────
@@ -317,17 +260,11 @@ function __ttRunInit() {
   const noveltyBtn = document.getElementById("novelty-tab-btn");
   if (noveltyBtn) noveltyBtn.classList.toggle("hidden", !HAS_NOVELTY);
 
-  // Show Map / Run Metadata tabs — always derived from live RUN_META, never from
-  // the stale HAS_GEO constant, so real reports without metadata stay hidden.
-  const mapBtn = document.getElementById("map-tab-btn");
+  // The Metadata & Mapping tab is ALWAYS available so users can add metadata
+  // (including latitude / longitude or country / state) directly in the report
+  // even when none was supplied via the samplesheet / CSV.
   const runmetaBtn = document.getElementById("runmeta-tab-btn");
-  const _initHasGeo = RUN_META.some((r) => r.latitude != null && r.longitude != null);
-  if (mapBtn) mapBtn.classList.toggle("hidden", !_initHasGeo);
-  // Run Metadata tab is available whenever there are samples (or metadata),
-  // so users can add metadata directly in the report even when none was
-  // supplied via the samplesheet / CSV.
-  const _hasSamples = (DATA || []).some((r) => r["Specimen ID"]);
-  if (runmetaBtn) runmetaBtn.classList.toggle("hidden", RUN_META.length === 0 && !_hasSamples);
+  if (runmetaBtn) runmetaBtn.classList.remove("hidden");
 
   buildHmValueSel();
   buildSampleList();

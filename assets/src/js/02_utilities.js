@@ -290,6 +290,55 @@ function num(v) {
   return isNaN(n) ? 0 : n;
 }
 
+/* ── Sample-name display helpers ─────────────────────────────────────
+   Large runs (e.g. 100 samples) or long names blow out the map panel,
+   metadata table and chart labels. These helpers derive a character cap
+   from BOTH the number of samples and the longest name actually present,
+   then truncate to that cap with an ellipsis so callers can show the full
+   name in a hover tooltip. Short-name runs are never truncated because the
+   cap is clamped to the longest name that exists. */
+
+// Longest sample-name length currently in the run (cheap; recomputed on call
+// so it stays correct after renames / uploads without extra invalidation).
+function _maxSampleNameLen() {
+  let m = 0;
+  try {
+    _allSampleIds().forEach((n) => {
+      const l = String(n).length;
+      if (l > m) m = l;
+    });
+  } catch (e) {}
+  return m;
+}
+
+// Character cap that shrinks as the run grows so dense views stay legible,
+// but never below the longest name present (so a run of short names is left
+// untouched). `count` optionally overrides the global sample count for a
+// local context (e.g. the number of samples in one map cluster).
+function _sampleNameCap(count) {
+  let n = count;
+  if (n == null) {
+    try {
+      n = _allSampleIds().length;
+    } catch (e) {
+      n = 0;
+    }
+  }
+  const base = n > 60 ? 14 : n > 30 ? 18 : n > 12 ? 26 : 40;
+  // If every name already fits within `base`, return the true longest length
+  // so nothing is ever truncated in short-name runs. Otherwise use `base`.
+  const longest = _maxSampleNameLen();
+  return longest > 0 && longest <= base ? longest : base;
+}
+
+// Truncate `name` to `cap` chars (default: the adaptive global cap), adding
+// a middle-dot ellipsis. Callers should render the full name in a tooltip.
+function _truncSampleName(name, cap) {
+  const s = String(name == null ? "" : name);
+  const c = cap != null ? cap : _sampleNameCap();
+  return s.length > c ? s.slice(0, Math.max(1, c - 1)) + "…" : s;
+}
+
 let tooltipsEnabled = true;
 
 const tooltip = document.getElementById("tooltip");

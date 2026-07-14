@@ -596,7 +596,11 @@ function _drawLongitudinalPlot() {
     }
   }
 
-  g.selectAll(".longi-lbl-sample")
+  // Cap label length by how many labels we're drawing (denser runs → shorter
+  // labels). Full sample name is available via the <title> tooltip below.
+  const _lblCap = Math.min(16, _sampleNameCap(lblData.length));
+  const _lbl = g
+    .selectAll(".longi-lbl-sample")
     .data(lblData)
     .enter()
     .append("text")
@@ -605,6 +609,10 @@ function _drawLongitudinalPlot() {
     .attr("text-anchor", "middle")
     .style("font-size", "0.66em")
     .style("fill", "#455a64")
-    .style("pointer-events", "none")
-    .text((d) => (d.sample.length > 16 ? d.sample.slice(0, 15) + "…" : d.sample));
+    // Allow hover so the <title> tooltip below can surface the full name;
+    // labels sit above the dots so this rarely intercepts dot hovers.
+    .style("cursor", "default")
+    .text((d) => _truncSampleName(d.sample, _lblCap));
+  // Native SVG tooltip so the full name is recoverable on hover.
+  _lbl.append("title").text((d) => d.sample);
 }

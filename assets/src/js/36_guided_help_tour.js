@@ -234,19 +234,11 @@
       ],
     },
     {
-      tab: "map",
-      icon: "fa-map-location-dot",
-      title: "Map",
-      fig: FIG.map,
-      desc: "Plots samples geographically when location metadata is supplied — useful for surveillance and tracking spread across sites.",
-      tips: ["Appears once samples carry latitude/longitude metadata.", "Click a pin to focus that sample."],
-    },
-    {
       tab: "runmeta",
-      icon: "fa-tags",
-      title: "Run Metadata",
+      icon: "fa-map-location-dot",
+      title: "Metadata & Mapping",
       fig: FIG.runmeta,
-      desc: "Per-sample run details — type, platform and any uploaded metadata fields — collected in one table for provenance and QC.",
+      desc: "Per-sample run details plus mapping — type, platform and any uploaded metadata fields in one editable table, and a Mapping & Geography sub-tab that plots samples at their precise coordinates or aggregated by country / state.",
       tips: [
         "The View button on a sample jumps straight here and highlights its row.",
         "Upload a metadata CSV to enrich these fields.",
