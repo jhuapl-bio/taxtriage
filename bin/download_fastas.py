@@ -178,6 +178,34 @@ def parse_args(argv=None):
         type=Path,
         help="Name of the output FASTA file to put all fasta references into",
     )
+    parser.add_argument(
+        "--accession_col",
+        type=int,
+        default=None,
+        help="1-based column in the input file holding a specific assembly accession "
+             "(e.g. GCF_000002415.2) to use FIRST for each row. When set, the row is "
+             "resolved by matching this accession against column --assembly_map_idx of "
+             "the local assembly summary; if empty or not found it falls back to taxid "
+             "matching. Starts at 1st index.",
+    )
+    parser.add_argument(
+        "--accession_map",
+        type=Path,
+        default=None,
+        help="Optional CSV (e.g. assets/pathogen_sheet.csv) with 'taxid' and "
+             "'assembly_accession' columns (and optionally 'name'). Provides a "
+             "curated taxid/name -> assembly accession lookup used FIRST for each "
+             "input entry, before falling back to local taxid matching. Complements "
+             "--accession_col.",
+    )
+    parser.add_argument(
+        "--ncbi_fallback",
+        action='store_true',
+        default=False,
+        help="For entries not resolved by the local assembly summary, query NCBI Entrez "
+             "(by accession first, then by taxid) to find and download an assembly. "
+             "Recommended to also pass -e/--email.",
+    )
 
     return parser.parse_args(argv)
 
@@ -212,9 +240,24 @@ def import_assembly_file(
     index_ftp,
     missingfile=None,
     skip_incomplete=False,
+    requested_accessions=None,
+    taxid_to_accession=None,
 ):
-    assemblies = {}
-    first = {}
+    """Resolve each input taxid to an assembly using the local assembly summary.
+
+    Resolution order per input entry (accession-first):
+      1. If the entry has a specific assembly accession (via taxid_to_accession)
+         and that accession is present in the local assembly summary
+         (column `idx`), use that exact assembly.
+      2. Otherwise fall back to the best-priority assembly whose taxid/name
+         column (`matchcol`) matches the entry (original behavior).
+    Entries resolved by neither are returned as `unresolved` so the caller can
+    optionally attempt an NCBI lookup.
+    """
+    if requested_accessions is None:
+        requested_accessions = set()
+    if taxid_to_accession is None:
+        taxid_to_accession = {}
 
     # Normalize input -> list
     if not isinstance(input, list):
@@ -235,8 +278,24 @@ def import_assembly_file(
         bb = os.path.basename(utl_formatted)
         return utl_formatted + "/" + bb + "_genomic.fna.gz"
 
-    # priorities[matchval][prio] = (file_index, obj)
+    def build_obj(gcfidx, formatted_header, namecol, urlcol, taxidcol,
+                  species_taxidcol, characteristic):
+        return dict(
+            id="{}|{}".format(gcfidx, formatted_header),
+            accession=gcfidx,
+            characteristic=characteristic,
+            chrs=[],
+            organism=namecol,
+            reference=get_url(urlcol, gcfidx),
+            name=formatted_header,
+            taxidcol=taxidcol,
+            species_taxidcol=species_taxidcol,
+        )
+
+    # priorities[matchval][prio] = (file_index, obj)   -> taxid fallback buckets
     priorities = {}
+    first = {}
+    accession_hits = {}   # accession -> obj (direct accession-first match)
     seencols = set()
 
     def maybe_set(priorities_dict, matchval, prio_key, file_i, obj):
@@ -278,6 +337,20 @@ def import_assembly_file(
 
                 formatted_header = str(namecol).replace(" ", "_")
 
+                # optional filter
+                if skip_incomplete and linesplit[11] != "Complete Genome":
+                    continue
+
+                # --- Accession-first capture ---
+                # If this row's accession was explicitly requested, remember it
+                # regardless of whether its taxid is in the input list.
+                if gcfidx in requested_accessions and gcfidx not in accession_hits:
+                    accession_hits[gcfidx] = build_obj(
+                        gcfidx, formatted_header, namecol, urlcol,
+                        taxidcol, species_taxidcol, "accession",
+                    )
+
+                # --- Taxid/name priority buckets (fallback) ---
                 # find first match in input order
                 match_index = -1
                 for match in matchidces:
@@ -287,25 +360,14 @@ def import_assembly_file(
                 if match_index < 0:
                     continue
 
-                # optional filter
-                if skip_incomplete and linesplit[11] != "Complete Genome":
-                    continue
-
                 matchval = input[match_index]
                 seencols.add(matchval)
 
                 if matchval not in priorities:
                     priorities[matchval] = {}
-                obj = dict(
-                    id="{}|{}".format(gcfidx, formatted_header),
-                    accession=gcfidx,
-                    characteristic=None,
-                    chrs=[],
-                    organism=namecol,
-                    reference=get_url(urlcol, gcfidx),
-                    name=formatted_header,
-                    taxidcol=taxidcol,
-                    species_taxidcol=species_taxidcol,
+                obj = build_obj(
+                    gcfidx, formatted_header, namecol, urlcol,
+                    taxidcol, species_taxidcol, None,
                 )
                 # assign priority bucket
                 # We'll keep your existing meaning:
@@ -333,18 +395,31 @@ def import_assembly_file(
                         obj["characteristic"] = "other"
                         maybe_set(priorities, matchval, "3", file_i, obj)
 
-    # pick best per matchval: lowest prio, then earliest file index
+    # pick best per taxid matchval: lowest prio, then earliest file index
+    taxid_best = {}
     for matchval, prmap in priorities.items():
         for prio in ("0", "1", "2", "3"):
             if prmap.get(prio):
-                assemblies[matchval] = prmap[prio][1]  # obj
+                taxid_best[matchval] = prmap[prio][1]  # obj
                 break
+
+    # Per-input selection: accession-first, then local taxid fallback.
+    chosen = []
+    unresolved = []
+    for taxid in input:
+        acc = taxid_to_accession.get(taxid)
+        if acc and acc in accession_hits:
+            chosen.append(accession_hits[acc])
+        elif taxid in taxid_best:
+            chosen.append(taxid_best[taxid])
         else:
-            print("No reference genome found for", matchval)
+            print("No local assembly found for", taxid,
+                  ("(accession " + acc + " not in summary)") if acc else "")
+            unresolved.append(dict(taxid=taxid, accession=acc or ""))
 
     # format as you did: keyed by organism
     assembliesformat = {}
-    for _, item in assemblies.items():
+    for item in chosen:
         assembliesformat[item["organism"]] = dict(
             accession=item["accession"],
             id=item["id"],
@@ -354,15 +429,14 @@ def import_assembly_file(
             taxid=item["taxidcol"],   # taxid
             species_taxid=item["species_taxidcol"],   # species taxid
         )
-    missing = list(set(input) - set(seencols))
-    if missing:
-        print("Missing", missing)
+    if unresolved:
+        print("Missing locally:", [u["taxid"] for u in unresolved])
         if missingfile:
             with open(os.path.join(missingfile), "w") as w:
-                for m in missing:
-                    w.write(f"{m}\n")
+                for u in unresolved:
+                    w.write(f"{u['taxid']}\n")
 
-    return assembliesformat
+    return assembliesformat, unresolved
 
 
 def get_assembly_summary(id):
@@ -504,6 +578,135 @@ def get_hits_from_file(filenames, colnumber):
                 if name not in taxids:
                     taxids.append(name)
     return taxids
+
+
+def get_accession_map_from_file(filenames, taxid_colnumber, accession_colnumber):
+    """Build {taxid: accession} and the set of requested accessions from the
+    input file. Rows with a blank accession are skipped (taxid-only fallback)."""
+    mapping = {}
+    accessions = set()
+    for filename in filenames:
+        with open(filename, "r") as f:
+            for line in f:
+                line = line.rstrip("\r\n")
+                if not line.strip():
+                    continue
+                cols = line.split("\t")
+                if len(cols) < taxid_colnumber:
+                    continue
+                taxid = cols[taxid_colnumber - 1].strip()
+                acc = ""
+                if accession_colnumber and len(cols) >= accession_colnumber:
+                    acc = cols[accession_colnumber - 1].strip()
+                if taxid and acc and taxid not in mapping:
+                    mapping[taxid] = acc
+                    accessions.add(acc)
+    return mapping, accessions
+
+
+def load_accession_map_csv(path):
+    """Build {taxid|name: accession} and the set of accessions from a curated
+    CSV (name-based) such as assets/pathogen_sheet.csv. Keyed by BOTH taxid and
+    name so it works whether the download input matches on taxid or on name.
+    Rows with a blank accession are skipped."""
+    mapping = {}
+    accessions = set()
+    try:
+        with open(path, newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                acc = (row.get("assembly_accession") or "").strip()
+                if not acc:
+                    continue
+                taxid = (row.get("taxid") or "").strip()
+                name = (row.get("name") or "").strip()
+                if taxid:
+                    mapping.setdefault(taxid, acc)
+                if name:
+                    mapping.setdefault(name, acc)
+                accessions.add(acc)
+    except Exception as ex:
+        print(f"Could not read accession map {path}: {ex}")
+    return mapping, accessions
+
+
+def _assembly_obj_from_docsum(doc, fallback_taxid=None):
+    """Convert an NCBI assembly esummary DocumentSummary into the internal
+    assembly object shape used by get_assemblies / the gcf mapping writer."""
+    ftp = doc.get("FtpPath_RefSeq") or doc.get("FtpPath_GenBank") or ""
+    if not ftp:
+        return None
+    acc = doc.get("AssemblyAccession", "")
+    org = doc.get("SpeciesName") or doc.get("Organism") or acc
+    taxid = str(doc.get("Taxid") or doc.get("SpeciesTaxid") or fallback_taxid or "")
+    species_taxid = str(doc.get("SpeciesTaxid") or taxid)
+    formatted = str(org).replace(" ", "_")
+    base = os.path.basename(ftp.rstrip("/"))
+    reference = ftp.rstrip("/") + "/" + base + "_genomic.fna.gz"
+    return dict(
+        organism=org,
+        accession=acc,
+        id="{}|{}".format(acc, formatted),
+        name=formatted,
+        reference=reference,
+        chrs=[],
+        taxidcol=taxid,
+        species_taxidcol=species_taxid,
+    )
+
+
+def ncbi_lookup(accession=None, taxid=None):
+    """Query NCBI Entrez assembly db by accession (preferred) or taxid and
+    return an internal assembly object, or None if nothing usable is found."""
+    try:
+        if accession:
+            term = accession
+        elif taxid:
+            term = "txid{}[Organism:exp]".format(taxid)
+        else:
+            return None
+        handle = Entrez.esearch(db="assembly", term=term, retmax=1)
+        rec = Entrez.read(handle)
+        handle.close()
+        ids = rec.get("IdList", [])
+        if not ids:
+            return None
+        summary = get_assembly_summary(ids[0])
+        docs = summary["DocumentSummarySet"]["DocumentSummary"]
+        if not docs:
+            return None
+        return _assembly_obj_from_docsum(docs[0], fallback_taxid=taxid)
+    except Exception as ex:
+        print("NCBI lookup failed for", accession or taxid, ex)
+        return None
+
+
+def resolve_via_ncbi(unresolved):
+    """For each unresolved entry, try NCBI by accession first, then by taxid.
+    Returns a dict keyed by organism (same shape as import_assembly_file)."""
+    resolved = {}
+    for entry in unresolved:
+        acc = entry.get("accession")
+        taxid = entry.get("taxid")
+        obj = None
+        if acc:
+            obj = ncbi_lookup(accession=acc)
+        if obj is None and taxid:
+            obj = ncbi_lookup(taxid=taxid)
+        if obj is None:
+            print("Could not resolve via NCBI:", entry)
+            continue
+        resolved[obj["organism"]] = dict(
+            accession=obj["accession"],
+            id=obj["id"],
+            name=obj["name"],
+            reference=obj["reference"],
+            chrs=obj["chrs"],
+            taxid=obj["taxidcol"],
+            species_taxid=obj["species_taxidcol"],
+        )
+        time.sleep(0.34)  # be polite to NCBI (~3 req/s)
+    return resolved
 def return_format_size(size_in_bytes):
     # convert bytes to gb, mb or tb
     format = "bytes"
@@ -565,14 +768,34 @@ def main(argv=None):
                         gcf_mapping[key] = value
             f.close()
     # logging.basicConfig(level=args.log_level, format="[%(levelname)s] %(message)s")
+    requested_accessions = set()
+    taxid_to_accession = {}
     if args.type == 'file':
         #colnumber file hits is the column from the input top hits file you want to match to the args.assembly_names
         seen_in_tops = get_hits_from_file(args.input, args.colnumber_file_hits)
+        if args.accession_col:
+            taxid_to_accession, requested_accessions = get_accession_map_from_file(
+                args.input, args.colnumber_file_hits, args.accession_col
+            )
     else:
         seen_in_tops = args.input
 
-    assemblies = import_assembly_file(
-        seen_in_tops, args.assembly_metadata, args.assembly_names, args.assembly_map_idx, args.name_col_assembly, args.ftp_path, args.missingfile, args.skip_incomplete
+    # Optional curated taxid/name -> accession lookup (e.g. the pathogen sheet).
+    # Merged with anything from --accession_col; the per-row accession column
+    # takes precedence when both provide a value for the same key.
+    if args.accession_map:
+        map_from_csv, acc_from_csv = load_accession_map_csv(args.accession_map)
+        for key, acc in map_from_csv.items():
+            taxid_to_accession.setdefault(key, acc)
+        requested_accessions |= acc_from_csv
+
+    if taxid_to_accession:
+        print(f"Accession-first enabled: {len(requested_accessions)} curated accessions available")
+
+    assemblies, unresolved = import_assembly_file(
+        seen_in_tops, args.assembly_metadata, args.assembly_names, args.assembly_map_idx,
+        args.name_col_assembly, args.ftp_path, args.missingfile, args.skip_incomplete,
+        requested_accessions=requested_accessions, taxid_to_accession=taxid_to_accession,
     )
 
 
@@ -612,6 +835,19 @@ def main(argv=None):
     ## Now, check what contigs/chrs in seen_in_fasta are present in the gcf_mapping
     if args.email:
         Entrez.email = args.email
+
+    # NCBI fallback: for entries the local assembly summary could not resolve,
+    # query NCBI Entrez (by accession first, then taxid) and merge results in.
+    if args.ncbi_fallback and unresolved:
+        if not args.email:
+            print("Warning: --ncbi_fallback set without -e/--email; NCBI may throttle requests")
+        print(f"Attempting NCBI fallback for {len(unresolved)} unresolved entries...")
+        ncbi_assemblies = resolve_via_ncbi(unresolved)
+        for org, obj in ncbi_assemblies.items():
+            if org not in assemblies:
+                assemblies[org] = obj
+        print(f"Resolved {len(ncbi_assemblies)} of {len(unresolved)} via NCBI")
+
     if not (args.refresh):
         print(len(seen_in_fasta.keys()), "already seen reference ids")
     # Now use the assembly refseq file to get the ftp path and download the fasta files

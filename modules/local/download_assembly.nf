@@ -29,6 +29,7 @@ process DOWNLOAD_ASSEMBLY {
     input:
     tuple val(meta), path(hits_containing_file)
     path assembly
+    path pathogens
 
 
     output:
@@ -54,6 +55,10 @@ process DOWNLOAD_ASSEMBLY {
     def matchcol = params.fuzzy ? " -a 7 "  : " -a 5,6 "
     def refresh_download = params.refresh_download ? " -r " : ""
     def type = hits_containing_file ? " -f file " : " -f list  "
+    // Accession-first: when a curated pathogen sheet (with an assembly_accession
+    // column) is provided, prefer its accession before falling back to taxid
+    // matching against the local assembly summary.
+    def accession_map = pathogens.name != "NO_FILE" ? " --accession_map ${pathogens} " : " "
 
 
     """
@@ -64,7 +69,7 @@ process DOWNLOAD_ASSEMBLY {
             -i  ${hits_containing_file} \\
             -o ${meta.id}.dwnld.references.fasta ${refresh_download} -m ${meta.id}.missing.txt \\
             ${email} $type -g ${meta.id}.dwnld.gcfmapping.tsv \\
-            -t ${assembly} -k  $column $columnAssembly -y 7 -r
+            -t ${assembly} -k  $column $columnAssembly -y 7 -r ${accession_map}
 
     cut -f 2 ${meta.id}.dwnld.gcfmapping.tsv  | sort | uniq  > ${meta.id}.dwnld.gcfids.txt
 
