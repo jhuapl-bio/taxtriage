@@ -19,24 +19,18 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (_TAB_DIRTY[activeTab] || !_TAB_RENDERED[activeTab]) _drawTab(activeTab);
 
     // ── Tab-specific init (runs after pane is visible) ──────────────
-    if (activeTab === "map") {
-      // Delay so the pane layout is computed before Leaflet measures the container
-      setTimeout(() => {
-        if (typeof L === "undefined") {
-          const c = document.getElementById("map-container");
-          if (c)
-            c.innerHTML =
-              '<p style="padding:2em;text-align:center;color:#888">' +
-              '<i class="fas fa-triangle-exclamation" style="font-size:2em;display:block;margin-bottom:.5em;opacity:.4"></i>' +
-              "Map requires an internet connection to load the Leaflet library.</p>";
-          return;
-        }
-        if (typeof _initMap === "function") _initMap();
-      }, 80);
-    } else if (activeTab === "runmeta") {
-      // Rebuild the metadata table and update sub-tab enabled states
+    if (activeTab === "runmeta") {
+      // Rebuild the metadata table and update sub-tab enabled states. The
+      // precise Leaflet map lives inside the Mapping & Geography sub-tab and
+      // initialises via _buildGeoComparison when that sub-tab is shown.
       if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
       if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+      // (Re)build the active sub-tab now that the pane — and the map container —
+      // are actually visible. Deferred, so Leaflet's CDN script has loaded and
+      // the container has real dimensions before the map measures itself.
+      if (typeof _activeMetaSub !== "undefined" && _activeMetaSub && typeof _switchMetaSub === "function") {
+        setTimeout(() => _switchMetaSub(_activeMetaSub), 60);
+      }
     }
   });
 });

@@ -40,8 +40,11 @@ function _updateMetaSubTabStates() {
   const _geoFields = ["sample_origin_country", "sample_origin_state_province_territory"];
   const _hostFields = ["host_scientific_name", "host_disease", "environmental_site"];
 
-  // ── Geographic: needs at least one geo-origin field
-  const hasGeo = typeof _anyMetaValue === "function" && _anyMetaValue(_geoFields);
+  // ── Mapping & Geography: ALWAYS available so users can add latitude /
+  //    longitude or country / state directly in the table above, even when
+  //    none was supplied in the samplesheet. The pane shows its own per-level
+  //    "no data yet" hint when nothing is populated.
+  const hasGeo = true;
 
   // ── Host & Disease: needs host / disease / site field
   const hasHost = typeof _anyMetaValue === "function" && _anyMetaValue(_hostFields);
@@ -79,10 +82,13 @@ function _updateMetaSubTabStates() {
     if (ok && !firstEnabled) firstEnabled = id;
   });
 
-  // If no active sub-tab yet, or the active one just became disabled → switch
+  // If no active sub-tab yet, or the active one just became disabled → switch.
+  // Default to Mapping & Geography (the map) when it's available, otherwise
+  // fall back to the first enabled sub-tab.
+  const _defaultSub = (configs.find((c) => c.id === "geo" && c.ok) || {}).id || firstEnabled;
   const activeBtn = _activeMetaSub && document.querySelector(`.meta-subtab[data-metasub="${_activeMetaSub}"]`);
   if (!_activeMetaSub || (activeBtn && activeBtn.disabled)) {
-    if (firstEnabled) _switchMetaSub(firstEnabled);
+    if (_defaultSub) _switchMetaSub(_defaultSub);
   }
 }
 

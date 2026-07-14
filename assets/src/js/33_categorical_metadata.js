@@ -501,9 +501,6 @@ function _ttAutofillGeoFromCoords(opts) {
       });
       _geoAutofillRunning = false;
       if (filled) {
-        const hasGeo = (RUN_META || []).some((r) => r.latitude != null && r.longitude != null);
-        const mapBtn = document.getElementById("map-tab-btn");
-        if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
         if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
         if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
         // Switch to the geo sub-tab whenever autofill just populated geographic
@@ -1259,7 +1256,6 @@ function _buildGeoComparison() {
   const section = document.getElementById("geo-cmp-section");
   if (!section) return;
   if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
-  if (!_anyMetaValue(_GEO_META_FIELDS)) return;
   const levelSel = document.getElementById("geo-cmp-level");
   const metricSel = document.getElementById("geo-cmp-metric");
   const noData = document.getElementById("geo-cmp-no-data");
@@ -1269,8 +1265,45 @@ function _buildGeoComparison() {
     sample_origin_state_province_territory: "States / Territories",
   };
   const backBtn = document.getElementById("geo-back");
+
+  // ── "Precise (lat/long)" view: show the per-sample Leaflet map ──
+  const _drawPrecise = () => {
+    const preciseWrap = document.getElementById("geo-precise-wrap");
+    const aggWrap = document.getElementById("geo-agg-wrap");
+    const metricField = document.getElementById("geo-metric-field");
+    if (preciseWrap) preciseWrap.style.display = "";
+    if (aggWrap) aggWrap.style.display = "none";
+    if (metricField) metricField.style.display = "none"; // metric only applies to aggregation
+    _geoDrill = null;
+    const hasLatLon = (RUN_META || []).some((r) => r.latitude != null && r.longitude != null);
+    const pNoData = document.getElementById("geo-precise-no-data");
+    const slot = document.getElementById("geo-precise-slot");
+    if (pNoData) pNoData.style.display = hasLatLon ? "none" : "block";
+    if (slot) slot.style.display = hasLatLon ? "" : "none";
+    if (hasLatLon && typeof L !== "undefined" && typeof _initMap === "function") {
+      _initMap(); // moves #map-split into the slot + inits Leaflet on first call
+      if (_leafletMap && typeof _refreshMapMarkerColors === "function") _refreshMapMarkerColors();
+      setTimeout(() => {
+        if (_leafletMap) _leafletMap.invalidateSize();
+      }, 60);
+    }
+  };
+
   const draw = () => {
-    let field = (levelSel && levelSel.value) || "sample_origin_country";
+    const level = (levelSel && levelSel.value) || "precise";
+    if (level === "precise") {
+      _drawPrecise();
+      return;
+    }
+    // Aggregated country / state view
+    const preciseWrap = document.getElementById("geo-precise-wrap");
+    const aggWrap = document.getElementById("geo-agg-wrap");
+    const metricField = document.getElementById("geo-metric-field");
+    if (preciseWrap) preciseWrap.style.display = "none";
+    if (aggWrap) aggWrap.style.display = "";
+    if (metricField) metricField.style.display = "";
+
+    let field = level;
     const metric = (metricSel && metricSel.value) || "detections";
     // A drill overrides to state level, restricted to the picked country.
     let sampleSet = null;

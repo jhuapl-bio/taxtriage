@@ -642,13 +642,17 @@ function _ttSeedMetaRowsForAllSamples() {
 function _ttRefreshMetaDerived(changedKey) {
   const _geoCoord = changedKey === "latitude" || changedKey === "longitude";
   const _geoOrigin = changedKey === "sample_origin_country" || changedKey === "sample_origin_state_province_territory";
-  const hasGeo = (RUN_META || []).some((r) => r.latitude != null && r.longitude != null);
-  const mapBtn = document.getElementById("map-tab-btn");
-  if (mapBtn) mapBtn.classList.toggle("hidden", !hasGeo);
   if (_geoCoord && typeof _rebuildMapMarkers === "function") {
     try {
       _rebuildMapMarkers();
     } catch (e) {}
+    // Refresh the precise-map view (Mapping & Geography sub-tab) so newly
+    // added / edited coordinates appear without re-selecting the level.
+    if (typeof _geoRedraw === "function") {
+      try {
+        _geoRedraw();
+      } catch (e) {}
+    }
   }
   // Backfill country / state / location from coordinates when either the
   // coordinates change OR a geo-origin field is cleared (so deleting "MA"

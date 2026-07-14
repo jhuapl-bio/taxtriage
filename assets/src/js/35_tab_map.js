@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-       -  §  TAB: MAP                (data-tab="map"  —  hidden if no lat/lon)
+       -  §  MAP  (Precise level of the Mapping & Geography sub-tab)
        -     Leaflet map with CARTO Voyager tiles (no Referer restrictions).
        -     Renders one marker per sample with lat/lon metadata; clicking a
        -     marker opens a side-panel with a filtered TASS table for that
@@ -62,54 +62,141 @@ function _pieSvg(colors, selected) {
   });
 }
 
+/* ── Cluster bubble icon ─────────────────────────────────────────────
+   Overlapping sample dots merge into one bubble showing the sample count.
+   Size grows with the count so dense clusters read clearly; the bubble
+   splits back into individual dots as the user zooms in. */
+function _clusterIcon(cluster) {
+  const n = cluster.getChildCount();
+  const size = n < 10 ? 34 : n < 100 ? 42 : 50;
+  const fs = n < 100 ? 14 : 12;
+  const html =
+    `<div style="width:${size}px;height:${size}px;border-radius:50%;` +
+    `background:rgba(21,101,192,.88);border:2px solid rgba(255,255,255,.95);` +
+    `box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;` +
+    `justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;` +
+    `font-family:system-ui,sans-serif">${n}</div>`;
+  return L.divIcon({ html, className: "tt-cluster", iconSize: [size, size] });
+}
+
+/* Create the marker container. Uses Leaflet.markercluster when available
+   (zoom-based clustering with count bubbles); falls back to a plain layer
+   group if the plugin failed to load (e.g. offline). */
+function _makeMarkerLayer() {
+  if (typeof L.markerClusterGroup === "function") {
+    return L.markerClusterGroup({
+      maxClusterRadius: 45, // px — dots closer than this merge into a bubble
+      // We handle cluster clicks ourselves (see the "clusterclick" listener in
+      // _doInitMap) so the behaviour can switch between list / expand modes.
+      spiderfyOnMaxZoom: false,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: false,
+      iconCreateFunction: _clusterIcon,
+    });
+  }
+  return L.layerGroup();
+}
+
+/* Set what happens when a cluster bubble is clicked (see the "clusterclick"
+   handler in _doInitMap, which reads this):
+     "list"   — open the side panel with every sample in the cluster (the
+                pre-clustering behaviour, default).
+     "expand" — zoom in to split the cluster, or fan out (spiderfy) dots that
+                share exact coordinates. */
+function _setMapClusterMode(mode) {
+  _mapClusterMode = mode === "expand" ? "expand" : "list";
+}
+
+/* Small on-map control to switch between the two cluster-click modes. */
+function _addMapClusterControl() {
+  if (typeof L.Control === "undefined" || _mapClusterCtlAdded) return;
+  const Ctl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd: function () {
+      const div = L.DomUtil.create("div", "leaflet-bar tt-cluster-mode");
+      div.style.cssText =
+        "background:#fff;padding:5px 8px;font:12px system-ui,sans-serif;color:#333;" +
+        "line-height:1.3;box-shadow:0 1px 4px rgba(0,0,0,.25);border-radius:4px";
+      div.innerHTML =
+        '<div style="font-weight:600;margin-bottom:3px">On cluster click</div>' +
+        '<label style="display:block;cursor:pointer"><input type="radio" name="tt-cluster-mode" value="list" checked> List samples</label>' +
+        '<label style="display:block;cursor:pointer"><input type="radio" name="tt-cluster-mode" value="expand"> Zoom / expand</label>';
+      L.DomEvent.disableClickPropagation(div);
+      div
+        .querySelectorAll('input[name="tt-cluster-mode"]')
+        .forEach((el) => el.addEventListener("change", (e) => _setMapClusterMode(e.target.value)));
+      return div;
+    },
+  });
+  _leafletMap.addControl(new Ctl());
+  _mapClusterCtlAdded = true;
+}
+
+/* Build one colored dot per geo-located sample and add it to the marker
+   layer. Shared by _doInitMap and _rebuildMapMarkers. Returns lat/lon
+   bounds for fitting the view. */
+function _addSampleMarkers() {
+  const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
+  const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
+  sampleNames.forEach((n, i) => {
+    if (!sampleColors[n]) sampleColors[n] = PALETTE[i % PALETTE.length];
+  });
+
+  const bounds = [];
+  geoRows.forEach((rec) => {
+    const lat = parseFloat(rec.latitude);
+    const lon = parseFloat(rec.longitude);
+    if (isNaN(lat) || isNaN(lon)) return;
+    const sn = rec.sample_name;
+    const color = sampleColors[sn] || "#1565C0";
+    const selected = _selectedSample === sn;
+    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected) });
+    mk.ttRec = rec; // used to list a cluster's samples in "list" mode
+    mk.on("click", () => {
+      // Deselect any previously-selected dot, select this one, open its panel
+      _selectedGroup = null;
+      _selectedSample = sn;
+      _refreshMapMarkerColors();
+      _renderMapPanel(rec);
+    });
+    _markerObjects[sn] = { marker: mk, rec, color, lat, lon };
+    if (!sampleHidden[sn]) _markerLayer.addLayer(mk);
+    bounds.push([lat, lon]);
+  });
+  return bounds;
+}
+
 function _refreshMapMarkerColors() {
   if (!_markerObjects || !_leafletMap || !_markerLayer) return;
-  const _groupNames = _selectedGroup ? new Set(_selectedGroup.map((r) => r.sample_name)) : null;
-
-  // Track which locKeys we've already processed (single-sample entries are indexed
-  // both by locKey and by sample_name — skip the duplicate sample_name entry)
-  const processed = new Set();
-
-  Object.entries(_markerObjects).forEach(([key, obj]) => {
-    if (!obj.marker || !obj.recs) return;
-    // Skip duplicate sample_name aliases pointing to same obj as a locKey entry
-    const locKey =
-      obj.recs.length === 1
-        ? `${parseFloat(obj.recs[0].latitude).toFixed(3)}_${parseFloat(obj.recs[0].longitude).toFixed(3)}`
-        : null;
-    if (locKey && locKey !== key && processed.has(locKey)) return;
-    if (locKey) processed.add(locKey);
-
-    const visibleRecs = obj.recs.filter((r) => !sampleHidden[r.sample_name]);
-    const allHidden = visibleRecs.length === 0;
-
-    if (allHidden) {
-      // Remove marker from layer if present
+  Object.entries(_markerObjects).forEach(([sn, obj]) => {
+    if (!obj.marker) return;
+    if (sampleHidden[sn]) {
       if (_markerLayer.hasLayer(obj.marker)) _markerLayer.removeLayer(obj.marker);
       return;
     }
-
-    // Re-add to layer if it was previously removed
-    if (!_markerLayer.hasLayer(obj.marker)) obj.marker.addTo(_markerLayer);
-
-    const isSingle = visibleRecs.length === 1;
-    let selected;
-    if (obj.recs.length > 1) {
-      selected = _groupNames
-        ? visibleRecs.some((r) => _groupNames.has(r.sample_name))
-        : visibleRecs.some((r) => r.sample_name === _selectedSample);
-      const cols = visibleRecs.map((r) => sampleColors[r.sample_name] || "#1565C0");
-      obj.marker.setIcon(isSingle ? _svgDot(cols[0], selected) : _pieSvg(cols, selected));
-    } else {
-      selected = _selectedSample === key || _selectedSample === obj.recs[0]?.sample_name;
-      const color = sampleColors[key] || obj.color || "#1565C0";
-      obj.color = color;
-      obj.marker.setIcon(_svgDot(color, selected));
-    }
+    if (!_markerLayer.hasLayer(obj.marker)) _markerLayer.addLayer(obj.marker);
+    const color = sampleColors[sn] || obj.color || "#1565C0";
+    obj.color = color;
+    obj.marker.setIcon(_svgDot(color, _selectedSample === sn));
   });
+  // Recompute cluster bubbles (counts / membership may have changed)
+  if (typeof _markerLayer.refreshClusters === "function") _markerLayer.refreshClusters();
+}
+
+/* Move the reusable map markup (#map-split, parked in the hidden #map-host)
+   into the "Precise (lat/long)" view of the Mapping & Geography sub-tab. Runs
+   once — after that the node already lives in the slot. */
+function _ensureMapInPreciseWrap() {
+  const slot = document.getElementById("geo-precise-slot");
+  const split = document.getElementById("map-split");
+  if (slot && split && split.parentElement !== slot) {
+    slot.appendChild(split);
+    if (_leafletMap) setTimeout(() => _leafletMap.invalidateSize(), 60);
+  }
 }
 
 function _initMap() {
+  _ensureMapInPreciseWrap();
   if (_leafletMap) {
     _leafletMap.invalidateSize();
     return;
@@ -164,56 +251,37 @@ function _doInitMap() {
     maxZoom: 19,
   }).addTo(_leafletMap);
 
-  _markerLayer = L.layerGroup().addTo(_leafletMap);
+  _markerLayer = _makeMarkerLayer();
+  _markerLayer.addTo(_leafletMap);
 
-  // Assign colours (prefer sidebar sample colors)
-  const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
-  sampleNames.forEach((n, i) => {
-    if (!sampleColors[n]) sampleColors[n] = PALETTE[i % PALETTE.length];
-  });
-
-  // ── Group rows by lat/lon (rounded to 3 dp) for pie-chart markers ──
-  const _locGroups = {};
-  geoRows.forEach((rec) => {
-    const lat = parseFloat(rec.latitude);
-    const lon = parseFloat(rec.longitude);
-    if (isNaN(lat) || isNaN(lon)) return;
-    const key = `${lat.toFixed(3)}_${lon.toFixed(3)}`;
-    if (!_locGroups[key]) _locGroups[key] = { lat, lon, recs: [] };
-    _locGroups[key].recs.push(rec);
-  });
-
-  const bounds = [];
-  Object.entries(_locGroups).forEach(([locKey, grp]) => {
-    const { lat, lon, recs } = grp;
-    const isSingle = recs.length === 1;
-    const colors = recs.map((r) => sampleColors[r.sample_name] || "#1565C0");
-    const icon = isSingle ? _svgDot(colors[0], false) : _pieSvg(colors, false);
-    const mk = L.marker([lat, lon], { icon });
-
-    mk.on("click", () => {
-      // Deselect previous group marker
-      Object.values(_markerObjects).forEach((obj) => {
-        if (!obj.marker) return;
-        const sel = false;
-        if (obj.recs && obj.recs.length > 1) {
-          const cols = obj.recs.map((r) => sampleColors[r.sample_name] || "#1565C0");
-          obj.marker.setIcon(_pieSvg(cols, sel));
-        } else {
-          obj.marker.setIcon(_svgDot(obj.color || "#1565C0", sel));
+  // Cluster-click behaviour + its toggle control (only when clustering is on).
+  if (typeof _markerLayer.on === "function" && typeof L.markerClusterGroup === "function") {
+    _markerLayer.on("clusterclick", (a) => {
+      const cluster = a.layer;
+      if (_mapClusterMode === "list") {
+        // Open the panel listing every sample in the cluster.
+        const recs = cluster
+          .getAllChildMarkers()
+          .map((m) => m.ttRec)
+          .filter(Boolean);
+        if (recs.length) {
+          _selectedSample = null;
+          _renderMapGroupPanel(recs);
         }
-      });
-      _selectedSample = recs[0].sample_name;
-      mk.setIcon(isSingle ? _svgDot(colors[0], true) : _pieSvg(colors, true));
-      _renderMapGroupPanel(recs);
+      } else {
+        // Expand: fan out if the dots share the same point, else zoom to fit.
+        const lls = cluster.getAllChildMarkers().map((m) => m.getLatLng());
+        const allSame = lls.length > 0 && lls.every((ll) => ll.equals(lls[0]));
+        if (allSame) cluster.spiderfy();
+        else cluster.zoomToBounds({ padding: [40, 40] });
+      }
     });
+    _addMapClusterControl();
+  }
 
-    mk.addTo(_markerLayer);
-    _markerObjects[locKey] = { marker: mk, recs, color: colors[0] };
-    // Also index by sample_name for single markers (backward compat)
-    if (isSingle) _markerObjects[recs[0].sample_name] = _markerObjects[locKey];
-    bounds.push([lat, lon]);
-  });
+  // One colored dot per geo-located sample; overlapping dots auto-cluster
+  // into a numbered bubble (see _clusterIcon / _makeMarkerLayer).
+  const bounds = _addSampleMarkers();
 
   if (bounds.length > 0) {
     _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
@@ -238,41 +306,7 @@ function _rebuildMapMarkers() {
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
   if (geoRows.length === 0) return;
 
-  const _lg = {};
-  geoRows.forEach((rec) => {
-    const lat = parseFloat(rec.latitude),
-      lon = parseFloat(rec.longitude);
-    if (isNaN(lat) || isNaN(lon)) return;
-    const key = `${lat.toFixed(3)}_${lon.toFixed(3)}`;
-    if (!_lg[key]) _lg[key] = { lat, lon, recs: [] };
-    _lg[key].recs.push(rec);
-  });
-
-  Object.entries(_lg).forEach(([locKey, grp]) => {
-    const { lat, lon, recs } = grp;
-    const isSingle = recs.length === 1;
-    const colors = recs.map((r) => sampleColors[r.sample_name] || "#1565C0");
-    const mk = L.marker([lat, lon], { icon: isSingle ? _svgDot(colors[0], false) : _pieSvg(colors, false) });
-    mk.on("click", () => {
-      Object.values(_markerObjects).forEach((obj) => {
-        if (!obj.marker) return;
-        if (obj.recs && obj.recs.length > 1)
-          obj.marker.setIcon(
-            _pieSvg(
-              obj.recs.map((r) => sampleColors[r.sample_name] || "#1565C0"),
-              false,
-            ),
-          );
-        else obj.marker.setIcon(_svgDot(obj.color || "#1565C0", false));
-      });
-      _selectedSample = recs[0].sample_name;
-      mk.setIcon(isSingle ? _svgDot(colors[0], true) : _pieSvg(colors, true));
-      _renderMapGroupPanel(recs);
-    });
-    mk.addTo(_markerLayer);
-    _markerObjects[locKey] = { marker: mk, recs, color: colors[0] };
-    if (isSingle) _markerObjects[recs[0].sample_name] = _markerObjects[locKey];
-  });
+  _addSampleMarkers();
 
   setTimeout(() => _leafletMap.invalidateSize(), 50);
 }
@@ -344,9 +378,13 @@ function _renderMapPanel(rec) {
   const handle = document.getElementById("map-resize-handle");
   if (handle) handle.style.display = "block";
 
-  // Header: sample name
+  // Header: sample name (truncate long names, full name on hover)
   const title = document.getElementById("map-panel-title");
-  if (title) title.textContent = rec.sample_name;
+  if (title) {
+    const _full = rec.sample_name || "";
+    title.textContent = _truncSampleName(_full, _sampleNameCap());
+    title.title = _full;
+  }
 
   // Show the "View in metadata table" button only if runmeta tab is available
   const viewBtn = document.getElementById("map-panel-view-btn");
@@ -417,18 +455,9 @@ function _renderMapGroupPanel(recs) {
       r0.latitude != null
         ? `<b>Lat/Lon:</b> ${parseFloat(r0.latitude).toFixed(4)}, ${parseFloat(r0.longitude).toFixed(4)} &nbsp;·&nbsp; `
         : "";
-    const swatches = recs
-      .map((r) => {
-        const col = sampleColors[r.sample_name] || "#1565C0";
-        return `<span title="${r.sample_name}" style="display:inline-block;width:11px;height:11px;
-              border-radius:2px;background:${col};margin-right:3px;vertical-align:middle;
-              box-shadow:0 0 0 1px rgba(0,0,0,.2)"></span>`;
-      })
-      .join("");
-    metaEl.innerHTML =
-      coords +
-      swatches +
-      `<span style="color:#555;font-size:0.9em;margin-left:2px">${recs.map((r) => r.sample_name).join(", ")}</span>`;
+    // Keep the strip to a single compact line — just the location and the
+    // sample count. Individual names appear as header rows in the table below.
+    metaEl.innerHTML = `<div style="display:flex;align-items:center;flex-wrap:wrap">${coords}<b>${recs.length} samples</b></div>`;
   }
 
   // Populate the standard panel tbody with organisms for all samples
@@ -492,10 +521,12 @@ function _refreshMapGroupPanelTable() {
             border-radius:2px;background:${col};margin-right:5px;vertical-align:middle;
             box-shadow:0 0 0 1px rgba(0,0,0,.18);flex-shrink:0"></span>`;
 
-    // ── Sample header row ────────────────────────────────────────────
+    // ── Sample header row (truncate long names, full name on hover) ──
+    const _snShort = _truncSampleName(sn, _sampleNameCap());
+    const _snTitle = String(sn).replace(/"/g, "&quot;");
     html += `<tr style="background:#e8f0fe;border-top:2px solid ${col}">
             <td colspan="6" style="padding:5px 8px;font-weight:700;font-size:0.88em;color:#1a237e">
-              ${swatch}${sn}
+              ${swatch}<span title="${_snTitle}">${_snShort}</span>
               <span style="font-weight:400;color:#666;margin-left:6px;font-size:0.9em">
                 ${orgRows.length} organism${orgRows.length !== 1 ? "s" : ""}
               </span>
