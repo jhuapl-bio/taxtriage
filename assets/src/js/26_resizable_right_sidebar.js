@@ -71,7 +71,16 @@
          the upload / clear handlers so all three stay in sync.
       ────────────────────────────────────────────────────────────────────────── */
 function _buildBannerSub() {
-  const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+  const rawSamples = uniq([
+    ...DATA.map((r) => r["Specimen ID"] || ""),
+    ...Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}),
+  ]).filter(Boolean);
+  const grouped =
+    typeof specimenMergeEnabled !== "undefined" &&
+    specimenMergeEnabled &&
+    typeof hasSpecimenGrouping === "function" &&
+    hasSpecimenGrouping();
+  const entities = grouped ? uniq(rawSamples.map((s) => specimenOf(s))).filter(Boolean) : rawSamples;
 
   // Unique organisms: deduplicate on Taxonomic ID # (key), not subkey
   const uniqueOrgs = new Set(DATA.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
@@ -79,12 +88,13 @@ function _buildBannerSub() {
   // % reads classified = Σ(total_organism_reads from SAMPLE_META) / Σ(total_reads from SAMPLE_META)
   // Uses per-sample metadata from the JSON. Falls back to summing "# Reads Aligned"
   // from DATA rows if SAMPLE_META doesn't carry total_reads (e.g. plain TSV upload).
-  const totalInputReads = samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
+  const totalInputReads = rawSamples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
   const totalOrgReads =
-    samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
+    rawSamples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
     DATA.reduce((s, r) => s + (parseFloat(r["# Reads Aligned"]) || 0), 0);
   let pctClass = totalInputReads > 0 ? ((totalOrgReads / totalInputReads) * 100).toFixed(1) + "%" : "N/A";
   if (pctClass === "0.0%" && totalOrgReads > 0) pctClass = "<0.1%";
+  const totalReadsFmt = _fmtBig(totalInputReads).short;
 
-  return `${samples.length} sample(s) \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified`;
+  return `${entities.length} ${grouped ? "specimen(s)" : "sample(s)"} \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified \u2022 ${totalReadsFmt} total reads`;
 }

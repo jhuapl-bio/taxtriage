@@ -162,20 +162,20 @@ function drawHeatmap() {
       });
 
     // Draw circle badge on the right if mol_type is set
-    if (mt === "dna" || mt === "rna") {
+    if (mt === "dna" || mt === "rna" || mt === "both") {
       const cy = yScale(org) + yScale.bandwidth() / 2;
-      const badgeColor = mt === "dna" ? "#1565c0" : "#6a1b9a";
-      const badgeLetter = mt === "dna" ? "D" : "R";
+      const badgeColor = mt === "dna" ? "#1565c0" : mt === "rna" ? "#6a1b9a" : "#455a64";
+      const badgeLetter = mt === "dna" ? "D" : mt === "rna" ? "R" : "D+R";
       const badgeG = mtBadgeGroup
         .append("g")
         .attr("transform", `translate(${_mtBadgeX + 7}, ${cy})`)
-        .attr("title", mt === "dna" ? "DNA pathogen" : "RNA pathogen");
-      badgeG.append("circle").attr("r", 7).attr("fill", badgeColor).attr("opacity", 0.9);
+        .attr("title", mt === "dna" ? "DNA pathogen" : mt === "rna" ? "RNA pathogen" : "Merged DNA + RNA evidence");
+      badgeG.append("circle").attr("r", mt === "both" ? 9 : 7).attr("fill", badgeColor).attr("opacity", 0.9);
       badgeG
         .append("text")
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "central")
-        .attr("font-size", 7)
+        .attr("font-size", mt === "both" ? 5.5 : 7)
         .attr("font-weight", "bold")
         .attr("fill", "#fff")
         .attr("pointer-events", "none")

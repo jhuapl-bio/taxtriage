@@ -37,6 +37,8 @@ function _orgBadges(r) {
   const mt = String(r["Mol Type"] || "").toLowerCase();
   if (mt === "dna") s += '<span title="DNA" style="color:#1565c0;font-weight:700">Ⓓ</span> ';
   else if (mt === "rna") s += '<span title="RNA" style="color:#6a1b9a;font-weight:700">Ⓡ</span> ';
+  else if (mt === "both")
+    s += '<span title="Merged DNA + RNA evidence" style="color:#1565c0;font-weight:700">Ⓓ</span><span title="Merged DNA + RNA evidence" style="color:#6a1b9a;font-weight:700">Ⓡ</span> ';
   return s;
 }
 
@@ -66,6 +68,7 @@ function _rowKeywords(r) {
   if (_orgHasAmr(r)) chips.push({ t: "AMR", c: "kw-amr" });
   const mt = String(r["Mol Type"] || "").toLowerCase();
   if (mt === "dna" || mt === "rna") chips.push({ t: mt.toUpperCase(), c: "" });
+  else if (mt === "both") chips.push({ t: "DNA + RNA", c: "" });
   const genus = r["Genus"];
   if (genus) chips.push({ t: genus, c: "" });
   const fam = r["Family"];
@@ -95,10 +98,130 @@ function _invalidateSummaryHistMap() {
     _VFAMR_INDEX = null;
   } catch (e) {}
 }
+// Resolve SAMPLE_META for a Summary "sample" row. Ordinarily `sn` is a real
+// sample id and SAMPLE_META[sn] just works. When specimen merge is on, `sn`
+// is instead the merged specimen NAME (fd rows carry it in "Specimen ID"),
+// which SAMPLE_META has no entry for — every per-sample metric (total_reads,
+// total_organism_reads, platform) would silently read as 0/undefined,
+// producing the "N/A" / NaN% KPI cards. Resolve the row's __mergedFrom member
+// samples and sum/union their metadata instead.
+function _summaryMetaFor(sn, fd) {
+  const row = (fd || []).find((r) => r["Specimen ID"] === sn);
+  // A detection row's __mergedFrom contains only members contributing that
+  // organism. KPI denominators must instead include every visible library in
+  // the specimen, including members with no row for that organism.
+  let members =
+    typeof specimenMergeEnabled !== "undefined" &&
+    specimenMergeEnabled &&
+    typeof specimenGroups === "function" &&
+    specimenGroups().has(sn)
+      ? specimenGroups().get(sn).filter((s) => !sampleHidden[s])
+      : row && Array.isArray(row.__mergedFrom) && row.__mergedFrom.length
+      ? row.__mergedFrom
+      : [sn];
+  if (!members.length) members = [sn];
+  if (members.length <= 1) return SAMPLE_META[members[0]] || {};
+  let total_reads = 0,
+    total_organism_reads = 0;
+  const platforms = new Set();
+  members.forEach((m) => {
+    const mm = SAMPLE_META[m] || {};
+    total_reads += parseFloat(mm.total_reads) || 0;
+    total_organism_reads += parseFloat(mm.total_organism_reads) || 0;
+    if (mm.platform && mm.platform !== "unknown") platforms.add(mm.platform);
+  });
+  return { total_reads, total_organism_reads, platform: Array.from(platforms).join(" + ") };
+}
 const _DEPTH_BINS = ["0x", "1-5x", "5-10x", "10-50x", ">50x"];
 const _DEPTH_COLORS = ["#dee2e6", "#a5d8ff", "#74c0fc", "#4dabf7", "#1c7ed6"];
+// Resolve the CONTIG_DATA entry (and a real sample||org||taxon key) for a
+// summary row. A merged-specimen row carries the specimen NAME in "Specimen
+// ID", which is not a CONTIG_DATA sample, so the direct lookup misses. In that
+// case we fall back to the row's member samples (__mergedFrom) and pick the
+// entry with the widest breadth of coverage — that keeps CONTIG_DATA keyed by
+// the original sample while still lighting up the sparkline / hover / jump for
+// merged rows. Returns { cd, key }; key is always resolvable by the Histogram
+// tab (it points at a genuine member sample when merged).
+function _histResolve(r) {
+  const map = _histMap();
+  const org = r["Detected Organism"];
+  const tax = r["Taxonomic ID #"];
+  const direct = `${r["Specimen ID"]}||${org}||${tax}`;
+  if (map.has(direct)) return { cd: map.get(direct), key: direct };
+  const members = Array.isArray(r.__mergedFrom) ? r.__mergedFrom : [];
+  let best = null,
+    bestKey = direct,
+    bestScore = -Infinity;
+  members.forEach((s) => {
+    const k = `${s}||${org}||${tax}`;
+    const cd = map.get(k);
+    if (!cd) return;
+    const bh = cd.breadth_histogram;
+    const score =
+      bh && Array.isArray(bh.bins) && bh.bins.length ? bh.bins.reduce((a, v) => a + num(v), 0) / bh.bins.length : 0;
+    if (score > bestScore) {
+      bestScore = score;
+      best = cd;
+      bestKey = k;
+    }
+  });
+  return { cd: best, key: bestKey };
+}
+// Whole-genome breadth % from a breadth histogram. Prefers the exact
+// breadth_pct recorded on a combined-union entry; otherwise weights each bin's
+// % covered by its real length (the last bin may be short).
+function _breadthPctFromBins(bh) {
+  if (!bh) return null;
+  if (bh.breadth_pct != null) return num(bh.breadth_pct);
+  if (!Array.isArray(bh.bins) || !bh.bins.length) return null;
+  const binSz = bh.bin_size || 0,
+    totLen = bh.total_len || 0;
+  if (binSz && totLen) {
+    let cov = 0;
+    for (let b = 0; b < bh.bins.length; b++) {
+      const blo = b * binSz,
+        bhi = Math.min((b + 1) * binSz, totLen);
+      cov += (num(bh.bins[b]) / 100) * Math.max(0, bhi - blo);
+    }
+    return totLen > 0 ? (cov / totLen) * 100 : null;
+  }
+  return bh.bins.reduce((a, v) => a + num(v), 0) / bh.bins.length;
+}
+
+// Coverage resolution for a Summary row's sparkline + breadth column. For a
+// merged specimen with 2+ contributing member samples we build the COMBINED
+// coverage (exact positional union when the report carries covered_intervals,
+// else per-bin max) so the column reflects the specimen as a whole rather than
+// its single strongest library. Returns:
+//   { cd, jumpSample, unionPct, combined, exact }
+function _histResolveCombined(r) {
+  const base = _histResolve(r);
+  const jump = (base.key || "").split("||")[0];
+  const members = Array.isArray(r.__mergedFrom) ? r.__mergedFrom : null;
+  if (!members || members.length < 2 || typeof _covCombineCds !== "function") {
+    return { cd: base.cd, jumpSample: jump, unionPct: null, combined: false, exact: false };
+  }
+  const org = r["Detected Organism"],
+    tax = r["Taxonomic ID #"];
+  const map = _histMap();
+  const memberCds = members.map((s) => ({ sample: s, cd: map.get(`${s}||${org}||${tax}`) })).filter((x) => x.cd);
+  if (memberCds.length < 2) {
+    return { cd: base.cd, jumpSample: jump, unionPct: null, combined: false, exact: false };
+  }
+  const syn = _covCombineCds(memberCds);
+  if (!syn || !syn.breadth_histogram) {
+    return { cd: base.cd, jumpSample: jump, unionPct: null, combined: false, exact: false };
+  }
+  return {
+    cd: syn,
+    jumpSample: jump,
+    unionPct: _breadthPctFromBins(syn.breadth_histogram),
+    combined: true,
+    exact: !!syn.__exactUnion,
+  };
+}
 function _histFor(r) {
-  return _histMap().get(`${r["Specimen ID"]}||${r["Detected Organism"]}||${r["Taxonomic ID #"]}`);
+  return _histResolve(r).cd;
 }
 // Per-position coverage profile from a CONTIG_DATA entry's breadth histogram.
 // Returns an array of 0–100 % values (one per genomic bin), or null.
@@ -249,10 +372,22 @@ function drawSummary() {
   const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
 
   // ── KPI cards ──────────────────────────────────────────────────────
-  const totalInput = samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
-  const totalOrg =
-    samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
-    fd.reduce((s, r) => s + num(r["# Reads Aligned"]), 0);
+  const totalInput = samples.reduce((s, sn) => s + (parseFloat(_summaryMetaFor(sn, fd).total_reads) || 0), 0);
+  // Whole-run input reads are deliberately independent of every report
+  // filter, sample visibility, and specimen grouping. SAMPLE_META has one
+  // entry per raw library, so summing it counts aligned + unaligned reads
+  // exactly once even when the displayed rows have been merged.
+  const totalInputUnfiltered = Object.keys(SAMPLE_META || {}).reduce(
+    (s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0),
+    0,
+  );
+  // Aligned reads must reflect what's actually shown in the (filtered / merged)
+  // table below — e.g. searching "severe acute*" should sum only the matching
+  // rows' "# Reads Aligned", and merging specimens should show the merged
+  // row's already-summed total. SAMPLE_META's total_organism_reads is a
+  // whole-sample, filter-blind figure and was overriding both of those cases,
+  // so it's no longer used here.
+  const totalOrg = fd.reduce((s, r) => s + num(r["# Reads Aligned"]), 0);
   let pctClass = totalInput > 0 ? ((totalOrg / totalInput) * 100).toFixed(1) + "%" : "N/A";
   if (pctClass === "0.0%" && totalOrg > 0) pctClass = "<0.1%";
 
@@ -261,7 +396,7 @@ function drawSummary() {
   const hcCount = new Set(
     fd.filter((r) => isTruthy(r["High Consequence"])).map((r) => r["Taxonomic ID #"] || r["Detected Organism"]),
   ).size;
-  const platforms = uniq(samples.map((sn) => (SAMPLE_META[sn] || {}).platform).filter((p) => p && p !== "unknown"));
+  const platforms = uniq(samples.map((sn) => _summaryMetaFor(sn, fd).platform).filter((p) => p && p !== "unknown"));
   // Applied TASS cutoffs — per sample type when available, otherwise global fallback.
   const _kpiTypes = Array.from(
     new Set(DATA.map((r) => (r["Sample Type"] || "").trim().toLowerCase()).filter((t) => t && t !== "unknown")),
@@ -293,8 +428,8 @@ function drawSummary() {
     cutSub = _recCut != null ? `recommended ${_recCut.toFixed(1)}` : "applied filter";
   }
 
-  const tReads = _fmtBig(totalInput);
   const aReads = _fmtBig(totalOrg);
+  const allReads = _fmtBig(totalInputUnfiltered);
   const cards = [
     {
       label: "Samples",
@@ -304,9 +439,9 @@ function drawSummary() {
     },
     {
       label: "Total Reads",
-      value: totalInput > 0 ? tReads.short : "N/A",
-      full: tReads.full,
-      sub: "input reads",
+      value: allReads.short,
+      full: allReads.full,
+      sub: "aligned + unaligned, without filters",
       tipId: "kpi-tip-reads",
     },
     {
@@ -333,6 +468,7 @@ function drawSummary() {
         `<div class="kpi-label">${c.label}${c.tipId || c.label === "High Consequence" ? infoIcon : ""}</div>` +
         `<div class="kpi-value"${c.full ? ` title="${c.full}"` : ""}>${c.value}</div>` +
         (c.sub ? `<div class="kpi-sub"${c.subFull ? ` title="${c.subFull}"` : ""}>${c.sub}</div>` : "") +
+        (c.sub2 ? `<div class="kpi-sub"${c.sub2Full ? ` title="${c.sub2Full}"` : ""}>${c.sub2}</div>` : "") +
         `</div>`,
     )
     .join("");
@@ -388,7 +524,7 @@ function drawSummary() {
   if (sampCard) {
     const sampRows = samples
       .map((sn) => {
-        const m = SAMPLE_META[sn] || {};
+        const m = _summaryMetaFor(sn, fd);
         const reads = m.total_reads ? _fmtBig(m.total_reads).short : "—";
         const plat = m.platform && m.platform !== "unknown" ? m.platform : "";
         return (
@@ -411,11 +547,11 @@ function drawSummary() {
 
   // ── KPI tooltips: Total Reads ──────────────────────────────────────
   const readsCard = document.getElementById("kpi-tip-reads");
-  if (readsCard && totalInput > 0) {
+  if (readsCard) {
     const rRows = samples
       .map((sn) => {
-        const r = parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0;
-        const pct = totalInput > 0 ? ((r / totalInput) * 100).toFixed(1) + "%" : "—";
+        const r = fd.filter((row) => row["Specimen ID"] === sn).reduce((s, row) => s + num(row["# Reads Aligned"]), 0);
+        const pct = totalOrg > 0 ? ((r / totalOrg) * 100).toFixed(1) + "%" : "—";
         return (
           `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
           `<td style="padding:2px 4px;text-align:right;color:#90caf9">${_fmtBig(r).short}</td>` +
@@ -424,10 +560,11 @@ function drawSummary() {
       })
       .join("");
     const readsTip =
-      `<b style="color:#90caf9">Total input reads</b><br>` +
-      `<span style="color:#aaa;font-size:0.85em">Full count: ${tReads.full}</span><br>` +
+      `<b style="color:#90caf9">Reads aligned in the filtered view</b><br>` +
+      `<span style="color:#aaa;font-size:0.85em">Sum of the Reads column for the rows currently shown: ${aReads.full}</span><br>` +
+      `<span style="color:#aaa;font-size:0.85em">Whole-run input reads (aligned + unaligned, no filters): ${allReads.full}</span><br>` +
       `<table style="margin-top:5px;border-collapse:collapse">` +
-      `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">Reads</td><td style="text-align:right">Share</td></tr>` +
+      `<tr style="color:#888;font-size:0.78em"><td style="padding-right:8px">Sample</td><td style="padding-right:4px;text-align:right">Aligned</td><td style="text-align:right">Share</td></tr>` +
       rRows +
       `</table>`;
     readsCard.addEventListener("mouseover", (ev) => showTip(readsTip, ev));
@@ -440,9 +577,11 @@ function drawSummary() {
   if (pctCard) {
     const pctRows = samples
       .map((sn) => {
-        const m = SAMPLE_META[sn] || {};
-        const inp = parseFloat(m.total_reads) || 0;
-        const aln = parseFloat(m.total_organism_reads) || 0;
+        const inp = parseFloat(_summaryMetaFor(sn, fd).total_reads) || 0;
+        // Aligned reads for just this sample's rows in the currently
+        // filtered/merged table — mirrors the headline totalOrg above,
+        // rather than the sample's whole-run (filter-blind) total.
+        const aln = fd.filter((r) => r["Specimen ID"] === sn).reduce((s, r) => s + num(r["# Reads Aligned"]), 0);
         const p = inp > 0 ? ((aln / inp) * 100).toFixed(1) + "%" : "—";
         return (
           `<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;color:#e0e0e0">${sn}</td>` +
@@ -872,7 +1011,8 @@ function _renderSummaryTable(fd) {
     if (grouped && r["Specimen ID"] !== lastSample) {
       lastSample = r["Specimen ID"];
       const _grpSwatchColor = sampleColors[lastSample] || "#90a4ae";
-      html += `<tr class="grp-row"><td colspan="${_visSumCols.length}"> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}</td></tr>`;
+      const _mergedBadge = typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(r) : "";
+      html += `<tr class="grp-row"><td colspan="${_visSumCols.length}"> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_grpSwatchColor};vertical-align:middle;margin:0 5px 1px 0;border:1px solid rgba(0,0,0,0.18);flex-shrink:0"></span>${lastSample}${_mergedBadge}</td></tr>`;
     }
     // VF/AMR-only indicator row (sample has no passing detections).
     if (r.__vfamrOnly) {
@@ -899,7 +1039,8 @@ function _renderSummaryTable(fd) {
     const cc = _CAT_COLORS[cat] || "#555";
     const hc = isTruthy(r["High Consequence"]);
     const key = _sumRowKey(r);
-    const hist = _histFor(r);
+    const _histRes = _histResolveCombined(r);
+    const hist = _histRes.cd;
     const _pi_s = rowPassInfo(r);
     const _rescued_s = _pi_s && _pi_s.rescued;
     const _rescueBadge = _rescued_s
@@ -951,7 +1092,9 @@ function _renderSummaryTable(fd) {
               : '<span style="color:#ccc">—</span>'
           }</td>`
         : "") +
-      `<td>${r["Specimen ID"] || ""}</td>` +
+      `<td>${r["Specimen ID"] || ""}${
+        typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(r) : ""
+      }</td>` +
       `<td><span style="color:${cc};font-weight:600">${cat}</span></td>` +
       `<td style="text-align:right">${num(r["TASS Score"]).toFixed(1)}</td>` +
       `<td style="text-align:center">${_summaryRescueCellHTML(r, key)}</td>` +
@@ -961,7 +1104,18 @@ function _renderSummaryTable(fd) {
       `<td style="text-align:right" title="${_fmtInt(r["# Reads Aligned"])}">${
         _fmtBig(r["# Reads Aligned"]).short
       }</td>` +
-      `<td style="text-align:right">${num(r["Breadth %"]).toFixed(1)}</td>` +
+      (function () {
+        // For a merged specimen, show the COMBINED breadth (exact positional
+        // union when available) instead of the strongest single library's
+        // value, with a small ∪ marker + tooltip so it's unambiguous.
+        const _brd = _histRes.combined && _histRes.unionPct != null ? _histRes.unionPct : num(r["Breadth %"]);
+        const _mk = _histRes.combined
+          ? `<span title="${
+              _histRes.exact ? "Exact positional union of breadth across the merged samples" : "Combined (per-bin max) breadth across the merged samples"
+            }" style="color:#1565c0;font-size:0.82em;margin-left:2px;">∪</span>`
+          : "";
+        return `<td style="text-align:right">${_brd.toFixed(1)}${_mk}</td>`;
+      })() +
       `<td>${
         r["Sample Type"] && r["Sample Type"] !== "unknown" ? r["Sample Type"] : '<span style="color:#ccc">—</span>'
       }</td>` +
@@ -1019,28 +1173,32 @@ function _renderSummaryTable(fd) {
       _updateSumPinBar();
     });
   });
-  // Wire spark hover preview + click-to-open in Histogram tab
+  // Build a key→row lookup from the current page slice so we can resolve data
+  // on hover (shared by the spark wiring and the strain-breakdown tooltip).
+  const _sumSliceMap = new Map();
+  slice.forEach(function (r) {
+    _sumSliceMap.set(_sumRowKey(r), r);
+  });
+  // Wire spark hover preview + click-to-open in Histogram tab. data-spark is the
+  // row key, so we resolve back to the actual row and reuse _histResolveCombined
+  // — the hover/preview then reflects the SAME combined-union coverage shown in
+  // the cell (not a single member library).
   wrap.querySelectorAll("[data-spark]").forEach((sp) => {
     const key = sp.dataset.spark;
-    const cd = _histMap().get(key);
+    const row = _sumSliceMap.get(key);
+    if (!row) return;
+    const res = _histResolveCombined(row);
+    const cd = res.cd;
     if (!cd) return;
-    const parts = key.split("||");
-    const r = { "Detected Organism": parts[1], "Specimen ID": parts[0], "Taxonomic ID #": parts[2] };
     sp.style.cursor = "pointer";
-    sp.addEventListener("mouseover", (ev) => showTip(_histPreviewHtml(r, cd), ev));
+    sp.addEventListener("mouseover", (ev) => showTip(_histPreviewHtml(row, cd), ev));
     sp.addEventListener("mousemove", moveTip);
     sp.addEventListener("mouseout", hideTip);
     sp.addEventListener("click", (e) => {
       e.stopPropagation();
       hideTip();
-      _jumpToHistogram(parts[1], parts[2], parts[0]);
+      _jumpToHistogram(row["Detected Organism"], row["Taxonomic ID #"], res.jumpSample);
     });
-  });
-  // Strain-breakdown hover tooltip for Species / Genus rows in the summary table.
-  // Build a key→row lookup from the current page slice so we can resolve data on hover.
-  const _sumSliceMap = new Map();
-  slice.forEach(function (r) {
-    _sumSliceMap.set(_sumRowKey(r), r);
   });
   wrap.querySelectorAll("tbody tr[data-key]").forEach(function (tr) {
     // skip group-header rows (they have no data-key — already filtered by selector)
@@ -1324,12 +1482,13 @@ function _noveltyCellHTML(r) {
 
   const lvl = speciesCand ? "sp" : "gen";
   const cand = speciesCand || genusCand;
-  const fracPct =
-    cand.frac_of_highrank != null
-      ? (parseFloat(cand.frac_of_highrank) * 100).toFixed(1) + "% of genus+ pool"
-      : cand.frac_of_sample != null
-      ? (parseFloat(cand.frac_of_sample) * 100).toFixed(3) + "% of sample"
-      : "";
+  const hrFrac = cand.frac_of_highrank != null && cand.frac_of_highrank !== "" ? parseFloat(cand.frac_of_highrank) : NaN;
+  const sampleFrac = cand.frac_of_sample != null && cand.frac_of_sample !== "" ? parseFloat(cand.frac_of_sample) : NaN;
+  const fracPct = !isNaN(hrFrac)
+    ? (hrFrac * 100).toFixed(1) + "% of genus+ pool"
+    : !isNaN(sampleFrac)
+    ? (sampleFrac * 100).toFixed(3) + "% of sample"
+    : "";
   const reads = cand.reads ? parseInt(cand.reads).toLocaleString() + ` ${_novUnit()}` : "";
   const tipParts = [
     `<b style="color:#f76707">Novelty signal — ${lvl === "sp" ? "species" : "genus"} level</b>`,
@@ -1487,6 +1646,9 @@ function _vfamrOnlySampleRows(fdRows) {
   ids.forEach((smp) => {
     if (sampleHidden[smp]) return;
     if (present.has(smp)) return;
+    // Merged-away member samples are represented by their specimen — don't
+    // render a stray "no detections" indicator for them.
+    if (typeof _isMergedAway === "function" && _isMergedAway(smp)) return;
     // When the user is text-searching organisms, don't surface sample-level
     // indicators (would be noise); for sample/both scope require a name match.
     if (rx && scope === "organism") return;
@@ -1641,6 +1803,7 @@ function _noveltyOnlySampleRows(fdRows) {
   ids.forEach((smp) => {
     if (sampleHidden[smp]) return;
     if (present.has(smp)) return;
+    if (typeof _isMergedAway === "function" && _isMergedAway(smp)) return;
     if (rx && scope === "organism") return;
     if (rx && scope !== "organism" && !rx.test(smp)) return;
     out.push({ "Specimen ID": smp, "Detected Organism": "", __noveltyOnly: true, __novelty: summary[smp] });
@@ -1747,6 +1910,7 @@ function _emptyOnlySampleRows(fdRows) {
   allSamples.forEach((smp) => {
     if (sampleHidden[smp]) return;
     if (present.has(smp)) return;
+    if (typeof _isMergedAway === "function" && _isMergedAway(smp)) return;
     if (rx && scope === "organism") return;
     if (rx && scope !== "organism" && !rx.test(smp)) return;
     out.push({

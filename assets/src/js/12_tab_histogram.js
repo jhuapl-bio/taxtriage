@@ -20,7 +20,15 @@
       // Keep rows with no numeric strain TASS (nothing to gate on), else
       // require a strict own-level pass.
       if (pi && !isNaN(pi.strain) && !pi.strainPass) return;
-      set.add(`${r["Specimen ID"]}||${r["Taxonomic ID #"]}`);
+      const tax = r["Taxonomic ID #"];
+      set.add(`${r["Specimen ID"]}||${tax}`);
+      // Merged-specimen rows carry the specimen NAME in "Specimen ID", but
+      // CONTIG_DATA is keyed by the original member samples. Add each member's
+      // key too, otherwise the gate rejects every CONTIG_DATA entry and the
+      // Histogram tab renders empty when merge is on.
+      if (Array.isArray(r.__mergedFrom)) {
+        r.__mergedFrom.forEach((s) => set.add(`${s}||${tax}`));
+      }
     });
     return set;
   }
@@ -88,9 +96,15 @@
 
     function _refreshSamples() {
       const orgKey = orgSel.value;
+      const prev = sampleSel.value;
       sampleSel.innerHTML = '<option value="">All samples</option>';
       const rx = _getTextFilter();
       const visibleTaxa = _histPassingTaxa();
+      const mergeOn =
+        typeof specimenMergeEnabled !== "undefined" &&
+        specimenMergeEnabled &&
+        typeof specimenOf === "function";
+      const choices = new Map();
       CONTIG_DATA.filter(
         (cd) =>
           _getOrgKey(cd) === orgKey &&
@@ -99,12 +113,25 @@
           cd.contigs &&
           cd.contigs.length,
       ).forEach((cd) => {
-        if (rx && !rx.test(cd.organism || "") && !rx.test(cd.sample || "")) return;
+        const sample = mergeOn ? specimenOf(cd.sample) : cd.sample;
+        if (rx && !rx.test(cd.organism || "") && !rx.test(cd.sample || "") && !rx.test(sample || "")) return;
+        if (choices.has(sample)) return;
+        const members =
+          mergeOn && typeof specimenGroups === "function" ? specimenGroups().get(sample) || [cd.sample] : [cd.sample];
+        choices.set(sample, members.length > 1 ? `${sample} (${members.length} samples)` : sample);
+      });
+      choices.forEach((label, sample) => {
         const opt = document.createElement("option");
-        opt.value = cd.sample;
-        opt.textContent = cd.sample;
+        opt.value = sample;
+        opt.textContent = label;
         sampleSel.appendChild(opt);
       });
+      if (prev && Array.from(sampleSel.options).some((o) => o.value === prev)) {
+        sampleSel.value = prev;
+      } else if (mergeOn && prev) {
+        const mergedPrev = specimenOf(prev);
+        if (Array.from(sampleSel.options).some((o) => o.value === mergedPrev)) sampleSel.value = mergedPrev;
+      }
     }
 
     _refreshOrgs();
@@ -153,6 +180,31 @@
   // Persistent filter state across drawHistogram calls
   let histSelectedContig = null;
   let _histLastOrgKey = null;
+  // Last specimen-merge fingerprint the selectors were built against. When the
+  // merge toggle flips or a specimen grouping is edited, this changes and we
+  // rebuild the org/sample dropdowns so the tab reflects the new grouping.
+  let _histLastMergeFp = null;
+
+  // Merge one contig list per name across member samples: reads summed, the
+  // rest taken as the max (they describe the same reference contig).
+  function _mergeContigsByName(cdsList) {
+    const byName = new Map();
+    cdsList.forEach((cd) =>
+      (cd.contigs || []).forEach((c) => {
+        const ex = byName.get(c.name);
+        if (!ex) {
+          byName.set(c.name, Object.assign({}, c));
+          return;
+        }
+        ex.reads = num(ex.reads) + num(c.reads);
+        ex.covered_bases = Math.max(num(ex.covered_bases), num(c.covered_bases));
+        ex.coverage = Math.max(num(ex.coverage), num(c.coverage));
+        ex.mean_depth = Math.max(num(ex.mean_depth), num(c.mean_depth));
+        ex.length = Math.max(num(ex.length), num(c.length));
+      }),
+    );
+    return Array.from(byName.values());
+  }
 
   window.drawHistogram = function () {
     const chartWrap = document.getElementById("hist-chart-wrap");
@@ -170,6 +222,23 @@
     const metricSel = document.getElementById("hist-metric-sel");
     const top20El = document.getElementById("hist-top20");
     if (!orgSel) return;
+
+    // Rebuild the selectors when the specimen grouping changed since the last
+    // draw (merge toggled on/off, or a live regrouping). Without this the tab
+    // keeps stale per-sample or per-specimen options after grouping.
+    const _mergeFp = typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "";
+    if (_mergeFp !== _histLastMergeFp) {
+      _histLastMergeFp = _mergeFp;
+      _buildSelectors();
+    }
+
+    // Show the "Merged view" control only when a specimen grouping is active.
+    const _mergeOn = typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled;
+    const _grouped = _mergeOn && typeof hasSpecimenGrouping === "function" && hasSpecimenGrouping();
+    const _mmLabel = document.getElementById("hist-merge-mode-label");
+    const _mmSel = document.getElementById("hist-merge-mode-sel");
+    if (_mmLabel) _mmLabel.style.display = _grouped ? "" : "none";
+    if (_mmSel) _mmSel.style.display = _grouped ? "" : "none";
 
     const orgKey = orgSel.value;
     // Reset per-contig filter when the organism changes
@@ -191,7 +260,11 @@
     let entries = CONTIG_DATA.filter(
       (cd) => _getOrgKey(cd) === orgKey && !sampleHidden[cd.sample] && _fdTaxaKeys.has(`${cd.sample}||${cd.taxon_id}`),
     );
-    if (sample) entries = entries.filter((cd) => cd.sample === sample);
+    if (sample) {
+      entries = entries.filter((cd) =>
+        _grouped && typeof specimenOf === "function" ? specimenOf(cd.sample) === sample : cd.sample === sample,
+      );
+    }
     // Sort entries to match the user-defined sample order from the main panel
     if (_sampleOrder.length) {
       const _idx = Object.fromEntries(_sampleOrder.map((id, i) => [id, i]));
@@ -201,11 +274,53 @@
         return ia - ib;
       });
     }
+    // ── Merged view: combine each specimen's member samples into one breadth
+    // curve + pooled depth for organisms hit in 2+ members. The curve is the
+    // EXACT positional union when the report carries covered_intervals (label
+    // "combined union"), otherwise a per-bin max lower bound (label "combined
+    // max") — see _covCombineCds. Falls back to per-sample rows when member
+    // profiles have different references, or when the user picks "Per sample".
+    // Applies to All samples or to one selected specimen; a selected specimen
+    // is filtered to its raw members above before those members are combined. ──
+    const _mmMode = (_mmSel && _mmSel.value) || "overlay";
+    if (_grouped && _mmMode === "combined" && typeof _covCombineCds === "function") {
+      const bySpec = new Map();
+      entries.forEach((cd) => {
+        const spec = typeof specimenOf === "function" ? specimenOf(cd.sample) : cd.sample;
+        if (!bySpec.has(spec)) bySpec.set(spec, []);
+        bySpec.get(spec).push(cd);
+      });
+      const combined = [];
+      bySpec.forEach((cds, spec) => {
+        if (cds.length < 2) {
+          combined.push(cds[0]);
+          return;
+        }
+        const syn = _covCombineCds(cds.map((cd) => ({ sample: cd.sample, cd })));
+        if (syn && syn.__combinable) {
+          const _how = syn.__exactUnion ? "union" : "max";
+          syn.sample = `${spec} · combined ${_how} (${cds.length} libs)`;
+          syn.__mergedMembers = cds.map((c) => c.sample);
+          syn.contigs = _mergeContigsByName(cds);
+          combined.push(syn);
+        } else {
+          // Different references — cannot combine honestly; keep member rows.
+          cds.forEach((cd) => combined.push(cd));
+        }
+      });
+      entries = combined;
+    }
+
     // Always show the sample name in chart titles when the dropdown is
     // on "All samples" — even if just one entry matches. Previously this
     // required `entries.length > 1`, which meant uploaded samples that
     // were the sole match for an organism rendered with no name at all.
-    const showAll = !sample;
+    const selectedMergedSpecimen =
+      _grouped &&
+      sample &&
+      typeof specimenGroups === "function" &&
+      (specimenGroups().get(sample) || []).length > 1;
+    const showAll = !sample || entries.length > 1 || selectedMergedSpecimen;
 
     if (!entries.length || entries.every((cd) => !cd.contigs || !cd.contigs.length)) {
       noData.style.display = "block";
@@ -871,7 +986,7 @@
 
   // Wire histogram controls after DOM is ready (scripts are at end of body)
   _buildSelectors();
-  ["hist-sample-sel", "hist-metric-sel"].forEach((id) => {
+  ["hist-sample-sel", "hist-metric-sel", "hist-merge-mode-sel"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener("change", window.drawHistogram);
   });
@@ -1018,12 +1133,14 @@ function _renderOneRow(row) {
         contentSpan.appendChild(badge);
       }
       contentSpan.appendChild(document.createTextNode(val));
-      if (mt === "dna" || mt === "rna") {
+      if (mt === "dna" || mt === "rna" || mt === "both") {
         const mtBadge = document.createElement("span");
-        mtBadge.textContent = mt === "dna" ? "D" : "R";
-        mtBadge.title = mt === "dna" ? "DNA pathogen" : "RNA pathogen";
-        mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${
-          mt === "dna" ? "#1565c0" : "#6a1b9a"
+        mtBadge.textContent = mt === "dna" ? "D" : mt === "rna" ? "R" : "D+R";
+        mtBadge.title = mt === "dna" ? "DNA pathogen" : mt === "rna" ? "RNA pathogen" : "Merged DNA + RNA evidence";
+        mtBadge.style.cssText = `display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;padding:0 ${
+          mt === "both" ? 2 : 0
+        }px;border-radius:7px;background:${
+          mt === "dna" ? "#1565c0" : mt === "rna" ? "#6a1b9a" : "#455a64"
         };color:#fff;font-size:8px;font-weight:700;vertical-align:middle;margin-left:3px;line-height:1;flex-shrink:0`;
         contentSpan.appendChild(mtBadge);
       }
@@ -1076,6 +1193,10 @@ function _renderOneRow(row) {
       pinHint.className = "row-pin-hint";
       rightGroup.appendChild(pinHint);
       td.appendChild(rightGroup);
+    } else if (c === "Specimen ID") {
+      td.appendChild(document.createTextNode(String(val)));
+      const badgeHtml = typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(row) : "";
+      if (badgeHtml) td.insertAdjacentHTML("beforeend", badgeHtml);
     } else {
       td.textContent = val;
     }
@@ -1322,7 +1443,11 @@ function populateTable() {
       gr.className = "grp-row";
       const gtd = document.createElement("td");
       gtd.colSpan = visibleCols.length;
-      gtd.innerHTML = `<i class="fas fa-vial"></i> ${_lastGrp}`;
+      const _mergedBadge = typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(row) : "";
+      gtd.innerHTML = `<i class="fas fa-vial"></i> ${String(_lastGrp)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")}${_mergedBadge}`;
       gr.appendChild(gtd);
       frag.appendChild(gr);
     }

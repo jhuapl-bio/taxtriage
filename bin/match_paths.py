@@ -3260,6 +3260,40 @@ def main():
             _pcts.append(round(_pct, 1))
         return _pcts
 
+    def _merge_covered_intervals(regs):
+        """Merge a strain's covered_regions into a compact, non-overlapping list
+        of [start, end) runs in the concatenated per-strain coordinate space,
+        returned flat as [s0, e0, s1, e1, ...].
+
+        This is the minimal positional information the report needs to compute an
+        EXACT breadth union across the samples of a merged specimen: two samples'
+        runs can be OR-ed together and re-binned, so coverage that lands in the
+        gaps of another sample is counted (per-bin max would drop it). Flat form
+        keeps the JSON small; runs are already sparse for real genomes.
+        """
+        _iv = sorted((int(_s), int(_e)) for (_s, _e, _d) in regs if int(_e) > int(_s))
+        if not _iv:
+            return []
+        _merged = []
+        _cs, _ce = _iv[0]
+        for _s, _e in _iv[1:]:
+            if _s <= _ce:
+                if _e > _ce:
+                    _ce = _e
+            else:
+                _merged.append(_cs); _merged.append(_ce)
+                _cs, _ce = _s, _e
+        _merged.append(_cs); _merged.append(_ce)
+        return _merged
+
+    # Cap on flattened interval count per strain (2 numbers per run). Beyond this
+    # the run list would bloat the JSON; such strains simply omit covered_intervals
+    # and the report falls back to the per-bin-max union for them. Sized to
+    # comfortably hold even a large, fragmented bacterial genome (e.g. a ~7 Mbp
+    # reference with tens of thousands of covered runs); pathological cases fall
+    # back rather than bloat the report.
+    _MAX_COVERED_INTERVAL_NUMS = 300000
+
     # ── Breadth histogram: always exactly 100 bins per strain ─────────────────
     # Pass 1 (inline, during the existing contig loop below): collect each
     # accession's covered_regions offset into a per-strain coordinate space so
@@ -3330,6 +3364,11 @@ def main():
                     'breaks':       _brk_bins,
                     'contig_names': _breadth_names_by_key.get(_skey, []),
                 }
+                # Compact covered runs (concatenated coords) so the report can
+                # compute an exact breadth union across a specimen's samples.
+                _ivals = _merge_covered_intervals(_breadth_regs_by_key[_skey])
+                if _ivals and len(_ivals) <= _MAX_COVERED_INTERVAL_NUMS:
+                    _breadth_bins_by_key[_skey]['covered_intervals'] = _ivals
 
     # Sort contigs by reads desc, cap at 100 per strain (prevent JSON bloat)
     for _skey in _contig_by_key:
@@ -3427,6 +3466,13 @@ def main():
                         'breaks':       _bbins['breaks'],
                         'contig_names': _bbins.get('contig_names', []),
                     }
+                    # Carry the compact covered runs through to the report so it
+                    # can compute an EXACT breadth union across a specimen's
+                    # samples (per-bin max is only a lower bound). Built in
+                    # pass 2 and size-capped there.
+                    _ci = _bbins.get('covered_intervals')
+                    if _ci:
+                        _strain['breadth_histogram']['covered_intervals'] = _ci
 
     # ── Resolve best cutoffs from thresholds JSON (if available) ──────────
     # Extract per-group best_threshold values so create_report.py can use

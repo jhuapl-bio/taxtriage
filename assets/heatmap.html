@@ -501,9 +501,10 @@
                 </button>
               </div>
               <div class="xs-note">
-                Aggregates every detection across the <b id="xs-nsamp">0</b> sample(s) currently in view (respects
-                sidebar filters): how often each organism is seen, its TASS / coverage spread, how samples cluster, and
-                which organisms co-occur.
+                Aggregates every detection across the <b id="xs-nsamp">0</b> <span id="xs-unit">sample(s)</span> with a
+                positive hit (respects sidebar filters): how often each organism is seen, its TASS / coverage spread, how
+                samples cluster, and which organisms co-occur. Prevalence % is measured against all specimens with any
+                positive hit run-wide.
               </div>
               <div class="tab-controls" id="xs-controls">
                 <div style="display: flex; gap: 0.3em; flex-wrap: wrap">
@@ -539,6 +540,43 @@
                   <option value="Coverage">Coverage</option>
                   <option value="presence" selected>Presence (0/1)</option>
                 </select>
+                <label
+                  id="xs-specimen-lbl"
+                  title="Merge samples that share a specimen id (e.g. DNA + RNA libraries from one swab) into a single specimen. Prevalence and per-organism TASS / coverage / reads then aggregate per specimen."
+                  >Specimens</label
+                >
+                <button
+                  id="xs-specimen-toggle"
+                  title="Toggle specimen merge on/off"
+                  style="
+                    padding: 0.22em 0.7em;
+                    border: 1px solid #1565c0;
+                    border-radius: 5px;
+                    background: #fff;
+                    color: #1565c0;
+                    font-size: 0.82em;
+                    font-weight: 600;
+                    cursor: pointer;
+                  "
+                >
+                  Merge: Off
+                </button>
+                <button
+                  id="xs-specimen-edit"
+                  title="Edit which samples belong to each specimen"
+                  style="
+                    padding: 0.22em 0.7em;
+                    border: 1px solid #1565c0;
+                    border-radius: 5px;
+                    background: #fff;
+                    color: #1565c0;
+                    font-size: 0.82em;
+                    font-weight: 600;
+                    cursor: pointer;
+                  "
+                >
+                  Edit…
+                </button>
                 <label id="xs-topn-lbl">Top organisms</label>
                 <select id="xs-topn">
                   <option value="15">15</option>
@@ -1256,6 +1294,11 @@
               <button id="hist-org-search-clear" type="button" style="padding: 0.25em 0.6em">Clear</button>
               <label>Sample:</label>
               <select id="hist-sample-sel" style="min-width: 140px"></select>
+              <label id="hist-merge-mode-label" style="display: none">Merged view:</label>
+              <select id="hist-merge-mode-sel" style="display: none; min-width: 150px" title="With specimen merge on: show one coverage row per member sample, or combine each specimen's members into a single breadth curve for organisms hit in 2+ samples. Combined uses the exact positional union of coverage when available (label 'combined union'), else a per-bin max lower bound (label 'combined max').">
+                <option value="overlay" selected>Per sample</option>
+                <option value="combined">Combined breadth</option>
+              </select>
               <label>Metric:</label>
               <select id="hist-metric-sel">
                 <option value="reads" selected>Reads Aligned</option>
@@ -3022,6 +3065,141 @@
             </button>
           </span>
         </h3>
+        <div
+          id="specimen-merge-bar"
+          style="
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.4em;
+            box-sizing: border-box;
+            width: 100%;
+            margin: 0 0 0.4em;
+            padding: 5px 7px;
+            border: 1px solid #d6e2f5;
+            border-radius: 5px;
+            background: #f6f9ff;
+          "
+        >
+          <span
+            style="
+              flex-basis: 100%;
+              font-size: 0.72em;
+              color: #0d47a1;
+              font-weight: 600;
+              white-space: nowrap;
+            "
+          >
+            <i class="fas fa-layer-group"></i> Specimens
+          </span>
+          <button
+            id="specimen-merge-toggle"
+            type="button"
+            style="
+              flex: 0 0 auto;
+              font-size: 0.7em;
+              padding: 3px 10px;
+              border: 1px solid #1565c0;
+              border-radius: 4px;
+              background: #fff;
+              color: #1565c0;
+              cursor: pointer;
+              white-space: nowrap;
+              font-weight: 600;
+              line-height: 1.5;
+            "
+          >
+            Merge: Off
+          </button>
+          <button
+            id="specimen-merge-group-btn"
+            type="button"
+            title="Drag samples together to build specimens and name them"
+            style="
+              flex: 0 0 auto;
+              font-size: 0.7em;
+              padding: 3px 10px;
+              border: 1px solid #1565c0;
+              border-radius: 4px;
+              background: #f0f7ff;
+              color: #0d47a1;
+              cursor: pointer;
+              white-space: nowrap;
+              font-weight: 600;
+              line-height: 1.5;
+            "
+          >
+            <i class="fas fa-object-group"></i> Group…
+          </button>
+          <button
+            id="specimen-merge-combine-all-btn"
+            type="button"
+            title="Combine every sample into a single specimen in one click (reads summed, TASS taken as the max)"
+            style="
+              flex: 0 0 auto;
+              font-size: 0.7em;
+              padding: 3px 10px;
+              border: 1px solid #1565c0;
+              border-radius: 4px;
+              background: #f0f7ff;
+              color: #0d47a1;
+              cursor: pointer;
+              white-space: nowrap;
+              font-weight: 600;
+              line-height: 1.5;
+            "
+          >
+            <i class="fas fa-object-ungroup"></i> Combine all
+          </button>
+          <span
+            id="specimen-merge-count"
+            style="
+              flex-basis: 100%;
+              font-size: 0.68em;
+              color: #6b7c93;
+              margin: 0;
+              overflow-wrap: anywhere;
+            "
+          ></span>
+        </div>
+        <div
+          id="sample-list-tools"
+          style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 0.4em"
+        >
+          <div style="display: flex; align-items: center; gap: 4px; flex: 1 0 100%; min-width: 0">
+            <div style="position: relative; flex: 1 1 auto; min-width: 0">
+              <i
+                class="fas fa-magnifying-glass"
+                aria-hidden="true"
+                style="position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: #90a4ae; font-size: 0.72em"
+              ></i>
+              <input
+                id="sample-list-search"
+                type="search"
+                placeholder="Search samples…"
+                aria-label="Search samples in the right panel"
+                style="box-sizing: border-box; width: 100%; padding: 4px 24px 4px 22px; border: 1px solid #c5d3e3; border-radius: 4px; font-size: 0.76em"
+              />
+            </div>
+            <select
+              id="sample-list-page-size"
+              aria-label="Samples per page"
+              title="Samples per page"
+              style="flex: 0 0 52px; width: 52px; min-width: 52px; max-width: 52px; padding: 3px 2px; border: 1px solid #c5d3e3; border-radius: 4px; background: #fff; font-size: 0.7em"
+            >
+              <option value="15">15</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div style="display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto">
+            <button id="sample-list-prev" type="button" title="Previous sample page" aria-label="Previous sample page" style="padding: 2px 6px; border: 1px solid #c5d3e3; border-radius: 4px; background: #fff; color: #456; cursor: pointer">&#8249;</button>
+            <span id="sample-list-page-info" style="min-width: 44px; text-align: center; color: #607d8b; font-size: 0.68em">1 / 1</span>
+            <button id="sample-list-next" type="button" title="Next sample page" aria-label="Next sample page" style="padding: 2px 6px; border: 1px solid #c5d3e3; border-radius: 4px; background: #fff; color: #456; cursor: pointer">&#8250;</button>
+          </div>
+          <div id="sample-list-match-info" aria-live="polite" style="flex-basis: 100%; color: #78909c; font-size: 0.66em"></div>
+        </div>
         <div id="sample-list"></div>
         <h3>Upload Data</h3>
         <div
@@ -3402,6 +3580,7 @@
     <script src="src/js/34_cross_entry_comparison.js"></script>
     <script src="src/js/35_tab_map.js"></script>
     <script src="src/js/36_guided_help_tour.js"></script>
+    <script src="src/js/37_specimen_merge.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

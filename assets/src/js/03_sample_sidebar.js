@@ -28,9 +28,17 @@ function _deleteSampleData(id) {
   Object.keys(PROT || {}).forEach((k) => {
     if (!Array.isArray(PROT[k])) return;
     for (let i = PROT[k].length - 1; i >= 0; i--) {
-      if (PROT[k][i] && PROT[k][i]["Specimen ID"] === id) PROT[k].splice(i, 1);
+      const r = PROT[k][i];
+      if (r && (r["Specimen ID"] === id || r.Sample === id || r.sample === id)) PROT[k].splice(i, 1);
     }
   });
+  // Novelty-only samples are another authoritative source for the sidebar.
+  // Remove the payload and any per-sample download links before rebuilding.
+  if (NOVELTY && NOVELTY.samples) delete NOVELTY.samples[id];
+  for (let i = NOVELTY_DL.length - 1; i >= 0; i--) {
+    const d = NOVELTY_DL[i] || {};
+    if (d.sample === id || d.label === id || String(d.filename || "").startsWith(id + ".")) NOVELTY_DL.splice(i, 1);
+  }
   // Prune BOOT in place — the source of resurrection on subsequent
   // file drops if we don't filter it here.
   if (BOOT) {
@@ -48,11 +56,28 @@ function _deleteSampleData(id) {
       Object.keys(BOOT.prot_data).forEach((k) => {
         if (!Array.isArray(BOOT.prot_data[k])) return;
         for (let i = BOOT.prot_data[k].length - 1; i >= 0; i--) {
-          if (BOOT.prot_data[k][i] && BOOT.prot_data[k][i]["Specimen ID"] === id) {
+          const r = BOOT.prot_data[k][i];
+          if (r && (r["Specimen ID"] === id || r.Sample === id || r.sample === id)) {
             BOOT.prot_data[k].splice(i, 1);
           }
         }
       });
+    }
+    if (Array.isArray(BOOT.run_metadata_records)) {
+      for (let i = BOOT.run_metadata_records.length - 1; i >= 0; i--) {
+        if (BOOT.run_metadata_records[i] && BOOT.run_metadata_records[i].sample_name === id) {
+          BOOT.run_metadata_records.splice(i, 1);
+        }
+      }
+    }
+    if (BOOT.novelty && BOOT.novelty.samples) delete BOOT.novelty.samples[id];
+    if (Array.isArray(BOOT.novelty_downloads) && BOOT.novelty_downloads !== NOVELTY_DL) {
+      for (let i = BOOT.novelty_downloads.length - 1; i >= 0; i--) {
+        const d = BOOT.novelty_downloads[i] || {};
+        if (d.sample === id || d.label === id || String(d.filename || "").startsWith(id + ".")) {
+          BOOT.novelty_downloads.splice(i, 1);
+        }
+      }
     }
   }
   // Drop this sample from accumulated upload state too
@@ -61,6 +86,7 @@ function _deleteSampleData(id) {
   delete sampleHidden[id];
   delete sampleRescale[id];
   _sampleOrder = _sampleOrder.filter((s) => s !== id);
+  if (typeof SPECIMEN_OVERRIDE !== "undefined") delete SPECIMEN_OVERRIDE[id];
   // Re-evaluate VF/AMR tab visibility after the prune
   HAS_PROT = Object.keys(PROT || {}).some((k) => Array.isArray(PROT[k]) && PROT[k].length > 0);
   const protBtn = document.getElementById("prot-tab-btn");
@@ -68,9 +94,19 @@ function _deleteSampleData(id) {
   // Re-evaluate histogram tab visibility too
   const histBtn = document.getElementById("hist-tab-btn");
   if (histBtn) histBtn.classList.toggle("hidden", CONTIG_DATA.length === 0);
-  // Prune SAMPLE_META so % classified drops the deleted sample's reads
+  // Prune metadata BEFORE buildSampleList(): _allSampleIds() intentionally
+  // treats metadata as authoritative, so rebuilding first left a ghost row.
   delete SAMPLE_META[id];
   if (BOOT && BOOT.sample_meta) delete BOOT.sample_meta[id];
+  if (typeof SPECIMEN_META_RESOLVED !== "undefined" && typeof specimenGroups === "function") {
+    Object.keys(SPECIMEN_META_RESOLVED).forEach((spec) => {
+      const members = specimenGroups().get(spec) || [];
+      if (members.length < 2) delete SPECIMEN_META_RESOLVED[spec];
+    });
+  }
+  HAS_NOVELTY = !!(NOVELTY && NOVELTY.samples && Object.keys(NOVELTY.samples).length);
+  const noveltyBtn = document.getElementById("novelty-tab-btn");
+  if (noveltyBtn) noveltyBtn.classList.toggle("hidden", !HAS_NOVELTY);
   buildSampleList();
   buildTable();
   _rebuildMapMarkers();
@@ -80,7 +116,7 @@ function _deleteSampleData(id) {
 }
 
 function removeAllSamples() {
-  const samples = uniq(DATA.map((r) => r["Specimen ID"] || "")).filter(Boolean);
+  const samples = Array.from(_allSampleIds()).filter(Boolean);
   if (!samples.length) return;
   const ok = confirm(
     `Permanently delete all ${samples.length} sample${
@@ -96,11 +132,21 @@ function removeAllSamples() {
   DATA.length = 0;
   RUN_META.length = 0;
   CONTIG_DATA.length = 0;
+  if (NOVELTY && NOVELTY.samples) Object.keys(NOVELTY.samples).forEach((k) => delete NOVELTY.samples[k]);
+  NOVELTY_DL.length = 0;
+  HAS_NOVELTY = false;
+  const noveltyBtn = document.getElementById("novelty-tab-btn");
+  if (noveltyBtn) noveltyBtn.classList.add("hidden");
   if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
   // Reset BOOT in place so all references see the change.
   if (BOOT) {
     if (Array.isArray(BOOT.records)) BOOT.records.length = 0;
     if (Array.isArray(BOOT.contig_data)) BOOT.contig_data.length = 0;
+    if (Array.isArray(BOOT.run_metadata_records)) BOOT.run_metadata_records.length = 0;
+    if (BOOT.novelty && BOOT.novelty.samples) {
+      Object.keys(BOOT.novelty.samples).forEach((k) => delete BOOT.novelty.samples[k]);
+    }
+    if (Array.isArray(BOOT.novelty_downloads)) BOOT.novelty_downloads.length = 0;
     if (BOOT.prot_data && typeof BOOT.prot_data === "object") {
       Object.keys(BOOT.prot_data).forEach((k) => {
         if (Array.isArray(BOOT.prot_data[k])) BOOT.prot_data[k].length = 0;
@@ -124,6 +170,12 @@ function removeAllSamples() {
     delete sampleRescale[id];
   });
   _sampleOrder = [];
+  if (typeof SPECIMEN_OVERRIDE !== "undefined") {
+    Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
+  }
+  if (typeof SPECIMEN_META_RESOLVED !== "undefined") {
+    Object.keys(SPECIMEN_META_RESOLVED).forEach((k) => delete SPECIMEN_META_RESOLVED[k]);
+  }
   // Clear SAMPLE_META so % classified resets to N/A with no data
   Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
   if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
@@ -223,6 +275,84 @@ function _allSampleIds() {
 // scores can be unreliable, so the row gets a warning icon. Returns a
 // {warn, msg} object; warn=false means the sample looks fine.
 const _LOW_READ_THRESHOLD = 1000; // total reads below this == "few reads"
+let _sampleListPage = 0;
+let _sampleListPageIds = [];
+
+function _sampleListFilteredOrder() {
+  const input = document.getElementById("sample-list-search");
+  const q = String((input && input.value) || "").trim().toLowerCase();
+  if (!q) return _sampleOrder.slice();
+  return _sampleOrder.filter((id) => {
+    const specimen =
+      typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
+        ? specimenOf(id)
+        : "";
+    return id.toLowerCase().includes(q) || (specimen && specimen.toLowerCase().includes(q));
+  });
+}
+
+function _wireSampleListTools() {
+  const search = document.getElementById("sample-list-search");
+  const size = document.getElementById("sample-list-page-size");
+  const prev = document.getElementById("sample-list-prev");
+  const next = document.getElementById("sample-list-next");
+  if (search && !search._wired) {
+    search._wired = true;
+    search.addEventListener("input", () => {
+      _sampleListPage = 0;
+      buildSampleList();
+    });
+  }
+  if (size && !size._wired) {
+    size._wired = true;
+    size.addEventListener("change", () => {
+      _sampleListPage = 0;
+      buildSampleList();
+    });
+  }
+  if (prev && !prev._wired) {
+    prev._wired = true;
+    prev.addEventListener("click", () => {
+      if (_sampleListPage > 0) {
+        _sampleListPage--;
+        buildSampleList();
+      }
+    });
+  }
+  if (next && !next._wired) {
+    next._wired = true;
+    next.addEventListener("click", () => {
+      const perPage = parseInt((size || {}).value, 10) || 25;
+      const pages = Math.max(1, Math.ceil(_sampleListFilteredOrder().length / perPage));
+      if (_sampleListPage + 1 < pages) {
+        _sampleListPage++;
+        buildSampleList();
+      }
+    });
+  }
+}
+
+function _updateSampleListTools(filteredCount, totalCount, pages) {
+  const info = document.getElementById("sample-list-page-info");
+  const match = document.getElementById("sample-list-match-info");
+  const prev = document.getElementById("sample-list-prev");
+  const next = document.getElementById("sample-list-next");
+  if (info) info.textContent = `${_sampleListPage + 1} / ${pages}`;
+  if (match) {
+    const start = filteredCount ? _sampleListPageIds.length ? _sampleListPage * (parseInt((document.getElementById("sample-list-page-size") || {}).value, 10) || 25) + 1 : 0 : 0;
+    const end = filteredCount ? start + _sampleListPageIds.length - 1 : 0;
+    match.textContent = filteredCount === totalCount ? `${start}–${end} of ${totalCount} samples` : `${start}–${end} of ${filteredCount} matches · ${totalCount} total`;
+  }
+  if (prev) {
+    prev.disabled = _sampleListPage <= 0;
+    prev.style.opacity = prev.disabled ? "0.35" : "1";
+  }
+  if (next) {
+    next.disabled = _sampleListPage + 1 >= pages;
+    next.style.opacity = next.disabled ? "0.35" : "1";
+  }
+}
+
 function _sampleDataWarning(id) {
   const meta = SAMPLE_META[id] || {};
   const totalReads = parseInt(meta.total_reads) || 0;
@@ -266,17 +396,37 @@ function buildSampleList() {
   const cont = document.getElementById("sample-list");
   if (!cont) return;
   cont.innerHTML = "";
+  _wireSampleListTools();
+  const filteredOrder = _sampleListFilteredOrder();
+  const pageSize = parseInt((document.getElementById("sample-list-page-size") || {}).value, 10) || 25;
+  const pages = Math.max(1, Math.ceil(filteredOrder.length / pageSize));
+  _sampleListPage = Math.max(0, Math.min(_sampleListPage, pages - 1));
+  _sampleListPageIds = filteredOrder.slice(_sampleListPage * pageSize, (_sampleListPage + 1) * pageSize);
+  _updateSampleListTools(filteredOrder.length, _sampleOrder.length, pages);
 
   // ── drag state ──────────────────────────────────────────────────────
   let _dragSrc = null;
 
   function _rebuildFromDOM() {
     const rows = cont.querySelectorAll(".sample-entry[data-sid]");
-    _sampleOrder = Array.from(rows).map((r) => r.dataset.sid);
+    const rendered = Array.from(rows).map((r) => r.dataset.sid);
+    const renderedSet = new Set(rendered);
+    let i = 0;
+    // Replace only the slots represented on this page. Samples on other pages
+    // and nonmatching search results keep their positions in the global order.
+    _sampleOrder = _sampleOrder.map((id) => (renderedSet.has(id) ? rendered[i++] : id));
+    if (
+      typeof specimenMergeEnabled !== "undefined" &&
+      specimenMergeEnabled &&
+      window.specimenMerge &&
+      typeof window.specimenMerge.refreshBar === "function"
+    ) {
+      window.specimenMerge.refreshBar();
+    }
     redraw();
   }
 
-  _sampleOrder.forEach((id) => {
+  _sampleListPageIds.forEach((id) => {
     const div = document.createElement("div");
     div.className = "sample-entry";
     div.dataset.sid = id;
@@ -486,6 +636,9 @@ function buildSampleList() {
   buildPerTypeTassUI();
   // Update the sidebar legend (sample swatches + TASS cutoffs)
   _updateSidebarLegend();
+  if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
+    window.specimenMerge.refreshBar();
+  }
 }
 
 /** Rebuild the sidebar legend: sample color swatches + active TASS cutoffs.
@@ -499,9 +652,9 @@ function _updateSidebarLegend() {
   // ── sample swatches ──────────────────────────────────────────────
   if (_sampleOrder.length > 0) {
     let swatchHtml =
-      '<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors</div>';
+      `<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors <span style="font-weight:400;color:#90a4ae">(current page)</span></div>`;
     swatchHtml += '<div style="display:flex;flex-direction:column;gap:0.18em">';
-    _sampleOrder.forEach((id) => {
+    _sampleListPageIds.forEach((id) => {
       const col = sampleColors[id] || "#888";
       const hidden = sampleHidden[id];
       swatchHtml +=
@@ -510,6 +663,9 @@ function _updateSidebarLegend() {
         `<span style="font-size:0.78em;color:#37474f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px" title="${id}">${id}</span>` +
         `</div>`;
     });
+    if (!_sampleListPageIds.length) {
+      swatchHtml += '<div style="font-size:0.75em;color:#90a4ae;font-style:italic">No matching samples.</div>';
+    }
     swatchHtml += "</div>";
     samplesEl.innerHTML = swatchHtml;
     panel.style.display = "";

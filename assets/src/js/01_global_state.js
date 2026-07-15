@@ -11,6 +11,168 @@ const perTypeTass = {}; // per-sample-type TASS override: { "stool": 65, "blood"
 const _loadingSampleIds = new Set(); // samples currently ingesting an attached file (drives the per-row spinner)
 let _sampleOrder = []; // custom display order for samples (index → id)
 
+/* ── Specimen grouping (merge DNA/RNA libraries of one specimen) ──────────
+       A "specimen" groups one or more samples (e.g. a separate DNA and RNA
+       library from the same swab) into a single biological unit. The grouping
+       is supplied by the samplesheet `specimen` column, which flows through the
+       pipeline into SAMPLE_META[sample].specimen, and can be overridden live in
+       the report via SPECIMEN_OVERRIDE. When specimenMergeEnabled is on, the
+       cross-sample views aggregate hits / TASS / coverage per specimen instead
+       of per sample, and prevalence is computed over specimens. */
+let specimenMergeEnabled = false;
+const SPECIMEN_OVERRIDE = {}; // sample_name → specimen group (live UI edits win)
+
+/** Resolve the specimen a sample belongs to, independent of the merge toggle.
+ *  Priority: live override → samplesheet metadata → the sample name itself
+ *  (a sample with no specimen assignment is its own specimen). */
+function specimenOf(sample) {
+  const s = String(sample == null ? "" : sample);
+  if (!s) return s;
+  if (Object.prototype.hasOwnProperty.call(SPECIMEN_OVERRIDE, s) && SPECIMEN_OVERRIDE[s]) {
+    return String(SPECIMEN_OVERRIDE[s]);
+  }
+  const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META[s]) || {};
+  const sp = meta.specimen != null ? meta.specimen : meta.specimen_id != null ? meta.specimen_id : meta.specimen_group;
+  return sp != null && String(sp).trim() ? String(sp).trim() : s;
+}
+
+/** The key cross-sample views should group rows by: the specimen when merging
+ *  is enabled, otherwise the raw sample (Specimen ID) name. */
+function specimenKey(sample) {
+  return specimenMergeEnabled ? specimenOf(sample) : String(sample == null ? "" : sample);
+}
+
+/** Give every multi-sample specimen a stable color so legends, the heatmap,
+ *  the coverage plots and the right-panel all render the merged unit in a
+ *  consistent hue. A specimen inherits its first member's color (visually
+ *  linking them); brand-new specimen names with no colored member fall back to
+ *  the shared PALETTE. Idempotent — only fills gaps, never recolors. */
+function _ensureSpecimenColors() {
+  if (typeof specimenGroups !== "function") return;
+  let i = Object.keys(sampleColors).length;
+  specimenGroups().forEach((members, g) => {
+    if (members.length > 1 && !sampleColors[g]) {
+      sampleColors[g] = sampleColors[members[0]] || PALETTE[i++ % PALETTE.length];
+    }
+  });
+}
+
+/** True when merging is active AND this sample has been folded into a
+ *  specimen that carries a different name (i.e. it no longer appears in the
+ *  merged view under its own id). Per-sample section / indicator builders use
+ *  this to avoid rendering an empty "no detections" row for a member sample
+ *  whose rows were relabelled onto its specimen. */
+function _isMergedAway(sample) {
+  if (!specimenMergeEnabled) return false;
+  const s = String(sample == null ? "" : sample);
+  return !!s && specimenOf(s) !== s;
+}
+
+/** Whether any sample is actually assigned to a multi-sample specimen (via
+ *  metadata or a live override). Lets the UI hide the merge control when the
+ *  run has no specimen grouping to act on. */
+function hasSpecimenGrouping() {
+  const groups = specimenGroups();
+  for (const members of groups.values()) if (members.length > 1) return true;
+  return false;
+}
+
+/** Map every known specimen → sorted list of its member samples, using
+ *  SAMPLE_META (all samples) plus any live overrides and anything seen in DATA. */
+function specimenGroups() {
+  const groups = new Map();
+  const add = (sample) => {
+    const s = String(sample == null ? "" : sample);
+    if (!s) return;
+    const g = specimenOf(s);
+    if (!groups.has(g)) groups.set(g, new Set());
+    groups.get(g).add(s);
+  };
+  Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach(add);
+  if (typeof DATA !== "undefined") DATA.forEach((r) => add(r["Specimen ID"]));
+  const out = new Map();
+  Array.from(groups.keys())
+    .sort()
+    .forEach((g) => out.set(g, Array.from(groups.get(g)).sort()));
+  return out;
+}
+
+/** Small, consistent visual marker used beside sample/specimen names in the
+ *  Summary, full Table and Metadata tables. Pass either a collapsed detection
+ *  row (__mergedFrom) or a raw sample id. Returns an empty string unless the
+ *  item is currently part of an active multi-sample specimen. */
+function _mergedSampleBadgeHTML(item) {
+  if (!(typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled)) return "";
+  const esc = (v) =>
+    String(v == null ? "" : v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  let specimen = "",
+    members = [];
+  if (item && typeof item === "object") {
+    specimen = String(item["Specimen ID"] || "");
+    members = Array.isArray(item.__specimenMembers)
+      ? item.__specimenMembers.slice()
+      : Array.isArray(item.__mergedFrom)
+      ? item.__mergedFrom.slice()
+      : [];
+    if (members.length < 2 && typeof specimenGroups === "function") {
+      members = (specimenGroups().get(specimen) || members).slice();
+    }
+  } else {
+    const sample = String(item == null ? "" : item);
+    specimen = typeof specimenOf === "function" ? specimenOf(sample) : sample;
+    const groups = typeof specimenGroups === "function" ? specimenGroups() : new Map();
+    members = (groups.get(specimen) || []).slice();
+  }
+  if (members.length < 2) return "";
+  const title = `Merged specimen: ${specimen} (${members.length} samples: ${members.join(", ")})`;
+  return (
+    `<span class="merged-sample-badge" title="${esc(title)}" ` +
+    `style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:0 5px;` +
+    `border:1px solid #90caf9;border-radius:8px;background:#e3f2fd;color:#0d47a1;` +
+    `font-size:9px;font-weight:700;line-height:1.55;vertical-align:middle;white-space:nowrap">` +
+    `<i class="fas fa-layer-group" aria-hidden="true"></i> merged ×${members.length}</span>`
+  );
+}
+
+/** Fingerprint of everything that changes specimen aggregation, for the
+ *  filteredData() cache key. Changes when the merge toggle flips or any live
+ *  SPECIMEN_OVERRIDE assignment is edited. */
+function _hashSpecimenMerge() {
+  const ov = Object.keys(SPECIMEN_OVERRIDE)
+    .sort()
+    .map((k) => k + "=" + SPECIMEN_OVERRIDE[k])
+    .join(",");
+  return (specimenMergeEnabled ? "1" : "0") + "|" + ov;
+}
+
+/** User-chosen resolutions for metadata that conflicts across the samples of a
+ *  merged specimen (e.g. differing lat/long). Keyed specimen → { field: value }.
+ *  Populated by the merge modal's conflict chooser; read best-effort by views
+ *  that surface per-specimen metadata. */
+const SPECIMEN_META_RESOLVED = {};
+
+/** Prevalence denominator: the number of distinct specimens (respecting the
+ *  merge toggle) that have at least one positive hit (Passes Threshold)
+ *  anywhere in the run. Deliberately decoupled from the live TASS slider so
+ *  prevalence is measured against everything that tested positive, not just
+ *  what clears the current threshold. */
+function positiveHitSpecimenCount() {
+  const seen = new Set();
+  if (typeof DATA !== "undefined") {
+    DATA.forEach((r) => {
+      if (typeof isTruthy === "function" ? isTruthy(r["Passes Threshold"]) : r["Passes Threshold"]) {
+        const k = specimenKey(r["Specimen ID"]);
+        if (k) seen.add(k);
+      }
+    });
+  }
+  return seen.size;
+}
+
 /** Return arr sorted by _sampleOrder; unknowns go to the end. */
 function _orderedSamples(arr) {
   if (!_sampleOrder.length) return arr;

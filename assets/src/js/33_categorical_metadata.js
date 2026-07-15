@@ -16,6 +16,41 @@ const _META_METRIC_LABELS = {
 const _GEO_META_FIELDS = ["sample_origin_country", "sample_origin_state_province_territory"];
 const _HOST_META_FIELDS = ["host_scientific_name", "host_disease", "environmental_site"];
 
+function _metaViewId(sample) {
+  return typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
+    ? specimenOf(sample)
+    : sample;
+}
+
+// Resolve raw RUN_META rows into the identities currently displayed by the
+// report. Values are unioned for grouped specimens unless the merge dialog
+// stored an explicit resolution for that field.
+function _metaValuesByEntity(field) {
+  const by = {};
+  (RUN_META || []).forEach((r) => {
+    if (sampleHidden[r.sample_name]) return;
+    const id = _metaViewId(r.sample_name);
+    const v = r[field];
+    const vals = v == null ? [] : Array.isArray(v) ? v : [v];
+    if (!by[id]) by[id] = new Set();
+    vals.forEach((x) => {
+      const s = String(x).trim();
+      if (s) by[id].add(s);
+    });
+  });
+  Object.keys(by).forEach((id) => {
+    const resolved =
+      typeof SPECIMEN_META_RESOLVED !== "undefined" && SPECIMEN_META_RESOLVED[id]
+        ? SPECIMEN_META_RESOLVED[id][field]
+        : null;
+    if (resolved != null && resolved !== "") {
+      const vals = Array.isArray(resolved) ? resolved : [resolved];
+      by[id] = new Set(vals.map((x) => String(x).trim()).filter(Boolean));
+    }
+  });
+  return Object.fromEntries(Object.entries(by).map(([id, vals]) => [id, Array.from(vals)]));
+}
+
 // True if any RUN_META record has a non-empty value for one of `fields`.
 function _anyMetaValue(fields) {
   return (RUN_META || []).some((r) =>
@@ -35,14 +70,8 @@ function _aggregateMetaByField(fieldKey, metric, sampleSet) {
   // sample_name → array of categorical values (always an array for uniform handling)
   // sampleSet (optional): restrict to these sample_names (used when drilling
   // into a single country's states).
-  const valBy = {};
-  (RUN_META || []).forEach((r) => {
-    if (sampleSet && !sampleSet.has(r.sample_name)) return;
-    const v = r[fieldKey];
-    if (v == null) return;
-    const vals = Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [String(v).trim()].filter(Boolean);
-    if (vals.length) valBy[r.sample_name] = vals;
-  });
+  const valBy = _metaValuesByEntity(fieldKey);
+  if (sampleSet) Object.keys(valBy).forEach((id) => !sampleSet.has(id) && delete valBy[id]);
   if (!Object.keys(valBy).length) return [];
 
   const groups = {};
@@ -50,9 +79,10 @@ function _aggregateMetaByField(fieldKey, metric, sampleSet) {
     (groups[val] = groups[val] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
 
   if (metric === "samples") {
-    // Count visible (non-hidden) samples per category value
+    // Count only entities represented by the current filtered detections.
+    const visibleEntities = new Set(filteredData().map((r) => r["Specimen ID"] || "").filter(Boolean));
     Object.entries(valBy).forEach(([s, vals]) => {
-      if (sampleHidden[s]) return;
+      if (!visibleEntities.has(s)) return;
       vals.forEach((val) => ensure(val).samples.add(s));
     });
   } else {
@@ -536,13 +566,11 @@ window._ttAutofillGeoFromCoords = _ttAutofillGeoFromCoords;
 function _geoSamplesForDatum(field, datumLabel) {
   const keys = new Set(_geoMatchKeys(field, datumLabel));
   const set = new Set();
-  (RUN_META || []).forEach((r) => {
-    const v = r[field];
-    const vals = v == null ? [] : Array.isArray(v) ? v : [v];
+  Object.entries(_metaValuesByEntity(field)).forEach(([id, vals]) => {
     for (const x of vals) {
       for (const k of _geoMatchKeys(field, x)) {
         if (keys.has(k)) {
-          set.add(r.sample_name);
+          set.add(id);
           break;
         }
       }
@@ -553,11 +581,9 @@ function _geoSamplesForDatum(field, datumLabel) {
 // Tally a metadata field's values across a set of samples → sorted [label,count].
 function _geoMetaTally(sampleSet, field) {
   const m = {};
-  (RUN_META || []).forEach((r) => {
-    if (!sampleSet.has(r.sample_name)) return;
-    const v = r[field];
-    if (v == null) return;
-    (Array.isArray(v) ? v : [v]).forEach((x) => {
+  Object.entries(_metaValuesByEntity(field)).forEach(([id, vals]) => {
+    if (!sampleSet.has(id)) return;
+    vals.forEach((x) => {
       const s = String(x).trim();
       if (s) m[s] = (m[s] || 0) + 1;
     });
@@ -656,7 +682,7 @@ function _geoRegionInfoHTML(field, label, opts) {
   if (!isCountry) {
     const cs = new Set();
     (RUN_META || []).forEach((r) => {
-      if (!sset.has(r.sample_name)) return;
+      if (!sset.has(_metaViewId(r.sample_name))) return;
       const c = String(r.sample_origin_country == null ? "" : r.sample_origin_country).trim();
       if (c) cs.add(c);
     });
@@ -894,18 +920,20 @@ function _aggregateMetaNested(parentField, childField, metric) {
       ? v.map((x) => String(x).trim()).filter(Boolean)
       : [String(v).trim()].filter(Boolean);
   const recBy = {};
-  (RUN_META || []).forEach((r) => {
-    const p = toArr(r[parentField]);
-    if (!p.length) return;
-    recBy[r.sample_name] = { parents: p, children: toArr(r[childField]) };
+  const parentsBy = _metaValuesByEntity(parentField);
+  const childrenBy = _metaValuesByEntity(childField);
+  Object.keys(parentsBy).forEach((id) => {
+    const p = toArr(parentsBy[id]);
+    if (p.length) recBy[id] = { parents: p, children: toArr(childrenBy[id]) };
   });
   const parents = {};
   const eP = (p) =>
     (parents[p] = parents[p] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0, kids: {} });
   const eK = (P, c) => (P.kids[c] = P.kids[c] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
   if (metric === "samples") {
+    const visibleEntities = new Set(filteredData().map((r) => r["Specimen ID"] || "").filter(Boolean));
     Object.entries(recBy).forEach(([s, o]) => {
-      if (sampleHidden[s]) return;
+      if (!visibleEntities.has(s)) return;
       o.parents.forEach((p) => {
         const P = eP(p);
         P.samples.add(s);
@@ -1383,9 +1411,9 @@ function _hostMatrixData(symField, orgField) {
       ? v.map((x) => String(x).trim()).filter(Boolean)
       : [String(v).trim()].filter(Boolean);
   const symBy = {};
-  (RUN_META || []).forEach((r) => {
-    const vals = toArr(r[symField]);
-    if (vals.length) symBy[r.sample_name] = vals;
+  Object.entries(_metaValuesByEntity(symField)).forEach(([id, raw]) => {
+    const vals = toArr(raw);
+    if (vals.length) symBy[id] = vals;
   });
   if (!Object.keys(symBy).length) return null;
   // sample → set of detected organisms (visible detections only)

@@ -72,14 +72,21 @@ function _aniMatchesFor(r) {
 // Per sample we keep the MAX TASS / coverage so a single organism that
 // appears at several taxonomic levels in one sample counts once.
 function _xsAggregate(fd) {
-  const totalSamples = uniq(fd.map((r) => r["Specimen ID"] || "").filter(Boolean));
-  const N = totalSamples.length || 1;
+  // Distinct specimens present in the current (filtered) view — numerators
+  // reference these. When specimen merge is on, DNA/RNA libraries of the same
+  // specimen collapse to a single key here.
+  const viewSpecimens = uniq(fd.map((r) => specimenKey(r["Specimen ID"])).filter(Boolean));
+  // Prevalence denominator: specimens with ANY positive hit across the whole
+  // run (Passes Threshold), independent of the live TASS slider. Falls back to
+  // the in-view specimen count when the report carries no Passes-Threshold
+  // flags (older data), so prevalence never divides by zero.
+  const N = positiveHitSpecimenCount() || viewSpecimens.length || 1;
   const byOrg = new Map();
-  // Per-sample ANI capability: which samples carry ANI annotation at all.
+  // Per-specimen ANI capability: which specimens carry ANI annotation at all.
   const aniSamples = new Set();
   const noAniSamples = new Set();
   fd.forEach((r) => {
-    const sn = r["Specimen ID"] || "";
+    const sn = specimenKey(r["Specimen ID"]);
     if (!sn) return;
     (_aniAnnotated(r) ? aniSamples : noAniSamples).add(sn);
     const taxid = (r["Taxonomic ID #"] || "").toString();
@@ -122,7 +129,7 @@ function _xsAggregate(fd) {
       cat: e.cat,
       hc: e.hc,
       sampleCount: e.tassMap.size,
-      samplePct: (e.tassMap.size / N) * 100,
+      samplePct: Math.min(100, (e.tassMap.size / N) * 100),
       meanTass: _xsMean(tass),
       medianTass: _xsMed(tass),
       maxTass: tass.length ? Math.max(...tass) : 0,
@@ -176,7 +183,7 @@ function _xsAggregate(fd) {
   return {
     rows,
     totalSamples: N,
-    sampleList: totalSamples,
+    sampleList: viewSpecimens,
     aniSamples,
     noAniSamples,
     aniGroups: _groupMembers,
@@ -195,6 +202,145 @@ function _xsCatColor(cat) {
   return _CAT_COLORS[(cat || "Unknown").split(";")[0]] || "#607d8b";
 }
 
+// ── Specimen merge: toggle + membership editor ───────────────────────────
+// Sync the toggle button label/style and the "sample(s)"/"specimen(s)" unit
+// wording to the current merge state. Hides the controls when the run has no
+// specimen grouping to act on (nothing would change).
+function _xsUpdateSpecimenControls() {
+  const has = typeof hasSpecimenGrouping === "function" ? hasSpecimenGrouping() : false;
+  const tog = document.getElementById("xs-specimen-toggle");
+  const edit = document.getElementById("xs-specimen-edit");
+  const lbl = document.getElementById("xs-specimen-lbl");
+  // The editor is always useful (you can create grouping live); the toggle is
+  // only meaningful once at least one multi-sample specimen exists.
+  if (tog) {
+    tog.style.display = has ? "" : "none";
+    tog.textContent = "Merge: " + (specimenMergeEnabled ? "On" : "Off");
+    tog.style.background = specimenMergeEnabled ? "#1565c0" : "#fff";
+    tog.style.color = specimenMergeEnabled ? "#fff" : "#1565c0";
+  }
+  if (lbl) lbl.style.display = "";
+  if (edit) edit.style.display = "";
+  // Swap the unit noun in the summary note.
+  const unit = document.getElementById("xs-unit");
+  if (unit) unit.textContent = specimenMergeEnabled ? "specimen(s)" : "sample(s)";
+}
+
+function _xsToggleSpecimenMerge() {
+  const next = !specimenMergeEnabled;
+  if (window.specimenMerge && typeof window.specimenMerge.setEnabled === "function") {
+    window.specimenMerge.setEnabled(next);
+    return;
+  }
+  specimenMergeEnabled = next;
+  if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+  if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+  const fd = typeof filteredData === "function" ? filteredData() : [];
+  _drawCrossSample(fd, null);
+}
+
+// Build (once) and open a modal that lists every sample and the specimen it is
+// assigned to. Editing a specimen name and applying re-groups the samples live
+// via SPECIMEN_OVERRIDE, then re-renders with merge enabled.
+function _xsOpenSpecimenEditor() {
+  let back = document.getElementById("xs-specimen-modal");
+  if (back) back.remove();
+  back = document.createElement("div");
+  back.id = "xs-specimen-modal";
+  back.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10000;display:flex;align-items:center;justify-content:center;";
+
+  const groups = specimenGroups();
+  // Flatten to [sample, currentSpecimen] rows, grouped for readability.
+  const rowsHtml = [];
+  groups.forEach((members, g) => {
+    members.forEach((s) => {
+      const safeS = String(s).replace(/"/g, "&quot;");
+      const safeG = String(g).replace(/"/g, "&quot;");
+      const isGrouped = members.length > 1;
+      rowsHtml.push(
+        `<tr>` +
+          `<td style="padding:4px 8px;font-size:0.85em;white-space:nowrap;">${safeS}</td>` +
+          `<td style="padding:4px 8px;">` +
+          `<input class="xs-sp-input" data-sample="${safeS}" value="${safeG}" ` +
+          `style="width:100%;box-sizing:border-box;padding:3px 6px;border:1px solid ${
+            isGrouped ? "#1565c0" : "#ccc"
+          };border-radius:4px;font-size:0.85em;" />` +
+          `</td></tr>`,
+      );
+    });
+  });
+
+  back.innerHTML =
+    `<div style="background:#fff;border-radius:8px;max-width:560px;width:92%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,0.3);">` +
+    `<div style="padding:14px 18px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;">` +
+    `<b style="font-size:1.02em;color:#1565c0;">Edit specimens</b>` +
+    `<span style="flex:1"></span>` +
+    `<span style="cursor:pointer;font-size:1.3em;color:#888;" id="xs-sp-close">&times;</span>` +
+    `</div>` +
+    `<div style="padding:6px 18px;font-size:0.82em;color:#666;">Give samples the same <b>specimen</b> value to merge them (e.g. a DNA and RNA library from one swab). Prevalence and per-organism TASS / coverage / reads then aggregate per specimen.</div>` +
+    `<div style="overflow:auto;padding:4px 18px 10px;">` +
+    `<table style="width:100%;border-collapse:collapse;">` +
+    `<thead><tr>` +
+    `<th style="text-align:left;padding:4px 8px;font-size:0.78em;color:#888;border-bottom:1px solid #eee;">Sample</th>` +
+    `<th style="text-align:left;padding:4px 8px;font-size:0.78em;color:#888;border-bottom:1px solid #eee;">Specimen</th>` +
+    `</tr></thead><tbody>${rowsHtml.join("")}</tbody></table>` +
+    `</div>` +
+    `<div style="padding:12px 18px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;">` +
+    `<button id="xs-sp-reset" style="padding:5px 12px;border:1px solid #ccc;border-radius:5px;background:#fff;color:#666;cursor:pointer;font-size:0.85em;">Reset to samplesheet</button>` +
+    `<span style="flex:1"></span>` +
+    `<button id="xs-sp-cancel" style="padding:5px 12px;border:1px solid #ccc;border-radius:5px;background:#fff;color:#666;cursor:pointer;font-size:0.85em;">Cancel</button>` +
+    `<button id="xs-sp-apply" style="padding:5px 14px;border:1px solid #1565c0;border-radius:5px;background:#1565c0;color:#fff;cursor:pointer;font-size:0.85em;font-weight:600;">Apply</button>` +
+    `</div></div>`;
+
+  document.body.appendChild(back);
+
+  const close = () => back.remove();
+  back.addEventListener("click", (e) => {
+    if (e.target === back) close();
+  });
+  document.getElementById("xs-sp-close").addEventListener("click", close);
+  document.getElementById("xs-sp-cancel").addEventListener("click", close);
+
+  document.getElementById("xs-sp-reset").addEventListener("click", () => {
+    Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
+    close();
+    if (window.specimenMerge && typeof window.specimenMerge.setEnabled === "function") {
+      window.specimenMerge.setEnabled(specimenMergeEnabled);
+      return;
+    }
+    if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+    if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+    const fd = typeof filteredData === "function" ? filteredData() : [];
+    _drawCrossSample(fd, null);
+  });
+
+  document.getElementById("xs-sp-apply").addEventListener("click", () => {
+    back.querySelectorAll(".xs-sp-input").forEach((inp) => {
+      const sample = inp.getAttribute("data-sample");
+      const val = (inp.value || "").trim();
+      // Determine the metadata default so we only keep genuine overrides.
+      const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META[sample]) || {};
+      const metaSp =
+        meta.specimen != null ? meta.specimen : meta.specimen_id != null ? meta.specimen_id : meta.specimen_group;
+      const dflt = metaSp != null && String(metaSp).trim() ? String(metaSp).trim() : sample;
+      if (!val || val === dflt) delete SPECIMEN_OVERRIDE[sample];
+      else SPECIMEN_OVERRIDE[sample] = val;
+    });
+    // Turn merge on so the user immediately sees the effect of their grouping.
+    close();
+    if (window.specimenMerge && typeof window.specimenMerge.setEnabled === "function") {
+      window.specimenMerge.setEnabled(true);
+      return;
+    }
+    specimenMergeEnabled = true;
+    if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+    if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+    const fd = typeof filteredData === "function" ? filteredData() : [];
+    _drawCrossSample(fd, null);
+  });
+}
+
 function _drawCrossSample(fd, samples) {
   const wrap = document.getElementById("xs-wrap");
   if (!wrap) return;
@@ -202,6 +348,9 @@ function _drawCrossSample(fd, samples) {
   _XS.lastAgg = agg;
   const nsamp = document.getElementById("xs-nsamp");
   if (nsamp) nsamp.textContent = agg.totalSamples;
+  // Reflect the current specimen-merge state in the toggle + swap the unit
+  // wording between "sample(s)" and "specimen(s)".
+  _xsUpdateSpecimenControls();
 
   // populate category dropdown once per render (preserve selection)
   const catSel = document.getElementById("xs-cat");
@@ -228,6 +377,11 @@ function _drawCrossSample(fd, samples) {
     });
     const exp = document.getElementById("xs-export");
     if (exp) exp.addEventListener("click", _xsExportCsv);
+    // Specimen-merge toggle + membership editor.
+    const spTog = document.getElementById("xs-specimen-toggle");
+    if (spTog) spTog.addEventListener("click", _xsToggleSpecimenMerge);
+    const spEdit = document.getElementById("xs-specimen-edit");
+    if (spEdit) spEdit.addEventListener("click", _xsOpenSpecimenEditor);
     // sort handler (delegated) for the frequency table
     const body = document.getElementById("xs-body");
     if (body)

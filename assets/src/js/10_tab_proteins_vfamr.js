@@ -60,14 +60,17 @@ function drawProtGenus() {
 
   if (hasByRow) {
     const _pgFdPairs = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`));
+    const _pgPair = (r) => {
+      const raw = r["Specimen ID"] || "";
+      const sample = typeof specimenKey === "function" ? specimenKey(raw) : raw;
+      return `${sample}||${r["Genus"] || "Unknown"}`;
+    };
     const visibleHits = [
       ...(PROT.per_gene_hits || []).filter(
-        (r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(`${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`),
+        (r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r)),
       ),
       ...(PROT.amr_genes || [])
-        .filter(
-          (r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(`${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`),
-        )
+        .filter((r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r)))
         .map((r) => ({ ...r, Property: r["Property"] || r["Class"] })),
     ];
     visibleHits.forEach((r) => {
@@ -308,14 +311,17 @@ function drawProtProperty() {
   wrap.innerHTML = "";
 
   const _ppFdPairs = new Set(filteredData().map((r) => `${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`));
+  const _ppPair = (r) => {
+    const raw = r["Specimen ID"] || "";
+    const sample = typeof specimenKey === "function" ? specimenKey(raw) : raw;
+    return `${sample}||${r["Genus"] || "Unknown"}`;
+  };
   const _allHits = [
     ...(PROT.per_gene_hits || []).filter(
-      (r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(`${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`),
+      (r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r)),
     ),
     ...(PROT.amr_genes || [])
-      .filter(
-        (r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(`${r["Specimen ID"]}||${r["Genus"] || "Unknown"}`),
-      )
+      .filter((r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r)))
       .map((r) => ({ ...r, _source: "AMR" })),
   ];
   const _propGenus = {};
@@ -686,7 +692,15 @@ function _dedupRows(rows) {
         .filter((r) => !sampleHidden[r["Specimen ID"]] && (!r["Specimen ID"] || sampleSet.has(r["Specimen ID"])))
         .map((r) => ({ ...r, _source: "AMR" })),
     );
-    _protAllRows = _dedupRows([...geneRows, ...amrRows]);
+    // When specimen merge is on, relabel each hit's Specimen ID onto its
+    // specimen group before deduping so members of the same specimen collapse
+    // into one row instead of listing every raw sample name separately.
+    const _relabel = (r) => {
+      if (typeof specimenKey !== "function" || !r["Specimen ID"]) return r;
+      const grouped = specimenKey(r["Specimen ID"]);
+      return grouped === r["Specimen ID"] ? r : { ...r, "Specimen ID": grouped };
+    };
+    _protAllRows = _dedupRows([...geneRows.map(_relabel), ...amrRows.map(_relabel)]);
     if (!_protAllRows.length) {
       document.getElementById("prot-table-wrap").style.display = "none";
       return;

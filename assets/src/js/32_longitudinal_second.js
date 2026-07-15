@@ -931,7 +931,11 @@ function _buildRunMetaTable() {
           ? ` contenteditable="true" spellcheck="false" data-meta-idx="${i}" data-meta-key="${k}"`
           : "";
         const dispEsc = String(disp).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        return `<td${cls}${editAttrs} style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${dispEsc}</td>`;
+        const mergedBadge =
+          k === "sample_name" && typeof _mergedSampleBadgeHTML === "function"
+            ? _mergedSampleBadgeHTML(rec.sample_name)
+            : "";
+        return `<td${cls}${editAttrs} style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${dispEsc}${mergedBadge}</td>`;
       })
       .join("");
     return `<tr id="runmeta-row-${CSS.escape(
