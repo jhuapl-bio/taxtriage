@@ -112,6 +112,7 @@ function filteredData() {
     viewLevel,
     watchFilterMode,
     watchFilterMode === "all" ? "" : Array.from(watchlist).sort().join(","),
+    typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "",
   ].join("\u0001");
   if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
@@ -137,7 +138,14 @@ function filteredData() {
   function _basePass(r) {
     if (sampleHidden[r["Specimen ID"]]) return false;
     if (rx) {
-      const inSample = rx.test(r["Specimen ID"] || "");
+      // Match both the raw library id and its current specimen label. Without
+      // this, a user-created merged name could be displayed but not searched.
+      const rawSample = r["Specimen ID"] || "";
+      const viewSample =
+        typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
+          ? specimenOf(rawSample)
+          : rawSample;
+      const inSample = rx.test(rawSample) || (viewSample !== rawSample && rx.test(viewSample));
       const inOrg = rx.test(r["Detected Organism"] || "");
       if (scope === "sample") {
         if (!inSample) return false;
@@ -225,9 +233,166 @@ function filteredData() {
   }
   // Skip the .map(applyRescale) allocation entirely when no sample is
   // currently rescaled — saves a 14k-object copy on every filter pass.
-  const out = anyRescale ? finalRows.map(applyRescale) : finalRows;
+  let out = anyRescale ? finalRows.map(applyRescale) : finalRows;
+  // ── Specimen merge (reversible, view-level) ─────────────────────────
+  // When the merge toggle is on and the run actually has multi-sample
+  // specimens, collapse the per-sample rows into per-specimen rows so every
+  // downstream view (table, heatmap, summary, coverage …) sees aggregated
+  // reads / TASS without the underlying DATA ever being mutated.
+  if (
+    typeof specimenMergeEnabled !== "undefined" &&
+    specimenMergeEnabled &&
+    typeof hasSpecimenGrouping === "function" &&
+    hasSpecimenGrouping()
+  ) {
+    out = _collapseSpecimens(out);
+  }
   _FD_CACHE = { key: cacheKey, value: out };
   return out;
+}
+
+/* ── Collapse filtered rows into one row per (specimen, organism) ─────────
+        Reversible aggregation used only for the merged VIEW — the source DATA
+        array is never touched, so flipping the toggle off restores the raw
+        per-sample rows immediately.
+
+        Aggregation rules (chosen with the user):
+          • aligned / unique / classifier read counts → SUM across the samples
+          • % Reads / RPM / RPKM                     → recomputed from the
+                                                        merged count + denominator
+          • TASS / Coverage / Breadth / evidence scores
+                                                      → MAX (strongest evidence
+                                                        in any library wins)
+          • Mean Depth                                → SUM (depth from independent
+                                                        libraries is additive)
+          • Mean MapQ / Mean BaseQ                    → read-weighted mean
+          • High Consequence / Passes Threshold        → OR (any true ⇒ true)
+          • Mol Type                                   → "both" if the members
+                                                        mix DNA and RNA, else
+                                                        the single value
+          • every other column                         → taken from the member
+                                                        row with the highest TASS
+        Single-sample specimens pass through unchanged (their key is the sample
+        name itself, so no aggregation happens).                              */
+const _SPECIMEN_SUM_COLS = ["# Reads Aligned", "# Unique Reads Aligned", "# Reads", "K2 Reads", "Mean Depth"];
+const _SPECIMEN_MAX_COLS = [
+  "TASS Score",
+  "Species TASS",
+  "Genus TASS",
+  "Coverage",
+  "Covered Bases",
+  "Breadth %",
+  "Breadth Score",
+  "Breadth of Coverage",
+  "Gini Coefficient",
+  "Minhash Score",
+  "MapQ Score",
+  "Disparity Score",
+  "Diamond Identity",
+  "MicrobeRT Probability",
+];
+function _collapseSpecimens(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const spec = specimenOf(r["Specimen ID"]);
+    const orgKey = (r["Taxonomic ID #"] || r["Detected Organism"] || "").toString();
+    const key = [spec, r["Level"] || "Strain", r["Subkey"] || "", orgKey].join("");
+    let g = groups.get(key);
+    if (!g) {
+      g = { spec, members: new Set(), rep: r, repTass: num(r["TASS Score"]) };
+      groups.set(key, g);
+    }
+    g.members.add(r["Specimen ID"]);
+    const t = num(r["TASS Score"]);
+    if (t > g.repTass) {
+      g.repTass = t;
+      g.rep = r;
+    }
+  }
+  const out = [];
+  groups.forEach((g) => {
+    const members = Array.from(g.members).sort();
+    // A specimen with a single contributing sample needs no aggregation.
+    if (members.length <= 1 && specimenOf(members[0]) === members[0]) {
+      out.push(g.rep);
+      return;
+    }
+    const merged = Object.assign({}, g.rep);
+    merged["Specimen ID"] = g.spec;
+    const contrib = rows.filter((r) => specimenOf(r["Specimen ID"]) === g.spec && _sameOrgLevel(r, g.rep));
+    _SPECIMEN_SUM_COLS.forEach((c) => {
+      let any = false;
+      const s = contrib.reduce((acc, r) => {
+        if (r[c] !== undefined && r[c] !== null && r[c] !== "") any = true;
+        return acc + num(r[c]);
+      }, 0);
+      if (any) merged[c] = s;
+    });
+    _SPECIMEN_MAX_COLS.forEach((c) => {
+      let any = false;
+      const m = contrib.reduce((acc, r) => {
+        const v = num(r[c]);
+        if (r[c] !== undefined && r[c] !== null && r[c] !== "") any = true;
+        return v > acc ? v : acc;
+      }, -Infinity);
+      if (any) merged[c] = m;
+    });
+    // Quality means must be weighted by the reads that contributed them;
+    // taking the representative row could misstate a large merged library.
+    ["Mean MapQ", "Mean BaseQ"].forEach((c) => {
+      let weighted = 0,
+        weight = 0;
+      contrib.forEach((r) => {
+        const v = parseFloat(r[c]);
+        if (isNaN(v)) return;
+        const w = Math.max(0, num(r["# Reads Aligned"]));
+        weighted += v * w;
+        weight += w;
+      });
+      if (weight > 0) merged[c] = weighted / weight;
+    });
+    // Recompute normalized abundance against the full merged specimen, not
+    // whichever member happened to have the highest TASS score.
+    const specimenMembers =
+      typeof specimenGroups === "function" && specimenGroups().has(g.spec)
+        ? specimenGroups().get(g.spec).slice()
+        : members;
+    const activeMembers = specimenMembers.filter((s) => !sampleHidden[s]);
+    const inputReads = activeMembers.reduce(
+      (s, sample) =>
+        s + (parseFloat(((typeof SAMPLE_META !== "undefined" && SAMPLE_META[sample]) || {}).total_reads) || 0),
+      0,
+    );
+    const classifiedReads = activeMembers.reduce(
+      (s, sample) =>
+        s + (parseFloat(((typeof SAMPLE_META !== "undefined" && SAMPLE_META[sample]) || {}).total_organism_reads) || 0),
+      0,
+    );
+    const aligned = num(merged["# Reads Aligned"]);
+    if (inputReads > 0) merged["% Reads"] = (aligned / inputReads) * 100;
+    if (classifiedReads > 0) {
+      merged["RPM"] = (aligned / classifiedReads) * 1000000;
+      const genomeKb = num(merged["Genome Length (bp)"]) / 1000;
+      if (genomeKb > 0) merged["RPKM"] = merged["RPM"] / genomeKb;
+    }
+    if (contrib.some((r) => isTruthy(r["High Consequence"]))) merged["High Consequence"] = true;
+    if (contrib.some((r) => isTruthy(r["Passes Threshold"]))) merged["Passes Threshold"] = true;
+    const mts = new Set(contrib.map((r) => (r["Mol Type"] || "").toLowerCase()).filter(Boolean));
+    if (mts.size > 1) merged["Mol Type"] = "both";
+    merged.__merged = true;
+    merged.__mergedFrom = members;
+    merged.__specimenMembers = specimenMembers;
+    merged.__mergedCount = specimenMembers.length;
+    out.push(merged);
+  });
+  return out;
+}
+function _sameOrgLevel(a, b) {
+  const ka = (a["Taxonomic ID #"] || a["Detected Organism"] || "").toString();
+  const kb = (b["Taxonomic ID #"] || b["Detected Organism"] || "").toString();
+  return (
+    ka === kb && (a["Level"] || "Strain") === (b["Level"] || "Strain") && (a["Subkey"] || "") === (b["Subkey"] || "")
+  );
 }
 
 /* Return a shallow copy of row r with TASS Score + Coverage scaled ×100
@@ -353,11 +518,21 @@ function showTip(html, event) {
   moveTip(event);
 }
 function moveTip(event) {
-  const x = event.clientX + 12,
-    y = event.clientY - 28;
-  // offsetWidth after parking at 0,0 (or from previous frame) is reliable.
+  const x = event.clientX + 12;
+  const cy = event.clientY;
+  const GAP = 14; // clearance from the cursor so the box never straddles it
+  // offsetWidth/Height after parking at 0,0 (or from previous frame) is reliable.
   const tw = tooltip.offsetWidth || 520;
   const th = tooltip.offsetHeight || 0;
+  // Prefer placing the tooltip fully ABOVE the cursor (its old spot) — but only
+  // when it actually fits there. A short tooltip (a couple lines) still ends up
+  // near the old y-28 position; a tall one (e.g. a merged-specimen table listing
+  // every member sample) used to have its bulk render BELOW the cursor instead,
+  // covering the exact heatmap cell/row being hovered. Flip to below the cursor
+  // whenever there isn't room above, so the box always clears the pointer
+  // entirely rather than overlapping it.
+  const fitsAbove = cy - GAP - th >= 4;
+  const y = fitsAbove ? cy - GAP - th : cy + GAP;
   const left = Math.min(x, window.innerWidth - tw - 16);
   const top = Math.min(Math.max(y, 4), window.innerHeight - th - 8);
   tooltip.style.left = left + "px";
@@ -1618,10 +1793,13 @@ function _esc(s) {
 function _pdfKpiCards() {
   const fd = typeof filteredData === "function" ? filteredData() : [];
   const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
-  const totalInput = samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0), 0);
-  const totalOrg =
-    samples.reduce((s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_organism_reads) || 0), 0) ||
-    fd.reduce((s, r) => s + (parseFloat(r["# Reads Aligned"]) || 0), 0);
+  const metaFor = (sn) => (typeof _summaryMetaFor === "function" ? _summaryMetaFor(sn, fd) : SAMPLE_META[sn] || {});
+  const totalInput = samples.reduce((s, sn) => s + (parseFloat(metaFor(sn).total_reads) || 0), 0);
+  const totalInputUnfiltered = Object.keys(SAMPLE_META || {}).reduce(
+    (s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0),
+    0,
+  );
+  const totalOrg = fd.reduce((s, r) => s + (parseFloat(r["# Reads Aligned"]) || 0), 0);
   let pctClass = totalInput > 0 ? ((totalOrg / totalInput) * 100).toFixed(1) + "%" : "N/A";
   if (pctClass === "0.0%" && totalOrg > 0) pctClass = "<0.1%";
   const uniqOrgs = new Set(fd.map((r) => r["Taxonomic ID #"] || "").filter(Boolean)).size;
@@ -1629,7 +1807,7 @@ function _pdfKpiCards() {
   const hcCount = new Set(
     fd.filter((r) => isTruthy(r["High Consequence"])).map((r) => r["Taxonomic ID #"] || r["Detected Organism"]),
   ).size;
-  const platforms = uniq(samples.map((sn) => (SAMPLE_META[sn] || {}).platform).filter((p) => p && p !== "unknown"));
+  const platforms = uniq(samples.map((sn) => metaFor(sn).platform).filter((p) => p && p !== "unknown"));
   const cut = _tassCutoffSummary();
   let cutVal, cutSub;
   if (cut.mode === "byType" && cut.items.length) {
@@ -1646,13 +1824,17 @@ function _pdfKpiCards() {
     cutVal = cut.global > 0 ? cut.global.toFixed(1) : cut.recommended != null ? cut.recommended.toFixed(1) : "—";
     cutSub = cut.recommended != null && cut.global <= 0 ? "recommended" : "applied filter";
   }
-  const tReads = _fmtBig(totalInput);
   const aReads = _fmtBig(totalOrg);
+  const allReads = _fmtBig(totalInputUnfiltered);
   return [
     { label: "Samples", value: samples.length, sub: platforms.length ? platforms.join(", ") : "in report" },
-    { label: "Total Reads", value: totalInput > 0 ? tReads.short : "N/A", sub: "input reads" },
+    {
+      label: "Total Reads",
+      value: allReads.short,
+      sub: "aligned + unaligned, without filters",
+    },
     { label: "% Classified", value: pctClass, sub: aReads.short + " aligned" },
-    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
+    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique (passing filter taxa)." },
     { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
     { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged", hc: true },
     { label: "TASS Cutoff", value: cutVal, sub: cutSub },

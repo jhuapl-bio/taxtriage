@@ -173,10 +173,219 @@ function _covAggArr(arrays, stat) {
   }
   return out;
 }
+/* ── Specimen-aware coverage merging ──────────────────────────────────────
+        When the merge toggle is on and an item's "sample" is really a merged
+        specimen, we cannot look its per-position coverage up directly (the
+        encoded CONTIG_DATA is keyed by the raw member samples). So we gather
+        the member samples' coverage and either:
+          • COMBINE it into one curve — when every member carries a per-position
+            profile of the SAME length (same reference), we take the per-position
+            union (max % covered) and pool the depth histograms; or
+          • OVERLAY it — when the profiles differ in length (different references
+            / contig sets) we can't combine honestly, so we fall back to drawing
+            one line per member sample.                                          */
+function _covSpecimenMembers(spec) {
+  if (typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenGroups === "function") {
+    const g = specimenGroups().get(spec);
+    if (g && g.length) return g.slice();
+  }
+  return [spec];
+}
+function _covMemberCds(spec, organism, taxid) {
+  return _covSpecimenMembers(spec)
+    .map((m) => ({ sample: m, cd: _covFetch(m, organism, taxid) }))
+    .filter((x) => x.cd);
+}
+// OR a set of flat [s,e,s,e,…] covered-run lists into one merged run list, then
+// re-bin into per-bin % covered — mirrors the pipeline's _build_positional_bins
+// so the combined profile is computed the same way a single sample would be.
+// Returns { bins, unionBp } or null.
+function _covUnionRebin(flatList, binSize, totalLen) {
+  const all = [];
+  flatList.forEach((flat) => {
+    for (let i = 0; i + 1 < flat.length; i += 2) {
+      const s = num(flat[i]),
+        e = num(flat[i + 1]);
+      if (e > s) all.push([s, e]);
+    }
+  });
+  if (!all.length || !binSize || !totalLen) return null;
+  all.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  let cs = all[0][0],
+    ce = all[0][1];
+  for (let i = 1; i < all.length; i++) {
+    const s = all[i][0],
+      e = all[i][1];
+    if (s <= ce) {
+      if (e > ce) ce = e;
+    } else {
+      merged.push([cs, ce]);
+      cs = s;
+      ce = e;
+    }
+  }
+  merged.push([cs, ce]);
+  const n = Math.ceil(totalLen / binSize);
+  const coveredBp = new Array(n).fill(0);
+  merged.forEach(([s, e]) => {
+    const bi0 = Math.floor(s / binSize);
+    const bi1 = Math.min(n - 1, Math.floor(Math.max(s, e - 1) / binSize));
+    for (let b = bi0; b <= bi1; b++) {
+      const blo = b * binSize,
+        bhi = Math.min((b + 1) * binSize, totalLen);
+      coveredBp[b] += Math.max(0, Math.min(e, bhi) - Math.max(s, blo));
+    }
+  });
+  const bins = new Array(n);
+  for (let b = 0; b < n; b++) {
+    const blo = b * binSize,
+      bhi = Math.min((b + 1) * binSize, totalLen);
+    const blen = bhi - blo;
+    bins[b] = blen > 0 ? Math.round(Math.min(100, (coveredBp[b] / blen) * 100) * 10) / 10 : 0;
+  }
+  const unionBp = merged.reduce((a, iv) => a + (iv[1] - iv[0]), 0);
+  return { bins, unionBp };
+}
+
+// Build a synthetic combined CONTIG_DATA entry from member cds.
+//   • EXACT union — when every member carries covered_intervals in the SAME
+//     concatenated coordinate space (same total_len / bin_size / breaks /
+//     contig_names), we OR the runs and re-bin. Coverage present in one sample
+//     but not another is counted, so the union can exceed any single sample.
+//   • Per-bin MAX — fallback for older reports without covered_intervals; a
+//     conservative lower bound (never exceeds the strongest single sample).
+//   • Not combinable — different-length profiles (different references) can
+//     only be overlaid, so __combinable stays false.
+function _covCombineCds(cds) {
+  const depth = {};
+  cds.forEach(({ cd }) => {
+    const h = (cd && cd.depth_histogram) || {};
+    Object.keys(h).forEach((k) => (depth[k] = (depth[k] || 0) + num(h[k])));
+  });
+
+  const _base = {
+    __synthetic: true,
+    organism: cds[0].cd.organism,
+    taxon_id: cds[0].cd.taxon_id,
+    depth_histogram: depth,
+  };
+
+  // ── Exact union via covered_intervals ──────────────────────────────────
+  const bhs = cds.map(({ cd }) => (cd && cd.breadth_histogram) || null);
+  const haveIv = bhs.every((bh) => bh && Array.isArray(bh.covered_intervals) && bh.covered_intervals.length);
+  if (haveIv) {
+    const ref = bhs[0];
+    const sameSpace = bhs.every(
+      (bh) =>
+        bh.total_len === ref.total_len &&
+        bh.bin_size === ref.bin_size &&
+        JSON.stringify(bh.breaks || []) === JSON.stringify(ref.breaks || []) &&
+        JSON.stringify(bh.contig_names || []) === JSON.stringify(ref.contig_names || []),
+    );
+    if (sameSpace && ref.total_len && ref.bin_size) {
+      const u = _covUnionRebin(
+        bhs.map((bh) => bh.covered_intervals),
+        ref.bin_size,
+        ref.total_len,
+      );
+      if (u) {
+        const breadth = {
+          bins: u.bins,
+          bin_size: ref.bin_size,
+          total_len: ref.total_len,
+          // Exact union breadth = union-covered bp ÷ genome length. Recorded so
+          // the Summary column can show the real number, not a per-bin average.
+          breadth_pct: ref.total_len ? Math.round((u.unionBp / ref.total_len) * 1000) / 10 : null,
+          __exactUnion: true,
+        };
+        if (Array.isArray(ref.breaks)) breadth.breaks = ref.breaks;
+        if (Array.isArray(ref.contig_names)) breadth.contig_names = ref.contig_names;
+        return Object.assign(_base, { __combinable: true, __exactUnion: true, breadth_histogram: breadth });
+      }
+    }
+  }
+
+  // ── Fallback: per-bin MAX (lower bound) ────────────────────────────────
+  const binsArr = cds
+    .map(({ cd }) =>
+      cd && cd.breadth_histogram && Array.isArray(cd.breadth_histogram.bins)
+        ? cd.breadth_histogram.bins.map(num)
+        : null,
+    )
+    .filter(Boolean);
+  let breadth = null;
+  let combinable = false;
+  if (binsArr.length === cds.length && binsArr.length) {
+    const L = binsArr[0].length;
+    if (binsArr.every((b) => b.length === L)) {
+      combinable = true;
+      const bins = new Array(L).fill(0);
+      for (let i = 0; i < L; i++) {
+        let mx = 0;
+        binsArr.forEach((b) => {
+          if (b[i] > mx) mx = b[i];
+        });
+        bins[i] = mx;
+      }
+      const refBh =
+        (
+          cds.find(
+            ({ cd }) =>
+              cd &&
+              cd.breadth_histogram &&
+              Array.isArray(cd.breadth_histogram.bins) &&
+              cd.breadth_histogram.bins.length === L,
+          ) || {}
+        ).cd?.breadth_histogram || {};
+      breadth = { bins };
+      if (refBh.bin_size != null) breadth.bin_size = refBh.bin_size;
+      if (refBh.total_len != null) breadth.total_len = refBh.total_len;
+      if (Array.isArray(refBh.breaks)) breadth.breaks = refBh.breaks;
+      if (Array.isArray(refBh.contig_names)) breadth.contig_names = refBh.contig_names;
+    }
+  }
+  return Object.assign(_base, { __combinable: combinable, breadth_histogram: breadth });
+}
+// Rewrite the incoming items for the merged view: combinable specimens become a
+// single combined item; non-combinable ones expand into one item per member.
+function _covExpandMerged(raw) {
+  if (!(typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled)) return raw || [];
+  const out = [];
+  (raw || []).forEach((it) => {
+    if (!it || !it.sample) return;
+    const members = _covSpecimenMembers(it.sample);
+    if (members.length <= 1) {
+      out.push(it);
+      return;
+    }
+    const cds = _covMemberCds(it.sample, it.organism, it.taxid);
+    if (cds.length === 0) {
+      out.push(it); // no member carries coverage — leave the (empty) specimen item
+      return;
+    }
+    if (cds.length === 1) {
+      // Only one member actually has coverage data — show that member's curve
+      // rather than an empty specimen line.
+      out.push({ sample: cds[0].sample, organism: it.organism, taxid: it.taxid, __overlayOf: it.sample });
+      return;
+    }
+    const combined = _covCombineCds(cds);
+    if (combined.__combinable) {
+      out.push(Object.assign({}, it, { __mergedCd: combined, __mergedMembers: cds.map((c) => c.sample) }));
+    } else {
+      // Overlay: one line per member sample (keeps the specimen name as a hint).
+      cds.forEach(({ sample }) => out.push({ sample, organism: it.organism, taxid: it.taxid, __overlayOf: it.sample }));
+    }
+  });
+  return out;
+}
+
 function _openCoverageModal(rawItems, opts) {
   opts = opts || {};
   const ov = document.getElementById("cov-overlay");
   if (!ov) return;
+  rawItems = _covExpandMerged(rawItems);
   const seen = new Set(),
     items = [];
   (rawItems || []).forEach((it) => {
@@ -184,7 +393,13 @@ function _openCoverageModal(rawItems, opts) {
     const key = `${it.sample}||${it.organism}||${it.taxid}`;
     if (seen.has(key)) return;
     seen.add(key);
-    items.push({ sample: it.sample, organism: it.organism || "", taxid: it.taxid || "" });
+    items.push({
+      sample: it.sample,
+      organism: it.organism || "",
+      taxid: it.taxid || "",
+      __mergedCd: it.__mergedCd || null,
+      __overlayOf: it.__overlayOf || null,
+    });
   });
   const orgNames = uniq(items.map((it) => it.organism));
   const orgColor = new Map();
@@ -196,7 +411,9 @@ function _openCoverageModal(rawItems, opts) {
     // other chart. Fall back to the generic palette only for samples that
     // somehow have no assigned colour yet.
     it.color = sampleColors[it.sample] || _XS_SAMPLE_PALETTE[i % _XS_SAMPLE_PALETTE.length];
-    it.cd = _covFetch(it.sample, it.organism, it.taxid);
+    // A merged specimen uses its pre-combined synthetic coverage; overlaid
+    // member samples and plain samples fetch their own encoded data.
+    it.cd = it.__mergedCd || _covFetch(it.sample, it.organism, it.taxid);
     it.depth = it.cd ? _covDepth(it.cd) : null;
     it.profile = it.cd ? _covProfile(it.cd) : null;
   });
@@ -1672,7 +1889,80 @@ function _novPositionTip(tip, ev) {
 }
 
 function _novSamples() {
-  return (NOVELTY && NOVELTY.samples) || {};
+  const raw = (NOVELTY && NOVELTY.samples) || {};
+  const visible = Object.keys(raw).filter((s) => !(typeof sampleHidden !== "undefined" && sampleHidden[s]));
+  if (!(typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled) || typeof specimenOf !== "function") {
+    const out = {};
+    visible.forEach((s) => (out[s] = raw[s]));
+    return out;
+  }
+
+  // Fold novelty blocks over the same specimen grouping used by filteredData().
+  // Counts are summed, fractions are read-weighted/recomputed, novelty flags
+  // are ORed, and the strongest member score is retained for triage.
+  const grouped = new Map();
+  visible.forEach((s) => {
+    const g = specimenOf(s);
+    if (!grouped.has(g)) grouped.set(g, []);
+    grouped.get(g).push(s);
+  });
+  const out = {};
+  grouped.forEach((members, group) => {
+    if (members.length === 1 && group === members[0]) {
+      out[group] = raw[members[0]];
+      return;
+    }
+    const blocks = members.map((s) => raw[s] || {});
+    const summaries = blocks.map((b) => b.summary || {});
+    const total = summaries.reduce((a, sm) => a + (+sm.total_reads || 0), 0);
+    const sum = (key) => summaries.reduce((a, sm) => a + (+sm[key] || 0), 0);
+    const weighted = (key) =>
+      total ? summaries.reduce((a, sm) => a + (+sm[key] || 0) * (+sm.total_reads || 0), 0) / total : 0;
+    const summary = Object.assign({}, summaries[0] || {}, {
+      sample: group,
+      total_reads: total,
+      ref_aligned: sum("ref_aligned"),
+      k2_classified: sum("k2_classified"),
+      mmseqs_assigned: sum("mmseqs_assigned"),
+      mmseqs_assigned_species: sum("mmseqs_assigned_species"),
+      mmseqs_assigned_highrank: sum("mmseqs_assigned_highrank"),
+      dark_fraction: weighted("dark_fraction"),
+      highrank_only_fraction: weighted("highrank_only_fraction"),
+      lowident_tail_mass: weighted("lowident_tail_mass"),
+      novelty_score: Math.max(0, ...summaries.map((sm) => +sm.novelty_score || 0)),
+      novelty_flag: summaries.some((sm) => Number(sm.novelty_flag) === 1) ? 1 : 0,
+      __mergedFrom: members.slice(),
+    });
+    summary.ref_aligned_frac = total ? summary.ref_aligned / total : 0;
+    summary.k2_frac = total ? summary.k2_classified / total : 0;
+    summary.mmseqs_frac = total ? summary.mmseqs_assigned / total : 0;
+
+    const candMap = new Map();
+    blocks.forEach((b) => {
+      (b.candidates || []).forEach((c) => {
+        const key = [c.taxid || "", c.rank || "", (c.name || "").toLowerCase()].join("\u0001");
+        let agg = candMap.get(key);
+        if (!agg) {
+          agg = { row: Object.assign({}, c, { sample: group, reads: 0 }), highrankPool: 0 };
+          candMap.set(key, agg);
+        }
+        const reads = +c.reads || 0;
+        agg.row.reads += reads;
+        const hf = c.frac_of_highrank === "" || c.frac_of_highrank == null ? NaN : +c.frac_of_highrank;
+        if (isFinite(hf) && hf > 0) agg.highrankPool += reads / hf;
+        if (!agg.row.pathogen && c.pathogen) agg.row.pathogen = c.pathogen;
+      });
+    });
+    const candidates = Array.from(candMap.values())
+      .map((agg) => {
+        agg.row.frac_of_sample = total ? agg.row.reads / total : 0;
+        agg.row.frac_of_highrank = agg.highrankPool > 0 ? agg.row.reads / agg.highrankPool : "";
+        return agg.row;
+      })
+      .sort((a, b) => (+b.reads || 0) - (+a.reads || 0));
+    out[group] = { summary, candidates, __mergedFrom: members.slice() };
+  });
+  return out;
 }
 
 function _drawNoveltySummary() {
@@ -2126,8 +2416,21 @@ function _drawNoveltyMethodCoverage() {
 // closed-set genus rollup for one sample, from the main TASS records (BOOT.records)
 function _novClosedGenus(sample) {
   const out = {};
+  const novBlock = _novSamples()[sample] || {};
+  let memberList = Array.isArray(novBlock.__mergedFrom) ? novBlock.__mergedFrom.slice() : [sample];
+  if (
+    typeof specimenMergeEnabled !== "undefined" &&
+    specimenMergeEnabled &&
+    typeof specimenGroups === "function" &&
+    specimenGroups().has(sample)
+  ) {
+    memberList = specimenGroups()
+      .get(sample)
+      .filter((s) => !(typeof sampleHidden !== "undefined" && sampleHidden[s]));
+  }
+  const members = new Set(memberList);
   (DATA || []).forEach((r) => {
-    if ((r["Specimen ID"] || r.sample) !== sample) return;
+    if (!members.has(r["Specimen ID"] || r.sample)) return;
     const g = (r["Genus Name"] || r["Genus"] || "").trim();
     if (!g) return;
     const key = g.toLowerCase();

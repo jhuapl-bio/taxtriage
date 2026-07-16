@@ -137,13 +137,45 @@ function _addMapClusterControl() {
    bounds for fitting the view. */
 function _addSampleMarkers() {
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
-  const sampleNames = [...new Set(geoRows.map((r) => r.sample_name))];
+  const mergeOn =
+    typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function";
+  const markerRows = [];
+  if (mergeOn) {
+    const bySpec = new Map();
+    geoRows.forEach((r) => {
+      const spec = specimenOf(r.sample_name);
+      if (!bySpec.has(spec)) bySpec.set(spec, []);
+      bySpec.get(spec).push(r);
+    });
+    bySpec.forEach((recs, spec) => {
+      if (recs.length === 1 && spec === recs[0].sample_name) {
+        markerRows.push(recs[0]);
+        return;
+      }
+      const resolved =
+        typeof SPECIMEN_META_RESOLVED !== "undefined" && SPECIMEN_META_RESOLVED[spec]
+          ? SPECIMEN_META_RESOLVED[spec]
+          : {};
+      const rec = Object.assign({}, recs[0], resolved, {
+        sample_name: spec,
+        __mergedMembers:
+          typeof specimenGroups === "function" && specimenGroups().has(spec)
+            ? specimenGroups().get(spec).slice()
+            : recs.map((r) => r.sample_name),
+      });
+      markerRows.push(rec);
+    });
+  } else {
+    markerRows.push(...geoRows);
+  }
+
+  const sampleNames = [...new Set(markerRows.map((r) => r.sample_name))];
   sampleNames.forEach((n, i) => {
     if (!sampleColors[n]) sampleColors[n] = PALETTE[i % PALETTE.length];
   });
 
   const bounds = [];
-  geoRows.forEach((rec) => {
+  markerRows.forEach((rec) => {
     const lat = parseFloat(rec.latitude);
     const lon = parseFloat(rec.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
@@ -159,8 +191,9 @@ function _addSampleMarkers() {
       _refreshMapMarkerColors();
       _renderMapPanel(rec);
     });
-    _markerObjects[sn] = { marker: mk, rec, color, lat, lon };
-    if (!sampleHidden[sn]) _markerLayer.addLayer(mk);
+    const members = Array.isArray(rec.__mergedMembers) ? rec.__mergedMembers : [sn];
+    _markerObjects[sn] = { marker: mk, rec, color, lat, lon, members };
+    if (!members.every((s) => sampleHidden[s])) _markerLayer.addLayer(mk);
     bounds.push([lat, lon]);
   });
   return bounds;
@@ -170,7 +203,8 @@ function _refreshMapMarkerColors() {
   if (!_markerObjects || !_leafletMap || !_markerLayer) return;
   Object.entries(_markerObjects).forEach(([sn, obj]) => {
     if (!obj.marker) return;
-    if (sampleHidden[sn]) {
+    const members = Array.isArray(obj.members) && obj.members.length ? obj.members : [sn];
+    if (members.every((s) => sampleHidden[s])) {
       if (_markerLayer.hasLayer(obj.marker)) _markerLayer.removeLayer(obj.marker);
       return;
     }
@@ -389,14 +423,14 @@ function _renderMapPanel(rec) {
   // Show the "View in metadata table" button only if runmeta tab is available
   const viewBtn = document.getElementById("map-panel-view-btn");
   if (viewBtn) {
-    const hasRunMeta = RUN_META.length > 0;
+    const hasRunMeta = RUN_META.length > 0 && !Array.isArray(rec.__mergedMembers);
     viewBtn.style.display = hasRunMeta ? "inline-block" : "none";
   }
 
   // Meta info strip — show lat/lon first, then all other non-null fields dynamically
   const metaEl = document.getElementById("map-panel-meta");
   if (metaEl) {
-    const skip = new Set(["sample_name", "latitude", "longitude"]);
+    const skip = new Set(["sample_name", "latitude", "longitude", "__mergedMembers"]);
     const lines = [];
 
     // Lat/Lon always first (it's why the dot is on the map)

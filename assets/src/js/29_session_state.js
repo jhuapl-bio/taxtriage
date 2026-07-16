@@ -99,6 +99,71 @@
   }
   window._ttApplyBoot = _ttApplyBoot;
 
+  // Snapshot non-form application state. These values cannot be recovered
+  // from the DOM controls and must be restored before the first final redraw.
+  function _ttCaptureAppState() {
+    var app = {};
+    try {
+      app.specimenMergeEnabled = !!specimenMergeEnabled;
+      app.specimenOverride = Object.assign({}, SPECIMEN_OVERRIDE || {});
+      app.specimenMetaResolved = Object.assign({}, SPECIMEN_META_RESOLVED || {});
+    } catch (e) {}
+    try {
+      app.sampleOrder = Array.isArray(_sampleOrder) ? _sampleOrder.slice() : [];
+      app.sampleHidden = Object.assign({}, sampleHidden || {});
+      app.sampleRescale = Object.assign({}, sampleRescale || {});
+      app.perTypeTass = Object.assign({}, perTypeTass || {});
+      app.sampleListPage = typeof _sampleListPage === "number" ? _sampleListPage : 0;
+    } catch (e) {}
+    try {
+      app.watchlist = Array.from(watchlist || []);
+      app.watchFilterMode = watchFilterMode;
+    } catch (e) {}
+    try {
+      app.sortCol = sortCol;
+      app.sortAsc = sortAsc;
+    } catch (e) {}
+    return app;
+  }
+
+  function _ttReplaceObject(target, source) {
+    if (!target) return;
+    Object.keys(target).forEach(function (k) {
+      delete target[k];
+    });
+    Object.assign(target, source && typeof source === "object" ? source : {});
+  }
+
+  function _ttRestoreAppState(app) {
+    app = app && typeof app === "object" ? app : {};
+    try {
+      _ttReplaceObject(SPECIMEN_OVERRIDE, app.specimenOverride);
+      _ttReplaceObject(SPECIMEN_META_RESOLVED, app.specimenMetaResolved);
+      specimenMergeEnabled = !!app.specimenMergeEnabled;
+    } catch (e) {}
+    try {
+      _ttReplaceObject(sampleHidden, app.sampleHidden);
+      _ttReplaceObject(sampleRescale, app.sampleRescale);
+      _ttReplaceObject(perTypeTass, app.perTypeTass);
+      _sampleOrder = Array.isArray(app.sampleOrder) ? app.sampleOrder.slice() : [];
+      _sampleListPage = Number.isFinite(Number(app.sampleListPage)) ? Math.max(0, Number(app.sampleListPage)) : 0;
+    } catch (e) {}
+    try {
+      watchlist.clear();
+      (Array.isArray(app.watchlist) ? app.watchlist : []).forEach(function (k) {
+        watchlist.add(k);
+      });
+      watchFilterMode = typeof app.watchFilterMode === "string" ? app.watchFilterMode : "all";
+    } catch (e) {}
+    try {
+      sortCol = app.sortCol != null ? app.sortCol : null;
+      sortAsc = app.sortAsc !== false;
+    } catch (e) {}
+    try {
+      if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+    } catch (e) {}
+  }
+
   // ── Snapshot every id'd form control + sample colors + active tab ──────
   function _ttCaptureUi() {
     var ui = { controls: {}, sampleColors: {}, activeTab: null };
@@ -137,6 +202,12 @@
     var minEl = document.getElementById("filter-min");
     var rangeEl = document.getElementById("filter-min-range");
     if (minEl && rangeEl) rangeEl.value = minEl.value;
+    // Rebuild after restoring the samples-per-page/search controls and all
+    // non-DOM sample state, so pagination, colors, visibility and grouping
+    // are correct on the first rendered frame.
+    try {
+      if (typeof buildSampleList === "function") buildSampleList();
+    } catch (e) {}
     // Re-apply filters / rerender.
     try {
       if (typeof buildTable === "function") buildTable();
@@ -187,10 +258,11 @@
       };
       var state = {
         __taxtriage_state__: true,
-        version: 1,
+        version: 2,
         exported_at: new Date().toISOString(),
         boot: boot,
         ui: _ttCaptureUi(),
+        app: _ttCaptureAppState(),
       };
       var json = JSON.stringify(state);
       var blob = new Blob([json], { type: "application/json" });
@@ -217,7 +289,23 @@
     var boot = state.boot || (Array.isArray(state.records) ? state : null);
     if (!boot) throw new Error("State file has no data payload");
     _ttApplyBoot(boot);
+    _ttRestoreAppState(state.app);
     if (state.ui) _ttRestoreUi(state.ui);
+    else {
+      try {
+        if (typeof buildSampleList === "function") buildSampleList();
+        if (typeof redraw === "function") redraw();
+      } catch (e) {}
+    }
+    try {
+      if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
+        window.specimenMerge.refreshBar();
+      }
+      if (typeof _rebuildMapMarkers === "function") _rebuildMapMarkers();
+      if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+      var bannerSub = document.getElementById("banner-sub");
+      if (bannerSub && typeof _buildBannerSub === "function") bannerSub.textContent = _buildBannerSub();
+    } catch (e) {}
   };
 
   // ── Read a state JSON file from the sidebar <input type=file> ─────────
