@@ -359,7 +359,8 @@ function _collapseSpecimens(rows) {
         : members;
     const activeMembers = specimenMembers.filter((s) => !sampleHidden[s]);
     const inputReads = activeMembers.reduce(
-      (s, sample) => s + (parseFloat(((typeof SAMPLE_META !== "undefined" && SAMPLE_META[sample]) || {}).total_reads) || 0),
+      (s, sample) =>
+        s + (parseFloat(((typeof SAMPLE_META !== "undefined" && SAMPLE_META[sample]) || {}).total_reads) || 0),
       0,
     );
     const classifiedReads = activeMembers.reduce(
@@ -389,7 +390,9 @@ function _collapseSpecimens(rows) {
 function _sameOrgLevel(a, b) {
   const ka = (a["Taxonomic ID #"] || a["Detected Organism"] || "").toString();
   const kb = (b["Taxonomic ID #"] || b["Detected Organism"] || "").toString();
-  return ka === kb && (a["Level"] || "Strain") === (b["Level"] || "Strain") && (a["Subkey"] || "") === (b["Subkey"] || "");
+  return (
+    ka === kb && (a["Level"] || "Strain") === (b["Level"] || "Strain") && (a["Subkey"] || "") === (b["Subkey"] || "")
+  );
 }
 
 /* Return a shallow copy of row r with TASS Score + Coverage scaled ×100
@@ -1790,8 +1793,7 @@ function _esc(s) {
 function _pdfKpiCards() {
   const fd = typeof filteredData === "function" ? filteredData() : [];
   const samples = uniq(fd.map((r) => r["Specimen ID"] || "")).filter(Boolean);
-  const metaFor = (sn) =>
-    typeof _summaryMetaFor === "function" ? _summaryMetaFor(sn, fd) : SAMPLE_META[sn] || {};
+  const metaFor = (sn) => (typeof _summaryMetaFor === "function" ? _summaryMetaFor(sn, fd) : SAMPLE_META[sn] || {});
   const totalInput = samples.reduce((s, sn) => s + (parseFloat(metaFor(sn).total_reads) || 0), 0);
   const totalInputUnfiltered = Object.keys(SAMPLE_META || {}).reduce(
     (s, sn) => s + (parseFloat((SAMPLE_META[sn] || {}).total_reads) || 0),
@@ -1832,7 +1834,7 @@ function _pdfKpiCards() {
       sub: "aligned + unaligned, without filters",
     },
     { label: "% Classified", value: pctClass, sub: aReads.short + " aligned" },
-    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
+    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique (passing filter taxa)." },
     { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
     { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged", hc: true },
     { label: "TASS Cutoff", value: cutVal, sub: cutSub },

@@ -502,9 +502,9 @@
               </div>
               <div class="xs-note">
                 Aggregates every detection across the <b id="xs-nsamp">0</b> <span id="xs-unit">sample(s)</span> with a
-                positive hit (respects sidebar filters): how often each organism is seen, its TASS / coverage spread, how
-                samples cluster, and which organisms co-occur. Prevalence % is measured against all specimens with any
-                positive hit run-wide.
+                positive hit (respects sidebar filters): how often each organism is seen, its TASS / coverage spread,
+                how samples cluster, and which organisms co-occur. Prevalence % is measured against all specimens with
+                any positive hit run-wide.
               </div>
               <div class="tab-controls" id="xs-controls">
                 <div style="display: flex; gap: 0.3em; flex-wrap: wrap">
@@ -1295,7 +1295,11 @@
               <label>Sample:</label>
               <select id="hist-sample-sel" style="min-width: 140px"></select>
               <label id="hist-merge-mode-label" style="display: none">Merged view:</label>
-              <select id="hist-merge-mode-sel" style="display: none; min-width: 150px" title="With specimen merge on: show one coverage row per member sample, or combine each specimen's members into a single breadth curve for organisms hit in 2+ samples. Combined uses the exact positional union of coverage when available (label 'combined union'), else a per-bin max lower bound (label 'combined max').">
+              <select
+                id="hist-merge-mode-sel"
+                style="display: none; min-width: 150px"
+                title="With specimen merge on: show one coverage row per member sample, or combine each specimen's members into a single breadth curve for organisms hit in 2+ samples. Combined uses the exact positional union of coverage when available (label 'combined union'), else a per-bin max lower bound (label 'combined max')."
+              >
                 <option value="overlay" selected>Per sample</option>
                 <option value="combined">Combined breadth</option>
               </select>
@@ -2668,6 +2672,15 @@
           <div style="display: inline-flex; align-items: center; gap: 0.4em">
             <button
               type="button"
+              id="sidebar-help-btn"
+              class="sidebar-help-btn"
+              title="Right-panel help — walk through the filters, search, cutoff and sample colours"
+              aria-label="Right-panel help walkthrough"
+            >
+              <i class="fas fa-circle-question"></i>
+            </button>
+            <button
+              type="button"
               id="report-pdf-btn"
               class="export-control"
               title="Export Report PDF"
@@ -3081,15 +3094,7 @@
             background: #f6f9ff;
           "
         >
-          <span
-            style="
-              flex-basis: 100%;
-              font-size: 0.72em;
-              color: #0d47a1;
-              font-weight: 600;
-              white-space: nowrap;
-            "
-          >
+          <span style="flex-basis: 100%; font-size: 0.72em; color: #0d47a1; font-weight: 600; white-space: nowrap">
             <i class="fas fa-layer-group"></i> Specimens
           </span>
           <button
@@ -3153,13 +3158,7 @@
           </button>
           <span
             id="specimen-merge-count"
-            style="
-              flex-basis: 100%;
-              font-size: 0.68em;
-              color: #6b7c93;
-              margin: 0;
-              overflow-wrap: anywhere;
-            "
+            style="flex-basis: 100%; font-size: 0.68em; color: #6b7c93; margin: 0; overflow-wrap: anywhere"
           ></span>
         </div>
         <div
@@ -3171,21 +3170,45 @@
               <i
                 class="fas fa-magnifying-glass"
                 aria-hidden="true"
-                style="position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: #90a4ae; font-size: 0.72em"
+                style="
+                  position: absolute;
+                  left: 7px;
+                  top: 50%;
+                  transform: translateY(-50%);
+                  color: #90a4ae;
+                  font-size: 0.72em;
+                "
               ></i>
               <input
                 id="sample-list-search"
                 type="search"
                 placeholder="Search samples…"
                 aria-label="Search samples in the right panel"
-                style="box-sizing: border-box; width: 100%; padding: 4px 24px 4px 22px; border: 1px solid #c5d3e3; border-radius: 4px; font-size: 0.76em"
+                style="
+                  box-sizing: border-box;
+                  width: 100%;
+                  padding: 4px 24px 4px 22px;
+                  border: 1px solid #c5d3e3;
+                  border-radius: 4px;
+                  font-size: 0.76em;
+                "
               />
             </div>
             <select
               id="sample-list-page-size"
               aria-label="Samples per page"
               title="Samples per page"
-              style="flex: 0 0 52px; width: 52px; min-width: 52px; max-width: 52px; padding: 3px 2px; border: 1px solid #c5d3e3; border-radius: 4px; background: #fff; font-size: 0.7em"
+              style="
+                flex: 0 0 52px;
+                width: 52px;
+                min-width: 52px;
+                max-width: 52px;
+                padding: 3px 2px;
+                border: 1px solid #c5d3e3;
+                border-radius: 4px;
+                background: #fff;
+                font-size: 0.7em;
+              "
             >
               <option value="15">15</option>
               <option value="25" selected>25</option>
@@ -3194,11 +3217,49 @@
             </select>
           </div>
           <div style="display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto">
-            <button id="sample-list-prev" type="button" title="Previous sample page" aria-label="Previous sample page" style="padding: 2px 6px; border: 1px solid #c5d3e3; border-radius: 4px; background: #fff; color: #456; cursor: pointer">&#8249;</button>
-            <span id="sample-list-page-info" style="min-width: 44px; text-align: center; color: #607d8b; font-size: 0.68em">1 / 1</span>
-            <button id="sample-list-next" type="button" title="Next sample page" aria-label="Next sample page" style="padding: 2px 6px; border: 1px solid #c5d3e3; border-radius: 4px; background: #fff; color: #456; cursor: pointer">&#8250;</button>
+            <button
+              id="sample-list-prev"
+              type="button"
+              title="Previous sample page"
+              aria-label="Previous sample page"
+              style="
+                padding: 2px 6px;
+                border: 1px solid #c5d3e3;
+                border-radius: 4px;
+                background: #fff;
+                color: #456;
+                cursor: pointer;
+              "
+            >
+              &#8249;
+            </button>
+            <span
+              id="sample-list-page-info"
+              style="min-width: 44px; text-align: center; color: #607d8b; font-size: 0.68em"
+              >1 / 1</span
+            >
+            <button
+              id="sample-list-next"
+              type="button"
+              title="Next sample page"
+              aria-label="Next sample page"
+              style="
+                padding: 2px 6px;
+                border: 1px solid #c5d3e3;
+                border-radius: 4px;
+                background: #fff;
+                color: #456;
+                cursor: pointer;
+              "
+            >
+              &#8250;
+            </button>
           </div>
-          <div id="sample-list-match-info" aria-live="polite" style="flex-basis: 100%; color: #78909c; font-size: 0.66em"></div>
+          <div
+            id="sample-list-match-info"
+            aria-live="polite"
+            style="flex-basis: 100%; color: #78909c; font-size: 0.66em"
+          ></div>
         </div>
         <div id="sample-list"></div>
         <h3>Upload Data</h3>
@@ -3277,7 +3338,7 @@
           Save a self-contained snapshot of the current data <em>and</em> all filters, then reload it later to return to
           exactly this view.
         </span>
-        <div style="display: flex; gap: 0.4em; flex-wrap: wrap">
+        <div id="state-io-row" style="display: flex; gap: 0.4em; flex-wrap: wrap">
           <button class="upload-btn" onclick="window.ttExportState && window.ttExportState()">
             <i class="fas fa-download" style="margin-right: 0.35em"></i>Export State
           </button>

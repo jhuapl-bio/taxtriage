@@ -170,7 +170,11 @@ function drawHeatmap() {
         .append("g")
         .attr("transform", `translate(${_mtBadgeX + 7}, ${cy})`)
         .attr("title", mt === "dna" ? "DNA pathogen" : mt === "rna" ? "RNA pathogen" : "Merged DNA + RNA evidence");
-      badgeG.append("circle").attr("r", mt === "both" ? 9 : 7).attr("fill", badgeColor).attr("opacity", 0.9);
+      badgeG
+        .append("circle")
+        .attr("r", mt === "both" ? 9 : 7)
+        .attr("fill", badgeColor)
+        .attr("opacity", 0.9);
       badgeG
         .append("text")
         .attr("text-anchor", "middle")

@@ -280,7 +280,9 @@ let _sampleListPageIds = [];
 
 function _sampleListFilteredOrder() {
   const input = document.getElementById("sample-list-search");
-  const q = String((input && input.value) || "").trim().toLowerCase();
+  const q = String((input && input.value) || "")
+    .trim()
+    .toLowerCase();
   if (!q) return _sampleOrder.slice();
   return _sampleOrder.filter((id) => {
     const specimen =
@@ -339,9 +341,16 @@ function _updateSampleListTools(filteredCount, totalCount, pages) {
   const next = document.getElementById("sample-list-next");
   if (info) info.textContent = `${_sampleListPage + 1} / ${pages}`;
   if (match) {
-    const start = filteredCount ? _sampleListPageIds.length ? _sampleListPage * (parseInt((document.getElementById("sample-list-page-size") || {}).value, 10) || 25) + 1 : 0 : 0;
+    const start = filteredCount
+      ? _sampleListPageIds.length
+        ? _sampleListPage * (parseInt((document.getElementById("sample-list-page-size") || {}).value, 10) || 25) + 1
+        : 0
+      : 0;
     const end = filteredCount ? start + _sampleListPageIds.length - 1 : 0;
-    match.textContent = filteredCount === totalCount ? `${start}–${end} of ${totalCount} samples` : `${start}–${end} of ${filteredCount} matches · ${totalCount} total`;
+    match.textContent =
+      filteredCount === totalCount
+        ? `${start}–${end} of ${totalCount} samples`
+        : `${start}–${end} of ${filteredCount} matches · ${totalCount} total`;
   }
   if (prev) {
     prev.disabled = _sampleListPage <= 0;
@@ -651,8 +660,7 @@ function _updateSidebarLegend() {
 
   // ── sample swatches ──────────────────────────────────────────────
   if (_sampleOrder.length > 0) {
-    let swatchHtml =
-      `<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors <span style="font-weight:400;color:#90a4ae">(current page)</span></div>`;
+    let swatchHtml = `<div style="font-size:0.72em;font-weight:600;color:#546e7a;margin-bottom:0.25em">Sample Colors <span style="font-weight:400;color:#90a4ae">(current page)</span></div>`;
     swatchHtml += '<div style="display:flex;flex-direction:column;gap:0.18em">';
     _sampleListPageIds.forEach((id) => {
       const col = sampleColors[id] || "#888";

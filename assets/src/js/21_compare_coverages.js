@@ -284,7 +284,11 @@ function _covCombineCds(cds) {
         JSON.stringify(bh.contig_names || []) === JSON.stringify(ref.contig_names || []),
     );
     if (sameSpace && ref.total_len && ref.bin_size) {
-      const u = _covUnionRebin(bhs.map((bh) => bh.covered_intervals), ref.bin_size, ref.total_len);
+      const u = _covUnionRebin(
+        bhs.map((bh) => bh.covered_intervals),
+        ref.bin_size,
+        ref.total_len,
+      );
       if (u) {
         const breadth = {
           bins: u.bins,
@@ -304,7 +308,11 @@ function _covCombineCds(cds) {
 
   // ── Fallback: per-bin MAX (lower bound) ────────────────────────────────
   const binsArr = cds
-    .map(({ cd }) => (cd && cd.breadth_histogram && Array.isArray(cd.breadth_histogram.bins) ? cd.breadth_histogram.bins.map(num) : null))
+    .map(({ cd }) =>
+      cd && cd.breadth_histogram && Array.isArray(cd.breadth_histogram.bins)
+        ? cd.breadth_histogram.bins.map(num)
+        : null,
+    )
     .filter(Boolean);
   let breadth = null;
   let combinable = false;
@@ -321,8 +329,15 @@ function _covCombineCds(cds) {
         bins[i] = mx;
       }
       const refBh =
-        (cds.find(({ cd }) => cd && cd.breadth_histogram && Array.isArray(cd.breadth_histogram.bins) && cd.breadth_histogram.bins.length === L) || {}).cd
-          ?.breadth_histogram || {};
+        (
+          cds.find(
+            ({ cd }) =>
+              cd &&
+              cd.breadth_histogram &&
+              Array.isArray(cd.breadth_histogram.bins) &&
+              cd.breadth_histogram.bins.length === L,
+          ) || {}
+        ).cd?.breadth_histogram || {};
       breadth = { bins };
       if (refBh.bin_size != null) breadth.bin_size = refBh.bin_size;
       if (refBh.total_len != null) breadth.total_len = refBh.total_len;
@@ -360,9 +375,7 @@ function _covExpandMerged(raw) {
       out.push(Object.assign({}, it, { __mergedCd: combined, __mergedMembers: cds.map((c) => c.sample) }));
     } else {
       // Overlay: one line per member sample (keeps the specimen name as a hint).
-      cds.forEach(({ sample }) =>
-        out.push({ sample, organism: it.organism, taxid: it.taxid, __overlayOf: it.sample }),
-      );
+      cds.forEach(({ sample }) => out.push({ sample, organism: it.organism, taxid: it.taxid, __overlayOf: it.sample }));
     }
   });
   return out;
@@ -1904,9 +1917,7 @@ function _novSamples() {
     const total = summaries.reduce((a, sm) => a + (+sm.total_reads || 0), 0);
     const sum = (key) => summaries.reduce((a, sm) => a + (+sm[key] || 0), 0);
     const weighted = (key) =>
-      total
-        ? summaries.reduce((a, sm) => a + (+sm[key] || 0) * (+sm.total_reads || 0), 0) / total
-        : 0;
+      total ? summaries.reduce((a, sm) => a + (+sm[key] || 0) * (+sm.total_reads || 0), 0) / total : 0;
     const summary = Object.assign({}, summaries[0] || {}, {
       sample: group,
       total_reads: total,
@@ -2413,7 +2424,9 @@ function _novClosedGenus(sample) {
     typeof specimenGroups === "function" &&
     specimenGroups().has(sample)
   ) {
-    memberList = specimenGroups().get(sample).filter((s) => !(typeof sampleHidden !== "undefined" && sampleHidden[s]));
+    memberList = specimenGroups()
+      .get(sample)
+      .filter((s) => !(typeof sampleHidden !== "undefined" && sampleHidden[s]));
   }
   const members = new Set(memberList);
   (DATA || []).forEach((r) => {

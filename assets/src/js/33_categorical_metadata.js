@@ -80,7 +80,11 @@ function _aggregateMetaByField(fieldKey, metric, sampleSet) {
 
   if (metric === "samples") {
     // Count only entities represented by the current filtered detections.
-    const visibleEntities = new Set(filteredData().map((r) => r["Specimen ID"] || "").filter(Boolean));
+    const visibleEntities = new Set(
+      filteredData()
+        .map((r) => r["Specimen ID"] || "")
+        .filter(Boolean),
+    );
     Object.entries(valBy).forEach(([s, vals]) => {
       if (!visibleEntities.has(s)) return;
       vals.forEach((val) => ensure(val).samples.add(s));
@@ -931,7 +935,11 @@ function _aggregateMetaNested(parentField, childField, metric) {
     (parents[p] = parents[p] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0, kids: {} });
   const eK = (P, c) => (P.kids[c] = P.kids[c] || { samples: new Set(), detections: 0, reads: 0, tassSum: 0, tassN: 0 });
   if (metric === "samples") {
-    const visibleEntities = new Set(filteredData().map((r) => r["Specimen ID"] || "").filter(Boolean));
+    const visibleEntities = new Set(
+      filteredData()
+        .map((r) => r["Specimen ID"] || "")
+        .filter(Boolean),
+    );
     Object.entries(recBy).forEach(([s, o]) => {
       if (!visibleEntities.has(s)) return;
       o.parents.forEach((p) => {

@@ -66,9 +66,7 @@ function drawProtGenus() {
       return `${sample}||${r["Genus"] || "Unknown"}`;
     };
     const visibleHits = [
-      ...(PROT.per_gene_hits || []).filter(
-        (r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r)),
-      ),
+      ...(PROT.per_gene_hits || []).filter((r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r))),
       ...(PROT.amr_genes || [])
         .filter((r) => !sampleHidden[r["Specimen ID"]] && _pgFdPairs.has(_pgPair(r)))
         .map((r) => ({ ...r, Property: r["Property"] || r["Class"] })),
@@ -317,9 +315,7 @@ function drawProtProperty() {
     return `${sample}||${r["Genus"] || "Unknown"}`;
   };
   const _allHits = [
-    ...(PROT.per_gene_hits || []).filter(
-      (r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r)),
-    ),
+    ...(PROT.per_gene_hits || []).filter((r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r))),
     ...(PROT.amr_genes || [])
       .filter((r) => !sampleHidden[r["Specimen ID"]] && _ppFdPairs.has(_ppPair(r)))
       .map((r) => ({ ...r, _source: "AMR" })),

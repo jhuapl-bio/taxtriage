@@ -101,9 +101,7 @@
       const rx = _getTextFilter();
       const visibleTaxa = _histPassingTaxa();
       const mergeOn =
-        typeof specimenMergeEnabled !== "undefined" &&
-        specimenMergeEnabled &&
-        typeof specimenOf === "function";
+        typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function";
       const choices = new Map();
       CONTIG_DATA.filter(
         (cd) =>
@@ -316,10 +314,7 @@
     // required `entries.length > 1`, which meant uploaded samples that
     // were the sole match for an organism rendered with no name at all.
     const selectedMergedSpecimen =
-      _grouped &&
-      sample &&
-      typeof specimenGroups === "function" &&
-      (specimenGroups().get(sample) || []).length > 1;
+      _grouped && sample && typeof specimenGroups === "function" && (specimenGroups().get(sample) || []).length > 1;
     const showAll = !sample || entries.length > 1 || selectedMergedSpecimen;
 
     if (!entries.length || entries.every((cd) => !cd.contigs || !cd.contigs.length)) {

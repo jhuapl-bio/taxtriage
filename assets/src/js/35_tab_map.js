@@ -138,9 +138,7 @@ function _addMapClusterControl() {
 function _addSampleMarkers() {
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
   const mergeOn =
-    typeof specimenMergeEnabled !== "undefined" &&
-    specimenMergeEnabled &&
-    typeof specimenOf === "function";
+    typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function";
   const markerRows = [];
   if (mergeOn) {
     const bySpec = new Map();

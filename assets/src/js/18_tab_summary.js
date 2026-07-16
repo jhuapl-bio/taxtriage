@@ -38,7 +38,8 @@ function _orgBadges(r) {
   if (mt === "dna") s += '<span title="DNA" style="color:#1565c0;font-weight:700">Ⓓ</span> ';
   else if (mt === "rna") s += '<span title="RNA" style="color:#6a1b9a;font-weight:700">Ⓡ</span> ';
   else if (mt === "both")
-    s += '<span title="Merged DNA + RNA evidence" style="color:#1565c0;font-weight:700">Ⓓ</span><span title="Merged DNA + RNA evidence" style="color:#6a1b9a;font-weight:700">Ⓡ</span> ';
+    s +=
+      '<span title="Merged DNA + RNA evidence" style="color:#1565c0;font-weight:700">Ⓓ</span><span title="Merged DNA + RNA evidence" style="color:#6a1b9a;font-weight:700">Ⓡ</span> ';
   return s;
 }
 
@@ -115,7 +116,9 @@ function _summaryMetaFor(sn, fd) {
     specimenMergeEnabled &&
     typeof specimenGroups === "function" &&
     specimenGroups().has(sn)
-      ? specimenGroups().get(sn).filter((s) => !sampleHidden[s])
+      ? specimenGroups()
+          .get(sn)
+          .filter((s) => !sampleHidden[s])
       : row && Array.isArray(row.__mergedFrom) && row.__mergedFrom.length
       ? row.__mergedFrom
       : [sn];
@@ -430,6 +433,42 @@ function drawSummary() {
 
   const aReads = _fmtBig(totalOrg);
   const allReads = _fmtBig(totalInputUnfiltered);
+  // Count unique taxa at the strain level (or the lowest level available).
+  // DATA stacks Strain/Species/Genus rollup rows for the same organism
+  // (sharing "Subkey"), and multiple distinct strains of one species share
+  // that same Species/Genus proxy row (see _synthesizeHierarchy in
+  // 23_filter_listeners.js) — so collapsing to one row per (Specimen, Subkey)
+  // undercounts whenever a species has >1 strain in a sample. Instead: count
+  // every Strain-level row's own taxid (never collapsed), and only fall back
+  // to a Species/Genus taxid for a (Specimen, Subkey) group that has no
+  // Strain-level row at all. This guarantees the total is never lower than
+  // any Strain-level "Organisms" count derived from a subset of DATA.
+  const _strainGroupKeys = new Set();
+  for (const r of DATA) {
+    if ((r["Level"] || "Strain") === "Strain") {
+      _strainGroupKeys.add((r["Specimen ID"] || "") + "||" + (r["Subkey"] || r["Taxonomic ID #"] || ""));
+    }
+  }
+  const _fallbackLevelRank = { Species: 2, Genus: 1 };
+  const _fallbackTaxidByGroup = new Map();
+  const _strainTaxids = new Set();
+  for (const r of DATA) {
+    const lvl = r["Level"] || "Strain";
+    if (lvl === "Strain") {
+      _strainTaxids.add(r["Taxonomic ID #"] || "");
+      continue;
+    }
+    const gk = (r["Specimen ID"] || "") + "||" + (r["Subkey"] || r["Taxonomic ID #"] || "");
+    if (_strainGroupKeys.has(gk)) continue; // covered by a Strain row already
+    const rank = _fallbackLevelRank[lvl] || 0;
+    const cur = _fallbackTaxidByGroup.get(gk);
+    if (!cur || rank > cur.rank) {
+      _fallbackTaxidByGroup.set(gk, { rank, taxid: r["Taxonomic ID #"] || "" });
+    }
+  }
+  const total_taxa_notfilter = new Set(
+    [..._strainTaxids, ...Array.from(_fallbackTaxidByGroup.values()).map((g) => g.taxid)].filter(Boolean),
+  ).size;
   const cards = [
     {
       label: "Samples",
@@ -451,7 +490,7 @@ function drawSummary() {
       subFull: aReads.full,
       tipId: "kpi-tip-pct",
     },
-    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: "unique taxa" },
+    { label: "Organisms", value: _fmtInt(uniqOrgs), sub: `passing filter<br>Total: ${_fmtInt(total_taxa_notfilter)}` },
     { label: "Genera", value: _fmtInt(uniqGenera), sub: "unique genera" },
     { label: "High Consequence", value: _fmtInt(hcCount), sub: "flagged pathogens" },
     { label: "TASS Cutoff", value: cutVal, sub: cutSub, tipId: "kpi-tip-tass" },
@@ -1111,7 +1150,9 @@ function _renderSummaryTable(fd) {
         const _brd = _histRes.combined && _histRes.unionPct != null ? _histRes.unionPct : num(r["Breadth %"]);
         const _mk = _histRes.combined
           ? `<span title="${
-              _histRes.exact ? "Exact positional union of breadth across the merged samples" : "Combined (per-bin max) breadth across the merged samples"
+              _histRes.exact
+                ? "Exact positional union of breadth across the merged samples"
+                : "Combined (per-bin max) breadth across the merged samples"
             }" style="color:#1565c0;font-size:0.82em;margin-left:2px;">∪</span>`
           : "";
         return `<td style="text-align:right">${_brd.toFixed(1)}${_mk}</td>`;
@@ -1482,7 +1523,8 @@ function _noveltyCellHTML(r) {
 
   const lvl = speciesCand ? "sp" : "gen";
   const cand = speciesCand || genusCand;
-  const hrFrac = cand.frac_of_highrank != null && cand.frac_of_highrank !== "" ? parseFloat(cand.frac_of_highrank) : NaN;
+  const hrFrac =
+    cand.frac_of_highrank != null && cand.frac_of_highrank !== "" ? parseFloat(cand.frac_of_highrank) : NaN;
   const sampleFrac = cand.frac_of_sample != null && cand.frac_of_sample !== "" ? parseFloat(cand.frac_of_sample) : NaN;
   const fracPct = !isNaN(hrFrac)
     ? (hrFrac * 100).toFixed(1) + "% of genus+ pool"

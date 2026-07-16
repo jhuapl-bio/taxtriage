@@ -96,5 +96,7 @@ function _buildBannerSub() {
   if (pctClass === "0.0%" && totalOrgReads > 0) pctClass = "<0.1%";
   const totalReadsFmt = _fmtBig(totalInputReads).short;
 
-  return `${entities.length} ${grouped ? "specimen(s)" : "sample(s)"} \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified \u2022 ${totalReadsFmt} total reads`;
+  return `${entities.length} ${
+    grouped ? "specimen(s)" : "sample(s)"
+  } \u2022 ${uniqueOrgs} unique organism(s) \u2022 ${pctClass} reads classified \u2022 ${totalReadsFmt} total reads`;
 }

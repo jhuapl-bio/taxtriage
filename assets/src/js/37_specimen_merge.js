@@ -85,7 +85,11 @@
     typeof _MULTI_VALUE_META_FIELDS !== "undefined" && _MULTI_VALUE_META_FIELDS.includes(field);
   const _metaValues = (v, multi) => {
     if (v == null || v === "") return [];
-    const vals = Array.isArray(v) ? v : multi && typeof _splitMultiMetaValue === "function" ? _splitMultiMetaValue(v) : [v];
+    const vals = Array.isArray(v)
+      ? v
+      : multi && typeof _splitMultiMetaValue === "function"
+      ? _splitMultiMetaValue(v)
+      : [v];
     return (Array.isArray(vals) ? vals : [vals]).map((x) => String(x).trim()).filter(Boolean);
   };
 
@@ -129,6 +133,8 @@
     cont.querySelectorAll(".sample-entry[data-sid]").forEach((row) => {
       row.style.background = "";
       row.style.borderLeft = "";
+      row.style.borderRight = "";
+      row.style.borderBottom = "";
       row.style.borderRadius = "";
       row.style.paddingLeft = "";
     });
@@ -164,7 +170,10 @@
       }
       const run = [rows[i]];
       let j = i + 1;
-      while (j < rows.length && (typeof specimenOf === "function" ? specimenOf(rows[j].getAttribute("data-sid")) : "") === spec) {
+      while (
+        j < rows.length &&
+        (typeof specimenOf === "function" ? specimenOf(rows[j].getAttribute("data-sid")) : "") === spec
+      ) {
         run.push(rows[j]);
         j++;
       }
@@ -177,9 +186,11 @@
       header.title = "Drag to reorder this specimen group";
       header.style.cssText =
         "display:flex;align-items:center;gap:5px;font-size:0.68em;font-weight:700;color:#fff;" +
-        "padding:2px 6px;margin-top:4px;border-radius:4px 4px 0 0;background:" +
+        "padding:2px 6px;margin-top:6px;border-radius:4px 4px 0 0;background:" +
         col +
-        ";cursor:grab;";
+        ";border:2px solid " +
+        col +
+        ";border-bottom:none;box-shadow:0 2px 5px rgba(0,0,0,0.35);position:relative;z-index:1;cursor:grab;";
       header.innerHTML =
         `<i class="fas fa-grip-vertical" style="opacity:0.75;flex-shrink:0;"></i>` +
         `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;" title="Merged specimen: ${_esc(
@@ -190,13 +201,55 @@
         }</span>`;
       cont.insertBefore(header, run[0]);
 
-      // The envelope: a tint + left border across the whole run, sized to
-      // its own content (no fixed width to overflow).
+      // Color swatch — same mechanism as an individual sample row's color
+      // picker (an <input type="color"> bound to sampleColors[id]), just
+      // keyed by the specimen name so the whole envelope box can be
+      // recolored right where it's shown, not only from the Group… modal.
+      const colorIn = document.createElement("input");
+      colorIn.type = "color";
+      colorIn.className = "specimen-group-color";
+      colorIn.value = col.length === 7 ? col : "#1565c0"; // input[type=color] needs #rrggbb
+      colorIn.title = `Specimen color: ${spec}`;
+      colorIn.style.cssText =
+        "width:14px;height:14px;padding:0;border:1px solid rgba(255,255,255,0.7);border-radius:3px;flex-shrink:0;cursor:pointer;background:transparent;";
+      colorIn.draggable = false;
+      colorIn.addEventListener("mousedown", (e) => e.stopPropagation());
+      colorIn.addEventListener("click", (e) => e.stopPropagation());
+      colorIn.addEventListener("dragstart", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      colorIn.addEventListener("input", (e) => {
+        e.stopPropagation();
+        const newCol = e.target.value;
+        if (typeof sampleColors !== "undefined") sampleColors[spec] = newCol;
+        header.style.background = newCol;
+        header.style.border = "2px solid " + newCol;
+        header.style.borderBottom = "none";
+        run.forEach((row, idx) => {
+          const isLast = idx === run.length - 1;
+          row.style.background = newCol + "26";
+          row.style.borderLeft = "4px solid " + newCol;
+          row.style.borderRight = "2px solid " + newCol;
+          row.style.borderBottom = isLast ? "2px solid " + newCol : "none";
+        });
+        if (typeof _refreshMapMarkerColors === "function") _refreshMapMarkerColors();
+        if (typeof redraw === "function") redraw();
+      });
+      header.insertBefore(colorIn, header.firstChild.nextSibling); // after the grip icon
+
+      // The envelope: a stronger tint + full left/right border across the
+      // whole run (not just a left accent), so the box reads as a distinct
+      // enclosure rather than blending into whatever sits above it. The last
+      // row also gets the bottom edge closed off to complete the box.
       run.forEach((row, idx) => {
-        row.style.background = col + "14";
-        row.style.borderLeft = "3px solid " + col;
-        row.style.paddingLeft = "3px";
-        row.style.borderRadius = idx === run.length - 1 ? "0 0 4px 4px" : "0";
+        const isLast = idx === run.length - 1;
+        row.style.background = col + "26"; // ~15% tint — up from ~8%
+        row.style.borderLeft = "4px solid " + col;
+        row.style.borderRight = "2px solid " + col;
+        row.style.borderBottom = isLast ? "2px solid " + col : "none";
+        row.style.paddingLeft = "2px";
+        row.style.borderRadius = isLast ? "0 0 4px 4px" : "0";
       });
 
       header.addEventListener("dragstart", (e) => {
@@ -485,7 +538,9 @@
       const poolEl = back.querySelector("#sm-pool");
       poolEl.innerHTML = pool.length
         ? pool.map(chip).join("")
-        : `<div style="color:#aab;font-size:0.78em;padding:8px;">${query ? "No matching unassigned samples." : "All samples assigned."}</div>`;
+        : `<div style="color:#aab;font-size:0.78em;padding:8px;">${
+            query ? "No matching unassigned samples." : "All samples assigned."
+          }</div>`;
 
       // Bins = distinct specimen names in assign.
       const bins = new Map();
@@ -522,20 +577,37 @@
             // rather than a standalone name chip that can overflow. Drag the
             // grip handle to reorder boxes; drop a sample chip anywhere in
             // the box to assign it to this specimen.
+            // Give the box a color the same way an individual sample row does —
+            // a native <input type="color"> bound to sampleColors[g], so the
+            // merged specimen can be recolored the same way as any sample.
+            if (typeof sampleColors !== "undefined" && !sampleColors[g]) {
+              sampleColors[g] =
+                (sampleColors[members[0]] && sampleColors[members[0]]) ||
+                (typeof PALETTE !== "undefined" && PALETTE.length
+                  ? PALETTE[_binOrder.indexOf(g) % PALETTE.length]
+                  : "#607d8b");
+            }
+            const binColor = (typeof sampleColors !== "undefined" && sampleColors[g]) || "#607d8b";
             return (
               `<div class="sm-drop sm-bin" draggable="true" data-bin="${_esc(g)}" role="button" tabindex="0" ` +
               `title="Select this specimen to review its metadata warnings" ` +
-              `style="border:1px solid ${multi ? "#1565c0" : "#d6e2f5"};border-radius:6px;padding:6px 8px;margin-bottom:6px;background:${
+              `style="border:1px solid ${
+                multi ? "#1565c0" : "#d6e2f5"
+              };border-radius:6px;padding:6px 8px;margin-bottom:6px;background:${
                 multi ? "#f0f7ff" : "#fff"
               };cursor:grab;">` +
               `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">` +
               `<i class="fas fa-grip-vertical" style="color:#b0bec5;font-size:0.78em;flex-shrink:0;" title="Drag box to reorder"></i>` +
+              `<input type="color" class="sm-bin-color" data-bin="${_esc(g)}" value="${_esc(binColor)}" ` +
+              `title="Specimen color" style="width:16px;height:16px;padding:0;border:1px solid #b8c8e0;border-radius:3px;flex-shrink:0;cursor:pointer;">` +
               `<b style="font-size:0.8em;color:#0d47a1;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_esc(
                 g,
               )}">${_esc(g)}</b>` +
               `<span style="font-size:0.7em;color:#88a;flex-shrink:0;">${members.length} sample(s)</span>` +
               `<span style="flex:1"></span>` +
-              `<span class="sm-rename" data-bin="${_esc(g)}" title="Rename specimen" style="cursor:pointer;color:#1565c0;font-size:0.78em;flex-shrink:0;"><i class="fas fa-pen"></i></span>` +
+              `<span class="sm-rename" data-bin="${_esc(
+                g,
+              )}" title="Rename specimen" style="cursor:pointer;color:#1565c0;font-size:0.78em;flex-shrink:0;"><i class="fas fa-pen"></i></span>` +
               `</div>` +
               `<div>${shownMembers.map(chip).join("")}</div>` +
               `</div>`
@@ -543,13 +615,21 @@
           })
           .join("");
         binsEl.innerHTML =
-          renderedBins || `<div style="color:#aab;font-size:0.78em;padding:8px;">No matching samples or specimen groups.</div>`;
+          renderedBins ||
+          `<div style="color:#aab;font-size:0.78em;padding:8px;">No matching samples or specimen groups.</div>`;
       }
       const matched = query
-        ? allSamples.filter((s) => s.toLowerCase().includes(query) || String(assign[s] || "").toLowerCase().includes(query)).length
+        ? allSamples.filter(
+            (s) =>
+              s.toLowerCase().includes(query) ||
+              String(assign[s] || "")
+                .toLowerCase()
+                .includes(query),
+          ).length
         : allSamples.length;
       const searchCount = back.querySelector("#sm-search-count");
-      if (searchCount) searchCount.textContent = query ? `${matched} of ${allSamples.length}` : `${allSamples.length} samples`;
+      if (searchCount)
+        searchCount.textContent = query ? `${matched} of ${allSamples.length}` : `${allSamples.length} samples`;
       _wireDnd();
       // Live conflict preview.
       _renderConflicts(findConflicts(_multiOnly(assign)));
@@ -581,10 +661,9 @@
       const el = back.querySelector("#sm-conflicts");
       const multiSpecs = Array.from(new Set(Object.values(_multiOnly(assign))));
       if (!conflicts.length) {
-        el.innerHTML =
-          `<div style="border:1px solid #b7dfc5;background:#f3fbf6;border-radius:6px;padding:7px 10px;margin:4px 0 2px;font-size:0.78em;color:#2b6f44;"><i class="fas fa-circle-check"></i> No differing metadata${
-            _selectedSpec ? ` for <b>${_esc(_selectedSpec)}</b>` : " in the current specimen groups"
-          }.</div>`;
+        el.innerHTML = `<div style="border:1px solid #b7dfc5;background:#f3fbf6;border-radius:6px;padding:7px 10px;margin:4px 0 2px;font-size:0.78em;color:#2b6f44;"><i class="fas fa-circle-check"></i> No differing metadata${
+          _selectedSpec ? ` for <b>${_esc(_selectedSpec)}</b>` : " in the current specimen groups"
+        }.</div>`;
         _resolved = {};
         if (_selectedSpec && !multiSpecs.includes(_selectedSpec)) _selectedSpec = null;
         _paintSelectedBin();
@@ -643,9 +722,7 @@
                 (o, j) =>
                   `<option value="${_esc(o.value)}" ${
                     _resolved[c.spec] && _resolved[c.spec][c.field] === o.value ? "selected" : ""
-                  }>${_esc(o.value)} (${_esc(
-                    o.samples.join(", "),
-                  )})</option>`,
+                  }>${_esc(o.value)} (${_esc(o.samples.join(", "))})</option>`,
               )
               .join("");
             return (
@@ -705,7 +782,7 @@
         });
         el.addEventListener("dragend", () => (el.style.opacity = ""));
         const selectGroup = (e) => {
-          if (e && e.target && e.target.closest(".sm-rename")) return;
+          if (e && e.target && e.target.closest(".sm-rename, .sm-bin-color")) return;
           _selectedSpec = el.getAttribute("data-bin");
           _renderConflicts(findConflicts(_multiOnly(assign)));
         };
@@ -767,6 +844,25 @@
           });
           if (_selectedSpec === old) _selectedSpec = name;
           render();
+        });
+      });
+      // Specimen color swatch — same mechanism as the individual sample color
+      // picker in the right-panel sidebar (an <input type="color"> bound to
+      // sampleColors[id]), just keyed by the specimen name instead of a raw
+      // sample id. Takes effect immediately across the report, same as
+      // recoloring a sample.
+      back.querySelectorAll(".sm-bin-color").forEach((el) => {
+        // Prevent the box's own draggable/click handlers from hijacking the
+        // native color-picker interaction.
+        el.addEventListener("mousedown", (e) => e.stopPropagation());
+        el.addEventListener("click", (e) => e.stopPropagation());
+        el.addEventListener("dragstart", (e) => e.preventDefault());
+        el.addEventListener("input", (e) => {
+          e.stopPropagation();
+          const g = el.getAttribute("data-bin");
+          if (typeof sampleColors !== "undefined") sampleColors[g] = e.target.value;
+          if (typeof _refreshMapMarkerColors === "function") _refreshMapMarkerColors();
+          if (typeof redraw === "function") redraw();
         });
       });
     }

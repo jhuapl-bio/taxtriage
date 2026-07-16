@@ -473,22 +473,472 @@
     else if (e.key === "ArrowLeft") show(idx - 1);
   });
 
+  /* ══════════════════════════════════════════════════════════════════════
+     SPOTLIGHT WALKTHROUGH ENGINE
+        A reusable stepped highlighter modelled on the attached report: a dim
+        backdrop, a glowing ring that moves to each target (measured live from
+        getBoundingClientRect) and a compact popover pinned next to it with
+        Back / Next / dots. Used by per-tab Help mode and the right-panel "?"
+        button. Leaves the little bottom-left #tab-help-panel visible on top.
+     ══════════════════════════════════════════════════════════════════════ */
+  const Spotlight = (function () {
+    let dim, ring, pop, popIco, popTitle, popStep, popBody, popTips, popDots, btnBack, btnNext, btnClose;
+    let steps = [],
+      idx = 0,
+      target = null,
+      onExit = null,
+      built = false,
+      reposition = null,
+      settleTimer = null;
+
+    function build() {
+      if (built) return;
+      built = true;
+      dim = document.createElement("div");
+      dim.id = "hs-dim";
+      ring = document.createElement("div");
+      ring.id = "hs-ring";
+      pop = document.createElement("div");
+      pop.id = "hs-pop";
+      pop.setAttribute("role", "dialog");
+      pop.innerHTML =
+        '<div id="hs-pop-head"><span id="hs-pop-ico"><i class="fas fa-circle-question"></i></span>' +
+        '<h4 id="hs-pop-title"></h4><span id="hs-pop-step"></span>' +
+        '<button id="hs-pop-x" type="button" title="Close" aria-label="Close help">&times;</button></div>' +
+        '<div id="hs-pop-body"></div><ul id="hs-pop-tips"></ul>' +
+        '<div id="hs-pop-foot"><div id="hs-pop-dots"></div><span class="hs-spacer"></span>' +
+        '<button id="hs-back" type="button"><i class="fas fa-arrow-left"></i> Back</button>' +
+        '<button id="hs-next" type="button">Next <i class="fas fa-arrow-right"></i></button></div>';
+      document.body.appendChild(dim);
+      document.body.appendChild(ring);
+      document.body.appendChild(pop);
+      popIco = pop.querySelector("#hs-pop-ico");
+      popTitle = pop.querySelector("#hs-pop-title");
+      popStep = pop.querySelector("#hs-pop-step");
+      popBody = pop.querySelector("#hs-pop-body");
+      popTips = pop.querySelector("#hs-pop-tips");
+      popDots = pop.querySelector("#hs-pop-dots");
+      btnBack = pop.querySelector("#hs-back");
+      btnNext = pop.querySelector("#hs-next");
+      btnClose = pop.querySelector("#hs-pop-x");
+      btnBack.addEventListener("click", () => go(idx - 1));
+      btnNext.addEventListener("click", () => (idx >= steps.length - 1 ? stop() : go(idx + 1)));
+      btnClose.addEventListener("click", stop);
+      dim.addEventListener("click", stop);
+      popDots.addEventListener("click", (e) => {
+        const d = e.target.closest(".hs-dot");
+        if (d) go(parseInt(d.dataset.i, 10));
+      });
+      document.addEventListener("keydown", (e) => {
+        if (!isOpen()) return;
+        if (e.key === "Escape") stop();
+        else if (e.key === "ArrowRight") idx >= steps.length - 1 ? stop() : go(idx + 1);
+        else if (e.key === "ArrowLeft") go(idx - 1);
+      });
+    }
+
+    function isOpen() {
+      return built && dim.classList.contains("show");
+    }
+    // first selector that exists (visible preferred); sel may be string or array
+    function resolve(sel) {
+      if (!sel) return null;
+      const list = Array.isArray(sel) ? sel : [sel];
+      for (const s of list) {
+        const el = document.querySelector(s);
+        if (el && el.offsetParent !== null) return el;
+      }
+      for (const s of list) {
+        const el = document.querySelector(s);
+        if (el) return el;
+      }
+      return null;
+    }
+    function clearTarget() {
+      if (target) {
+        target.classList.remove("hs-target");
+        target = null;
+      }
+    }
+    function place() {
+      if (!target) {
+        ring.style.display = "none";
+        return;
+      }
+      const r = target.getBoundingClientRect();
+      const pad = 6;
+      ring.style.display = "block";
+      ring.style.top = r.top - pad + "px";
+      ring.style.left = r.left - pad + "px";
+      ring.style.width = r.width + pad * 2 + "px";
+      ring.style.height = r.height + pad * 2 + "px";
+      const pw = pop.offsetWidth || 320,
+        ph = pop.offsetHeight || 210,
+        gap = 16,
+        vw = window.innerWidth,
+        vh = window.innerHeight;
+      let left,
+        top,
+        beside = true;
+      if (r.right + gap + pw <= vw) left = r.right + gap; // right of target
+      else if (r.left - gap - pw >= 0) left = r.left - gap - pw; // left of target
+      else {
+        beside = false;
+        left = Math.max(8, Math.min(vw - pw - 8, r.left));
+      }
+      if (beside) top = r.top + r.height / 2 - ph / 2;
+      else top = r.bottom + gap + ph <= vh ? r.bottom + gap : r.top - gap - ph;
+      top = Math.max(8, Math.min(vh - ph - 8, top));
+      pop.style.left = left + "px";
+      pop.style.top = top + "px";
+    }
+    function render() {
+      const s = steps[idx];
+      if (!s) return;
+      clearTarget();
+      target = resolve(s.sel);
+      if (target) {
+        target.classList.add("hs-target");
+        try {
+          target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        } catch (e) {}
+      }
+      popIco.innerHTML = `<i class="fas ${s.icon || "fa-circle-dot"}"></i>`;
+      popTitle.textContent = s.title || "";
+      popStep.textContent = `${idx + 1} / ${steps.length}`;
+      popBody.innerHTML = s.desc || "";
+      popTips.innerHTML = (s.tips || []).map((t) => `<li>${t}</li>`).join("");
+      popDots.innerHTML = steps
+        .map((_, i) => `<span class="hs-dot${i === idx ? " on" : ""}" data-i="${i}"></span>`)
+        .join("");
+      btnBack.disabled = idx === 0;
+      btnNext.innerHTML =
+        idx >= steps.length - 1 ? 'Done <i class="fas fa-check"></i>' : 'Next <i class="fas fa-arrow-right"></i>';
+      requestAnimationFrame(place);
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(place, 360); // re-measure after the smooth scroll settles
+    }
+    function go(i) {
+      idx = Math.max(0, Math.min(steps.length - 1, i));
+      render();
+    }
+    function start(stepList, opts) {
+      opts = opts || {};
+      build();
+      const resolved = (stepList || []).filter((s) => resolve(s.sel));
+      if (!resolved.length) return false;
+      steps = resolved;
+      idx = 0;
+      onExit = opts.onExit || null;
+      document.body.classList.add("hs-open");
+      dim.classList.add("show");
+      ring.classList.add("show");
+      pop.classList.add("show");
+      if (!reposition) {
+        reposition = () => {
+          if (isOpen()) place();
+        };
+        window.addEventListener("resize", reposition);
+        window.addEventListener("scroll", reposition, true);
+      }
+      render();
+      return true;
+    }
+    function stop() {
+      if (!built) return;
+      clearTarget();
+      dim.classList.remove("show");
+      ring.classList.remove("show");
+      pop.classList.remove("show");
+      document.body.classList.remove("hs-open");
+      const cb = onExit;
+      onExit = null;
+      if (cb) cb();
+    }
+    return { start, stop, isOpen };
+  })();
+
+  // ── Major-area step lists for each tab (the per-tab Help-mode walkthrough) ──
+  const TAB_AREAS = {
+    summary: [
+      {
+        sel: "#summary-kpi-row",
+        icon: "fa-gauge-high",
+        title: "Headline KPIs",
+        desc: "At-a-glance totals for the run — samples, detections and the recommended TASS cutoff.",
+        tips: ["These recompute live as you filter samples in the right panel."],
+      },
+      {
+        sel: "#sum-inner-tabs",
+        icon: "fa-folder-tree",
+        title: "Summary sub-views",
+        desc: "Switch between <b>Detections</b>, <b>Genera</b>, <b>VF/AMR</b> and <b>Cross-Sample</b> without leaving this tab.",
+        tips: ["Each sub-view answers a different first-look question."],
+      },
+      {
+        sel: "#watch-panel",
+        icon: "fa-star",
+        title: "Follow-up watchlist",
+        desc: "Star organisms here to flag them; the star markers then appear across every other tab.",
+        tips: ["Use it to build a shortlist while you triage."],
+      },
+    ],
+    heatmap: [
+      {
+        sel: "#pane-heatmap .tab-controls",
+        icon: "fa-sliders",
+        title: "Metric & scaling",
+        desc: "Choose the value shown (TASS, reads, coverage…), the taxonomic rank, colour scaling and whether cells print their value.",
+        tips: ["Log / sqrt scaling helps when a few cells dominate."],
+      },
+      {
+        sel: "#heatmap-svg-wrap",
+        icon: "fa-th",
+        title: "Samples × organisms grid",
+        desc: "Each cell is one organism in one sample; darker = higher. The fastest way to spot shared vs unique organisms.",
+        tips: ["Hover any cell for the exact value."],
+      },
+    ],
+    tass: [
+      {
+        sel: "#pane-tass .tab-controls",
+        icon: "fa-sliders",
+        title: "Comparison controls",
+        desc: "Set the rank, colour scaling, taxonomic level and whether the per-sample-type cutoff line is drawn.",
+        tips: ["Toggle the cutoff to see which calls clear the threshold."],
+      },
+      {
+        sel: "#tass-svg-wrap",
+        icon: "fa-chart-bar",
+        title: "TASS chart",
+        desc: "Confidence scores side-by-side, coloured by sample using the same colours as the right panel.",
+        tips: [],
+      },
+    ],
+    sunburst: [
+      {
+        sel: "#sun-metric",
+        icon: "fa-sliders",
+        title: "Sizing metric",
+        desc: "Pick which metric sizes the wedges — reads, TASS, coverage and so on.",
+        tips: [],
+      },
+      {
+        sel: "#sun-panels-container",
+        icon: "fa-circle-nodes",
+        title: "Radial taxonomy",
+        desc: "Inner rings are higher ranks (kingdom→genus), outer rings species/strains. Click a wedge to zoom in; click the centre to zoom out.",
+        tips: ["Add a panel to compare two samples side-by-side."],
+      },
+    ],
+    coverage: [
+      {
+        sel: "#pane-coverage .tab-controls",
+        icon: "fa-sliders",
+        title: "Axes & scaling",
+        desc: "Choose what the X, Y and bubble-size axes represent, plus the colour scaling.",
+        tips: ["High reads + low breadth outliers jump out here."],
+      },
+      {
+        sel: "#coverage-svg-wrap",
+        icon: "fa-layer-group",
+        title: "Coverage scatter",
+        desc: "Each point is a detection, coloured by its sample. Open a point's comparison to overlay genome-position profiles.",
+        tips: [],
+      },
+    ],
+    proteins: [
+      {
+        sel: "#prot-genus-wrap",
+        icon: "fa-dna",
+        title: "VF / AMR by genus",
+        desc: "Virulence-factor, AMR and transporter gene hits summarised as charts.",
+        tips: ["Click a bar to filter the table below to those hits."],
+      },
+      {
+        sel: "#prot-table-wrap",
+        icon: "fa-table",
+        title: "Gene table",
+        desc: "The searchable per-gene table. Click a row for the detailed panel.",
+        tips: [],
+      },
+    ],
+    histogram: [
+      {
+        sel: "#hist-controls",
+        icon: "fa-sliders",
+        title: "Sample selector",
+        desc: "Pick the sample to redraw its per-contig / per-assembly read-distribution histograms.",
+        tips: ["A warning icon flags uneven or sparse coverage."],
+      },
+      {
+        sel: "#pane-histogram",
+        icon: "fa-chart-column",
+        title: "Read distributions",
+        desc: "Shows how sequencing depth is spread across each genome.",
+        tips: [],
+      },
+    ],
+    explore: [
+      {
+        sel: "#pane-explore .tab-controls",
+        icon: "fa-sliders",
+        title: "Build a comparison",
+        desc: "Choose the colour-by, size-by and scaling to slice the run across any metrics you like.",
+        tips: ["Good for hunting batch effects or sample-type trends."],
+      },
+      {
+        sel: "#explore-bubble-wrap",
+        icon: "fa-magnifying-glass-chart",
+        title: "Exploratory charts",
+        desc: "Cross-sample bubble and radar views for spotting multi-metric patterns.",
+        tips: [],
+      },
+    ],
+    table: [
+      {
+        sel: "#tbl-toolbar",
+        icon: "fa-sliders",
+        title: "Table toolbar",
+        desc: "Search, choose columns and export the raw detections that sit behind every chart.",
+        tips: ["Sort by clicking a column header."],
+      },
+      {
+        sel: "#pane-table",
+        icon: "fa-table",
+        title: "Detections table",
+        desc: "Every detection row. Pin rows, then open Compare to overlay their coverage profiles.",
+        tips: [],
+      },
+    ],
+    runmeta: [
+      {
+        sel: "#runmeta-toolbar",
+        icon: "fa-sliders",
+        title: "Metadata toolbar",
+        desc: "Edit per-sample details and upload a metadata CSV to enrich the fields.",
+        tips: [],
+      },
+      {
+        sel: "#pane-runmeta",
+        icon: "fa-map-location-dot",
+        title: "Metadata & mapping",
+        desc: "Per-sample type/platform table plus a Mapping & Geography sub-tab that plots samples by coordinates or aggregated by country / state.",
+        tips: ["A sample's View button jumps here and highlights its row."],
+      },
+    ],
+  };
+
+  // ── Right-panel walkthrough (the inline "?" button next to Export Report) ──
+  const SIDEBAR_STEPS = [
+    {
+      sel: ["#report-pdf-btn", "#sidebar h3"],
+      icon: "fa-file-pdf",
+      title: "Filters & Export",
+      desc: "This right panel drives the entire report. <b>Export Report PDF</b> captures the current filtered state as a printable layout.",
+      tips: ["Every filter you set here applies across all tabs at once."],
+    },
+    {
+      sel: ["#filter-search-box", "#filter-text"],
+      icon: "fa-magnifying-glass",
+      title: "Search",
+      desc: "Filter by <b>Sample</b> or <b>Organism</b>. Plain words do a substring match; power users can use regex.",
+      tips: ["Use the options toggle to set the scope and case-sensitivity."],
+    },
+    {
+      sel: ["#per-type-tass-wrap", "#filter-min-wrap"],
+      icon: "fa-crosshairs",
+      title: "Confidence cutoff",
+      desc: "Set the minimum TASS score. Detections below the cutoff drop out of every view.",
+      tips: ["Per-sample-type cutoffs can be set independently."],
+    },
+    {
+      sel: ["#filter-kingdom-wrap", "#filter-mc", "#filter-mt-dna"],
+      icon: "fa-filter",
+      title: "More filters",
+      desc: "Narrow by kingdom, molecular type (DNA / RNA), high-confidence only and other toggles.",
+      tips: [],
+    },
+    {
+      sel: ["#toggle-all-samples-btn", "#sidebar"],
+      icon: "fa-palette",
+      title: "Samples & colours",
+      desc: "Show or hide individual samples, and click a sample's colour swatch to recolour it — that colour then follows the sample across the heatmap, charts and coverage profiles.",
+      tips: ["Toggle a sample off to drop it from every view at once."],
+    },
+    {
+      sel: ["#specimen-merge-bar", "#specimen-merge-toggle"],
+      icon: "fa-object-group",
+      title: "Group samples into a specimen",
+      desc: "Turn on <b>Specimen</b> mode to merge related samples (e.g. replicates or timepoints) into one specimen. <b>Group selected</b> combines the ones you tick; <b>Combine all</b> rolls everything into a single specimen.",
+      tips: [
+        "Grouped samples share a row and colour across every tab.",
+        "The count shows how many specimens are currently defined.",
+      ],
+    },
+    {
+      sel: ["#sample-list", "#sample-list-tools"],
+      icon: "fa-pen",
+      title: "Edit & rename samples",
+      desc: 'Each sample row has a <i class="fas fa-pen"></i> pencil to rename it and controls to attach files. Renames and edits flow through to every chart, table and export.',
+      tips: [
+        "Use the search box above the list to find a sample fast.",
+        "Page through long sample lists with the ‹ › arrows.",
+      ],
+    },
+    {
+      sel: ["#upload-zone", "#file-upload-input"],
+      icon: "fa-file-arrow-up",
+      title: "Load run data (JSON)",
+      desc: "Drop or browse for <code>all.samples.json</code>, <code>.paths.json</code>, <code>.xlsx</code>, <code>.tsv</code> or <code>.txt</code> files to load a run into this report. A metadata CSV can be added just below to enrich sample fields.",
+      tips: [
+        "Loaded data merges into the current view — filters still apply.",
+        "Clear uploaded data to return to the bundled run.",
+      ],
+    },
+    {
+      sel: ["#state-io-row", "#state-load-input"],
+      icon: "fa-floppy-disk",
+      title: "Save / load state",
+      desc: "<b>Export State</b> saves a self-contained snapshot of the current data <em>and</em> every filter, grouping and colour choice as a JSON file. <b>Load State</b> reopens one to return to exactly this view.",
+      tips: [
+        "Great for sharing an annotated view with a colleague.",
+        "State files reload offline — no pipeline rerun needed.",
+      ],
+    },
+  ];
+
   /* ── Per-tab Help mode ───────────────────────────────────────────────
            A toggle that pins a small contextual panel showing help for whatever
-           tab the user is on. Reuses the guided-tour STEP content + the PDF
-           section groups, and follows tab switches live. */
+           tab the user is on, and runs the stepped Spotlight walkthrough over
+           that tab's major areas. The right-panel "?" button reuses the same
+           machinery, scoped to the sidebar. */
   (function initHelpMode() {
     const btn = document.getElementById("helpmode-btn");
     const panel = document.getElementById("tab-help-panel");
     if (!btn || !panel) return;
+    const sideBtn = document.getElementById("sidebar-help-btn");
     const elFig = document.getElementById("tab-help-fig");
     const elGroup = document.getElementById("tab-help-group");
+    const elEyebrow = document.getElementById("tab-help-eyebrow");
     const elTitle = document.getElementById("tab-help-title");
     const elDesc = document.getElementById("tab-help-desc");
     const elTips = document.getElementById("tab-help-tips");
     const elClose = document.getElementById("tab-help-close");
     const elTour = document.getElementById("tab-help-tour");
     let on = false;
+    let scope = "tab"; // "tab" = current tab · "sidebar" = right panel ("?" button)
+
+    // One-time: a "replay walkthrough" link at the top of the panel foot.
+    const foot = document.getElementById("tab-help-foot");
+    let elWalk = document.getElementById("tab-help-walk");
+    if (foot && !elWalk) {
+      elWalk = document.createElement("a");
+      elWalk.href = "#";
+      elWalk.id = "tab-help-walk";
+      elWalk.innerHTML = '<i class="fas fa-play"></i> Walk me through this view';
+      foot.insertBefore(elWalk, foot.firstChild);
+    }
 
     function currentTab() {
       const active = document.querySelector(".tab-btn.active");
@@ -497,7 +947,32 @@
     function stepFor(tab) {
       return STEPS.find((s) => s.tab === tab) || null;
     }
+    // Steps for the stepped Spotlight walkthrough (current scope).
+    function walkStepsFor() {
+      if (scope === "sidebar") return SIDEBAR_STEPS;
+      const tab = currentTab();
+      if (TAB_AREAS[tab]) return TAB_AREAS[tab];
+      const s = stepFor(tab);
+      return s ? [{ sel: "#pane-" + tab, icon: s.icon, title: s.title, desc: s.desc, tips: s.tips }] : [];
+    }
     function renderPanel() {
+      if (scope === "sidebar") {
+        if (elEyebrow) elEyebrow.innerHTML = '<i class="fas fa-circle-info"></i> Right panel';
+        elGroup.textContent = "Filters & sample colours";
+        elFig.innerHTML = FIG.sidebar || "";
+        elTitle.textContent = "The right panel";
+        elDesc.textContent =
+          "Filters, search, the confidence cutoff and sample colours all live here and apply across every tab at once.";
+        elTips.innerHTML = [
+          "Search by sample or organism (regex supported).",
+          "A sample's colour swatch sets its colour everywhere.",
+          "Export Report PDF captures the current filtered state.",
+        ]
+          .map((t) => `<li>${t}</li>`)
+          .join("");
+        return;
+      }
+      if (elEyebrow) elEyebrow.innerHTML = '<i class="fas fa-circle-info"></i> Help mode';
       const tab = currentTab();
       const step = stepFor(tab);
       const info = (typeof PDF_SECTION_INFO !== "undefined" && PDF_SECTION_INFO[tab]) || {};
@@ -514,23 +989,56 @@
       elDesc.textContent = step.desc || "";
       elTips.innerHTML = (step.tips || []).map((t) => `<li>${t}</li>`).join("");
     }
-    function setOn(v) {
+    function startWalk() {
+      const steps = walkStepsFor();
+      if (steps && steps.length) Spotlight.start(steps, {});
+    }
+    function syncButtons() {
+      btn.classList.toggle("on", on && scope === "tab");
+      btn.setAttribute("aria-pressed", on && scope === "tab" ? "true" : "false");
+      if (sideBtn) {
+        sideBtn.classList.toggle("on", on && scope === "sidebar");
+        sideBtn.setAttribute("aria-pressed", on && scope === "sidebar" ? "true" : "false");
+      }
+    }
+    function setOn(v, nextScope) {
       on = v;
-      btn.classList.toggle("on", on);
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      scope = v && nextScope ? nextScope : v ? scope : "tab";
+      syncButtons();
       panel.classList.toggle("open", on);
       panel.setAttribute("aria-hidden", on ? "false" : "true");
-      if (on) renderPanel();
+      if (on) {
+        renderPanel();
+        startWalk();
+      } else {
+        Spotlight.stop();
+      }
     }
-    btn.addEventListener("click", () => setOn(!on));
+    btn.addEventListener("click", () => setOn(!(on && scope === "tab"), "tab"));
+    if (sideBtn) sideBtn.addEventListener("click", () => setOn(!(on && scope === "sidebar"), "sidebar"));
     elClose.addEventListener("click", () => setOn(false));
+    if (elWalk)
+      elWalk.addEventListener("click", (e) => {
+        e.preventDefault();
+        startWalk();
+      });
     elTour.addEventListener("click", (e) => {
       e.preventDefault();
       setOn(false);
       open();
     });
-    // Re-render when the user switches tabs while help mode is on.
+    // While help mode is on, follow tab switches: snap back to tab scope,
+    // re-render the panel and restart the walkthrough for the new tab.
     const tabbar = document.getElementById("tabbar");
-    if (tabbar) tabbar.addEventListener("click", () => on && setTimeout(renderPanel, 60));
+    if (tabbar)
+      tabbar.addEventListener("click", () => {
+        if (!on) return;
+        scope = "tab";
+        syncButtons();
+        setTimeout(() => {
+          renderPanel();
+          startWalk();
+        }, 90);
+      });
   })();
 })();
