@@ -83,6 +83,19 @@ def parse_args(argv=None):
         help="Input HTML template file (default: heatmap.html).",
     )
     parser.add_argument(
+        "--offline_report", action="store_true",
+        help="Download the report's CDN libraries (d3, xlsx, jspdf, Leaflet, "
+             "Font Awesome) at build time and embed them inline so the report "
+             "opens with no internet access. Requires network at build time.",
+    )
+    parser.add_argument(
+        "--offline_report_files", default=None, metavar="DIR",
+        help="Directory containing local copies of the CDN libraries (and any "
+             "fonts/marker images they reference). When given, those files are "
+             "embedded inline instead of downloading — a fully offline build. "
+             "Takes precedence over --offline_report.",
+    )
+    parser.add_argument(
         "-pident", '--pident', default=0.0, type=float,
         help="Minimum percent identity (0-100) for inclusion in the report (default: 0.0, i.e. include all). Only used if you have VF/AMR results"
     )
@@ -1194,8 +1207,14 @@ def main():
     # heatmap.html is a thin shell that references its CSS/JS as external parts
     # under assets/src/. inline_template() folds those back in so the report is
     # one self-contained file. (See bin/report_template.py.)
+    # offline_report / offline_report_files fold the CDN libraries inline so the
+    # report opens with no internet access. Default leaves them as CDN links.
     from report_template import inline_template
-    tpl = inline_template(args.template)
+    tpl = inline_template(
+        args.template,
+        offline=args.offline_report,
+        offline_dir=args.offline_report_files,
+    )
 
     # Use a function replacement (not a plain string) so backslashes / `\g`-like
     # sequences inside the JSON payload are inserted verbatim and never treated
