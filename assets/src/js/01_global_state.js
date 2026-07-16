@@ -173,15 +173,41 @@ function positiveHitSpecimenCount() {
   return seen.size;
 }
 
-/** Return arr sorted by _sampleOrder; unknowns go to the end. */
+/** Return arr sorted by _sampleOrder; unknowns go to the end. `arr` may
+ *  contain raw sample ids or specimen/group names (callers pass whichever
+ *  filteredData() rows carry under "Specimen ID" — a group name once
+ *  specimen merge is on), so the lookup below must resolve both. */
 function _orderedSamples(arr) {
   if (!_sampleOrder.length) return arr;
-  const idx = Object.fromEntries(_sampleOrder.map((id, i) => [id, i]));
+  const idx = _sampleOrGroupIndexMap();
   return [...arr].sort((a, b) => {
     const ia = idx[a] !== undefined ? idx[a] : 9999;
     const ib = idx[b] !== undefined ? idx[b] : 9999;
     return ia - ib;
   });
+}
+
+/** Build a lookup from "row group key" → right-panel display position, for
+ *  tables/plots that sort by the row's "Specimen ID" field. That field holds
+ *  the raw sample id normally, but holds the *specimen/group name* once
+ *  specimen merge is enabled (see specimenKey()) — a string that never
+ *  appears in _sampleOrder itself (which only lists individual sample ids).
+ *  A plain `_sampleOrder.map((id,i)=>[id,i])` lookup therefore misses every
+ *  merged group and silently sorts it to the end, which is why grouped views
+ *  used to ignore the sidebar drag order. Here, each specimen/group name is
+ *  additionally keyed to the earliest position any of its member samples
+ *  occupies in _sampleOrder, so dragging a specimen's row block in the
+ *  sidebar (or a whole merged-specimen header) is reflected everywhere rows
+ *  are grouped by "Specimen ID". */
+function _sampleOrGroupIndexMap() {
+  const idx = {};
+  if (!_sampleOrder.length) return idx;
+  _sampleOrder.forEach((id, i) => {
+    if (idx[id] === undefined) idx[id] = i;
+    const g = typeof specimenOf === "function" ? specimenOf(id) : id;
+    if (g && idx[g] === undefined) idx[g] = i;
+  });
+  return idx;
 }
 let sortCol = null;
 let sortAsc = true;

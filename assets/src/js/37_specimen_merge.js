@@ -261,15 +261,28 @@
       header.addEventListener("dragover", (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
+        // Give visual + positional feedback on which side of this header the
+        // dragged group will land — dropping on the lower half moves it
+        // *below* this specimen (needed to drag a group all the way down,
+        // e.g. past the last group), the upper half moves it above.
+        const after = _dropIsAfter(e, header);
         header.style.outline = "2px solid #fff";
+        header.style.borderTop = after ? "" : "3px solid #fff";
+        header.style.borderBottom = after ? "3px solid #fff" : "none";
       });
-      header.addEventListener("dragleave", () => (header.style.outline = ""));
+      header.addEventListener("dragleave", () => {
+        header.style.outline = "";
+        header.style.borderTop = "";
+        header.style.borderBottom = "none";
+      });
       header.addEventListener("drop", (e) => {
         e.preventDefault();
         header.style.outline = "";
+        header.style.borderTop = "";
+        header.style.borderBottom = "none";
         const draggedSpec = e.dataTransfer.getData("application/x-specimen-group");
         if (!draggedSpec || draggedSpec === spec) return;
-        _reorderSpecimenGroup(draggedSpec, spec, groups);
+        _reorderSpecimenGroup(draggedSpec, spec, groups, _dropIsAfter(e, header));
       });
 
       i = j;
@@ -283,17 +296,36 @@
         if (!e.dataTransfer.types.includes("application/x-specimen-group")) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
+        const after = _dropIsAfter(e, row);
+        row.style.borderTop = after ? "" : "3px solid #1565c0";
+        row.style.borderBottom = after ? "3px solid #1565c0" : "";
+      });
+      row.addEventListener("dragleave", () => {
+        row.style.borderTop = "";
+        row.style.borderBottom = "";
       });
       row.addEventListener("drop", (e) => {
         const draggedSpec = e.dataTransfer.getData("application/x-specimen-group");
         if (!draggedSpec) return;
         e.preventDefault();
         e.stopImmediatePropagation();
+        row.style.borderTop = "";
+        row.style.borderBottom = "";
+        const after = _dropIsAfter(e, row);
         const targetSample = row.getAttribute("data-sid");
         const targetSpec = typeof specimenOf === "function" ? specimenOf(targetSample) : targetSample;
-        if (draggedSpec !== targetSpec) _reorderSpecimenGroup(draggedSpec, targetSpec, groups);
+        if (draggedSpec !== targetSpec) _reorderSpecimenGroup(draggedSpec, targetSpec, groups, after);
       });
     });
+  }
+
+  // True when the drag event's pointer sits in the lower half of `el` — used
+  // to decide whether a dropped specimen group should land above or below
+  // the row/header it was dropped on, so a group can be dragged to *any*
+  // position (including all the way to the bottom, past the last group).
+  function _dropIsAfter(e, el) {
+    const rect = el.getBoundingClientRect();
+    return e.clientY - rect.top > rect.height / 2;
   }
 
   function _coalesceSpecimenOrder() {
@@ -308,16 +340,31 @@
   }
 
   // Move every sample belonging to `draggedSpec` to sit immediately before
-  // the first sample of `targetSpec` in the global sample display order,
-  // then rebuild the sidebar so the DOM (and every downstream view that
-  // reads _sampleOrder) reflects the new grouping.
-  function _reorderSpecimenGroup(draggedSpec, targetSpec, groups) {
+  // (or, when `after` is true, immediately after) `targetSpec`'s samples in
+  // the global sample display order, then rebuild the sidebar so the DOM
+  // (and every downstream view that reads _sampleOrder) reflects the new
+  // grouping. Honoring `after` matters: without it, a drop always inserted
+  // *before* the target, so a group could never be moved past the last
+  // specimen in the list — dragging "down" beyond the last group looked like
+  // a no-op.
+  function _reorderSpecimenGroup(draggedSpec, targetSpec, groups, after) {
     if (typeof _sampleOrder === "undefined") return;
     const draggedMembers = (groups.get(draggedSpec) || []).filter((s) => _sampleOrder.includes(s));
     if (!draggedMembers.length) return;
     const rest = _sampleOrder.filter((s) => !draggedMembers.includes(s));
-    const anchorIdx = rest.findIndex((s) => (typeof specimenOf === "function" ? specimenOf(s) : s) === targetSpec);
-    const insertAt = anchorIdx === -1 ? rest.length : anchorIdx;
+    const isTarget = (s) => (typeof specimenOf === "function" ? specimenOf(s) : s) === targetSpec;
+    let insertAt;
+    if (after) {
+      // Last index belonging to targetSpec, insert right after it.
+      let lastIdx = -1;
+      rest.forEach((s, i) => {
+        if (isTarget(s)) lastIdx = i;
+      });
+      insertAt = lastIdx === -1 ? rest.length : lastIdx + 1;
+    } else {
+      const anchorIdx = rest.findIndex(isTarget);
+      insertAt = anchorIdx === -1 ? rest.length : anchorIdx;
+    }
     rest.splice(insertAt, 0, ...draggedMembers);
     _sampleOrder = rest;
     if (typeof buildSampleList === "function") buildSampleList();

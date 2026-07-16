@@ -1387,7 +1387,7 @@ function populateTable() {
     // Group by Sample: primary sort follows _sampleOrder (right-panel order),
     // secondary sort on the active column (or TASS desc by default) within each group.
     const sc = sortCol || "TASS Score";
-    const _grpIdx = _sampleOrder.length ? Object.fromEntries(_sampleOrder.map((id, i) => [id, i])) : {};
+    const _grpIdx = _sampleOrGroupIndexMap();
     fd = [...fd].sort((a, b) => {
       const sia = String(a["Specimen ID"] || "");
       const sib = String(b["Specimen ID"] || "");

@@ -1008,7 +1008,7 @@ function _renderSummaryTable(fd) {
     const d = String(a[col] || "").localeCompare(String(b[col] || ""));
     return _sumSortAsc ? d : -d;
   };
-  const _sumGrpIdx = _sampleOrder.length ? Object.fromEntries(_sampleOrder.map((id, i) => [id, i])) : {};
+  const _sumGrpIdx = _sampleOrGroupIndexMap();
   rows.sort((a, b) => {
     // When grouping, order groups by _sampleOrder (right-panel order), then sort within.
     if (grouped) {
