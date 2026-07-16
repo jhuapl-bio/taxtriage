@@ -325,6 +325,15 @@ workflow REPORT {
                 .collect()
                 .ifEmpty { file("$projectDir/assets/NO_FILE_annotate_report") }
 
+            // ── Offline report libraries ─────────────────────────────────────────
+            // --offline_report_files <dir> stages a directory of local CDN library
+            // copies to embed inline. Otherwise a NO_FILE placeholder is staged and
+            // the report either downloads the libs at build time (--offline_report)
+            // or leaves them as CDN links (default).
+            ch_offline_report_files = params.offline_report_files
+                ? Channel.fromPath(params.offline_report_files, checkIfExists: true)
+                : Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
@@ -333,7 +342,8 @@ workflow REPORT {
                 ch_novelty_files,
                 pathogens_list.first(),
                 ch_vfamr_taxids.first(),
-                ch_annotate_report_files
+                ch_annotate_report_files,
+                ch_offline_report_files
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

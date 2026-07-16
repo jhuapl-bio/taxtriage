@@ -53,6 +53,13 @@ process CREATE_COMPARISON_REPORT {
     // unaligned VF-AMR hits for samples with NO reference alignment, whose annotation is otherwise
     // dropped from the merged XLSX. Pass a NO_FILE placeholder to disable. Single collected channel.
     path(annotate_reports)
+    // Optional directory of local CDN library copies (d3, xlsx, jspdf, Leaflet,
+    // Font Awesome + their fonts/images) for a fully offline report build. When a
+    // real directory is staged (params.offline_report_files set) make_report.py
+    // embeds those files inline; otherwise a NO_FILE placeholder is passed and the
+    // report either downloads the libs at build time (params.offline_report) or
+    // leaves them as CDN links (default). Single input.
+    path(offline_report_files)
 
     output:
         path "versions.yml"           , emit: versions
@@ -134,12 +141,23 @@ process CREATE_COMPARISON_REPORT {
         }
     }
 
+    // ── Offline report embedding ──────────────────────────────────────────────
+    // A staged directory (not a NO_FILE placeholder) -> embed those local library
+    // copies inline. Else if params.offline_report -> download + embed at build
+    // time. Else (default) -> leave CDN links so the report fetches libs on load.
+    def offline_arg = ''
+    if (offline_report_files && !offline_report_files.name.startsWith('NO_FILE')) {
+        offline_arg = "--offline_report_files ${offline_report_files}"
+    } else if (params.offline_report) {
+        offline_arg = "--offline_report"
+    }
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
         ${prot_arg} ${pident} ${mintass} \\
-        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg}
+        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

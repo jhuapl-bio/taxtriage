@@ -329,6 +329,18 @@
                     "description": "Skip the pathogen report",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "offline_report": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Download the report's CDN libraries (d3, xlsx, jspdf, Leaflet, Font Awesome) at build time and embed them inline so the report opens without internet access. Requires network connectivity during the build step.",
+                    "fa_icon": "fas fa-wifi"
+                },
+                "offline_report_files": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Path to a directory of local copies of the report's CDN libraries (and any fonts/marker images they reference). When set, these files are embedded inline instead of being downloaded — a fully offline build. Takes precedence over --offline_report.",
+                    "fa_icon": "fas fa-folder-open"
+                },
                 "skip_consensus": {
                     "type": "boolean",
                     "description": "Skip the consensus report",
