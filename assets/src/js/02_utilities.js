@@ -75,7 +75,13 @@ function _rowKingdomBucket(r) {
 }
 // Search scope + last-known regex validity (surfaced in the sidebar status line).
 let _searchInvalid = false;
-function filteredData() {
+function filteredData(opts) {
+  // opts.ignoreThreshold: skip the TASS-threshold gate (and the pass-only
+  // filter + species rollup) so callers can see EVERY detection that clears the
+  // base filters, including organisms below the current cutoff. This variant is
+  // never cached — it's an occasional side query (e.g. the cross-sample
+  // pass/below/total breakdown).
+  const _ignoreThr = !!(opts && opts.ignoreThreshold);
   const txt = document.getElementById("filter-text").value.trim();
   const ic = document.getElementById("filter-ic").checked;
   const scope = (document.getElementById("filter-scope") || {}).value || "both";
@@ -114,7 +120,7 @@ function filteredData() {
     watchFilterMode === "all" ? "" : Array.from(watchlist).sort().join(","),
     typeof _hashSpecimenMerge === "function" ? _hashSpecimenMerge() : "",
   ].join("\u0001");
-  if (_FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
+  if (!_ignoreThr && _FD_CACHE.key === cacheKey && _FD_CACHE.value) return _FD_CACHE.value;
 
   // Compile the search pattern defensively. While the user is still
   // typing, an incomplete pattern (e.g. "(" or "[a-") would otherwise
@@ -178,17 +184,19 @@ function filteredData() {
   const filtered = DATA.filter((r) => {
     if (_lvlOf(r) !== viewLevel) return false;
     if (!_basePass(r)) return false;
-    const pi = rowPassInfo(r);
-    // Threshold gate: when rollup is on, keep a row whose species or
-    // genus aggregation passes even if the row itself is below cutoff.
-    if (ROLLUP_PASS) {
-      if (!isNaN(pi.strain) && !pi.effectivePass) return false;
-    } else {
-      if (!isNaN(pi.strain) && pi.strain < pi.thr) return false;
+    if (!_ignoreThr) {
+      const pi = rowPassInfo(r);
+      // Threshold gate: when rollup is on, keep a row whose species or
+      // genus aggregation passes even if the row itself is below cutoff.
+      if (ROLLUP_PASS) {
+        if (!isNaN(pi.strain) && !pi.effectivePass) return false;
+      } else {
+        if (!isNaN(pi.strain) && pi.strain < pi.thr) return false;
+      }
+      // "Passes threshold" filter stays STRICT (own-level) so users can
+      // still isolate rows that pass on their own merits.
+      if (onlyP && !pi.strainPass) return false;
     }
-    // "Passes threshold" filter stays STRICT (own-level) so users can
-    // still isolate rows that pass on their own merits.
-    if (onlyP && !pi.strainPass) return false;
     return true;
   });
 
@@ -198,7 +206,7 @@ function filteredData() {
   // Species summary row (flagged so the UI can badge it). Species where
   // at least one strain passes keep their detailed strain rows.
   let finalRows = filtered;
-  if (viewLevel === "Strain" && ROLLUP_PASS) {
+  if (!_ignoreThr && viewLevel === "Strain" && ROLLUP_PASS) {
     const speciesRowByKey = new Map();
     for (const r of DATA) {
       if ((r["Level"] || "") === "Species") {
@@ -357,6 +365,23 @@ function _collapseSpecimens(rows) {
       typeof specimenGroups === "function" && specimenGroups().has(g.spec)
         ? specimenGroups().get(g.spec).slice()
         : members;
+    // ── TASS / coverage combine method (user-selectable) ──────────────────
+    // MAX is set above; when the analyst picks median / mean / min / detection
+    // in the cross-sample "Combine" control, re-reduce the score columns from
+    // the contributing member rows. detection = fraction of the specimen's
+    // libraries in which the organism was seen, ×100.
+    const _aggMethod = typeof specimenTassAgg !== "undefined" ? specimenTassAgg : "max";
+    if (_aggMethod !== "max") {
+      const _memberTotal = specimenMembers.length || contrib.length || 1;
+      const _tassCols = ["TASS Score", "Species TASS", "Genus TASS"];
+      const _combineCols = _aggMethod === "detection" ? _tassCols : _tassCols.concat(["Coverage"]);
+      _combineCols.forEach((c) => {
+        const vals = contrib.filter((r) => r[c] !== undefined && r[c] !== null && r[c] !== "").map((r) => num(r[c]));
+        if (!vals.length) return;
+        merged[c] =
+          typeof _xsReduceMembers === "function" ? _xsReduceMembers(vals, _aggMethod, _memberTotal) : Math.max(...vals);
+      });
+    }
     const activeMembers = specimenMembers.filter((s) => !sampleHidden[s]);
     const inputReads = activeMembers.reduce(
       (s, sample) =>

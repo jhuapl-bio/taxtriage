@@ -792,18 +792,198 @@ function _covStats() {
 }
 
 // ── View 1: frequency table (xlsx-style organism roll-up) ────────────
+// ── Hover distribution plots (box-and-whisker / two-plot) ────────────────
+// Standalone SVG strings so they can be dropped straight into a tooltip's
+// innerHTML via showTip().
+function _xsBoxStats(vals) {
+  const s = (vals || []).filter((v) => typeof v === "number" && !isNaN(v)).sort((a, b) => a - b);
+  if (!s.length) return null;
+  const q = (p) => (typeof _xsQuart === "function" ? _xsQuart(s, p) : s[Math.floor((s.length - 1) * p)]);
+  return { min: s[0], q1: q(0.25), med: q(0.5), q3: q(0.75), max: s[s.length - 1], n: s.length };
+}
+function _xsFmtNum(v) {
+  if (v == null || isNaN(v)) return "—";
+  return Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v * 10) / 10).toString();
+}
+// Horizontal box-and-whisker as a self-contained SVG string, with visible
+// min / Q1 / median / Q3 / max value labels and a labelled x-axis. Value labels
+// are placed with greedy multi-row collision avoidance + edge clamping so they
+// never crowd or overlap even when quartiles bunch together.
+function _xsMiniBoxSVG(vals, opts) {
+  opts = opts || {};
+  const w = opts.w || 320,
+    padL = 20,
+    padR = 20,
+    color = opts.color || "#1565c0";
+  const st = _xsBoxStats(vals);
+  if (!st) return `<div style="color:#b0bec5;font-size:11px">no data</div>`;
+  const dMin = opts.domainMin != null ? opts.domainMin : 0;
+  const dMax = opts.domainMax != null ? opts.domainMax : Math.max(st.max, 1);
+  const span = dMax - dMin || 1;
+  const X = (v) => padL + (w - padL - padR) * ((Math.max(dMin, Math.min(dMax, v)) - dMin) / span);
+  const lbl = (x, y, t, anchor, col2, bold) =>
+    `<text x="${x.toFixed(1)}" y="${y}" text-anchor="${anchor}" style="font-size:9px;${
+      bold ? "font-weight:700;" : ""
+    }fill:${col2 || "#455a64"}">${t}</text>`;
+  // ── greedy label placement: sort by x, drop each onto the topmost row that
+  //    clears the previous label there; clamp x so text stays inside the SVG ──
+  const FONT = 4.7; // ~px per char at 9px
+  const items = [
+    { v: st.min, col: "#607d8b" },
+    { v: st.q1 },
+    { v: st.med, col: color, bold: true },
+    { v: st.q3 },
+    { v: st.max, col: "#607d8b" },
+  ]
+    .map((it) => {
+      const t = _xsFmtNum(it.v);
+      const hw = (String(t).length * FONT) / 2 + 2;
+      let x = X(it.v),
+        anchor = "middle";
+      if (x - hw < 2) {
+        x = 2;
+        anchor = "start";
+      } else if (x + hw > w - 2) {
+        x = w - 2;
+        anchor = "end";
+      }
+      const left = anchor === "start" ? x : anchor === "end" ? x - 2 * hw : x - hw;
+      const right = anchor === "start" ? x + 2 * hw : anchor === "end" ? x : x + hw;
+      return { ...it, t, x, anchor, left, right };
+    })
+    .sort((a, b) => a.left - b.left);
+  const rowRight = []; // running right edge per row
+  items.forEach((it) => {
+    let r = 0;
+    while (r < rowRight.length && rowRight[r] > it.left - 4) r++;
+    it.row = r;
+    rowRight[r] = it.right;
+  });
+  const nRows = Math.max(1, rowRight.length);
+  const labelTop = 11,
+    rowH = 11;
+  const yc = labelTop + nRows * rowH + 6,
+    half = 8;
+  const p = [];
+  // whisker + caps
+  p.push(`<line x1="${X(st.min)}" x2="${X(st.max)}" y1="${yc}" y2="${yc}" stroke="${color}" stroke-width="1"/>`);
+  [st.min, st.max].forEach((v) =>
+    p.push(`<line x1="${X(v)}" x2="${X(v)}" y1="${yc - 5}" y2="${yc + 5}" stroke="${color}"/>`),
+  );
+  // box + median
+  p.push(
+    `<rect x="${X(st.q1)}" y="${yc - half}" width="${Math.max(1, X(st.q3) - X(st.q1))}" height="${
+      2 * half
+    }" fill="${color}" fill-opacity="0.25" stroke="${color}"/>`,
+  );
+  p.push(
+    `<line x1="${X(st.med)}" x2="${X(st.med)}" y1="${yc - half}" y2="${
+      yc + half
+    }" stroke="${color}" stroke-width="2"/>`,
+  );
+  // value labels (placed rows) + a thin leader tick from each label's value
+  items.forEach((it) => {
+    const ly = labelTop + it.row * rowH;
+    p.push(lbl(it.x, ly, it.t, it.anchor, it.col, it.bold));
+  });
+  // x-axis with tick labels at min / mid / max of the domain
+  const ay = yc + half + 10;
+  p.push(`<line x1="${X(dMin)}" x2="${X(dMax)}" y1="${ay}" y2="${ay}" stroke="#cfd8dc"/>`);
+  [dMin, (dMin + dMax) / 2, dMax].forEach((t, i) => {
+    const anchor = i === 0 ? "start" : i === 2 ? "end" : "middle";
+    p.push(`<line x1="${X(t)}" x2="${X(t)}" y1="${ay}" y2="${ay + 4}" stroke="#cfd8dc"/>`);
+    p.push(lbl(X(t), ay + 13, _xsFmtNum(t), anchor, "#90a4ae"));
+  });
+  let h = ay + 17;
+  if (opts.axisLabel) {
+    p.push(
+      `<text x="${((padL + (w - padR)) / 2).toFixed(1)}" y="${
+        h + 9
+      }" text-anchor="middle" style="font-size:8px;fill:#b0bec5">${opts.axisLabel}</text>`,
+    );
+    h += 12;
+  }
+  return `<svg width="${w}" height="${h}" style="display:block">${p.join("")}</svg>`;
+}
+// One labelled box-and-whisker (five-number labels + axis are drawn inside).
+function _xsStatHover(title, vals, opts) {
+  return `<div style="font-weight:600;margin-bottom:2px">${title}</div>` + _xsMiniBoxSVG(vals, opts);
+}
+// TASS / coverage column hover — one box over the passing specimens (0–100).
+function _xsTassHover(r) {
+  return _xsStatHover(`${r.name} — TASS across passing specimens`, r.tassVals, {
+    domainMin: 0,
+    domainMax: 100,
+    color: _xsCatColor(r.cat),
+    axisLabel: "TASS score",
+  });
+}
+function _xsCovHover(r) {
+  return _xsStatHover(`${r.name} — coverage across passing specimens`, r.covVals, {
+    domainMin: 0,
+    domainMax: 100,
+    color: _xsCatColor(r.cat),
+    axisLabel: "Coverage %",
+  });
+}
+// Total-reads column hover — TWO boxes sharing one scale: passing specimens,
+// and all specimens (zeros included for those where the organism is absent).
+function _xsReadsHover(r) {
+  const passV = r.readsVals || [];
+  const allV = r.readsAll || [];
+  const dMax = Math.max(1, ...passV, ...allV);
+  return (
+    `<div style="font-weight:600;margin-bottom:3px">${r.name} — reads across specimens</div>` +
+    _xsStatHover("Passing TASS", passV, { domainMax: dMax, color: "#1565c0", axisLabel: "aligned reads" }) +
+    `<div style="height:6px"></div>` +
+    _xsStatHover("All specimens (incl 0)", allV, { domainMax: dMax, color: "#78909c", axisLabel: "aligned reads" })
+  );
+}
+
+// Half-violin outline path (binned density mirrored on one side of a baseline).
+// side = -1 draws upward, +1 downward. domain is [lo,hi] on the value axis;
+// baseX + xScale(v) maps a value to a pixel x. Each half is normalised to its
+// own peak so the shape is visible regardless of sample count.
+function _xsViolinHalfPath(vals, xScale, baseX, yc, side, maxHalf, domain) {
+  const lo = domain[0],
+    hi = domain[1],
+    B = 22,
+    bw = (hi - lo) / B || 1;
+  const counts = new Array(B).fill(0);
+  (vals || []).forEach((v) => {
+    if (typeof v !== "number" || isNaN(v)) return;
+    let idx = Math.floor((v - lo) / bw);
+    if (idx < 0) idx = 0;
+    if (idx >= B) idx = B - 1;
+    counts[idx]++;
+  });
+  const sm = counts.map((c, i) => ((counts[i - 1] || 0) + 2 * c + (counts[i + 1] || 0)) / 4);
+  const maxC = Math.max(1, ...sm);
+  const x0 = baseX + xScale(lo),
+    x1 = baseX + xScale(hi);
+  let d = `M ${x0.toFixed(1)} ${yc.toFixed(1)} `;
+  for (let i = 0; i < B; i++) {
+    const cx = baseX + xScale(lo + bw * (i + 0.5));
+    d += `L ${cx.toFixed(1)} ${(yc + side * (sm[i] / maxC) * maxHalf).toFixed(1)} `;
+  }
+  d += `L ${x1.toFixed(1)} ${yc.toFixed(1)} Z`;
+  return d;
+}
+
 const _XS_COLS = [
   { key: "name", label: "Detected Organism", left: true },
   { key: "cat", label: "Pathogen Type", left: true },
   { key: "taxid", label: "TaxID", left: true },
-  { key: "sampleCount", label: "# Samples" },
+  { key: "sampleCount", label: "Pass / Below / Total" },
   { key: "samplePct", label: "% Samples" },
   { key: "meanTass", label: "Mean TASS" },
   { key: "medianTass", label: "Median TASS" },
   { key: "maxTass", label: "Max TASS" },
+  { key: "minTass", label: "Min TASS" },
   { key: "meanCov", label: "Mean Cov" },
   { key: "medianCov", label: "Median Cov" },
   { key: "maxCov", label: "Max Cov" },
+  { key: "minCov", label: "Min Cov" },
   { key: "reads", label: "Total Reads" },
 ];
 function _xsRenderTable(rows, agg) {
@@ -839,40 +1019,48 @@ function _xsRenderTable(rows, agg) {
       const prev =
         `<span class="xs-prevbar"><span style="width:${Math.min(100, r.samplePct).toFixed(0)}%"></span></span>` +
         `${r.samplePct.toFixed(1)}%`;
-      const samplesAttr = [...r.samples].sort().join("||");
       return (
-        `<tr data-samples="${samplesAttr.replace(
-          /"/g,
-          "&quot;",
-        )}" data-oi="${i}" title="Click to compare coverage across this organism's samples" style="cursor:pointer">` +
+        `<tr data-oi="${i}" title="Click to compare coverage across this organism's samples" style="cursor:pointer">` +
         `<td class="xs-left"><i>${star}${r.name}</i> <i class="fas fa-chart-column" style="color:#bcc6d0;font-size:.82em"></i></td>` +
         `<td class="xs-left">${pill}</td>` +
         `<td class="xs-left" style="color:#789">${r.taxid}</td>` +
-        `<td class="xs-num"><b>${r.sampleCount}</b> / ${agg.totalSamples}</td>` +
+        `<td class="xs-num" title="Specimens passing the TASS threshold / detected but below threshold / total specimens in the run"><b>${
+          r.sampleCount
+        }</b> / ${r.belowCount != null ? r.belowCount : 0} / ${
+          r.total != null ? r.total : agg.totalSpecimensAll != null ? agg.totalSpecimensAll : agg.totalSamples
+        }</td>` +
         `<td class="xs-num">${prev}</td>` +
-        `<td class="xs-num">${fmt1(r.meanTass)}</td>` +
-        `<td class="xs-num">${fmt1(r.medianTass)}</td>` +
-        `<td class="xs-num">${fmt1(r.maxTass)}</td>` +
-        `<td class="xs-num">${fmt1(r.meanCov)}</td>` +
-        `<td class="xs-num">${fmt1(r.medianCov)}</td>` +
-        `<td class="xs-num">${fmt1(r.maxCov)}</td>` +
-        `<td class="xs-num">${_fmtInt(r.reads)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="tass">${fmt1(r.meanTass)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="tass">${fmt1(r.medianTass)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="tass">${fmt1(r.maxTass)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="tass">${fmt1(r.minTass)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="cov">${fmt1(r.meanCov)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="cov">${fmt1(r.medianCov)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="cov">${fmt1(r.maxCov)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="cov">${fmt1(r.minCov)}</td>` +
+        `<td class="xs-num xs-dist" data-dist="reads">${_fmtInt(r.reads)}</td>` +
         "</tr>"
       );
     })
     .join("");
   body_set(
-    `<div class="xs-note">${rows.length} organism(s) across ${agg.totalSamples} sample(s). Click a column header to sort · <span style="color:#cc0000">●</span> = high-consequence · prevalence bar = % of samples detected · hover a row for sample list · click a row to compare coverage across samples.</div>` +
+    `<div class="xs-note">${rows.length} organism(s) across ${agg.totalSamples} specimen(s) with a positive hit. Click a column header to sort · <span style="color:#cc0000">●</span> = high-consequence · <b>Pass / Below / Total</b> = specimens passing the TASS cutoff / detected below it / total · prevalence bar = % passing · hover a <b>TASS / Cov / Reads</b> cell for its distribution · click a row to compare coverage across samples.</div>` +
       `<div id="xs-table-wrap"><table><thead>${head}</thead><tbody>${bodyRows}</tbody></table></div>`,
   );
-  // Delegated tooltip: show sample list on row hover
+  // Delegated tooltip: show a box-and-whisker of the relevant distribution when
+  // hovering a TASS / coverage / reads cell (no more raw sample list).
   const tbody = document.querySelector("#xs-table-wrap tbody");
   if (tbody) {
     tbody.addEventListener("mouseover", (ev) => {
-      const tr = ev.target.closest("tr[data-samples]");
+      const td = ev.target.closest("td.xs-dist");
+      if (!td) return;
+      const tr = td.closest("tr[data-oi]");
       if (!tr) return;
-      const names = tr.dataset.samples.split("||").filter(Boolean);
-      showTip(`<b>Detected in ${names.length} sample(s):</b><br>` + names.map((s) => `• ${s}`).join("<br>"), ev);
+      const r = sorted[+tr.getAttribute("data-oi")];
+      if (!r) return;
+      const kind = td.getAttribute("data-dist");
+      const html = kind === "reads" ? _xsReadsHover(r) : kind === "cov" ? _xsCovHover(r) : _xsTassHover(r);
+      showTip(html, ev);
     });
     tbody.addEventListener("mousemove", moveTip);
     tbody.addEventListener("mouseleave", hideTip);
@@ -897,11 +1085,11 @@ function _xsRenderDist(rows, agg) {
   const topN = parseInt((document.getElementById("xs-topn") || {}).value || "25", 10);
   const ordered = [...rows].sort((a, b) => b.sampleCount - a.sampleCount || b.medianTass - a.medianTass).slice(0, topN);
   body_set(
-    '<div class="xs-note">Top organisms by prevalence. Bar = % of samples detected · box = TASS spread across samples (Q1–Q3, line = median, whiskers = min/max). Tighter boxes = more consistent scoring.</div><div id="xs-dist-svg"></div>',
+    '<div class="xs-note">Top organisms by prevalence. Bar = % passing · <b>dual violin</b> of TASS: <span style="color:#1565c0">top</span> = specimens passing the cutoff, <span style="color:#90a4ae">bottom</span> = all specimens (below-cutoff detections and 0s included). Tick = passing median. Hover for the five-number summary.</div><div id="xs-dist-svg"></div>',
   );
   const wrap = document.getElementById("xs-dist-svg");
   const W = wrap.clientWidth || 760;
-  const rowH = 26,
+  const rowH = 34,
     mT = 24,
     mB = 30,
     mL = 200,
@@ -985,64 +1173,69 @@ function _xsRenderDist(rows, agg) {
       .attr("rx", 2);
     // On-chart count label removed — the prevalence (count / total / %) and
     // full TASS spread are shown on hover over the row instead.
-    // box & whisker for TASS
+    // ── dual violin for TASS ─────────────────────────────────────────────
+    // Top half = distribution among specimens PASSING the cutoff; bottom half =
+    // all specimens (below-cutoff detections plus 0s for absent specimens).
     const s = [...r.tassVals].sort((a, b) => a - b);
-    if (!s.length) return;
-    const q1 = _xsQuart(s, 0.25),
-      med = _xsQuart(s, 0.5),
-      q3 = _xsQuart(s, 0.75),
-      lo = s[0],
-      hi = s[s.length - 1];
     const yb = y;
-    // whisker line
+    const maxHalf = rowH / 2 - 3;
+    // baseline
     svg
       .append("line")
-      .attr("x1", boxX0 + x(lo))
-      .attr("x2", boxX0 + x(hi))
+      .attr("x1", boxX0 + x(0))
+      .attr("x2", boxX0 + x(100))
       .attr("y1", yb)
       .attr("y2", yb)
-      .attr("stroke", col)
-      .attr("stroke-width", 1);
-    [lo, hi].forEach((v) =>
+      .attr("stroke", "#cfd8dc")
+      .attr("stroke-width", 0.75);
+    // bottom half — all specimens (incl below-cutoff / 0)
+    if ((r.tassAll || []).length) {
+      svg
+        .append("path")
+        .attr("d", _xsViolinHalfPath(r.tassAll, x, boxX0, yb, 1, maxHalf, [0, 100]))
+        .attr("fill", col)
+        .attr("fill-opacity", 0.16)
+        .attr("stroke", col)
+        .attr("stroke-opacity", 0.45)
+        .attr("stroke-width", 0.75);
+    }
+    // top half — passing specimens
+    if (s.length) {
+      svg
+        .append("path")
+        .attr("d", _xsViolinHalfPath(r.tassVals, x, boxX0, yb, -1, maxHalf, [0, 100]))
+        .attr("fill", col)
+        .attr("fill-opacity", 0.5)
+        .attr("stroke", col)
+        .attr("stroke-width", 0.75);
+    }
+    const q1 = s.length ? _xsQuart(s, 0.25) : 0,
+      med = s.length ? _xsQuart(s, 0.5) : 0,
+      q3 = s.length ? _xsQuart(s, 0.75) : 0,
+      lo = s.length ? s[0] : 0,
+      hi = s.length ? s[s.length - 1] : 0;
+    // passing median tick (top half)
+    if (s.length) {
       svg
         .append("line")
-        .attr("x1", boxX0 + x(v))
-        .attr("x2", boxX0 + x(v))
-        .attr("y1", yb - 4)
-        .attr("y2", yb + 4)
-        .attr("stroke", col),
-    );
-    // box
-    svg
-      .append("rect")
-      .attr("x", boxX0 + x(q1))
-      .attr("y", yb - 7)
-      .attr("width", Math.max(1, x(q3) - x(q1)))
-      .attr("height", 14)
-      .attr("fill", col)
-      .attr("opacity", 0.28)
-      .attr("stroke", col);
-    // median
-    svg
-      .append("line")
-      .attr("x1", boxX0 + x(med))
-      .attr("x2", boxX0 + x(med))
-      .attr("y1", yb - 7)
-      .attr("y2", yb + 7)
-      .attr("stroke", col)
-      .attr("stroke-width", 2);
-    // hover target — full row (label + bars) for easier hover
-    const sampleListTip = [...r.samples]
-      .sort()
-      .map((s) => `• ${s}`)
-      .join("<br>");
+        .attr("x1", boxX0 + x(med))
+        .attr("x2", boxX0 + x(med))
+        .attr("y1", yb - maxHalf)
+        .attr("y2", yb)
+        .attr("stroke", col)
+        .attr("stroke-width", 1.5);
+    }
+    const _allStat = _xsBoxStats(r.tassAll || []);
     const tipHtml =
-      `<b>${r.name}</b><br>${r.cat} · ${r.sampleCount}/${agg.totalSamples} samples (${r.samplePct.toFixed(1)}%)` +
-      `<br>TASS — min ${lo.toFixed(1)} · Q1 ${q1.toFixed(1)} · med ${med.toFixed(1)} · Q3 ${q3.toFixed(
+      `<b>${r.name}</b><br>${r.cat} · ${r.sampleCount}/${agg.totalSamples} passing (${r.samplePct.toFixed(1)}%)` +
+      `<br><span style="color:#90caf9">Passing TASS</span> — min ${lo.toFixed(1)} · Q1 ${q1.toFixed(
         1,
-      )} · max ${hi.toFixed(1)}` +
-      `<br>mean cov ${r.meanCov.toFixed(1)}` +
-      `<br><br><b>Samples:</b><br>${sampleListTip}`;
+      )} · med ${med.toFixed(1)} · Q3 ${q3.toFixed(1)} · max ${hi.toFixed(1)}` +
+      (_allStat
+        ? `<br><span style="color:#b0bec5">All specimens</span> — min ${_allStat.min.toFixed(
+            1,
+          )} · med ${_allStat.med.toFixed(1)} · max ${_allStat.max.toFixed(1)} (n=${_allStat.n})`
+        : "");
     svg
       .append("rect")
       .attr("x", 0)
@@ -1369,23 +1562,11 @@ function _xsRenderCooc(rows, agg) {
       // Append the actual sample names behind the number so the detail lives
       // on hover. Diagonal = where this organism was detected; off-diagonal =
       // the samples the pair shares.
-      const _capList = (arr, n = 14) => {
-        const a = [...arr].sort();
-        const s = a
-          .slice(0, n)
-          .map((x) => "• " + x)
-          .join("<br>");
-        return a.length > n ? s + `<br><span style="color:#999">+${a.length - n} more…</span>` : s;
-      };
-      let _coocExtra = "";
-      if (i === j) {
-        if (orgs[i].samples && orgs[i].samples.size)
-          _coocExtra = `<br><span style="color:#9bb">Detected in:</span><br>${_capList(orgs[i].samples)}`;
-      } else if (shared[i][j] > 0) {
-        const _sh = [...orgs[i].samples].filter((s) => orgs[j].samples.has(s));
-        _coocExtra = `<br><span style="color:#9bb">Shared samples:</span><br>${_capList(_sh)}`;
-      }
-      const _coocTip = tipText + _coocExtra;
+      // Sample names intentionally omitted from the hover — show counts only.
+      // The full sample list lives in a paginated popup opened on click.
+      const _coocTip = tipText + `<br><span style="color:#90caf9;font-size:.85em">click for sample table</span>`;
+      const _ci = i,
+        _cj = j;
       svg
         .append("rect")
         .attr("x", mL + j * cell)
@@ -1397,7 +1578,11 @@ function _xsRenderCooc(rows, agg) {
         .style("cursor", "pointer")
         .on("mouseover", (ev) => showTip(_coocTip, ev))
         .on("mousemove", moveTip)
-        .on("mouseout", hideTip);
+        .on("mouseout", hideTip)
+        .on("click", () => {
+          hideTip();
+          _xsOpenCoocPopup(_ci, _cj, orgs, agg);
+        });
     }
   });
 
@@ -1453,6 +1638,66 @@ function _xsRenderCooc(rows, agg) {
     .style("fill", "#90a4ae")
     .text(metricLabel);
   _scheduleExportEnhance();
+}
+
+// Co-occurrence cell click → paginated, searchable per-sample table.
+// Diagonal (i === j): every sample the organism was detected in, with its TASS
+// and coverage. Off-diagonal: the samples both organisms share, with each
+// organism's TASS side by side.
+function _xsOpenCoocPopup(i, j, orgs, agg) {
+  const ov = document.getElementById("xspop-overlay");
+  const body = document.getElementById("xspop-body");
+  const titleEl = document.getElementById("xspop-title");
+  if (!ov || !body) return;
+  const oi = orgs[i];
+  const td = (v, align) =>
+    `<td style="padding:4px 10px;border-bottom:1px solid #eee;text-align:${align || "left"}">${v}</td>`;
+  const num = (map, s) => (map && map.has(s) ? (+map.get(s)).toFixed(1) : "—");
+  const thBase = "padding:5px 10px;border-bottom:2px solid #1565c0;";
+  if (i === j) {
+    const det = [...(oi.samples || [])].sort();
+    const tass = oi.tassMap || new Map(),
+      cov = oi.covMap || new Map();
+    if (titleEl) titleEl.innerHTML = `<i>${oi.name}</i> — detected samples`;
+    const rows = det.map((s) => ({
+      text: s,
+      html: `<tr>${td(s)}${td(num(tass, s), "right")}${td(num(cov, s), "right")}</tr>`,
+    }));
+    const statsHtml =
+      `<div style="font-size:.82em;color:#555;margin-bottom:.5em">Detected in <b>${det.length}</b> sample(s) · ` +
+      `Mean TASS ${(oi.meanTass || 0).toFixed(1)} · Max TASS ${(oi.maxTass || 0).toFixed(1)}</div>`;
+    const headHtml =
+      `<tr style="position:sticky;top:0;background:#f0f4fa">` +
+      `<th style="${thBase}text-align:left">Sample</th>` +
+      `<th style="${thBase}text-align:right">TASS</th>` +
+      `<th style="${thBase}text-align:right">Coverage %</th></tr>`;
+    _xsRenderPagedTable(body, { statsHtml, headHtml, rows, colspan: 3, searchPlaceholder: "Search samples…" });
+  } else {
+    const oj = orgs[j];
+    const a = oi.samples || new Set(),
+      b = oj.samples || new Set();
+    const shared = [...a].filter((s) => b.has(s)).sort();
+    const ti = oi.tassMap || new Map(),
+      tj = oj.tassMap || new Map();
+    const uni = a.size + b.size - shared.length;
+    const jac = uni ? shared.length / uni : 0;
+    if (titleEl) titleEl.innerHTML = `<i>${oi.name}</i> ✕ <i>${oj.name}</i> — shared samples`;
+    const rows = shared.map((s) => ({
+      text: s,
+      html: `<tr>${td(s)}${td(num(ti, s), "right")}${td(num(tj, s), "right")}</tr>`,
+    }));
+    const clip = (nm) => (nm.length > 16 ? nm.slice(0, 15) + "…" : nm);
+    const statsHtml =
+      `<div style="font-size:.82em;color:#555;margin-bottom:.5em"><b>${shared.length}</b> shared sample(s) · ` +
+      `Jaccard ${jac.toFixed(2)} · ${clip(oi.name)}: ${a.size}, ${clip(oj.name)}: ${b.size}</div>`;
+    const headHtml =
+      `<tr style="position:sticky;top:0;background:#f0f4fa">` +
+      `<th style="${thBase}text-align:left">Sample</th>` +
+      `<th style="${thBase}text-align:right">${clip(oi.name)} TASS</th>` +
+      `<th style="${thBase}text-align:right">${clip(oj.name)} TASS</th></tr>`;
+    _xsRenderPagedTable(body, { statsHtml, headHtml, rows, colspan: 3, searchPlaceholder: "Search samples…" });
+  }
+  ov.style.display = "flex";
 }
 
 // ── CSV export of the frequency table (uses current filters/sort) ────

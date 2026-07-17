@@ -25,6 +25,25 @@ function _xsMed(a) {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
+// Combine a specimen's per-member values (one entry per member sample where the
+// organism was seen) into a single score. `total` is the specimen's full member
+// count in view, used only by the "detection" mode (fraction detected × 100).
+function _xsReduceMembers(vals, method, total) {
+  if (!vals.length) return 0;
+  switch (method) {
+    case "median":
+      return _xsMed(vals);
+    case "mean":
+      return _xsMean(vals);
+    case "min":
+      return Math.min(...vals);
+    case "detection":
+      return total ? (vals.length / total) * 100 : 0;
+    case "max":
+    default:
+      return Math.max(...vals);
+  }
+}
 function _xsQuart(a, q) {
   // linear-interpolated quantile on a pre-sorted array
   if (!a.length) return 0;
@@ -85,9 +104,15 @@ function _xsAggregate(fd) {
   // Per-specimen ANI capability: which specimens carry ANI annotation at all.
   const aniSamples = new Set();
   const noAniSamples = new Set();
+  // Member samples seen (in view) per specimen — the denominator for the
+  // within-specimen "detection %" aggregation.
+  const specimenMembers = new Map();
   fd.forEach((r) => {
     const sn = specimenKey(r["Specimen ID"]);
     if (!sn) return;
+    const member = String(r["Specimen ID"] == null ? "" : r["Specimen ID"]);
+    if (!specimenMembers.has(sn)) specimenMembers.set(sn, new Set());
+    if (member) specimenMembers.get(sn).add(member);
     (_aniAnnotated(r) ? aniSamples : noAniSamples).add(sn);
     const taxid = (r["Taxonomic ID #"] || "").toString();
     const key = taxid || r["Detected Organism"] || "";
@@ -98,9 +123,13 @@ function _xsAggregate(fd) {
         taxid: taxid || "—",
         name: r["Detected Organism"] || key,
         cat: r["Microbial Category"] || "Unknown",
-        tassMap: new Map(),
-        covMap: new Map(),
+        // Nested: specimen → (member sample → best TASS / coverage for that
+        // member). Reduced to one value per specimen at row-build time using
+        // the user-selected aggregation (max / median / mean / min / detection).
+        tassMemb: new Map(),
+        covMemb: new Map(),
         reads: 0,
+        readsBySpec: new Map(), // specimen → summed reads (passing view)
         hc: false,
         aniMatches: new Map(), // partner taxid → max ANI %
         aniAnnotated: false,
@@ -109,9 +138,15 @@ function _xsAggregate(fd) {
     }
     const t = num(r["TASS Score"]);
     const c = num(r["Coverage"]);
-    if (!e.tassMap.has(sn) || t > e.tassMap.get(sn)) e.tassMap.set(sn, t);
-    if (!e.covMap.has(sn) || c > e.covMap.get(sn)) e.covMap.set(sn, c);
-    e.reads += num(r["# Reads Aligned"]);
+    if (!e.tassMemb.has(sn)) e.tassMemb.set(sn, new Map());
+    if (!e.covMemb.has(sn)) e.covMemb.set(sn, new Map());
+    const _tm = e.tassMemb.get(sn);
+    const _cm = e.covMemb.get(sn);
+    if (!_tm.has(member) || t > _tm.get(member)) _tm.set(member, t);
+    if (!_cm.has(member) || c > _cm.get(member)) _cm.set(member, c);
+    const _rd = num(r["# Reads Aligned"]);
+    e.reads += _rd;
+    e.readsBySpec.set(sn, (e.readsBySpec.get(sn) || 0) + _rd);
     if (isTruthy(r["High Consequence"])) e.hc = true;
     if (_aniAnnotated(r)) e.aniAnnotated = true;
     _aniMatchesFor(r).forEach((m) => {
@@ -119,28 +154,107 @@ function _xsAggregate(fd) {
       if (!e.aniMatches.has(m.key) || m.ani_pct > e.aniMatches.get(m.key)) e.aniMatches.set(m.key, m.ani_pct);
     });
   });
+  const aggMethod = typeof specimenTassAgg !== "undefined" ? specimenTassAgg : "max";
+  // ── Detection breakdown (pass / below / total), decoupled from the slider ──
+  // fdAll re-runs the same base + specimen filters but WITHOUT the TASS gate,
+  // so we can count specimens where an organism is detected yet sits below the
+  // current cutoff. pass = specimens clearing the threshold (what's in fd),
+  // below = detected-but-under, total = the prevalence denominator N.
+  // detByOrg[key] = { tass, cov, reads } — each a Map(specimen → value) over the
+  // un-thresholded data, so we can draw "all specimens (incl below)" distributions.
+  const detByOrg = new Map();
+  try {
+    const fdAll = typeof filteredData === "function" ? filteredData({ ignoreThreshold: true }) : fd;
+    fdAll.forEach((r) => {
+      const sn = specimenKey(r["Specimen ID"]);
+      if (!sn) return;
+      const taxid = (r["Taxonomic ID #"] || "").toString();
+      const dkey = taxid || r["Detected Organism"] || "";
+      if (!dkey) return;
+      let d = detByOrg.get(dkey);
+      if (!d) {
+        d = { tass: new Map(), cov: new Map(), reads: new Map() };
+        detByOrg.set(dkey, d);
+      }
+      const _t = num(r["TASS Score"]);
+      const _c = num(r["Coverage"]);
+      const _rd = num(r["# Reads Aligned"]);
+      if (!d.tass.has(sn) || _t > d.tass.get(sn)) d.tass.set(sn, _t);
+      if (!d.cov.has(sn) || _c > d.cov.get(sn)) d.cov.set(sn, _c);
+      d.reads.set(sn, (d.reads.get(sn) || 0) + _rd);
+    });
+  } catch (_e) {
+    /* fall back to pass-only counts if the un-thresholded pass fails */
+  }
+  // Total specimen cohort size (all specimens, positive-hit or not) — the
+  // denominator for the pass / below / total breakdown.
+  const _totalSpecimens = typeof totalSpecimenCount === "function" ? totalSpecimenCount() || N : N;
   const rows = [];
-  byOrg.forEach((e) => {
-    const tass = [...e.tassMap.values()];
-    const cov = [...e.covMap.values()];
+  byOrg.forEach((e, _key) => {
+    // Reduce each specimen's per-member values to a single score using the
+    // selected aggregation. detection% divides by the specimen's total member
+    // samples in view, so a hit in 1 of 2 libraries reads as 50%.
+    const tassMap = new Map();
+    const covMap = new Map();
+    e.tassMemb.forEach((memb, sn) => {
+      const total = (specimenMembers.get(sn) || new Set()).size || memb.size || 1;
+      tassMap.set(sn, _xsReduceMembers([...memb.values()], aggMethod, total));
+    });
+    e.covMemb.forEach((memb, sn) => {
+      const total = (specimenMembers.get(sn) || new Set()).size || memb.size || 1;
+      // "detection" only makes sense for the TASS column; keep coverage on the
+      // mean of member coverages in that mode so the number stays meaningful.
+      covMap.set(sn, _xsReduceMembers([...memb.values()], aggMethod === "detection" ? "mean" : aggMethod, total));
+    });
+    const tass = [...tassMap.values()];
+    const cov = [...covMap.values()];
+    const readsVals = [...e.readsBySpec.values()];
+    const _passCount = tassMap.size;
+    const _detected = detByOrg.get(_key);
+    const _detCount = _detected ? Math.max(_detected.tass.size, _passCount) : _passCount;
+    const _belowCount = Math.max(0, _detCount - _passCount);
+    // "All specimens (incl below/0)" vectors: detected values padded with zeros
+    // for every specimen where the organism was not seen at all.
+    const _pad = (arr, n) => {
+      const a = arr.slice();
+      while (a.length < n) a.push(0);
+      return a;
+    };
+    const _detTass = _detected ? [..._detected.tass.values()] : tass.slice();
+    const _detCov = _detected ? [..._detected.cov.values()] : cov.slice();
+    const _detReads = _detected ? [..._detected.reads.values()] : readsVals.slice();
+    const tassAll = _pad(_detTass, _totalSpecimens);
+    const covAll = _pad(_detCov, _totalSpecimens);
+    const readsAll = _pad(_detReads, _totalSpecimens);
     rows.push({
       taxid: e.taxid,
       name: e.name,
       cat: e.cat,
       hc: e.hc,
-      sampleCount: e.tassMap.size,
-      samplePct: Math.min(100, (e.tassMap.size / N) * 100),
+      sampleCount: _passCount,
+      passCount: _passCount,
+      belowCount: _belowCount,
+      detCount: _detCount,
+      total: _totalSpecimens,
+      samplePct: Math.min(100, (_passCount / N) * 100),
       meanTass: _xsMean(tass),
       medianTass: _xsMed(tass),
       maxTass: tass.length ? Math.max(...tass) : 0,
+      minTass: tass.length ? Math.min(...tass) : 0,
       meanCov: _xsMean(cov),
       medianCov: _xsMed(cov),
       maxCov: cov.length ? Math.max(...cov) : 0,
+      minCov: cov.length ? Math.min(...cov) : 0,
       reads: e.reads,
       tassVals: tass,
-      tassMap: e.tassMap,
-      covMap: e.covMap,
-      samples: new Set(e.tassMap.keys()),
+      covVals: cov,
+      readsVals: readsVals,
+      tassAll: tassAll,
+      covAll: covAll,
+      readsAll: readsAll,
+      tassMap: tassMap,
+      covMap: covMap,
+      samples: new Set(tassMap.keys()),
       aniMatches: e.aniMatches,
       aniAnnotated: e.aniAnnotated,
     });
@@ -183,6 +297,7 @@ function _xsAggregate(fd) {
   return {
     rows,
     totalSamples: N,
+    totalSpecimensAll: _totalSpecimens,
     sampleList: viewSpecimens,
     aniSamples,
     noAniSamples,
@@ -221,6 +336,13 @@ function _xsUpdateSpecimenControls() {
   }
   if (lbl) lbl.style.display = "";
   if (edit) edit.style.display = "";
+  // The combine-method dropdown only matters while merge is on (it governs how
+  // multiple libraries of one specimen collapse into a single score).
+  const agg = document.getElementById("xs-specimen-agg");
+  if (agg) {
+    agg.style.display = has && specimenMergeEnabled ? "" : "none";
+    if (agg.value !== specimenTassAgg) agg.value = specimenTassAgg;
+  }
   // Swap the unit noun in the summary note.
   const unit = document.getElementById("xs-unit");
   if (unit) unit.textContent = specimenMergeEnabled ? "specimen(s)" : "sample(s)";
@@ -382,6 +504,15 @@ function _drawCrossSample(fd, samples) {
     if (spTog) spTog.addEventListener("click", _xsToggleSpecimenMerge);
     const spEdit = document.getElementById("xs-specimen-edit");
     if (spEdit) spEdit.addEventListener("click", _xsOpenSpecimenEditor);
+    const spAgg = document.getElementById("xs-specimen-agg");
+    if (spAgg)
+      spAgg.addEventListener("change", () => {
+        specimenTassAgg = spAgg.value || "max";
+        // The combine method feeds the global specimen merge in filteredData(),
+        // so refresh every tab (redraw invalidates the filter cache first).
+        if (typeof redraw === "function") redraw();
+        else _drawCrossSample(typeof filteredData === "function" ? filteredData() : [], null);
+      });
     // sort handler (delegated) for the frequency table
     const body = document.getElementById("xs-body");
     if (body)
@@ -600,18 +731,24 @@ function _cmpRenderMatrix(orgs, metrics, agg, grpColors) {
     colMax[m.key] = Math.max(...vals);
   });
   const color = d3.scaleSequential(d3.interpolateBlues);
-  const cellBg = (m, v) => {
+  // Metrics on a fixed 0–100 scale — when their column has no spread (e.g. every
+  // organism is detected in 100% of its samples), fall back to an ABSOLUTE
+  // shade so a uniform high column reads as strong blue instead of a flat grey
+  // that looks broken.
+  const _BOUNDED_0_100 = new Set(["samplePct", "meanTass", "medianTass", "maxTass", "minTass", "meanCov", "maxCov"]);
+  const _cellT = (m, v) => {
     const lo = colMin[m.key],
       hi = colMax[m.key];
-    if (hi <= lo) return "#eef3f8";
-    const t = (v - lo) / (hi - lo);
-    return color(0.12 + 0.78 * t);
+    if (hi > lo) return (v - lo) / (hi - lo);
+    return _BOUNDED_0_100.has(m.key) ? Math.max(0, Math.min(1, v / 100)) : null; // null ⇒ neutral
+  };
+  const cellBg = (m, v) => {
+    const t = _cellT(m, v);
+    return t == null ? "#eef3f8" : color(0.12 + 0.78 * t);
   };
   const txtColor = (m, v) => {
-    const lo = colMin[m.key],
-      hi = colMax[m.key];
-    const t = hi <= lo ? 0 : (v - lo) / (hi - lo);
-    return t > 0.6 ? "#fff" : "#1a2733";
+    const t = _cellT(m, v);
+    return t != null && t > 0.6 ? "#fff" : "#1a2733";
   };
   let html =
     '<div class="cmp-matrix-wrap"><table class="cmp-matrix"><thead><tr>' +
