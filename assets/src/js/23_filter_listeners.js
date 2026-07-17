@@ -50,6 +50,7 @@ function _redrawDebounced() {
   "filter-below-vfamr",
   "filter-novelty-sub",
   "hm-show-vals",
+  "hm-full-labels",
   "filter-mt-dna",
   "filter-mt-rna",
   "filter-mt-both",

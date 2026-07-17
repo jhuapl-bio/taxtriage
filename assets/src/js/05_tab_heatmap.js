@@ -49,13 +49,18 @@ function drawHeatmap() {
   // Dynamic left margin — must fit organism name AND rank label side by side.
   // Rank label sits at x=-6 (right edge); organism name sits to its left with a
   // small gap. Compute the max combined width across all organisms.
+  // Full-label toggle: when on, y-axis organism names are shown in full
+  // (margin grows to fit the longest); when off, names longer than
+  // _LBL_TRUNC are truncated with an ellipsis + hover-to-reveal.
+  const hmFullLabels = !!(document.getElementById("hm-full-labels") || {}).checked;
+  const _LBL_TRUNC = 32;
   let _maxLabelWidth = 0;
   organisms.forEach((org) => {
     const r0 = orgRepRow.get(org);
     const rl = (r0 ? r0[rankField] : "") || "";
-    const orgTrunc = Math.min(32, org.length);
+    const orgChars = hmFullLabels ? org.length : Math.min(_LBL_TRUNC, org.length);
     const rankW = rankField !== "Detected Organism" && rl ? rl.length * 6 + 14 : 6;
-    _maxLabelWidth = Math.max(_maxLabelWidth, rankW + orgTrunc * 6.5);
+    _maxLabelWidth = Math.max(_maxLabelWidth, rankW + orgChars * 6.5);
   });
   const marginL = Math.max(140, _maxLabelWidth + 20);
   const marginT = 110,
@@ -137,28 +142,60 @@ function drawHeatmap() {
         .text(`[${rankLabel}]`);
     }
     const _nameX = rankField !== "Detected Organism" && rankLabel ? -(rankLabel.length * 6 + 14) : -6;
-    const orgLabel = org.length > 32 ? org.slice(0, 31) + "…" : org;
+    const _truncated = !hmFullLabels && org.length > _LBL_TRUNC;
+    const orgLabel = _truncated ? org.slice(0, _LBL_TRUNC - 1) + "…" : org;
     const isWatched = r0 ? _isWatched(r0) : false;
     const prefix = (isWatched ? "★ " : "") + (isHC ? "● " : "");
-    const titleParts = [
-      isWatched ? "On the follow-up list" : null,
-      isHC ? "High Consequence Pathogen" : null,
-      mt ? `Mol. type: ${mt.toUpperCase()}` : null,
-      "Click to toggle follow-up",
-    ].filter(Boolean);
-    yGroup
+    const _baseFill = isHC ? "#c62828" : isWatched ? "#b8860b" : "#333";
+    const _baseWeight = isHC || isWatched ? "600" : "normal";
+    const _lbl = yGroup
       .append("text")
       .attr("x", _nameX)
       .attr("y", y)
       .attr("text-anchor", "end")
       .attr("font-size", 11)
-      .attr("fill", isHC ? "#c62828" : isWatched ? "#b8860b" : "#333")
-      .attr("font-weight", isHC || isWatched ? "600" : "normal")
+      .attr("fill", _baseFill)
+      .attr("font-weight", _baseWeight)
       .style("cursor", "pointer")
-      .attr("title", titleParts.length ? titleParts.join(" | ") : null)
+      // Dotted underline cue signals the name is truncated and can be revealed.
+      .style("text-decoration", _truncated ? "underline dotted" : null)
       .text(prefix + orgLabel)
       .on("click", () => {
         if (r0) _toggleWatchKey(_watchKey(r0));
+      });
+    // Native tooltip fallback: always carries the full organism name + status.
+    _lbl
+      .append("title")
+      .text(
+        [
+          org,
+          isWatched ? "On the follow-up list" : null,
+          isHC ? "High Consequence Pathogen" : null,
+          mt ? `Mol. type: ${mt.toUpperCase()}` : null,
+          "Click to toggle follow-up",
+        ]
+          .filter(Boolean)
+          .join(" | "),
+      );
+    // Hover: highlight the label and reveal the full name in the styled tooltip.
+    _lbl
+      .on("mouseover", (ev) => {
+        _lbl.attr("fill", "#0b5cad").attr("font-weight", "600");
+        showTip(
+          `<b>${org}</b>` +
+            (rankField !== "Detected Organism" && rankLabel
+              ? `<br><span style="color:#888">[${rankLabel}]</span>`
+              : "") +
+            (_truncated
+              ? `<br><span style="color:#888;font-size:0.9em">Full name shown · toggle “Full row labels” to keep it visible</span>`
+              : ""),
+          ev,
+        );
+      })
+      .on("mousemove", moveTip)
+      .on("mouseout", () => {
+        _lbl.attr("fill", _baseFill).attr("font-weight", _baseWeight);
+        hideTip();
       });
 
     // Draw circle badge on the right if mol_type is set
