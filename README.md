@@ -6,18 +6,22 @@
 [![Tutorial: install & with singularityCE v4+](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
 
 [![Wiki](https://img.shields.io/badge/wiki-usage%20details-red)](https://github.com/jhuapl-bio/taxtriage/wiki)
+[![PreviewReport](https://img.shields.io/badge/preview%20report-red)](https://jhuapl-bio.github.io/taxtriage/)
 
 ## About
 
 TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage incorporates intermediate data into a unified confidence metric for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability.
 
-### Quick Start 
+### To Start
+
+**Check out our interactive demo**: [here](https://jhuapl-bio.github.io/taxtriage/)
 
 If you already have Nextflow installed, you can go ahead and test things with (use the copy button and past in your command-line):
 
 ```
 nextflow run https://github.com/jhuapl-bio/taxtriage -r main -profile test,docker -resume
 ```
+
 Otherwise, head to the [wiki](https://github.com/jhuapl-bio/taxtriage/wiki)
 
 ⚠️ **ALERT** Nextflow v26+ employs strict syntax rules that TaxTriage does not currently implement. Please use : NXF_SYNTAX_PARSER=v1 when running nextflow while we work (dilligently) on patching this for newer nextflow users. Nextflow v24-25 do not have this issue.
