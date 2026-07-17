@@ -561,6 +561,16 @@
                 >
                   Merge: Off
                 </button>
+                <select
+                  id="xs-specimen-agg"
+                  title="How to combine the TASS / coverage of the samples inside each merged specimen"
+                >
+                  <option value="max" selected>Combine: Max</option>
+                  <option value="median">Combine: Median</option>
+                  <option value="mean">Combine: Mean</option>
+                  <option value="min">Combine: Min</option>
+                  <option value="detection">Combine: Detection %</option>
+                </select>
                 <button
                   id="xs-specimen-edit"
                   title="Edit which samples belong to each specimen"

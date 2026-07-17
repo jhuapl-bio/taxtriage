@@ -21,6 +21,11 @@ let _sampleOrder = []; // custom display order for samples (index → id)
        of per sample, and prevalence is computed over specimens. */
 let specimenMergeEnabled = false;
 const SPECIMEN_OVERRIDE = {}; // sample_name → specimen group (live UI edits win)
+// How a specimen's per-member TASS / coverage values are combined into one
+// score when merging: "max" | "median" | "mean" | "min" | "detection"
+// (detection = % of the specimen's member samples in which the organism was
+// seen). Only affects specimens that actually contain more than one sample.
+let specimenTassAgg = "max";
 
 /** Resolve the specimen a sample belongs to, independent of the merge toggle.
  *  Priority: live override → samplesheet metadata → the sample name itself
@@ -146,7 +151,13 @@ function _hashSpecimenMerge() {
     .sort()
     .map((k) => k + "=" + SPECIMEN_OVERRIDE[k])
     .join(",");
-  return (specimenMergeEnabled ? "1" : "0") + "|" + ov;
+  return (
+    (specimenMergeEnabled ? "1" : "0") +
+    "|" +
+    ov +
+    "|" +
+    (typeof specimenTassAgg !== "undefined" ? specimenTassAgg : "max")
+  );
 }
 
 /** User-chosen resolutions for metadata that conflicts across the samples of a
@@ -168,6 +179,24 @@ function positiveHitSpecimenCount() {
         const k = specimenKey(r["Specimen ID"]);
         if (k) seen.add(k);
       }
+    });
+  }
+  return seen.size;
+}
+
+/** Total distinct specimens in the run (respecting the merge toggle), counting
+ *  every specimen whether or not it has a positive hit. Used as the "Total" in
+ *  the cross-sample pass / below / total breakdown. */
+function totalSpecimenCount() {
+  const seen = new Set();
+  Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach((k) => {
+    const v = specimenKey(k);
+    if (v) seen.add(v);
+  });
+  if (typeof DATA !== "undefined") {
+    DATA.forEach((r) => {
+      const v = specimenKey(r["Specimen ID"]);
+      if (v) seen.add(v);
     });
   }
   return seen.size;
