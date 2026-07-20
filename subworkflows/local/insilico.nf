@@ -19,6 +19,57 @@ include { MAKE_SIMULATED_SAMPLES } from '../../modules/local/make_simulated_samp
 include { INSILICOSEQ_SIMULATE   } from '../../modules/local/insilicoseq'
 include { PREPARE_NANOSIM_INPUTS } from '../../modules/local/prepare_nanosim_inputs'
 include { NANOSIM_SIMULATE       } from '../../modules/local/nanosim'
+include { SUBSAMPLE_INSILICO     } from '../../modules/local/subsample_insilico'
+
+
+// ── Resolve the read-count series from either an explicit list or a generator ──
+def resolveSeriesCounts() {
+    if (params.sim_series_counts) {
+        return params.sim_series_counts.toString()
+            .split(/[,\s]+/)
+            .findAll { it }
+            .collect { it as long }
+    }
+    if (params.sim_series_start != null && params.sim_series_step != null && params.sim_series_n) {
+        def start = params.sim_series_start as long
+        def step  = params.sim_series_step as long
+        def n     = params.sim_series_n as int
+        return (0..<n).collect { start + it * step }
+    }
+    error "sim_subsample is enabled but no series was defined. Set --sim_series_counts " +
+          "(e.g. '100,500,1000') OR the generator trio --sim_series_start/--sim_series_step/--sim_series_n."
+}
+
+
+// ── Regroup the flat list of per-dataset FASTQs emitted by SUBSAMPLE_INSILICO ──
+// into one (meta, reads) tuple per derived dataset, re-tagged as its own sample.
+def regroupSubsampled(ch_subsample_reads) {
+    ch_subsample_reads
+        .flatMap { meta, files ->
+            def fl = (files instanceof List) ? files : [files]
+            fl.collect { f ->
+                def n = f.getName()
+                def dsid = n.replaceAll(/\.subsample(_R[12])?\.fastq\.gz$/, '')
+                tuple(dsid, meta, f)
+            }
+        }
+        .groupTuple(by: 0)
+        .map { dsid, metas, fastqs ->
+            def pmeta = metas[0]
+            def m = pmeta.collectEntries { k, v -> [k, v] }
+            m.id = dsid
+            // parent_id is preserved from the master insilico meta so reference-prep
+            // cloning downstream still points at the real originating sample.
+            def cm = (dsid =~ /_c(\d+)_r\d+$/)
+            if (cm.find()) {
+                m.read_count = cm.group(1) as Integer
+            }
+            m.subsample       = true
+            m.subsample_mode  = params.sim_subsample_mode
+            def sorted = fastqs.sort { it.getName() }
+            [m, sorted.size() == 1 ? sorted[0] : sorted]
+        }
+}
 
 
 workflow INSILICO {
@@ -134,6 +185,34 @@ workflow INSILICO {
             }
             ch_insilico_reads = ch_insilico_reads.mix(ch_nanosim_tagged)
         }
+    }
+
+    // ── Step 3: Subsample master datasets into spike-in / dilution series ────
+    // Up to here, ch_insilico_reads holds the *master* synthetic datasets (one
+    // per platform per sample). When --sim_subsample is set we replace each
+    // master with a series of derived datasets (nested "consistent" spike-ins,
+    // independent "randomized" spike-ins, or a replicated dilution series). Each
+    // derived dataset is recorded as a list of read indices into its master so
+    // the FASTQs can be deleted and reconstructed later.
+    if (params.sim_subsample) {
+        def counts = resolveSeriesCounts().join(',')
+        def reps   = params.sim_series_replicates ?: 1
+        def mode   = params.sim_subsample_mode ?: 'randomized'
+        def seed   = params.sim_subsample_seed ?: 42
+
+        log.info "INSILICO subsampling: mode=${mode} counts=[${counts}] replicates=${reps} seed=${seed}"
+
+        SUBSAMPLE_INSILICO(
+            ch_insilico_reads,   // master datasets (tagged with insilico meta)
+            mode,
+            counts,
+            reps,
+            seed
+        )
+        ch_versions = ch_versions.mix(SUBSAMPLE_INSILICO.out.versions)
+
+        // Only the derived subsamples flow downstream; the master is the source pool.
+        ch_insilico_reads = regroupSubsampled(SUBSAMPLE_INSILICO.out.reads)
     }
 
     emit:
