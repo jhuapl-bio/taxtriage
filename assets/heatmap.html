@@ -137,6 +137,14 @@
       >
         <i class="fas fa-map-location-dot"></i> Metadata &amp; Mapping
       </button>
+      <button
+        class="tab-btn tab-optional hidden"
+        id="insilico-tab-btn"
+        data-tab="insilico"
+        title="In-silico subsampling suite: parameters used, per-dataset expected vs observed metrics, and per-organism dilution-series limit-of-detection. Shown when --sim_subsample is enabled."
+      >
+        <i class="fas fa-flask"></i> In-Silico
+      </button>
     </div>
 
     <div id="pdf-report-cover">
@@ -2678,6 +2686,17 @@
           </div>
           <!-- /meta-subpane-cmp -->
         </div>
+
+        <!-- IN-SILICO SUITE (spike-in / dilution-series: expected vs reality) -->
+        <div class="pane" id="pane-insilico">
+          <div id="insilico-params-panel" class="chart-card"></div>
+          <div id="insilico-groups"></div>
+          <div id="insilico-empty" style="display:none; padding:2em; color:#777">
+            No in-silico subsampling datasets were found in this run. Enable
+            <code>--sim_subsample</code> to generate spike-in / dilution-series datasets.
+          </div>
+        </div>
+        <!-- /pane-insilico -->
       </div>
       <!-- /content -->
 
@@ -3658,6 +3677,7 @@
     <script src="src/js/35_tab_map.js"></script>
     <script src="src/js/36_guided_help_tour.js"></script>
     <script src="src/js/37_specimen_merge.js"></script>
+    <script src="src/js/38_tab_insilico.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

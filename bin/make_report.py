@@ -36,6 +36,7 @@ import math
 import os
 import re
 import sys
+from collections import defaultdict
 
 import pandas as pd
 
@@ -135,6 +136,27 @@ def parse_args(argv=None):
              "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
              "each VF/AMR hit's taxids from its Source ID so pathogen matching can key on taxid "
              "instead of the merged sheet's (often mis-parsed) Genus/Species text.",
+    )
+    parser.add_argument(
+        "--insilico_params", default=None, metavar="JSON",
+        help="Optional: JSON file of the in-silico subsampling run parameters "
+             "(mode, series counts, replicates, seed, sim_nreads, iss_model, ...). "
+             "Populates the provenance panel on the In-Silico suite tab. When absent, "
+             "the params are inferred from the subsample sample names/metadata.",
+    )
+    parser.add_argument(
+        "--insilico_json", nargs="*", default=[], metavar="JSON",
+        help="Optional: per-dataset .paths.json file(s) for the in-silico subsample datasets "
+             "(from ALIGNMENT_PER_SAMPLE_INSILICO). These are used ONLY to build the In-Silico "
+             "suite tab (expected-vs-reality + dilution-series LoD); they are NOT added to the "
+             "main multi-run heatmap/table so they don't skew cross-sample views.",
+    )
+    parser.add_argument(
+        "--insilico_manifests", nargs="*", default=[], metavar="TSV",
+        help="Optional: *_subsample_manifest.tsv file(s) produced by SUBSAMPLE_INSILICO. "
+             "Provide authoritative target/actual read counts, total master reads and per-dataset "
+             "seeds for the In-Silico suite tab. When absent, target counts are parsed from the "
+             "subsample sample names.",
     )
     return parser.parse_args(argv)
 
@@ -992,6 +1014,281 @@ def _sanitize(obj):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# In-Silico subsampling suite  (spike-in / dilution-series: expected vs reality)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Subsample dataset sample ids look like:
+#   <parent>_insilico_<iss|nanosim>_ss_<mode>_c<count>_r<rep>   (synthetic)
+#   <parent>_background_ss_<mode>_c<count>_r<rep>               (natural background)
+_SS_ID_RE = re.compile(
+    r'^(?P<parent>.+?)_'
+    r'(?:insilico_(?P<isstok>iss|nanosim)|background)'
+    r'_ss_(?P<mode>consistent|randomized)_c(?P<count>\d+)_r(?P<rep>\d+)$'
+)
+
+
+def _load_insilico_params(path):
+    """Load the optional in-silico params JSON. Returns {} on any problem."""
+    if not path:
+        return {}
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        print(f"[make_report] WARNING: could not read --insilico_params {path!r}: {exc}",
+              file=sys.stderr)
+        return {}
+
+
+def _load_insilico_manifests(paths):
+    """Parse *_subsample_manifest.tsv files → {dataset_id: {row fields}}."""
+    out = {}
+    for p in paths or []:
+        try:
+            with open(p) as fh:
+                reader = csv.DictReader(fh, delimiter="\t")
+                for row in reader:
+                    did = (row.get("dataset_id") or "").strip()
+                    if did:
+                        out[did] = row
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not read manifest {p!r}: {exc}",
+                  file=sys.stderr)
+    return out
+
+
+def _f1(precision, recall):
+    return (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+
+def build_insilico_suite(rows, sample_meta, params_file=None, manifest_files=None,
+                         detect_threshold=None):
+    """
+    Assemble the In-Silico subsampling suite payload: run parameters plus, for
+    each (parent sample, platform) group, a per-dataset expected-vs-reality table
+    and a per-organism dilution-series / limit-of-detection view.
+
+    "Reality" comes from the subsample datasets already present in `rows` (each
+    subsample flows through the pipeline as its own sample). An organism counts as
+    *detected* when its TASS score clears `detect_threshold` (the same recommended
+    cutoff the report uses — best_cutoffs.subkey.best_threshold — NOT the raw
+    per-row passes_threshold flag, which is computed client-side and is unset in
+    the JSON). "Expected" is the truth set of organisms detected at full depth; its
+    composition is scaled to each dataset's target read count. Authoritative
+    target/actual/total counts are taken from the subsample manifest when supplied.
+
+    Rows are collapsed to a SINGLE taxonomic level (Species when available, else
+    Strain) so the same reads are not triple-counted across strain/species/genus
+    rollup rows.
+
+    Returns None when no subsample datasets are present (feature off).
+    """
+    thr = float(detect_threshold) if detect_threshold not in (None, "") else 0.0
+
+    # ── Identify subsample datasets from the sample-id pattern ────────────────
+    datasets = {}   # sname -> {parent, plat, mode, count, rep}
+    sample_names = set(r.get("Specimen ID") for r in rows)
+    sample_names.update(sample_meta.keys())
+    for sname in sample_names:
+        if not sname:
+            continue
+        m = _SS_ID_RE.match(str(sname))
+        if m:
+            datasets[sname] = {
+                "parent": m.group("parent"),
+                "plat": m.group("isstok") or "background",
+                "mode": m.group("mode"),
+                "count": int(m.group("count")),
+                "rep": int(m.group("rep")),
+            }
+    if not datasets:
+        return None
+
+    # Pairing (read pairs vs reads) is best taken from the sample's platform
+    # metadata; fall back to the platform token (iss = paired Illumina).
+    def _is_paired(sname, plat):
+        p = str((sample_meta.get(sname) or {}).get("platform", "")).upper()
+        if p:
+            return p == "ILLUMINA"
+        return plat == "iss"
+
+    manifests = _load_insilico_manifests(manifest_files)
+
+    # ── Choose ONE taxonomic level to avoid triple-counting rollup rows ───────
+    subsample_rows = [r for r in rows if r.get("Specimen ID") in datasets]
+    _levels = {r.get("Level") for r in subsample_rows}
+    level_pick = "Species" if "Species" in _levels else ("Strain" if "Strain" in _levels else None)
+
+    # ── Observed organisms per dataset (taxid -> observed metrics) ────────────
+    # Subsampling selects records: for paired-end an index is a read PAIR, so the
+    # target/actual counts are in pairs, while the aligner counts each mate
+    # separately (≈ 2× reads). Normalise observed read counts back to records
+    # (÷2 for paired) so they are directly comparable to the target read counts.
+    obs = defaultdict(dict)
+    for r in subsample_rows:
+        if level_pick is not None and r.get("Level") != level_pick:
+            continue
+        sn = r.get("Specimen ID")
+        tid = str(r.get("Taxonomic ID #", "") or "")
+        if not tid:
+            continue
+        rpr = 2 if _is_paired(sn, datasets[sn]["plat"]) else 1
+        tass = float(r.get("TASS Score", 0) or 0)
+        obs[sn][tid] = {
+            "name": r.get("Detected Organism", "Unknown"),
+            "reads": int(round(int(r.get("# Reads Aligned", 0) or 0) / rpr)),
+            "tass": tass,
+            "passes": tass >= thr,   # detection vs the report's recommended TASS cutoff
+            "category": r.get("Microbial Category", "Unknown"),
+        }
+
+    # ── Group datasets by (parent, platform) ──────────────────────────────────
+    groups = defaultdict(list)
+    for sname, d in datasets.items():
+        groups[(d["parent"], d["plat"])].append((sname, d))
+
+    suite_groups = []
+    all_counts = set()
+    all_modes = set()
+    max_rep = 1
+
+    for (parent, plat), items in sorted(groups.items()):
+        items.sort(key=lambda x: (x[1]["count"], x[1]["rep"]))
+        mode = items[0][1]["mode"]
+        all_modes.add(mode)
+
+        # Truth set = organisms DETECTED at full depth (deepest dataset), i.e. TASS
+        # clears the cutoff. Composition (expected read fraction) is taken from their
+        # full-depth reads. Organisms present only as low-depth noise are excluded.
+        deepest_count = max(d["count"] for _, d in items)
+        deepest_snames = [sn for sn, d in items if d["count"] == deepest_count]
+        exp_reads_by_tid = defaultdict(float)
+        name_by_tid, cat_by_tid = {}, {}
+        for sn in deepest_snames:
+            for tid, ov in obs.get(sn, {}).items():
+                if not ov["passes"]:
+                    continue   # only organisms confidently detected at full depth
+                exp_reads_by_tid[tid] += ov["reads"]
+                name_by_tid[tid] = ov["name"]
+                cat_by_tid[tid] = ov["category"]
+        # Fallback: if the cutoff excluded everything at full depth, use all organisms
+        # present at full depth so the tab still shows the pool rather than nothing.
+        if not exp_reads_by_tid:
+            for sn in deepest_snames:
+                for tid, ov in obs.get(sn, {}).items():
+                    exp_reads_by_tid[tid] += ov["reads"]
+                    name_by_tid[tid] = ov["name"]
+                    cat_by_tid[tid] = ov["category"]
+        total_deep = sum(exp_reads_by_tid.values()) or 1.0
+        expected_fraction = {tid: v / total_deep for tid, v in exp_reads_by_tid.items()}
+        expected_set = set(expected_fraction)
+
+        # Per-dataset (count × rep) expected-vs-reality rows.
+        dataset_rows = []
+        for sname, d in items:
+            o = obs.get(sname, {})
+            observed_total = sum(v["reads"] for v in o.values())
+            detected_set = {tid for tid, v in o.items() if v["passes"]}
+            tp = len(expected_set & detected_set)
+            fp = len(detected_set - expected_set)
+            fn = len(expected_set - detected_set)
+            precision = tp / (tp + fp) if (tp + fp) else 0.0
+            recall = tp / (tp + fn) if (tp + fn) else 0.0
+            man = manifests.get(sname, {})
+            dataset_rows.append({
+                "id": sname,
+                "replicate": d["rep"],
+                "target_count": int(man.get("target_count") or d["count"]),
+                "actual_count": int(man["actual_count"]) if man.get("actual_count") else d["count"],
+                "total_master_reads": int(man["total_master_reads"]) if man.get("total_master_reads") else None,
+                "seed": man.get("seed"),
+                "observed_total_reads": observed_total,
+                "n_detected": len(detected_set),
+                "tp": tp, "fp": fp, "fn": fn,
+                "precision": round(precision, 4),
+                "recall": round(recall, 4),
+                "f1": round(_f1(precision, recall), 4),
+            })
+            all_counts.add(d["count"])
+            max_rep = max(max_rep, d["rep"])
+
+        # Per-count aggregation across replicates (for the LoD chart).
+        counts_sorted = sorted({d["count"] for _, d in items})
+        by_count = defaultdict(list)
+        for sname, d in items:
+            by_count[d["count"]].append(sname)
+
+        organisms = []
+        for tid, frac in sorted(expected_fraction.items(), key=lambda kv: -kv[1]):
+            series = []
+            lod = None
+            for c in counts_sorted:
+                reps = by_count[c]
+                obs_reads_vals, tass_vals, det_flags = [], [], []
+                for sn in reps:
+                    ov = obs.get(sn, {}).get(tid)
+                    obs_reads_vals.append(ov["reads"] if ov else 0)
+                    tass_vals.append(ov["tass"] if ov else 0.0)
+                    det_flags.append(bool(ov and ov["passes"]))
+                mean_obs = sum(obs_reads_vals) / len(obs_reads_vals)
+                mean_tass = sum(tass_vals) / len(tass_vals)
+                det_rate = sum(1 for f in det_flags if f) / len(det_flags)
+                detected = det_rate >= 0.5
+                series.append({
+                    "count": c,
+                    "expected_reads": round(frac * c, 1),
+                    "observed_reads": round(mean_obs, 1),
+                    "tass": round(mean_tass, 2),
+                    "detection_rate": round(det_rate, 3),
+                    "detected": detected,
+                    "n_reps": len(reps),
+                })
+                if detected and lod is None:
+                    lod = c
+            organisms.append({
+                "taxid": tid,
+                "name": name_by_tid.get(tid, "Unknown"),
+                "category": cat_by_tid.get(tid, "Unknown"),
+                "expected_fraction": round(frac, 6),
+                "lod_count": lod,
+                "series": series,
+            })
+
+        # Group pairing: use the first dataset's platform metadata.
+        _grp_paired = _is_paired(items[0][0], plat)
+        suite_groups.append({
+            "parent": parent,
+            "platform": plat,
+            "source": "background" if plat == "background" else "insilico",
+            "mode": mode,
+            "n_datasets": len(items),
+            "counts": counts_sorted,
+            # Unit that target/observed counts are expressed in. Paired-end
+            # subsamples read pairs; observed reads are normalised to pairs above.
+            "read_unit": "read pairs" if _grp_paired else "reads",
+            "datasets": dataset_rows,
+            "organisms": organisms,
+        })
+
+    # ── Parameters (explicit file overrides inferred) ─────────────────────────
+    inferred = {
+        "mode": "/".join(sorted(all_modes)) if all_modes else None,
+        "series_counts": sorted(all_counts),
+        "replicates": max_rep,
+        "detection_threshold": round(thr, 2),
+    }
+    params = dict(inferred)
+    params.update({k: v for k, v in _load_insilico_params(params_file).items() if v is not None})
+
+    return {
+        "enabled": True,
+        "params": params,
+        "groups": suite_groups,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1168,6 +1465,49 @@ def main():
 
     print(f"[make_report] Pipeline revision: {pipeline_revision or 'Not Specified or Local Build'}  commit: {pipeline_commit}")
 
+    # ── in-silico subsampling suite (spike-in / dilution-series) ──────────────
+    # The subsample datasets are kept OUT of the main heatmap/table (report.nf feeds
+    # only non-control samples to -i). Load their JSONs here on a SEPARATE track so
+    # the suite tab can be built without adding them to the cross-sample records.
+    insil_rows, insil_meta = [], {}
+    _insil_json = [f for f in (args.insilico_json or [])
+                   if f and f.strip().endswith(".json") and not os.path.basename(f).startswith("NO_FILE")]
+    if _insil_json:
+        try:
+            insil_rows, insil_meta, _ = load_json_inputs(
+                _insil_json, mintass=mintass, microbial_cats=microbial_cats
+            )
+            print(f"[make_report] Loaded {len(insil_rows)} in-silico subsample organism rows "
+                  f"from {len(_insil_json)} dataset JSON(s)")
+        except Exception as exc:
+            print(f"[make_report] WARNING: could not load --insilico_json inputs: {exc}",
+                  file=sys.stderr)
+    # Union with main rows is harmless — the suite only picks rows whose sample id
+    # matches the subsample pattern, so non-subsample rows are ignored. This also
+    # lets the suite work if a user passes subsample JSONs straight to -i.
+    _suite_rows = rows + insil_rows
+    _suite_meta = dict(sample_meta); _suite_meta.update(insil_meta)
+    # Detection cutoff for the suite: use the SAME recommended TASS threshold the
+    # report defaults to (best_cutoffs.subkey → key), so "detected" here matches
+    # what the user sees elsewhere. Fall back to the --mintass hard filter.
+    _suite_bc = _collect_best_cutoffs(_suite_meta) or {}
+    _suite_thr = ((_suite_bc.get("subkey") or {}).get("best_threshold")
+                  or (_suite_bc.get("key") or {}).get("best_threshold"))
+    if _suite_thr is None:
+        _suite_thr = mintass if (mintass and mintass > 1) else 0.0
+    insilico_suite = build_insilico_suite(
+        _suite_rows, _suite_meta,
+        params_file=args.insilico_params,
+        manifest_files=args.insilico_manifests,
+        detect_threshold=_suite_thr,
+    )
+    if insilico_suite:
+        _ng = len(insilico_suite["groups"])
+        _nd = sum(len(g["datasets"]) for g in insilico_suite["groups"])
+        print(f"[make_report] In-Silico suite: {_ng} group(s), {_nd} subsample dataset(s)")
+    else:
+        print("[make_report] In-Silico suite: no subsample datasets detected (tab hidden)")
+
     # ── collect best_cutoffs for UI pre-population ────────────────────────────
     best_cutoffs_payload = _collect_best_cutoffs(sample_meta)
     if best_cutoffs_payload:
@@ -1196,6 +1536,8 @@ def main():
         "report_generated_at":   datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_revision":     pipeline_revision,            # global branch/tag or "local"
         "pipeline_commit":       pipeline_commit,              # global commit hash or None
+        "insilico_suite":        insilico_suite,               # spike-in/dilution suite or None
+        "has_insilico_suite":    bool(insilico_suite),         # true when subsample datasets present
     })
 
     bootstrap_json = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(',', ':'))

@@ -60,6 +60,16 @@ process CREATE_COMPARISON_REPORT {
     // report either downloads the libs at build time (params.offline_report) or
     // leaves them as CDN links (default). Single input.
     path(offline_report_files)
+    // Optional per-dataset .paths.json files for the in-silico subsample datasets (from
+    // ALIGNMENT_PER_SAMPLE_INSILICO). Used ONLY to build the In-Silico suite tab — NOT added to
+    // the main multi-run heatmap/table. Pass a NO_FILE placeholder when --sim_subsample is off.
+    path(insilico_json)
+    // Optional *_subsample_manifest.tsv file(s) from SUBSAMPLE_INSILICO. Provide the In-Silico
+    // suite tab with authoritative target/actual read counts + master totals + seeds. NO_FILE to skip.
+    path(insilico_manifests)
+    // Optional insilico_params.json describing the subsampling run parameters (mode, series,
+    // replicates, seed, sim_nreads, iss_model, ...). Populates the suite tab's provenance panel. NO_FILE to skip.
+    path(insilico_params)
 
     output:
         path "versions.yml"           , emit: versions
@@ -152,12 +162,49 @@ process CREATE_COMPARISON_REPORT {
         offline_arg = "--offline_report"
     }
 
+    // ── In-silico subsampling suite feed ──────────────────────────────────────
+    // Subsample dataset JSON(s) — used only to build the suite tab (not the heatmap).
+    def insil_json_arg = ''
+    if (insilico_json) {
+        def ij_list = insilico_json instanceof List ? insilico_json : [insilico_json]
+        def seen_ij = [] as Set
+        def valid_ij = ij_list.findAll { f ->
+            f && !f.name.startsWith('NO_FILE') && !f.name.startsWith('~') &&
+            f.name.endsWith('.json') && seen_ij.add(f.name)
+        }
+        def ij_files = valid_ij.join(' ')
+        if (ij_files) {
+            insil_json_arg = "--insilico_json ${ij_files}"
+        }
+    }
+    // Subsample manifest(s): drop NO_FILE placeholders + Nextflow '~' rename copies,
+    // dedupe by basename.
+    def insil_manifest_arg = ''
+    if (insilico_manifests) {
+        def man_list = insilico_manifests instanceof List ? insilico_manifests : [insilico_manifests]
+        def seen_man = [] as Set
+        def valid_man = man_list.findAll { f ->
+            f && !f.name.startsWith('NO_FILE') && !f.name.startsWith('~') &&
+            f.name.endsWith('.tsv') && seen_man.add(f.name)
+        }
+        def man_files = valid_man.join(' ')
+        if (man_files) {
+            insil_manifest_arg = "--insilico_manifests ${man_files}"
+        }
+    }
+    // Params JSON (single file).
+    def insil_params_arg = ''
+    if (insilico_params && !insilico_params.name.startsWith('NO_FILE') && !insilico_params.name.startsWith('~')) {
+        insil_params_arg = "--insilico_params ${insilico_params}"
+    }
+
     """
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
         ${prot_arg} ${pident} ${mintass} \\
-        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg}
+        ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg} \\
+        ${insil_json_arg} ${insil_manifest_arg} ${insil_params_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

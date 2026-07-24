@@ -43,6 +43,7 @@ include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
 include { ASSEMBLY } from '../subworkflows/local/assembly'
 include { CLASSIFIER } from '../subworkflows/local/classifier'
 include { INSILICO } from '../subworkflows/local/insilico'
+include { BACKGROUND } from '../subworkflows/local/background'
 include { PROTEINS } from '../subworkflows/local/proteins'
 include { NOVELTY } from '../subworkflows/local/novelty'
 // Shared MicrobeRT clustering, lifted up to the workflow level so its output can feed BOTH
@@ -537,6 +538,49 @@ workflow TAXTRIAGE {
     ch_meta = Channel.empty()
     ch_reads = INPUT_CHECK.out.reads
     ch_meta = INPUT_CHECK.out.ch_meta
+
+    // ── Natural background dilution-series source ────────────────────────────
+    // A user-provided real FASTQ (single or paired) is added as a normal sample so
+    // it is host-filtered, classified and reference-prepped ONCE. It is later
+    // subsampled into a dilution series (see BACKGROUND) whose datasets share those
+    // references. Tagged with background_source=true so we can pick it out below.
+    if (params.background_reads) {
+        def bg_r2      = params.background_reads2 ?: null
+        def bg_single  = bg_r2 ? false : true
+        def bg_plat    = (params.background_platform ?: (bg_r2 ? 'ILLUMINA' : 'OXFORD')).toString().toUpperCase()
+        def bg_meta = [
+            id                 : (params.background_name ?: 'background'),
+            platform           : bg_plat,
+            fastq_1            : params.background_reads,
+            fastq_2            : bg_r2,
+            needscompressing   : null,
+            single_end         : bg_single,
+            aligner            : 'minimap2',
+            trim               : false,
+            type               : null,
+            directory          : null,
+            sequencing_summary : null,
+            is_fasta           : false,
+            minimap2_preset    : null,
+            control            : false,
+            negative           : null,
+            positive           : null,
+            control_type       : null,
+            run_id             : null,
+            latitude           : null,
+            longitude          : null,
+            depth              : null,
+            salinity           : null,
+            collection_time    : null,
+            location           : null,
+            background_source  : true,
+        ]
+        def bg_files = bg_single
+            ? [ file(params.background_reads, checkIfExists: true) ]
+            : [ file(params.background_reads, checkIfExists: true), file(bg_r2, checkIfExists: true) ]
+        ch_reads = ch_reads.mix( Channel.of([ bg_meta, bg_files ]) )
+        log.info "BACKGROUND: added '${bg_meta.id}' (${bg_plat}, ${bg_single ? 'single-end' : 'paired-end'}) as a dilution-series source"
+    }
     // ── Run-level metadata: --meta CSV ───────────────────────────────────────
     // Supports two formats:
     //   a) CSV with 'sample' column → each row maps to one sample by name
@@ -798,6 +842,7 @@ workflow TAXTRIAGE {
     // split out, processed through ALIGNMENT_PER_SAMPLE, and their JSONs are used as insilico
     // controls for the real (non-control) samples.
     ch_insilico_reads = Channel.empty()
+    ch_insilico_manifests = Channel.empty()
     if (params.generate_iss || params.generate_nanosim) {
         // Extract merged_taxid map from REFERENCE_PREP prepped files (non-controls only)
         ch_sim_merged_taxid = ch_preppedfiles
@@ -820,16 +865,32 @@ workflow TAXTRIAGE {
             ch_sim_fastas
         )
         ch_versions = ch_versions.mix(INSILICO.out.versions)
-        ch_insilico_reads = INSILICO.out.insilico_reads
+        ch_insilico_reads = ch_insilico_reads.mix(INSILICO.out.insilico_reads)
+        ch_insilico_manifests = ch_insilico_manifests.mix(INSILICO.out.subsample_manifests)
+    }
 
-        // ── Inject insilico reads as new samples into the pipeline channels ──
-        // Mix insilico reads into ch_reads so they flow through ALIGNMENT
+    // ── Natural background dilution series ───────────────────────────────────
+    // Subsample the classified background sample's cleaned reads into the same
+    // dilution series. Datasets are tagged insilico-style (parent_id = background
+    // sample id) so they reuse the injection path below and clone the background's
+    // shared references.
+    if (params.background_reads) {
+        ch_bg_master = ch_reads.filter { it[0].background_source }
+        BACKGROUND(ch_bg_master)
+        ch_versions = ch_versions.mix(BACKGROUND.out.versions)
+        ch_insilico_reads = ch_insilico_reads.mix(BACKGROUND.out.background_reads)
+        ch_insilico_manifests = ch_insilico_manifests.mix(BACKGROUND.out.manifests)
+    }
+
+    // ── Inject subsample datasets (synthetic in-silico AND/OR natural background)
+    //    as new samples into the pipeline channels ────────────────────────────
+    if (params.generate_iss || params.generate_nanosim || params.background_reads) {
+        // Mix the derived datasets into ch_reads so they flow through ALIGNMENT.
         ch_reads = ch_reads.mix(ch_insilico_reads)
 
-        // Create ch_preppedfiles entries for insilico samples by cloning the
-        // parent sample's reference prep data with the insilico meta.
-        // INSILICO.out.insilico_reads has tuple(insilico_meta, reads) where
-        // insilico_meta.parent_id == original sample id.
+        // Clone each derived dataset's reference-prep data from its parent sample
+        // (parent_id). Works for both synthetic (parent = real sample) and
+        // background (parent = the background source) datasets.
         ch_insilico_prepfiles = ch_insilico_reads
             .map { meta, reads -> [meta.parent_id, meta] }
             .combine(
@@ -841,19 +902,19 @@ workflow TAXTRIAGE {
             }
         ch_preppedfiles = ch_preppedfiles.mix(ch_insilico_prepfiles)
 
-        // Update ch_mapped_assemblies to include insilico entries
+        // Update ch_mapped_assemblies to include the derived-dataset entries
         ch_mapped_assemblies = ch_mapped_assemblies.mix(
             ch_insilico_prepfiles.map { meta, fastas, map, gcfids -> [meta, map] }
         )
 
-        // Create placeholder ch_kraken2_report entries for insilico samples
+        // Placeholder ch_kraken2_report entries (derived datasets skip classification)
         ch_kraken2_report = ch_kraken2_report.mix(
             ch_insilico_reads.map { meta, reads ->
                 [meta, file("$projectDir/assets/NO_FILE")]
             }
         )
 
-        // Add insilico entries to ch_fastas (REFERENCE_PREP.out.fastas)
+        // Add derived-dataset entries to ch_fastas (REFERENCE_PREP.out.fastas)
         ch_insilico_fastas = ch_insilico_reads
             .map { meta, reads -> [meta.parent_id, meta] }
             .combine(
@@ -895,8 +956,8 @@ workflow TAXTRIAGE {
         ch_bedfiles = REFERENCE_PREP.out.ch_bedfiles
         ch_fastas = REFERENCE_PREP.out.fastas
 
-        // Add insilico fastas if simulation was run
-        if (params.generate_iss || params.generate_nanosim) {
+        // Add insilico/background dataset fastas if subsampling was run
+        if (params.generate_iss || params.generate_nanosim || params.background_reads) {
             ch_fastas = ch_fastas.mix(ch_insilico_fastas)
         }
 
@@ -999,9 +1060,9 @@ workflow TAXTRIAGE {
             ch_novelty_candidates = NOVELTY.out.candidates    // [meta, *.novelty.candidates.tsv]
         }
 
-        // Add placeholder assembly analysis entries for insilico samples so
-        // they are not filtered out by the inner join in input_alignment_files
-        if (params.generate_iss || params.generate_nanosim) {
+        // Add placeholder assembly analysis entries for insilico/background datasets
+        // so they are not filtered out by the inner join in input_alignment_files
+        if (params.generate_iss || params.generate_nanosim || params.background_reads) {
             ch_assembly_analysis = ch_assembly_analysis.mix(
                 ch_insilico_reads.map { meta, reads ->
                     [meta, file("$projectDir/assets/NO_FILE2")]
@@ -1045,7 +1106,8 @@ workflow TAXTRIAGE {
                 ch_microbert_clusters,  // [meta, *.tsv]          shared MicrobeRT cluster membership
                 ch_novelty_summary,     // [meta, *.novelty.summary.tsv]
                 ch_novelty_candidates,  // [meta, *.novelty.candidates.tsv]
-                ch_annotate_report_tsv  // [meta, *.annotate_report.tsv] de-novo VF/AMR for unaligned samples
+                ch_annotate_report_tsv, // [meta, *.annotate_report.tsv] de-novo VF/AMR for unaligned samples
+                ch_insilico_manifests   // *_subsample_manifest.tsv (empty unless --sim_subsample)
             )
             ch_multiqc_files = ch_multiqc_files.mix(REPORT.out.merged_report_txt.collect { it }.ifEmpty([]))
         }

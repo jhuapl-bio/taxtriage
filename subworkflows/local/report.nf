@@ -43,6 +43,7 @@ workflow REPORT {
         ch_novelty_summary     // [meta, *.novelty.summary.tsv]    (empty unless --novelty)
         ch_novelty_candidates  // [meta, *.novelty.candidates.tsv] (empty unless --novelty)
         ch_annotate_reports    // [meta, *.annotate_report.tsv]    (de-novo VF/AMR; NO_FILE unless --annotate)
+        ch_insilico_manifests  // [*_subsample_manifest.tsv]       (empty unless --sim_subsample)
     main:
         ch_pathogens_report = Channel.empty()
         ch_pathognes_list = Channel.empty()
@@ -334,6 +335,40 @@ workflow REPORT {
                 ? Channel.fromPath(params.offline_report_files, checkIfExists: true)
                 : Channel.value(file("$projectDir/assets/NO_FILE_embedding"))
 
+            // ── In-silico subsampling suite feed ─────────────────────────────────
+            // The subsample datasets are excluded from ch_comparison_jsons above (to
+            // keep the multi-run heatmap clean), so feed their JSONs on a dedicated
+            // channel used ONLY to build the In-Silico suite tab.
+            ch_insilico_suite_jsons = ALIGNMENT_PER_SAMPLE_INSILICO.out.txt
+                .map { meta, json -> json }
+                .collect()
+                .ifEmpty { [file("$projectDir/assets/NO_FILE_insilico_json")] }
+
+            // Collect subsample manifests (authoritative counts) and serialise the
+            // subsampling run parameters to a JSON the report reads for its
+            // provenance panel. Both fall back to NO_FILE when --sim_subsample is off.
+            ch_insilico_manifest_files = ch_insilico_manifests
+                .collect()
+                .ifEmpty { [file("$projectDir/assets/NO_FILE_insilico_manifest")] }
+
+            ch_insilico_params_file = params.sim_subsample
+                ? Channel.value(
+                    groovy.json.JsonOutput.toJson([
+                        mode:            params.sim_subsample_mode,
+                        series_counts:   params.sim_series_counts,
+                        replicates:      params.sim_series_replicates,
+                        seed:            params.sim_subsample_seed,
+                        keep_fastq:      params.sim_keep_subsampled_fastq,
+                        sim_nreads:      params.sim_nreads,
+                        iss_model:       params.iss_model,
+                        iss_mode:        params.iss_mode,
+                        sim_ont_divisor: params.sim_ont_divisor,
+                        abundance_source: params.sim_abundance ? 'custom (--sim_abundance)'
+                                          : (params.sim_random_abundance ? 'random (Dirichlet)' : 'kraken2 report'),
+                    ])
+                  ).collectFile(name: 'insilico_params.json')
+                : Channel.value(file("$projectDir/assets/NO_FILE_insilico_params"))
+
             CREATE_COMPARISON_REPORT(
                 ch_comparison_jsons,
                 ch_template,
@@ -343,7 +378,10 @@ workflow REPORT {
                 pathogens_list.first(),
                 ch_vfamr_taxids.first(),
                 ch_annotate_report_files,
-                ch_offline_report_files
+                ch_offline_report_files,
+                ch_insilico_suite_jsons,
+                ch_insilico_manifest_files,
+                ch_insilico_params_file
             )
 
             ch_pathogens_report = ORGANISM_MERGE_REPORT.out.report

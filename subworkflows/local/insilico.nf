@@ -81,6 +81,7 @@ workflow INSILICO {
     main:
     ch_versions = Channel.empty()
     ch_insilico_reads = Channel.empty()
+    ch_subsample_manifests = Channel.empty()
 
     ch_empty_file = file("$projectDir/assets/NO_FILE")
 
@@ -213,9 +214,13 @@ workflow INSILICO {
 
         // Only the derived subsamples flow downstream; the master is the source pool.
         ch_insilico_reads = regroupSubsampled(SUBSAMPLE_INSILICO.out.reads)
+
+        // Manifests (per parent×platform) carry authoritative counts for the report suite tab.
+        ch_subsample_manifests = SUBSAMPLE_INSILICO.out.manifest
     }
 
     emit:
-    insilico_reads = ch_insilico_reads   // tuple(insilico_meta, reads) — new samples for ALIGNMENT
+    insilico_reads = ch_insilico_reads          // tuple(insilico_meta, reads) — new samples for ALIGNMENT
+    subsample_manifests = ch_subsample_manifests // *_subsample_manifest.tsv — authoritative counts for report
     versions       = ch_versions
 }

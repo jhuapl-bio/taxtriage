@@ -3398,6 +3398,9 @@ function _drawTab(tab) {
     case "novelty":
       if (HAS_NOVELTY) drawNovelty();
       break;
+    case "insilico":
+      if (typeof HAS_INSILICO !== "undefined" && HAS_INSILICO && window.drawInsilico) window.drawInsilico();
+      break;
     case "table":
       populateTable();
       break;

@@ -20,6 +20,12 @@ let HAS_NOVELTY = BOOT.has_novelty || false;
 const PATHO = BOOT.pathogens || { by_taxid: {}, by_name: {}, by_genus: {} };
 const HAS_PATHO = !!BOOT.has_pathogens;
 
+// In-silico subsampling suite (spike-in / dilution-series). Present only when the
+// run enabled --sim_subsample. Shape: {enabled, params:{...}, groups:[{parent,
+// platform, mode, counts, datasets:[...], organisms:[{series, lod_count, ...}]}]}.
+const INSILICO_SUITE = BOOT.insilico_suite || null;
+let HAS_INSILICO = !!(BOOT.has_insilico_suite && INSILICO_SUITE && INSILICO_SUITE.enabled);
+
 // Which backend produced the novelty results (mmseqs2 | kaiju | bracken). Prefer the
 // top-level field; fall back to any sample's summary.classifier for older feeds.
 function _noveltyClassifier() {
