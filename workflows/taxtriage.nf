@@ -501,12 +501,26 @@ workflow TAXTRIAGE {
                         "opts.k2d / taxo.k2d and database*mers.kmer_distrib. To auto-download " +
                         "instead, pass a bare alias (k2_standard, viral, pluspf, ...)."
             } else {
-                def k2_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viral' : novelty_db_in
-                println "Novelty (bracken): db '${k2_name}' not local; will download a " +
-                        "prebuilt Kraken2+Bracken db (cached at ${params.novelty_kraken2_db_cache})."
-                KRAKEN2_DOWNLOADDB(k2_name)
-                ch_versions = ch_versions.mix(KRAKEN2_DOWNLOADDB.out.versions)
-                ch_novelty_db = KRAKEN2_DOWNLOADDB.out.db
+                // No explicit --novelty_db override: reuse the main --db kraken2 database
+                // (ch_db, resolved above -- whether it was a local path or an alias DOWNLOAD_DB
+                // fetched) instead of pulling a second db just for bracken. Genome-idx tarballs
+                // bundle both the kraken2 db and the bracken kmer_distrib files, so the same db
+                // covers both. Falls back to downloading 'viral' only when no --db is set at all.
+                def use_main_db = (!novelty_db_in || novelty_db_in == 'Kalamari') &&
+                                   params.db && !params.skip_kraken2
+                if (use_main_db) {
+                    println "Novelty (bracken): reusing the main --db kraken2 database " +
+                            "(${params.db}) for bracken. Pass --novelty_db to use a different " +
+                            "db instead."
+                    ch_novelty_db = ch_db
+                } else {
+                    def k2_name = (!novelty_db_in || novelty_db_in == 'Kalamari') ? 'viral' : novelty_db_in
+                    println "Novelty (bracken): db '${k2_name}' not local; will download a " +
+                            "prebuilt Kraken2+Bracken db (cached at ${params.novelty_kraken2_db_cache})."
+                    KRAKEN2_DOWNLOADDB(k2_name)
+                    ch_versions = ch_versions.mix(KRAKEN2_DOWNLOADDB.out.versions)
+                    ch_novelty_db = KRAKEN2_DOWNLOADDB.out.db
+                }
             }
         }
     }

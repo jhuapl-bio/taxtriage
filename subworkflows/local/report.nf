@@ -288,14 +288,23 @@ workflow REPORT {
             //    report gets a NO_FILE placeholder and the panel stays hidden.
             //    A SINGLE channel carries all novelty files (incl. all.novelty.json) so the
             //    combined json is staged once -> no input-file-name collision in the report.
-            ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE"))
+            //    Its own placeholder (not the generic assets/NO_FILE) so it can never
+            //    collide with another path input of CREATE_COMPARISON_REPORT; every other
+            //    optional input there already follows this convention.
+            ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE_novelty"))
             if (params.novelty) {
+                // NOTE: summaries and candidates are TWO separate `path` inputs on
+                // NOVELTY_COLLECT, so they stage into the SAME work directory. They must
+                // therefore use DISTINCT placeholder filenames -- if both fell back to the
+                // generic assets/NO_FILE (which happens whenever novelty is enabled but
+                // yields nothing, e.g. no sample produced de novo contigs), Nextflow aborts
+                // with "input file name collision ... NO_FILE".
                 ch_nov_summaries = ch_novelty_summary
                     .map { meta, f -> f }.collect()
-                    .ifEmpty { file("$projectDir/assets/NO_FILE") }
+                    .ifEmpty { file("$projectDir/assets/NO_FILE_novelty_summaries") }
                 ch_nov_cands = ch_novelty_candidates
                     .map { meta, f -> f }.collect()
-                    .ifEmpty { file("$projectDir/assets/NO_FILE") }
+                    .ifEmpty { file("$projectDir/assets/NO_FILE_novelty_candidates") }
 
                 NOVELTY_COLLECT( ch_nov_summaries, ch_nov_cands )
 

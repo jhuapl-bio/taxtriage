@@ -97,6 +97,10 @@ process CREATE_COMPARISON_REPORT {
     }
     def pident = params.pident ? " --pident ${params.pident} " : " "
     def mintass = params.mintass ? " --mintass ${params.mintass} " : " "
+    // Propagate the same --min_conf used upstream (match_paths.py/create_report.py)
+    // so the HTML report's global AND per-sample-type sliders default to it too,
+    // instead of the auto-computed best_cutoffs recommendation.
+    def min_conf_arg = params.min_conf != null ? " --min_conf ${params.min_conf} " : " "
 
     // ── Novelty panel feed + download links ───────────────────────────────────
     // One staged set of files: pick the combined all.novelty.json as the -n feed and expose the
@@ -156,7 +160,7 @@ process CREATE_COMPARISON_REPORT {
     make_report.py -i ${json_inputs} \\
         -t ${template} \\
         -o ${output_html} \\
-        ${prot_arg} ${pident} ${mintass} \\
+        ${prot_arg} ${pident} ${mintass} ${min_conf_arg} \\
         ${nov_arg} ${nov_dl_arg} ${path_arg} ${vfamr_tax_arg} ${annot_arg} ${offline_arg}
 
     cat <<-END_VERSIONS > versions.yml

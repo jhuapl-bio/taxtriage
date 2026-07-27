@@ -78,6 +78,14 @@ def parse_args(argv=None):
              "so you can use that to set a more conservative default while still allowing users to see all organisms if they wish."
     )
     parser.add_argument(
+        "-c", "--min_conf", default=None, type=float,
+        help="Explicit TASS confidence cutoff (0-100). When set, this overrides the "
+             "auto-computed best_cutoffs for every sample, so the global filter slider "
+             "AND every per-sample-type slider in the UI default to this value instead "
+             "of the thresholds-JSON-derived recommendation. Does not hard-filter data "
+             "(use --mintass for that) -- it only changes the sliders' starting position."
+    )
+    parser.add_argument(
         "-t", "--template",
         metavar="TEMPLATE", default="heatmap.html",
         help="Input HTML template file (default: heatmap.html).",
@@ -1167,6 +1175,23 @@ def main():
             pipeline_commit = "local"
 
     print(f"[make_report] Pipeline revision: {pipeline_revision or 'Not Specified or Local Build'}  commit: {pipeline_commit}")
+
+    # ── explicit --min_conf override ──────────────────────────────────────────
+    # If the user passed --min_conf, stamp it into every sample's best_cutoffs
+    # (all granularities) so BOTH the global filter slider (which reads the
+    # aggregated best_cutoffs below) AND the per-sample-type sliders (which read
+    # each sample's own best_cutoffs directly, see _defaultTassForType in
+    # 03_sample_sidebar.js) default to this value instead of the auto-computed
+    # thresholds-JSON recommendation.
+    if args.min_conf is not None:
+        for smeta in sample_meta.values():
+            smeta["best_cutoffs"] = {
+                level: {"best_threshold": args.min_conf}
+                for level in ("key", "subkey", "toplevelkey")
+            }
+            smeta["best_cutoffs_source"] = "user-specified (--min_conf)"
+            smeta["min_conf_applied"] = args.min_conf
+        print(f"[make_report] --min_conf={args.min_conf} overriding all sample/type slider defaults")
 
     # ── collect best_cutoffs for UI pre-population ────────────────────────────
     best_cutoffs_payload = _collect_best_cutoffs(sample_meta)
