@@ -11,7 +11,12 @@
 let _redrawTimer = null;
 function _redrawDebounced() {
   clearTimeout(_redrawTimer);
-  _redrawTimer = setTimeout(redraw, 180);
+  _redrawTimer = setTimeout(() => {
+    // Surfaces the "Calculating…" pill when a redraw is slow enough to notice
+    // (large runs, specimen merge on). Fast redraws run inline, unchanged.
+    if (typeof ttBusyRun === "function") ttBusyRun("Applying filters…", redraw);
+    else redraw();
+  }, 180);
 }
 ["filter-text", "filter-min"].forEach((id) => document.getElementById(id).addEventListener("input", _redrawDebounced));
 

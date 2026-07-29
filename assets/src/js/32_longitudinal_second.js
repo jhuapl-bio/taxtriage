@@ -716,6 +716,10 @@ function _ttCommitMetaCell(td) {
     if (typeof SAMPLE_META !== "undefined" && SAMPLE_META) {
       SAMPLE_META[rec.sample_name] = SAMPLE_META[rec.sample_name] || { sample_name: rec.sample_name };
       SAMPLE_META[rec.sample_name][key] = rec[key];
+      // Editing a specimen cell in the metadata table regroups the run, so the
+      // specimen caches must be dropped (the entry count is unchanged, which a
+      // size-only signature would not notice).
+      if (typeof _noteSampleMetaChanged === "function") _noteSampleMetaChanged();
     }
   } catch (e) {}
   // When lat/lon changes and both coordinates are now valid, clear the
@@ -753,6 +757,13 @@ function _wireRunMetaToolbar() {
   const addRowsBtn = document.getElementById("runmeta-add-rows");
   const exportBtn = document.getElementById("runmeta-export-xlsx");
   const fillGeoBtn = document.getElementById("runmeta-fill-geo");
+  // Opt-in "only filtered samples" scoping for this table.
+  const scopeCb = document.getElementById("runmeta-filter-scope");
+  if (scopeCb)
+    scopeCb.addEventListener("change", () => {
+      if (typeof ttBusyRun === "function") ttBusyRun("Filtering metadata…", _buildRunMetaTable);
+      else _buildRunMetaTable();
+    });
   if (fillGeoBtn)
     fillGeoBtn.addEventListener("click", () => {
       if (typeof _ttAutofillGeoFromCoords === "function") _ttAutofillGeoFromCoords({ notify: true });
@@ -910,9 +921,25 @@ function _buildRunMetaTable() {
     });
   });
 
-  tbody.innerHTML = RUN_META.map((rec, i) => {
+  // ── Optional filter scoping ────────────────────────────────────────
+  // Off by default (this table is the run inventory). When on, keep only the
+  // samples surviving the sidebar filters. CRITICAL: the original RUN_META
+  // index travels with each row — the editable cells address records by index
+  // via data-meta-idx, so renumbering them would write edits into the wrong
+  // record.
+  const _scopeEl = document.getElementById("runmeta-filter-scope");
+  const _scoped = !!(_scopeEl && _scopeEl.checked);
+  const _matched = _scoped && typeof _ttFilterMatchedKeys === "function" ? _ttFilterMatchedKeys() : null;
+  const _visible = RUN_META.map((rec, i) => ({ rec, i })).filter(
+    ({ rec }) => !_matched || (typeof _ttSampleMatchesFilter === "function" && _ttSampleMatchesFilter(rec.sample_name, _matched)),
+  );
+  const _cntEl = document.getElementById("runmeta-filter-scope-count");
+  if (_cntEl) _cntEl.textContent = _scoped ? `(${_visible.length} of ${RUN_META.length})` : "";
+
+  let _rowN = 0; // display position, for zebra striping (RUN_META index may skip)
+  tbody.innerHTML = _visible.map(({ rec, i }) => {
     const isHighlighted = rec.sample_name === _runmetaHighlightSample;
-    const bg = isHighlighted ? "#fff9c4" : i % 2 === 0 ? "#f0f6ff" : "#fff";
+    const bg = isHighlighted ? "#fff9c4" : _rowN++ % 2 === 0 ? "#f0f6ff" : "#fff";
     const border = isHighlighted ? "2px solid #f9a825" : "none";
     const cells = activeCols
       .map((k) => {

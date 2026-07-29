@@ -12,22 +12,84 @@
        -     State variables and drag listeners are declared earlier (before
        -     redraw()) to avoid the `let` Temporal Dead Zone.
 ═══════════════════════════════════════════════════════════════════════════ */
-function _svgDot(color, selected) {
-  const r = selected ? 11 : 8;
-  const ring = selected
+/* `dimmed` renders a sample that does not match the active filters: smaller,
+   faint grey, no shadow. It stays on the map on purpose — seeing that the four
+   RSV-A hits sit in one place is only meaningful next to the samples that had
+   no hit, so hiding the non-matches would throw away the denominator. */
+function _svgDot(color, selected, dimmed) {
+  const r = dimmed ? 5 : selected ? 11 : 8;
+  const fill = dimmed ? "#b9c3cd" : color;
+  const ring = selected && !dimmed
     ? `<circle cx="${r + 5}" cy="${r + 5}" r="${r + 3}" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
     : "";
   return L.divIcon({
     className: "",
-    html: `<svg xmlns="http://www.w3.org/2000/svg" width="${(r + 5) * 2}" height="${(r + 5) * 2}">
-            <circle cx="${r + 5}" cy="${r + 5}" r="${r}" fill="${color}"
-              stroke="rgba(255,255,255,.9)" stroke-width="${selected ? 2.5 : 1.5}"
-              filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"/>
+    html: `<svg xmlns="http://www.w3.org/2000/svg" width="${(r + 5) * 2}" height="${(r + 5) * 2}"${
+      dimmed ? ' opacity="0.45"' : ""
+    }>
+            <circle cx="${r + 5}" cy="${r + 5}" r="${r}" fill="${fill}"
+              stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${
+                dimmed ? 1 : selected ? 2.5 : 1.5
+              }"
+              ${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'}/>
             ${ring}
           </svg>`,
     iconSize: [(r + 5) * 2, (r + 5) * 2],
     iconAnchor: [r + 5, r + 5],
   });
+}
+
+/* ── Filter scoping ──────────────────────────────────────────────────────
+   The map used to read RUN_META directly, so sidebar filters never reached it.
+   When _mapFilterScoped is on (default) a sample whose detections are all
+   filtered out is drawn dimmed. Only applied while a filter is actually
+   narrowing something — otherwise every marker would trivially "match". */
+let _mapFilterScoped = true;
+let _mapMatchedKeys = null;
+
+function _mapRefreshMatchSet() {
+  const cb = document.getElementById("map-filter-scope");
+  if (cb) _mapFilterScoped = !!cb.checked;
+  const active = typeof _ttAnyFilterActive === "function" && _ttAnyFilterActive();
+  _mapMatchedKeys =
+    _mapFilterScoped && active && typeof _ttFilterMatchedKeys === "function" ? _ttFilterMatchedKeys() : null;
+  // Small "(4 of 164 samples)" readout beside the toggle: without it a fully
+  // dimmed map is ambiguous between "nothing matched" and "scoping is off".
+  const out = document.getElementById("map-filter-scope-count");
+  if (out) {
+    if (!_mapMatchedKeys) {
+      out.textContent = _mapFilterScoped ? "(no active filter)" : "";
+    } else {
+      const geo = (typeof RUN_META !== "undefined" ? RUN_META : []).filter(
+        (r) => r.latitude != null && r.longitude != null,
+      );
+      const hit = geo.filter((r) => _ttSampleMatchesFilter(r.sample_name, _mapMatchedKeys)).length;
+      out.textContent = `(${hit} of ${geo.length} mapped sample(s))`;
+    }
+  }
+  return _mapMatchedKeys;
+}
+
+/* Wire the map's filter-scope checkbox once. Re-icons the existing markers
+   rather than rebuilding the layer, so the current zoom / selection survive. */
+function _wireMapFilterScope() {
+  const cb = document.getElementById("map-filter-scope");
+  if (!cb || cb._wired) return;
+  cb._wired = true;
+  cb.addEventListener("change", () => {
+    _mapFilterScoped = !!cb.checked;
+    _refreshMapMarkerColors();
+  });
+}
+
+/** True when this marker's sample(s) fall outside the active filters. A merged
+ *  specimen counts as matching if ANY of its member libraries does. */
+function _mapIsDimmed(sn, members) {
+  if (!_mapMatchedKeys) return false;
+  const list = Array.isArray(members) && members.length ? members : [sn];
+  if (typeof _ttSampleMatchesFilter !== "function") return false;
+  if (_ttSampleMatchesFilter(sn, _mapMatchedKeys)) return false;
+  return !list.some((m) => _ttSampleMatchesFilter(m, _mapMatchedKeys));
 }
 
 /* ── Pie-chart marker for co-located samples ──────────────────────── */
@@ -70,12 +132,28 @@ function _clusterIcon(cluster) {
   const n = cluster.getChildCount();
   const size = n < 10 ? 34 : n < 100 ? 42 : 50;
   const fs = n < 100 ? 14 : 12;
+  // With a filter active, a bubble reading just "40" hides the thing you are
+  // looking for. Show "4/40" and grey out bubbles with no match, so a cluster
+  // containing the hits is identifiable without zooming in first.
+  let label = String(n);
+  let bg = "rgba(21,101,192,.88)";
+  let title = `${n} sample(s)`;
+  if (_mapMatchedKeys) {
+    let hit = 0;
+    const kids = typeof cluster.getAllChildMarkers === "function" ? cluster.getAllChildMarkers() : [];
+    kids.forEach((m) => {
+      if (m && !m.ttDimmed) hit++;
+    });
+    label = `${hit}/${n}`;
+    bg = hit ? "rgba(21,101,192,.92)" : "rgba(150,163,176,.55)";
+    title = `${hit} of ${n} sample(s) match the active filters`;
+  }
   const html =
-    `<div style="width:${size}px;height:${size}px;border-radius:50%;` +
-    `background:rgba(21,101,192,.88);border:2px solid rgba(255,255,255,.95);` +
+    `<div title="${title}" style="width:${size}px;height:${size}px;border-radius:50%;` +
+    `background:${bg};border:2px solid rgba(255,255,255,.95);` +
     `box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;` +
     `justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;` +
-    `font-family:system-ui,sans-serif">${n}</div>`;
+    `font-family:system-ui,sans-serif">${label}</div>`;
   return L.divIcon({ html, className: "tt-cluster", iconSize: [size, size] });
 }
 
@@ -136,6 +214,8 @@ function _addMapClusterControl() {
    layer. Shared by _doInitMap and _rebuildMapMarkers. Returns lat/lon
    bounds for fitting the view. */
 function _addSampleMarkers() {
+  _wireMapFilterScope();
+  _mapRefreshMatchSet();
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
   const mergeOn =
     typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function";
@@ -182,8 +262,11 @@ function _addSampleMarkers() {
     const sn = rec.sample_name;
     const color = sampleColors[sn] || "#1565C0";
     const selected = _selectedSample === sn;
-    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected) });
+    const members0 = Array.isArray(rec.__mergedMembers) ? rec.__mergedMembers : [sn];
+    const dimmed0 = _mapIsDimmed(sn, members0);
+    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected, dimmed0) });
     mk.ttRec = rec; // used to list a cluster's samples in "list" mode
+    mk.ttDimmed = dimmed0; // read by _clusterIcon to show the matching share
     mk.on("click", () => {
       // Deselect any previously-selected dot, select this one, open its panel
       _selectedGroup = null;
@@ -201,6 +284,7 @@ function _addSampleMarkers() {
 
 function _refreshMapMarkerColors() {
   if (!_markerObjects || !_leafletMap || !_markerLayer) return;
+  _mapRefreshMatchSet();
   Object.entries(_markerObjects).forEach(([sn, obj]) => {
     if (!obj.marker) return;
     const members = Array.isArray(obj.members) && obj.members.length ? obj.members : [sn];
@@ -211,7 +295,9 @@ function _refreshMapMarkerColors() {
     if (!_markerLayer.hasLayer(obj.marker)) _markerLayer.addLayer(obj.marker);
     const color = sampleColors[sn] || obj.color || "#1565C0";
     obj.color = color;
-    obj.marker.setIcon(_svgDot(color, _selectedSample === sn));
+    const dimmed = _mapIsDimmed(sn, members);
+    obj.marker.ttDimmed = dimmed;
+    obj.marker.setIcon(_svgDot(color, _selectedSample === sn, dimmed));
   });
   // Recompute cluster bubbles (counts / membership may have changed)
   if (typeof _markerLayer.refreshClusters === "function") _markerLayer.refreshClusters();

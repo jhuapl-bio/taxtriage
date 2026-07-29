@@ -4019,3 +4019,170 @@ textarea:focus-visible,
     font-size: 1em;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sticky table headers — global
+   -------------------------------------------------------------------
+   Long tables keep their header row pinned while the body scrolls, so
+   reading row 200 never means scrolling back up for column names.
+
+   Header cells were already `position: sticky` (see the base `th` rule),
+   but two things kept it from working in practice:
+
+   1. `border-collapse: collapse` drops a sticky cell's border — the
+      border belongs to the collapsed grid and scrolls away with it. The
+      bottom rule is redrawn here as an inset box-shadow.
+
+   2. Several wrappers carried `overflow: auto` with NO height bound.
+      That makes the wrapper a scroll container which itself never
+      scrolls — the page scrolls instead, and the header leaves with it.
+      Bounding their height is what actually makes sticky bite.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --tt-table-max: 72vh;
+}
+
+/* 1 ─ Header cells. The base `th` rule supplies position/top/background;
+       these add stacking order and the replacement bottom rule. Component
+       rules that set their own `background` still win on specificity, so
+       per-table palettes are untouched. */
+thead th,
+tbody > tr:first-child > th {
+  z-index: 5;
+  box-shadow: inset 0 -1px 0 #cfd8e3;
+}
+/* A sticky first column must sit under the header, not over its corner. */
+td.cmp-org,
+td.sticky-col {
+  z-index: 1;
+}
+th.cmp-org-h,
+th.sticky-col {
+  z-index: 6;
+}
+/* Tooltip / popover tables are small and never scroll — leave them flat. */
+#tooltip th,
+#nov-cell-tip th {
+  position: static;
+  box-shadow: none;
+}
+
+/* 2 ─ Bound the unbounded scroll containers so they scroll internally. */
+#tbl-wrap,
+#runmeta-table-wrap,
+#summary-top-wrap,
+#summary-annot-genus {
+  max-height: var(--tt-table-max);
+  overflow: auto;
+}
+/* #compare-body already flexes inside a bounded column; it just needs the
+   min-height reset so the flex item is allowed to shrink and scroll. */
+#compare-body {
+  min-height: 0;
+}
+/* Generic opt-in for JS-built table wrappers. */
+.tt-scroll-table {
+  overflow: auto;
+  max-height: var(--tt-table-max);
+}
+/* Inside a modal the shell already caps height — take the leftover space
+   instead of a viewport fraction. */
+.tt-scroll-table.tt-scroll-modal {
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 3 ─ Print / PDF export: nothing scrolls, so unstick everything (a sticky
+       header would overprint the first rows) and repeat <thead> per page. */
+@media print {
+  thead th,
+  tbody > tr:first-child > th,
+  th {
+    position: static !important;
+    box-shadow: none !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  #tbl-wrap,
+  #runmeta-table-wrap,
+  #summary-top-wrap,
+  #summary-annot-genus,
+  .tt-scroll-table {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+body.report-pdf-printing #tbl-wrap,
+body.report-pdf-printing #runmeta-table-wrap,
+body.report-pdf-printing #summary-top-wrap,
+body.report-pdf-printing #summary-annot-genus,
+body.report-pdf-printing .tt-scroll-table {
+  max-height: none !important;
+  overflow: visible !important;
+}
+body.report-pdf-printing th {
+  position: static !important;
+  box-shadow: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   "Calculating…" pill — shown while a heavy recompute blocks the UI
+   (see ttBusyRun in 02_utilities.js). Deliberately small and
+   non-blocking: the page stays readable, it just says work is running.
+   ═══════════════════════════════════════════════════════════════════ */
+#tt-busy {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 11px;
+  border-radius: 999px;
+  background: rgba(13, 40, 66, 0.94);
+  color: #eaf2fb;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 4px 16px rgba(8, 18, 32, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+#tt-busy.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+#tt-busy .tt-busy-ring {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #7fc4ff;
+  border-radius: 50%;
+  animation: tt-spin 0.75s linear infinite;
+  flex: 0 0 auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  #tt-busy .tt-busy-ring {
+    animation-duration: 2s;
+  }
+  #tt-busy {
+    transition: none;
+  }
+}
+/* Never print the indicator. */
+@media print {
+  #tt-busy {
+    display: none !important;
+  }
+}
+body.report-pdf-printing #tt-busy {
+  display: none !important;
+}

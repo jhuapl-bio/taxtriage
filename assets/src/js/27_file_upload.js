@@ -544,6 +544,7 @@
           if (BOOT && BOOT.sample_meta) {
             BOOT.sample_meta[sn] = SAMPLE_META[sn];
           }
+          if (typeof _noteSampleMetaChanged === "function") _noteSampleMetaChanged();
         }
         _uploadedNames.push(file.name);
         _markRow(file.name, true, "loaded");
