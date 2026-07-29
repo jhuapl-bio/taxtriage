@@ -22,7 +22,7 @@ const LEVELS = ["Strain", "Species", "Genus"];
 const SAMPLE_META = {};
 const DATA = [];
 let seed = 42;
-const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 
 for (let s = 1; s <= SPECIMENS; s++) {
   const spec = "SPEC" + s;

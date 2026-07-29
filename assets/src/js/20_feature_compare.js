@@ -41,7 +41,9 @@ function _cmpSampleTip(o, m, agg) {
     // sample list length, which is smaller and inflates the figure.
     const _tot = o.total != null ? o.total : all.length;
     body =
-      `<span style="color:#7CFC9B"><b>Passing in ${o.passCount != null ? o.passCount : det.size} of ${_tot} specimen(s)</b></span>` +
+      `<span style="color:#7CFC9B"><b>Passing in ${
+        o.passCount != null ? o.passCount : det.size
+      } of ${_tot} specimen(s)</b></span>` +
       (m.key === "samplePct" ? ` (${(o.samplePct || 0).toFixed(1)}%)` : "") +
       (o.belowCount ? `<br><span style="color:#9bb">+${o.belowCount} detected below the cutoff</span>` : "");
   } else if (m.key === "reads") {

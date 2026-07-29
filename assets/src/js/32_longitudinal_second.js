@@ -931,44 +931,47 @@ function _buildRunMetaTable() {
   const _scoped = !!(_scopeEl && _scopeEl.checked);
   const _matched = _scoped && typeof _ttFilterMatchedKeys === "function" ? _ttFilterMatchedKeys() : null;
   const _visible = RUN_META.map((rec, i) => ({ rec, i })).filter(
-    ({ rec }) => !_matched || (typeof _ttSampleMatchesFilter === "function" && _ttSampleMatchesFilter(rec.sample_name, _matched)),
+    ({ rec }) =>
+      !_matched || (typeof _ttSampleMatchesFilter === "function" && _ttSampleMatchesFilter(rec.sample_name, _matched)),
   );
   const _cntEl = document.getElementById("runmeta-filter-scope-count");
   if (_cntEl) _cntEl.textContent = _scoped ? `(${_visible.length} of ${RUN_META.length})` : "";
 
   let _rowN = 0; // display position, for zebra striping (RUN_META index may skip)
-  tbody.innerHTML = _visible.map(({ rec, i }) => {
-    const isHighlighted = rec.sample_name === _runmetaHighlightSample;
-    const bg = isHighlighted ? "#fff9c4" : _rowN++ % 2 === 0 ? "#f0f6ff" : "#fff";
-    const border = isHighlighted ? "2px solid #f9a825" : "none";
-    const cells = activeCols
-      .map((k) => {
-        const v = rec[k];
-        const disp = Array.isArray(v) ? v.join(", ") : v != null && v !== "" ? v : "";
-        const title = Array.isArray(v)
-          ? v.join(", ").replace(/"/g, "&quot;")
-          : v != null
-          ? String(v).replace(/"/g, "&quot;")
-          : "";
-        // sample_name is the record key — not editable. Every other column
-        // is contenteditable; edits commit on blur via _ttCommitMetaCell.
-        const editable = k !== "sample_name";
-        const cls = editable ? ' class="runmeta-editable"' : "";
-        const editAttrs = editable
-          ? ` contenteditable="true" spellcheck="false" data-meta-idx="${i}" data-meta-key="${k}"`
-          : "";
-        const dispEsc = String(disp).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const mergedBadge =
-          k === "sample_name" && typeof _mergedSampleBadgeHTML === "function"
-            ? _mergedSampleBadgeHTML(rec.sample_name)
+  tbody.innerHTML = _visible
+    .map(({ rec, i }) => {
+      const isHighlighted = rec.sample_name === _runmetaHighlightSample;
+      const bg = isHighlighted ? "#fff9c4" : _rowN++ % 2 === 0 ? "#f0f6ff" : "#fff";
+      const border = isHighlighted ? "2px solid #f9a825" : "none";
+      const cells = activeCols
+        .map((k) => {
+          const v = rec[k];
+          const disp = Array.isArray(v) ? v.join(", ") : v != null && v !== "" ? v : "";
+          const title = Array.isArray(v)
+            ? v.join(", ").replace(/"/g, "&quot;")
+            : v != null
+            ? String(v).replace(/"/g, "&quot;")
             : "";
-        return `<td${cls}${editAttrs} style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${dispEsc}${mergedBadge}</td>`;
-      })
-      .join("");
-    return `<tr id="runmeta-row-${CSS.escape(
-      rec.sample_name,
-    )}" style="background:${bg};outline:${border}">${cells}</tr>`;
-  }).join("");
+          // sample_name is the record key — not editable. Every other column
+          // is contenteditable; edits commit on blur via _ttCommitMetaCell.
+          const editable = k !== "sample_name";
+          const cls = editable ? ' class="runmeta-editable"' : "";
+          const editAttrs = editable
+            ? ` contenteditable="true" spellcheck="false" data-meta-idx="${i}" data-meta-key="${k}"`
+            : "";
+          const dispEsc = String(disp).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const mergedBadge =
+            k === "sample_name" && typeof _mergedSampleBadgeHTML === "function"
+              ? _mergedSampleBadgeHTML(rec.sample_name)
+              : "";
+          return `<td${cls}${editAttrs} style="padding:5px 10px;border-bottom:1px solid #ddd;color:#222;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${dispEsc}${mergedBadge}</td>`;
+        })
+        .join("");
+      return `<tr id="runmeta-row-${CSS.escape(
+        rec.sample_name,
+      )}" style="background:${bg};outline:${border}">${cells}</tr>`;
+    })
+    .join("");
 
   // Attach edit-commit handlers to the editable cells.
   tbody.querySelectorAll("td.runmeta-editable").forEach((td) => {

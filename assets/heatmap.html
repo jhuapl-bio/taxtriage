@@ -2400,6 +2400,52 @@
                   <span>Highlight only samples matching the active filters</span>
                   <span id="map-filter-scope-count" style="color: #789"></span>
                 </label>
+                <!-- ── Map-only sample show/hide. Writes to _mapHiddenSamples,
+                     never to the sidebar's sampleHidden, so every other tab
+                     keeps all its samples. ── -->
+                <details id="map-sample-picker">
+                  <summary>
+                    <i class="fas fa-map-pin" style="font-size: 0.9em"></i>
+                    Samples on map
+                    <span id="map-sample-count" style="color: #789; font-weight: 400"></span>
+                  </summary>
+                  <div id="map-sample-picker-body">
+                    <div class="map-sample-tools">
+                      <input
+                        type="search"
+                        id="map-sample-search"
+                        placeholder="Find a sample…"
+                        title="Narrows the list below. The bulk buttons then act on what's listed."
+                      />
+                      <button type="button" data-map-bulk="all" title="Show every sample listed below">Show all</button>
+                      <button type="button" data-map-bulk="none" title="Hide every sample listed below">
+                        Hide all
+                      </button>
+                      <button
+                        type="button"
+                        data-map-bulk="only"
+                        title="Show only the samples listed below (hide everything else)"
+                      >
+                        Only these
+                      </button>
+                      <button type="button" data-map-bulk="invert" title="Flip shown / hidden for the listed samples">
+                        Invert
+                      </button>
+                      <button
+                        type="button"
+                        data-map-bulk="matches"
+                        title="Show only the samples matching the active sidebar filters"
+                      >
+                        Only filter matches
+                      </button>
+                    </div>
+                    <div id="map-sample-list"></div>
+                    <p class="map-sample-note">
+                      Affects this map only — hidden samples stay in every other tab. Use the sidebar to remove a sample
+                      from the whole report.
+                    </p>
+                  </div>
+                </details>
                 <div id="geo-precise-slot"></div>
                 <div
                   id="geo-precise-no-data"

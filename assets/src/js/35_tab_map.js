@@ -19,18 +19,19 @@
 function _svgDot(color, selected, dimmed) {
   const r = dimmed ? 5 : selected ? 11 : 8;
   const fill = dimmed ? "#b9c3cd" : color;
-  const ring = selected && !dimmed
-    ? `<circle cx="${r + 5}" cy="${r + 5}" r="${r + 3}" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
-    : "";
+  const ring =
+    selected && !dimmed
+      ? `<circle cx="${r + 5}" cy="${r + 5}" r="${
+          r + 3
+        }" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
+      : "";
   return L.divIcon({
     className: "",
     html: `<svg xmlns="http://www.w3.org/2000/svg" width="${(r + 5) * 2}" height="${(r + 5) * 2}"${
       dimmed ? ' opacity="0.45"' : ""
     }>
             <circle cx="${r + 5}" cy="${r + 5}" r="${r}" fill="${fill}"
-              stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${
-                dimmed ? 1 : selected ? 2.5 : 1.5
-              }"
+              stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${dimmed ? 1 : selected ? 2.5 : 1.5}"
               ${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'}/>
             ${ring}
           </svg>`,
@@ -80,6 +81,38 @@ function _wireMapFilterScope() {
     _mapFilterScoped = !!cb.checked;
     _refreshMapMarkerColors();
   });
+}
+
+/* ── Map-local sample visibility ─────────────────────────────────────────
+   A show/hide list that affects THIS MAP ONLY. Deliberately separate from the
+   sidebar's `sampleHidden`: that one removes a sample from every tab, which is
+   the wrong tool when you just want to declutter the map while keeping the
+   sample in the table, heatmap and cross-sample views.
+
+   Two independent mechanisms end up on the same markers, and they mean
+   different things:
+     • filter scoping (above) DIMS a sample the sidebar filters exclude —
+       context you still want to see.
+     • this list HIDES a sample outright — decluttering you asked for.
+   `sampleHidden` still wins over both, since that is a global "this sample is
+   out of the analysis" statement.
+
+   Stores the HIDDEN names, so the default (empty set) shows everything and new
+   samples arriving from an upload are visible without touching this state. */
+const _mapHiddenSamples = new Set();
+
+/** Is this marker hidden by the map-local list? Keyed on the marker's own name,
+ *  which is the specimen when merge is on and the raw sample otherwise. */
+function _mapLocallyHidden(sn) {
+  return _mapHiddenSamples.has(String(sn));
+}
+
+/** Everything that decides whether a marker is on the map at all. */
+function _mapMarkerVisible(sn, members) {
+  const list = Array.isArray(members) && members.length ? members : [sn];
+  if (list.every((s) => sampleHidden[s])) return false; // global sidebar hide
+  if (_mapLocallyHidden(sn)) return false; // map-only hide
+  return true;
 }
 
 /** True when this marker's sample(s) fall outside the active filters. A merged
@@ -215,6 +248,7 @@ function _addMapClusterControl() {
    bounds for fitting the view. */
 function _addSampleMarkers() {
   _wireMapFilterScope();
+  _wireMapSamplePicker();
   _mapRefreshMatchSet();
   const geoRows = RUN_META.filter((r) => r.latitude != null && r.longitude != null);
   const mergeOn =
@@ -276,9 +310,18 @@ function _addSampleMarkers() {
     });
     const members = Array.isArray(rec.__mergedMembers) ? rec.__mergedMembers : [sn];
     _markerObjects[sn] = { marker: mk, rec, color, lat, lon, members };
-    if (!members.every((s) => sampleHidden[s])) _markerLayer.addLayer(mk);
+    if (_mapMarkerVisible(sn, members)) _markerLayer.addLayer(mk);
     bounds.push([lat, lon]);
   });
+  // Drop picker entries for markers that no longer exist (e.g. after toggling
+  // specimen merge, where the names change from libraries to specimens) so a
+  // stale name can't keep something invisible with no way to switch it back on.
+  const _live = new Set(Object.keys(_markerObjects));
+  [..._mapHiddenSamples].forEach((n) => {
+    if (!_live.has(n)) _mapHiddenSamples.delete(n);
+  });
+  const _picker = document.getElementById("map-sample-picker");
+  if (_picker && _picker.open) _mapRenderSampleList();
   return bounds;
 }
 
@@ -288,7 +331,7 @@ function _refreshMapMarkerColors() {
   Object.entries(_markerObjects).forEach(([sn, obj]) => {
     if (!obj.marker) return;
     const members = Array.isArray(obj.members) && obj.members.length ? obj.members : [sn];
-    if (members.every((s) => sampleHidden[s])) {
+    if (!_mapMarkerVisible(sn, members)) {
       if (_markerLayer.hasLayer(obj.marker)) _markerLayer.removeLayer(obj.marker);
       return;
     }
@@ -301,6 +344,9 @@ function _refreshMapMarkerColors() {
   });
   // Recompute cluster bubbles (counts / membership may have changed)
   if (typeof _markerLayer.refreshClusters === "function") _markerLayer.refreshClusters();
+  // The picker annotates rows with "not in filter"; keep that in step.
+  const _pk = document.getElementById("map-sample-picker");
+  if (_pk && _pk.open) _mapRenderSampleList();
 }
 
 /* Move the reusable map markup (#map-split, parked in the hidden #map-host)
@@ -959,4 +1005,140 @@ function viewSampleInMetaTab() {
   // Rebuild table with highlight (click triggers _buildRunMetaTable via tab handler)
   // But also call it directly in case the tab was already active
   _buildRunMetaTable();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   -  §  MAP SAMPLE PICKER
+   -     The collapsible "Samples on map" panel: one checkbox per mapped
+   -     sample, a search box to find one in a long list, and bulk actions.
+   -     Everything here writes only to _mapHiddenSamples, so nothing it does
+   -     leaks into the other tabs.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Marker names currently on the map, in the order they are drawn. Derived
+ *  from _markerObjects so it automatically follows the specimen-merge state
+ *  (specimen names when merged, raw sample ids otherwise). */
+function _mapPickerNames() {
+  return Object.keys(_markerObjects || {}).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/** Re-render the checkbox list. `query` narrows which rows are LISTED; it does
+ *  not hide anything on the map — that is what the checkboxes are for. */
+function _mapRenderSampleList(query) {
+  const list = document.getElementById("map-sample-list");
+  if (!list) return;
+  const q = String(query == null ? (document.getElementById("map-sample-search") || {}).value || "" : query)
+    .trim()
+    .toLowerCase();
+  const names = _mapPickerNames();
+  const shown = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
+
+  if (!names.length) {
+    list.innerHTML = '<div style="padding:6px 8px;color:#8a97a4;font-size:.8em">No mapped samples yet.</div>';
+  } else if (!shown.length) {
+    list.innerHTML = `<div style="padding:6px 8px;color:#8a97a4;font-size:.8em">No sample matches “${q}”.</div>`;
+  } else {
+    list.innerHTML = shown
+      .map((n) => {
+        const hidden = _mapLocallyHidden(n);
+        const obj = _markerObjects[n] || {};
+        const dot = obj.color || sampleColors[n] || "#1565C0";
+        // Flag samples the sidebar filters exclude, so "hide everything that
+        // isn't a hit" is an informed click rather than a guess.
+        const off = obj.marker && obj.marker.ttDimmed ? " · not in filter" : "";
+        const globallyHidden = (obj.members || [n]).every((s) => sampleHidden[s]);
+        return (
+          `<label class="map-sample-row" title="${n}${globallyHidden ? " — hidden globally in the sidebar" : ""}" ` +
+          `style="display:flex;align-items:center;gap:7px;padding:3px 8px;cursor:pointer;` +
+          `${globallyHidden ? "opacity:.45;" : ""}">` +
+          `<input type="checkbox" data-map-sample="${String(n).replace(/"/g, "&quot;")}"${hidden ? "" : " checked"}${
+            globallyHidden ? " disabled" : ""
+          } />` +
+          `<span style="width:9px;height:9px;border-radius:50%;background:${dot};flex:0 0 auto;` +
+          `border:1px solid rgba(0,0,0,.2)"></span>` +
+          `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8em">${n}</span>` +
+          `<span style="margin-left:auto;color:#9aa6b4;font-size:.72em;white-space:nowrap">${off}</span>` +
+          `</label>`
+        );
+      })
+      .join("");
+  }
+
+  const count = document.getElementById("map-sample-count");
+  if (count) {
+    const visible = names.filter((n) => !_mapLocallyHidden(n)).length;
+    count.textContent = names.length ? `${visible} of ${names.length} shown` : "";
+  }
+}
+
+/** Apply a bulk action to the CURRENTLY LISTED samples (so a search term also
+ *  scopes the bulk action — "type RSV, click Only these" is the fast path). */
+function _mapBulkSamples(action) {
+  const q = ((document.getElementById("map-sample-search") || {}).value || "").trim().toLowerCase();
+  const names = _mapPickerNames();
+  const scoped = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
+  const scopedSet = new Set(scoped);
+
+  if (action === "all") {
+    scoped.forEach((n) => _mapHiddenSamples.delete(n));
+  } else if (action === "none") {
+    scoped.forEach((n) => _mapHiddenSamples.add(n));
+  } else if (action === "invert") {
+    scoped.forEach((n) => (_mapHiddenSamples.has(n) ? _mapHiddenSamples.delete(n) : _mapHiddenSamples.add(n)));
+  } else if (action === "only") {
+    // Keep only what the search listed — everything else off the map.
+    names.forEach((n) => (scopedSet.has(n) ? _mapHiddenSamples.delete(n) : _mapHiddenSamples.add(n)));
+  } else if (action === "matches") {
+    // Keep only samples the sidebar filters currently match.
+    const matched = typeof _ttFilterMatchedKeys === "function" ? _ttFilterMatchedKeys() : null;
+    names.forEach((n) => {
+      const obj = _markerObjects[n] || {};
+      const members = obj.members && obj.members.length ? obj.members : [n];
+      const hit =
+        matched && (_ttSampleMatchesFilter(n, matched) || members.some((m) => _ttSampleMatchesFilter(m, matched)));
+      if (hit) _mapHiddenSamples.delete(n);
+      else _mapHiddenSamples.add(n);
+    });
+  }
+  _refreshMapMarkerColors();
+  _mapRenderSampleList();
+}
+
+/** Wire the picker once. Uses event delegation for the checkboxes so the list
+ *  can be re-rendered freely without rebinding. */
+function _wireMapSamplePicker() {
+  const panel = document.getElementById("map-sample-picker");
+  if (!panel || panel._wired) return;
+  panel._wired = true;
+
+  const list = document.getElementById("map-sample-list");
+  if (list)
+    list.addEventListener("change", (e) => {
+      const cb = e.target.closest("input[data-map-sample]");
+      if (!cb) return;
+      const n = cb.getAttribute("data-map-sample");
+      if (cb.checked) _mapHiddenSamples.delete(n);
+      else _mapHiddenSamples.add(n);
+      _refreshMapMarkerColors();
+      const count = document.getElementById("map-sample-count");
+      if (count) {
+        const names = _mapPickerNames();
+        count.textContent = `${names.filter((x) => !_mapLocallyHidden(x)).length} of ${names.length} shown`;
+      }
+    });
+
+  const search = document.getElementById("map-sample-search");
+  if (search) search.addEventListener("input", () => _mapRenderSampleList());
+
+  panel.querySelectorAll("[data-map-bulk]").forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      _mapBulkSamples(btn.getAttribute("data-map-bulk"));
+    }),
+  );
+
+  // Populate lazily: building 160+ rows is wasted work until it's opened.
+  panel.addEventListener("toggle", () => {
+    if (panel.open) _mapRenderSampleList();
+  });
 }
