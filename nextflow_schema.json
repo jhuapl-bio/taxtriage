@@ -68,6 +68,25 @@
                     "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
                     "fa_icon": "fas fa-file-signature"
                 },
+                "bam": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+\\.(bam|cram|sam)$",
+                    "errorMessage": "File must be a pre-aligned .bam, .cram or .sam file.",
+                    "description": "Path to a pre-aligned BAM/CRAM/SAM file. Skips QC, trimming, host removal, classification and reference downloading. Requires --reference_fasta (the reference the file was aligned against). The samplesheet equivalent is a 'bam' column.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "cram_reference": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Reference FASTA used to decode CRAM input, if different from --reference_fasta.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "bam_minmapq": {
+                    "type": "number",
+                    "description": "Optional MAPQ filter applied to pre-aligned (--bam / bam column) input. By default the alignment is taken as given.",
+                    "fa_icon": "fas fa-filter"
+                },
                 "sample": {
                     "type": "string",
                     "description": "Sample name.  If left blank it retrieves the basename of the fastq_1 file",

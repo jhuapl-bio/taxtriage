@@ -151,7 +151,12 @@ workflow  REFERENCE_PREP {
         // Only pass samples that actually have top-hit files to download;
         // samples whose top hits were filtered out (empty report list) are
         // skipped here but kept in ch_mapped_assemblies via the left joins below.
-        ch_to_download = ch_reports_to_download.filter { meta, report -> report && !report.isEmpty() }
+        // Pre-aligned (BAM) samples are excluded outright: their references are
+        // whatever the BAM was already aligned against, supplied via
+        // --reference_fasta, so there is nothing to fetch from NCBI.
+        ch_to_download = ch_reports_to_download.filter { meta, report ->
+            !meta.is_bam && report && !report.isEmpty()
+        }
 
         DOWNLOAD_ASSEMBLY(
             ch_to_download.map {

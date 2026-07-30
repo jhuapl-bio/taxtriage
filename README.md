@@ -177,6 +177,55 @@ nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 
 Then run the pipeline normally as described in previous steps
 
+### Pre-aligned (BAM/CRAM) input
+
+If you already have alignments, TaxTriage can start from them directly. Pre-aligned samples skip
+**every** upstream step — compression, trimming, FastQC/NanoPlot/fastp, host removal, subsampling,
+Kraken2 classification and reference/assembly downloading — and go straight to coverage statistics,
+scoring (`match_paths.py`) and the report.
+
+Because there is no classifier step to pick references, you **must** supply the reference the BAM was
+aligned against with `--reference_fasta`. It is used both for the accession → taxid map
+(`fuzzy_match_assembly.py`, i.e. `match_paths.py -m`) and for the sourmash/ANI comparison
+(`match_paths.py -f`), so the reference names in the BAM header must match the accessions in that
+FASTA.
+
+Single file:
+
+```
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+   --bam examples/data/prealigned_sample.bam \
+   --sample prealigned_sample --platform ILLUMINA --type nasal \
+   --reference_fasta references/pathogens.fasta \
+   --outdir output_bam -profile docker
+```
+
+Samplesheet with a `bam` column (may be mixed with regular FASTQ rows; `fastq_1` is ignored for rows
+that set `bam`):
+
+```
+sample,platform,bam,type
+prealigned_sample,ILLUMINA,examples/data/prealigned_sample.bam,nasal
+```
+
+```
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+   --input examples/samplesheet_bam.csv \
+   --reference_fasta references/pathogens.fasta \
+   --outdir output_bam -profile docker
+```
+
+Notes:
+
+- Input may be `.bam`, `.cram` or `.sam`. Files are converted/coordinate-sorted only when needed and
+  CSI-indexed automatically; CRAM decoding can use `--cram_reference` if it differs from
+  `--reference_fasta`.
+- The alignment is taken as given; pass `--bam_minmapq <n>` to apply a MAPQ filter first.
+- `meta.read_count` is derived from the count of primary, non-supplementary records in the BAM.
+- Flags that need raw reads or de novo contigs (`--use_denovo`, `--use_diamond`, `--annotate`,
+  `--microbert`, `--novelty`, `--generate_iss`, `--generate_nanosim`, `--reference_assembly`,
+  `--get_variants`) are disabled with a warning on a BAM-only run.
+
 ### Running it with the local config (for laptops/workstations) with limited RAM and a different (auto-downloadable) db
 
 ```

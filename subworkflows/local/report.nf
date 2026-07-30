@@ -93,7 +93,16 @@ workflow REPORT {
         } else {
             ch_report_microbert = alignments.map { [ it[0], file("$projectDir/assets/NO_FILEmicrobert") ] }
         }
-        alignments = alignments.join(ch_report_microbert)
+        // remainder:true + fallback so samples that never produced MicrobeRT output
+        // (pre-aligned BAM inputs, controls with no clusters) are not silently
+        // dropped from the report by this join.
+        alignments = alignments
+            .join(ch_report_microbert, remainder: true)
+            .filter { it[1] }
+            .map { items ->
+                def mbert = items[-1] ?: file("$projectDir/assets/NO_FILEmicrobert")
+                return items[0..-2] + [mbert]
+            }
 
         // Perform the difference operation
         missing_samples = all_samples - accepted_list
