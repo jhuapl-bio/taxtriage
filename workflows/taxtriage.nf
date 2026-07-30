@@ -143,12 +143,21 @@ workflow TAXTRIAGE {
     println "Working Directory: ${workflow.workDir}"
 
     if (params.fastq_1) {
-        if (!file(params.fastq_1).exists()) {
-            exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
-        }
-        if (params.fastq_2) {
-            if (!file(params.fastq_2).exists()) {
-                exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
+        // An SRA/ENA accession is not a path — nothing exists on disk yet, it is
+        // downloaded by INPUT_CHECK. Skip the existence pre-flight for those.
+        if (WorkflowTaxtriage.isAccession(params.fastq_1)) {
+            println "Detected SRA/ENA accession for --fastq_1: ${params.fastq_1} (reads will be downloaded)"
+            if (params.fastq_2) {
+                log.warn "--fastq_2 is ignored when --fastq_1 is an accession; paired-end layout is detected from the archive."
+            }
+        } else {
+            if (!file(params.fastq_1).exists()) {
+                exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
+            }
+            if (params.fastq_2) {
+                if (!file(params.fastq_2).exists()) {
+                    exit 1, "ERROR: fastq_2 file does not exist: ${params.fastq_2}"
+                }
             }
         }
     } else if (params.input) {

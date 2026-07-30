@@ -1,0 +1,5 @@
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+covid_illumina,,SRR13191702,,,FALSE,nasal
+ont_single,,ERR1160846,,,FALSE,stool
+whole_project,,PRJNA681875,,,FALSE,stool
+local_mix,ILLUMINA,examples/data/iss_reads_R1.fastq.gz,examples/data/iss_reads_R2.fastq.gz,,TRUE,blood
