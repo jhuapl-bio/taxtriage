@@ -10,7 +10,7 @@
 
 ## About
 
-TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage incorporates intermediate data into a unified confidence metric for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability.
+TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage uses intermediate data into a **unified confidence metric** (TASS Score) for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability.
 
 ### To Start
 
