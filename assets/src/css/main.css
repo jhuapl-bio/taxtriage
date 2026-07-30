@@ -4284,3 +4284,56 @@ body.report-pdf-printing #map-sample-picker,
 body.report-pdf-printing #map-filter-scope-wrap {
   display: none !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Coverage tab — collapsible colour legend. One chip per sample buried
+   the plot on a large run, so the legend shows a count and opens on
+   demand (small runs auto-expand; see drawCoverage).
+   ═══════════════════════════════════════════════════════════════════ */
+#cov-legend-details > summary {
+  cursor: pointer;
+  user-select: none;
+  color: #37474f;
+  padding: 0.15em 0;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+#cov-legend-details > summary::-webkit-details-marker {
+  display: none;
+}
+#cov-legend-details > summary::before {
+  content: "▸";
+  color: #90a4b8;
+}
+#cov-legend-details[open] > summary::before {
+  content: "▾";
+}
+#cov-legend-details > summary:hover {
+  color: #1565c0;
+}
+#cov-legend-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1.2em;
+  align-items: center;
+  /* Bounded: with hundreds of samples an expanded legend would still push
+     the plot off screen. Scroll the chips instead. */
+  max-height: 8.5em;
+  overflow: auto;
+  margin: 0.4em 0 0.2em;
+  padding: 0.35em 0.2em;
+  border-top: 1px solid #eceff1;
+}
+/* Print the legend expanded — nothing is clickable on paper. */
+@media print {
+  #cov-legend-chips {
+    max-height: none;
+    overflow: visible;
+  }
+}
+body.report-pdf-printing #cov-legend-chips {
+  max-height: none;
+  overflow: visible;
+}

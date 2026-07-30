@@ -5,6 +5,11 @@
        -     scale type (linear / log / sqrt) is user-selectable. Colored per
        -     sample, with legend rendered above the SVG.
 ═══════════════════════════════════════════════════════════════════════════ */
+// Whether the coverage colour legend is expanded. null = not chosen yet, so the
+// first render picks a default from the sample count; after that the user's
+// choice survives redraws.
+let _covLegendOpen = null;
+
 function drawCoverage() {
   const wrap = document.getElementById("coverage-svg-wrap");
   wrap.innerHTML = "";
@@ -23,16 +28,38 @@ function drawCoverage() {
   const rField = (document.getElementById("cov-r-sel") || {}).value || "TASS Score";
   const covScaleType = (document.getElementById("cov-scale") || {}).value || "linear";
 
-  // Legend — above SVG
+  // ── Legend — above the SVG ──────────────────────────────────────────────
+  // One chip per sample is unreadable on a large run (a 164-specimen study
+  // pushed the plot itself off screen), so the legend collapses to a count and
+  // opens on demand. Small runs auto-expand, where the chips are the fastest
+  // way to map a colour to a sample.
   const legWrap = document.getElementById("coverage-legend-wrap");
   if (legWrap) {
     const legSamples = _orderedSamples(uniq(fd.map((r) => r["Specimen ID"])).filter(Boolean));
-    legWrap.innerHTML = legSamples
+    const unit = typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled ? "specimen" : "sample";
+    const n = legSamples.length;
+    const AUTO_OPEN_MAX = 8;
+    // Remember the user's choice across redraws (filters redraw constantly);
+    // otherwise the legend would snap shut on every keystroke.
+    if (_covLegendOpen === null) _covLegendOpen = n > 0 && n <= AUTO_OPEN_MAX;
+
+    const chips = legSamples
       .map((sp) => {
         const col = sampleColors[sp] || "#90a4ae";
         return `<span style="display:flex;align-items:center;gap:.35em"><svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="5" fill="${col}"/></svg><span>${sp}</span></span>`;
       })
       .join("");
+
+    legWrap.innerHTML = !n
+      ? ""
+      : `<details id="cov-legend-details"${_covLegendOpen ? " open" : ""}>` +
+        `<summary><b>${n}</b> ${unit}${n === 1 ? "" : "s"} plotted` +
+        `<span style="color:#8a97a4;font-weight:400"> — colour legend</span></summary>` +
+        `<div id="cov-legend-chips">${chips}</div>` +
+        `</details>`;
+
+    const det = document.getElementById("cov-legend-details");
+    if (det) det.addEventListener("toggle", () => (_covLegendOpen = det.open));
   }
 
   if (!fd.length) {

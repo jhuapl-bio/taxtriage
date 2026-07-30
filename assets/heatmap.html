@@ -776,17 +776,9 @@
                 <option value="sqrt">Sqrt</option>
               </select>
             </div>
-            <div
-              id="coverage-legend-wrap"
-              style="
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.4em 1.2em;
-                margin: 0.5em 0 0.2em;
-                font-size: 0.82em;
-                align-items: center;
-              "
-            ></div>
+            <!-- Legend is a collapsed count by default (see drawCoverage); the
+                 chips inside it are what needs the flex row, not this wrapper. -->
+            <div id="coverage-legend-wrap" style="margin: 0.5em 0 0.2em; font-size: 0.82em"></div>
             <div id="coverage-svg-wrap"></div>
           </div>
         </div>
