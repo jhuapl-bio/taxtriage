@@ -138,6 +138,25 @@ def parse_args(argv=None):
              "listed pathogens that have NO reference alignment (taxid, then name, then genus rollup).",
     )
     parser.add_argument(
+        "--metadata", nargs="*", default=[], metavar="FILE",
+        help="Optional: sample metadata CSV/TSV/XLSX, the same file you would drag onto the "
+             "report's Metadata & Mapping tab. Must have a 'sample' (or 'sample_name') column; "
+             "every other column is carried through as-is. A 'specimen' column groups a "
+             "specimen's DNA/RNA libraries so the report can merge them. Rows whose sample id "
+             "is not in the run are reported and skipped (see --metadata-add-unmatched).",
+    )
+    parser.add_argument(
+        "--metadata-add-unmatched", action="store_true",
+        help="With --metadata, also create entries for metadata rows whose sample id is not in "
+             "the run. Off by default: an unmatched id is nearly always an id-format mismatch, "
+             "and inventing samples hides that.",
+    )
+    parser.add_argument(
+        "--metadata-sheet", default=None, metavar="NAME",
+        help="With an XLSX --metadata file, the worksheet to read. Defaults to a sheet named "
+             "'metadata' (case-insensitive) if present, else the first sheet.",
+    )
+    parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
         help="Optional: bvbrc specialty-gene reference TSV "
              "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
@@ -145,6 +164,137 @@ def parse_args(argv=None):
              "instead of the merged sheet's (often mis-parsed) Genus/Species text.",
     )
     return parser.parse_args(argv)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sample metadata (CSV / TSV / XLSX)
+# ──────────────────────────────────────────────────────────────────────────────
+# Build-time equivalent of dragging a metadata file onto the report's
+# Metadata & Mapping tab. The parsing rules below deliberately mirror
+# _rowToMetaRecord / _applyMetaRecords in assets/src/js/28_meta_csv.js so the
+# same file produces the same report either way — if you change one, change the
+# other, and scripts/test_metadata_cli.py will tell you if they drift.
+#
+# Rules (from the browser implementation):
+#   • headers are lower-cased and trimmed; spaces are NOT converted
+#   • the key column is "sample" or "sample_name"; whitespace → underscores
+#   • every other column is carried through untouched
+#   • "", "null", "na" (any case) become None
+#   • latitude / longitude / depth / salinity are parsed as floats
+_META_NUM_FIELDS = {"latitude", "longitude", "depth", "salinity"}
+_META_NULL_STRINGS = {"", "null", "na"}
+
+
+def _meta_read_table(path, sheet=None):
+    """Read a metadata file into a list of dicts with lower-cased headers."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".xlsx", ".xls", ".xlsm"):
+        # Match the browser: prefer a sheet literally named "metadata".
+        if sheet is None:
+            try:
+                names = pd.ExcelFile(path).sheet_names
+            except Exception:
+                names = []
+            sheet = next((n for n in names if str(n).strip().lower() == "metadata"), 0)
+        df = pd.read_excel(path, sheet_name=sheet, dtype=str)
+    elif ext in (".tsv", ".tab"):
+        df = pd.read_csv(path, sep="\t", dtype=str)
+    else:
+        df = pd.read_csv(path, dtype=str)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    return df.where(pd.notna(df), None).to_dict("records")
+
+
+def _meta_row_to_record(row):
+    """One parsed row → a metadata record, or None when it has no sample id."""
+    raw = row.get("sample") or row.get("sample_name") or ""
+    sample = re.sub(r"\s+", "_", str(raw).strip())
+    if not sample or sample.lower() in _META_NULL_STRINGS:
+        return None
+    rec = {"sample_name": sample}
+    for k, v in row.items():
+        if k in ("sample", "sample_name"):
+            continue
+        sv = "" if v is None else str(v).strip()
+        if sv.lower() in _META_NULL_STRINGS:
+            rec[k] = None
+        elif k in _META_NUM_FIELDS:
+            try:
+                rec[k] = float(sv)
+            except ValueError:
+                rec[k] = None
+        else:
+            rec[k] = sv
+    return rec
+
+
+def load_sample_metadata(paths, sample_meta, known_samples=None, add_unmatched=False, sheet=None):
+    """Merge metadata file(s) into sample_meta, in place.
+
+    `known_samples` supplements sample_meta's keys when deciding whether a row
+    matches the run. This matters for the tabular input path, where
+    load_tabular_input() returns an EMPTY sample_meta — the samples are real,
+    they're just only named in the data rows, and without this every metadata
+    row would be reported as unmatched.
+
+    Returns a summary dict for reporting. Unmatched rows are the failure mode
+    worth surfacing: the file parses perfectly but its sample ids don't line up
+    with the run, which otherwise shows up only as a report with no metadata.
+    """
+    summary = {"files": 0, "rows": 0, "matched": 0, "unmatched": [], "added": 0,
+               "columns": set(), "specimens": 0}
+    if not paths:
+        return summary
+
+    known = set(sample_meta.keys()) | set(known_samples or ())
+    for path in paths:
+        if not path or not str(path).strip():
+            continue
+        try:
+            rows = _meta_read_table(path, sheet=sheet)
+        except Exception as exc:
+            print(f"[make_report] ERROR reading metadata {path!r}: {exc}", file=sys.stderr)
+            continue
+        summary["files"] += 1
+        for row in rows:
+            rec = _meta_row_to_record(row)
+            if rec is None:
+                continue
+            summary["rows"] += 1
+            name = rec["sample_name"]
+            if name not in known:
+                if not add_unmatched:
+                    summary["unmatched"].append(name)
+                    continue
+                known.add(name)
+                summary["added"] += 1
+            else:
+                summary["matched"] += 1
+            target = sample_meta.setdefault(name, {"sample_name": name})
+            for k, v in rec.items():
+                if k == "sample_name":
+                    continue
+                summary["columns"].add(k)
+                # A None from the metadata file means "blank cell". Don't let it
+                # erase a value the pipeline already established for this sample.
+                if v is None and target.get(k) not in (None, ""):
+                    continue
+                target[k] = v
+
+    # How many multi-sample specimens the grouping column actually produced —
+    # the number that tells you whether merge will do anything in the report.
+    groups = {}
+    for name, meta in sample_meta.items():
+        spec = None
+        for field in ("specimen", "specimen_id", "specimen id", "specimenid",
+                      "specimen_group", "specimen group"):
+            val = meta.get(field)
+            if val is not None and str(val).strip():
+                spec = str(val).strip()
+                break
+        groups.setdefault(spec or name, []).append(name)
+    summary["specimens"] = sum(1 for members in groups.values() if len(members) > 1)
+    return summary
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # JSON ingestion
@@ -1038,6 +1188,43 @@ def main():
         rows, sample_meta = load_tabular_input(args.input[0], mintass, microbial_cats=microbial_cats)
         print(f"[make_report] Loaded {len(rows)} rows from tabular file "
               f"{args.input[0]!r}")
+
+    # ── optional sample metadata file ─────────────────────────────────────────
+    # Merged into sample_meta BEFORE run_metadata_records is derived below, so
+    # the extra columns flow into the report's metadata table, map and specimen
+    # grouping exactly as they would had the file been dropped on the tab.
+    if args.metadata:
+        # Sample ids as they appear in the loaded detections — the authoritative
+        # list of what this run actually contains.
+        _run_samples = {
+            str(r.get("Specimen ID")) for r in rows if r.get("Specimen ID") not in (None, "")
+        }
+        meta_summary = load_sample_metadata(
+            args.metadata, sample_meta,
+            known_samples=_run_samples,
+            add_unmatched=args.metadata_add_unmatched,
+            sheet=args.metadata_sheet,
+        )
+        cols = sorted(meta_summary["columns"])
+        print(f"[make_report] Metadata: {meta_summary['rows']} row(s) from "
+              f"{meta_summary['files']} file(s); {meta_summary['matched']} matched this run"
+              + (f", {meta_summary['added']} added" if meta_summary["added"] else ""))
+        if cols:
+            print(f"[make_report] Metadata columns: {', '.join(cols)}")
+        if meta_summary["specimens"]:
+            print(f"[make_report] Specimen grouping: {meta_summary['specimens']} "
+                  f"multi-sample specimen(s) — merge will be available in the report")
+        elif any(c.startswith("specimen") for c in cols):
+            print("[make_report] WARNING: a specimen column was read but no two samples "
+                  "share a specimen value, so nothing will merge.", file=sys.stderr)
+        if meta_summary["unmatched"]:
+            _u = meta_summary["unmatched"]
+            print(f"[make_report] WARNING: {len(_u)} metadata row(s) did not match any sample "
+                  f"in this run and were skipped: {', '.join(_u[:5])}"
+                  + (" …" if len(_u) > 5 else ""), file=sys.stderr)
+            if not meta_summary["matched"]:
+                print("[make_report] WARNING: NO metadata row matched this run — check that the "
+                      "'sample' column uses the same ids as the pipeline.", file=sys.stderr)
 
     # ── derive column lists ────────────────────────────────────────────────────
     # These fields are carried on each record for client-side analysis (the

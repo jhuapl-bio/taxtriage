@@ -26,19 +26,98 @@ const SPECIMEN_OVERRIDE = {}; // sample_name → specimen group (live UI edits w
 // (detection = % of the specimen's member samples in which the organism was
 // seen). Only affects specimens that actually contain more than one sample.
 let specimenTassAgg = "max";
+/* Bumped whenever SAMPLE_META gains or changes fields (metadata upload, boot
+   restore, session load). Uploading a metadata file usually ADDS a `specimen`
+   column to samples that are already known, which changes no entry counts —
+   so the specimen caches need an explicit signal or they keep serving the
+   pre-metadata grouping. Call _noteSampleMetaChanged() after any write. */
+let SAMPLE_META_EPOCH = 0;
+function _noteSampleMetaChanged() {
+  SAMPLE_META_EPOCH++;
+  if (typeof _invalidateSpecimenCache === "function") _invalidateSpecimenCache();
+  if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+}
+
+/** Metadata columns that can carry the specimen grouping, in priority order.
+ *  Uploaded metadata headers are lower-cased on import but spaces are NOT
+ *  converted, so both "specimen_id" and "specimen id" have to be listed. */
+const _SPECIMEN_META_FIELDS = [
+  "specimen",
+  "specimen_id",
+  "specimen id",
+  "specimenid",
+  "specimen_group",
+  "specimen group",
+];
+
+/* ── Specimen resolution cache ────────────────────────────────────────────
+       specimenOf() / specimenGroups() sit on the hottest paths in the report:
+       they run per DATA row inside filteredData(), per rendered table row for
+       the merged badge, and inside every cross-sample aggregation. Recomputing
+       them was quadratic on a big run (164 specimens x 2 libraries ≈ 15k rows),
+       which is what made toggling merge take seconds.
+
+       Everything here is a pure function of SPECIMEN_OVERRIDE + SAMPLE_META +
+       DATA, so it is safe to memoize and drop whenever any of those change.
+       _invalidateSpecimenCache() is the single reset, wired into
+       _invalidateFilterCache() so existing call sites need no changes; the
+       signature check in _specimenGroupsCached() is a belt-and-braces guard in
+       case something mutates DATA / SAMPLE_META without announcing it.        */
+let _SPEC_OF_CACHE = new Map(); // sample → specimen
+let _SPEC_GROUPS_CACHE = null; // Map(specimen → sorted member samples)
+let _SPEC_GROUPS_SIG = null;
+let _SPEC_HAS_GROUPING = null; // boolean
+let _SPEC_COUNT_CACHE = { key: null, total: 0, positive: 0 };
+
+function _invalidateSpecimenCache() {
+  if (_SPEC_OF_CACHE.size) _SPEC_OF_CACHE = new Map();
+  _SPEC_GROUPS_CACHE = null;
+  _SPEC_GROUPS_SIG = null;
+  _SPEC_HAS_GROUPING = null;
+  _SPEC_COUNT_CACHE = { key: null, total: 0, positive: 0 };
+}
+
+/** Cheap fingerprint of every input the grouping depends on. Only called from
+ *  the coarse-grained helpers (never per row), so the Object.keys() walks are
+ *  not on a hot path. */
+function _specimenSignature() {
+  const ovKeys = Object.keys(SPECIMEN_OVERRIDE);
+  let ov = "";
+  for (let i = 0; i < ovKeys.length; i++) ov += ovKeys[i] + "" + SPECIMEN_OVERRIDE[ovKeys[i]] + "";
+  const nMeta = typeof SAMPLE_META !== "undefined" && SAMPLE_META ? Object.keys(SAMPLE_META).length : 0;
+  const nData = typeof DATA !== "undefined" && DATA ? DATA.length : 0;
+  // SAMPLE_META_EPOCH matters because a metadata upload usually ADDS FIELDS
+  // to existing entries without changing the entry count; a size-only
+  // signature would miss that and keep serving a stale grouping.
+  return nData + "" + nMeta + "" + SAMPLE_META_EPOCH + "" + ov;
+}
 
 /** Resolve the specimen a sample belongs to, independent of the merge toggle.
  *  Priority: live override → samplesheet metadata → the sample name itself
- *  (a sample with no specimen assignment is its own specimen). */
+ *  (a sample with no specimen assignment is its own specimen).
+ *  Memoized per sample name — see the cache note above. */
 function specimenOf(sample) {
   const s = String(sample == null ? "" : sample);
   if (!s) return s;
+  const hit = _SPEC_OF_CACHE.get(s);
+  if (hit !== undefined) return hit;
+  let out;
   if (Object.prototype.hasOwnProperty.call(SPECIMEN_OVERRIDE, s) && SPECIMEN_OVERRIDE[s]) {
-    return String(SPECIMEN_OVERRIDE[s]);
+    out = String(SPECIMEN_OVERRIDE[s]);
+  } else {
+    const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META[s]) || {};
+    let sp = null;
+    for (let i = 0; i < _SPECIMEN_META_FIELDS.length; i++) {
+      const v = meta[_SPECIMEN_META_FIELDS[i]];
+      if (v != null && String(v).trim() !== "") {
+        sp = v;
+        break;
+      }
+    }
+    out = sp != null ? String(sp).trim() : s;
   }
-  const meta = (typeof SAMPLE_META !== "undefined" && SAMPLE_META[s]) || {};
-  const sp = meta.specimen != null ? meta.specimen : meta.specimen_id != null ? meta.specimen_id : meta.specimen_group;
-  return sp != null && String(sp).trim() ? String(sp).trim() : s;
+  _SPEC_OF_CACHE.set(s, out);
+  return out;
 }
 
 /** The key cross-sample views should group rows by: the specimen when merging
@@ -77,28 +156,48 @@ function _isMergedAway(sample) {
  *  metadata or a live override). Lets the UI hide the merge control when the
  *  run has no specimen grouping to act on. */
 function hasSpecimenGrouping() {
+  if (_SPEC_HAS_GROUPING !== null) return _SPEC_HAS_GROUPING;
   const groups = specimenGroups();
-  for (const members of groups.values()) if (members.length > 1) return true;
-  return false;
+  let has = false;
+  for (const members of groups.values()) {
+    if (members.length > 1) {
+      has = true;
+      break;
+    }
+  }
+  _SPEC_HAS_GROUPING = has;
+  return has;
 }
 
 /** Map every known specimen → sorted list of its member samples, using
- *  SAMPLE_META (all samples) plus any live overrides and anything seen in DATA. */
+ *  SAMPLE_META (all samples) plus any live overrides and anything seen in DATA.
+ *
+ *  MEMOIZED. Callers treat the result as read-only (they `.get(...).slice()`
+ *  or just read) — do not mutate the returned Map or its arrays; call
+ *  _invalidateSpecimenCache() if the grouping inputs change. */
 function specimenGroups() {
+  const sig = _specimenSignature();
+  if (_SPEC_GROUPS_CACHE && _SPEC_GROUPS_SIG === sig) return _SPEC_GROUPS_CACHE;
   const groups = new Map();
   const add = (sample) => {
     const s = String(sample == null ? "" : sample);
     if (!s) return;
     const g = specimenOf(s);
-    if (!groups.has(g)) groups.set(g, new Set());
-    groups.get(g).add(s);
+    let set = groups.get(g);
+    if (!set) groups.set(g, (set = new Set()));
+    set.add(s);
   };
   Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach(add);
-  if (typeof DATA !== "undefined") DATA.forEach((r) => add(r["Specimen ID"]));
+  if (typeof DATA !== "undefined") {
+    for (let i = 0; i < DATA.length; i++) add(DATA[i]["Specimen ID"]);
+  }
   const out = new Map();
   Array.from(groups.keys())
     .sort()
     .forEach((g) => out.set(g, Array.from(groups.get(g)).sort()));
+  _SPEC_GROUPS_CACHE = out;
+  _SPEC_GROUPS_SIG = sig;
+  _SPEC_HAS_GROUPING = null;
   return out;
 }
 
@@ -171,35 +270,41 @@ const SPECIMEN_META_RESOLVED = {};
  *  anywhere in the run. Deliberately decoupled from the live TASS slider so
  *  prevalence is measured against everything that tested positive, not just
  *  what clears the current threshold. */
-function positiveHitSpecimenCount() {
-  const seen = new Set();
+/* Both counters walk all of DATA, and the cross-sample views call them on
+   every redraw. They only change when the grouping inputs or the merge toggle
+   change, so compute them together once per (signature, merge state). */
+function _specimenCounts() {
+  const key = _specimenSignature() + "" + (specimenMergeEnabled ? "1" : "0");
+  if (_SPEC_COUNT_CACHE.key === key) return _SPEC_COUNT_CACHE;
+  const all = new Set();
+  const positive = new Set();
+  const truthy = typeof isTruthy === "function" ? isTruthy : (v) => !!v;
+  Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach((k) => {
+    const v = specimenKey(k);
+    if (v) all.add(v);
+  });
   if (typeof DATA !== "undefined") {
-    DATA.forEach((r) => {
-      if (typeof isTruthy === "function" ? isTruthy(r["Passes Threshold"]) : r["Passes Threshold"]) {
-        const k = specimenKey(r["Specimen ID"]);
-        if (k) seen.add(k);
-      }
-    });
+    for (let i = 0; i < DATA.length; i++) {
+      const r = DATA[i];
+      const v = specimenKey(r["Specimen ID"]);
+      if (!v) continue;
+      all.add(v);
+      if (truthy(r["Passes Threshold"])) positive.add(v);
+    }
   }
-  return seen.size;
+  _SPEC_COUNT_CACHE = { key, total: all.size, positive: positive.size };
+  return _SPEC_COUNT_CACHE;
+}
+
+function positiveHitSpecimenCount() {
+  return _specimenCounts().positive;
 }
 
 /** Total distinct specimens in the run (respecting the merge toggle), counting
  *  every specimen whether or not it has a positive hit. Used as the "Total" in
  *  the cross-sample pass / below / total breakdown. */
 function totalSpecimenCount() {
-  const seen = new Set();
-  Object.keys((typeof SAMPLE_META !== "undefined" && SAMPLE_META) || {}).forEach((k) => {
-    const v = specimenKey(k);
-    if (v) seen.add(v);
-  });
-  if (typeof DATA !== "undefined") {
-    DATA.forEach((r) => {
-      const v = specimenKey(r["Specimen ID"]);
-      if (v) seen.add(v);
-    });
-  }
-  return seen.size;
+  return _specimenCounts().total;
 }
 
 /** Return arr sorted by _sampleOrder; unknowns go to the end. `arr` may

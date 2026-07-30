@@ -776,17 +776,9 @@
                 <option value="sqrt">Sqrt</option>
               </select>
             </div>
-            <div
-              id="coverage-legend-wrap"
-              style="
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.4em 1.2em;
-                margin: 0.5em 0 0.2em;
-                font-size: 0.82em;
-                align-items: center;
-              "
-            ></div>
+            <!-- Legend is a collapsed count by default (see drawCoverage); the
+                 chips inside it are what needs the flex row, not this wrapper. -->
+            <div id="coverage-legend-wrap" style="margin: 0.5em 0 0.2em; font-size: 0.82em"></div>
             <div id="coverage-svg-wrap"></div>
           </div>
         </div>
@@ -1205,7 +1197,7 @@
 
             <div class="chart-wrap" style="margin-bottom: 0.9em">
               <div class="chart-title" style="margin: 0 0 0.4em">Per-sample novelty</div>
-              <div style="overflow-x: auto">
+              <div class="tt-scroll-table">
                 <table class="data-table" id="novelty-summary-table" style="font-size: 0.82em; width: 100%">
                   <thead id="novelty-summary-head"></thead>
                   <tbody id="novelty-summary-body"></tbody>
@@ -1245,7 +1237,7 @@
                   <button id="novelty-cand-last" class="pg-btn" title="Last page">»</button>
                 </div>
               </div>
-              <div style="overflow-x: auto">
+              <div class="tt-scroll-table">
                 <table class="data-table" id="novelty-cand-table" style="font-size: 0.82em; width: 100%">
                   <thead id="novelty-cand-head"></thead>
                   <tbody id="novelty-cand-body"></tbody>
@@ -2108,6 +2100,18 @@
             >
               <i class="fas fa-file-export"></i> Export
             </button>
+            <!-- ── Opt-in filter scoping for the metadata table. OFF by
+                 default: this table is the run inventory, so it stays complete
+                 unless you deliberately narrow it to extract a subset. ── -->
+            <label
+              id="runmeta-filter-scope-wrap"
+              style="display: inline-flex; align-items: center; gap: 0.4em; cursor: pointer; user-select: none"
+              title="Show only samples matching the active sidebar filters. Off by default so the table stays a complete inventory of the run."
+            >
+              <input type="checkbox" id="runmeta-filter-scope" />
+              <span>Only filtered samples</span>
+              <span id="runmeta-filter-scope-count" style="color: #789"></span>
+            </label>
             <span style="color: #888">
               <i class="fas fa-pen" style="font-size: 0.9em"></i> Click any cell to edit — saved with exported state.
             </span>
@@ -2367,6 +2371,73 @@
                   Sample locations plotted from latitude / longitude metadata. Click a marker (or a cluster) to view
                   organisms for those samples — respects active sidebar filters.
                 </p>
+                <!-- ── Filter scoping for the map. On by default: a search like
+                     an organism name or a taxid greys out the samples it does
+                     not match, and cluster bubbles show "matched / total". ── -->
+                <label
+                  id="map-filter-scope-wrap"
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.4em;
+                    margin: 0 0 0.6em;
+                    font-size: 0.82em;
+                    color: #37474f;
+                    cursor: pointer;
+                    user-select: none;
+                  "
+                  title="Grey out samples that don't match the active filters, and show matched / total on cluster bubbles. Non-matching samples stay on the map so you can still see where the negatives were."
+                >
+                  <input type="checkbox" id="map-filter-scope" checked />
+                  <span>Highlight only samples matching the active filters</span>
+                  <span id="map-filter-scope-count" style="color: #789"></span>
+                </label>
+                <!-- ── Map-only sample show/hide. Writes to _mapHiddenSamples,
+                     never to the sidebar's sampleHidden, so every other tab
+                     keeps all its samples. ── -->
+                <details id="map-sample-picker">
+                  <summary>
+                    <i class="fas fa-map-pin" style="font-size: 0.9em"></i>
+                    Samples on map
+                    <span id="map-sample-count" style="color: #789; font-weight: 400"></span>
+                  </summary>
+                  <div id="map-sample-picker-body">
+                    <div class="map-sample-tools">
+                      <input
+                        type="search"
+                        id="map-sample-search"
+                        placeholder="Find a sample…"
+                        title="Narrows the list below. The bulk buttons then act on what's listed."
+                      />
+                      <button type="button" data-map-bulk="all" title="Show every sample listed below">Show all</button>
+                      <button type="button" data-map-bulk="none" title="Hide every sample listed below">
+                        Hide all
+                      </button>
+                      <button
+                        type="button"
+                        data-map-bulk="only"
+                        title="Show only the samples listed below (hide everything else)"
+                      >
+                        Only these
+                      </button>
+                      <button type="button" data-map-bulk="invert" title="Flip shown / hidden for the listed samples">
+                        Invert
+                      </button>
+                      <button
+                        type="button"
+                        data-map-bulk="matches"
+                        title="Show only the samples matching the active sidebar filters"
+                      >
+                        Only filter matches
+                      </button>
+                    </div>
+                    <div id="map-sample-list"></div>
+                    <p class="map-sample-note">
+                      Affects this map only — hidden samples stay in every other tab. Use the sidebar to remove a sample
+                      from the whole report.
+                    </p>
+                  </div>
+                </details>
                 <div id="geo-precise-slot"></div>
                 <div
                   id="geo-precise-no-data"
@@ -3306,7 +3377,7 @@
         </button>
 
         <!-- ── Metadata CSV upload ── -->
-        <h3 style="margin-top: 1em">Upload Metadata CSV</h3>
+        <h3 style="margin-top: 1em">Upload Metadata File</h3>
         <div
           id="meta-upload-zone"
           ondragover="event.preventDefault();this.classList.add('drag-over')"
