@@ -37,6 +37,7 @@
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
+include { BAM_INPUT } from '../subworkflows/local/bam_input'
 include { REPORT } from '../subworkflows/local/report'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
 include { REFERENCE_PREP } from '../subworkflows/local/reference_prep'
@@ -142,7 +143,11 @@ workflow TAXTRIAGE {
 
     println "Working Directory: ${workflow.workDir}"
 
-    if (params.fastq_1) {
+    if (params.bam) {
+        if (!file(params.bam).exists()) {
+            exit 1, "ERROR: bam file does not exist: ${params.bam}"
+        }
+    } else if (params.fastq_1) {
         if (!file(params.fastq_1).exists()) {
             exit 1, "ERROR: fastq_1 file does not exist: ${params.fastq_1}"
         }
@@ -154,7 +159,72 @@ workflow TAXTRIAGE {
     } else if (params.input) {
         if (params.input) { ch_input = file(params.input) } else { exit 1, 'Input samplesheet not available or non-existent!' }
     } else {
-        exit 1, 'ERROR: Please specify either an input samplesheet (--input) or at least a fastq_1 file (--fastq_1)!'
+        exit 1, 'ERROR: Please specify an input samplesheet (--input), a fastq_1 file (--fastq_1) or an alignment (--bam)!'
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // PRE-ALIGNED (BAM) INPUT
+    // Peek at the samplesheet up front so a BAM-only run can relax the checks that
+    // exist purely for the read-based path (Kraken2 DB, QC, reference download) and
+    // warn about flags that cannot apply without raw reads.
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    def scan_bam_samplesheet = { infile ->
+        def scan = [any: false, all: false]
+        try {
+            def f = file(infile)
+            if (!f.exists()) { return scan }
+            def lines = f.readLines().findAll { it != null && it.trim() }
+            if (lines.size() < 2) { return scan }
+            def sep = lines[0].contains('\t') ? '\t' : ','
+            // strip a UTF-8 BOM if the samplesheet was saved from Excel
+            def hdr = lines[0].split(sep, -1).collect { it.trim().replaceAll('\\uFEFF', '') }
+            def bidx = hdr.indexOf('bam')
+            if (bidx < 0) { return scan }
+            def flags = lines[1..-1].collect { l ->
+                def cols = l.split(sep, -1)
+                (bidx < cols.size() && cols[bidx] != null && cols[bidx].trim()) ? true : false
+            }
+            scan.any = flags.any { it }
+            scan.all = flags.every { it }
+        /* groovylint-disable-next-line CatchException */
+        } catch (Exception e) {
+            println "WARNING: could not pre-scan ${infile} for a bam column: ${e.message}"
+        }
+        return scan
+    }
+
+    def bam_scan = params.input ? scan_bam_samplesheet.call(params.input) : [any: false, all: false]
+    def has_bam_samples = params.bam ? true : bam_scan.any
+    def bam_only_run    = params.bam ? true : bam_scan.all
+
+    if (has_bam_samples) {
+        // match_paths.py needs the reference(s) the BAM was aligned against: the FASTA
+        // for sourmash/ANI comparison and the derived accession->taxid map for -m.
+        if (!params.reference_fasta && !params.get_pathogens) {
+            exit 1, "ERROR: pre-aligned (BAM) input requires the reference the BAM was aligned " +
+                    "against. Pass --reference_fasta <fasta|dir> (or --get_pathogens) so the " +
+                    "accession->taxid map and ANI comparison can be built."
+        }
+    }
+
+    if (bam_only_run) {
+        println 'BAM-only run detected: skipping read QC, trimming, host removal, classification and reference download.'
+        // Nothing to classify and nothing to select references from.
+        params.skip_kraken2 = true
+        params.skip_refpull = true
+        // These all need raw reads / de novo contigs.
+        [
+            'use_denovo', 'use_diamond', 'annotate', 'microbert', 'novelty',
+            'generate_iss', 'generate_nanosim', 'reference_assembly', 'get_variants'
+        ].each { flag ->
+            if (params[flag]) {
+                println "WARNING: --${flag} is not supported for pre-aligned (BAM) input and has been disabled."
+                params[flag] = false
+            }
+        }
+    } else if (has_bam_samples) {
+        println 'Mixed FASTQ/BAM samplesheet detected: pre-aligned samples bypass QC, ' +
+                'classification, reference download, de novo assembly, MicrobeRT and novelty.'
     }
 
     if (params.minq) {
@@ -588,6 +658,19 @@ workflow TAXTRIAGE {
         }
     }
 
+    // ── Pre-aligned (BAM) inputs: branch off before ANY read processing ─────────
+    // These samples carry an alignment file in the "reads" slot.  They skip
+    // compression, trimming, QC, host removal, subsampling and classification,
+    // and rejoin the pipeline at the reference-prep / report stage.
+    ch_reads.branch {
+        bam: it[0].is_bam == true
+        reads: !(it[0].is_bam == true)
+    }.set { reads_by_source }
+    ch_bam_inputs = reads_by_source.bam.map { meta, files ->
+        [ meta, (files instanceof List ? files[0] : files) ]
+    }
+    ch_reads = reads_by_source.reads
+
     // ── FASTA inputs: branch off before any QC / trimming / host-removal ────────
     // Samples whose fastq_1 column contains a FASTA file (.fa/.fasta/.fna or .gz
     // variants) set meta.is_fasta = true in input_check.nf.  They skip every
@@ -600,8 +683,8 @@ workflow TAXTRIAGE {
     ch_fasta_reads = reads_by_type.fasta
     ch_reads       = reads_by_type.fastq
 
-    // ch_pass_files tracks every sample (FASTQ + FASTA) through to REPORT
-    ch_pass_files = ch_reads.mix(ch_fasta_reads).map{ meta, reads -> [ meta ] }
+    // ch_pass_files tracks every sample (FASTQ + FASTA + BAM) through to REPORT
+    ch_pass_files = ch_reads.mix(ch_fasta_reads).mix(ch_bam_inputs).map{ meta, reads -> [ meta ] }
 
     ARTIC_GUPPYPLEX(
         ch_reads.filter { it[0].directory   }
@@ -769,6 +852,11 @@ workflow TAXTRIAGE {
         ch_taxdump_dir
     )
     ch_kraken2_report = CLASSIFIER.out.ch_kraken2_report
+    // Pre-aligned samples never ran a classifier; hand match_paths.py the NO_FILE
+    // sentinel so every downstream join still sees one entry per sample.
+    ch_kraken2_report = ch_kraken2_report.mix(
+        ch_bam_inputs.map { meta, bam -> [meta, file("$projectDir/assets/NO_FILE")] }
+    )
     ch_reads = CLASSIFIER.out.ch_reads
     ch_krona = CLASSIFIER.out.ch_krona_plot
     // ch_multiqc_files = ch_multiqc_files.mix(ch_krona.collect { it[1] }.ifEmpty([]))
@@ -785,8 +873,12 @@ workflow TAXTRIAGE {
     ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
 
     ///////////////////////////RUN REFERENCE pull or processing/////////////////////////////////////////////////////////////////////
+    // Pre-aligned samples enter with an EMPTY organism list: they still need the
+    // local --reference_fasta mapped (accession -> taxid) for match_paths.py's -m
+    // and ANI comparison, but nothing is ever downloaded on their behalf
+    // (REFERENCE_PREP filters meta.is_bam out of DOWNLOAD_ASSEMBLY).
     REFERENCE_PREP(
-        ch_organisms_to_download,
+        ch_organisms_to_download.mix(ch_bam_inputs.map { meta, bam -> [meta, []] }),
         ch_reference_fasta,
         ch_assembly_txt,
         ch_pathogens
@@ -804,6 +896,21 @@ workflow TAXTRIAGE {
     ch_alignment_stats = Channel.empty()
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
+
+    ////////////////////////////// PRE-ALIGNED (BAM) SAMPLES ///////////////////////////////////////
+    // Normalise the supplied alignment (sort/convert/index) and derive the same
+    // coverage products ALIGNMENT emits, so REPORT consumes both paths identically.
+    // No aligner, no assembly download, no QC.
+    ch_cram_reference = params.cram_reference
+        ? Channel.value(file(params.cram_reference, checkIfExists: true))
+        : Channel.value(ch_empty_file)
+
+    BAM_INPUT(
+        ch_bam_inputs,
+        ch_mapped_assemblies,
+        ch_cram_reference
+    )
+    ch_versions = ch_versions.mix(BAM_INPUT.out.versions)
 
     ////////////////////////////// OPTIONAL: IN-SILICO READ SIMULATION //////////////////////////////
     // Simulate reads (ISS for Illumina, NanoSim for ONT) from Kraken2 abundance profiles.
@@ -888,9 +995,12 @@ workflow TAXTRIAGE {
             ch_prepfiles
         )
         ch_postalignmentfiles = ch_reads.map{ meta, reads -> [meta, null, null, null, null, null, null, []] }
-        ch_covfiles = ALIGNMENT.out.stats
-        ch_alignment_stats = ALIGNMENT.out.stats
-        ch_bedgraphs = ALIGNMENT.out.bedgraphs
+        // Pre-aligned samples contribute the same coverage products but never enter
+        // ALIGNMENT / ASSEMBLY — only the report-facing channels are mixed.
+        ch_covfiles = ALIGNMENT.out.stats.mix(BAM_INPUT.out.stats)
+        ch_alignment_stats = ch_covfiles
+        ch_bedgraphs = ALIGNMENT.out.bedgraphs.mix(BAM_INPUT.out.bedgraphs)
+        ch_report_bams = ALIGNMENT.out.bams.mix(BAM_INPUT.out.bams)
         ch_versions = ch_versions.mix(ALIGNMENT.out.versions)
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
@@ -945,11 +1055,17 @@ workflow TAXTRIAGE {
         ch_assembly_analysis = ASSEMBLY.out.ch_diamond_analysis
         ch_denovo = ASSEMBLY.out.ch_denovo_assembly
 
-        // Seed a per-sample placeholder for EVERY sample coming out of ALIGNMENT
-        // (covers insilico and control samples that skip ASSEMBLY/PROTEINS)
-        ch_annotate_report_tsv = ALIGNMENT.out.bams.map { meta, bam, bai ->
+        // Seed a per-sample placeholder for EVERY sample reaching the report
+        // (covers insilico, control and pre-aligned samples that skip ASSEMBLY/PROTEINS)
+        ch_annotate_report_tsv = ch_report_bams.map { meta, bam, bai ->
             [meta, file("$projectDir/assets/NO_FILE_annotate_report")]
         }
+
+        // Pre-aligned samples never run ASSEMBLY, so give them the same NO_FILE2
+        // diamond-analysis placeholder the insilico branch uses.
+        ch_assembly_analysis = ch_assembly_analysis.mix(
+            ch_bam_inputs.map { meta, bam -> [meta, file("$projectDir/assets/NO_FILE2")] }
+        )
 
         if (params.annotate) {
             // if params.annotate_proteins is null then set to 'assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.faa'
@@ -1033,7 +1149,8 @@ workflow TAXTRIAGE {
         if (!params.skip_report){
             // if ch_kraken2_report is empty join on empty
             // Define a channel that emits a placeholder value if ch_kraken2_report is empty
-            input_alignment_files = ALIGNMENT.out.bams
+            // ch_report_bams = aligner output + pre-aligned (BAM) input
+            input_alignment_files = ch_report_bams
                 .join(ch_mapped_assemblies)
                 .join(ch_bedgraphs)
                 .join(ch_covfiles)
@@ -1041,6 +1158,25 @@ workflow TAXTRIAGE {
                 .join(ch_assembly_analysis)
                 .join(ch_fastas)
                 .join(ch_annotate_report_tsv)
+
+            // ── Read counts for pre-aligned samples ────────────────────────────
+            // FASTQ samples got meta.read_count from COUNT_READS long before any
+            // join; BAM samples only learn theirs from PREPARE_BAM.  Fold it in
+            // HERE — after every meta-keyed join — and key by sample id so the
+            // meta map itself is never mutated mid-join.
+            input_alignment_files = input_alignment_files
+                .map { items -> [ items[0].id, items ] }
+                .join(
+                    BAM_INPUT.out.counts.map { meta, countfile -> [meta.id, countfile] },
+                    by: 0, remainder: true
+                )
+                .filter { it[1] }
+                .map { id, items, countfile ->
+                    if (!countfile) { return items }
+                    def mm = items[0].collectEntries { k, v -> [k, v] }
+                    mm.read_count = countfile.text.trim().toInteger()
+                    return [mm] + items[1..-1]
+                }
 
             ////////////////////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////////////////////

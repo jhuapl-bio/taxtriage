@@ -28,16 +28,17 @@ workflow INPUT_CHECK {
     ch_meta = file("$projectDir/assets/NO_FILE_meta_csv")
 
 
-    if (params.fastq_1) {
-        // Create a synthetic samplesheet from fastq params
+    if (params.fastq_1 || params.bam) {
+        // Create a synthetic samplesheet from fastq/bam params
         GENERATE_SAMPLESHEET(
             [
                 sampleName: params.sample ?: 'sample',
                 platform  : params.platform ?: 'ILLUMINA',
-                fastq_1   : params.fastq_1,
-                fastq_2   : params.fastq_2,
+                fastq_1   : params.bam ? null : params.fastq_1,
+                fastq_2   : params.bam ? null : params.fastq_2,
+                bam       : params.bam,
                 seq_summary: params.seq_summary,
-                trim      : params.trim,
+                trim      : params.bam ? 'false' : params.trim,
                 type      : params.type
             ]
         )
@@ -68,7 +69,7 @@ workflow INPUT_CHECK {
             versions = SAMPLESHEET_CHECK.out.versions
         }
     else {
-        error "ERROR: Must specify either --input or --fastq_1"
+        error "ERROR: Must specify one of --input, --fastq_1 or --bam"
     }
     emit:
         reads                                     // channel: [ val(meta), [ reads ] ]
@@ -86,6 +87,18 @@ def create_fastq_channel(LinkedHashMap row) {
     meta.platform = row.platform ? row.platform : 'ILLUMINA'
     // capitalize the platform
     meta.platform = meta.platform.toUpperCase()
+
+    // ── Pre-aligned (BAM/CRAM) input ────────────────────────────────────────
+    // A populated `bam` column means the sample is already aligned: every
+    // upfront read step (compression, trimming, QC, host removal, classifier,
+    // reference download) is bypassed and the file feeds coverage stats +
+    // match_paths.py directly.  fastq_1/fastq_2 are ignored for these rows.
+    meta.bam = (row.containsKey('bam') && row.bam) ? row.bam.trim() : null
+    meta.is_bam = meta.bam ? true : false
+    if (meta.is_bam && !file(meta.bam).exists()) {
+        exit 1, "ERROR: Please check input samplesheet -> alignment (BAM/CRAM) file does not exist!\n${meta.bam}"
+    }
+
     meta.fastq_1 = row.fastq_1
     // Check if 'fastq_2' exists in 'row'
     if (row.containsKey('fastq_2')) {
@@ -100,25 +113,32 @@ def create_fastq_channel(LinkedHashMap row) {
     //     meta.needscompressing = true
     // }
     // if meta.fastq_2 it is not single end, set meta.single_end as true else meta.single_end is false
-    meta.single_end = row.fastq_2  ? false : true
+    meta.single_end = (row.fastq_2 && !meta.is_bam) ? false : true
     meta.aligner  = row.aligner ? row.aligner : 'minimap2'
     // if meta.aligner is not minimap2, hisat2, or bowtie2 then exit and send error
     if (meta.aligner != 'minimap2' && meta.aligner != 'hisat2' && meta.aligner != 'bowtie2') {
         exit 1, "ERROR: Please check input samplesheet -> aligner is not specified as minimap2, hisat2, or bowtie2 \n${meta.sample}"
     }
     // fastq_1 may be a ';'-delimited list of paths (multi-file input).
-    // Check every path individually.
-    meta.fastq_1.split(';').each { rawPath ->
-        def p = rawPath.trim()
-        if (p && !file(p).exists()) {
-            exit 1, "ERROR: Please check input samplesheet -> sequence file does not exist!\n${p}"
+    // Check every path individually.  Skipped entirely for pre-aligned samples.
+    if (!meta.is_bam) {
+        if (!meta.fastq_1) {
+            exit 1, "ERROR: Please check input samplesheet -> a sample must have either fastq_1 or bam populated!\n${meta.id}"
+        }
+        meta.fastq_1.split(';').each { rawPath ->
+            def p = rawPath.trim()
+            if (p && !file(p).exists()) {
+                exit 1, "ERROR: Please check input samplesheet -> sequence file does not exist!\n${p}"
+            }
+        }
+        if (!meta.single_end && meta.fastq_2 && !file(meta.fastq_2).exists()) {
+            exit 1, "ERROR: Please check input samplesheet -> Read 2 sequence file (FASTQ) does not exist!\n${meta.fastq_2}"
         }
     }
-    if (!meta.single_end && meta.fastq_2 && !file(meta.fastq_2).exists()) {
-        exit 1, "ERROR: Please check input samplesheet -> Read 2 sequence file (FASTQ) does not exist!\n${meta.fastq_2}"
-    }
 
-    if (row.trim && row.trim.toLowerCase() == "true"){
+    if (meta.is_bam) {
+        meta.trim = false
+    } else if (row.trim && row.trim.toLowerCase() == "true"){
         meta.trim = true
     } else if (!row.trim  || (row.trim && row.trim.toLowerCase() == "false")){
         meta.trim = false
@@ -155,7 +175,14 @@ def create_fastq_channel(LinkedHashMap row) {
     // fastq_1 may be a ';'-delimited list of file paths for multi-file inputs
     // (e.g. multiple FASTA assemblies fed to a single minimap2 splice run).
     def fastq_meta = []
-    if (meta.directory) {
+    if (meta.is_bam) {
+        // Pre-aligned: the "reads" slot carries the alignment file so the tuple
+        // shape stays [meta, [file]] for every consumer.
+        meta.directory = false
+        meta.is_fasta = false
+        meta.needscompressing = null
+        fastq_meta = [ meta, [ file(meta.bam) ] ]
+    } else if (meta.directory) {
         if (meta.platform == 'OXFORD' || meta.platform == 'PACBIO') {
             fastq_meta = [ meta, [ file(meta.fastq_1) ] ]
         } else {

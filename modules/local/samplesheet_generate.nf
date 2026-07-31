@@ -15,15 +15,16 @@ process GENERATE_SAMPLESHEET {
     script:
     def sampleName = meta.sampleName ?: 'sample'
     def platform   = meta.platform ?: 'ILLUMINA'
-    def fastq_1    = meta.fastq_1
+    def fastq_1    = meta.fastq_1    ?: ''
     def fastq_2    = meta.fastq_2    ?: ''
+    def bam        = meta.bam        ?: ''
     def seq_sum    = meta.seq_summary ?: ''
     def trim       = meta.trim       ?: 'false'
     def type       = meta.type       ?: 'UNKNOWN'
 
     """
-    echo "sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type" > temp_samplesheet.csv
-    echo "${sampleName},${platform},${fastq_1},${fastq_2},${seq_sum},${trim},${type}" >> temp_samplesheet.csv
+    echo "sample,platform,fastq_1,fastq_2,bam,sequencing_summary,trim,type" > temp_samplesheet.csv
+    echo "${sampleName},${platform},${fastq_1},${fastq_2},${bam},${seq_sum},${trim},${type}" >> temp_samplesheet.csv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

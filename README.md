@@ -189,6 +189,50 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 
 For current options, use the [CLI parameter reference](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters).
 
+## Pre-aligned (BAM/CRAM) input
+
+If alignments already exist, TaxTriage can start from them. Pre-aligned samples skip every upstream
+stage — compression, trimming, QC plots, host depletion, subsampling, classification and reference
+downloading — and go straight to coverage statistics, scoring (`match_paths.py`) and the report.
+
+Because no classifier runs to select references, the reference the file was aligned against must be
+supplied with `--reference_fasta`. It provides both the accession → taxid map (`match_paths.py -m`)
+and the sourmash/ANI comparison (`match_paths.py -f`), so reference names in the BAM header must
+match the accessions in that FASTA.
+
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  -profile docker \
+  --bam examples/data/prealigned_sample.bam \
+  --sample prealigned_sample --platform ILLUMINA --type nasal \
+  --reference_fasta references/pathogens.fasta \
+  --outdir output_bam
+```
+
+A samplesheet may instead carry a `bam` column, and may mix pre-aligned and FASTQ rows (`fastq_1` is
+ignored wherever `bam` is set):
+
+```csv
+sample,platform,bam,type
+prealigned_sample,ILLUMINA,examples/data/prealigned_sample.bam,nasal
+```
+
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  -profile docker \
+  --input examples/samplesheet_bam.csv \
+  --reference_fasta references/pathogens.fasta \
+  --outdir output_bam
+```
+
+- `.bam`, `.cram` and `.sam` are accepted; files are converted and coordinate sorted only when
+  needed, then CSI indexed. Use `--cram_reference` when CRAM decoding needs a different FASTA.
+- The alignment is used as given; `--bam_minmapq <n>` applies a MAPQ filter first.
+- Read count is taken from the primary, non-supplementary records in the file.
+- Options requiring raw reads or de novo contigs (`--use_denovo`, `--use_diamond`, `--annotate`,
+  `--microbert`, `--novelty`, `--generate_iss`, `--generate_nanosim`, `--reference_assembly`,
+  `--get_variants`) are disabled with a warning on a BAM-only run.
+
 ## Offline and reproducible operation
 
 Clone the repository when local modifications, pinned code, or offline execution are required:

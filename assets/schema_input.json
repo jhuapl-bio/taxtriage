@@ -29,8 +29,29 @@
                         "maxLength": 0
                     }
                 ]
+            },
+            "bam": {
+                "errorMessage": "Pre-aligned file must have extension '.bam', '.cram' or '.sam' and cannot contain spaces. When set, fastq_1/fastq_2 are ignored and the sample skips QC, classification and reference downloading.",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^\\S+\\.(bam|cram|sam)$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
             }
         },
-        "required": ["sample", "fastq_1"]
+        "anyOf": [
+            {
+                "required": ["sample", "fastq_1"]
+            },
+            {
+                "required": ["sample", "bam"]
+            }
+        ],
+        "required": ["sample"]
     }
 }
