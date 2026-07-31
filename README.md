@@ -1,384 +1,332 @@
 [![DOI](https://img.shields.io/badge/doi-10.1093/bioinformatics/btag119-blue)](https://doi.org/10.1093/bioinformatics/btag119)
 [![Zenodo](https://img.shields.io/badge/doi-10.5281/zenodo.17081353-red)](https://doi.org/10.5281/zenodo.17081353)
+[![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A524.0-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
+[![Docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
+[![Singularity](https://img.shields.io/badge/run%20with-SingularityCE%20v4%2B-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
+[![Wiki](https://img.shields.io/badge/wiki-documentation-red)](https://github.com/jhuapl-bio/taxtriage/wiki)
+[![Interactive report](https://img.shields.io/badge/live-interactive%20report-red)](https://jhuapl-bio.github.io/taxtriage/)
 
-[![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
-[![Tutorial: install & run with docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
-[![Tutorial: install & with singularityCE v4+](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
+# TaxTriage
 
-[![Wiki](https://img.shields.io/badge/wiki-usage%20details-red)](https://github.com/jhuapl-bio/taxtriage/wiki)
-[![PreviewReport](https://img.shields.io/badge/preview%20report-red)](https://jhuapl-bio.github.io/taxtriage/)
+**TaxTriage is a metagenomic decision-support workflow—not simply a collection of QC, classification, and alignment tools.** It converts short- or long-read metagenomic sequencing data into organism-level evidence, resolves ambiguous alignments among related references, ranks detections with the **TASS confidence score**, and packages the results in a self-contained, highly interactive HTML report.
 
-## About
+Many metagenomic Nextflow workflows end with tool-specific files and a MultiQC summary. TaxTriage adds a post-alignment interpretation layer designed to help users answer harder questions:
 
-TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples/specimens (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It is designed for short- (Illumina) or long-read (ONT, PacBio) platforms, and incorporates numerous software packages to perform quality control, organism classification, and read mapping. Additionally, TaxTriage uses intermediate data into a **unified confidence metric** (TASS Score) for all organisms identified. The final analysis output is incorporated into an Organism Discovery Report, represented as a single PDF, with summaries of the intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is not intended for use as a standalone diagnostic capability.
+- Is an organism supported by distributed, high-quality, reference-specific evidence rather than a small ambiguous pileup?
+- How should evidence be interpreted when reads align to several closely related organisms or strains?
+- Which detections remain credible after shared regions and competing references are considered?
+- How do detections vary across samples, specimens, time points, locations, hosts, diseases, and other supplied metadata?
 
-### To Start
+> TaxTriage is intended for research, surveillance, and early-stage outbreak investigation. It is not intended for use as a standalone diagnostic capability.
 
-**Check out our interactive demo**: [here](https://jhuapl-bio.github.io/taxtriage/)
+[**Open the interactive report demonstration**](https://jhuapl-bio.github.io/taxtriage/) · [**Read the TASS scoring documentation**](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring) · [**Browse the full wiki**](https://github.com/jhuapl-bio/taxtriage/wiki)
 
-If you already have Nextflow installed, you can go ahead and test things with (use the copy button and past in your command-line):
+## What TaxTriage contributes
 
+| Capability                 | Typical workflow endpoint               | TaxTriage contribution                                                                                    |
+| -------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| QC and preprocessing       | Read-quality and trimming summaries     | Reproducible short- and long-read preprocessing connected to downstream organism evidence                 |
+| Taxonomic classification   | Classifier counts and abundance tables  | Classifier output used as supporting evidence rather than treated as the final answer                     |
+| Reference alignment        | BAM, depth, and coverage files          | Post-alignment evidence extraction and organism-level interpretation                                      |
+| Confidence assessment      | Fixed read-count or coverage thresholds | **TASS**, a configurable 0–100 confidence score combining complementary evidence features                 |
+| Closely related references | Similar hits reported independently     | Shared-sequence and cross-mapping analysis that reduces ambiguous support                                 |
+| Reporting                  | MultiQC and static result tables        | A self-contained, cross-sample **interactive investigation environment** plus static deliverables         |
+| Metadata                   | Metadata retained in a samplesheet      | Maps, longitudinal plots, geographic comparisons, host/disease analyses, filtering, and specimen grouping |
+
+## The two defining outputs
+
+### 1. TASS: post-alignment organism confidence
+
+The **Threat Agnostic Sentinel Surveillance (TASS) score** is a normalized organism-level confidence score between 0 and 1. It is calculated after candidate organisms have been aligned and is designed to distinguish broad, coherent, organism-specific evidence from weak, localized, or ambiguous support.
+
+Depending on enabled options, the score can incorporate:
+
+- **Breadth of coverage**, transformed for sample-type-specific expectations and scaled by high-quality alignment support.
+- **Coverage uniformity**, using a Gini-derived feature to distinguish genome-wide evidence from localized pileups.
+- **MinHash/shared-region reduction**, measuring how much support remains after competing references and shared sequence are considered.
+- **Mapping quality, abundance, classifier agreement, body-site context, protein identity, and plasmid evidence**.
+- **Species- and genus-level rollups**, allowing evidence split among near-identical strains to be interpreted at an appropriate taxonomic level.
+
+TASS is not a renamed Kraken2 confidence value or a single coverage cutoff. It is a post-alignment synthesis of multiple evidence types with configurable weights, transformations, and thresholds. The equations, default weights, conflict-resolution logic, and optimization approach are documented in the [TASS Scoring wiki](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring).
+
+![TASS confidence metric overview](assets/confidence_metric.png)
+
+### 2. A self-contained interactive investigation report
+
+TaxTriage generates `report/all.odr.html`, a multi-sample report that opens in a modern browser and can be distributed as a single file. It is designed for active investigation rather than passive viewing.
+
+The report includes, when corresponding data are available:
+
+- Organism-by-sample TASS heatmaps with adjustable cutoffs.
+- Strain, species, and genus views with rollup-rescue indicators.
+- TASS distributions, genome coverage profiles, and per-position histograms.
+- Taxonomic sunbursts, sortable tables, scatter/bubble plots, and correlograms.
+- Cross-sample comparisons, co-occurrence analyses, and prevalence views.
+- Geographic maps and choropleths driven by supplied location metadata.
+- Longitudinal analyses driven by collection dates or times.
+- Host, disease, environmental-site, and other metadata comparisons.
+- Reversible merging of related libraries into specimen-level views.
+- Virulence-factor and antimicrobial-resistance summaries when enabled.
+- Novelty/open-set and in-silico dilution analyses when those modules are run.
+- Browser-side filtering, recoloring, metadata editing, and export.
+
+The interactive report complements MultiQC rather than replacing it. MultiQC summarizes process and tool QC; the TaxTriage report integrates organism evidence and metadata into an exploratory analytical product.
+
+## Workflow at a glance
+
+```mermaid
+flowchart LR
+    A[FASTQ / FASTA reads] --> B[QC and trimming]
+    B --> C[Optional host depletion]
+    C --> D[Metagenomic classification]
+    D --> E[Candidate reference selection]
+    E --> F[Short- or long-read alignment]
+    F --> G[Coverage, MAPQ, abundance, and reference statistics]
+    G --> H[Shared-region and competing-reference analysis]
+    H --> I[TASS confidence scoring]
+    I --> J[Thresholding and taxonomic rollups]
+    J --> K[Interactive HTML report]
+    J --> L[Static PDF and tabular outputs]
+    M[Sample and run metadata] --> K
+    N[Optional VF/AMR, novelty, and simulation results] --> K
 ```
-nextflow run https://github.com/jhuapl-bio/taxtriage -r main -profile test,docker -resume
+
+![TaxTriage pipeline schematic](assets/taxtriage_schematics.png)
+
+## Supported use cases
+
+TaxTriage processes untargeted DNA or RNA sequencing from complex human, animal, or environmental samples, including respiratory swabs, lesion swabs, whole blood, saliva, stool, and related specimen types. It supports:
+
+- Illumina short reads, including paired-end data.
+- Oxford Nanopore and PacBio long reads.
+- Single-sample and multi-sample runs.
+- Docker and SingularityCE containerized execution.
+- Workstations, HPC systems, cloud deployments, and offline environments.
+
+The achievable reporting resolution depends on sequence quantity, quality, and uniqueness. Species-level calls are often possible; strain, variant, or clade resolution requires sufficient discriminating sequence.
+
+## Quick start
+
+### Requirements
+
+1. [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html#installation) (`>=24`)
+2. [Docker](https://docs.docker.com/engine/install/) or [SingularityCE](https://docs.sylabs.io/)
+3. Java 11 or later
+
+> **Nextflow 26 compatibility:** TaxTriage currently requires the legacy syntax parser with Nextflow 26+. Set `NXF_SYNTAX_PARSER=v1` while strict-syntax support is completed. Nextflow 24–25 do not require this setting.
+
+### Run the test profile
+
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  -r main \
+  -profile test,docker \
+  -resume
 ```
 
-Otherwise, head to the [wiki](https://github.com/jhuapl-bio/taxtriage/wiki)
+For SingularityCE, replace `docker` with `singularity`.
 
-⚠️ **ALERT** Nextflow v26+ employs strict syntax rules that TaxTriage does not currently implement. Please use : NXF_SYNTAX_PARSER=v1 when running nextflow while we work (dilligently) on patching this for newer nextflow users. Nextflow v24-25 do not have this issue.
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  -r main \
+  -profile test,singularity \
+  -resume
+```
 
-![](assets/taxtriage_schematics.png)
-
-### Description
-
-The TaxTriage pipeline aims to democratize metagenomic sequence analysis for early warning and outbreak investigations in public health and clinical laboratory settings. To enable this capability, TaxTriage was developed to ingest short- or long-read metagenomic sequencing data generated from a range of human or animal sample types. The fully automated analysis process generates a variety of outputs, intended for both clincal specialists and skilled bioinformaticians, to enable species-level identification of pathogens from unprocessed metagenomics data. Flexibility has been built in to enable multiple sequencing chemistry and sample types (blood, saliva, stool, etc.). While strain, variant, or clade-level distinction may be possible, the quantity and quality of data determines the overall reporting granularity. [Full documentation](https://github.com/jhuapl-bio/taxtriage/wiki) is available for each pipeline component:
-
-- Quality control steps
-- In-silico host depletion
-- Classification of reads
-- Mapping of reads to reference genomes found to be "top hits"
-- Confidence metric generation (e.g., depth/breadth of coverage, percent nucleotide ID, etc.)
-- Thresholding mechanisms
-- De-novo assembly
-- Detailed MultiQC reports
-- Concise final report (intended to have all data fields required for use in clinical laboratory settings)
-- Interactive exploratory dashboards
-
-For the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. This component is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output formats include PDF and `HTML` which are highly interactive and distributable.
-
-See [Important output locations](https://github.com/jhuapl-bio/taxtriage/wiki/Output) for information on where to get key output files from the pipeline.
-
-See [here](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules#step-5-top-hits-assignment) for information on how "top hits" are identified
-
-See collaborative efforts with groups outside JHU/APL [here](README.md#uw-madison--a-custom-geneious-prime-plugin-for-taxtriage)
-
-#### Alerts
-
-:warning: If you make changes to the code within a nextflow-pulled repo, a change can result in a conflict in updating already cloned repos when running the test profile or called `-latest -r main/stable`. As a result you must run `nextflow drop https://github.com/jhuapl-bio/taxtriage` first. This only applies to pipelines run by calling the remote repo and the previously mentioned parameters. If you expect to make local changes frequently, you should just `git clone` and `git pull` manually and run the pipeline from the `main.nf` file. See [here](https://github.com/jhuapl-bio/taxtriage?tab=readme-ov-file#running-on-local-nf-files-test-config) for more info
-
-The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It uses Docker/Singularity containers making installation trivial and results highly reproducible. The [Nextflow DSL2](https://www.nextflow.io/docs/latest/dsl2.html) implementation of this pipeline uses one container per process which makes it much easier to maintain and update software dependencies. Where possible, these processes have been submitted to and installed from
-
-TaxTriage is designed as a pipeline for the purpose of giving an initial triage of taxonomic classifications, using Kraken2 database(s), that can then be ingested into a CLIA-style report format. It is under active development, but in the current state it is capable of running a set number of samples end-to-end using a user-created samplesheet in `.csv` format. The output format is a `HTML` which is highly interactive and distributable.
-
-Efforts are underway to provide full support of this pipeline on [nf-core](nf-core.re) to provide a seamless deployment methodology. The pipeline also requires installation of [Docker](https://docker.com) or [Singularity](https://docs.sylabs.io/) (_CE ONLY_ v4+) for the individual modules within it. Because these modules are separate from the source code of TaxTriage, we recommend following the examples outlined in the [usage details](https://github.com/jhuapl-bio/taxtriage/wiki/Quick-Start) first to automatically run the pipeline and install all dependencies while also giving you some example outputs and a better feel for how the pipeline operates.
-
-[See Here for full usage details](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules)
-
-[See Here for troubleshooting & FAQ](https://github.com/jhuapl-bio/taxtriage/wiki/Troubleshooting)
+See the [wiki](https://github.com/jhuapl-bio/taxtriage/wiki) for samplesheet preparation, database setup, cloud execution, offline operation, and the complete parameter reference.
 
 ## Installation
 
-TaxTriage requires 2 primary installs for it to work
+### Install Nextflow
 
-1. Nextflow
-2. Singularity or Docker (recommended)
-
-### 1. Nextflow
-
-Follow instructions [here](https://nf-co.re/docs/usage/installation) or run these commands in your WSL2, Native Linux, or Mac environment
-
-```
-# Make sure that Java v11+ is installed:
+```bash
 java -version
-
-# Install Nextflow
 curl -fsSL get.nextflow.io | bash
-
-```
-
-Note, this command requires sudo to move to your home path. If you are on an HPC, make sure that nextflow is in your $PATH if not globally available
-Place it in your `$PATH`
-
-```
-# Add Nextflow binary to your user's PATH:
+mkdir -p ~/bin
 mv nextflow ~/bin/
+nextflow -version
 ```
 
-If installing globally, requiring sudo, type:
+Alternatively, install Nextflow globally:
 
-```
-sudo mv nextflow /usr/local/bin
-```
-
-When complete, verify installation with `nextflow -v` to see the version
-
-### 2. Containerization Approach Install
-
-Choose _A_ (Recommended - Docker) or _B_. If on a HPC, talk with your IT to get B. Singularity setup. You do NOT need to install both software tools.
-
-#### A. Docker
-
-Follow these steps for your OS [here](https://docs.docker.com/engine/install/) - IF on WSL2 (Windows), choose Docker Desktop for Windows and it should be available automatically in your WSL environment
-
-#### B. Singularity
-
-[Install Instructions](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)
-
-## Quick Start
-
-Make sure you have either Docker or Singularity installed, as well as Nextflow
-
-### Test Run
-
-This will pull the test data and run the pipeline. It should take ~10-15 minutes.
-
-```
-nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest -profile test,docker -resume
+```bash
+sudo mv nextflow /usr/local/bin/
 ```
 
-❗If you want singularity instead, make sure to specify that in the profile instead of docker like: `test,singularity`
+### Install a container runtime
 
-### Cloud
+Use one of the following:
 
-Follow the steps [here](https://github.com/jhuapl-bio/taxtriage/wiki/Cloud-and-Seqera)
+- [Docker installation guide](https://docs.docker.com/engine/install/)
+- [SingularityCE installation guide](https://docs.sylabs.io/)
 
-### Offline Local Mode
+You do not need both. Docker is generally simplest on workstations; SingularityCE is commonly used on HPC systems.
 
-In some cases, you may not want to always pull the latest update(s) each time your run the pipeline. To solve this issue, you have 2 primary options:
+## Running local data
 
-#### A. Reference remote url, don't specify latest
-
-```
-nextflow run https://github.com/jhuapl-bio/taxtriage -r main -profile test,docker -resume
-```
-
-Here, we remove the `-latest` which will not attempt to pull updates. This will only work if you've already run the pipeline (thus pulling the code locally) in online mode like in the initial example for a test run
-
-#### B. Clone the repo first, reference local main file
-
-Here, we instead clone the repo. Then, we reference the launchfile called `main.nf` that is locally on our system. We need to ensure that we're always in the repo's directory each time we do this too
-
-First we clone
-
-```
-git clone https://github.com/jhuapl-bio/taxtriage.git
-```
-
-Then we `cd` into our directory
-
-```
-cd taxtriage
-```
-
-Finally, we run a test run (feel free to edit inputs based on your own data needs after the first test run)
-
-```
-nextflow run ./main.nf -profile test,docker -resume
-```
-
-Please be aware that intermittent portions of the pipeline will still use internet by default. You can instead run other commands like the example [here](https://github.com/jhuapl-bio/taxtriage/blob/main/README.md#running-it-without-internet-availability) to remedy this problem.
-
-### Local Data
-
-:warning: If you get an error on uncommitted changes please run the `nextflow drop -f https://github.com/jhuapl-bio/taxtriage`
-
-```
-nextflow drop -f https://github.com/jhuapl-bio/taxtriage
-```
-
-Then run the pipeline normally as described in previous steps
-
-### Pre-aligned (BAM/CRAM) input
-
-If you already have alignments, TaxTriage can start from them directly. Pre-aligned samples skip
-**every** upstream step — compression, trimming, FastQC/NanoPlot/fastp, host removal, subsampling,
-Kraken2 classification and reference/assembly downloading — and go straight to coverage statistics,
-scoring (`match_paths.py`) and the report.
-
-Because there is no classifier step to pick references, you **must** supply the reference the BAM was
-aligned against with `--reference_fasta`. It is used both for the accession → taxid map
-(`fuzzy_match_assembly.py`, i.e. `match_paths.py -m`) and for the sourmash/ANI comparison
-(`match_paths.py -f`), so the reference names in the BAM header must match the accessions in that
-FASTA.
-
-Single file:
-
-```
+```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --bam examples/data/prealigned_sample.bam \
-   --sample prealigned_sample --platform ILLUMINA --type nasal \
-   --reference_fasta references/pathogens.fasta \
-   --outdir output_bam -profile docker
+  -r main \
+  -profile local,docker \
+  --input examples/Samplesheet.csv \
+  --db viral \
+  --download-db \
+  --outdir output_viral \
+  -resume
 ```
 
-Samplesheet with a `bam` column (may be mixed with regular FASTQ rows; `fastq_1` is ignored for rows
-that set `bam`):
+Using a local Kraken2 database:
 
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  -r main \
+  -profile local,docker \
+  --input examples/Samplesheet.csv \
+  --db /absolute/path/to/k2_database \
+  --outdir output_local_db \
+  -resume
 ```
+
+For current options, use the [CLI parameter reference](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters).
+
+## Pre-aligned (BAM/CRAM) input
+
+If alignments already exist, TaxTriage can start from them. Pre-aligned samples skip every upstream
+stage — compression, trimming, QC plots, host depletion, subsampling, classification and reference
+downloading — and go straight to coverage statistics, scoring (`match_paths.py`) and the report.
+
+Because no classifier runs to select references, the reference the file was aligned against must be
+supplied with `--reference_fasta`. It provides both the accession → taxid map (`match_paths.py -m`)
+and the sourmash/ANI comparison (`match_paths.py -f`), so reference names in the BAM header must
+match the accessions in that FASTA.
+
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  -profile docker \
+  --bam examples/data/prealigned_sample.bam \
+  --sample prealigned_sample --platform ILLUMINA --type nasal \
+  --reference_fasta references/pathogens.fasta \
+  --outdir output_bam
+```
+
+A samplesheet may instead carry a `bam` column, and may mix pre-aligned and FASTQ rows (`fastq_1` is
+ignored wherever `bam` is set):
+
+```csv
 sample,platform,bam,type
 prealigned_sample,ILLUMINA,examples/data/prealigned_sample.bam,nasal
 ```
 
-```
+```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --input examples/samplesheet_bam.csv \
-   --reference_fasta references/pathogens.fasta \
-   --outdir output_bam -profile docker
+  -profile docker \
+  --input examples/samplesheet_bam.csv \
+  --reference_fasta references/pathogens.fasta \
+  --outdir output_bam
 ```
 
-Notes:
-
-- Input may be `.bam`, `.cram` or `.sam`. Files are converted/coordinate-sorted only when needed and
-  CSI-indexed automatically; CRAM decoding can use `--cram_reference` if it differs from
-  `--reference_fasta`.
-- The alignment is taken as given; pass `--bam_minmapq <n>` to apply a MAPQ filter first.
-- `meta.read_count` is derived from the count of primary, non-supplementary records in the BAM.
-- Flags that need raw reads or de novo contigs (`--use_denovo`, `--use_diamond`, `--annotate`,
+- `.bam`, `.cram` and `.sam` are accepted; files are converted and coordinate sorted only when
+  needed, then CSI indexed. Use `--cram_reference` when CRAM decoding needs a different FASTA.
+- The alignment is used as given; `--bam_minmapq <n>` applies a MAPQ filter first.
+- Read count is taken from the primary, non-supplementary records in the file.
+- Options requiring raw reads or de novo contigs (`--use_denovo`, `--use_diamond`, `--annotate`,
   `--microbert`, `--novelty`, `--generate_iss`, `--generate_nanosim`, `--reference_assembly`,
   `--get_variants`) are disabled with a warning on a BAM-only run.
 
-### Running it with the local config (for laptops/workstations) with limited RAM and a different (auto-downloadable) db
+## Offline and reproducible operation
 
-```
-nextflow run https://github.com/jhuapl-bio/taxtriage  \
-  --outdir tmp_viral \
-  -resume \
-  --input examples/Samplesheet.csv \
-  -r main -latest \
-  --db "viral" --download-db \
-  -profile local,docker
+Clone the repository when local modifications, pinned code, or offline execution are required:
+
+```bash
+git clone https://github.com/jhuapl-bio/taxtriage.git
+cd taxtriage
+nextflow run ./main.nf -profile test,docker -resume
 ```
 
-### Running it by overriding some parameters from the local config
+The interactive report can be built for offline viewing. See the [Interactive Report documentation](https://github.com/jhuapl-bio/taxtriage/wiki/Interactive-Report) for `--offline_report` and `--offline_report_files`.
 
-```
-nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --input examples/Samplesheet.csv -r main -latest \
-   --db viral --download_db \
-   --outdir output_viral --max_memory 10GB --max_cpus 3   \
-   -profile docker  -resume --remove_taxids "9606"
+When Nextflow reports conflicting uncommitted changes in a remotely cached pipeline:
+
+```bash
+nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 ```
 
-:warning: Please see the contents of test or local config to figure out what the defaults are for those profiles
+## Major workflow stages
 
-Remember, if you are doing a single taxid, wrap it with '' inside the "" quote
+1. Optional subsampling or digital normalization.
+2. Platform-specific QC and adapter trimming.
+3. Optional host depletion.
+4. Read-level classification with Kraken2 or Centrifuge.
+5. Candidate-organism and reference selection.
+6. Alignment with BWA-MEM2 or Minimap2.
+7. Per-reference coverage, quality, and abundance calculations.
+8. Shared-region and competing-reference conflict analysis.
+9. TASS calculation, thresholding, and taxonomic rollup.
+10. Optional assembly, protein annotation, novelty detection, and simulation analysis.
+11. MultiQC, static outputs, and the interactive Organism Discovery Report.
 
-#### Using a db that is on your local filesystem
+Pre-aligned (BAM/CRAM) samples enter at stage 7; stages 1–6 and 10 are skipped for them.
 
-Make sure you use a local k2 database in your system. Assuming (for this example) you've pulled and decompressed a k2 database like k2_viral [See here for more](https://benlangmead.github.io/aws-indexes/k2) and change it with the `--db` parameter like below.
+Detailed descriptions are available in [Pipeline Modules](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules).
 
-```
+## Important outputs
 
-nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --input examples/Samplesheet.csv \
-   --db "./k2_viral" -r main -latest \
-   --outdir output_viral_local  \
-   --profile local,docker \
-   -resume
-```
+| Output                      | Purpose                                                 |
+| --------------------------- | ------------------------------------------------------- |
+| `report/all.odr.html`       | Interactive, multi-sample organism investigation report |
+| Per-sample ODR PDF          | Static archival summary for an individual sample        |
+| `*.paths.json`              | Structured organism evidence used by the report         |
+| TASS/path tables            | Organism-level scores and component metrics             |
+| BAM/depth/coverage outputs  | Alignment evidence and genome-position support          |
+| Kraken2/Centrifuge reports  | Read-classifier evidence                                |
+| MultiQC report              | Pipeline and tool-level QC summaries                    |
+| Conflict-comparison outputs | Evidence changes after ambiguous support is addressed   |
 
-Note that the `--db` parameter is changed to a local path which contains the k2d files for kraken2 to operate.
+See [Output](https://github.com/jhuapl-bio/taxtriage/wiki/Output) for exact locations and file naming.
 
-### Running it without internet availability
+## Metadata-aware analysis
 
-This will use a local assembly text and reference fasta, assuming the reference FASTA is called `refer.fasta`
+TaxTriage carries extra samplesheet columns—or a separate metadata table supplied through `--meta`—into the interactive report. Recognized fields drive dedicated analyses, while arbitrary fields remain available for display and filtering.
 
-You will need 3 files locally on your system
+Examples include `latitude`, `longitude`, `collection_time`, `sample_origin_country`, `sample_origin_state_province_territory`, `host_scientific_name`, `host_disease`, `environmental_site`, `run_id`, sequencing fields, and `specimen`/`specimen_id`/`specimen_group`.
 
-1. assembly
-2. reference_fasta
-3. db
+These fields enable geographic, temporal, specimen-level, host-associated, disease-associated, and cross-entry analyses directly in the report.
 
-```
+## Databases
 
-nextflow run https://github.com/jhuapl-bio/taxtriage \
-   --input examples/Samplesheet.csv \
-   --db "k2_viral" -r main -latest --skip_kraken2 \
-   --outdir tmp --reference_fasta ./refer.fasta \
-   -profile local,docker \
-   -resume \
-   --demux \
-   --assembly examples/assembly_summary_refseq.txt
+TaxTriage can use a local Kraken2 database or download selected databases through workflow parameters. Database content and date strongly affect classification results, so record the database version used for each analysis.
 
-```
+- [Kraken2 standard and specialty indexes](https://benlangmead.github.io/aws-indexes/k2)
+- [TaxTriage viral database example](https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz)
+- [FluKraken2](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz)
 
-Be aware that this skips the metagenomics portion of the pipeline and **only** does alignment using the local reference fasta.
+## Collaborative efforts
 
-#### Running on local nf files (test config)
+### UW–Madison Geneious Prime plugin
 
-:warning: Make sure you're in the `jhuaplbio/taxtriage` repo first!
+Dave O'Connor's laboratory at the University of Wisconsin–Madison developed a custom Geneious Prime plugin for launching TaxTriage analyses from Geneious. Build and installation instructions are available in the [Geneious plugin documentation](src/geneious-plugin/docs/README.md#taxtriage-geneious-plugin).
 
-```
-nextflow run ./main.nf -profile test,docker
-```
+## Documentation
 
-A [wiki](https://github.com/jhuapl-bio/taxtriage/wiki) is available for detailed information on usage and configuration techniques.
+- [Installation](https://github.com/jhuapl-bio/taxtriage/wiki/Installation)
+- [Running the pipeline](https://github.com/jhuapl-bio/taxtriage/wiki/Running-the-Pipeline)
+- [Samplesheet and metadata](https://github.com/jhuapl-bio/taxtriage/wiki/Samplesheet)
+- [CLI parameters](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters)
+- [Pipeline modules](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules)
+- [TASS scoring](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring)
+- [Interactive report](https://github.com/jhuapl-bio/taxtriage/wiki/Interactive-Report)
+- [Output files](https://github.com/jhuapl-bio/taxtriage/wiki/Output)
+- [Troubleshooting](https://github.com/jhuapl-bio/taxtriage/wiki/Troubleshooting)
 
-See [here](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters) for a full list of input parameters and options available based on your own needs
+## Contributions and support
 
-If you would like more information on the confidence metrics, view it [here](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring)
-
-If you want to download the databases from scratch, you can see them here
-Make sure to Download these databases to your `Desktop` or wherever you are the most comfortable. Remember the location and specify the `--db` parameter as the absolute path. For example `~/Desktop/flukraken2`. Also, remove the `--download-db` parameter
-
-- [standard-8](https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz)
-- [viral](https://genome-idx.s3.amazonaws.com/kraken/k2_viral_20230605.tar.gz)
-- [flukraken2](https://media.githubusercontent.com/media/jhuapl-bio/mytax/master/databases/flukraken2.tar.gz)
-
-## Pipeline summary
-
-1. Read QC ([`FastQC`](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/))
-2. Present QC for raw reads ([`MultiQC`](http://multiqc.info/))
-
-## Quick Start Highlight
-
-1. Install [`Nextflow`](https://www.nextflow.io/docs/latest/getstarted.html#installation) (`>=21.10.3`)
-
-2. Install any of [`Docker`](https://docs.docker.com/engine/installation/), [`Singularity`](https://www.sylabs.io/guides/3.0/user-guide/) (you can follow [this tutorial](https://singularity-tutorial.github.io/01-installation/)).
-
-3. Download the pipeline and test it on a minimal dataset with a single command:
-
-   ```console
-   nextflow run https://github.com/jhuapl-bio/taxtriage -profile test,docker --outdir ./outdir
-   ```
-
-   Note that some form of configuration will be needed so that Nextflow knows how to fetch the required software. This is usually done in the form of a config profile (`YOURPROFILE` in the example command above). You can chain multiple config profiles in a comma-separated string.
-
-   > - The pipeline comes with config profiles called `docker` or `singularity` which instruct the pipeline to use the named tool for software management. For example, `-profile test,docker`.
-   > - If you are using `singularity`, please use the [`nf-core download`](https://nf-co.re/tools/#downloading-pipelines-for-offline-use) command to download images first, before running the pipeline. Setting the [`NXF_SINGULARITY_CACHEDIR` or `singularity.cacheDir`](https://www.nextflow.io/docs/latest/singularity.html?#singularity-docker-hub) Nextflow options enables you to store and re-use the images from a central location for future pipeline runs.
-
-4. Start running your own analysis!
-   ```console
-           nextflow run https://github.com/jhuapl-bio/taxtriage -r main -latest --outdir test_output -profile <local,docker/singularity>
-   ```
-
-## Modules
-
-0. Subsample (OPTIONAL)
-1. Guppyplex (Oxford Nanopore Only)
-2. QC Plotting part 1 (pycoQC – Oxford Nanopore)
-3. Trimming (Trimgalore – Illumina, Porechop – Oxford Nanopore)
-4. Filtering ( Kraken2 – Illlumina, Oxford Nanopore)
-5. QC Plotting part 2 (FastQC – Illumina, Nanoplot – Oxford Nanopore)
-6. Classification ( Kraken2 – Illumina, Oxford Nanopore, Krona Plots)
-7. Alignment for Stats ( BWAMEM2 – Illumina, Minimap2 – Oxford Nanopore)
-
-- :warning:Currently, the only realignment is going to be based on a taxid call. For example, if there will not be a complete realignment of "order" despite there being multiple species all within that order. For the most part, this is limited to more specific ranks like species, strain, subspecies etc.
-
-8. Report Generation ( MultiQC – Illumina, Oxford Nanopore)
-
-### Collaborative Efforts
-
-### UW Madison & a Custom Geneious Prime Plugin for TaxTriage
-
-Dave O'Connor's Laboratory at the University of Wisconsin-Madison has developed a custom Geneious Prime plugin to interface with the TaxTriage pipeline. This plugin allows users to run TaxTriage analyses directly from within the Geneious Prime environment, streamlining the workflow for researchers who utilize Geneious for sequence analysis.
-
-A `gplugin` file for the TaxTriage Geneious plugin can be found in the `src/geneious-plugin/TaxTriage.gplugin` directory of this repository after building the plugin. This file was built with a Mac OSX ARM-based system and should be compatible with other Mac systems running Geneious Prime version 2024.0.2 or later. It may function appropriately for Windows or Linux systems as well, but this has not been tested.
-
-Instructions for building and installing the plugin are provided in the [Geneious Plugin Documentation](src/geneious-plugin/docs/README.md#taxtriage-geneious-plugin).
-
-## Credits
+Contributions are welcome. See the [contributing guidelines](.github/CONTRIBUTING.md) before opening a pull request.
 
 TaxTriage was originally written by Brian Merritt, MS Bioinformatics.
 
-We thank the following people for their extensive assistance in the development of this pipeline:
-
-## Contributions and Support
-
-If you would like to contribute to this pipeline, please see the [contributing guidelines](.github/CONTRIBUTING.md).
-
 ## Citation
 
-If you use this software, please cite doi: [10.1093/bioinformatics/btag119](https://doi.org/10.1093/bioinformatics/btag119) or BibTeX
+If you use TaxTriage, please cite [10.1093/bioinformatics/btag119](https://doi.org/10.1093/bioinformatics/btag119).
 
 ```bibtex
 @article{Merritt2025.07.16.664785,
@@ -391,31 +339,8 @@ If you use this software, please cite doi: [10.1093/bioinformatics/btag119](http
 }
 ```
 
-## Copyright
+## License
 
-Copyright 2022-2026 The Johns Hopkins University Applied Physics Laboratory LLC
+Copyright 2022–2026 The Johns Hopkins University Applied Physics Laboratory LLC.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this
-software and associated documentation files (the "Software"), to deal in the Software
-without restriction, including without limitation the rights to use, copy, modify,
-merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
-OR OTHER DEALINGS IN THE SOFTWARE.
-
-<!---
-
-## Acknowledgements
-This software tool was supported by the Cooperative Agreement Number NU60OE000104, funded by the Centers
-for Disease Control and Prevention through the Association of Public Health Laboratories.
-
-Its contents are solely the responsibility of the authors and do not necessarily represent the official views of the Centers
-for Disease Control and Prevention, the Department of Health and Human Services, or the Association of Public Health
-Laboratories.
-
--->
+TaxTriage is distributed under the MIT License. See [LICENSE](LICENSE) for the complete terms.
