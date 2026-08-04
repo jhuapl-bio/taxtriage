@@ -195,10 +195,14 @@ If alignments already exist, TaxTriage can start from them. Pre-aligned samples 
 stage — compression, trimming, QC plots, host depletion, subsampling, classification and reference
 downloading — and go straight to coverage statistics, scoring (`match_paths.py`) and the report.
 
-Because no classifier runs to select references, the reference the file was aligned against must be
-supplied with `--reference_fasta`. It provides both the accession → taxid map (`match_paths.py -m`)
-and the sourmash/ANI comparison (`match_paths.py -f`), so reference names in the BAM header must
-match the accessions in that FASTA.
+Because no classifier runs to select references, supply the reference the file was aligned against
+with `--reference_fasta`. It provides both the accession → taxid map (`match_paths.py -m`) and the
+sourmash/ANI comparison (`match_paths.py -f`), so reference names in the BAM header must match the
+accessions in that FASTA.
+
+If `--reference_fasta` is omitted, the reference sequence is reconstructed from the alignment itself
+with `samtools consensus` and used in its place — see [Consensus-derived
+references](#consensus-derived-references) below for the trade-offs.
 
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
@@ -233,6 +237,32 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   `--microbert`, `--novelty`, `--generate_iss`, `--generate_nanosim`, `--reference_assembly`,
   `--get_variants`) are disabled with a warning on a BAM-only run.
 
+### Consensus-derived references
+
+A BAM header records reference names and lengths but no bases. `match_paths.py` already falls back to
+the header for reference _lengths_, but sourmash sketching, the shared-window conflict report and the
+ANI matrix all need sequence. When no `--reference_fasta` is given, TaxTriage therefore calls a
+per-reference consensus straight off the alignment (`samtools consensus -a`, N-padded so consensus
+coordinates still match the original reference) and treats the result exactly like a user-supplied
+FASTA: fuzzy-matched against the assembly summary for the accession → taxid map, and passed to
+`match_paths.py -f` for sketching.
+
+Two limitations are inherent to this and are printed as a warning at run time:
+
+- **Coverage-limited.** Only positions with aligned reads are recovered; ANI and containment are
+  effectively computed over the covered fraction of each reference. References recovering fewer than
+  `--consensus_min_bases` (default 500) non-N bases are dropped rather than contributing empty
+  sketches.
+- **Multimapping bias.** A read placed on several references contributes to the consensus of each,
+  so related organisms look more similar than their true genomes are, which makes conflict-driven
+  read removal more aggressive.
+
+Supply `--reference_fasta` whenever the true reference is available. Related options:
+`--bam_consensus true|false` (force on / opt out), `--consensus_min_depth`, `--consensus_min_bases`,
+`--consensus_min_mapq`, `--consensus_mode simple|bayesian`. With `--bam_consensus false` and no
+reference, the run proceeds without sketch-based conflict analysis — pair it with
+`--minhash_weight 0` so the TASS weights rebalance.
+
 ## Offline and reproducible operation
 
 Clone the repository when local modifications, pinned code, or offline execution are required:
@@ -264,6 +294,8 @@ nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 9. TASS calculation, thresholding, and taxonomic rollup.
 10. Optional assembly, protein annotation, novelty detection, and simulation analysis.
 11. MultiQC, static outputs, and the interactive Organism Discovery Report.
+
+Pre-aligned (BAM/CRAM) samples enter at stage 7; stages 1–6 and 10 are skipped for them.
 
 Detailed descriptions are available in [Pipeline Modules](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules).
 
