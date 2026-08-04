@@ -2,6 +2,7 @@
 include { MAKE_FILE } from '../../modules/local/make_file'
 include { DOWNLOAD_ASSEMBLY } from '../../modules/local/download_assembly'
 include { MAP_LOCAL_ASSEMBLY_TO_FASTA } from '../../modules/local/map_assembly_to_fasta'
+include { MAP_LOCAL_ASSEMBLY_TO_FASTA as MAP_SAMPLE_FASTA_TO_ASSEMBLY } from '../../modules/local/map_assembly_to_fasta'
 include { MAP_TAXID_ASSEMBLY } from '../../modules/local/map_taxid_assembly'
 include { FEATURES_DOWNLOAD } from '../../modules/local/download_features'
 include { FEATURES_TO_BED } from '../../modules/local/convert_features_to_bed'
@@ -17,6 +18,7 @@ workflow  REFERENCE_PREP {
     ch_reference_fasta
     ch_assembly_txt
     ch_pathogens_file
+    ch_sample_fastas   // [meta, fasta] per-sample reference sequence (BAM consensus); may be empty
 
     main:
     ch_versions = Channel.empty()
@@ -69,7 +71,10 @@ workflow  REFERENCE_PREP {
                     return [ [id: basename],  fasta]
                 },
                 ch_assembly_txt,
-                ch_pathogens_file
+                // .first() -> value channel, so the pathogens file is broadcast to
+                // EVERY fasta.  As a plain queue of one item it would be consumed by
+                // the first task, leaving the remaining reference FASTAs unmapped.
+                ch_pathogens_file.first()
             )
             // add ch_reference_fasta to all ch_fastas
             // add ch_reference_fasta to all ch_fastas
@@ -144,6 +149,43 @@ workflow  REFERENCE_PREP {
                 [meta, fastas, listmaps, listids]
             }.set{ ch_mapped_assemblies }
         }
+
+        ////////////////////////////////////////////////////////////////////////////////////////
+        // PER-SAMPLE REFERENCE SEQUENCE (BAM consensus)
+        // Pre-aligned samples run without --reference_fasta recover their reference
+        // sequence from the alignment itself (BAM_CONSENSUS).  That FASTA is treated
+        // exactly like a user-supplied local reference: fuzzy-matched against the
+        // assembly summary to build the accession->taxid map match_paths.py needs for
+        // -m, and added to the sample's FASTA list so -f (sourmash / ANI) has bases.
+        // The difference is that it is PER SAMPLE, so it is joined by meta rather
+        // than broadcast to every sample.
+        ////////////////////////////////////////////////////////////////////////////////////////
+        MAP_SAMPLE_FASTA_TO_ASSEMBLY(
+            ch_sample_fastas,
+            ch_assembly_txt,
+            ch_pathogens_file.first()
+        )
+        ch_versions = ch_versions.mix(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.versions)
+
+        ch_fastas = ch_fastas
+            .join(ch_sample_fastas, remainder: true)
+            .filter { it[0] != null && it[1] != null }
+            .map { meta, fastas, sample_fasta ->
+                if (sample_fasta) { fastas.add(sample_fasta) }
+                [meta, fastas]
+            }
+
+        ch_mapped_assemblies = ch_mapped_assemblies
+            .join(ch_sample_fastas, remainder: true)
+            .join(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.map, remainder: true)
+            .join(MAP_SAMPLE_FASTA_TO_ASSEMBLY.out.accessions, remainder: true)
+            .filter { it[0] != null && it[1] != null }
+            .map { meta, fastas, listmaps, listids, sample_fasta, mapfile, accessions ->
+                if (sample_fasta) { fastas.add([sample_fasta]) }
+                if (mapfile)      { listmaps.add(mapfile) }
+                if (accessions)   { listids.add(accessions) }
+                [meta, fastas, listmaps, listids]
+            }
     }
     // get the size of the ch_reports_to_download
     // if the size is greater than 0, then download the reports

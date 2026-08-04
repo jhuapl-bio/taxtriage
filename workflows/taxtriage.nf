@@ -37,6 +37,7 @@
 //
 include { INPUT_CHECK } from '../subworkflows/local/input_check'
 include { ALIGNMENT } from '../subworkflows/local/alignment'
+include { BAM_PREP } from '../subworkflows/local/bam_prep'
 include { BAM_INPUT } from '../subworkflows/local/bam_input'
 include { REPORT } from '../subworkflows/local/report'
 include { HOST_REMOVAL } from '../subworkflows/local/host_removal'
@@ -197,13 +198,34 @@ workflow TAXTRIAGE {
     def has_bam_samples = params.bam ? true : bam_scan.any
     def bam_only_run    = params.bam ? true : bam_scan.all
 
+    // ── Reference sequence for pre-aligned samples ──────────────────────────────
+    // match_paths.py needs the reference(s) the BAM was aligned against: the FASTA
+    // for sourmash / shared-window / ANI comparison and the derived accession->taxid
+    // map for -m.  A BAM header carries reference NAMES and LENGTHS but no bases, so
+    // when no reference is supplied we reconstruct one by calling consensus off the
+    // alignment itself (BAM_CONSENSUS).  --bam_consensus false opts out and instead
+    // runs without the minhash / conflict component.
+    def bam_consensus_mode = false
     if (has_bam_samples) {
-        // match_paths.py needs the reference(s) the BAM was aligned against: the FASTA
-        // for sourmash/ANI comparison and the derived accession->taxid map for -m.
+        def consensus_opt_out = (params.bam_consensus != null && !params.bam_consensus)
         if (!params.reference_fasta && !params.get_pathogens) {
-            exit 1, "ERROR: pre-aligned (BAM) input requires the reference the BAM was aligned " +
-                    "against. Pass --reference_fasta <fasta|dir> (or --get_pathogens) so the " +
-                    "accession->taxid map and ANI comparison can be built."
+            if (consensus_opt_out) {
+                println 'WARNING: pre-aligned input without --reference_fasta and --bam_consensus false: ' +
+                        'no reference sequence is available, so sourmash/ANI comparison and conflict-based ' +
+                        'read removal are disabled. Set --minhash_weight 0 to rebalance the TASS weights.'
+            } else {
+                bam_consensus_mode = true
+                println 'NOTE: pre-aligned input without --reference_fasta -> reconstructing reference ' +
+                        'sequence from the alignment (samtools consensus).'
+                println 'WARNING: consensus-derived references only cover positions with aligned reads, and ' +
+                        'multi-mapping reads contribute to every reference they were placed on, which ' +
+                        'overstates similarity between related organisms and makes conflict-driven read ' +
+                        'removal more aggressive. Pass --reference_fasta whenever the true reference is available.'
+            }
+        } else if (params.bam_consensus) {
+            bam_consensus_mode = true
+            println 'NOTE: --bam_consensus set explicitly; consensus sequence will be derived from the ' +
+                    'alignment in addition to the supplied reference.'
         }
     }
 
@@ -252,7 +274,9 @@ workflow TAXTRIAGE {
         exit 1, "If --skip_kraken2 is false, you must provide --db or --download_db"
     }
 
-    if (params.skip_kraken2 && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
+    // Pre-aligned samples are exempt: the references are already fixed by the BAM,
+    // and their sequence comes either from --reference_fasta or from BAM_CONSENSUS.
+    if (params.skip_kraken2 && !has_bam_samples && !params.reference_fasta && !params.get_pathogens && !params.organisms && !params.organisms_file) {
         exit 1, "If you are skipping kraken2, you must provide a reference fasta, --get_pathogens to pull the pathogens file, organisms, or organisms_file"
     }
 
@@ -457,6 +481,9 @@ workflow TAXTRIAGE {
     }
     if (!ch_assembly_txt) {
         GET_ASSEMBLIES()
+        // GET_ASSEMBLIES takes no input, so it runs once and its outputs are VALUE
+        // channels — already broadcast to every consumer (the per-fasta and
+        // per-sample mapping processes each get their own copy).
         GET_ASSEMBLIES.out.assembly.map {  record -> record }.set { ch_assembly_txt }
     }
 
@@ -872,17 +899,34 @@ workflow TAXTRIAGE {
     ch_organisms_to_download = CLASSIFIER.out.ch_organisms_to_download
     ch_multiqc_files = ch_multiqc_files.mix(ch_krakenreport.collect { it[1] }.ifEmpty([]))
 
+    ////////////////////////////// PRE-ALIGNED (BAM) SAMPLES: PREP /////////////////////////////////
+    // Normalise the supplied alignment (convert / sort / index) and, when no
+    // reference FASTA was given, recover reference sequence from the alignment so
+    // the sketching + ANI steps have bases to work with.  Runs BEFORE
+    // REFERENCE_PREP because that consensus is mapped to taxids there.
+    ch_cram_reference = params.cram_reference
+        ? Channel.value(file(params.cram_reference, checkIfExists: true))
+        : Channel.value(ch_empty_file)
+
+    BAM_PREP(
+        ch_bam_inputs,
+        ch_cram_reference,
+        bam_consensus_mode
+    )
+    ch_versions = ch_versions.mix(BAM_PREP.out.versions)
+
     ///////////////////////////RUN REFERENCE pull or processing/////////////////////////////////////////////////////////////////////
-    // Pre-aligned samples enter with an EMPTY organism list: they still need the
-    // local --reference_fasta mapped (accession -> taxid) for match_paths.py's -m
-    // and ANI comparison, but nothing is ever downloaded on their behalf
-    // (REFERENCE_PREP filters meta.is_bam out of DOWNLOAD_ASSEMBLY).
+    // Pre-aligned samples enter with an EMPTY organism list: they still need their
+    // reference mapped (accession -> taxid) for match_paths.py's -m and ANI
+    // comparison, but nothing is ever downloaded on their behalf (REFERENCE_PREP
+    // filters meta.is_bam out of DOWNLOAD_ASSEMBLY).  The per-sample FASTA channel
+    // carries the BAM consensus when --reference_fasta was not supplied.
     REFERENCE_PREP(
         ch_organisms_to_download.mix(ch_bam_inputs.map { meta, bam -> [meta, []] }),
         ch_reference_fasta,
         ch_assembly_txt,
-        ch_pathogens
-
+        ch_pathogens,
+        BAM_PREP.out.consensus
     )
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -897,18 +941,12 @@ workflow TAXTRIAGE {
     ch_assembly_analysis = Channel.empty()
     ch_fastas = Channel.empty()
 
-    ////////////////////////////// PRE-ALIGNED (BAM) SAMPLES ///////////////////////////////////////
-    // Normalise the supplied alignment (sort/convert/index) and derive the same
-    // coverage products ALIGNMENT emits, so REPORT consumes both paths identically.
-    // No aligner, no assembly download, no QC.
-    ch_cram_reference = params.cram_reference
-        ? Channel.value(file(params.cram_reference, checkIfExists: true))
-        : Channel.value(ch_empty_file)
-
+    ////////////////////////////// PRE-ALIGNED (BAM) SAMPLES: COVERAGE /////////////////////////////
+    // Derive the same coverage products ALIGNMENT emits, so REPORT consumes both
+    // paths identically.  No aligner, no assembly download, no QC.
     BAM_INPUT(
-        ch_bam_inputs,
-        ch_mapped_assemblies,
-        ch_cram_reference
+        BAM_PREP.out.bams,
+        ch_mapped_assemblies
     )
     ch_versions = ch_versions.mix(BAM_INPUT.out.versions)
 
@@ -1000,7 +1038,7 @@ workflow TAXTRIAGE {
         ch_covfiles = ALIGNMENT.out.stats.mix(BAM_INPUT.out.stats)
         ch_alignment_stats = ch_covfiles
         ch_bedgraphs = ALIGNMENT.out.bedgraphs.mix(BAM_INPUT.out.bedgraphs)
-        ch_report_bams = ALIGNMENT.out.bams.mix(BAM_INPUT.out.bams)
+        ch_report_bams = ALIGNMENT.out.bams.mix(BAM_PREP.out.bams)
         ch_versions = ch_versions.mix(ALIGNMENT.out.versions)
         ch_multiqc_files = ch_multiqc_files.mix(ch_alignment_stats.collect { it[1] }.ifEmpty([]))
 
@@ -1167,7 +1205,7 @@ workflow TAXTRIAGE {
             input_alignment_files = input_alignment_files
                 .map { items -> [ items[0].id, items ] }
                 .join(
-                    BAM_INPUT.out.counts.map { meta, countfile -> [meta.id, countfile] },
+                    BAM_PREP.out.counts.map { meta, countfile -> [meta.id, countfile] },
                     by: 0, remainder: true
                 )
                 .filter { it[1] }

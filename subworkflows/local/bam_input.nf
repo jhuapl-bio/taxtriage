@@ -1,11 +1,12 @@
 //
-// Pre-aligned (BAM/CRAM/SAM) input path.
+// Stage 2 of the pre-aligned (BAM/CRAM/SAM) input path.
 //
 // Samples that arrive as alignments skip everything upstream of ALIGNMENT — no
 // compression, trimming, QC plots, host removal, classifier or reference
-// download.  This subworkflow simply normalises the alignment file and produces
-// the exact channel shapes ALIGNMENT emits, so REPORT can consume both kinds of
-// sample without knowing which is which.
+// download.  BAM_PREP has already normalised and indexed the alignment (and, if
+// no reference FASTA was given, recovered consensus sequence from it); this
+// subworkflow derives the coverage products in the exact channel shapes
+// ALIGNMENT emits, so REPORT consumes both kinds of sample identically.
 //
 // ##############################################################################################
 // # Copyright 2022 The Johns Hopkins University Applied Physics Laboratory LLC
@@ -24,32 +25,17 @@
 // # OR OTHER DEALINGS IN THE SOFTWARE.
 // #
 
-include { PREPARE_BAM } from '../../modules/local/prepare_bam'
 include { SAMTOOLS_COVERAGE as SAMTOOLS_COVERAGE_BAM } from '../../modules/nf-core/samtools/coverage/main'
 include { SAMTOOLS_HIST_COVERAGE as SAMTOOLS_HIST_COVERAGE_BAM } from '../../modules/local/samtools_hist_coverage.nf'
 include { BEDTOOLS_GENOMECOVERAGE as BEDTOOLS_GENOMECOVERAGE_BAM } from '../../modules/local/bedtools_genomcov'
 
 workflow BAM_INPUT {
     take:
-    ch_alignments      // [ meta, bamfile ]
+    ch_bams            // [ meta, bam, csi ] prepared alignments (from BAM_PREP)
     ch_mapping         // [ meta, merged accession->taxid map ] (from REFERENCE_PREP)
-    ch_cram_reference  // path: reference FASTA used for CRAM decoding, or NO_FILE
 
     main:
     ch_versions = Channel.empty()
-
-    PREPARE_BAM(
-        ch_alignments,
-        ch_cram_reference
-    )
-    ch_versions = ch_versions.mix(PREPARE_BAM.out.versions)
-
-    // [meta, bam, csi] — same shape as ALIGNMENT.out.bams.
-    // NOTE: meta is deliberately left untouched here.  It is the join key for
-    // every downstream channel (mapping, fastas, kraken placeholder …), so the
-    // primary-read count is folded into meta.read_count only once all of those
-    // meta-keyed joins are done — see `counts` below and its use in taxtriage.nf.
-    ch_bams = PREPARE_BAM.out.bam
 
     SAMTOOLS_COVERAGE_BAM(
         ch_bams
@@ -81,9 +67,7 @@ workflow BAM_INPUT {
     }
 
     emit:
-        bams      = ch_bams                 // [meta, bam, csi]
         stats     = ch_stats                // [meta, coverage.txt]
         bedgraphs = ch_bedgraphs            // [meta, bedgraph | NO_FILE_bedgraph]
-        counts    = PREPARE_BAM.out.count   // [meta, readcount.txt] -> meta.read_count downstream
         versions  = ch_versions
 }
