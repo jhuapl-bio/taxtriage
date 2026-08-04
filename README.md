@@ -240,7 +240,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 ### Consensus-derived references
 
 A BAM header records reference names and lengths but no bases. `match_paths.py` already falls back to
-the header for reference *lengths*, but sourmash sketching, the shared-window conflict report and the
+the header for reference _lengths_, but sourmash sketching, the shared-window conflict report and the
 ANI matrix all need sequence. When no `--reference_fasta` is given, TaxTriage therefore calls a
 per-reference consensus straight off the alignment (`samtools consensus -a`, N-padded so consensus
 coordinates still match the original reference) and treats the result exactly like a user-supplied
