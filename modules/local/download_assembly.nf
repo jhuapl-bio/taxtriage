@@ -20,7 +20,7 @@ process DOWNLOAD_ASSEMBLY {
 
     conda (params.enable_conda ? "conda-forge::python=3.8.3" : null)
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'docker://pegi3s/biopython:latest' :
+        'https://depot.galaxyproject.org/singularity/biopython:1.75' :
         'biocontainers/biopython:1.75' }"
 
 

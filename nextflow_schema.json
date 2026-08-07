@@ -55,18 +55,86 @@
                 },
                 "fastq_1": {
                     "type": "string",
-                    "format": "file-path",
-                    "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "errorMessage": "File must be a fastq or compressed (ends in .fastq.gz, .fq.gz, .fastq or .fq). Will overwrite --input parameter if specified.",
-                    "description": "Path to the first fastq file. If using paired-end reads, this is the forward read.",
+                    "pattern": "^(?:\\S+\\.(fastq|fq)(\\.gz)?|(SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)[0-9]{5,}|SAM(N|EA|EG|D)[0-9]+|PRJ(NA|EB|EA|DA|DB)[0-9]+)$",
+                    "errorMessage": "Must be either a fastq path (ends in .fastq.gz, .fq.gz, .fastq or .fq) or an SRA/ENA accession (SRR/ERR/DRR, SRX/ERX/DRX, SRS/ERS/DRS, SAMN/SAMEA, SRP/ERP/DRP, PRJNA/PRJEB). Will overwrite --input parameter if specified.",
+                    "description": "Path to the first fastq file, or an SRA/ENA accession to download automatically. If using paired-end reads, this is the forward read. Accessions above run level (SRX/SRS/SRP/PRJNA) expand into one sample per child run.",
                     "fa_icon": "fas fa-file-signature"
                 },
                 "fastq_2": {
                     "type": "string",
                     "format": "file-path",
                     "pattern": "^\\S+\\.(fastq|fq)(\\.gz)?$",
-                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read.",
+                    "description": "Path to the second fastq file. If using paired-end reads, this is the reverse read. Ignored when fastq_1 is an accession — paired-end layout is detected from the archive.",
                     "fa_icon": "fas fa-file-signature"
+                },
+                "sra_cache_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Persistent cache directory for FASTQs downloaded from SRA/ENA. Defaults to <outdir>/sra_downloads. Point at shared storage to reuse downloads across runs and users.",
+                    "fa_icon": "fas fa-database"
+                },
+                "sra_force_sratools": {
+                    "type": "boolean",
+                    "description": "Skip the ENA fast path and always fetch accessions with prefetch + fasterq-dump.",
+                    "fa_icon": "fas fa-download"
+                },
+                "sra_max_size": {
+                    "type": "string",
+                    "description": "Value passed to prefetch --max-size (e.g. '50G'). Defaults to 'u' (unlimited).",
+                    "fa_icon": "fas fa-download"
+                },
+                "ncbi_api_key": {
+                    "type": "string",
+                    "description": "Optional NCBI eutils API key, used to raise the rate limit when expanding accessions that ENA does not know about.",
+                    "fa_icon": "fas fa-key"
+                },
+                "bam": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+\\.(bam|cram|sam)$",
+                    "errorMessage": "File must be a pre-aligned .bam, .cram or .sam file.",
+                    "description": "Path to a pre-aligned BAM/CRAM/SAM file. Skips QC, trimming, host removal, classification and reference downloading. Supply --reference_fasta (the reference the file was aligned against); without it the reference sequence is recovered from the alignment via samtools consensus (see --bam_consensus). The samplesheet equivalent is a 'bam' column.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "cram_reference": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Reference FASTA used to decode CRAM input, if different from --reference_fasta.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "bam_minmapq": {
+                    "type": "number",
+                    "description": "Optional MAPQ filter applied to pre-aligned (--bam / bam column) input. By default the alignment is taken as given.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "bam_consensus": {
+                    "type": "boolean",
+                    "description": "Recover reference sequence from a pre-aligned BAM with samtools consensus when no --reference_fasta is given, so sourmash sketching, the shared-window conflict report and the ANI matrix have bases to work with. Auto-enabled for BAM input without a reference; set false to run without the minhash/conflict component instead. Consensus covers only positions with aligned reads and is inflated by multi-mapping reads, so a real reference is always preferable.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "consensus_min_depth": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "Minimum read depth for samtools consensus to call a base (-d) when deriving reference sequence from a BAM.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "consensus_min_bases": {
+                    "type": "number",
+                    "default": 500,
+                    "description": "Drop consensus records with fewer than this many non-N bases; prevents barely-covered references from adding empty sketches that drag every ANI comparison toward zero.",
+                    "fa_icon": "fas fa-ruler-horizontal"
+                },
+                "consensus_min_mapq": {
+                    "type": "number",
+                    "description": "Exclude reads below this mapping quality when calling consensus from a BAM (samtools consensus --min-MQ).",
+                    "fa_icon": "fas fa-filter"
+                },
+                "consensus_mode": {
+                    "type": "string",
+                    "default": "simple",
+                    "enum": ["simple", "bayesian"],
+                    "description": "samtools consensus calling mode (-m) used for BAM-derived reference sequence.",
+                    "fa_icon": "fas fa-sliders-h"
                 },
                 "sample": {
                     "type": "string",
@@ -824,6 +892,19 @@
                     "type": "boolean",
                     "description": "only email if set to true",
                     "fa_icon": "fas fa-envelope"
+                },
+                "ncbi_api_key": {
+                    "type": "string",
+                    "description": "NCBI API key for the E-utilities taxid backup lookup.",
+                    "fa_icon": "fas fa-key",
+                    "help_text": "Raises the NCBI rate limit from 3 to 10 requests/second per IP and lets MAP_TAXID_ASSEMBLY run more tasks in parallel. Get one from https://www.ncbi.nlm.nih.gov/account/settings/."
+                },
+                "ncbi_batch_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Accessions resolved per NCBI E-utilities request pair.",
+                    "fa_icon": "fas fa-layer-group",
+                    "help_text": "MAP_TAXID_ASSEMBLY resolves unmapped accessions in batches instead of one request pair per accession. Lower this if NCBI still returns HTTP 429 Too Many Requests."
                 },
                 "plaintext_email": {
                     "type": "boolean",

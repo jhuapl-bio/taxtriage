@@ -36,9 +36,16 @@ function _cmpSampleTip(o, m, agg) {
   // stats only. The full per-sample list is available via click (popup table).
   let body = "";
   if (m.key === "samplePct" || m.key === "sampleCount") {
+    // Percent must use the run-wide specimen total (o.total) — the same
+    // denominator the Pass / Below / Total column prints — not the in-view
+    // sample list length, which is smaller and inflates the figure.
+    const _tot = o.total != null ? o.total : all.length;
     body =
-      `<span style="color:#7CFC9B"><b>Detected in ${det.size} of ${all.length} sample(s)</b></span>` +
-      (m.key === "samplePct" ? ` (${(o.samplePct || 0).toFixed(0)}%)` : "");
+      `<span style="color:#7CFC9B"><b>Passing in ${
+        o.passCount != null ? o.passCount : det.size
+      } of ${_tot} specimen(s)</b></span>` +
+      (m.key === "samplePct" ? ` (${(o.samplePct || 0).toFixed(1)}%)` : "") +
+      (o.belowCount ? `<br><span style="color:#9bb">+${o.belowCount} detected below the cutoff</span>` : "");
   } else if (m.key === "reads") {
     body = `<b>Total aligned reads:</b> ${_fmtInt(o.reads || 0)} <span style="color:#9bb">across ${
       det.size

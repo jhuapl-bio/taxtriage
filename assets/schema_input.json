@@ -14,8 +14,8 @@
             },
             "fastq_1": {
                 "type": "string",
-                "pattern": "^\\S+\\.f(ast)?q\\.gz$",
-                "errorMessage": "FastQ file for reads 1 must be provided, cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz'"
+                "pattern": "^(?:\\S+\\.f(ast)?q\\.gz|(SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)[0-9]{5,}|SAM(N|EA|EG|D)[0-9]+|PRJ(NA|EB|EA|DA|DB)[0-9]+)$",
+                "errorMessage": "fastq_1 must be either a gzipped FastQ path (extension '.fq.gz' or '.fastq.gz', no spaces) or an SRA/ENA accession (SRR/ERR/DRR, SRX/ERX/DRX, SRS/ERS/DRS, SAMN/SAMEA, SRP/ERP/DRP, PRJNA/PRJEB) to download automatically"
             },
             "fastq_2": {
                 "errorMessage": "FastQ file for reads 2 cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz'",
@@ -29,8 +29,29 @@
                         "maxLength": 0
                     }
                 ]
+            },
+            "bam": {
+                "errorMessage": "Pre-aligned file must have extension '.bam', '.cram' or '.sam' and cannot contain spaces. When set, fastq_1/fastq_2 are ignored and the sample skips QC, classification and reference downloading.",
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": "^\\S+\\.(bam|cram|sam)$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
             }
         },
-        "required": ["sample", "fastq_1"]
+        "anyOf": [
+            {
+                "required": ["sample", "fastq_1"]
+            },
+            {
+                "required": ["sample", "bam"]
+            }
+        ],
+        "required": ["sample"]
     }
 }

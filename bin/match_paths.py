@@ -617,6 +617,19 @@ def parse_args(argv=None):
                          "Penalizes organisms where reads concentrate on few contigs "
                          "(e.g. 2/2000 contigs covered → Gini drops to ~6%% of original). "
                          "Default: 0.3. Set to 0 to disable.")
+    parser.add_argument('--rep_breadth_min_frac', required=False, type=float, default=0.01,
+                    help="Minimum share of a group's total reference length that a single "
+                         "accession must represent before it is allowed to set that group's "
+                         "representative breadth (the per-group MAX of "
+                         "Covered BP / Reference Length). Guards against scaffold-level "
+                         "assemblies (e.g. Plasmodium vivax: thousands of ~1kb scaffolds) "
+                         "where one read covering one 900bp scaffold would otherwise set "
+                         "species coverage to ~1.0. Default: 0.01 (1%%). Set to 0 to disable.")
+    parser.add_argument('--rep_breadth_min_len', required=False, type=int, default=50_000,
+                    help="Absolute minimum accession length (bp) required before an accession "
+                         "may set its group's representative breadth. Applied together with "
+                         "--rep_breadth_min_frac (an accession qualifies if it clears EITHER "
+                         "bar). Default: 50000. Set to 0 to disable.")
     parser.add_argument('--depth_concentration_power', required=False, type=float, default=0.3,
                     help="Power exponent for depth-concentration penalty on Gini. "
                          "Detects the conserved-human-reads pattern: many reads map to a "
@@ -2510,14 +2523,69 @@ def main():
         # species/genus breadth is best represented by the MAXIMUM per-member
         # breadth fraction (Covered BP Subkey / Reference Length), not the
         # length-weighted pool. Pass this as a coverage override.
+        #
+        # ⚠ SIZE ELIGIBILITY (see --rep_breadth_min_frac / --rep_breadth_min_len)
+        # comparison_df is indexed per ACCESSION (= per BAM reference = per
+        # contig), not per member genome. For chromosome-level assemblies one
+        # accession IS the genome and the MAX is exactly what we want. But for
+        # scaffold-level draft assemblies the "members" are thousands of ~1 kb
+        # scaffolds, and a SINGLE ~850 bp read landing on a 906 bp scaffold
+        # yields Covered BP / Reference Length ≈ 0.94 — which the MAX then
+        # promotes to the coverage of the entire 27 Mb species.
+        #
+        # Observed false positive (Plasmodium vivax, ONT):
+        #   NW_001850404.1  len=906   reads=1  covered=848  → frac 0.936  ← max
+        #   true species breadth = 5,060 / 27,013,691       = 0.000187
+        # That single value then drives breadth_log_score (→1.0), the minhash
+        # coverage gate (→ opens, minhash 0→0.958) and the depth-concentration
+        # efficiency, inflating species TASS from ~8 to ~89.
+        #
+        # Fix: only accessions that are a meaningful fraction of the group's
+        # total reference length (or clear an absolute bp floor) may set the
+        # group MAX. Chromosome-level refs always qualify; stray scaffolds
+        # never do. If NO accession in a group qualifies, the group gets no
+        # representative override at all and falls back to Σcovered/Σlength.
         if 'Reference Length' in _ucb.columns:
             _len = pd.to_numeric(_ucb['Reference Length'], errors='coerce').fillna(0)
+            _ucb['_reflen'] = _len
             _sk_frac = (_ucb['Covered BP Subkey'] / _len.replace(0, pd.NA)).fillna(0).clip(upper=1.0)
             _tlk_frac = (_ucb['Covered BP Toplevelkey'] / _len.replace(0, pd.NA)).fillna(0).clip(upper=1.0)
+
+            _min_frac = float(getattr(args, 'rep_breadth_min_frac', 0.01) or 0.0)
+            _min_len = float(getattr(args, 'rep_breadth_min_len', 0) or 0.0)
+
+            def _eligible_mask(group_col):
+                """Boolean mask: may this accession set its group's MAX breadth?
+
+                Qualifies if its length is >= rep_breadth_min_frac of the
+                group's total reference length, OR >= rep_breadth_min_len bp.
+                With both thresholds at 0 this returns all-True (legacy
+                behaviour).
+                """
+                if _min_frac <= 0 and _min_len <= 0:
+                    return pd.Series(True, index=_ucb.index)
+                _grp_total_len = _ucb.groupby(group_col)['_reflen'].transform('sum')
+                _share = (_ucb['_reflen'] / _grp_total_len.replace(0, pd.NA)).fillna(0)
+                _ok = pd.Series(False, index=_ucb.index)
+                if _min_frac > 0:
+                    _ok |= (_share >= _min_frac)
+                if _min_len > 0:
+                    _ok |= (_ucb['_reflen'] >= _min_len)
+                return _ok
+
+            _sk_ok = _eligible_mask('_sk')
+            _tlk_ok = _eligible_mask('_tlk')
+
+            _n_sk_excl = int((~_sk_ok).sum())
+            if _n_sk_excl:
+                print(f"[LCA] representative-breadth eligibility: {_n_sk_excl}/{len(_ucb)} "
+                      f"accessions too small to set their species MAX "
+                      f"(min_frac={_min_frac}, min_len={int(_min_len)}bp)")
+
             _subkey_cov_frac = {str(k): float(v) for k, v in
-                                _sk_frac.groupby(_ucb['_sk']).max().items()}
+                                _sk_frac[_sk_ok].groupby(_ucb.loc[_sk_ok, '_sk']).max().items()}
             _toplevelkey_cov_frac = {str(k): float(v) for k, v in
-                                     _tlk_frac.groupby(_ucb['_tlk']).max().items()}
+                                     _tlk_frac[_tlk_ok].groupby(_ucb.loc[_tlk_ok, '_tlk']).max().items()}
 
         # ── Best-strain breadth override ──────────────────────────────────────
         # covered_bp_subkey can undercount when conserved cross-species regions

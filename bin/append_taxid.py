@@ -23,9 +23,9 @@ from pathlib import Path
 try:
     # Shared stdlib-only helper (bin/ncbi_taxid.py). Available alongside this
     # script in the staged bin/ directory at runtime.
-    from ncbi_taxid import fetch_taxid
+    from ncbi_taxid import fetch_taxids
 except Exception:  # noqa: BLE001 - keep working even if helper is unavailable
-    fetch_taxid = None
+    fetch_taxids = None
 
 def parse_args(argv=None):
     """Define and immediately parse command line arguments."""
@@ -96,6 +96,18 @@ def parse_args(argv=None):
         required=False,
         default=None,
         help="Optional NCBI API key for E-utilities querying.",
+    )
+    parser.add_argument(
+        "--ncbi-batch-size",
+        dest="ncbi_batch_size",
+        metavar="N",
+        type=int,
+        required=False,
+        default=100,
+        help=(
+            "Number of accessions resolved per E-utilities request pair during "
+            "the NCBI backup lookup. Lower this if NCBI returns HTTP 429."
+        ),
     )
     parser.add_argument(
         "--custom-map",
@@ -230,7 +242,7 @@ def apply_custom_map(mapped_df, custom_map_file):
     return mapped_df
 
 
-def backfill_missing_taxids(mapped_df, email=None, api_key=None):
+def backfill_missing_taxids(mapped_df, email=None, api_key=None, batch_size=None):
     """Fill empty Mapped_Value taxids by querying NCBI per accession.
 
     Accessions that were not present in any assembly summary (e.g. a local
@@ -238,7 +250,7 @@ def backfill_missing_taxids(mapped_df, email=None, api_key=None):
     Mapped_Value blank. Query NCBI directly by the nuccore accession (the 'Acc'
     column) to recover the taxid so it can be passed downstream in the map file.
     """
-    if fetch_taxid is None:
+    if fetch_taxids is None:
         print("NCBI backup requested but ncbi_taxid helper is unavailable; skipping.")
         return mapped_df
 
@@ -253,16 +265,27 @@ def backfill_missing_taxids(mapped_df, email=None, api_key=None):
     if n_missing == 0:
         return mapped_df
 
-    print(f"Attempting NCBI taxid backup lookup for {n_missing} unmapped accession(s)...")
-    cache = {}
+    # Collect the unique accessions first and resolve them in batched, rate
+    # limited requests rather than two E-utilities calls per row.
+    wanted = []
+    for idx in mapped_df.index[missing_mask]:
+        acc = str(mapped_df.at[idx, "Acc"]).strip()
+        if acc and acc.lower() != "nan":
+            wanted.append(acc)
+    unique_acc = list(dict.fromkeys(wanted))
+
+    print(
+        f"Attempting NCBI taxid backup lookup for {n_missing} unmapped accession(s) "
+        f"({len(unique_acc)} unique)..."
+    )
+    cache = fetch_taxids(
+        unique_acc, email=email, api_key=api_key, batch_size=batch_size
+    )
+
     resolved = 0
     for idx in mapped_df.index[missing_mask]:
         acc = str(mapped_df.at[idx, "Acc"]).strip()
-        if not acc or acc.lower() == "nan":
-            continue
-        if acc not in cache:
-            cache[acc] = fetch_taxid(acc, email=email, api_key=api_key)
-        taxid = cache[acc]
+        taxid = cache.get(acc)
         if taxid:
             mapped_df.at[idx, "Mapped_Value"] = taxid
             resolved += 1
@@ -280,7 +303,12 @@ def main(argv=None):
     if args.custom_map:
         mapped_df = apply_custom_map(mapped_df, args.custom_map)
     if args.ncbi_backup:
-        mapped_df = backfill_missing_taxids(mapped_df, email=args.email, api_key=args.api_key)
+        mapped_df = backfill_missing_taxids(
+            mapped_df,
+            email=args.email,
+            api_key=args.api_key,
+            batch_size=args.ncbi_batch_size,
+        )
     # Write the output to the specified file
     if args.output:
         mapped_df[['Acc', 'Assembly',  'Organism_Name', 'Description', 'Mapped_Value']].to_csv(args.output, sep='\t', index=False)

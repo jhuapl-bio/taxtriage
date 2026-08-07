@@ -27,8 +27,33 @@ import sys
 from collections import Counter
 from pathlib import Path
 import gzip
+import re
 
 logger = logging.getLogger()
+
+
+# ── SRA/ENA accessions ──────────────────────────────────────────────────────
+# fastq_1 may hold an accession instead of a path. Those rows skip file-format
+# validation here; input_check.nf detects them with the same patterns and routes
+# them through SRA_RESOLVE / SRA_FETCH_* before anything downstream sees them.
+# Anything containing a path separator or a dot is a path, never an accession,
+# so a local file named "SRR123456.fastq.gz" still resolves normally.
+_ACCESSION_RE = re.compile(
+    r"^(?:(?:SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)\d{5,}"
+    r"|SAM(?:N|EA|EG|D)\d+"
+    r"|PRJ(?:NA|EB|EA|DA|DB)\d+)$",
+    re.IGNORECASE,
+)
+
+
+def is_accession(value):
+    """Return True when *value* looks like an SRA/ENA accession rather than a path."""
+    if not value:
+        return False
+    value = value.strip()
+    if any(c in value for c in "/\\.;"):
+        return False
+    return bool(_ACCESSION_RE.match(value))
 
 
 class RowChecker:
@@ -66,6 +91,15 @@ class RowChecker:
         ".fna.gz",
     )
 
+    # Pre-aligned inputs.  Samples supplying one of these in the `bam` column
+    # skip every upfront step (QC, trimming, host removal, classifier, reference
+    # download) and go straight to coverage stats + match_paths.py.
+    BAM_FORMATS = (
+        ".bam",
+        ".cram",
+        ".sam",
+    )
+
     def __init__(
         self,
         sample_col="sample",
@@ -74,6 +108,7 @@ class RowChecker:
         single_col="single_end",
         dir_col="directory",
         needscompressing="needscompressing",
+        bam_col="bam",
         **kwargs,
     ):
         """
@@ -100,6 +135,7 @@ class RowChecker:
         self._dir_col = dir_col
         self._single_col = single_col
         self._needscompressing = needscompressing
+        self._bam_col = bam_col
         self._seen = set()
         self.modified = []
 
@@ -114,6 +150,18 @@ class RowChecker:
         """
         self._validate_sample(row)
 
+        # ── Pre-aligned (BAM/CRAM) input ──────────────────────────────────────
+        # When the `bam` column is populated the sample bypasses every upfront
+        # read-processing step.  fastq_1 is optional (and ignored) for these rows.
+        if self._validate_bam(row):
+            # pre-aligned input is never an SRA/ENA accession
+            row['is_sra'] = False
+            for key in row:
+                if isinstance(row[key], str):
+                    row[key] = row[key].strip()
+            self.modified.append(row)
+            return
+
         # ── Multi-file support ────────────────────────────────────────────────
         # fastq_1 may contain multiple file paths separated by ';', e.g.:
         #   reads1.fa;reads2.fa;reads3.fa
@@ -126,8 +174,27 @@ class RowChecker:
         raw_paths = [p.strip() for p in raw_value.split(';') if p.strip()]
         is_multi = len(raw_paths) > 1
 
+        # ── SRA/ENA accession ─────────────────────────────────────────────────
+        # No file exists yet, so every path-based check is skipped. single_end is
+        # left unset here on purpose: the real answer comes from ENA's file
+        # listing (or fasterq-dump's output) once the run has been resolved.
+        if not is_multi and raw_paths and is_accession(raw_paths[0]):
+            row[self._first_col] = raw_paths[0].strip()
+            row['is_sra'] = True
+            row['is_fasta'] = False
+            row[self._dir_col] = False
+            row[self._single_col] = True
+            row[self._needscompressing] = None
+            if row.get(self._second_col):
+                logger.warning(
+                    "fastq_2 is ignored for accession '%s' — paired-end layout is "
+                    "detected from the archive.", raw_paths[0]
+                )
+                row[self._second_col] = None
+            self._seen.add((row[self._sample_col], row[self._first_col]))
+
         # Single path with no recognised extension → directory (ONT/ARTIC mode)
-        if (not is_multi and raw_paths
+        elif (not is_multi and raw_paths
                 and not any(raw_paths[0].endswith(ext) for ext in self.VALID_FORMATS)):
             row[self._single_col] = True
             row[self._dir_col] = True
@@ -180,6 +247,8 @@ class RowChecker:
                 self._validate_second(row)
                 self._validate_pair(row)
             self._seen.add((row[self._sample_col], row[self._first_col]))
+        # Every non-accession branch above leaves is_sra unset
+        row.setdefault('is_sra', False)
         # for each attribute in row, strip spaces on either side
         for key in row:
             if isinstance(row[key], str):
@@ -188,6 +257,36 @@ class RowChecker:
                 # uppercase the trim value
                 # row[key] = row[key].upper()
         self.modified.append(row)
+
+    def _validate_bam(self, row):
+        """Handle a pre-aligned row.
+
+        Returns True when the row carries a BAM/CRAM/SAM file (in which case all
+        FASTQ validation is skipped), False otherwise.
+        """
+        bam_value = (row.get(self._bam_col) or '').strip()
+        row['is_bam'] = False
+        if not bam_value:
+            return False
+
+        assert any(bam_value.lower().endswith(ext) for ext in self.BAM_FORMATS), (
+            f"The alignment file has an unrecognized extension: {bam_value}\n"
+            f"It should be one of: {', '.join(self.BAM_FORMATS)}"
+        )
+        row[self._bam_col] = bam_value
+        row['is_bam'] = True
+        row['is_fasta'] = False
+        row[self._single_col] = True
+        row[self._dir_col] = False
+        row[self._needscompressing] = None
+        # fastq columns are meaningless for pre-aligned input
+        row[self._first_col] = ''
+        if self._second_col in row:
+            row[self._second_col] = None
+        # trimming never applies to an already-aligned file
+        row['trim'] = 'false'
+        self._seen.add((row[self._sample_col], bam_value))
+        return True
 
     def _validate_sample(self, row):
         """Assert that the sample name exists and convert spaces to underscores."""
@@ -298,7 +397,8 @@ def sniff_format(handle):
 
 # Columns that belong to the pipeline infrastructure, not sample metadata
 _PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive",
-                  "single_end", "directory", "needscompressing", "is_fasta", "minimap2_preset"}
+                  "single_end", "directory", "needscompressing", "is_fasta", "is_sra", "minimap2_preset",
+                  "bam", "is_bam"}
 
 
 def check_samplesheet(file_in, file_out, file_meta=None):
@@ -326,7 +426,8 @@ def check_samplesheet(file_in, file_out, file_meta=None):
 
 
     """
-    required_columns = {"sample", "fastq_1"}
+    # `sample` is always required; the read source may be either fastq_1 or bam.
+    required_columns = {"sample"}
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.
     with file_in.open(newline="", encoding='utf-8-sig') as in_handle:
         reader = csv.DictReader(in_handle, dialect=sniff_format(in_handle))
@@ -334,6 +435,10 @@ def check_samplesheet(file_in, file_out, file_meta=None):
         if not required_columns.issubset(reader.fieldnames):
             logger.critical(
                 f"The sample sheet **must** contain the column headers: {', '.join(required_columns)}.")
+            sys.exit(1)
+        if "fastq_1" not in reader.fieldnames and "bam" not in reader.fieldnames:
+            logger.critical(
+                "The sample sheet **must** contain either a 'fastq_1' or a 'bam' column.")
             sys.exit(1)
         # Validate each row.
         checker = RowChecker()
@@ -345,13 +450,23 @@ def check_samplesheet(file_in, file_out, file_meta=None):
                 sys.exit(1)
         checker.validate_unique_samples()
     header = list(reader.fieldnames)
+    if "fastq_1" not in header:
+        header.insert(1, "fastq_1")
     if "fastq_2" not in header:
         header.insert(1, "fastq_2")
+    if "bam" not in header:
+        header.insert(1, "bam")
+    if "trim" not in header:
+        header.insert(1, "trim")
     header.insert(1, "single_end")
     header.insert(1, "directory")
     header.insert(1, "needscompressing")
     if "is_fasta" not in header:
         header.insert(1, "is_fasta")
+    if "is_sra" not in header:
+        header.insert(1, "is_sra")
+    if "is_bam" not in header:
+        header.insert(1, "is_bam")
     # remove any header that is empty string
     header = [x for x in header if x != '']
     # See https://docs.python.org/3.9/library/csv.html#id3 to read up on `newline=""`.

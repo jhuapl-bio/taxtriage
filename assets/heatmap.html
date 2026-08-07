@@ -776,17 +776,9 @@
                 <option value="sqrt">Sqrt</option>
               </select>
             </div>
-            <div
-              id="coverage-legend-wrap"
-              style="
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.4em 1.2em;
-                margin: 0.5em 0 0.2em;
-                font-size: 0.82em;
-                align-items: center;
-              "
-            ></div>
+            <!-- Legend is a collapsed count by default (see drawCoverage); the
+                 chips inside it are what needs the flex row, not this wrapper. -->
+            <div id="coverage-legend-wrap" style="margin: 0.5em 0 0.2em; font-size: 0.82em"></div>
             <div id="coverage-svg-wrap"></div>
           </div>
         </div>
@@ -876,9 +868,9 @@
                 min="0"
                 max="100"
                 step="5"
-                value="90"
+                value="75"
                 style="width: 62px; padding: 0.3em 0.4em; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82em"
-                title="Filter rows where %id ≥ this value (default 90%)"
+                title="Filter rows where %id ≥ this value (default 75%)"
               />
               <select
                 id="prot-keyword-group"
@@ -904,6 +896,22 @@
                 <option value="mobile">📦 Mobile Genetic Element</option>
               </select>
               <span id="prot-table-count" style="font-size: 0.78em; color: #888"></span>
+              <!-- Shown when the tab was opened via a "view VF/AMR" jump from
+                   another tab, so a one-organism prefilter is never invisible. -->
+              <span
+                id="prot-jump-badge"
+                style="
+                  display: none;
+                  align-items: center;
+                  gap: 0.2em;
+                  font-size: 0.75em;
+                  background: #e3f2fd;
+                  color: #1565c0;
+                  border: 1px solid #90caf9;
+                  border-radius: 10px;
+                  padding: 0.1em 0.5em;
+                "
+              ></span>
               <span
                 id="prot-bar-filter-badge"
                 style="
@@ -947,36 +955,10 @@
               "
             >
               <span style="font-weight: 600; color: #555">Category:</span>
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #e53935"
-                ></span
-                >Virulence Factor</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #fb8c00"
-                ></span
-                >Antibiotic Resistance / AMR</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #8e24aa"
-                ></span
-                >Drug Target</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #00897b"
-                ></span
-                >Transporter</span
-              >
-              <span style="display: flex; align-items: center; gap: 0.3em"
-                ><span
-                  style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #90a4ae"
-                ></span
-                >Other</span
-              >
+              <!-- Built by _renderProtCatLegend() from the categories actually
+                   present in the data. Each chip toggles that category in both
+                   the table and the charts above (shared PROT_HIDDEN_PROPS). -->
+              <span id="prot-cat-legend" style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap"></span>
               <span style="margin-left: 0.6em; font-weight: 600; color: #555">TASS:</span>
               <span style="display: flex; align-items: center; gap: 0.3em"
                 ><span
@@ -1014,6 +996,39 @@
                 </thead>
                 <tbody id="prot-table-body"></tbody>
               </table>
+            </div>
+            <!-- Pagination — the annotation table routinely holds 10k+ rows, which
+                 is far too many to put in the DOM in one go. -->
+            <div
+              id="prot-pager"
+              style="
+                display: flex;
+                align-items: center;
+                gap: 0.4em;
+                flex-wrap: wrap;
+                margin-top: 0.5em;
+                font-size: 0.78em;
+                color: #555;
+              "
+            >
+              <button id="prot-page-first" type="button" class="prot-page-btn" title="First page">« First</button>
+              <button id="prot-page-prev" type="button" class="prot-page-btn" title="Previous page">‹ Prev</button>
+              <span id="prot-page-status" style="min-width: 190px; text-align: center"></span>
+              <button id="prot-page-next" type="button" class="prot-page-btn" title="Next page">Next ›</button>
+              <button id="prot-page-last" type="button" class="prot-page-btn" title="Last page">Last »</button>
+              <label style="margin-left: auto; display: flex; align-items: center; gap: 0.35em">
+                Rows per page
+                <select
+                  id="prot-page-size"
+                  style="padding: 0.2em 0.4em; border: 1px solid #ccc; border-radius: 4px; font-size: 1em"
+                >
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="250">250</option>
+                  <option value="500">500</option>
+                  <option value="0">All</option>
+                </select>
+              </label>
             </div>
           </div>
           <!-- Organism detail panel -->
@@ -1205,7 +1220,7 @@
 
             <div class="chart-wrap" style="margin-bottom: 0.9em">
               <div class="chart-title" style="margin: 0 0 0.4em">Per-sample novelty</div>
-              <div style="overflow-x: auto">
+              <div class="tt-scroll-table">
                 <table class="data-table" id="novelty-summary-table" style="font-size: 0.82em; width: 100%">
                   <thead id="novelty-summary-head"></thead>
                   <tbody id="novelty-summary-body"></tbody>
@@ -1245,7 +1260,7 @@
                   <button id="novelty-cand-last" class="pg-btn" title="Last page">»</button>
                 </div>
               </div>
-              <div style="overflow-x: auto">
+              <div class="tt-scroll-table">
                 <table class="data-table" id="novelty-cand-table" style="font-size: 0.82em; width: 100%">
                   <thead id="novelty-cand-head"></thead>
                   <tbody id="novelty-cand-body"></tbody>
@@ -2108,6 +2123,18 @@
             >
               <i class="fas fa-file-export"></i> Export
             </button>
+            <!-- ── Opt-in filter scoping for the metadata table. OFF by
+                 default: this table is the run inventory, so it stays complete
+                 unless you deliberately narrow it to extract a subset. ── -->
+            <label
+              id="runmeta-filter-scope-wrap"
+              style="display: inline-flex; align-items: center; gap: 0.4em; cursor: pointer; user-select: none"
+              title="Show only samples matching the active sidebar filters. Off by default so the table stays a complete inventory of the run."
+            >
+              <input type="checkbox" id="runmeta-filter-scope" />
+              <span>Only filtered samples</span>
+              <span id="runmeta-filter-scope-count" style="color: #789"></span>
+            </label>
             <span style="color: #888">
               <i class="fas fa-pen" style="font-size: 0.9em"></i> Click any cell to edit — saved with exported state.
             </span>
@@ -2367,6 +2394,73 @@
                   Sample locations plotted from latitude / longitude metadata. Click a marker (or a cluster) to view
                   organisms for those samples — respects active sidebar filters.
                 </p>
+                <!-- ── Filter scoping for the map. On by default: a search like
+                     an organism name or a taxid greys out the samples it does
+                     not match, and cluster bubbles show "matched / total". ── -->
+                <label
+                  id="map-filter-scope-wrap"
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.4em;
+                    margin: 0 0 0.6em;
+                    font-size: 0.82em;
+                    color: #37474f;
+                    cursor: pointer;
+                    user-select: none;
+                  "
+                  title="Grey out samples that don't match the active filters, and show matched / total on cluster bubbles. Non-matching samples stay on the map so you can still see where the negatives were."
+                >
+                  <input type="checkbox" id="map-filter-scope" checked />
+                  <span>Highlight only samples matching the active filters</span>
+                  <span id="map-filter-scope-count" style="color: #789"></span>
+                </label>
+                <!-- ── Map-only sample show/hide. Writes to _mapHiddenSamples,
+                     never to the sidebar's sampleHidden, so every other tab
+                     keeps all its samples. ── -->
+                <details id="map-sample-picker">
+                  <summary>
+                    <i class="fas fa-map-pin" style="font-size: 0.9em"></i>
+                    Samples on map
+                    <span id="map-sample-count" style="color: #789; font-weight: 400"></span>
+                  </summary>
+                  <div id="map-sample-picker-body">
+                    <div class="map-sample-tools">
+                      <input
+                        type="search"
+                        id="map-sample-search"
+                        placeholder="Find a sample…"
+                        title="Narrows the list below. The bulk buttons then act on what's listed."
+                      />
+                      <button type="button" data-map-bulk="all" title="Show every sample listed below">Show all</button>
+                      <button type="button" data-map-bulk="none" title="Hide every sample listed below">
+                        Hide all
+                      </button>
+                      <button
+                        type="button"
+                        data-map-bulk="only"
+                        title="Show only the samples listed below (hide everything else)"
+                      >
+                        Only these
+                      </button>
+                      <button type="button" data-map-bulk="invert" title="Flip shown / hidden for the listed samples">
+                        Invert
+                      </button>
+                      <button
+                        type="button"
+                        data-map-bulk="matches"
+                        title="Show only the samples matching the active sidebar filters"
+                      >
+                        Only filter matches
+                      </button>
+                    </div>
+                    <div id="map-sample-list"></div>
+                    <p class="map-sample-note">
+                      Affects this map only — hidden samples stay in every other tab. Use the sidebar to remove a sample
+                      from the whole report.
+                    </p>
+                  </div>
+                </details>
                 <div id="geo-precise-slot"></div>
                 <div
                   id="geo-precise-no-data"
@@ -3306,7 +3400,7 @@
         </button>
 
         <!-- ── Metadata CSV upload ── -->
-        <h3 style="margin-top: 1em">Upload Metadata CSV</h3>
+        <h3 style="margin-top: 1em">Upload Metadata File</h3>
         <div
           id="meta-upload-zone"
           ondragover="event.preventDefault();this.classList.add('drag-over')"

@@ -4263,7 +4263,7 @@ def create_run_highlights_box(samples_dict, args, available_width, styles):
     heading_style = ParagraphStyle(
         'RunHighlightsHeading',
         parent=styles['Heading2'],
-        fontSize=12,
+        fontSize=14,
         leading=14,
         alignment=TA_CENTER,
         textColor=colors.HexColor("#1E2A32"),
@@ -4883,7 +4883,7 @@ def create_pdf_template(output_path, samples_dict, args):
         spaceAfter=6,
     ))
     story.append(Spacer(1, 0.03*inch))
-    for sample_name in sorted(samples_dict.keys()):
+    for sample_number, sample_name in enumerate(sorted(samples_dict.keys()), start=1):
         bookmark_name = f"sample_{sanitize_bookmark_name(sample_name)}"
         story.append(AnchorFlowable(bookmark_name))
 
@@ -4950,11 +4950,11 @@ def create_pdf_template(output_path, samples_dict, args):
         _cutoff_source_value = _conf_src if _conf_src else '—'
 
         _sample_title = Table(
-            [[Paragraph(f'{sample_name}', sample_title_style)]],
+            [[Paragraph(f'Sample {sample_number}: {sample_name}', sample_title_style)]],
             colWidths=[available_width],
         )
         _sample_title.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F4F8FB')),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#DCE6EE')),
             ('LEFTPADDING', (0, 0), (-1, -1), 10),
             ('RIGHTPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
@@ -5019,10 +5019,7 @@ def create_pdf_template(output_path, samples_dict, args):
         _sample_card.setStyle(TableStyle(_sample_card_style))
         story.append(KeepTogether([_sample_card,
                                    Spacer(1, 0.03*inch)]))
-        if sampletype in ['blood', 'csf', 'sterile', 'serum']:
-            story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} sample likely leads to lower TASS scores due to relatively low read count or coverage of organisms. All pathogens are defaulted to primary pathogens.</font>", small_style))
-            if sampletype != "blood":
-                story.append(Paragraph(f"<font color=\"#666666\">\t&#8594; {sampletype} follows the same anticipated clinical distribution as blood samples.</font>", small_style))
+       
         # ── Check if any qualifying strains have below-threshold zscore ───
         # If so, add a note explaining the diamond symbol and faded rows.
         _zt_note = args.zscore_threshold
@@ -5198,7 +5195,7 @@ def create_pdf_template(output_path, samples_dict, args):
 
             story.append(HRFlowable(
                 width="100%",
-                thickness=1.5,
+                thickness=1.0,
                 color=colors.HexColor('#AABBC8'),
                 spaceBefore=0,
                 spaceAfter=0,
@@ -5488,32 +5485,49 @@ def create_pdf_template(output_path, samples_dict, args):
     issues_url = "https://github.com/jhuapl-bio/taxtriage/issues"
 
     story.append(Paragraph(
+        "• Sterile samples (<b>blood, CSF, sterile, and serum</b>) may yield lower TASS scores due to relatively low read count or limited genomic coverage. "
+        "All detected pathogens for these sample types are therefore classified as <b>primary pathogens</b> by default.",
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.05*inch))
+
+    story.append(Paragraph(
         "• Sample names and species groups throughout the report are hyperlinked for navigation. "
         "Selecting a sample or organism entry will jump directly to its corresponding section in the document.",
         metadata_style
     ))
-    story.append(Spacer(1, 0.03*inch))
+    story.append(Spacer(1, 0.05*inch))
 
     story.append(Paragraph(
-        "• Organism groups are sorted by TASS score by default, or alphabetically when the alphabetical sorting option is enabled. "
-        "• Only samples and organism groups containing visible qualifying strains are included in the index and navigation sections. "
+        "• Organism groups are sorted by TASS score by default, or alphabetically when the alphabetical sorting option is enabled. ",
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.05*inch))
+
+    story.append(Paragraph(
+        "• Only samples and organism groups containing visible qualifying strains are included in the index and navigation sections. ",
+        metadata_style
+    ))
+    story.append(Spacer(1, 0.05*inch))
+
+    story.append(Paragraph(
         "• When subkey grouping is enabled, each genus-level group expands into species/subkey summary rows followed by qualifying child strains that also pass the reporting threshold.",
         metadata_style
     ))
-    story.append(Spacer(1, 0.03*inch))
+    story.append(Spacer(1, 0.05*inch))
 
     story.append(Paragraph(
         "• Low-confidence, high-consequence detections that do not appear in the PDF report may still be present in the corresponding Discovery Analysis TXT output file.",
         metadata_style
     ))
-    story.append(Spacer(1, 0.03*inch))
+    story.append(Spacer(1, 0.05*inch))
 
     story.append(Paragraph(
         f'• Please visit our <a href="{url2}"><b><font color="blue">DOCUMENTATION PAGE</font></b></a> '
         f'for additional details on TASS confidence scoring.',
         metadata_style
     ))
-    story.append(Spacer(1, 0.05*inch))
+    story.append(Spacer(1, 0.08*inch))
 
     story.append(Paragraph(
         f'Questions, feedback, or issues related to this report or the TaxTriage workflow can be submitted through the GitHub repository. '

@@ -16,9 +16,23 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     // The "never drawn" guard is critical: if report init threw before
     // redraw() marked tabs dirty, the dirty flag is still its initial false
     // and the pane would otherwise render nothing on click.
-    if (_TAB_DIRTY[activeTab] || !_TAB_RENDERED[activeTab]) _drawTab(activeTab);
+    // Rendering a stale tab on a large (or specimen-merged) run can block for
+    // a noticeable moment, so it goes behind the "Calculating…" pill. The pane
+    // is already visible at this point, so the swap still feels immediate.
+    if (_TAB_DIRTY[activeTab] || !_TAB_RENDERED[activeTab]) {
+      const _tab = activeTab;
+      if (typeof ttBusyRun === "function") ttBusyRun("Rendering " + _tab + "…", () => _drawTab(_tab));
+      else _drawTab(_tab);
+    }
 
     // ── Tab-specific init (runs after pane is visible) ──────────────
+    if (activeTab === "proteins") {
+      // Drop any organism prefilter left over from a previous "view VF/AMR"
+      // jump. Without this the tab keeps opening filtered to whatever organism
+      // was last clicked. _clearProtJumpFilter no-ops while a jump is in
+      // flight, and only clears a value it put there itself.
+      if (typeof _clearProtJumpFilter === "function") _clearProtJumpFilter();
+    }
     if (activeTab === "runmeta") {
       // Rebuild the metadata table and update sub-tab enabled states. The
       // precise Leaflet map lives inside the Mapping & Geography sub-tab and
