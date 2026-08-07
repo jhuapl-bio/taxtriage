@@ -934,6 +934,17 @@ def annotate_protein_pathogens(prot_data, source_taxids, paths):
     return n
 
 
+# Keys of prot_data that actually carry VF/AMR annotation.
+#   PROT_HIT_KEYS        — per-hit rows; a sample present here genuinely has hits.
+#   PROT_ANNOTATION_KEYS — the above plus the genus rollup; any of these being
+#                          non-empty means the VF/AMR tab has something to draw.
+# "sample_overview" is deliberately excluded from both: create_report.py writes
+# that sheet for every run (it is the TASS organism table), so treating it as
+# annotation makes has_prot always True and marks every sample as covered.
+PROT_HIT_KEYS = ("per_gene_hits", "amr_genes")
+PROT_ANNOTATION_KEYS = PROT_HIT_KEYS + ("genus_summary",)
+
+
 def load_protein_annotations(paths, pident=0):
     """
     Read one or more protein-annotation XLSX files (sheets: Genus Summary,
@@ -1245,18 +1256,29 @@ def main():
                 numeric_cols.append(col)
 
     # ── protein annotations ───────────────────────────────────────────────────
+    # NOTE: "sample_overview" is the TASS organism table, NOT VF/AMR annotation —
+    # create_report.py writes that sheet unconditionally, even when annotation was
+    # disabled or matched nothing. Only the annotation-bearing sheets may be used
+    # to decide "does this run have VF/AMR data?" or "is this sample covered?";
+    # counting sample_overview made has_prot True for every run (rendering an empty
+    # VF/AMR tab) and marked every sample as already covered (silently discarding
+    # the --annotate_reports fallback below).
     prot_data = load_protein_annotations(args.protein_annotations, pident=args.pident)
-    has_prot = any(len(v) > 0 for v in prot_data.values())
+    has_prot = any(len(prot_data.get(k, [])) > 0 for k in PROT_ANNOTATION_KEYS)
     print(f"[make_report] Protein annotations loaded: {has_prot} "
-          f"({sum(len(v) for v in prot_data.values())} total rows)")
+          f"({sum(len(v) for v in prot_data.values())} total rows; "
+          f"{sum(len(prot_data.get(k, [])) for k in PROT_ANNOTATION_KEYS)} annotation rows)")
 
     # ── standalone annotation reports (de-novo / unaligned samples) ────────────
     # Samples with no reference alignment never get an organism hierarchy, so their
     # VF/AMR annotation is absent from the merged XLSX. Supplement prot_data from the
     # per-sample annotate_report.tsv files for any sample not already covered.
     if args.annotate_reports:
+        # A sample counts as "covered" only if the merged XLSX carried actual VF/AMR
+        # rows for it. Appearing in sample_overview means nothing — every sample in
+        # the run is listed there regardless of whether annotation matched.
         covered = set()
-        for _k in ("per_gene_hits", "amr_genes", "genus_summary", "sample_overview"):
+        for _k in PROT_HIT_KEYS:
             for _r in prot_data.get(_k, []):
                 _s = _r.get("Specimen ID") or _r.get("Sample") or _r.get("sample")
                 if _s not in (None, ""):
@@ -1266,7 +1288,7 @@ def main():
         if _n_supp:
             for _k in prot_data:
                 prot_data[_k].extend(supp.get(_k, []))
-            has_prot = any(len(v) > 0 for v in prot_data.values())
+            has_prot = any(len(prot_data.get(k, [])) > 0 for k in PROT_ANNOTATION_KEYS)
             _supp_samples = sorted({
                 (r.get("Specimen ID") or r.get("Sample") or r.get("sample"))
                 for k in ("per_gene_hits", "amr_genes") for r in supp.get(k, [])

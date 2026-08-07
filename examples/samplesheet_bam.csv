@@ -1,0 +1,2 @@
+sample,platform,bam,type
+prealigned_sample,ILLUMINA,examples/data/prealigned_sample.bam,nasal

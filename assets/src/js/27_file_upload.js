@@ -316,9 +316,12 @@
     _PROT_KEYS.forEach((k) => {
       PROT[k] = [...((BOOT.prot_data || {})[k] || []), ...(_uploadedProtData[k] || [])];
     });
+    // New dataset — re-arm the "VF/AMR categories only" default so it is applied
+    // against the merged properties rather than staying pinned to the old set.
+    if (typeof _resetProtHiddenDefaults === "function") _resetProtHiddenDefaults();
 
     // Update proteins tab visibility
-    HAS_PROT = _PROT_KEYS.some((k) => Array.isArray(PROT[k]) && PROT[k].length > 0);
+    HAS_PROT = hasProtAnnotations(PROT);
     const protBtn = document.getElementById("prot-tab-btn");
     if (protBtn) protBtn.classList.toggle("hidden", !HAS_PROT);
 

@@ -322,12 +322,9 @@ function __ttRunInit() {
     }
   }
 
-  // Show proteins tab only if annotation data present
-  const hasProtData =
-    HAS_PROT &&
-    [PROT.genus_summary, PROT.per_gene_hits, PROT.sample_overview, PROT.amr_genes, PROT.genus_by_property].some(
-      (arr) => Array.isArray(arr) && arr.length > 0,
-    );
+  // Show proteins tab only if annotation data present (sample_overview alone is
+  // the TASS organism table, not annotation — see hasProtAnnotations in early.js)
+  const hasProtData = HAS_PROT && hasProtAnnotations(PROT);
   HAS_PROT = hasProtData;
   const protBtn = document.getElementById("prot-tab-btn");
   if (protBtn) {

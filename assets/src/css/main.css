@@ -1559,6 +1559,38 @@ tr:hover .watch-star:not(.on) {
 .vfamr-only-link:hover {
   background: #fff3bf !important;
 }
+/* "Other organisms also have VF/AMR hits" rows — context, not a finding, so
+         deliberately quieter than the amber vfamr-only rows above: a thin grey rail
+         and no fill. The organism names inside carry the emphasis when any of them
+         is a primary pathogen. */
+#summary-top-wrap tr.vfamr-extra-row td,
+#table-body tr.vfamr-extra-row td {
+  background: rgba(107, 114, 128, 0.05);
+  box-shadow: inset 3px 0 0 #d1d5db;
+  font-size: 0.82em;
+  padding: 3px 10px;
+}
+#summary-top-wrap tr.vfamr-extra-row:hover td,
+#table-body tr.vfamr-extra-row:hover td {
+  background: rgba(107, 114, 128, 0.1);
+}
+.vfamr-extra-link:hover {
+  background: #f3f4f6 !important;
+  border-color: #9ca3af !important;
+}
+/* Novelty counterpart — same quiet treatment, orange rail to match the other
+         novelty surfaces. */
+#summary-top-wrap tr.novelty-extra-row td,
+#table-body tr.novelty-extra-row td {
+  background: rgba(232, 89, 12, 0.04);
+  box-shadow: inset 3px 0 0 #f8c9a8;
+  font-size: 0.82em;
+  padding: 3px 10px;
+}
+#summary-top-wrap tr.novelty-extra-row:hover td,
+#table-body tr.novelty-extra-row:hover td {
+  background: rgba(232, 89, 12, 0.09);
+}
 /* Novelty-only indicator rows — sample has no passing detections but
          does carry novelty genus evidence (mmseqs/closed-set comparison). */
 #summary-top-wrap tr.novelty-only-row td,
@@ -4336,4 +4368,75 @@ body.report-pdf-printing #map-filter-scope-wrap {
 body.report-pdf-printing #cov-legend-chips {
   max-height: none;
   overflow: visible;
+}
+
+/* ── VF/AMR annotation table pagination ────────────────────────────────────
+   The annotation table routinely carries 10k+ rows; only one page is ever in
+   the DOM, so these controls are the primary means of moving through it. */
+.prot-page-btn {
+  padding: 0.25em 0.6em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #1565c0;
+  font-size: 1em;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.prot-page-btn:hover:not(:disabled) {
+  background: #e3f2fd;
+  border-color: #90caf9;
+}
+.prot-page-btn:disabled {
+  color: #bbb;
+  border-color: #e6e6e6;
+  cursor: default;
+}
+#prot-pager.hidden {
+  display: none !important;
+}
+
+/* ── VF/AMR table category legend ──────────────────────────────────────────
+   Chips mirror the bar-chart legend: click to hide/show a category in the
+   table and both charts at once. Hidden chips stay visible but dimmed and
+   struck through, so it is always obvious what is being excluded. */
+.prot-cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  cursor: pointer;
+  padding: 0.1em 0.35em;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  user-select: none;
+}
+.prot-cat-chip:hover {
+  border-color: #90caf9;
+  background: #f5faff;
+}
+.prot-cat-chip .prot-cat-sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.prot-cat-chip .prot-cat-ct {
+  color: #999;
+  font-size: 0.9em;
+}
+.prot-cat-chip.prot-cat-off {
+  color: #aaa;
+  text-decoration: line-through;
+}
+.prot-cat-chip.prot-cat-off .prot-cat-sw {
+  opacity: 0.25;
+}
+.prot-cat-reset {
+  border: none;
+  background: none;
+  color: #1565c0;
+  cursor: pointer;
+  font-size: 1em;
+  padding: 0 0.2em;
+  text-decoration: underline;
 }
