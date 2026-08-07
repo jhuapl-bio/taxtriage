@@ -1069,7 +1069,7 @@ function _renderOneRow(row) {
       _lnk.addEventListener("click", (e) => {
         e.stopPropagation();
         hideTip();
-        _vfamrOnlyOpen(_s);
+        _vfamrOnlyOpen(_s, row["Specimen ID"]);
       });
     itr.appendChild(itd);
     return itr;

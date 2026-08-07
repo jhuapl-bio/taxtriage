@@ -1329,7 +1329,10 @@ function _renderSummaryTable(fd) {
       const orgKey = String(org).trim().toLowerCase();
       const twoTok = orgKey.split(/\s+/).slice(0, 2).join(" ");
       const hasSpecies = !!(idx && idx.bySpecies && (idx.bySpecies.has(orgKey) || idx.bySpecies.has(twoTok)));
-      if (g || org) _jumpToProteins(g, hasSpecies ? org : "");
+      // Scope the jump to this row's sample — the click came from one specific
+      // detection, so showing every sample's hits would be a superset.
+      const smp = _vfR["Specimen ID"] || "";
+      if (g || org) _jumpToProteins(g, hasSpecies ? org : "", smp);
     });
   });
 
@@ -1352,7 +1355,7 @@ function _renderSummaryTable(fd) {
       lnk.addEventListener("click", (e) => {
         e.stopPropagation();
         hideTip();
-        _vfamrOnlyOpen(s);
+        _vfamrOnlyOpen(s, smp);
       });
   });
 
@@ -1376,7 +1379,7 @@ function _renderSummaryTable(fd) {
       lnk.addEventListener("click", (e) => {
         e.stopPropagation();
         hideTip();
-        if (typeof _openProteinsTab === "function") _openProteinsTab();
+        if (typeof _openProteinsTab === "function") _openProteinsTab(smp);
       });
   });
 
@@ -2090,11 +2093,12 @@ function _vfamrOnlyTip(sample, s) {
 // That is arbitrary: the whole point of the indicator is that the sample has
 // hits worth looking at, and silently narrowing to one genus hides the rest
 // (including the primary pathogen, which is rarely the most populous genus —
-// host-protein Drug Target hits usually are). Open the tab unfiltered and let
-// the tab's own defaults apply; _clearProtJumpFilter() in the tab-switch
-// handler drops any prefilter left over from an earlier jump.
-function _vfamrOnlyOpen() {
-  if (typeof _openProteinsTab === "function") _openProteinsTab();
+// host-protein Drug Target hits usually are). Open the tab with no ORGANISM
+// prefilter, but scoped to the sample the link belongs to — the indicator row
+// is about one sample, so other samples' hits are noise. _clearProtJumpFilter()
+// in the tab-switch handler drops the scope on a later direct tab open.
+function _vfamrOnlyOpen(s, sample) {
+  if (typeof _openProteinsTab === "function") _openProteinsTab(sample);
 }
 
 function _sampleCutoffById(sample) {

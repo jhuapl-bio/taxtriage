@@ -1283,7 +1283,8 @@ function _dedupRows(rows) {
         if (tassMode === "in" && !inTass) return false;
         if (tassMode === "out" && inTass) return false;
       }
-      // Bar chart click filter (sample × category)
+      // Bar chart click filter (sample × category), also used by "View VF/AMR"
+      // jumps from Summary to pin the table to one sample.
       if (window._protBarFilter) {
         const bf = window._protBarFilter;
         const rSample = r["Specimen ID"] || r["Sample"] || r["sample"] || r["specimen_id"] || "";
@@ -1299,7 +1300,10 @@ function _dedupRows(rows) {
           r["Function"] ||
           r["function"] ||
           "";
-        if (bf.sample && rSample !== bf.sample) return false;
+        // `samples` carries the member sample ids of a merged specimen; fall
+        // back to the single `sample` label when it is absent.
+        const bfSamples = Array.isArray(bf.samples) && bf.samples.length ? bf.samples : bf.sample ? [bf.sample] : null;
+        if (bfSamples && bfSamples.indexOf(rSample) === -1) return false;
         if (bf.cat && rCat !== bf.cat) return false;
       }
       return true;
@@ -1494,6 +1498,7 @@ function _dedupRows(rows) {
   };
   window._clearProtBarFilter = function () {
     window._protBarFilter = null;
+    window._protJumpSample = null;
     const badge = document.getElementById("prot-bar-filter-badge");
     if (badge) badge.style.display = "none";
     _filterProt();
