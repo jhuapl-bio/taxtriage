@@ -948,9 +948,16 @@ function _renderSummaryTable(fd) {
   // Append indicator rows for samples with VF/AMR hits but no detection rows.
   const _vfOnlySum = _vfamrOnlySampleRows(fd);
   if (_vfOnlySum.length) fd = fd.concat(_vfOnlySum);
+  // Append "there are also hits for organisms not in this table" rows for
+  // samples that DO have detections (the no-detection case is handled above).
+  const _vfExtraSum = _vfamrExtraSampleRows(fd);
+  if (_vfExtraSum.length) fd = fd.concat(_vfExtraSum);
   // Append novelty-only indicator rows for samples with novelty genus evidence.
   const _novOnlySum = _noveltyOnlySampleRows(fd);
   if (_novOnlySum.length) fd = fd.concat(_novOnlySum);
+  // ...and the compact "novelty signal for genera not in this table" rows.
+  const _novExtraSum = _noveltyExtraSampleRows(fd);
+  if (_novExtraSum.length) fd = fd.concat(_novExtraSum);
   // Append empty-sample indicator rows for samples with no detections at all.
   const _emptyOnlySum = _emptyOnlySampleRows(fd);
   if (_emptyOnlySum.length) fd = fd.concat(_emptyOnlySum);
@@ -997,7 +1004,7 @@ function _renderSummaryTable(fd) {
   );
 
   // Sort
-  const rows = [...fd];
+  let rows = [...fd];
   const col = _sumSortCol;
   const isNum = (_SUM_COLS.find((c) => c.key === col) || {}).num;
   const cmp = (a, b) => {
@@ -1022,6 +1029,12 @@ function _renderSummaryTable(fd) {
     }
     return cmp(a, b);
   });
+
+  // Pull each "other organisms" row to the end of its sample group, after the
+  // sort has scattered them. Plain reassignment — _placeVfamrExtraRows returns
+  // the SAME array when there is nothing to move, so clearing `rows` in place
+  // and re-pushing emptied both references and blanked the whole table.
+  rows = _placeVfamrExtraRows(rows, grouped);
 
   // Pagination over the (optionally grouped) row list
   const pageSize = _sumPageSize();
@@ -1058,6 +1071,23 @@ function _renderSummaryTable(fd) {
       html +=
         `<tr class="vfamr-only-row" data-vfamr-sample="${String(r["Specimen ID"]).replace(/"/g, "&quot;")}">` +
         `<td colspan="${_visSumCols.length}">${_vfamrOnlyMessageHTML(r["Specimen ID"], r.__vfamr)}</td></tr>`;
+      return;
+    }
+    // "Other organisms also have VF/AMR hits" row (sample IS in the table).
+    if (r.__vfamrExtra) {
+      html +=
+        `<tr class="vfamr-extra-row" data-vfamr-extra-sample="${String(r["Specimen ID"]).replace(/"/g, "&quot;")}">` +
+        `<td colspan="${_visSumCols.length}">${_vfamrExtraMessageHTML(r["Specimen ID"], r.__vfamrExtra)}</td></tr>`;
+      return;
+    }
+    // "Novelty signal for genera not in this table" row.
+    if (r.__noveltyExtra) {
+      html +=
+        `<tr class="novelty-extra-row" data-novelty-extra-sample="${String(r["Specimen ID"]).replace(
+          /"/g,
+          "&quot;",
+        )}">` +
+        `<td colspan="${_visSumCols.length}">${_noveltyExtraMessageHTML(r["Specimen ID"], r.__noveltyExtra)}</td></tr>`;
       return;
     }
     // Novelty-only indicator row (sample has no passing detections).
@@ -1290,7 +1320,16 @@ function _renderSummaryTable(fd) {
       e.stopPropagation();
       hideTip();
       const g = cell.dataset.vfamrGenus || _vfR["Genus"] || "";
-      if (g) _jumpToProteins(g);
+      // Prefer the species-level term; _jumpToProteins falls back to genus.
+      const org = cell.dataset.vfamrOrganism || _vfR["Detected Organism"] || "";
+      // Only pass the organism when the VF/AMR data actually indexes it as a
+      // species — otherwise the species search would return nothing and the
+      // genus fallback is the useful behaviour.
+      const idx = typeof _vfamrIndex === "function" ? _vfamrIndex() : null;
+      const orgKey = String(org).trim().toLowerCase();
+      const twoTok = orgKey.split(/\s+/).slice(0, 2).join(" ");
+      const hasSpecies = !!(idx && idx.bySpecies && (idx.bySpecies.has(orgKey) || idx.bySpecies.has(twoTok)));
+      if (g || org) _jumpToProteins(g, hasSpecies ? org : "");
     });
   });
 
@@ -1315,6 +1354,46 @@ function _renderSummaryTable(fd) {
         hideTip();
         _vfamrOnlyOpen(s);
       });
+  });
+
+  // "Other organisms with VF/AMR hits" rows: hover → the full organism list,
+  // "View →" → the VF/AMR tab (unfiltered, so the hits are actually reachable).
+  const _vfExtraMap = new Map();
+  slice.forEach((r) => {
+    if (r.__vfamrExtra) _vfExtraMap.set(String(r["Specimen ID"]), r.__vfamrExtra);
+  });
+  wrap.querySelectorAll("tbody tr.vfamr-extra-row[data-vfamr-extra-sample]").forEach((tr) => {
+    const smp = tr.getAttribute("data-vfamr-extra-sample");
+    const x = _vfExtraMap.get(smp);
+    const msg = tr.querySelector(".vfamr-extra-msg");
+    if (msg) {
+      msg.addEventListener("mouseover", (ev) => showTip(_vfamrExtraTip(smp, x), ev));
+      msg.addEventListener("mousemove", moveTip);
+      msg.addEventListener("mouseout", hideTip);
+    }
+    const lnk = tr.querySelector(".vfamr-extra-link");
+    if (lnk)
+      lnk.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hideTip();
+        if (typeof _openProteinsTab === "function") _openProteinsTab();
+      });
+  });
+
+  // "Novelty signal for other genera" rows: hover → the genus list + reason.
+  const _novExtraMap = new Map();
+  slice.forEach((r) => {
+    if (r.__noveltyExtra) _novExtraMap.set(String(r["Specimen ID"]), r.__noveltyExtra);
+  });
+  wrap.querySelectorAll("tbody tr.novelty-extra-row[data-novelty-extra-sample]").forEach((tr) => {
+    const smp = tr.getAttribute("data-novelty-extra-sample");
+    const x = _novExtraMap.get(smp);
+    const msg = tr.querySelector(".novelty-extra-msg");
+    if (msg) {
+      msg.addEventListener("mouseover", (ev) => showTip(_noveltyExtraTip(smp, x), ev));
+      msg.addEventListener("mousemove", moveTip);
+      msg.addEventListener("mouseout", hideTip);
+    }
   });
 
   // Novelty-only indicator rows: hover → genus status summary, open novelty.
@@ -1374,7 +1453,11 @@ function _updateSummaryPager(total, start, end, pages) {
          lookup. Memoized the same way as _AMR_GENERA (built once after load). */
 let _VFAMR_INDEX = null;
 function _vfamrIndex() {
-  if (_VFAMR_INDEX) return _VFAMR_INDEX;
+  // Rebuild when the VF/AMR tab's category / property / %id filters change: the
+  // per-row chips count the same hits the VF/AMR tab shows, so a cached all-hits
+  // index would report Drug Target / commensal hits the tab is hiding.
+  const _key = typeof _protUiFilterKey === "function" ? _protUiFilterKey() : "";
+  if (_VFAMR_INDEX && _VFAMR_INDEX._key === _key) return _VFAMR_INDEX;
   const byGenus = new Map();
   const bySpecies = new Map();
   const _ensure = (map, key) => {
@@ -1383,8 +1466,10 @@ function _vfamrIndex() {
   };
   const _lbl = (r) =>
     r["Gene"] || r["Gene Name"] || r.gene_name || r["Product"] || r.product || r["Name"] || r["Antibiotics"] || "";
+  const _pass = typeof _protHitPassesUiFilters === "function" ? _protHitPassesUiFilters : () => true;
   const _add = (rows, kind) => {
     (rows || []).forEach((r) => {
+      if (!_pass(r)) return;
       const gn = String(r.Genus || r.genus || "")
         .trim()
         .toLowerCase();
@@ -1407,7 +1492,7 @@ function _vfamrIndex() {
   };
   _add(PROT.per_gene_hits, "vf");
   _add(PROT.amr_genes, "amr");
-  _VFAMR_INDEX = { byGenus, bySpecies };
+  _VFAMR_INDEX = { byGenus, bySpecies, _key };
   return _VFAMR_INDEX;
 }
 
@@ -1481,8 +1566,13 @@ function _vfamrCellHTML(r) {
   if (v.vf) parts.push(`<span class="vfamr-chip vfamr-vf">${v.vf} VF</span>`);
   if (v.amr) parts.push(`<span class="vfamr-chip vfamr-amr">${v.amr} AMR</span>`);
   const lvl = v.level === "species" ? "sp" : "gen";
+  // Carry the organism as well as the genus: jumping to the VF/AMR tab filters
+  // on the species when we know it, so a click on one row cannot drag in every
+  // other member of the genus (or the reference DB's own host organism).
+  const _org = String(r["Detected Organism"] || "").replace(/"/g, "&quot;");
   return (
     `<span class="vfamr-cell" data-vfamr="1" data-vfamr-genus="${r["Genus"] || ""}" ` +
+    `data-vfamr-organism="${_org}" ` +
     `style="cursor:pointer">${parts.join("")}<span class="vfamr-lvl">${lvl}</span></span>`
   );
 }
@@ -1641,8 +1731,15 @@ function _vfamrSampleSummary() {
   // Memoize on the (already-cached) VF/AMR index object so this O(n) scan of
   // per_gene_hits + amr_genes runs once per dataset instead of on every table
   // render — important for large --annotate reports (e.g. 25 samples / 180 MB).
+  // The cache key includes the VF/AMR tab's category / property / %id filter
+  // state: this rollup honours those filters now, so it must recompute when
+  // they change rather than serving a stale all-hits count.
   const _idx = typeof _vfamrIndex === "function" ? _vfamrIndex() : null;
-  if (_idx && _idx._sampleSummary) return _idx._sampleSummary;
+  const _key = typeof _protUiFilterKey === "function" ? _protUiFilterKey() : "";
+  if (_idx && _idx._sampleSummary && _idx._sampleSummaryKey === _key) return _idx._sampleSummary;
+
+  const _pass = typeof _protHitPassesUiFilters === "function" ? _protHitPassesUiFilters : () => true;
+  const _cls = typeof _protPathogenClass === "function" ? _protPathogenClass : () => null;
   const out = {};
   const lblOf = (r) =>
     String(
@@ -1652,18 +1749,231 @@ function _vfamrSampleSummary() {
     (rows || []).forEach((r) => {
       const smp = r["Specimen ID"] || r.Sample || r.sample;
       if (!smp) return;
-      const o = (out[smp] = out[smp] || { vf: 0, amr: 0, genes: new Set(), genera: new Set() });
+      if (!_pass(r)) return;
+      const o = (out[smp] = out[smp] || {
+        vf: 0,
+        amr: 0,
+        genes: new Set(),
+        genera: new Set(),
+        // name -> hit count, for pathogen-sheet classes we want to lead with.
+        primary: new Map(),
+        hc: new Set(),
+      });
       if (kind === "amr") o.amr++;
       else o.vf++;
       const lbl = lblOf(r);
       if (lbl) o.genes.add(lbl);
       const gn = String(r.Genus || r.genus || "").trim();
       if (gn) o.genera.add(gn);
+      // Primary pathogens are the headline: a single primary hit matters more
+      // than hundreds of commensal/host-protein ones, so track them by name.
+      if (_cls(r) === "Primary") {
+        const p = r.pathogen || r._pathogen || {};
+        const nm = String(p.name || r.Species || r.species || gn || "").trim();
+        if (nm) o.primary.set(nm, (o.primary.get(nm) || 0) + 1);
+        if (p.hc) o.hc.add(nm);
+      }
     });
   add(PROT.per_gene_hits, "vf");
   add(PROT.amr_genes, "amr");
-  if (_idx) _idx._sampleSummary = out;
+  // Drop samples whose hits were entirely filtered away, so they stop producing
+  // a "but N VF/AMR hits detected" indicator row with N = 0.
+  Object.keys(out).forEach((k) => {
+    if (!out[k].vf && !out[k].amr) delete out[k];
+  });
+  if (_idx) {
+    _idx._sampleSummary = out;
+    _idx._sampleSummaryKey = _key;
+  }
   return out;
+}
+/* ── VF/AMR hits belonging to organisms that never made it into the table ───
+     _vfamrOnlySampleRows() below only fires when a sample has NO passing
+     detections at all. The commoner and more misleading case is a sample that
+     has one or two passing detections — so it looks fully accounted for — while
+     other organisms in the same sample carry VF/AMR hits and are absent from the
+     table entirely (no alignment, below the TASS cutoff, filtered out). Nothing
+     signalled that, so a primary pathogen with hits but no detection row was
+     invisible on this tab.
+
+     Rolled up once per filter state (stashed on the filter-keyed _vfamrIndex, so
+     it invalidates for free) into sample -> Map(organism -> {n, cls, hc}). The
+     per-render cost is then just a set difference against the visible rows. */
+function _vfamrOrgsBySample() {
+  const idx = typeof _vfamrIndex === "function" ? _vfamrIndex() : null;
+  if (idx && idx._orgsBySample) return idx._orgsBySample;
+  const _pass = typeof _protHitPassesUiFilters === "function" ? _protHitPassesUiFilters : () => true;
+  const _cls = typeof _protPathogenClass === "function" ? _protPathogenClass : () => null;
+  const out = {};
+  const add = (rows) =>
+    (rows || []).forEach((r) => {
+      if (!_pass(r)) return;
+      const smp = r["Specimen ID"] || r.Sample || r.sample;
+      if (!smp) return;
+      const p = r.pathogen || r._pathogen || {};
+      const sp = String(r.Species || r.species || "").trim();
+      const gn = String(r.Genus || r.genus || "").trim();
+      const name = String(p.name || sp || gn || "").trim();
+      if (!name) return;
+      const m = (out[smp] = out[smp] || new Map());
+      let e = m.get(name);
+      if (!e) {
+        e = { n: 0, cls: _cls(r), hc: !!p.hc, sp: sp.toLowerCase(), gn: gn.toLowerCase() };
+        m.set(name, e);
+      }
+      e.n++;
+    });
+  add(PROT.per_gene_hits);
+  add(PROT.amr_genes);
+  if (idx) idx._orgsBySample = out;
+  return out;
+}
+// Primary first — that is the whole point of the signal.
+const _VFAMR_CLS_RANK = { Primary: 0, Opportunistic: 1, Potential: 2, Commensal: 3 };
+function _vfamrClsRank(c) {
+  return _VFAMR_CLS_RANK[c] === undefined ? 4 : _VFAMR_CLS_RANK[c];
+}
+// Indicator rows for samples that DO appear in the table but have VF/AMR hits
+// for organisms that do not.
+function _vfamrExtraSampleRows(fdRows) {
+  if (!HAS_PROT) return [];
+  const orgs = _vfamrOrgsBySample();
+  if (!Object.keys(orgs).length) return [];
+  // Organism / genus tokens visible in the table, per sample.
+  const shown = new Map();
+  (fdRows || []).forEach((r) => {
+    if (r.__vfamrOnly || r.__noveltyOnly || r.__emptyOnly || r.__vfamrExtra) return;
+    const s = String(r["Specimen ID"] || "");
+    if (!s) return;
+    let set = shown.get(s);
+    if (!set) shown.set(s, (set = new Set()));
+    const org = String(r["Detected Organism"] || "")
+      .trim()
+      .toLowerCase();
+    if (org) {
+      set.add(org);
+      set.add(org.split(/\s+/).slice(0, 2).join(" "));
+    }
+    const g = String(r["Genus"] || "")
+      .trim()
+      .toLowerCase();
+    if (g) set.add(g);
+  });
+  // Samples that already got the amber "no passing detections" row — that
+  // message names its own primary pathogens, so a second line would just repeat
+  // it. Every OTHER sample with unrepresented hits gets this row, including
+  // samples whose detections were all filtered away (which is precisely when
+  // this signal matters most, and where an early `if (!seen.size) return`
+  // used to drop it on the floor).
+  const covered = new Set((fdRows || []).filter((r) => r.__vfamrOnly).map((r) => String(r["Specimen ID"] || "")));
+  const out = [];
+  Object.keys(orgs).forEach((smp) => {
+    if (sampleHidden[smp]) return;
+    if (typeof _isMergedAway === "function" && _isMergedAway(smp)) return;
+    if (covered.has(String(smp))) return;
+    const seen = shown.get(smp) || new Set();
+    const missing = [];
+    orgs[smp].forEach((e, name) => {
+      const nl = name.toLowerCase();
+      const two = nl.split(/\s+/).slice(0, 2).join(" ");
+      if (seen.has(nl) || seen.has(two) || (e.sp && seen.has(e.sp)) || (e.gn && seen.has(e.gn))) return;
+      missing.push({ name: name, n: e.n, cls: e.cls, hc: e.hc });
+    });
+    if (!missing.length) return;
+    missing.sort((a, b) => _vfamrClsRank(a.cls) - _vfamrClsRank(b.cls) || b.n - a.n);
+    out.push({
+      "Specimen ID": smp,
+      "Detected Organism": "",
+      __vfamrExtra: { orgs: missing, hits: missing.reduce((s, m) => s + m.n, 0) },
+    });
+  });
+  return out;
+}
+/* Keep each compact "also present" row adjacent to the sample it belongs to.
+     The table's sort runs on detection columns, which would otherwise scatter
+     these synthetic rows through the group. Handles both the VF/AMR and the
+     novelty variants, and a sample may have one of each.
+     NOTE: returns the input array unchanged when there is nothing to move, so
+     callers must reassign rather than mutating in place. */
+function _isExtraInfoRow(r) {
+  return !!(r.__vfamrExtra || r.__noveltyExtra);
+}
+function _placeVfamrExtraRows(rows, grouped) {
+  if (!rows.some(_isExtraInfoRow)) return rows;
+  const extras = rows.filter(_isExtraInfoRow);
+  const base = rows.filter((r) => !_isExtraInfoRow(r));
+  if (!grouped) return base.concat(extras);
+  const bySample = new Map();
+  extras.forEach((e) => {
+    const k = String(e["Specimen ID"] || "");
+    if (!bySample.has(k)) bySample.set(k, []);
+    bySample.get(k).push(e);
+  });
+  const out = [];
+  for (let i = 0; i < base.length; i++) {
+    out.push(base[i]);
+    const s = String(base[i]["Specimen ID"] || "");
+    const next = i + 1 < base.length ? String(base[i + 1]["Specimen ID"] || "") : null;
+    if (s !== next && bySample.has(s)) {
+      bySample.get(s).forEach((e) => out.push(e));
+      bySample.delete(s);
+    }
+  }
+  bySample.forEach((list) => list.forEach((e) => out.push(e))); // samples with no base rows
+  return out;
+}
+// Compact one-line message. Deliberately terse: this sits inside an otherwise
+// dense table and is context, not a finding.
+function _vfamrExtraMessageHTML(sample, x) {
+  const esc = (v) =>
+    String(v == null ? "" : v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const orgs = (x && x.orgs) || [];
+  if (!orgs.length) return "";
+  const nPrimary = orgs.filter((o) => o.cls === "Primary").length;
+  const lead = orgs
+    .slice(0, 2)
+    .map(
+      (o) =>
+        `<i${o.cls === "Primary" ? ' style="color:#b91c1c;font-weight:600"' : ""}>${esc(o.name)}</i>` +
+        (o.hc ? " ⚠" : ""),
+    )
+    .join(", ");
+  const more = orgs.length > 2 ? ` +${orgs.length - 2}` : "";
+  return (
+    `<span class="vfamr-extra-msg" style="display:inline-flex;align-items:center;gap:.4em;flex-wrap:wrap;cursor:help;font-size:.92em;color:#6b7280">` +
+    `<span style="color:${nPrimary ? "#b91c1c" : "#9ca3af"}">◍</span>` +
+    `<span>${x.hits.toLocaleString()} VF/AMR hit(s) for ${orgs.length} organism(s) not in this table: ${lead}${more}` +
+    (nPrimary ? ` <b style="color:#b91c1c">(${nPrimary} primary)</b>` : "") +
+    `</span>` +
+    `<button type="button" class="vfamr-extra-link" style="border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:4px;padding:0 6px;cursor:pointer;font-size:.9em;white-space:nowrap">View →</button>` +
+    `</span>`
+  );
+}
+function _vfamrExtraTip(sample, x) {
+  const esc = (v) =>
+    String(v == null ? "" : v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const orgs = (x && x.orgs) || [];
+  const lines = orgs
+    .slice(0, 12)
+    .map(
+      (o) =>
+        `<span style="color:${o.cls === "Primary" ? "#ff8787" : "#adb5bd"}">${esc(o.cls || "Unclassified")}</span> ` +
+        `<i>${esc(o.name)}</i>${o.hc ? " ⚠" : ""} <span style="color:#868e96">(${o.n})</span>`,
+    )
+    .join("<br>");
+  return (
+    `<b>VF/AMR hits with no row in this table</b><br>` +
+    `<span style="color:#adb5bd">${esc(sample)} — these organisms have annotation hits but no ` +
+    `detection passing the current filters (no alignment, below TASS cutoff, or filtered out).</span><br><br>` +
+    lines +
+    (orgs.length > 12 ? `<br><span style="color:#868e96">+${orgs.length - 12} more</span>` : "")
+  );
 }
 // Synthetic indicator rows for non-hidden samples that have VF/AMR hits but
 // contribute zero rows to the supplied detection list (fdRows).
@@ -1707,18 +2017,51 @@ function _vfamrOnlyMessageHTML(sample, s) {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+  // Lead with primary pathogens. A single primary hit is the actionable signal;
+  // a long genus list dominated by reference-database host organisms (DrugBank
+  // targets are human/bovine proteins, so "Homo"/"Bos") buries it.
+  const prim = s.primary instanceof Map ? s.primary : new Map();
+  const hc = s.hc instanceof Set ? s.hc : new Set();
+  let primTxt = "";
+  if (prim.size) {
+    const ordered = [...prim.entries()].sort((a, b) => b[1] - a[1]);
+    const shown = ordered
+      .slice(0, 3)
+      .map(
+        ([nm, n]) =>
+          `<i>${esc(nm)}</i>${hc.has(nm) ? ' <span title="High-consequence pathogen">⚠</span>' : ""}` +
+          ` <span style="color:#8a6d3b">(${n})</span>`,
+      )
+      .join(", ");
+    primTxt =
+      ` · <span style="color:#b91c1c;font-weight:700">primary pathogen${prim.size > 1 ? "s" : ""}:</span> ` +
+      `<span style="color:#b91c1c">${shown}${ordered.length > 3 ? ` +${ordered.length - 3}` : ""}</span>`;
+  }
+  // Genera are secondary context now; drop any already named above and cap hard.
   const gset = s.genera || new Set();
-  const generaList = [...gset]
-    .slice(0, 4)
+  const primWords = new Set();
+  prim.forEach((_, nm) =>
+    String(nm)
+      .toLowerCase()
+      .split(/\s+/)
+      .forEach((w) => primWords.add(w)),
+  );
+  const otherGenera = [...gset].filter((g) => !primWords.has(String(g).toLowerCase()));
+  const generaList = otherGenera
+    .slice(0, 3)
     .map((g) => `<i>${esc(g)}</i>`)
     .join(", ");
-  const generaTxt = generaList ? ` · genera: ${generaList}${gset.size > 4 ? ` +${gset.size - 4}` : ""}` : "";
+  const generaTxt = generaList
+    ? ` · ${prim.size ? "other " : ""}genera: ${generaList}${
+        otherGenera.length > 3 ? ` +${otherGenera.length - 3}` : ""
+      }`
+    : "";
   return (
     `<span class="vfamr-only-msg" style="display:inline-flex;align-items:center;gap:.5em;flex-wrap:wrap;cursor:help">` +
-    `<i class="fas fa-dna" style="color:#b45309"></i>` +
+    `<i class="fas fa-dna" style="color:${prim.size ? "#b91c1c" : "#b45309"}"></i>` +
     `<span><b>No passing detections for this sample</b> — but ${s.vf + s.amr} VF/AMR gene hit(s) detected ` +
     `(<span style="color:#6a1b9a;font-weight:600">${s.vf} VF</span>, ` +
-    `<span style="color:#c2410c;font-weight:600">${s.amr} AMR</span>)${generaTxt}.</span>` +
+    `<span style="color:#c2410c;font-weight:600">${s.amr} AMR</span>)${primTxt}${generaTxt}.</span>` +
     `<button type="button" class="vfamr-only-link" style="margin-left:.3em;border:1px solid #f0c36d;background:#fff;color:#b45309;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:.92em;white-space:nowrap">View VF/AMR →</button>` +
     `</span>` +
     _pathEvidenceHTML(sample)
@@ -1741,9 +2084,17 @@ function _vfamrOnlyTip(sample, s) {
   return html;
 }
 // Open the VF/AMR tab, optionally filtered to one of the sample's genera.
-function _vfamrOnlyOpen(s) {
-  const g = s && s.genera && s.genera.size ? [...s.genera][0] : "";
-  if (typeof _jumpToProteins === "function") _jumpToProteins(g || "");
+// "View VF/AMR →" on a VF/AMR-only indicator row.
+// This used to prefilter the tab to [...s.genera][0] — the first genus in
+// insertion order, i.e. whichever genus happened to contribute the most hits.
+// That is arbitrary: the whole point of the indicator is that the sample has
+// hits worth looking at, and silently narrowing to one genus hides the rest
+// (including the primary pathogen, which is rarely the most populous genus —
+// host-protein Drug Target hits usually are). Open the tab unfiltered and let
+// the tab's own defaults apply; _clearProtJumpFilter() in the tab-switch
+// handler drops any prefilter left over from an earlier jump.
+function _vfamrOnlyOpen() {
+  if (typeof _openProteinsTab === "function") _openProteinsTab();
 }
 
 function _sampleCutoffById(sample) {
@@ -1851,6 +2202,114 @@ function _noveltyOnlySampleRows(fdRows) {
     out.push({ "Specimen ID": smp, "Detected Organism": "", __noveltyOnly: true, __novelty: summary[smp] });
   });
   return out;
+}
+
+/* Novelty counterpart to _vfamrExtraSampleRows: genera with a novelty signal
+     that have no row in the table for this sample — either they never aligned
+     (mmseqs/kaiju-only) or they aligned below the TASS cutoff. _noveltyOnlySampleRows
+     above only fires when the sample contributes NO detection rows at all, so a
+     sample with one passing organism silently lost its novelty context. */
+function _noveltyExtraSampleRows(fdRows) {
+  if (!HAS_NOVELTY) return [];
+  const summary = _noveltySampleSummary();
+  const ids = Object.keys(summary);
+  if (!ids.length) return [];
+  const covered = new Set((fdRows || []).filter((r) => r.__noveltyOnly).map((r) => String(r["Specimen ID"] || "")));
+  const shown = new Map();
+  (fdRows || []).forEach((r) => {
+    if (_isExtraInfoRow(r) || r.__vfamrOnly || r.__noveltyOnly || r.__emptyOnly) return;
+    const s = String(r["Specimen ID"] || "");
+    if (!s) return;
+    let set = shown.get(s);
+    if (!set) shown.set(s, (set = new Set()));
+    const org = String(r["Detected Organism"] || "")
+      .trim()
+      .toLowerCase();
+    if (org) {
+      set.add(org);
+      set.add(org.split(/\s+/)[0]);
+    }
+    const g = String(r["Genus"] || "")
+      .trim()
+      .toLowerCase();
+    if (g) set.add(g);
+  });
+  const out = [];
+  ids.forEach((smp) => {
+    if (sampleHidden[smp]) return;
+    if (covered.has(String(smp))) return;
+    if (typeof _isMergedAway === "function" && _isMergedAway(smp)) return;
+    const seen = shown.get(smp) || new Set();
+    const missing = (summary[smp].genera || []).filter((g) => {
+      if (g.status === "pass") return false; // has a passing row in the table
+      const nl = String(g.name || "")
+        .trim()
+        .toLowerCase();
+      return nl && !seen.has(nl) && !seen.has(nl.split(/\s+/)[0]);
+    });
+    if (!missing.length) return;
+    // Never-aligned genera first — those are the ones no other view will show.
+    missing.sort(
+      (a, b) =>
+        (a.status === "novelty-only" ? 0 : 1) - (b.status === "novelty-only" ? 0 : 1) ||
+        (b.mmHits || 0) - (a.mmHits || 0),
+    );
+    out.push({
+      "Specimen ID": smp,
+      "Detected Organism": "",
+      __noveltyExtra: { genera: missing, nOnly: missing.filter((g) => g.status === "novelty-only").length },
+    });
+  });
+  return out;
+}
+function _noveltyExtraMessageHTML(sample, x) {
+  const esc = (v) =>
+    String(v == null ? "" : v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const g = (x && x.genera) || [];
+  if (!g.length) return "";
+  const lead = g
+    .slice(0, 2)
+    .map((o) => `<i>${esc(o.name)}</i>`)
+    .join(", ");
+  const more = g.length > 2 ? ` +${g.length - 2}` : "";
+  return (
+    `<span class="novelty-extra-msg" style="display:inline-flex;align-items:center;gap:.4em;flex-wrap:wrap;cursor:help;font-size:.92em;color:#6b7280">` +
+    `<span style="color:#e8590c">●</span>` +
+    `<span>novelty signal for ${g.length} genus/genera not in this table: ${lead}${more}` +
+    (x.nOnly ? ` <b style="color:#e8590c">(${x.nOnly} never aligned)</b>` : "") +
+    `</span></span>`
+  );
+}
+function _noveltyExtraTip(sample, x) {
+  const esc = (v) =>
+    String(v == null ? "" : v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const g = (x && x.genera) || [];
+  const lines = g
+    .slice(0, 12)
+    .map((o) => {
+      const why =
+        o.status === "novelty-only"
+          ? `<span style="color:#ff922b">no alignment</span>`
+          : `<span style="color:#adb5bd">below cutoff${
+              o.tass != null && !isNaN(o.tass) ? ` (TASS ${o.tass})` : ""
+            }</span>`;
+      const n = o.mmHits ? ` <span style="color:#868e96">(${o.mmHits} ${_novUnit()})</span>` : "";
+      return `<i>${esc(o.name)}</i> — ${why}${n}`;
+    })
+    .join("<br>");
+  return (
+    `<b>Novelty signal with no row in this table</b><br>` +
+    `<span style="color:#adb5bd">${esc(sample)} — detected by ${esc(_novClsShort())} but absent from the ` +
+    `table (never aligned, or aligned below the TASS cutoff).</span><br><br>` +
+    lines +
+    (g.length > 12 ? `<br><span style="color:#868e96">+${g.length - 12} more</span>` : "")
+  );
 }
 
 function _noveltyOnlyMessageHTML(sample, s) {

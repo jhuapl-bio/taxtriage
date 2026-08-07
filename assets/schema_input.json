@@ -14,8 +14,8 @@
             },
             "fastq_1": {
                 "type": "string",
-                "pattern": "^\\S+\\.f(ast)?q\\.gz$",
-                "errorMessage": "FastQ file for reads 1 must be provided, cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz'"
+                "pattern": "^(?:\\S+\\.f(ast)?q\\.gz|(SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)[0-9]{5,}|SAM(N|EA|EG|D)[0-9]+|PRJ(NA|EB|EA|DA|DB)[0-9]+)$",
+                "errorMessage": "fastq_1 must be either a gzipped FastQ path (extension '.fq.gz' or '.fastq.gz', no spaces) or an SRA/ENA accession (SRR/ERR/DRR, SRX/ERX/DRX, SRS/ERS/DRS, SAMN/SAMEA, SRP/ERP/DRP, PRJNA/PRJEB) to download automatically"
             },
             "fastq_2": {
                 "errorMessage": "FastQ file for reads 2 cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz'",

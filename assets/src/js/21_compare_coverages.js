@@ -1985,25 +1985,99 @@ function _drawSummaryAnnotation(fd) {
   });
 }
 
-// Switch to the VF / AMR (proteins) tab and pre-filter it by genus.
-function _jumpToProteins(genus) {
+// Switch to the VF / AMR (proteins) tab and pre-filter it to one organism.
+//
+// Two problems this used to have:
+//   1. It always filtered on GENUS. Jumping from a species row therefore pulled
+//      in every other species of that genus, and jumping from a row whose genus
+//      is shared with the reference database's own host organism (DrugBank
+//      targets are human proteins, genus "Homo") filled the table with
+//      Homo sapiens rows that have nothing to do with the organism clicked.
+//   2. The search value was never cleared. Once any jump had happened, every
+//      later visit to the tab was still filtered by that stale term — which is
+//      why the tab kept opening pre-filtered to "homo".
+// Now: prefer the species name when we have one, and record that a jump is in
+// flight so the tab-button handler knows not to clear the box (see
+// _clearProtJumpFilter below).
+// Switch to the VF/AMR tab with NO prefilter. Leaves _protJumpPending unset, so
+// the tab-switch handler's _clearProtJumpFilter() wipes any organism filter left
+// behind by an earlier jump.
+function _openProteinsTab() {
+  const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
+  if (!btn || btn.classList.contains("hidden")) return false;
+  btn.click();
+  return true;
+}
+
+function _jumpToProteins(genus, species) {
   const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
   if (!btn || btn.classList.contains("hidden")) return;
+  const term = String(species || "").trim() || String(genus || "").trim();
+  // No usable term — open the tab plainly rather than leaving a stale filter.
+  if (!term) return void _openProteinsTab();
+  window._protJumpPending = true;
   btn.click();
-  // After the pane is visible, set the protein search to the genus column.
   setTimeout(() => {
     const colSel = document.getElementById("prot-search-col");
     const search = document.getElementById("prot-search");
     if (colSel) {
-      // pick a Genus column if present, else search all columns
-      const opt = Array.from(colSel.options).find((o) => /genus/i.test(o.value));
+      // Match the column to what we are actually searching for: the Species
+      // column when we have a species name, Genus otherwise, all columns if
+      // neither exists in this dataset.
+      const pick = (rx) => Array.from(colSel.options).find((o) => rx.test(o.value));
+      const opt = species ? pick(/^species$/i) : pick(/^genus$/i);
       colSel.value = opt ? opt.value : "";
     }
     if (search) {
-      search.value = genus;
+      search.value = term;
       search.dispatchEvent(new Event("input", { bubbles: true }));
     }
+    _showProtJumpBadge(term);
+    window._protJumpPending = false;
   }, 60);
+}
+
+// Clear a prefilter left behind by _jumpToProteins. Called when the VF/AMR tab
+// is opened directly (no jump in flight) so the tab never opens silently
+// filtered to whatever organism was last clicked.
+function _clearProtJumpFilter() {
+  if (window._protJumpPending) return;
+  const search = document.getElementById("prot-search");
+  const colSel = document.getElementById("prot-search-col");
+  if (!search || !search.value) return _showProtJumpBadge(null);
+  if (!window._protJumpTerm || search.value !== window._protJumpTerm) return _showProtJumpBadge(null);
+  search.value = "";
+  if (colSel) colSel.value = "";
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  _showProtJumpBadge(null);
+}
+
+// Visible, dismissible indicator that the table is showing one organism only.
+function _showProtJumpBadge(term) {
+  window._protJumpTerm = term || null;
+  const host = document.getElementById("prot-jump-badge");
+  if (!host) return;
+  if (!term) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  host.style.display = "inline-flex";
+  host.innerHTML =
+    `<span>Filtered to <b></b></span>` +
+    `<button type="button" title="Clear this filter" ` +
+    `style="border:none;background:none;color:inherit;cursor:pointer;font-size:1.1em;line-height:1;padding:0 0 0 .2em">×</button>`;
+  host.querySelector("b").textContent = term;
+  host.querySelector("button").onclick = () => {
+    const search = document.getElementById("prot-search");
+    const colSel = document.getElementById("prot-search-col");
+    if (search) {
+      search.value = "";
+      if (colSel) colSel.value = "";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    _showProtJumpBadge(null);
+  };
 }
 
 // ── NOVELTY DETECTION panel ───────────────────────────────────────────────

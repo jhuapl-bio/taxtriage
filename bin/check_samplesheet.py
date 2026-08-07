@@ -27,8 +27,33 @@ import sys
 from collections import Counter
 from pathlib import Path
 import gzip
+import re
 
 logger = logging.getLogger()
+
+
+# ── SRA/ENA accessions ──────────────────────────────────────────────────────
+# fastq_1 may hold an accession instead of a path. Those rows skip file-format
+# validation here; input_check.nf detects them with the same patterns and routes
+# them through SRA_RESOLVE / SRA_FETCH_* before anything downstream sees them.
+# Anything containing a path separator or a dot is a path, never an accession,
+# so a local file named "SRR123456.fastq.gz" still resolves normally.
+_ACCESSION_RE = re.compile(
+    r"^(?:(?:SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)\d{5,}"
+    r"|SAM(?:N|EA|EG|D)\d+"
+    r"|PRJ(?:NA|EB|EA|DA|DB)\d+)$",
+    re.IGNORECASE,
+)
+
+
+def is_accession(value):
+    """Return True when *value* looks like an SRA/ENA accession rather than a path."""
+    if not value:
+        return False
+    value = value.strip()
+    if any(c in value for c in "/\\.;"):
+        return False
+    return bool(_ACCESSION_RE.match(value))
 
 
 class RowChecker:
@@ -129,6 +154,8 @@ class RowChecker:
         # When the `bam` column is populated the sample bypasses every upfront
         # read-processing step.  fastq_1 is optional (and ignored) for these rows.
         if self._validate_bam(row):
+            # pre-aligned input is never an SRA/ENA accession
+            row['is_sra'] = False
             for key in row:
                 if isinstance(row[key], str):
                     row[key] = row[key].strip()
@@ -147,8 +174,27 @@ class RowChecker:
         raw_paths = [p.strip() for p in raw_value.split(';') if p.strip()]
         is_multi = len(raw_paths) > 1
 
+        # ── SRA/ENA accession ─────────────────────────────────────────────────
+        # No file exists yet, so every path-based check is skipped. single_end is
+        # left unset here on purpose: the real answer comes from ENA's file
+        # listing (or fasterq-dump's output) once the run has been resolved.
+        if not is_multi and raw_paths and is_accession(raw_paths[0]):
+            row[self._first_col] = raw_paths[0].strip()
+            row['is_sra'] = True
+            row['is_fasta'] = False
+            row[self._dir_col] = False
+            row[self._single_col] = True
+            row[self._needscompressing] = None
+            if row.get(self._second_col):
+                logger.warning(
+                    "fastq_2 is ignored for accession '%s' — paired-end layout is "
+                    "detected from the archive.", raw_paths[0]
+                )
+                row[self._second_col] = None
+            self._seen.add((row[self._sample_col], row[self._first_col]))
+
         # Single path with no recognised extension → directory (ONT/ARTIC mode)
-        if (not is_multi and raw_paths
+        elif (not is_multi and raw_paths
                 and not any(raw_paths[0].endswith(ext) for ext in self.VALID_FORMATS)):
             row[self._single_col] = True
             row[self._dir_col] = True
@@ -201,6 +247,8 @@ class RowChecker:
                 self._validate_second(row)
                 self._validate_pair(row)
             self._seen.add((row[self._sample_col], row[self._first_col]))
+        # Every non-accession branch above leaves is_sra unset
+        row.setdefault('is_sra', False)
         # for each attribute in row, strip spaces on either side
         for key in row:
             if isinstance(row[key], str):
@@ -349,7 +397,7 @@ def sniff_format(handle):
 
 # Columns that belong to the pipeline infrastructure, not sample metadata
 _PIPELINE_COLS = {"fastq_1", "fastq_2", "platform", "type", "sequencing_summary", "negative", "trim", "positive",
-                  "single_end", "directory", "needscompressing", "is_fasta", "minimap2_preset",
+                  "single_end", "directory", "needscompressing", "is_fasta", "is_sra", "minimap2_preset",
                   "bam", "is_bam"}
 
 
@@ -415,6 +463,8 @@ def check_samplesheet(file_in, file_out, file_meta=None):
     header.insert(1, "needscompressing")
     if "is_fasta" not in header:
         header.insert(1, "is_fasta")
+    if "is_sra" not in header:
+        header.insert(1, "is_sra")
     if "is_bam" not in header:
         header.insert(1, "is_bam")
     # remove any header that is empty string

@@ -5,6 +5,32 @@
 class WorkflowTaxtriage {
 
     //
+    // SRA / ENA accession detection.
+    //
+    // Single source of truth for "is this fastq_1 value an accession rather than a
+    // path?", used by workflows/taxtriage.nf (to skip its file-existence pre-flight
+    // check) and subworkflows/local/input_check.nf (to route the row through the
+    // download path). Mirrors the same patterns in bin/resolve_sra.py and
+    // bin/check_samplesheet.py.
+    //
+    // Anything containing a path separator, dot or ';' is treated as a path, never
+    // an accession, so a local file named "SRR13191702.fastq.gz" still resolves
+    // normally.
+    //
+    public static boolean isAccession(value) {
+        if (!value) {
+            return false
+        }
+        def v = value.toString().trim()
+        if (v.contains('/') || v.contains('\\') || v.contains('.') || v.contains(';')) {
+            return false
+        }
+        return v ==~ /(?i)^(SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)\d{5,}$/ ||
+               v ==~ /(?i)^SAM(N|EA|EG|D)\d+$/ ||
+               v ==~ /(?i)^PRJ(NA|EB|EA|DA|DB)\d+$/
+    }
+
+    //
     // Check and validate parameters
     //
     public static void initialise(params, log) {

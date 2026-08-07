@@ -26,6 +26,13 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     }
 
     // ── Tab-specific init (runs after pane is visible) ──────────────
+    if (activeTab === "proteins") {
+      // Drop any organism prefilter left over from a previous "view VF/AMR"
+      // jump. Without this the tab keeps opening filtered to whatever organism
+      // was last clicked. _clearProtJumpFilter no-ops while a jump is in
+      // flight, and only clears a value it put there itself.
+      if (typeof _clearProtJumpFilter === "function") _clearProtJumpFilter();
+    }
     if (activeTab === "runmeta") {
       // Rebuild the metadata table and update sub-tab enabled states. The
       // precise Leaflet map lives inside the Mapping & Geography sub-tab and

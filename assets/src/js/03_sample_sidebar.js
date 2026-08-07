@@ -88,7 +88,7 @@ function _deleteSampleData(id) {
   _sampleOrder = _sampleOrder.filter((s) => s !== id);
   if (typeof SPECIMEN_OVERRIDE !== "undefined") delete SPECIMEN_OVERRIDE[id];
   // Re-evaluate VF/AMR tab visibility after the prune
-  HAS_PROT = Object.keys(PROT || {}).some((k) => Array.isArray(PROT[k]) && PROT[k].length > 0);
+  HAS_PROT = hasProtAnnotations(PROT);
   const protBtn = document.getElementById("prot-tab-btn");
   if (protBtn) protBtn.classList.toggle("hidden", !HAS_PROT);
   // Re-evaluate histogram tab visibility too
