@@ -1999,27 +1999,70 @@ function _drawSummaryAnnotation(fd) {
 // Now: prefer the species name when we have one, and record that a jump is in
 // flight so the tab-button handler knows not to clear the box (see
 // _clearProtJumpFilter below).
-// Switch to the VF/AMR tab with NO prefilter. Leaves _protJumpPending unset, so
-// the tab-switch handler's _clearProtJumpFilter() wipes any organism filter left
-// behind by an earlier jump.
-function _openProteinsTab() {
+// Expand a Summary "Specimen ID" into the raw sample ids that VF/AMR rows
+// actually carry. With specimen merge on, the summary row's id is the merged
+// specimen NAME, which never equals any protein row's own sample value — so a
+// naive equality filter would blank the table.
+function _protSampleMembers(sample) {
+  const s = String(sample == null ? "" : sample).trim();
+  if (!s) return [];
+  try {
+    if (typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenGroups === "function") {
+      const members = specimenGroups().get(s);
+      if (Array.isArray(members) && members.length) return members.slice();
+    }
+  } catch (e) {}
+  return [s];
+}
+
+// Pin the VF/AMR table to a single sample/specimen. Reuses the bar-chart filter
+// slot so the existing badge and its ✕ button clear this the same way.
+function _setProtSampleFilter(sample) {
+  const s = String(sample == null ? "" : sample).trim();
+  if (!s) return;
+  window._protBarFilter = { sample: s, samples: _protSampleMembers(s), cat: "" };
+  window._protJumpSample = s;
+  const badge = document.getElementById("prot-bar-filter-badge");
+  const badgeText = document.getElementById("prot-bar-filter-text");
+  if (badge && badgeText) {
+    badgeText.textContent = s;
+    badge.style.display = "inline-flex";
+  }
+  if (window._filterProtExternal) window._filterProtExternal();
+}
+
+// Switch to the VF/AMR tab, optionally filtered to one sample. Without a sample
+// this leaves _protJumpPending unset, so the tab-switch handler's
+// _clearProtJumpFilter() wipes any filter left behind by an earlier jump.
+function _openProteinsTab(sample) {
   const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
   if (!btn || btn.classList.contains("hidden")) return false;
+  const smp = String(sample == null ? "" : sample).trim();
+  if (smp) window._protJumpPending = true;
   btn.click();
+  if (smp)
+    setTimeout(() => {
+      _setProtSampleFilter(smp);
+      window._protJumpPending = false;
+    }, 60);
   return true;
 }
 
-function _jumpToProteins(genus, species) {
+function _jumpToProteins(genus, species, sample) {
   const btn = document.querySelector('.tab-btn[data-tab="proteins"]');
   if (!btn || btn.classList.contains("hidden")) return;
   const term = String(species || "").trim() || String(genus || "").trim();
+  const smp = String(sample == null ? "" : sample).trim();
   // No usable term — open the tab plainly rather than leaving a stale filter.
-  if (!term) return void _openProteinsTab();
+  if (!term) return void _openProteinsTab(smp);
   window._protJumpPending = true;
   btn.click();
   setTimeout(() => {
     const colSel = document.getElementById("prot-search-col");
     const search = document.getElementById("prot-search");
+    // Sample first: the search dispatch below re-runs the filter once with
+    // both constraints in place.
+    if (smp) _setProtSampleFilter(smp);
     if (colSel) {
       // Match the column to what we are actually searching for: the Species
       // column when we have a species name, Genus otherwise, all columns if
@@ -2042,6 +2085,12 @@ function _jumpToProteins(genus, species) {
 // filtered to whatever organism was last clicked.
 function _clearProtJumpFilter() {
   if (window._protJumpPending) return;
+  // Drop a sample pin set by an earlier jump, but leave a bar-chart click
+  // filter the user made inside this tab alone.
+  if (window._protJumpSample) {
+    window._protJumpSample = null;
+    if (typeof window._clearProtBarFilter === "function") window._clearProtBarFilter();
+  }
   const search = document.getElementById("prot-search");
   const colSel = document.getElementById("prot-search-col");
   if (!search || !search.value) return _showProtJumpBadge(null);
