@@ -16,28 +16,70 @@
    faint grey, no shadow. It stays on the map on purpose — seeing that the four
    RSV-A hits sit in one place is only meaningful next to the samples that had
    no hit, so hiding the non-matches would throw away the denominator. */
-function _svgDot(color, selected, dimmed) {
+function _svgDot(color, selected, dimmed, shape) {
   const r = dimmed ? 5 : selected ? 11 : 8;
   const fill = dimmed ? "#b9c3cd" : color;
+  const cx = r + 5;
   const ring =
     selected && !dimmed
-      ? `<circle cx="${r + 5}" cy="${r + 5}" r="${
+      ? `<circle cx="${cx}" cy="${cx}" r="${
           r + 3
         }" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
       : "";
+  // Shape coding: when a metadata grouping is active every group gets its own
+  // colour AND its own glyph, so the categories stay separable past the
+  // 15-colour palette and in greyscale print.
+  const glyph =
+    shape && shape !== "circle" && typeof window._mgShapeEl === "function"
+      ? `${window._mgShapeEl(shape, cx, cx, r)} fill="${fill}" ` +
+        `stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${dimmed ? 1 : selected ? 2.5 : 1.5}" ` +
+        `${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'} />`
+      : `<circle cx="${cx}" cy="${cx}" r="${r}" fill="${fill}"
+              stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${dimmed ? 1 : selected ? 2.5 : 1.5}"
+              ${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'}/>`;
   return L.divIcon({
     className: "",
-    html: `<svg xmlns="http://www.w3.org/2000/svg" width="${(r + 5) * 2}" height="${(r + 5) * 2}"${
+    html: `<svg xmlns="http://www.w3.org/2000/svg" width="${cx * 2}" height="${cx * 2}"${
       dimmed ? ' opacity="0.45"' : ""
     }>
-            <circle cx="${r + 5}" cy="${r + 5}" r="${r}" fill="${fill}"
-              stroke="rgba(255,255,255,${dimmed ? ".7" : ".9"})" stroke-width="${dimmed ? 1 : selected ? 2.5 : 1.5}"
-              ${dimmed ? "" : 'filter="drop-shadow(0 1px 3px rgba(0,0,0,.38))"'}/>
+            ${glyph}
             ${ring}
           </svg>`,
-    iconSize: [(r + 5) * 2, (r + 5) * 2],
-    iconAnchor: [r + 5, r + 5],
+    iconSize: [cx * 2, cx * 2],
+    iconAnchor: [cx, cx],
   });
+}
+
+/* ── Group styling for markers ───────────────────────────────────────────
+   With no grouping selected the map behaves exactly as before: one colour per
+   sample, drawn from `sampleColors`. Once the user picks columns in the shared
+   "Group by" bar, markers instead take the colour and shape of the group their
+   sample belongs to, which is what turns the map into a categorical comparison
+   (Agricultural vs Water vs Soil) rather than a per-sample scatter. */
+function _mapGroupStyle(sn) {
+  const mg = window.metaGrouping;
+  if (mg && mg.active()) {
+    const keys = mg.groupsOf(sn);
+    if (keys.length) {
+      return {
+        grouped: true,
+        group: keys[0],
+        groups: keys,
+        color: mg.color(keys[0]),
+        shape: mg.shape(keys[0]),
+      };
+    }
+    // Sample carries no value for any grouping column — draw it neutrally so
+    // it is visibly "ungrouped" rather than silently miscoloured.
+    return { grouped: true, group: null, groups: [], color: "#b0bec5", shape: "circle" };
+  }
+  return {
+    grouped: false,
+    group: null,
+    groups: [],
+    color: (typeof sampleColors !== "undefined" && sampleColors[sn]) || "#1565C0",
+    shape: "circle",
+  };
 }
 
 /* ── Filter scoping ──────────────────────────────────────────────────────
@@ -112,12 +154,23 @@ function _mapMarkerVisible(sn, members) {
   const list = Array.isArray(members) && members.length ? members : [sn];
   if (list.every((s) => sampleHidden[s])) return false; // global sidebar hide
   if (_mapLocallyHidden(sn)) return false; // map-only hide
+  // Group toggled off in the shared legend. A sample in several groups stays
+  // on the map while any one of them is still switched on.
+  try {
+    if (window.metaGrouping && window.metaGrouping.active() && !window.metaGrouping.sampleVisible(sn)) return false;
+  } catch (e) {}
   return true;
 }
 
-/** True when this marker's sample(s) fall outside the active filters. A merged
- *  specimen counts as matching if ANY of its member libraries does. */
+/** True when this marker should be drawn faded. Two independent reasons:
+ *   • the sample falls outside the active sidebar filters, or
+ *   • a group is highlighted and this sample is in none of the highlighted
+ *     groups — the "click once to highlight, fade all others" state.
+ *  A merged specimen counts as matching if ANY of its member libraries does. */
 function _mapIsDimmed(sn, members) {
+  try {
+    if (window.metaGrouping && window.metaGrouping.sampleDimmed(sn)) return true;
+  } catch (e) {}
   if (!_mapMatchedKeys) return false;
   const list = Array.isArray(members) && members.length ? members : [sn];
   if (typeof _ttSampleMatchesFilter !== "function") return false;
@@ -181,6 +234,57 @@ function _clusterIcon(cluster) {
     bg = hit ? "rgba(21,101,192,.92)" : "rgba(150,163,176,.55)";
     title = `${hit} of ${n} sample(s) match the active filters`;
   }
+  // ── Group-composition bubble ──────────────────────────────────────────
+  // With a grouping active, a flat count bubble throws away the one thing the
+  // user asked the map to show. Draw the cluster as a donut whose wedges are
+  // the group mix inside it, so "this cluster is 3 Water / 1 Soil" is legible
+  // without zooming in.
+  const mg = window.metaGrouping;
+  if (mg && mg.active()) {
+    const kids = typeof cluster.getAllChildMarkers === "function" ? cluster.getAllChildMarkers() : [];
+    const tally = new Map();
+    kids.forEach((m) => {
+      const g = m && m.ttGroup != null ? m.ttGroup : "(ungrouped)";
+      tally.set(g, (tally.get(g) || 0) + 1);
+    });
+    const parts = Array.from(tally.entries()).sort((a, b) => b[1] - a[1]);
+    if (parts.length) {
+      const R = size / 2;
+      const cx = R;
+      const cy = R;
+      const rOuter = R - 2;
+      const rInner = rOuter * 0.56;
+      let acc = 0;
+      let wedges = "";
+      parts.forEach(([g, cnt]) => {
+        const a0 = (acc / n) * 2 * Math.PI - Math.PI / 2;
+        acc += cnt;
+        const a1 = (acc / n) * 2 * Math.PI - Math.PI / 2;
+        const col = g === "(ungrouped)" ? "#b0bec5" : mg.color(g);
+        const large = a1 - a0 > Math.PI ? 1 : 0;
+        // A single-group cluster has no arc to draw — use a full ring instead.
+        if (parts.length === 1) {
+          wedges = `<circle cx="${cx}" cy="${cy}" r="${(rOuter + rInner) / 2}" fill="none" stroke="${col}" stroke-width="${rOuter - rInner}"/>`;
+          return;
+        }
+        const p = (r, a) => `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`;
+        wedges +=
+          `<path d="M${p(rOuter, a0)} A${rOuter},${rOuter} 0 ${large} 1 ${p(rOuter, a1)} ` +
+          `L${p(rInner, a1)} A${rInner},${rInner} 0 ${large} 0 ${p(rInner, a0)} Z" ` +
+          `fill="${col}" stroke="#fff" stroke-width="0.9"/>`;
+      });
+      const tip = parts.map(([g, c]) => `${g}: ${c}`).join("\n");
+      const gh =
+        `<div title="${_mgEscAttr(title + "\n" + tip)}" style="position:relative;width:${size}px;height:${size}px">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+        `style="filter:drop-shadow(0 1px 4px rgba(0,0,0,.4))">` +
+        `<circle cx="${R}" cy="${R}" r="${rInner}" fill="rgba(255,255,255,.96)"/>${wedges}</svg>` +
+        `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;` +
+        `color:#263238;font-weight:700;font-size:${fs - 1}px;font-family:system-ui,sans-serif">${label}</div></div>`;
+      return L.divIcon({ html: gh, className: "tt-cluster", iconSize: [size, size] });
+    }
+  }
+
   const html =
     `<div title="${title}" style="width:${size}px;height:${size}px;border-radius:50%;` +
     `background:${bg};border:2px solid rgba(255,255,255,.95);` +
@@ -189,6 +293,39 @@ function _clusterIcon(cluster) {
     `font-family:system-ui,sans-serif">${label}</div>`;
   return L.divIcon({ html, className: "tt-cluster", iconSize: [size, size] });
 }
+
+function _mgEscAttr(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+/* Re-fit the map to whatever is currently visible. Called after a group
+   toggle so isolating a category actually zooms to it instead of leaving the
+   user looking at a mostly-empty world map. */
+function _mgMapFitVisible() {
+  if (!_leafletMap || !_markerObjects) return;
+  const pts = Object.keys(_markerObjects)
+    .filter((n) => {
+      const o = _markerObjects[n];
+      return o && _mapMarkerVisible(n, o.members);
+    })
+    .map((n) => [_markerObjects[n].lat, _markerObjects[n].lon]);
+  if (pts.length) _leafletMap.fitBounds(pts, { padding: [40, 40], maxZoom: 11 });
+}
+window._mgMapFitVisible = _mgMapFitVisible;
+
+/* Isolate one group on the map. Delegates to the shared engine so the Group
+   Heatmap and Group Network isolate with it — the grouping is one shared
+   selection, so its visibility should be shared too. Re-soloing the group
+   that is already alone restores the rest. */
+function _mgMapFocusGroup(key) {
+  const mg = window.metaGrouping;
+  if (!mg || !mg.active() || !key) return;
+  mg.solo(key); // broadcasts → markers, legends and the group views re-render
+  _mgMapFitVisible();
+  const picker = document.getElementById("map-sample-picker");
+  if (picker && picker.open && typeof _mapRenderSampleList === "function") _mapRenderSampleList();
+}
+window._mgMapFocusGroup = _mgMapFocusGroup;
 
 /* Create the marker container. Uses Leaflet.markercluster when available
    (zoom-based clustering with count bubbles); falls back to a plain layer
@@ -294,13 +431,15 @@ function _addSampleMarkers() {
     const lon = parseFloat(rec.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
     const sn = rec.sample_name;
-    const color = sampleColors[sn] || "#1565C0";
+    const style = _mapGroupStyle(sn);
+    const color = style.color;
     const selected = _selectedSample === sn;
     const members0 = Array.isArray(rec.__mergedMembers) ? rec.__mergedMembers : [sn];
     const dimmed0 = _mapIsDimmed(sn, members0);
-    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected, dimmed0) });
+    const mk = L.marker([lat, lon], { icon: _svgDot(color, selected, dimmed0, style.shape) });
     mk.ttRec = rec; // used to list a cluster's samples in "list" mode
     mk.ttDimmed = dimmed0; // read by _clusterIcon to show the matching share
+    mk.ttGroup = style.group; // read by _clusterIcon to build the group pie
     mk.on("click", () => {
       // Deselect any previously-selected dot, select this one, open its panel
       _selectedGroup = null;
@@ -336,12 +475,21 @@ function _refreshMapMarkerColors() {
       return;
     }
     if (!_markerLayer.hasLayer(obj.marker)) _markerLayer.addLayer(obj.marker);
-    const color = sampleColors[sn] || obj.color || "#1565C0";
+    const style = _mapGroupStyle(sn);
+    const color = style.color;
     obj.color = color;
+    obj.group = style.group;
     const dimmed = _mapIsDimmed(sn, members);
     obj.marker.ttDimmed = dimmed;
-    obj.marker.setIcon(_svgDot(color, _selectedSample === sn, dimmed));
+    obj.marker.ttGroup = style.group;
+    obj.marker.setIcon(_svgDot(color, _selectedSample === sn, dimmed, style.shape));
   });
+  // Keep the map's own group legend in step with the markers. onPick refits
+  // the view after a toggle — the hide/show and shift-to-isolate behaviour is
+  // handled by the legend itself, shared with the other grouped views.
+  if (typeof window._mgRenderLegend === "function") {
+    window._mgRenderLegend("map-group-legend", { onPick: _mgMapFitVisible });
+  }
   // Recompute cluster bubbles (counts / membership may have changed)
   if (typeof _markerLayer.refreshClusters === "function") _markerLayer.refreshClusters();
   // The picker annotates rows with "not in filter"; keep that in step.

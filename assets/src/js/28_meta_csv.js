@@ -98,9 +98,20 @@
     const rmBtn = document.getElementById("runmeta-tab-btn");
     if (rmBtn) rmBtn.classList.remove("hidden");
 
+    // An uploaded file is the main way arbitrary columns enter the report, so
+    // re-profile the groupable columns before anything reads the grouping.
+    // metaGrouping.refresh() also drops any active field the new file removed,
+    // which keeps a restored session from grouping on a column that is gone.
+    if (window.metaGrouping) {
+      try {
+        window.metaGrouping.refresh();
+      } catch (e) {}
+    }
+
     // Rebuild metadata table + update sub-tab enabled states
     _buildRunMetaTable();
     if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+    if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
 
     // Rebuild the map markers if the map was already initialized, then refresh
     // the precise-map view (in the Mapping & Geography sub-tab) if it's open.
@@ -281,7 +292,7 @@
 })();
 
 // ── Run Metadata analysis sub-tab state ──────────────────────────────
-let _activeMetaSub = null; // e.g. "longi" | "geo" | "host" | "cmp"
+let _activeMetaSub = null; // "longi" | "geo" | "host" | "ghm" | "net" | "cmp"
 
 // Heavy report build. Defined as a named function (was an immediately-invoked
 // IIFE) so the deferred scheduler below can run it AFTER the loading overlay

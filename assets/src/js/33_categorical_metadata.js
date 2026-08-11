@@ -1187,12 +1187,29 @@ function _geoDrawChoropleth(field, metric, ctx) {
       _geoRenderLegend(legendEl, color, maxV, metric);
       // Refresh any open pin windows against the current data/metric.
       _geoRefreshAllPins();
+      // Publish everything the group-highlight overlay needs to fade regions
+      // and draw centroid-to-centroid links. The projection is built inside
+      // this promise, so it cannot be recomputed from outside — it has to be
+      // handed over here.
+      window._geoLastDraw = { field, metric, proj, path, features, svg, metaByNorm, stateCountries, sel };
+      if (typeof _mgGeoHighlightOverlay === "function") _mgGeoHighlightOverlay();
     })
     .catch(() => {
       setStatus("Map boundaries unavailable (offline?) — use the ranked list →");
       if (legendEl) legendEl.style.display = "none";
+      window._geoLastDraw = null;
     });
 }
+
+/* Which samples sit in a given choropleth feature. Used by the group-highlight
+   overlay to decide whether a region belongs to a highlighted group. Exposed
+   because the matching rules (aliases, state→country disambiguation) live
+   here and must not be re-implemented elsewhere. */
+window._geoFeatureSamples = function (field, f, metaByNorm, stateCountries) {
+  const m = _geoFeatureMatch(field, f, metaByNorm, stateCountries);
+  if (!m) return [];
+  return Array.from(_geoSamplesForDatum(field, m.label) || []);
+};
 
 // Current ranked-bar data, kept so the overlay can re-render to fit on resize
 // without recomputing the aggregation.

@@ -1485,7 +1485,9 @@ function _tabLabel(tab) {
 
 /** Renders all enabled metadata sub-tabs so their charts appear in the PDF. */
 async function _renderMetaSubTabsForPdf() {
-  const subIds = ["longi", "geo", "host", "cmp"];
+  // "ghm" / "net" are the grouping-driven views; they only render when the
+  // user has an active grouping, and _switchMetaSub skips disabled tabs below.
+  const subIds = ["longi", "geo", "host", "ghm", "net", "cmp"];
   const originalSub = _activeMetaSub;
   for (const id of subIds) {
     const btn = document.querySelector(`.meta-subtab[data-metasub="${id}"]`);

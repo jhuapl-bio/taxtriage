@@ -20,6 +20,8 @@ function _switchMetaSub(id) {
   if (id === "longi" && typeof _buildLongitudinalSection === "function") _buildLongitudinalSection();
   if (id === "geo" && typeof _buildGeoComparison === "function") _buildGeoComparison();
   if (id === "host" && typeof _buildHostDisease === "function") _buildHostDisease();
+  if (id === "ghm" && typeof _mgBuildGroupHeatmap === "function") _mgBuildGroupHeatmap();
+  if (id === "net" && typeof _mgBuildNetwork === "function") _mgBuildNetwork();
   if (id === "cmp" && typeof _buildComparison === "function") _buildComparison();
 }
 
@@ -52,6 +54,28 @@ function _updateMetaSubTabStates() {
   // ── Cross-Entry: always available (shows internal no-data message when < 2 entries)
   const hasCmp = true;
 
+  // ── Group views: available as soon as there is at least one column worth
+  //    grouping on. With none, both views would fall back to per-sample rows,
+  //    which the heatmap / cross-sample tabs already cover better — so the
+  //    warning points the user at the "Group by" bar instead.
+  let _groupCands = 0;
+  try {
+    if (window.metaGrouping) _groupCands = window.metaGrouping.candidates().length;
+  } catch (e) {}
+  const hasGroups = _groupCands > 0;
+  const _groupWarn =
+    "This tab needs at least one categorical metadata column to group on. Add a column in the table " +
+    "above (e.g. <b>sample_type</b>, <b>environmental_site</b>) or upload a metadata CSV, then pick it " +
+    'in the <b>"Group by"</b> bar.';
+
+  // Keep the bar's option list in step with whatever metadata is loaded now.
+  try {
+    if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
+    if (typeof _mgWireGroupBar === "function") _mgWireGroupBar();
+  } catch (e) {}
+  const _mgBar = document.getElementById("mg-bar");
+  if (_mgBar) _mgBar.style.display = hasGroups ? "" : "none";
+
   const configs = [
     {
       id: "longi",
@@ -68,6 +92,8 @@ function _updateMetaSubTabStates() {
       ok: hasHost,
       warn: "This tab requires at least one of: <b>host_scientific_name</b>, <b>host_disease</b>, or <b>environmental_site</b> in your metadata samplesheet.",
     },
+    { id: "ghm", ok: hasGroups, warn: _groupWarn },
+    { id: "net", ok: hasGroups, warn: _groupWarn },
     { id: "cmp", ok: hasCmp, warn: "" },
   ];
 

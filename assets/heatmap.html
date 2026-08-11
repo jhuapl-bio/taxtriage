@@ -2153,6 +2153,38 @@
             style="display: none; align-items: center; gap: 0.35em; margin: 0.5em 0 0; font-size: 0.82em"
           ></div>
 
+          <!-- ══ Shared "Group by" bar ═════════════════════════════════════
+               One grouping selection drives EVERY view below (map markers,
+               group heatmap, network / chord). Selecting more than one column
+               means UNION: the composite key is the joined value, so
+               environmental_site + sequencing_platform yields groups like
+               "Agricultural │ MiSeq". Candidate columns are detected from
+               RUN_META at runtime, so arbitrary columns from a samplesheet or
+               an uploaded meta.csv appear here automatically. ═════════════ -->
+          <div id="mg-bar">
+            <div id="mg-bar-row">
+              <span id="mg-bar-label"><i class="fas fa-layer-group"></i> Group by</span>
+              <div id="mg-field-wrap">
+                <button id="mg-field-btn" type="button" title="Choose one or more metadata columns to group on">
+                  <span>Select columns</span>
+                  <i class="fas fa-caret-down"></i>
+                </button>
+                <div id="mg-field-pop">
+                  <div id="mg-field-pop-head">
+                    Pick one or more columns. Multiple columns combine as a
+                    <strong>union</strong> &mdash; one group per observed combination.
+                  </div>
+                  <div id="mg-field-list"></div>
+                </div>
+              </div>
+              <div id="mg-summary"></div>
+              <button id="mg-clear" type="button" style="display: none" title="Clear the grouping">
+                <i class="fas fa-xmark"></i> Clear
+              </button>
+            </div>
+            <div id="mg-legend"></div>
+          </div>
+
           <!-- ── Analysis sub-tabs ── -->
           <div id="meta-subtabs">
             <button class="meta-subtab" data-metasub="longi">
@@ -2163,6 +2195,12 @@
             </button>
             <button class="meta-subtab" data-metasub="host">
               <i class="fas fa-virus-covid"></i> Host &amp; Disease
+            </button>
+            <button class="meta-subtab" data-metasub="ghm">
+              <i class="fas fa-border-all"></i> Group Heatmap
+            </button>
+            <button class="meta-subtab" data-metasub="net">
+              <i class="fas fa-circle-nodes"></i> Group Network
             </button>
             <button class="meta-subtab" data-metasub="cmp">
               <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
@@ -2415,6 +2453,10 @@
                   <span>Highlight only samples matching the active filters</span>
                   <span id="map-filter-scope-count" style="color: #789"></span>
                 </label>
+                <!-- ── Group legend for the map. Populated by _mgRenderLegend
+                     whenever a grouping is active; hidden otherwise. Clicking
+                     an entry focuses the map on that group. ── -->
+                <div id="map-group-legend" class="mg-legend" style="display: none"></div>
                 <!-- ── Map-only sample show/hide. Writes to _mapHiddenSamples,
                      never to the sidebar's sampleHidden, so every other tab
                      keeps all its samples. ── -->
@@ -2515,6 +2557,53 @@
                 </div>
               </div>
               <!-- /geo-agg-wrap -->
+
+              <!-- ══ Group network panel ══════════════════════════════════
+                   Appears only while a group is HIGHLIGHTED (first click of
+                   the legend's normal → highlight → hidden cycle). Sits BELOW
+                   the map rather than floating over it, and collapses from its
+                   header, so it never hides the thing it describes. ═══════ -->
+              <div id="mg-map-net-panel" style="display: none">
+                <div id="mg-map-net-head" title="Click to collapse / expand this panel">
+                  <i id="mg-map-net-caret" class="fas fa-chevron-down"></i>
+                  <span id="mg-map-net-title"></span>
+                  <button type="button" id="mg-map-net-clear" title="Clear the highlight and restore the full map">
+                    <i class="fas fa-xmark"></i> Clear highlight
+                  </button>
+                </div>
+                <div id="mg-map-net-body">
+                  <div id="mg-map-net-controls">
+                    <div class="mg-ctl">
+                      <label>Level</label>
+                      <select id="mg-map-net-level">
+                        <option value="genus" selected>Genus</option>
+                        <option value="species">Species</option>
+                      </select>
+                    </div>
+                    <div class="mg-ctl">
+                      <label>Profile basis</label>
+                      <select id="mg-map-net-basis">
+                        <option value="presence" selected>Presence / abundance</option>
+                        <option value="tass">TASS score</option>
+                        <option value="coverage">Coverage (breadth %)</option>
+                      </select>
+                    </div>
+                    <div class="mg-ctl">
+                      <label>Similarity</label>
+                      <select id="mg-map-net-sim">
+                        <option value="cosine" selected>Cosine</option>
+                        <option value="jaccard">Jaccard overlap</option>
+                        <option value="shared">Shared taxa count</option>
+                      </select>
+                    </div>
+                    <div class="mg-ctl">
+                      <label>Link threshold <span id="mg-map-net-threshold-val">0.50</span></label>
+                      <input id="mg-map-net-threshold" type="range" min="0" max="1" step="0.02" value="0.5" />
+                    </div>
+                  </div>
+                  <div id="mg-map-net-table-wrap"></div>
+                </div>
+              </div>
             </div>
           </div>
           <!-- /meta-subpane-geo -->
@@ -2665,6 +2754,136 @@
           <!-- /meta-subpane-host -->
 
           <!-- ── Cross-Entry Comparison sub-pane ── -->
+          <!-- ══ Group × Organism heatmap ══════════════════════════════════
+               Rows are whatever the "Group by" bar produced; columns are the
+               most-detected organisms. With no grouping the rows fall back to
+               individual samples so the view is never empty. ═══════════════ -->
+          <div class="meta-subpane" id="meta-subpane-ghm">
+            <div id="meta-subtab-warn-ghm" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-ghm-msg"></span>
+            </div>
+            <div id="mg-heat-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-border-all"></i> Group &times; Organism Heatmap
+              </div>
+              <div id="mg-heat-hint" style="font-size: 0.8em; color: #777; margin-bottom: 0.9em"></div>
+
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div class="mg-ctl">
+                  <label>Level</label>
+                  <select id="mg-heat-level">
+                    <option value="genus" selected>Genus</option>
+                    <option value="species">Species</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Cell value</label>
+                  <select id="mg-heat-metric">
+                    <option value="detections" selected>Detections</option>
+                    <option value="reads"># Reads Aligned</option>
+                    <option value="tass">TASS Score (max)</option>
+                    <option value="coverage">Breadth % (max)</option>
+                    <option value="prevalence">Prevalence (% of samples)</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Organisms shown</label>
+                  <select id="mg-heat-topn">
+                    <option value="15">Top 15</option>
+                    <option value="25" selected>Top 25</option>
+                    <option value="50">Top 50</option>
+                    <option value="100">Top 100</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Group show/hide toggles. Same chips as the shared bar: click
+                   hides a group, shift-click isolates it, and the state is
+                   shared with the map and the network. -->
+              <div id="mg-heat-legend" class="mg-legend mg-legend-toggles" style="display: none"></div>
+
+              <div id="mg-heat-chart" style="position: relative; overflow: auto"></div>
+              <div
+                id="mg-heat-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                No organism hits in the current filter. Widen the sidebar filters or pick a different grouping.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-ghm -->
+
+          <!-- ══ Group network / chord ═════════════════════════════════════
+               Nodes are groups (or samples), edges are organism-profile
+               similarity. Same colour + shape coding as the map, so a node
+               here and a marker there are visibly the same category. ═══════ -->
+          <div class="meta-subpane" id="meta-subpane-net">
+            <div id="meta-subtab-warn-net" class="meta-subtab-warn" style="display: none">
+              <i class="fas fa-triangle-exclamation"></i>
+              <span id="meta-subtab-warn-net-msg"></span>
+            </div>
+            <div id="mg-net-section">
+              <div class="chart-title" style="margin-bottom: 0.35em">
+                <i class="fas fa-circle-nodes"></i> Group Network
+              </div>
+              <div id="mg-net-hint" style="font-size: 0.8em; color: #777; margin-bottom: 0.9em"></div>
+
+              <div style="display: flex; flex-wrap: wrap; gap: 0.9em; align-items: flex-end; margin-bottom: 1em">
+                <div class="mg-ctl">
+                  <label>Layout</label>
+                  <select id="mg-net-layout">
+                    <option value="force" selected>Force-directed network</option>
+                    <option value="chord">Chord diagram</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Level</label>
+                  <select id="mg-net-level">
+                    <option value="genus" selected>Genus</option>
+                    <option value="species">Species</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Profile basis</label>
+                  <select id="mg-net-basis">
+                    <option value="presence" selected>Presence / abundance</option>
+                    <option value="tass">TASS score</option>
+                    <option value="coverage">Coverage (breadth %)</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Similarity</label>
+                  <select id="mg-net-sim">
+                    <option value="cosine" selected>Cosine</option>
+                    <option value="jaccard">Jaccard overlap</option>
+                    <option value="shared">Shared taxa count</option>
+                  </select>
+                </div>
+                <div class="mg-ctl">
+                  <label>Link threshold <span id="mg-net-threshold-val">0.30</span></label>
+                  <input id="mg-net-threshold" type="range" min="0" max="1" step="0.02" value="0.3" />
+                </div>
+              </div>
+
+              <!-- Group show/hide toggles — shared with the heatmap and map. -->
+              <div id="mg-net-legend" class="mg-legend mg-legend-toggles" style="display: none"></div>
+
+              <div id="mg-net-stats" style="font-size: 0.78em; color: #888; margin-bottom: 0.6em"></div>
+              <div id="mg-net-chart" style="position: relative; overflow: auto"></div>
+              <div
+                id="mg-net-no-data"
+                style="display: none; text-align: center; padding: 2em 1em; color: #999; font-size: 0.88em"
+              >
+                <i class="fas fa-info-circle" style="margin-right: 0.3em"></i>
+                Need at least two groups (or two samples) with organism hits. Widen the filters or pick a grouping with
+                more than one value.
+              </div>
+            </div>
+          </div>
+          <!-- /meta-subpane-net -->
+
           <div class="meta-subpane" id="meta-subpane-cmp">
             <div id="meta-subtab-warn-cmp" class="meta-subtab-warn" style="display: none">
               <i class="fas fa-triangle-exclamation"></i>
@@ -3752,6 +3971,9 @@
     <script src="src/js/35_tab_map.js"></script>
     <script src="src/js/36_guided_help_tour.js"></script>
     <script src="src/js/37_specimen_merge.js"></script>
+    <script src="src/js/38_meta_grouping.js"></script>
+    <script src="src/js/39_meta_group_views.js"></script>
+    <script src="src/js/40_map_group_network.js"></script>
     <!-- Novelty floating cell tooltip — referenced by _novCellTip() -->
     <div id="nov-cell-tip"></div>
   </body>

@@ -123,6 +123,12 @@
       app.sortCol = sortCol;
       app.sortAsc = sortAsc;
     } catch (e) {}
+    // Shared metadata grouping: the selected columns plus the colour/shape
+    // assignments, so a reloaded session keeps the same groups in the same
+    // colours across the map, the group heatmap and the network.
+    try {
+      if (window.metaGrouping) app.metaGrouping = window.metaGrouping.capture();
+    } catch (e) {}
     return app;
   }
 
@@ -158,6 +164,11 @@
     try {
       sortCol = app.sortCol != null ? app.sortCol : null;
       sortAsc = app.sortAsc !== false;
+    } catch (e) {}
+    // Restore before the first redraw so the map draws with group colours on
+    // the very first paint rather than flashing per-sample colours first.
+    try {
+      if (window.metaGrouping) window.metaGrouping.restore(app.metaGrouping);
     } catch (e) {}
     try {
       if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
