@@ -711,6 +711,17 @@ function _ttCommitMetaCell(td) {
     rec[key] = v;
   }
   if (typeof _normalizeMetaRecord === "function") _normalizeMetaRecord(rec);
+  // An in-place cell edit changes a value without changing the record count,
+  // which the grouping model's cache token cannot see. Drop the cache and
+  // re-profile so a newly-typed category shows up in the "Group by" bar and
+  // the group views immediately.
+  try {
+    if (window.metaGrouping) {
+      window.metaGrouping.refresh();
+      if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
+      if (typeof _mgBroadcastRedraw === "function") _mgBroadcastRedraw();
+    }
+  } catch (e) {}
   // Keep SAMPLE_META in sync so any KPI / lookup reading from it sees the edit.
   try {
     if (typeof SAMPLE_META !== "undefined" && SAMPLE_META) {

@@ -2393,6 +2393,458 @@ tr.cmp-grp-start td {
   cursor: default;
 }
 
+/* ══ Shared "Group by" bar ══════════════════════════════════════════════
+   Sits between the metadata table and the analysis sub-tabs. Its selection
+   drives the map markers, the group heatmap and the group network, so it is
+   deliberately visually distinct from the per-view control rows below it. */
+#mg-bar {
+  margin: 1.4em 0 0;
+  padding: 0.7em 0.9em;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border: 1px solid #dae5f2;
+  border-radius: 8px;
+}
+#mg-bar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7em;
+}
+#mg-bar-label {
+  font-size: 0.84em;
+  font-weight: 700;
+  color: #37474f;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  white-space: nowrap;
+}
+#mg-bar-label i {
+  color: #1565c0;
+}
+#mg-field-wrap {
+  position: relative;
+}
+#mg-field-btn {
+  border: 1px solid #ccd6e8;
+  border-radius: 6px;
+  background: #fff;
+  padding: 5px 10px;
+  font-size: 0.82em;
+  color: #37474f;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+}
+#mg-field-btn:hover {
+  border-color: #1565c0;
+  color: #1565c0;
+}
+#mg-field-pop {
+  display: none;
+  position: absolute;
+  z-index: 900;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 340px;
+  max-height: 340px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #ccd6e8;
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(20, 40, 70, 0.18);
+  padding: 0.6em;
+}
+#mg-field-pop-head {
+  font-size: 0.76em;
+  color: #78909c;
+  line-height: 1.45;
+  padding: 0 0.2em 0.55em;
+  border-bottom: 1px solid #eef2f7;
+  margin-bottom: 0.4em;
+}
+.mg-field-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 0.82em;
+  color: #37474f;
+  cursor: pointer;
+}
+.mg-field-opt:hover {
+  background: #f2f7fd;
+}
+.mg-field-opt.mg-preferred .mg-field-name {
+  font-weight: 600;
+}
+.mg-field-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mg-field-meta {
+  font-size: 0.86em;
+  color: #90a4ae;
+  white-space: nowrap;
+}
+.mg-empty {
+  font-size: 0.8em;
+  color: #90a4ae;
+  padding: 0.7em 0.4em;
+  line-height: 1.5;
+}
+#mg-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.82em;
+  flex-wrap: wrap;
+}
+#mg-summary .mg-none {
+  color: #90a4ae;
+  font-style: italic;
+}
+.mg-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  flex-wrap: wrap;
+}
+.mg-chip {
+  background: #1565c0;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-weight: 600;
+  font-size: 0.94em;
+}
+.mg-plus {
+  color: #78909c;
+  font-weight: 700;
+}
+#mg-summary .mg-count {
+  color: #607d8b;
+}
+#mg-clear {
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 0.78em;
+  color: #78909c;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+#mg-clear:hover {
+  color: #c62828;
+  border-color: #ef9a9a;
+}
+
+/* Group legend — reused by the bar, the map and (potentially) any other view */
+#mg-legend,
+.mg-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin-top: 0.6em;
+}
+#mg-legend:empty {
+  display: none;
+}
+.mg-legend-title {
+  font-size: 0.76em;
+  font-weight: 700;
+  color: #607d8b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-right: 0.3em;
+}
+.mg-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  background: #fff;
+  border: 1px solid #dde6f0;
+  border-radius: 20px;
+  padding: 2px 9px 2px 5px;
+  font-size: 0.76em;
+  color: #37474f;
+  cursor: pointer;
+  max-width: 260px;
+}
+.mg-legend-item:hover {
+  border-color: #1565c0;
+  box-shadow: 0 1px 4px rgba(21, 101, 192, 0.16);
+}
+/* Toggled-off group: still listed (it has to be, or there is no way back on)
+   but clearly inert — greyed, struck through, and visually recessed. */
+.mg-legend-item.mg-off {
+  background: #f4f6f8;
+  border-color: #e4e9ee;
+  color: #9fb0bd;
+}
+.mg-legend-item.mg-off .mg-legend-label {
+  text-decoration: line-through;
+}
+.mg-legend-item.mg-off:hover {
+  border-color: #90a4ae;
+  color: #607d8b;
+  box-shadow: none;
+}
+.mg-legend-showall {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  background: #e8f1fb;
+  border: 1px solid #bcd7f2;
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 0.76em;
+  font-weight: 600;
+  color: #1565c0;
+  cursor: pointer;
+}
+.mg-legend-showall:hover {
+  background: #d7e8fa;
+}
+/* Highlighted chip: the group is emphasised and everything else fades. */
+.mg-legend-item.mg-hi {
+  border-color: #1565c0;
+  background: #e8f1fb;
+  box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.16);
+  font-weight: 600;
+}
+/* A chip that is neither highlighted nor hidden while something else is
+   highlighted — mirrors the fading applied on the map. */
+.mg-legend-item.mg-dim {
+  opacity: 0.45;
+}
+.mg-legend-item.mg-dim:hover {
+  opacity: 1;
+}
+.mg-legend-state {
+  font-size: 0.85em;
+  color: #b0bec5;
+  flex: none;
+}
+.mg-legend-item.mg-hi .mg-legend-state {
+  color: #1565c0;
+}
+.mg-legend-item.mg-off .mg-legend-state {
+  color: #cfd8dc;
+}
+
+/* ── Map group-network panel (below the map, never over it) ── */
+#mg-map-net-panel {
+  margin: 0.9em 0 0;
+  border: 1px solid #dae5f2;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+#mg-map-net-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.55em 0.8em;
+  background: linear-gradient(180deg, #f7fafd, #eef4fb);
+  border-bottom: 1px solid #e6edf6;
+  cursor: pointer;
+  font-size: 0.86em;
+  color: #263238;
+}
+#mg-map-net-head:hover {
+  background: #eaf2fb;
+}
+#mg-map-net-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  flex: 1;
+  font-weight: 600;
+}
+#mg-map-net-title i {
+  color: #1565c0;
+}
+.mg-net-chip {
+  background: #1565c0;
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 0.9em;
+}
+.mg-net-sub {
+  color: #78909c;
+  font-weight: 400;
+  font-size: 0.92em;
+}
+#mg-map-net-clear {
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 0.86em;
+  color: #78909c;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#mg-map-net-clear:hover {
+  color: #c62828;
+  border-color: #ef9a9a;
+}
+#mg-map-net-body {
+  padding: 0.8em;
+}
+#mg-map-net-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9em;
+  align-items: flex-end;
+  margin-bottom: 0.9em;
+}
+#mg-map-net-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid #eef2f7;
+  border-radius: 6px;
+}
+.mg-net-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82em;
+}
+.mg-net-table th {
+  position: sticky;
+  top: 0;
+  background: #f5f8fc;
+  text-align: left;
+  padding: 6px 9px;
+  border-bottom: 1px solid #e2eaf3;
+  color: #455a64;
+  font-weight: 600;
+  z-index: 1;
+}
+.mg-net-th {
+  cursor: pointer;
+  user-select: none;
+}
+.mg-net-th:hover {
+  color: #1565c0;
+}
+.mg-net-sorted {
+  color: #1565c0;
+}
+.mg-net-table td {
+  padding: 5px 9px;
+  border-bottom: 1px solid #f2f5f9;
+  color: #37474f;
+}
+.mg-net-table tbody tr:hover {
+  background: #f2f8ff;
+}
+.mg-net-table tr.mg-net-cross td {
+  border-left: 3px dashed #90a4ae;
+}
+.mg-net-table tr.mg-net-rowsel {
+  background: #fff8e1;
+}
+.mg-net-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mg-net-taxon {
+  display: inline-block;
+  background: #eef3f8;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 1px 3px 1px 0;
+  font-size: 0.94em;
+  color: #455a64;
+}
+.mg-net-more {
+  color: #90a4ae;
+  font-size: 0.9em;
+}
+.mg-net-empty {
+  margin: 0;
+  padding: 1.2em 1em;
+  text-align: center;
+  color: #90a4ae;
+  font-size: 0.86em;
+  line-height: 1.5;
+}
+.mg-net-note {
+  margin: 0.5em 0 0;
+  padding: 0 0.3em;
+  font-size: 0.78em;
+  color: #90a4ae;
+}
+.mg-net-dash {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px dashed #90a4ae;
+  vertical-align: middle;
+  margin-right: 0.3em;
+}
+/* Leaflet polylines for the on-map similarity network. */
+.mg-map-edge {
+  cursor: pointer;
+}
+
+/* The per-tab toggle rows sit above their chart and need breathing room. */
+.mg-legend-toggles {
+  margin: 0 0 0.9em;
+  padding: 0.5em 0.6em;
+  background: #fafcfe;
+  border: 1px solid #eaf0f6;
+  border-radius: 7px;
+}
+.mg-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mg-legend-count {
+  color: #90a4ae;
+  font-weight: 600;
+}
+.mg-legend-more {
+  font-size: 0.76em;
+  color: #90a4ae;
+}
+
+/* Shared control group used by the new sub-panes */
+.mg-ctl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+.mg-ctl label {
+  font-size: 0.81em;
+  font-weight: 600;
+  color: #555;
+}
+.mg-ctl select {
+  border: 1px solid #ccd6e8;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.82em;
+  background: #fff;
+  min-width: 150px;
+}
+.mg-ctl input[type="range"] {
+  width: 160px;
+}
+
 /* ── Run Metadata analysis sub-tabs ── */
 #meta-subtabs {
   display: flex;
@@ -4220,52 +4672,180 @@ body.report-pdf-printing #tt-busy {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Map sample picker — per-sample show/hide for the precise map only.
-   Collapsed by default so it never competes with the map itself.
+   Map side panel sections — the sample picker and the detections table
+   are two collapsible sections stacked inside #map-panel, so the Map tab
+   never shows more than two panes: the map, and this panel.
+
+   • "Samples on map"  — collapsed by default; its height is user-set by
+     dragging #map-sample-picker-grip, stored inline by the map JS.
+   • "Detections"      — open by default; takes whatever height is left.
    ═══════════════════════════════════════════════════════════════════ */
-#map-sample-picker {
-  margin: 0 0 0.6em;
-  border: 1px solid #dbe3ee;
-  border-radius: 6px;
-  background: #fbfcfe;
-  max-width: 520px;
-  font-size: 0.82em;
+#map-panel .mp-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Each section clips its own content. Without this a tall detections
+     table spills past its box and paints over the picker above it. */
+  overflow: hidden;
+  position: relative;
 }
-#map-sample-picker > summary {
+#map-panel .mp-section:not([open]) {
+  flex: 0 0 auto;
+}
+/* Collapsed picker hugs its title bar; open, it honours the dragged height.
+   The ceiling lives in _mapPickerApplyHeight rather than in a max-height
+   here, so the splitter and the layout never disagree about the limit. */
+#map-sample-picker[open] {
+  flex: 0 0 auto;
+  height: 210px;
+}
+/* The detections table absorbs the leftover space. flex-basis 0 (not auto)
+   so its own content height can never inflate the section past its share. */
+#map-panel-hits[open] {
+  flex: 1 1 0;
+  min-height: 90px;
+}
+#map-panel .mp-section > summary {
   cursor: pointer;
-  padding: 0.45em 0.7em;
+  padding: 0.4em 0.7em;
   font-weight: 600;
-  color: #37474f;
+  font-size: 0.8em;
+  color: #2b3b4a;
   user-select: none;
   display: flex;
   align-items: center;
   gap: 0.45em;
   list-style: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #eef4fc, #dfe9f7);
+  border-top: 1px solid #cfdcec;
+  border-bottom: 1px solid #cfdcec;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
 }
-#map-sample-picker > summary::-webkit-details-marker {
+/* The picker's bar butts against the blue panel header — no double rule. */
+#map-sample-picker > summary {
+  border-top: none;
+}
+/* Hint on the collapsed picker; pointless once it is open. */
+#map-panel .mp-section .mp-hint {
+  color: #8fa0b3;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 0.92em;
+}
+#map-panel .mp-section[open] .mp-hint {
   display: none;
 }
-#map-sample-picker > summary::before {
+#map-panel .mp-section > summary::-webkit-details-marker {
+  display: none;
+}
+#map-panel .mp-section > summary::before {
   content: "▸";
   color: #90a4b8;
-  transition: transform 0.12s;
 }
-#map-sample-picker[open] > summary::before {
+#map-panel .mp-section[open] > summary::before {
   content: "▾";
 }
-#map-sample-picker > summary:hover {
-  background: #f2f6fb;
-  border-radius: 6px;
+#map-panel .mp-section > summary:hover {
+  background: linear-gradient(180deg, #eef4fc, #e2ecfa);
+}
+#map-panel .mp-section .mp-title {
+  font-weight: 600;
+}
+#map-sample-count,
+#map-panel-hits-count {
+  color: #789;
+  font-weight: 400;
+}
+/* Standing reminder that the picker is map-local. */
+#map-sample-picker .mp-scope-badge {
+  margin-left: auto;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1565c0;
+  background: #e3edfb;
+  border: 1px solid #c2d8f2;
+  border-radius: 10px;
+  padding: 0.1em 0.5em;
 }
 #map-sample-picker-body {
   padding: 0 0.55em 0.5em;
+  font-size: 0.82em;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#map-panel-hits-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.map-sample-scope-note {
+  margin: 0.45em 0 0;
+  padding: 0.4em 0.5em;
+  font-size: 0.86em;
+  line-height: 1.35;
+  color: #5b6b7c;
+  background: #f4f8fe;
+  border: 1px solid #e0e9f6;
+  border-left: 3px solid #7fa8d4;
+  border-radius: 4px;
+  display: flex;
+  gap: 0.45em;
+  flex: 0 0 auto;
+}
+.map-sample-scope-note i {
+  color: #7fa8d4;
+  margin-top: 0.15em;
+}
+.map-sample-scope-note b {
+  color: #37474f;
+}
+/* ── Horizontal splitter: drag to trade height between the two sections.
+      Only present while the picker is open (a closed <details> hides its
+      non-summary children). ── */
+#map-sample-picker-grip {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 3;
+  background: linear-gradient(180deg, transparent, rgba(127, 168, 212, 0.18));
+}
+#map-sample-picker-grip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 2px;
+  border-radius: 1px;
+  background: #b6c8de;
+}
+#map-sample-picker-grip:hover,
+#map-panel.mp-resizing #map-sample-picker-grip {
+  background: rgba(127, 168, 212, 0.4);
+}
+#map-panel.mp-resizing {
+  user-select: none;
 }
 .map-sample-tools {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35em;
   align-items: center;
-  padding: 0.25em 0 0.45em;
+  padding: 0.4em 0 0.45em;
+  flex: 0 0 auto;
 }
 .map-sample-tools input[type="search"] {
   flex: 1 1 160px;
@@ -4289,21 +4869,18 @@ body.report-pdf-printing #tt-busy {
 .map-sample-tools button:hover {
   background: #e8f1fc;
 }
+/* Grows to fill whatever height the user has given the picker section. */
 #map-sample-list {
-  max-height: 230px;
+  flex: 1 1 auto;
+  min-height: 44px;
   overflow: auto;
+  overscroll-behavior: contain; /* don't hand the scroll back to the map */
   border: 1px solid #e6edf6;
   border-radius: 4px;
   background: #fff;
 }
 .map-sample-row:hover {
   background: #eef4fc;
-}
-.map-sample-note {
-  margin: 0.45em 0 0;
-  font-size: 0.9em;
-  color: #8a97a4;
-  line-height: 1.4;
 }
 /* The picker is a control, not content — never print it. */
 @media print {
