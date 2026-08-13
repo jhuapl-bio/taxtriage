@@ -14,7 +14,21 @@ const _META_METRIC_LABELS = {
   tass: "Mean TASS Score",
 };
 const _GEO_META_FIELDS = ["sample_origin_country", "sample_origin_state_province_territory"];
-const _HOST_META_FIELDS = ["host_scientific_name", "host_disease", "environmental_site"];
+// Site columns, in preference order. `environmental_site` is the AMD-P/Talos
+// standard name; the rest are the generic spellings submitters actually use
+// for the same concept. Kept in one place because three separate surfaces
+// (this tab's enablement, its field dropdown, and the sub-tab warning) all
+// have to agree on what counts as a site column.
+const _SITE_META_FIELDS = [
+  "environmental_site",
+  "site",
+  "site_name",
+  "sampling_site",
+  "collection_site",
+  "site_type",
+  "site_id",
+];
+const _HOST_META_FIELDS = ["host_scientific_name", "host_disease"].concat(_SITE_META_FIELDS);
 
 function _metaViewId(sample) {
   return typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
@@ -1405,6 +1419,29 @@ function _buildHostDisease() {
   const fieldSel = document.getElementById("host-cmp-field");
   const metricSel = document.getElementById("host-cmp-metric");
   const noData = document.getElementById("host-cmp-no-data");
+
+  /* The dropdown ships with the three standard fields as fixed <option>s. Add
+     an option for any OTHER site column that carries data, so a run using a
+     plain `site` column can be charted here instead of being offered only an
+     "Environmental Site" entry that resolves to nothing. Purely additive: the
+     standard options and the current selection are left alone. */
+  if (fieldSel) {
+    const have = new Set(Array.from(fieldSel.options).map((o) => o.value));
+    _SITE_META_FIELDS.forEach((f) => {
+      if (have.has(f) || !_anyMetaValue([f])) return;
+      const o = document.createElement("option");
+      o.value = f;
+      o.textContent = typeof _metaKeyLabel === "function" ? _metaKeyLabel(f) : f;
+      fieldSel.appendChild(o);
+    });
+    // If the selected field has no values but some other one does, move to it —
+    // otherwise the tab opens on an empty chart for no visible reason.
+    if (!_anyMetaValue([fieldSel.value])) {
+      const firstLive = Array.from(fieldSel.options).find((o) => _anyMetaValue([o.value]));
+      if (firstLive) fieldSel.value = firstLive.value;
+    }
+  }
+
   const draw = () => {
     const field = (fieldSel && fieldSel.value) || "host_disease";
     const metric = (metricSel && metricSel.value) || "detections";

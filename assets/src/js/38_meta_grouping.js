@@ -52,10 +52,25 @@
   // Fields that are *known* to be good grouping dimensions. These sort to the
   // top of the picker and keep their curated labels; everything else is
   // discovered at runtime.
+  //
+  // Being listed here is not just about ordering — curated fields are exempt
+  // from the "one group per sample" and prose guards in _mgColumnStats. That
+  // matters for site columns in particular: a survey with one site per sample
+  // is completely normal, and the generic `site` column would otherwise be
+  // rejected as an identifier on exactly the runs where it is most useful.
+  //
+  // `environmental_site` is the AMD-P/Talos standard name; the rest are the
+  // generic spellings submitters actually use for the same concept.
   const PREFERRED = [
     "sample_type",
     "specimen_type",
     "environmental_site",
+    "site",
+    "site_name",
+    "sampling_site",
+    "collection_site",
+    "site_id",
+    "site_type",
     "host_scientific_name",
     "host_disease",
     "sample_origin_country",

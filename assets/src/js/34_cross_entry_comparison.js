@@ -25,6 +25,18 @@ function _cmpFieldOrder() {
     "host_disease",
     "host_scientific_name",
     "environmental_site",
+    // Generic site spellings, so a run that uses a plain `site` column can be
+    // compared here too rather than only in the grouped views. This list is an
+    // allow-list (unlike the Group by bar's runtime detection), so a column
+    // missing from it is silently unavailable.
+    "site",
+    "site_name",
+    "sampling_site",
+    "collection_site",
+    "site_id",
+    "site_type",
+    "sample_type",
+    "specimen_type",
     "sequencing_instrument",
     "sequencing_platform",
     "library_preparation_kit",
