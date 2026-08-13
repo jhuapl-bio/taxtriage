@@ -4672,52 +4672,180 @@ body.report-pdf-printing #tt-busy {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   Map sample picker — per-sample show/hide for the precise map only.
-   Collapsed by default so it never competes with the map itself.
+   Map side panel sections — the sample picker and the detections table
+   are two collapsible sections stacked inside #map-panel, so the Map tab
+   never shows more than two panes: the map, and this panel.
+
+   • "Samples on map"  — collapsed by default; its height is user-set by
+     dragging #map-sample-picker-grip, stored inline by the map JS.
+   • "Detections"      — open by default; takes whatever height is left.
    ═══════════════════════════════════════════════════════════════════ */
-#map-sample-picker {
-  margin: 0 0 0.6em;
-  border: 1px solid #dbe3ee;
-  border-radius: 6px;
-  background: #fbfcfe;
-  max-width: 520px;
-  font-size: 0.82em;
+#map-panel .mp-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Each section clips its own content. Without this a tall detections
+     table spills past its box and paints over the picker above it. */
+  overflow: hidden;
+  position: relative;
 }
-#map-sample-picker > summary {
+#map-panel .mp-section:not([open]) {
+  flex: 0 0 auto;
+}
+/* Collapsed picker hugs its title bar; open, it honours the dragged height.
+   The ceiling lives in _mapPickerApplyHeight rather than in a max-height
+   here, so the splitter and the layout never disagree about the limit. */
+#map-sample-picker[open] {
+  flex: 0 0 auto;
+  height: 210px;
+}
+/* The detections table absorbs the leftover space. flex-basis 0 (not auto)
+   so its own content height can never inflate the section past its share. */
+#map-panel-hits[open] {
+  flex: 1 1 0;
+  min-height: 90px;
+}
+#map-panel .mp-section > summary {
   cursor: pointer;
-  padding: 0.45em 0.7em;
+  padding: 0.4em 0.7em;
   font-weight: 600;
-  color: #37474f;
+  font-size: 0.8em;
+  color: #2b3b4a;
   user-select: none;
   display: flex;
   align-items: center;
   gap: 0.45em;
   list-style: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #eef4fc, #dfe9f7);
+  border-top: 1px solid #cfdcec;
+  border-bottom: 1px solid #cfdcec;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
 }
-#map-sample-picker > summary::-webkit-details-marker {
+/* The picker's bar butts against the blue panel header — no double rule. */
+#map-sample-picker > summary {
+  border-top: none;
+}
+/* Hint on the collapsed picker; pointless once it is open. */
+#map-panel .mp-section .mp-hint {
+  color: #8fa0b3;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 0.92em;
+}
+#map-panel .mp-section[open] .mp-hint {
   display: none;
 }
-#map-sample-picker > summary::before {
+#map-panel .mp-section > summary::-webkit-details-marker {
+  display: none;
+}
+#map-panel .mp-section > summary::before {
   content: "▸";
   color: #90a4b8;
-  transition: transform 0.12s;
 }
-#map-sample-picker[open] > summary::before {
+#map-panel .mp-section[open] > summary::before {
   content: "▾";
 }
-#map-sample-picker > summary:hover {
-  background: #f2f6fb;
-  border-radius: 6px;
+#map-panel .mp-section > summary:hover {
+  background: linear-gradient(180deg, #eef4fc, #e2ecfa);
+}
+#map-panel .mp-section .mp-title {
+  font-weight: 600;
+}
+#map-sample-count,
+#map-panel-hits-count {
+  color: #789;
+  font-weight: 400;
+}
+/* Standing reminder that the picker is map-local. */
+#map-sample-picker .mp-scope-badge {
+  margin-left: auto;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1565c0;
+  background: #e3edfb;
+  border: 1px solid #c2d8f2;
+  border-radius: 10px;
+  padding: 0.1em 0.5em;
 }
 #map-sample-picker-body {
   padding: 0 0.55em 0.5em;
+  font-size: 0.82em;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#map-panel-hits-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.map-sample-scope-note {
+  margin: 0.45em 0 0;
+  padding: 0.4em 0.5em;
+  font-size: 0.86em;
+  line-height: 1.35;
+  color: #5b6b7c;
+  background: #f4f8fe;
+  border: 1px solid #e0e9f6;
+  border-left: 3px solid #7fa8d4;
+  border-radius: 4px;
+  display: flex;
+  gap: 0.45em;
+  flex: 0 0 auto;
+}
+.map-sample-scope-note i {
+  color: #7fa8d4;
+  margin-top: 0.15em;
+}
+.map-sample-scope-note b {
+  color: #37474f;
+}
+/* ── Horizontal splitter: drag to trade height between the two sections.
+      Only present while the picker is open (a closed <details> hides its
+      non-summary children). ── */
+#map-sample-picker-grip {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 3;
+  background: linear-gradient(180deg, transparent, rgba(127, 168, 212, 0.18));
+}
+#map-sample-picker-grip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 2px;
+  border-radius: 1px;
+  background: #b6c8de;
+}
+#map-sample-picker-grip:hover,
+#map-panel.mp-resizing #map-sample-picker-grip {
+  background: rgba(127, 168, 212, 0.4);
+}
+#map-panel.mp-resizing {
+  user-select: none;
 }
 .map-sample-tools {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35em;
   align-items: center;
-  padding: 0.25em 0 0.45em;
+  padding: 0.4em 0 0.45em;
+  flex: 0 0 auto;
 }
 .map-sample-tools input[type="search"] {
   flex: 1 1 160px;
@@ -4741,21 +4869,18 @@ body.report-pdf-printing #tt-busy {
 .map-sample-tools button:hover {
   background: #e8f1fc;
 }
+/* Grows to fill whatever height the user has given the picker section. */
 #map-sample-list {
-  max-height: 230px;
+  flex: 1 1 auto;
+  min-height: 44px;
   overflow: auto;
+  overscroll-behavior: contain; /* don't hand the scroll back to the map */
   border: 1px solid #e6edf6;
   border-radius: 4px;
   background: #fff;
 }
 .map-sample-row:hover {
   background: #eef4fc;
-}
-.map-sample-note {
-  margin: 0.45em 0 0;
-  font-size: 0.9em;
-  color: #8a97a4;
-  line-height: 1.4;
 }
 /* The picker is a control, not content — never print it. */
 @media print {

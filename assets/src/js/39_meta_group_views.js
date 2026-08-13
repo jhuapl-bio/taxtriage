@@ -156,7 +156,8 @@ function _mgGroupProfiles(opts) {
         members[id] = new Set();
         prevalence[id] = {};
       }
-      matrix[id][taxon] = matrix[id][taxon] == null ? v : isMax ? Math.max(matrix[id][taxon], v) : matrix[id][taxon] + v;
+      matrix[id][taxon] =
+        matrix[id][taxon] == null ? v : isMax ? Math.max(matrix[id][taxon], v) : matrix[id][taxon] + v;
       (prevalence[id][taxon] = prevalence[id][taxon] || new Set()).add(sample);
       const t = totals[id];
       t.detections += 1;
@@ -190,8 +191,8 @@ function _mgGroupProfiles(opts) {
   const order = grouped
     ? model.visible.filter((k) => matrix[k])
     : typeof _orderedSamples === "function"
-      ? _orderedSamples(ids)
-      : ids.sort();
+    ? _orderedSamples(ids)
+    : ids.sort();
   // Anything the engine didn't know about (shouldn't happen, but be safe)
   ids.forEach((id) => {
     if (order.indexOf(id) === -1) order.push(id);
@@ -200,9 +201,7 @@ function _mgGroupProfiles(opts) {
   const units = order.map((id) => ({
     id,
     label: id,
-    color: grouped
-      ? mg.color(id)
-      : (typeof sampleColors !== "undefined" && sampleColors[id]) || "#0072B2",
+    color: grouped ? mg.color(id) : (typeof sampleColors !== "undefined" && sampleColors[id]) || "#0072B2",
     shape: grouped ? mg.shape(id) : "circle",
     samples: Array.from(members[id] || []),
     totals: totals[id],
@@ -276,10 +275,7 @@ function _mgBuildGroupHeatmap() {
 
   const cellW = 26;
   const cellH = 22;
-  const labelW = Math.min(
-    300,
-    Math.max(120, ...units.map((u) => Math.min(300, u.label.length * 6.6 + 34))),
-  );
+  const labelW = Math.min(300, Math.max(120, ...units.map((u) => Math.min(300, u.label.length * 6.6 + 34))));
   const headH = Math.min(220, Math.max(80, ...taxa.map((t) => t.length * 6.2)) + 12);
   const legendH = 46;
   const W = labelW + taxa.length * cellW + 24;
@@ -287,12 +283,7 @@ function _mgBuildGroupHeatmap() {
 
   const color = d3.scaleSequential(d3.interpolateYlGnBu).domain([0, maxV]);
 
-  const svg = d3
-    .select(wrap)
-    .append("svg")
-    .attr("width", W)
-    .attr("height", H)
-    .attr("font-family", "inherit");
+  const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H).attr("font-family", "inherit");
 
   // ── column headers (rotated organism names, clickable to sort) ──────────
   const headSel = svg
@@ -363,7 +354,10 @@ function _mgBuildGroupHeatmap() {
   const defs = svg.append("defs");
   const grad = defs.append("linearGradient").attr("id", gradId);
   d3.range(0, 1.01, 0.1).forEach((t) =>
-    grad.append("stop").attr("offset", `${t * 100}%`).attr("stop-color", color(t * maxV)),
+    grad
+      .append("stop")
+      .attr("offset", `${t * 100}%`)
+      .attr("stop-color", color(t * maxV)),
   );
   lg.append("rect").attr("width", 180).attr("height", 10).attr("rx", 2).attr("fill", `url(#${gradId})`);
   lg.append("text").attr("x", 0).attr("y", 24).attr("font-size", 10).attr("fill", "#607d8b").text("0");
@@ -393,7 +387,7 @@ function _mgEmptyMessage(needTwo) {
     return (
       '<i class="fas fa-eye-slash" style="margin-right:.35em"></i>' +
       `${hidden} of ${total} groups are switched off. ` +
-      'Use <b>Show all</b> in the toggle row above to bring them back.'
+      "Use <b>Show all</b> in the toggle row above to bring them back."
     );
   }
   return (
@@ -610,9 +604,7 @@ function _mgDrawForce(svg, units, links, W, H, simMode, P) {
     });
   });
 
-  nodeSel
-    .append("title")
-    .text((d) => `${d.label}\n${d.n} sample(s), ${d.det} detection(s)`);
+  nodeSel.append("title").text((d) => `${d.label}\n${d.n} sample(s), ${d.det} detection(s)`);
 
   nodeSel
     .append("text")
@@ -720,8 +712,7 @@ function _mgDrawChord(svg, units, links, W, H, simMode) {
     .attr("stroke-opacity", 0.5)
     .append("title")
     .text(
-      (d) =>
-        `${us[d.source.index].label} ↔ ${us[d.target.index].label}\n${simMode}: ${d.source.value.toFixed(3)}`,
+      (d) => `${us[d.source.index].label} ↔ ${us[d.target.index].label}\n${simMode}: ${d.source.value.toFixed(3)}`,
     );
 
   g.append("g")
@@ -765,10 +756,7 @@ function _mgDrawChord(svg, units, links, W, H, simMode) {
       _mgHeatSort = { col: null, asc: false };
       _mgBuildGroupHeatmap();
     });
-    wire(
-      ["mg-net-layout", "mg-net-level", "mg-net-basis", "mg-net-sim", "mg-net-threshold"],
-      () => _mgBuildNetwork(),
-    );
+    wire(["mg-net-layout", "mg-net-level", "mg-net-basis", "mg-net-sim", "mg-net-threshold"], () => _mgBuildNetwork());
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
   else ready();

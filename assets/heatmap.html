@@ -1946,123 +1946,192 @@
                   ✕
                 </button>
               </div>
-              <!-- run metadata strip -->
-              <div
-                id="map-panel-meta"
-                style="
-                  padding: 0.35em 0.75em;
-                  font-size: 0.76em;
-                  color: #555;
-                  border-bottom: 1px solid #eee;
-                  line-height: 1.7;
-                  flex-shrink: 0;
-                "
-              ></div>
-              <!-- search bar -->
-              <div style="padding: 0.35em 0.6em; border-bottom: 1px solid #eee; flex-shrink: 0">
-                <input
-                  id="map-panel-search"
-                  type="text"
-                  placeholder="🔍  Filter organisms…"
-                  oninput="_refreshMapPanelTable()"
-                  style="
-                    width: 100%;
-                    padding: 0.3em 0.6em;
-                    font-size: 0.8em;
-                    border: 1px solid #c5d8f5;
-                    border-radius: 5px;
-                    outline: none;
-                    background: #f5f9ff;
-                  "
-                />
-              </div>
-              <!-- scrollable table body -->
-              <div id="map-panel-body" style="flex: 1; overflow-y: auto; min-height: 0">
-                <table
-                  id="map-panel-table"
-                  style="width: 100%; border-collapse: collapse; font-size: 0.79em; table-layout: fixed"
-                >
-                  <colgroup>
-                    <col style="width: 40%" />
-                    <col style="width: 14%" />
-                    <col style="width: 13%" />
-                    <col style="width: 13%" />
-                    <col style="width: 20%" />
-                  </colgroup>
-                  <thead>
-                    <tr id="map-panel-thead" style="position: sticky; top: 0; background: #f0f6ff; z-index: 2">
-                      <th
-                        id="mph-organism"
-                        data-col="Detected Organism"
-                        data-num="0"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
-                      >
-                        Organism <span class="sort-arrow"></span>
-                      </th>
-                      <th
-                        id="mph-tass"
-                        data-col="TASS Score"
-                        data-num="1"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
-                      >
-                        TASS&nbsp;% <span class="sort-arrow">▼</span>
-                      </th>
-                      <th
-                        id="mph-reads"
-                        data-col="% Reads"
-                        data-num="1"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
-                      >
-                        %&nbsp;Reads <span class="sort-arrow"></span>
-                      </th>
-                      <th
-                        id="mph-cov"
-                        data-col="Coverage"
-                        data-num="1"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
-                      >
-                        Cov&nbsp;% <span class="sort-arrow"></span>
-                      </th>
-                      <th
-                        id="mph-cat"
-                        data-col="Microbial Category"
-                        data-num="0"
-                        class="mph sortable-col"
-                        style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
-                      >
-                        Category <span class="sort-arrow"></span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody id="map-panel-tbody"></tbody>
-                </table>
-                <p
-                  id="map-panel-empty"
-                  style="display: none; text-align: center; color: #999; padding: 1.8em 1em; font-size: 0.84em"
-                >
-                  <i
-                    class="fas fa-circle-xmark"
-                    style="display: block; font-size: 1.6em; margin-bottom: 0.4em; opacity: 0.35"
-                  ></i>
-                  No organisms pass the current filters.
-                </p>
-              </div>
-              <!-- footer -->
-              <div
-                id="map-panel-footer"
-                style="
-                  padding: 0.3em 0.75em;
-                  font-size: 0.71em;
-                  color: #aaa;
-                  border-top: 1px solid #eee;
-                  flex-shrink: 0;
-                  text-align: right;
-                "
-              ></div>
+
+              <!-- ══ SECTION 1 — map-only sample show/hide ══════════════════
+                   Docked here rather than floating over the map so the tab
+                   never shows more than two panes. Writes to
+                   _mapHiddenSamples only, never to the sidebar's
+                   sampleHidden, so every other tab keeps all its samples.
+                   Collapsed by default; drag its bottom edge to give it more
+                   room at the expense of the detections table below. ══ -->
+              <details id="map-sample-picker" class="mp-section">
+                <summary title="Show or hide markers on this map. Nothing here changes the rest of the report.">
+                  <i class="fas fa-map-pin" style="font-size: 0.9em"></i>
+                  <span class="mp-title">Samples on map</span>
+                  <span id="map-sample-count"></span>
+                  <span class="mp-hint">— click to show / hide markers</span>
+                  <span class="mp-scope-badge">map only</span>
+                </summary>
+                <div id="map-sample-picker-body">
+                  <p class="map-sample-scope-note">
+                    <i class="fas fa-circle-info"></i>
+                    <span
+                      >Unchecking a sample <b>only removes its marker from this map</b>. It stays in every other tab, in
+                      the tables and in any export. To drop a sample from the whole report, use the sidebar.</span
+                    >
+                  </p>
+                  <div class="map-sample-tools">
+                    <input
+                      type="search"
+                      id="map-sample-search"
+                      placeholder="Find a sample…"
+                      title="Narrows the list below. The bulk buttons then act on what's listed."
+                    />
+                    <button type="button" data-map-bulk="all" title="Show every sample listed below">Show all</button>
+                    <button type="button" data-map-bulk="none" title="Hide every sample listed below">Hide all</button>
+                    <button
+                      type="button"
+                      data-map-bulk="only"
+                      title="Show only the samples listed below (hide everything else)"
+                    >
+                      Only these
+                    </button>
+                    <button type="button" data-map-bulk="invert" title="Flip shown / hidden for the listed samples">
+                      Invert
+                    </button>
+                    <button
+                      type="button"
+                      data-map-bulk="matches"
+                      title="Show only the samples matching the active sidebar filters"
+                    >
+                      Only filter matches
+                    </button>
+                  </div>
+                  <div id="map-sample-list"></div>
+                </div>
+                <!-- drag this to trade height with the detections table -->
+                <div id="map-sample-picker-grip" title="Drag to resize"></div>
+              </details>
+
+              <!-- ══ SECTION 2 — detections for the clicked marker(s) ══════
+                   Open by default. Collapsing it hands the whole panel to
+                   the sample picker above. ══ -->
+              <details id="map-panel-hits" class="mp-section" open>
+                <summary title="Organisms detected in the selected sample(s)">
+                  <i class="fas fa-vial" style="font-size: 0.9em"></i>
+                  <span class="mp-title">Detections</span>
+                  <span id="map-panel-hits-count"></span>
+                </summary>
+                <div id="map-panel-hits-body">
+                  <!-- run metadata strip -->
+                  <div
+                    id="map-panel-meta"
+                    style="
+                      padding: 0.35em 0.75em;
+                      font-size: 0.76em;
+                      color: #555;
+                      border-bottom: 1px solid #eee;
+                      line-height: 1.7;
+                      flex-shrink: 0;
+                    "
+                  ></div>
+                  <!-- search bar -->
+                  <div style="padding: 0.35em 0.6em; border-bottom: 1px solid #eee; flex-shrink: 0">
+                    <input
+                      id="map-panel-search"
+                      type="text"
+                      placeholder="🔍  Filter organisms…"
+                      oninput="_refreshMapPanelTable()"
+                      style="
+                        width: 100%;
+                        padding: 0.3em 0.6em;
+                        font-size: 0.8em;
+                        border: 1px solid #c5d8f5;
+                        border-radius: 5px;
+                        outline: none;
+                        background: #f5f9ff;
+                      "
+                    />
+                  </div>
+                  <!-- scrollable table body -->
+                  <div id="map-panel-body" style="flex: 1; overflow-y: auto; min-height: 0">
+                    <table
+                      id="map-panel-table"
+                      style="width: 100%; border-collapse: collapse; font-size: 0.79em; table-layout: fixed"
+                    >
+                      <colgroup>
+                        <col style="width: 40%" />
+                        <col style="width: 14%" />
+                        <col style="width: 13%" />
+                        <col style="width: 13%" />
+                        <col style="width: 20%" />
+                      </colgroup>
+                      <thead>
+                        <tr id="map-panel-thead" style="position: sticky; top: 0; background: #f0f6ff; z-index: 2">
+                          <th
+                            id="mph-organism"
+                            data-col="Detected Organism"
+                            data-num="0"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
+                          >
+                            Organism <span class="sort-arrow"></span>
+                          </th>
+                          <th
+                            id="mph-tass"
+                            data-col="TASS Score"
+                            data-num="1"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                          >
+                            TASS&nbsp;% <span class="sort-arrow">▼</span>
+                          </th>
+                          <th
+                            id="mph-reads"
+                            data-col="% Reads"
+                            data-num="1"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                          >
+                            %&nbsp;Reads <span class="sort-arrow"></span>
+                          </th>
+                          <th
+                            id="mph-cov"
+                            data-col="Coverage"
+                            data-num="1"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: right; cursor: pointer; user-select: none"
+                          >
+                            Cov&nbsp;% <span class="sort-arrow"></span>
+                          </th>
+                          <th
+                            id="mph-cat"
+                            data-col="Microbial Category"
+                            data-num="0"
+                            class="mph sortable-col"
+                            style="padding: 5px 8px; text-align: left; cursor: pointer; user-select: none"
+                          >
+                            Category <span class="sort-arrow"></span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody id="map-panel-tbody"></tbody>
+                    </table>
+                    <p
+                      id="map-panel-empty"
+                      style="display: none; text-align: center; color: #999; padding: 1.8em 1em; font-size: 0.84em"
+                    >
+                      <i
+                        class="fas fa-circle-xmark"
+                        style="display: block; font-size: 1.6em; margin-bottom: 0.4em; opacity: 0.35"
+                      ></i>
+                      No organisms pass the current filters.
+                    </p>
+                  </div>
+                  <!-- footer -->
+                  <div
+                    id="map-panel-footer"
+                    style="
+                      padding: 0.3em 0.75em;
+                      font-size: 0.71em;
+                      color: #aaa;
+                      border-top: 1px solid #eee;
+                      flex-shrink: 0;
+                      text-align: right;
+                    "
+                  ></div>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -2196,12 +2265,8 @@
             <button class="meta-subtab" data-metasub="host">
               <i class="fas fa-virus-covid"></i> Host &amp; Disease
             </button>
-            <button class="meta-subtab" data-metasub="ghm">
-              <i class="fas fa-border-all"></i> Group Heatmap
-            </button>
-            <button class="meta-subtab" data-metasub="net">
-              <i class="fas fa-circle-nodes"></i> Group Network
-            </button>
+            <button class="meta-subtab" data-metasub="ghm"><i class="fas fa-border-all"></i> Group Heatmap</button>
+            <button class="meta-subtab" data-metasub="net"><i class="fas fa-circle-nodes"></i> Group Network</button>
             <button class="meta-subtab" data-metasub="cmp">
               <i class="fas fa-diagram-project"></i> Cross-Entry Comparison
             </button>
@@ -2457,52 +2522,9 @@
                      whenever a grouping is active; hidden otherwise. Clicking
                      an entry focuses the map on that group. ── -->
                 <div id="map-group-legend" class="mg-legend" style="display: none"></div>
-                <!-- ── Map-only sample show/hide. Writes to _mapHiddenSamples,
-                     never to the sidebar's sampleHidden, so every other tab
-                     keeps all its samples. ── -->
-                <details id="map-sample-picker">
-                  <summary>
-                    <i class="fas fa-map-pin" style="font-size: 0.9em"></i>
-                    Samples on map
-                    <span id="map-sample-count" style="color: #789; font-weight: 400"></span>
-                  </summary>
-                  <div id="map-sample-picker-body">
-                    <div class="map-sample-tools">
-                      <input
-                        type="search"
-                        id="map-sample-search"
-                        placeholder="Find a sample…"
-                        title="Narrows the list below. The bulk buttons then act on what's listed."
-                      />
-                      <button type="button" data-map-bulk="all" title="Show every sample listed below">Show all</button>
-                      <button type="button" data-map-bulk="none" title="Hide every sample listed below">
-                        Hide all
-                      </button>
-                      <button
-                        type="button"
-                        data-map-bulk="only"
-                        title="Show only the samples listed below (hide everything else)"
-                      >
-                        Only these
-                      </button>
-                      <button type="button" data-map-bulk="invert" title="Flip shown / hidden for the listed samples">
-                        Invert
-                      </button>
-                      <button
-                        type="button"
-                        data-map-bulk="matches"
-                        title="Show only the samples matching the active sidebar filters"
-                      >
-                        Only filter matches
-                      </button>
-                    </div>
-                    <div id="map-sample-list"></div>
-                    <p class="map-sample-note">
-                      Affects this map only — hidden samples stay in every other tab. Use the sidebar to remove a sample
-                      from the whole report.
-                    </p>
-                  </div>
-                </details>
+                <!-- The map-only sample show/hide picker used to live here. It
+                     is now a collapsible section of the map side panel — see
+                     #map-sample-picker inside #map-panel. -->
                 <div id="geo-precise-slot"></div>
                 <div
                   id="geo-precise-no-data"

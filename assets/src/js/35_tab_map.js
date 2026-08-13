@@ -22,9 +22,7 @@ function _svgDot(color, selected, dimmed, shape) {
   const cx = r + 5;
   const ring =
     selected && !dimmed
-      ? `<circle cx="${cx}" cy="${cx}" r="${
-          r + 3
-        }" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
+      ? `<circle cx="${cx}" cy="${cx}" r="${r + 3}" fill="none" stroke="${color}" stroke-width="2" opacity=".45"/>`
       : "";
   // Shape coding: when a metadata grouping is active every group gets its own
   // colour AND its own glyph, so the categories stay separable past the
@@ -264,7 +262,9 @@ function _clusterIcon(cluster) {
         const large = a1 - a0 > Math.PI ? 1 : 0;
         // A single-group cluster has no arc to draw — use a full ring instead.
         if (parts.length === 1) {
-          wedges = `<circle cx="${cx}" cy="${cy}" r="${(rOuter + rInner) / 2}" fill="none" stroke="${col}" stroke-width="${rOuter - rInner}"/>`;
+          wedges = `<circle cx="${cx}" cy="${cy}" r="${
+            (rOuter + rInner) / 2
+          }" fill="none" stroke="${col}" stroke-width="${rOuter - rInner}"/>`;
           return;
         }
         const p = (r, a) => `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`;
@@ -295,7 +295,10 @@ function _clusterIcon(cluster) {
 }
 
 function _mgEscAttr(s) {
-  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 /* Re-fit the map to whatever is currently visible. Called after a group
@@ -532,7 +535,9 @@ function _fitMapToData() {
     if (!isNaN(lat) && !isNaN(lon)) bounds.push([lat, lon]);
   });
   if (bounds.length > 0) {
-    _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+    // Measure first — the caller has usually just resized the container.
+    _leafletMap.invalidateSize({ animate: false });
+    _leafletMap.fitBounds(bounds, { padding: [45, 45], maxZoom: 9 });
   } else {
     _leafletMap.setView([20, 0], 2);
   }
@@ -598,14 +603,31 @@ function _doInitMap() {
   const bounds = _addSampleMarkers();
 
   if (bounds.length > 0) {
-    _leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 9 });
+    // Do NOT fit here. The map is initialised while #map-split may still be
+    // in the hidden #map-host (or in a tab that has never been shown), so the
+    // container measures 0×0 and Leaflet derives a zoom from a viewport that
+    // does not exist — which is why the first view used to land over-zoomed
+    // on the centroid of the markers. Wait for a real size instead.
+    _mapFitWhenReady(bounds);
   } else {
     _leafletMap.setView([20, 0], 2);
   }
-  // Force Leaflet to recalculate container size in case flex layout settled late
-  setTimeout(() => {
-    if (_leafletMap) _leafletMap.invalidateSize();
-  }, 150);
+}
+
+/* Fit the view to `bounds`, but only once #map-container actually has a size.
+   Retries on a short interval and gives up after a few seconds rather than
+   spinning forever if the tab is never opened. */
+function _mapFitWhenReady(bounds, tries) {
+  if (!_leafletMap || !bounds || !bounds.length) return;
+  const el = document.getElementById("map-container");
+  const ready = el && el.clientWidth > 80 && el.clientHeight > 80;
+  if (ready) {
+    _leafletMap.invalidateSize({ animate: false });
+    _leafletMap.fitBounds(bounds, { padding: [45, 45], maxZoom: 9 });
+    return;
+  }
+  const n = tries || 0;
+  if (n < 60) setTimeout(() => _mapFitWhenReady(bounds, n + 1), 100);
 }
 
 /* ── Rebuild all map markers from current RUN_META ─────────────────── */
@@ -691,6 +713,9 @@ function _renderMapPanel(rec) {
   panel.style.display = "flex";
   const handle = document.getElementById("map-resize-handle");
   if (handle) handle.style.display = "block";
+  // Swap the detections section off its placeholder and make sure it is open —
+  // a marker click should always show what was found there.
+  _mapPanelOpenHits();
 
   // Header: sample name (truncate long names, full name on hover)
   const title = document.getElementById("map-panel-title");
@@ -752,6 +777,7 @@ function _renderMapGroupPanel(recs) {
   panel.style.display = "flex";
   const handle = document.getElementById("map-resize-handle");
   if (handle) handle.style.display = "block";
+  _mapPanelOpenHits();
 
   // Title
   const title = document.getElementById("map-panel-title");
@@ -806,6 +832,7 @@ function _refreshMapGroupPanelTable() {
     tbody.innerHTML = "";
     if (empty) empty.style.display = "block";
     if (footer) footer.textContent = "No results";
+    _setMapHitsCount(0);
     return;
   }
   if (empty) empty.style.display = "none";
@@ -881,6 +908,7 @@ function _refreshMapGroupPanelTable() {
 
   const total = allRows.length;
   if (footer) footer.textContent = `${total} organism${total !== 1 ? "s" : ""} across ${_selectedGroup.length} samples`;
+  _setMapHitsCount(total);
 }
 
 function _renameSample(oldName, newName) {
@@ -1073,6 +1101,7 @@ function _refreshMapPanelTable() {
     tbody.innerHTML = "";
     if (empty) empty.style.display = "block";
     if (footer) footer.textContent = "No results";
+    _setMapHitsCount(0);
     return;
   }
   if (empty) empty.style.display = "none";
@@ -1114,6 +1143,7 @@ function _refreshMapPanelTable() {
   const dirLabel = _panelSortAsc ? "↑" : "↓";
   if (footer)
     footer.textContent = `${rows.length} organism${rows.length !== 1 ? "s" : ""} · sorted by ${sortLabel} ${dirLabel}`;
+  _setMapHitsCount(rows.length);
 }
 
 function closeMapPanel() {
@@ -1287,6 +1317,171 @@ function _wireMapSamplePicker() {
 
   // Populate lazily: building 160+ rows is wasted work until it's opened.
   panel.addEventListener("toggle", () => {
-    if (panel.open) _mapRenderSampleList();
+    if (panel.open) {
+      _mapRenderSampleList();
+      _mapPickerApplyHeight(); // re-assert the height the user dragged to
+    }
+    _mapPickerSaveLayout();
   });
+
+  const hits = document.getElementById("map-panel-hits");
+  if (hits)
+    hits.addEventListener("toggle", () => {
+      _mapPickerApplyHeight();
+      _mapPickerSaveLayout();
+    });
+
+  _mapPickerMakeDockable(panel);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   -  §  SIDE-PANEL SECTION LAYOUT
+   -     The picker and the detections table are the two collapsible sections
+   -     of #map-panel. The picker's height is user-set by dragging the
+   -     splitter along its bottom edge; the detections table takes whatever
+   -     is left. Both states persist so the panel reopens the way it was.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const _MAP_PICKER_LS_KEY = "tt.mapSamplePicker.layout";
+const _MAP_PICKER_MIN_H = 110; // enough for the note + tools + a row or two
+const _MAP_HITS_MIN_H = 90; // never squeeze the table out of existence
+
+/** Remembered section layout, seeded from localStorage so it survives a
+ *  reload of the report. */
+let _mapPickerLayout = (() => {
+  const fallback = { height: 210, hitsOpen: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(_MAP_PICKER_LS_KEY) || "null");
+    if (!saved) return fallback;
+    return {
+      height: Number.isFinite(saved.height) ? saved.height : fallback.height,
+      // Default the detections table to OPEN — it is the reason the panel
+      // exists. Only an explicit `false` collapses it.
+      hitsOpen: saved.hitsOpen !== false,
+    };
+  } catch (e) {
+    return fallback;
+  }
+})();
+// The picker's open state is deliberately NOT persisted: it is a control, not
+// content, so every visit to the map starts with it collapsed and the
+// detections table at full height.
+
+function _mapPickerSaveLayout() {
+  const hits = document.getElementById("map-panel-hits");
+  if (hits) _mapPickerLayout.hitsOpen = !!hits.open;
+  try {
+    localStorage.setItem(_MAP_PICKER_LS_KEY, JSON.stringify(_mapPickerLayout));
+  } catch (e) {
+    /* private mode / quota — the panel still works, it just won't be remembered */
+  }
+}
+
+/** Push the remembered picker height onto the element, clamped so the
+ *  detections table below always keeps a usable minimum. With the table
+ *  collapsed the picker simply takes the rest of the panel. */
+function _mapPickerApplyHeight() {
+  const panel = document.getElementById("map-sample-picker");
+  const side = document.getElementById("map-panel");
+  const hits = document.getElementById("map-panel-hits");
+  if (!panel || !side) return;
+
+  if (!panel.open) {
+    panel.style.height = "";
+    panel.style.flex = "";
+    return;
+  }
+  // Table collapsed → the picker is the only thing that can grow. "auto"
+  // rather than "" so it overrides the fixed height in the stylesheet.
+  if (hits && !hits.open) {
+    panel.style.height = "auto";
+    panel.style.flex = "1 1 auto";
+    return;
+  }
+  panel.style.flex = "0 0 auto";
+
+  const avail = side.clientHeight || 0;
+  if (!avail) return; // panel not laid out yet (hidden tab / closed panel)
+  const chrome = _mapPanelChromeHeight();
+  // Two ceilings: leave the table its minimum, and never let the picker take
+  // more than ~55% of the panel even when there is room to spare.
+  const max = Math.max(_MAP_PICKER_MIN_H, Math.min(avail - chrome - _MAP_HITS_MIN_H, avail * 0.55));
+  const h = Math.max(_MAP_PICKER_MIN_H, Math.min(_mapPickerLayout.height, max));
+  _mapPickerLayout.height = h;
+  panel.style.height = h + "px";
+}
+
+/** Height of everything in the side panel that is not the picker body:
+ *  the blue header plus both section title bars. */
+function _mapPanelChromeHeight() {
+  const head = document.getElementById("map-panel-header");
+  const hitsSummary = document.querySelector("#map-panel-hits > summary");
+  return (head ? head.offsetHeight : 34) + (hitsSummary ? hitsSummary.offsetHeight : 28);
+}
+
+/** One-time setup: restore section state and wire the height splitter. */
+function _mapPickerMakeDockable(panel) {
+  const grip = document.getElementById("map-sample-picker-grip");
+  const hits = document.getElementById("map-panel-hits");
+
+  // The picker always starts collapsed; only the table's state is restored.
+  panel.open = false;
+  if (hits) hits.open = _mapPickerLayout.hitsOpen;
+
+  if (grip) {
+    let drag = null;
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { id: e.pointerId, y: e.clientY, h: panel.offsetHeight };
+      const side = document.getElementById("map-panel");
+      if (side) side.classList.add("mp-resizing");
+      try {
+        grip.setPointerCapture(e.pointerId);
+      } catch (err) {
+        /* capture is a nicety, not a requirement */
+      }
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      _mapPickerLayout.height = drag.h + (e.clientY - drag.y);
+      _mapPickerApplyHeight();
+    });
+    const endDrag = (e) => {
+      if (!drag || (e && e.pointerId !== drag.id)) return;
+      try {
+        grip.releasePointerCapture(drag.id);
+      } catch (err) {
+        /* nothing captured */
+      }
+      drag = null;
+      const side = document.getElementById("map-panel");
+      if (side) side.classList.remove("mp-resizing");
+      _mapPickerSaveLayout();
+    };
+    grip.addEventListener("pointerup", endDrag);
+    grip.addEventListener("pointercancel", endDrag);
+  }
+
+  // The panel changes height with the window and with #map-split; re-clamp.
+  window.addEventListener("resize", () => _mapPickerApplyHeight());
+  const side = document.getElementById("map-panel");
+  if (side && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => _mapPickerApplyHeight()).observe(side);
+  }
+}
+
+/** Expand the detections section (a marker click implies the user wants to
+ *  see the hits) and re-clamp the picker above it. */
+function _mapPanelOpenHits() {
+  const hits = document.getElementById("map-panel-hits");
+  if (hits && !hits.open) hits.open = true; // fires toggle → saves + re-clamps
+  else _mapPickerApplyHeight();
+}
+
+/** Count shown next to the "Detections" section title. */
+function _setMapHitsCount(n) {
+  const el = document.getElementById("map-panel-hits-count");
+  if (!el) return;
+  el.textContent = n == null ? "" : `${n} organism${n !== 1 ? "s" : ""}`;
 }

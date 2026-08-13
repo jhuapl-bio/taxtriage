@@ -241,7 +241,9 @@ function _mgRenderNetworkTable(model) {
   if (!model.edges.length) {
     wrap.innerHTML =
       `<p class="mg-net-empty">${model.nodes.length} site${model.nodes.length === 1 ? "" : "s"} highlighted, ` +
-      `but no pair reaches the link threshold (${model.simMode === "shared" ? model.cut + " shared taxa" : model.cut}). ` +
+      `but no pair reaches the link threshold (${
+        model.simMode === "shared" ? model.cut + " shared taxa" : model.cut
+      }). ` +
       "Lower the threshold above to see weaker links.</p>";
     return;
   }
@@ -278,7 +280,10 @@ function _mgRenderNetworkTable(model) {
     `<th>Top shared ${levelWord}</th></tr></thead><tbody>` +
     rows
       .map((e) => {
-        const top = e.shared.slice(0, 4).map((t) => `<span class="mg-net-taxon">${_mgEsc(t)}</span>`).join("");
+        const top = e.shared
+          .slice(0, 4)
+          .map((t) => `<span class="mg-net-taxon">${_mgEsc(t)}</span>`)
+          .join("");
         const more = e.shared.length > 4 ? `<span class="mg-net-more">+${e.shared.length - 4}</span>` : "";
         return (
           `<tr data-a="${_mgEsc(e.a.id)}" data-b="${_mgEsc(e.b.id)}"${e.crossGroup ? ' class="mg-net-cross"' : ""}>` +
