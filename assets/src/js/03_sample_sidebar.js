@@ -137,22 +137,45 @@ function removeAllSamples() {
          sidebar (_allSampleIds() treats NOVELTY.samples as authoritative). */
 function _emptyAllData() {
   const samples = Array.from(_allSampleIds()).filter(Boolean);
+
+  /* Every teardown step is individually guarded. This used to be one straight
+           run of statements, so the FIRST failure (a chart helper that doesn't
+           expect an empty dataset, a tab that isn't mounted yet, …) aborted the
+           whole function — leaving the data half-cleared and, because the rebuild
+           calls sit at the bottom, the sidebar and Detections table still showing
+           the samples that had just been deleted. Nothing here depends on a later
+           step succeeding, so a failure in one must not skip the rest. */
+  const step = (label, fn) => {
+    try {
+      fn();
+    } catch (e) {
+      if (window.console && console.warn) console.warn("_emptyAllData: " + label + " failed", e);
+    }
+  };
+
   // Batch delete — clear EVERY data source, including BOOT and the
   // upload buffers. Without this, dropping a new JSON afterwards would
   // re-merge BOOT.records (and any previously-uploaded rows) on top of
   // the freshly-emptied dataset, resurrecting the samples the user
   // just told us to delete.
-  DATA.length = 0;
-  RUN_META.length = 0;
-  CONTIG_DATA.length = 0;
-  if (NOVELTY && NOVELTY.samples) Object.keys(NOVELTY.samples).forEach((k) => delete NOVELTY.samples[k]);
-  NOVELTY_DL.length = 0;
-  HAS_NOVELTY = false;
-  const noveltyBtn = document.getElementById("novelty-tab-btn");
-  if (noveltyBtn) noveltyBtn.classList.add("hidden");
-  if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
+  step("detections", () => {
+    DATA.length = 0;
+    RUN_META.length = 0;
+    CONTIG_DATA.length = 0;
+  });
+  step("novelty", () => {
+    if (NOVELTY && NOVELTY.samples) Object.keys(NOVELTY.samples).forEach((k) => delete NOVELTY.samples[k]);
+    NOVELTY_DL.length = 0;
+    HAS_NOVELTY = false;
+    const noveltyBtn = document.getElementById("novelty-tab-btn");
+    if (noveltyBtn) noveltyBtn.classList.add("hidden");
+  });
+  step("summary-hist-cache", () => {
+    if (typeof _invalidateSummaryHistMap === "function") _invalidateSummaryHistMap();
+  });
   // Reset BOOT in place so all references see the change.
-  if (BOOT) {
+  step("boot", () => {
+    if (!BOOT) return;
     if (Array.isArray(BOOT.records)) BOOT.records.length = 0;
     if (Array.isArray(BOOT.contig_data)) BOOT.contig_data.length = 0;
     if (Array.isArray(BOOT.run_metadata_records)) BOOT.run_metadata_records.length = 0;
@@ -166,71 +189,106 @@ function _emptyAllData() {
       });
     }
     BOOT.has_prot = false;
-  }
+    BOOT.has_novelty = false;
+  });
   // Empty PROT in place, keep the same key set so the rest of the code
   // that does `PROT.per_gene_hits` etc. still finds an array.
-  Object.keys(PROT || {}).forEach((k) => {
-    if (Array.isArray(PROT[k])) PROT[k].length = 0;
+  step("proteins", () => {
+    Object.keys(PROT || {}).forEach((k) => {
+      if (Array.isArray(PROT[k])) PROT[k].length = 0;
+    });
+    HAS_PROT = false;
+    const protBtn = document.getElementById("prot-tab-btn");
+    if (protBtn) protBtn.classList.add("hidden");
   });
-  HAS_PROT = false;
-  const protBtn = document.getElementById("prot-tab-btn");
-  if (protBtn) protBtn.classList.add("hidden");
   // Drop accumulated upload state so the next drop is a clean start.
-  if (window._clearUploadBuffers) window._clearUploadBuffers();
-  samples.forEach((id) => {
-    delete sampleColors[id];
-    delete sampleHidden[id];
-    delete sampleRescale[id];
+  step("upload-buffers", () => {
+    if (window._clearUploadBuffers) window._clearUploadBuffers();
   });
-  _sampleOrder = [];
-  if (typeof SPECIMEN_OVERRIDE !== "undefined") {
-    Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
-  }
-  if (typeof SPECIMEN_META_RESOLVED !== "undefined") {
-    Object.keys(SPECIMEN_META_RESOLVED).forEach((k) => delete SPECIMEN_META_RESOLVED[k]);
-  }
-  // Clear SAMPLE_META so % classified resets to N/A with no data
-  Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
-  if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
+  step("per-sample-state", () => {
+    samples.forEach((id) => {
+      delete sampleColors[id];
+      delete sampleHidden[id];
+      delete sampleRescale[id];
+    });
+    _sampleOrder = [];
+    if (typeof SPECIMEN_OVERRIDE !== "undefined") {
+      Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
+    }
+    if (typeof SPECIMEN_META_RESOLVED !== "undefined") {
+      Object.keys(SPECIMEN_META_RESOLVED).forEach((k) => delete SPECIMEN_META_RESOLVED[k]);
+    }
+  });
+  // Clear SAMPLE_META so % classified resets to N/A with no data. This is also
+  // what the Detections table reads to synthesize its "no passing detections
+  // for this sample" indicator rows, so a sample left here comes back as a row
+  // even when it owns no data at all.
+  step("sample-meta", () => {
+    Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
+    if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
+  });
   // Watchlist / follow-up chips are keyed by organism+sample, so they would
   // otherwise keep pointing at rows that no longer exist.
-  try {
+  step("watchlist", () => {
     if (typeof watchlist !== "undefined" && watchlist && watchlist.clear) watchlist.clear();
     if (typeof watchFilterMode !== "undefined") watchFilterMode = "all";
     if (typeof _updateWatchPanel === "function") _updateWatchPanel();
-  } catch (e) {}
+  });
   // Row annotations reference deleted rows; drop the data but keep the arrays
   // so the column-picker UI still has something to read.
-  try {
+  step("annotations", () => {
     if (typeof TT_ANNOT !== "undefined" && TT_ANNOT) {
       TT_ANNOT.rowData = {};
       if (BOOT && BOOT.annotations) BOOT.annotations = { rowCols: [], rowData: {}, metaCols: [], hiddenCols: [] };
     }
-  } catch (e) {}
-  if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
-  buildSampleList();
-  buildTable();
-  _rebuildMapMarkers();
+  });
+  step("filter-cache", () => {
+    if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
+  });
+
+  /* Safety net: whatever the steps above may have missed, _allSampleIds() is
+           the single source of truth for the sidebar and the indicator rows. If
+           anything still answers to it, fall back to the per-sample delete path
+           (which prunes every store for one id) so the report cannot be left in
+           a half-emptied state. */
+  step("sweep-leftovers", () => {
+    const left = Array.from(_allSampleIds()).filter(Boolean);
+    left.forEach((id) => {
+      try {
+        _deleteSampleData(id);
+      } catch (e) {}
+    });
+  });
+
+  // Rebuild — these run last and must run even if a teardown step above threw.
+  step("sample-list", () => buildSampleList());
+  step("table", () => buildTable());
+  step("map", () => _rebuildMapMarkers());
   // RUN_META was emptied above — rebuild the Metadata & Mapping tab and
   // re-evaluate its sub-tabs, otherwise the old grid stays on screen.
-  try {
+  step("run-meta", () => {
     if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
     if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
     if (window.metaGrouping && typeof window.metaGrouping.refresh === "function") window.metaGrouping.refresh();
     if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
-  } catch (e) {}
+  });
   // The specimen-merge bar counts groups from data that is now gone.
-  try {
+  step("specimen-merge", () => {
     if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
       window.specimenMerge.refreshBar();
     }
-  } catch (e) {}
+  });
   // Hide the histogram tab again (it was shown when contigs existed)
-  const histBtn = document.getElementById("hist-tab-btn");
-  if (histBtn) histBtn.classList.add("hidden");
-  if (window._resetHistSelectors) window._resetHistSelectors();
-  document.getElementById("banner-sub").textContent = _buildBannerSub();
-  redraw();
+  step("histogram", () => {
+    const histBtn = document.getElementById("hist-tab-btn");
+    if (histBtn) histBtn.classList.add("hidden");
+    if (window._resetHistSelectors) window._resetHistSelectors();
+  });
+  step("banner", () => {
+    const bs = document.getElementById("banner-sub");
+    if (bs) bs.textContent = _buildBannerSub();
+  });
+  step("redraw", () => redraw());
 }
 window._emptyAllData = _emptyAllData;
 

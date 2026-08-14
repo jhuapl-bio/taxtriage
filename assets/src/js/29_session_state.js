@@ -457,25 +457,31 @@
       if (e.target === ov) close();
     });
 
-    /* Empty the report. The dialog is dismissed FIRST and the teardown runs in
-             a microtask, so a throw anywhere inside the (large) redraw chain can
-             never leave the modal stuck on screen — the old ordering was
-             `_ttApplyBoot(); close();`, which is exactly how that happened. */
+    /* Empty the report. The dialog is dismissed FIRST so a throw anywhere in
+             the (large) teardown + redraw chain can never leave the modal stuck
+             on screen — the old ordering was `_ttApplyBoot(); close();`, which is
+             exactly how that happened.
+
+             Everything runs SYNCHRONOUSLY inside the click handler on purpose.
+             Deferring it (even by setTimeout 0) drops the browser's transient
+             user activation, and without activation Chrome silently ignores the
+             programmatic file-input .click() at the end of the upload path —
+             which is why "Upload your own data…" appeared to do nothing. */
     function startEmpty(after) {
       close();
-      setTimeout(function () {
+      try {
+        if (typeof window._emptyAllData === "function") window._emptyAllData();
+        else _ttApplyBoot(_ttEmptyBoot());
+      } catch (err) {
+        if (window.console && console.error) console.error("Start empty failed:", err);
+      }
+      if (typeof after === "function") {
         try {
-          if (typeof window._emptyAllData === "function") window._emptyAllData();
-          else _ttApplyBoot(_ttEmptyBoot());
-        } catch (err) {
-          if (window.console && console.error) console.error("Start empty failed:", err);
+          after();
+        } catch (e) {
+          if (window.console && console.error) console.error("Start empty follow-up failed:", e);
         }
-        if (typeof after === "function") {
-          try {
-            after();
-          } catch (e) {}
-        }
-      }, 0);
+      }
     }
 
     var demoBtn = document.getElementById("tt-pages-demo");
@@ -494,11 +500,11 @@
         startEmpty(function () {
           var zone = document.getElementById("upload-zone");
           if (zone && zone.scrollIntoView) zone.scrollIntoView({ behavior: "smooth", block: "center" });
+          // Open the picker in the same task as the user's click. The previous
+          // 250ms setTimeout meant the call arrived without user activation and
+          // Chrome dropped it on the floor, so the button did nothing at all.
           var inp = document.getElementById("file-upload-input");
-          if (inp)
-            setTimeout(function () {
-              inp.click();
-            }, 250);
+          if (inp) inp.click();
         });
       });
     setTimeout(function () {
