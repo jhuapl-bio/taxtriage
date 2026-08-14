@@ -124,6 +124,19 @@ function removeAllSamples() {
     } and their data?\n\nThis cannot be undone.`,
   );
   if (!ok) return;
+  _emptyAllData();
+}
+
+/* ── Tear every data source down to an empty report ──────────────────────────
+         The unconditional half of removeAllSamples(): no confirm(), no
+         "nothing to do" early return, so it is safe to call when the report is
+         already empty. Also used by the GitHub-Pages startup dialog's
+         "Start empty" / "Upload your own data" buttons, which previously went
+         through _ttApplyBoot(_ttEmptyBoot()) — that path never touched NOVELTY,
+         NOVELTY_DL or the watchlist, so novelty-only samples survived in the
+         sidebar (_allSampleIds() treats NOVELTY.samples as authoritative). */
+function _emptyAllData() {
+  const samples = Array.from(_allSampleIds()).filter(Boolean);
   // Batch delete — clear EVERY data source, including BOOT and the
   // upload buffers. Without this, dropping a new JSON afterwards would
   // re-merge BOOT.records (and any previously-uploaded rows) on top of
@@ -179,9 +192,39 @@ function removeAllSamples() {
   // Clear SAMPLE_META so % classified resets to N/A with no data
   Object.keys(SAMPLE_META).forEach((k) => delete SAMPLE_META[k]);
   if (BOOT && BOOT.sample_meta) Object.keys(BOOT.sample_meta).forEach((k) => delete BOOT.sample_meta[k]);
+  // Watchlist / follow-up chips are keyed by organism+sample, so they would
+  // otherwise keep pointing at rows that no longer exist.
+  try {
+    if (typeof watchlist !== "undefined" && watchlist && watchlist.clear) watchlist.clear();
+    if (typeof watchFilterMode !== "undefined") watchFilterMode = "all";
+    if (typeof _updateWatchPanel === "function") _updateWatchPanel();
+  } catch (e) {}
+  // Row annotations reference deleted rows; drop the data but keep the arrays
+  // so the column-picker UI still has something to read.
+  try {
+    if (typeof TT_ANNOT !== "undefined" && TT_ANNOT) {
+      TT_ANNOT.rowData = {};
+      if (BOOT && BOOT.annotations) BOOT.annotations = { rowCols: [], rowData: {}, metaCols: [], hiddenCols: [] };
+    }
+  } catch (e) {}
+  if (typeof _invalidateFilterCache === "function") _invalidateFilterCache();
   buildSampleList();
   buildTable();
   _rebuildMapMarkers();
+  // RUN_META was emptied above — rebuild the Metadata & Mapping tab and
+  // re-evaluate its sub-tabs, otherwise the old grid stays on screen.
+  try {
+    if (typeof _buildRunMetaTable === "function") _buildRunMetaTable();
+    if (typeof _updateMetaSubTabStates === "function") _updateMetaSubTabStates();
+    if (window.metaGrouping && typeof window.metaGrouping.refresh === "function") window.metaGrouping.refresh();
+    if (typeof _mgSyncGroupBar === "function") _mgSyncGroupBar();
+  } catch (e) {}
+  // The specimen-merge bar counts groups from data that is now gone.
+  try {
+    if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
+      window.specimenMerge.refreshBar();
+    }
+  } catch (e) {}
   // Hide the histogram tab again (it was shown when contigs existed)
   const histBtn = document.getElementById("hist-tab-btn");
   if (histBtn) histBtn.classList.add("hidden");
@@ -189,6 +232,7 @@ function removeAllSamples() {
   document.getElementById("banner-sub").textContent = _buildBannerSub();
   redraw();
 }
+window._emptyAllData = _emptyAllData;
 
 /* ── Hide / show every sample at once.
          If any sample is currently visible, hide them all. Otherwise (all
