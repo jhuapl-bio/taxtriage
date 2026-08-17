@@ -258,10 +258,13 @@ workflow REPORT {
             // ── Combine all per-sample JSONs into a single all.samples.json ──────
             // Published to report/ so users can download one file and drag+drop
             // it onto any TaxTriage heatmap.html instead of individual JSONs.
+            // NOTE: the COMBINE_SAMPLES_JSON call itself lives further down, after
+            // the novelty and annotate channels are declared — the combined file
+            // embeds those feeds so one drag also populates the Novelty and
+            // VF/AMR tabs.
             ch_all_jsons_for_combine = all_alignment_outputs
                 .map { meta, json -> json }
                 .collect()
-            COMBINE_SAMPLES_JSON( ch_all_jsons_for_combine )
 
             // merge
             SINGLE_REPORT(
@@ -301,6 +304,10 @@ workflow REPORT {
             //    collide with another path input of CREATE_COMPARISON_REPORT; every other
             //    optional input there already follows this convention.
             ch_novelty_files = Channel.value(file("$projectDir/assets/NO_FILE_novelty"))
+            // Just the combined all.novelty.json, for embedding in all.odr.json.
+            // Distinct placeholder name so it cannot collide with the annotate
+            // reports staged alongside it in COMBINE_SAMPLES_JSON.
+            ch_novelty_combined = Channel.value(file("$projectDir/assets/NO_FILE_novelty_summaries"))
             if (params.novelty) {
                 // NOTE: summaries and candidates are TWO separate `path` inputs on
                 // NOVELTY_COLLECT, so they stage into the SAME work directory. They must
@@ -324,6 +331,7 @@ workflow REPORT {
                     .mix(NOVELTY_COLLECT.out.xlsx_files)
                     .flatten()
                     .collect()
+                ch_novelty_combined = NOVELTY_COLLECT.out.combined_json
             }
 
             // bvbrc specialty-gene reference TSV (source_id -> taxids) for VF/AMR pathogen
@@ -342,6 +350,16 @@ workflow REPORT {
                 .filter { f -> f && !f.name.startsWith('NO_FILE') }
                 .collect()
                 .ifEmpty { file("$projectDir/assets/NO_FILE_annotate_report") }
+
+            // ── Combined drag-and-drop JSON ──────────────────────────────────────
+            // Deferred to here (channels declared above) so all.odr.json can embed
+            // the novelty payload and the standalone VF/AMR annotations alongside
+            // the per-sample detections.
+            COMBINE_SAMPLES_JSON(
+                ch_all_jsons_for_combine,
+                ch_novelty_combined,
+                ch_annotate_report_files
+            )
 
             // ── Offline report libraries ─────────────────────────────────────────
             // --offline_report_files <dir> stages a directory of local CDN library

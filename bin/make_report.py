@@ -157,6 +157,14 @@ def parse_args(argv=None):
              "'metadata' (case-insensitive) if present, else the first sheet.",
     )
     parser.add_argument(
+        "--rename-samples", default=None, metavar="FILE",
+        help="Optional: a 2-column CSV/TSV/XLSX mapping original sample names (1st "
+             "column) to display names (2nd column). Applied after all data is loaded "
+             "-- every occurrence of a matched sample name (records, metadata, contig "
+             "data, protein/VF-AMR annotations, novelty) is renamed before the HTML is "
+             "written. A header row is auto-detected and skipped if present.",
+    )
+    parser.add_argument(
         "--vfamr-taxids", default=None, metavar="TSV",
         help="Optional: bvbrc specialty-gene reference TSV "
              "(assets/bvbrc_specialty_genes_with_sequences_taxids_and_sites.tsv). Used to recover "
@@ -293,6 +301,134 @@ def load_sample_metadata(paths, sample_meta, known_samples=None, add_unmatched=F
                 break
         groups.setdefault(spec or name, []).append(name)
     summary["specimens"] = sum(1 for members in groups.values() if len(members) > 1)
+    return summary
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sample rename map (CSV / TSV / XLSX) — original name -> display name
+# ──────────────────────────────────────────────────────────────────────────────
+_RENAME_HEADER_STRINGS = {
+    "old", "old_name", "original", "original_name", "sample", "sample_name",
+    "new", "new_name", "renamed", "rename", "display_name", "display",
+}
+
+
+def load_sample_rename_map(path):
+    """Read a 2-column CSV/TSV/XLSX into an {original_name: new_name} dict.
+
+    The first column is the sample name as it appears in the input JSON/TSV
+    (metadata.sample_name), the second is the desired display name. Extra
+    columns are ignored. A header row is auto-detected (either cell matching
+    a common header word) and skipped; otherwise every row is treated as data.
+    """
+    mapping = {}
+    if not path:
+        return mapping
+    p = path.strip()
+    if not p:
+        return mapping
+    if not os.path.isfile(p):
+        print(f"[make_report] WARNING: --rename-samples file not found: {p}", file=sys.stderr)
+        return mapping
+
+    ext = os.path.splitext(p)[1].lower()
+    try:
+        if ext in (".xlsx", ".xls", ".xlsm"):
+            df = pd.read_excel(p, dtype=str, header=None)
+        elif ext in (".tsv", ".tab"):
+            df = pd.read_csv(p, sep="\t", dtype=str, header=None)
+        else:
+            df = pd.read_csv(p, dtype=str, header=None)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[make_report] WARNING: cannot read --rename-samples file {p}: {exc}", file=sys.stderr)
+        return mapping
+
+    if df.shape[1] < 2:
+        print(f"[make_report] WARNING: --rename-samples file {p} needs at least 2 columns; ignoring.",
+              file=sys.stderr)
+        return mapping
+
+    df = df.iloc[:, :2]
+    df.columns = ["old", "new"]
+
+    # Skip an obvious header row.
+    if len(df) and (
+        str(df.iloc[0]["old"]).strip().lower() in _RENAME_HEADER_STRINGS
+        or str(df.iloc[0]["new"]).strip().lower() in _RENAME_HEADER_STRINGS
+    ):
+        df = df.iloc[1:]
+
+    for _, row in df.iterrows():
+        old = "" if row["old"] is None else str(row["old"]).strip()
+        new = "" if row["new"] is None else str(row["new"]).strip()
+        if not old or old.lower() in _META_NULL_STRINGS:
+            continue
+        if not new or new.lower() in _META_NULL_STRINGS:
+            continue
+        mapping[old] = new
+    return mapping
+
+
+def apply_sample_renames(rename_map, rows, sample_meta, contig_data, prot_data, novelty_data):
+    """Rename sample identifiers everywhere they appear, in place. Returns a summary dict."""
+    summary = {"applied": set(), "unmatched": []}
+    if not rename_map:
+        return {"applied": 0, "unmatched": []}
+
+    def _new(name):
+        if name in rename_map:
+            summary["applied"].add(name)
+            return rename_map[name]
+        return name
+
+    # Detection rows: "Specimen ID"
+    for r in rows:
+        old = r.get("Specimen ID")
+        if old in rename_map:
+            r["Specimen ID"] = _new(old)
+
+    # Per-sample metadata, keyed by sample name.
+    new_sample_meta = {}
+    for name, meta in sample_meta.items():
+        new_name = _new(name)
+        meta = dict(meta)
+        meta["sample_name"] = new_name
+        if new_name in new_sample_meta:
+            new_sample_meta[new_name].update(meta)
+        else:
+            new_sample_meta[new_name] = meta
+    sample_meta.clear()
+    sample_meta.update(new_sample_meta)
+
+    # Contig data: keys are "<sample>||<organism>||<taxon_id>", entries carry "sample".
+    new_contig_data = {}
+    for key, entry in contig_data.items():
+        old_sample = entry.get("sample", "")
+        new_sample = _new(old_sample)
+        entry = dict(entry)
+        entry["sample"] = new_sample
+        _, _, rest = key.partition("||")
+        new_key = f"{new_sample}||{rest}" if rest else new_sample
+        new_contig_data[new_key] = entry
+    contig_data.clear()
+    contig_data.update(new_contig_data)
+
+    # Protein/VF-AMR annotation rows carry "Specimen ID" (or occasionally "Sample").
+    for lst in prot_data.values():
+        for r in lst:
+            for field in ("Specimen ID", "Sample", "sample"):
+                if field in r and r[field] in rename_map:
+                    r[field] = _new(r[field])
+
+    # Novelty payload: {"samples": {<sample>: {...}}}.
+    if novelty_data and isinstance(novelty_data.get("samples"), dict):
+        new_samples = {}
+        for name, sdata in novelty_data["samples"].items():
+            new_samples[_new(name)] = sdata
+        novelty_data["samples"] = new_samples
+
+    summary["unmatched"] = [old for old in rename_map if old not in summary["applied"]]
+    summary["applied"] = len(summary["applied"])
     return summary
 
 
@@ -1322,6 +1458,26 @@ def main():
           f"{n_flagged} novelty candidate(s), {n_prot_flagged} VF/AMR row(s) flagged; "
           f"{len(source_taxids)} bvbrc source-id taxids)")
 
+    # ── optional sample rename map ────────────────────────────────────────────
+    # Applied last, after every data source (records, metadata, contig data,
+    # protein/VF-AMR annotations, novelty) has been loaded and merged, so a
+    # single rename touches all of them consistently before the HTML is built.
+    if args.rename_samples:
+        rename_map = load_sample_rename_map(args.rename_samples)
+        if rename_map:
+            rn_summary = apply_sample_renames(
+                rename_map, rows, sample_meta, contig_data, prot_data, novelty_data
+            )
+            print(f"[make_report] Sample rename: {len(rename_map)} mapping(s) loaded from "
+                  f"{args.rename_samples!r}; {rn_summary['applied']} applied")
+            if rn_summary["unmatched"]:
+                _u = rn_summary["unmatched"]
+                print(f"[make_report] WARNING: {len(_u)} rename entry(ies) matched no sample "
+                      f"in this run: {', '.join(_u[:5])}" + (" …" if len(_u) > 5 else ""),
+                      file=sys.stderr)
+        else:
+            print(f"[make_report] WARNING: --rename-samples {args.rename_samples!r} produced no "
+                  f"usable mappings", file=sys.stderr)
 
     # ── extract run-level metadata for map / metadata panel ──────────────────
     # These fields are part of the fixed pipeline/sample identity — not run metadata.
