@@ -502,7 +502,7 @@ function buildSampleList() {
     .filter((id) => !knownSet.has(id))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   _sampleOrder = _sampleOrder.filter((id) => rawSamples.includes(id));
-  _sampleOrder.push(...newOnes);
+  _ttPushAll(_sampleOrder, newOnes);
 
   const cont = document.getElementById("sample-list");
   if (!cont) return;

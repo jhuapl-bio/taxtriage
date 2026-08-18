@@ -420,7 +420,7 @@ function _addSampleMarkers() {
       markerRows.push(rec);
     });
   } else {
-    markerRows.push(...geoRows);
+    _ttPushAll(markerRows, geoRows);
   }
 
   const sampleNames = [...new Set(markerRows.map((r) => r.sample_name))];

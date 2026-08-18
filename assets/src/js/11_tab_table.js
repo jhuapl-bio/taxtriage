@@ -13,7 +13,7 @@ function _computeBslLevels() {
   const _parseBslMax = (str) => {
     if (!str) return 0;
     const nums = String(str).match(/BSL-(\d+)/gi);
-    return nums ? Math.max(...nums.map((s) => parseInt(s.replace(/\D/g, "")))) : 0;
+    return nums ? _ttMax(nums.map((s) => parseInt(s.replace(/\D/g, "")))) : 0;
   };
 
   // Build species → maxBSL and genus → maxBSL from protein annotation rows

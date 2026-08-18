@@ -1,3 +1,46 @@
+/* Append every element of `src` to `dst` without spreading.
+   `dst.push(...src)` passes one argument per element and every JS engine caps
+   the argument count (V8 ~125k), so a large src throws
+   "RangeError: Maximum call stack size exceeded". Pushing in chunks keeps the
+   argument list bounded regardless of how big the dataset gets. */
+function _ttPushAll(dst, src) {
+  if (!dst || !src || !src.length) return dst;
+  const CHUNK = 4096;
+  for (let i = 0; i < src.length; i += CHUNK) {
+    dst.push.apply(dst, src.slice(i, i + CHUNK));
+  }
+  return dst;
+}
+
+/* Array-safe Math.max / Math.min.
+   Spreading an array into Math.max passes one argument per element, and every
+   JS engine caps the argument count (V8 throws "RangeError: Maximum call stack
+   size exceeded" between ~50k and ~125k), which killed whole tabs on large
+   multi-sample reports. These fold instead of spreading, so no array size can
+   overflow the argument list.
+   Semantics deliberately mirror Math.max/Math.min: -Infinity / +Infinity for an
+   empty array, ToNumber coercion, and NaN propagation. */
+function _ttMax(arr) {
+  if (!arr) return -Infinity;
+  let m = -Infinity;
+  for (let i = 0; i < arr.length; i++) {
+    const v = Number(arr[i]);
+    if (Number.isNaN(v)) return NaN;
+    if (v > m) m = v;
+  }
+  return m;
+}
+function _ttMin(arr) {
+  if (!arr) return Infinity;
+  let m = Infinity;
+  for (let i = 0; i < arr.length; i++) {
+    const v = Number(arr[i]);
+    if (Number.isNaN(v)) return NaN;
+    if (v < m) m = v;
+  }
+  return m;
+}
+
 const BOOT = window.HEATMAP_BOOT || {};
 let DATA = BOOT.records || [];
 let ALL_COLS = (BOOT.all_cols || []).filter((c) => c !== "High ANI Matches" && c !== "ANI Annotated");

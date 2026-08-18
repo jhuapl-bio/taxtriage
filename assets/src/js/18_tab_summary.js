@@ -419,8 +419,8 @@ function drawSummary() {
       cutVal = _appliedVals[0].toFixed(1);
       cutSub = _kpiTypes.length === 1 ? _kpiTypes[0] : "all types";
     } else {
-      const _mn = Math.min(..._appliedVals),
-        _mx = Math.max(..._appliedVals);
+      const _mn = _ttMin(_appliedVals),
+        _mx = _ttMax(_appliedVals);
       cutVal = `${_mn.toFixed(0)}\u2013${_mx.toFixed(0)}`;
       cutSub = "by sample type";
     }

@@ -463,7 +463,7 @@ function _collapseSpecimens(rows) {
         const vals = contrib.filter((r) => r[c] !== undefined && r[c] !== null && r[c] !== "").map((r) => num(r[c]));
         if (!vals.length) return;
         merged[c] =
-          typeof _xsReduceMembers === "function" ? _xsReduceMembers(vals, _aggMethod, _memberTotal) : Math.max(...vals);
+          typeof _xsReduceMembers === "function" ? _xsReduceMembers(vals, _aggMethod, _memberTotal) : _ttMax(vals);
       });
     }
     const activeMembers = specimenMembers.filter((s) => !sampleHidden[s]);
@@ -1930,7 +1930,7 @@ function _pdfKpiCards() {
       cutVal = vals[0].toFixed(1);
       cutSub = cut.items.length === 1 ? cut.items[0].type : "all types";
     } else {
-      cutVal = `${Math.min(...vals).toFixed(0)}–${Math.max(...vals).toFixed(0)}`;
+      cutVal = `${_ttMin(vals).toFixed(0)}–${_ttMax(vals).toFixed(0)}`;
       cutSub = "by sample type";
     }
   } else {

@@ -103,7 +103,7 @@ function _openCompareModalForRows(pinnedRows) {
 
   // Summary row: highest TASS per organism
   const maxTass = pinnedRows.map((r) => parseFloat(r["TASS Score"]) || 0);
-  const maxIdx = maxTass.indexOf(Math.max(...maxTass));
+  const maxIdx = maxTass.indexOf(_ttMax(maxTass));
 
   const body = document.getElementById("compare-body");
   body.innerHTML =

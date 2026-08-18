@@ -476,7 +476,7 @@ function _buildComparison() {
     const enr = _cmpEnrichment(pf);
     const maxAbs = Math.max(
       1,
-      ...enr.taxa.map((t) => Math.max(...pf.entries.map((e) => Math.abs(enr.matrix[e.id][t] || 0)))),
+      ...enr.taxa.map((t) => _ttMax(pf.entries.map((e) => Math.abs(enr.matrix[e.id][t] || 0)))),
     );
     const color = d3.scaleSequential(d3.interpolateRdBu).domain([maxAbs, -maxAbs]);
     if (desc)
@@ -499,7 +499,7 @@ function _buildComparison() {
     const topTaxa = [...pf.taxa].sort((a, b) => totals[b] - totals[a]).slice(0, 30);
     const vmax = Math.max(
       1,
-      ...topTaxa.map((t) => Math.max(...pf.entries.map((e) => (pf.profile[e.id] && pf.profile[e.id][t]) || 0))),
+      ...topTaxa.map((t) => _ttMax(pf.entries.map((e) => (pf.profile[e.id] && pf.profile[e.id][t]) || 0))),
     );
     const color = d3.scaleSequential(d3.interpolateYlGnBu).domain([0, vmax]);
     const isInt = pf.value === "presence";

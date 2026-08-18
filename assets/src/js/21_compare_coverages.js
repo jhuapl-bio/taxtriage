@@ -165,7 +165,7 @@ function _covMedian(arr) {
 // Aggregate a list of equal-length (or varied) numeric arrays element-wise.
 function _covAggArr(arrays, stat) {
   if (!arrays.length) return [];
-  const L = Math.min(...arrays.map((a) => a.length));
+  const L = _ttMin(arrays.map((a) => a.length));
   const out = [];
   for (let i = 0; i < L; i++) {
     const col = arrays.map((a) => a[i] || 0);
@@ -662,7 +662,7 @@ function _covDrawDiff(host, vis) {
     .map((nm) => {
       const its = byOrg.get(nm).filter((it) => it.profile && it.profile.length);
       if (!its.length) return null;
-      const L = Math.min(...its.map((it) => it.profile.length));
+      const L = _ttMin(its.map((it) => it.profile.length));
       const vals = [];
       for (let i = 0; i < L; i++) vals.push(its.reduce((s, it) => s + it.profile[i], 0) / its.length);
       return { label: nm, color: C.orgColor.get(nm), vals };
@@ -710,9 +710,9 @@ function _covStats() {
     const avgBr = br.reduce((s, v) => s + v, 0) / br.length;
     summary = `<div style="font-size:.8em;color:#555;margin:.3em 0 .5em">${
       vis.length
-    } sample(s) shown · mean breadth ${avgBr.toFixed(1)}% · spread ${Math.min(...br).toFixed(0)}–${Math.max(
-      ...br,
-    ).toFixed(0)}%</div>`;
+    } sample(s) shown · mean breadth ${avgBr.toFixed(1)}% · spread ${_ttMin(br).toFixed(0)}–${_ttMax(br).toFixed(
+      0,
+    )}%</div>`;
   }
 
   // ── Aggregate summary (mean / median across the shown samples) ──
@@ -754,9 +754,9 @@ function _covStats() {
           `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${aggOf(
             ms.map((x) => x.mean),
           ).toFixed(1)}×</td>` +
-          `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${Math.min(...brs).toFixed(
-            0,
-          )}–${Math.max(...brs).toFixed(0)}%</td>` +
+          `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${_ttMin(brs).toFixed(0)}–${_ttMax(
+            brs,
+          ).toFixed(0)}%</td>` +
           `</tr>`
         );
       })
@@ -1381,12 +1381,12 @@ function _xsRenderPCA(rows, agg) {
     ys = pca.proj.map((p) => p[1]);
   const x = d3
     .scaleLinear()
-    .domain([Math.min(...xs), Math.max(...xs)])
+    .domain([_ttMin(xs), _ttMax(xs)])
     .nice()
     .range([pad, W - pad]);
   const y = d3
     .scaleLinear()
-    .domain([Math.min(...ys), Math.max(...ys)])
+    .domain([_ttMin(ys), _ttMax(ys)])
     .nice()
     .range([H - pad, pad]);
   const types = uniq(samples.map((s) => (SAMPLE_META[s] || {}).sample_type || "unknown"));
@@ -2367,7 +2367,7 @@ function _drawNoveltySummary() {
   const colMax = {};
   _NOV_SUMMARY_COLS.forEach(([k]) => {
     const vals = names.map((s) => +((samples[s] || {}).summary || {})[k]).filter(isFinite);
-    colMax[k] = vals.length ? Math.max(...vals) : 1;
+    colMax[k] = vals.length ? _ttMax(vals) : 1;
   });
   head.innerHTML = "<tr>" + _NOV_SUMMARY_COLS.map(([, lbl]) => `<th>${_novEsc(lbl)}</th>`).join("") + "</tr>";
   body.innerHTML = names
@@ -2421,8 +2421,8 @@ function _drawNoveltySummary() {
     if (!vals.length) return;
     const sorted = [...vals].sort((a, b) => b - a); // descending for rank
     colStats[k] = {
-      min: Math.min(...vals),
-      max: Math.max(...vals),
+      min: _ttMin(vals),
+      max: _ttMax(vals),
       mean: vals.reduce((a, b) => a + b, 0) / vals.length,
       sorted,
       nSamples: vals.length,
@@ -3194,8 +3194,8 @@ function _drawNoveltyScoreChart() {
       rank: [...data].sort((a, b) => b.score - a.score).findIndex((x) => x.name === d.name) + 1,
       nSamples: data.length,
       mean: data.reduce((a, b) => a + b.score, 0) / data.length,
-      min: Math.min(...data.map((x) => x.score)),
-      max: Math.max(...data.map((x) => x.score)),
+      min: _ttMin(data.map((x) => x.score)),
+      max: _ttMax(data.map((x) => x.score)),
     };
     _novShowCellTip(
       ev,

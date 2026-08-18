@@ -36,12 +36,12 @@ function _xsReduceMembers(vals, method, total) {
     case "mean":
       return _xsMean(vals);
     case "min":
-      return Math.min(...vals);
+      return _ttMin(vals);
     case "detection":
       return total ? (vals.length / total) * 100 : 0;
     case "max":
     default:
-      return Math.max(...vals);
+      return _ttMax(vals);
   }
 }
 function _xsQuart(a, q) {
@@ -256,12 +256,12 @@ function _xsAggregate(fd) {
       detPct: _totalSpecimens ? Math.min(100, (_detCount / _totalSpecimens) * 100) : 0,
       meanTass: _xsMean(tass),
       medianTass: _xsMed(tass),
-      maxTass: tass.length ? Math.max(...tass) : 0,
-      minTass: tass.length ? Math.min(...tass) : 0,
+      maxTass: tass.length ? _ttMax(tass) : 0,
+      minTass: tass.length ? _ttMin(tass) : 0,
       meanCov: _xsMean(cov),
       medianCov: _xsMed(cov),
-      maxCov: cov.length ? Math.max(...cov) : 0,
-      minCov: cov.length ? Math.min(...cov) : 0,
+      maxCov: cov.length ? _ttMax(cov) : 0,
+      minCov: cov.length ? _ttMin(cov) : 0,
       reads: e.reads,
       tassVals: tass,
       covVals: cov,
@@ -760,8 +760,8 @@ function _cmpRenderMatrix(orgs, metrics, agg, grpColors) {
     colMax = {};
   metrics.forEach((m) => {
     const vals = orgs.map((o) => +o[m.key] || 0);
-    colMin[m.key] = Math.min(...vals);
-    colMax[m.key] = Math.max(...vals);
+    colMin[m.key] = _ttMin(vals);
+    colMax[m.key] = _ttMax(vals);
   });
   const color = d3.scaleSequential(d3.interpolateBlues);
   // Metrics on a fixed 0–100 scale — when their column has no spread (e.g. every
@@ -860,8 +860,8 @@ function _cmpRenderParallel(orgs, metrics, agg, grpColors) {
   const scales = {};
   metrics.forEach((m) => {
     const vals = orgs.map((o) => +o[m.key] || 0);
-    const lo = Math.min(...vals),
-      hi = Math.max(...vals);
+    const lo = _ttMin(vals),
+      hi = _ttMax(vals);
     scales[m.key] = d3
       .scaleLinear()
       .domain(lo === hi ? [lo - 1, hi + 1] : [lo, hi])

@@ -619,7 +619,7 @@
         }
         const fNBins = filteredBins.length;
         const avgPct = fNBins ? (filteredBins.reduce((a, b) => a + b, 0) / fNBins).toFixed(1) : 0;
-        const maxBin = fNBins ? Math.max(...filteredBins).toFixed(1) : 0;
+        const maxBin = fNBins ? _ttMax(filteredBins).toFixed(1) : 0;
 
         // If histSelectedContig is no longer in top-N, clear it
         if (histSelectedContig && filteredContigNames.length && !filteredContigNames.includes(histSelectedContig)) {

@@ -711,11 +711,11 @@
               });
               for (const sample of data.samples) {
                 const r = _parseJson(sample, file.name);
-                merged.rows.push(...(r.rows || []));
-                merged.contigs.push(...(r.contigs || []));
+                _ttPushAll(merged.rows, r.rows || []);
+                _ttPushAll(merged.contigs, r.contigs || []);
                 if (r.prot_data) {
                   _PROT_KEYS_LOCAL.forEach((k) => {
-                    if (r.prot_data[k] && r.prot_data[k].length) merged.prot_data[k].push(...r.prot_data[k]);
+                    if (r.prot_data[k] && r.prot_data[k].length) _ttPushAll(merged.prot_data[k], r.prot_data[k]);
                   });
                 }
                 if (r.sampleName && r.meta) {
@@ -738,7 +738,7 @@
               if (data.prot_data && typeof data.prot_data === "object") {
                 _PROT_KEYS_LOCAL.forEach((k) => {
                   const rows = data.prot_data[k];
-                  if (Array.isArray(rows) && rows.length) merged.prot_data[k].push(...rows);
+                  if (Array.isArray(rows) && rows.length) _ttPushAll(merged.prot_data[k], rows);
                 });
               }
               resolve(merged);
@@ -844,11 +844,12 @@
     for (const file of fileArr) {
       try {
         const result = await _processFile(file);
-        _uploadedRows.push(...(result.rows || []));
-        _uploadedContigs.push(...(result.contigs || []));
+        _ttPushAll(_uploadedRows, result.rows || []);
+        _ttPushAll(_uploadedContigs, result.contigs || []);
         if (result.prot_data) {
           _PROT_KEYS.forEach((k) => {
-            if (result.prot_data[k] && result.prot_data[k].length) _uploadedProtData[k].push(...result.prot_data[k]);
+            if (result.prot_data[k] && result.prot_data[k].length)
+              _ttPushAll(_uploadedProtData[k], result.prot_data[k]);
           });
         }
         // Protein-only annotation files have no detection rows or metadata
