@@ -85,6 +85,7 @@ function _deleteSampleData(id) {
   delete sampleColors[id];
   delete sampleHidden[id];
   delete sampleRescale[id];
+  _filterAutoHidden.delete(id);
   _sampleOrder = _sampleOrder.filter((s) => s !== id);
   if (typeof SPECIMEN_OVERRIDE !== "undefined") delete SPECIMEN_OVERRIDE[id];
   // Re-evaluate VF/AMR tab visibility after the prune
@@ -211,6 +212,7 @@ function _emptyAllData() {
       delete sampleHidden[id];
       delete sampleRescale[id];
     });
+    _filterAutoHidden.clear();
     _sampleOrder = [];
     if (typeof SPECIMEN_OVERRIDE !== "undefined") {
       Object.keys(SPECIMEN_OVERRIDE).forEach((k) => delete SPECIMEN_OVERRIDE[k]);
@@ -304,6 +306,9 @@ function toggleAllSamples() {
   const next = anyVisible; // true = hide all; false = show all
   samples.forEach((id) => {
     sampleHidden[id] = next;
+    // Bulk action is an explicit user override — the search-filter toggle
+    // no longer "owns" these samples' visibility.
+    _filterAutoHidden.delete(id);
   });
   buildSampleList();
   _syncToggleAllSamplesBtn();
@@ -380,19 +385,80 @@ const _LOW_READ_THRESHOLD = 1000; // total reads below this == "few reads"
 let _sampleListPage = 0;
 let _sampleListPageIds = [];
 
+// True when the current sample-list search box holds text that doesn't
+// compile as a regex (e.g. an unclosed "(" mid-typing). Set by
+// _sampleListFilteredOrder(); read by _updateSampleListTools() to surface a
+// hint next to the match count, mirroring the "incomplete pattern" flag
+// the organism search (filter-text) already shows.
+let _sampleListSearchInvalid = false;
+
 function _sampleListFilteredOrder() {
   const input = document.getElementById("sample-list-search");
-  const q = String((input && input.value) || "")
-    .trim()
-    .toLowerCase();
-  if (!q) return _sampleOrder.slice();
+  const raw = String((input && input.value) || "").trim();
+  _sampleListSearchInvalid = false;
+  if (!raw) return _sampleOrder.slice();
+  // Same convention as the organism search box: the query is a regex,
+  // case-insensitive, so "A|B" matches either A or B, "^ctrl" anchors, etc.
+  // An incomplete/invalid pattern (mid-typing) falls back to a plain
+  // substring match rather than showing zero results.
+  let rx = null;
+  try {
+    rx = new RegExp(raw, "i");
+  } catch (e) {
+    rx = null;
+    _sampleListSearchInvalid = true;
+  }
+  const q = raw.toLowerCase();
   return _sampleOrder.filter((id) => {
     const specimen =
       typeof specimenMergeEnabled !== "undefined" && specimenMergeEnabled && typeof specimenOf === "function"
         ? specimenOf(id)
         : "";
+    if (rx) return rx.test(id) || (specimen && rx.test(specimen));
     return id.toLowerCase().includes(q) || (specimen && specimen.toLowerCase().includes(q));
   });
+}
+
+/* ── Auto-hide samples that don't match the sidebar search ─────────────────
+         Applies (or reverts) the effect of the "Hide filtered-out samples"
+         toggle. `matchedIds` is the set of sample ids the current search
+         query matches (pre-pagination). Only touches sampleHidden for ids
+         WE previously auto-hid (tracked in _filterAutoHidden) — a sample the
+         user hid manually via the eye icon is left alone either way.
+         Returns true if it changed any visibility, so the caller knows
+         whether a redraw() is needed. */
+function _applyFilterAutoHide(matchedIds) {
+  const searchInput = document.getElementById("sample-list-search");
+  const q = String((searchInput && searchInput.value) || "").trim();
+  const active = _sampleListHideNonMatches && q.length > 0;
+  const matchedSet = new Set(matchedIds);
+  let changed = false;
+  if (active) {
+    _sampleOrder.forEach((id) => {
+      if (!matchedSet.has(id)) {
+        if (!sampleHidden[id]) {
+          sampleHidden[id] = true;
+          _filterAutoHidden.add(id);
+          changed = true;
+        }
+      } else if (_filterAutoHidden.has(id)) {
+        // Matches again (query changed) — restore it, but only because we
+        // were the one who hid it.
+        sampleHidden[id] = false;
+        _filterAutoHidden.delete(id);
+        changed = true;
+      }
+    });
+  } else if (_filterAutoHidden.size) {
+    // Toggle switched off, or the search box was cleared — give back
+    // visibility to everything we auto-hid.
+    _filterAutoHidden.forEach((id) => {
+      sampleHidden[id] = false;
+    });
+    _filterAutoHidden.clear();
+    changed = true;
+  }
+  return changed;
 }
 
 function _wireSampleListTools() {
@@ -400,6 +466,17 @@ function _wireSampleListTools() {
   const size = document.getElementById("sample-list-page-size");
   const prev = document.getElementById("sample-list-prev");
   const next = document.getElementById("sample-list-next");
+  const hideToggle = document.getElementById("sample-list-hide-nonmatch");
+  if (hideToggle && !hideToggle._wired) {
+    hideToggle._wired = true;
+    hideToggle.checked = _sampleListHideNonMatches;
+    hideToggle.addEventListener("change", () => {
+      _sampleListHideNonMatches = hideToggle.checked;
+      buildSampleList();
+      _syncToggleAllSamplesBtn();
+      redraw();
+    });
+  }
   if (search && !search._wired) {
     search._wired = true;
     search.addEventListener("input", () => {
@@ -453,6 +530,7 @@ function _updateSampleListTools(filteredCount, totalCount, pages) {
       filteredCount === totalCount
         ? `${start}–${end} of ${totalCount} samples`
         : `${start}–${end} of ${filteredCount} matches · ${totalCount} total`;
+    if (_sampleListSearchInvalid) match.textContent += " (incomplete pattern — using plain text match)";
   }
   if (prev) {
     prev.disabled = _sampleListPage <= 0;
@@ -509,6 +587,10 @@ function buildSampleList() {
   cont.innerHTML = "";
   _wireSampleListTools();
   const filteredOrder = _sampleListFilteredOrder();
+  // Apply the "hide filtered-out samples" toggle before paginating/rendering
+  // so the eye icons drawn below reflect the up-to-date hidden state, and so
+  // charts elsewhere pick up the change on the redraw() this triggers.
+  const _hideToggleChanged = _applyFilterAutoHide(filteredOrder);
   const pageSize = parseInt((document.getElementById("sample-list-page-size") || {}).value, 10) || 25;
   const pages = Math.max(1, Math.ceil(filteredOrder.length / pageSize));
   _sampleListPage = Math.max(0, Math.min(_sampleListPage, pages - 1));
@@ -639,6 +721,10 @@ function buildSampleList() {
     btn.appendChild(icon);
     btn.addEventListener("click", () => {
       sampleHidden[id] = !sampleHidden[id];
+      // The user is now explicitly deciding this sample's visibility, so
+      // stop treating it as something the search-filter toggle owns —
+      // otherwise clearing the search box would silently flip it back.
+      _filterAutoHidden.delete(id);
       icon.className = `fas ${sampleHidden[id] ? "fa-eye-slash" : "fa-eye"}`;
       btn.style.opacity = sampleHidden[id] ? "0.35" : "1";
       _syncToggleAllSamplesBtn();
@@ -750,6 +836,11 @@ function buildSampleList() {
   if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
     window.specimenMerge.refreshBar();
   }
+  // The auto-hide toggle just changed sampleHidden for one or more samples —
+  // push that out to the charts/tables. redraw() is safe to call here even
+  // though buildSampleList() is itself sometimes called FROM redraw()'s
+  // callers, because this only fires when visibility actually changed.
+  if (_hideToggleChanged && typeof redraw === "function") redraw();
 }
 
 /** Rebuild the sidebar legend: sample color swatches + active TASS cutoffs.

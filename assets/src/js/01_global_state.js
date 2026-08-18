@@ -11,6 +11,16 @@ const perTypeTass = {}; // per-sample-type TASS override: { "stool": 65, "blood"
 const _loadingSampleIds = new Set(); // samples currently ingesting an attached file (drives the per-row spinner)
 let _sampleOrder = []; // custom display order for samples (index → id)
 
+/* ── Sample-list search → auto-hide toggle ─────────────────────────────────
+       When _sampleListHideNonMatches is on and the sidebar search box has a
+       query, samples that don't match the search get sampleHidden[id] = true
+       so they also disappear from the charts/tables, not just the list.
+       _filterAutoHidden tracks which ids WE hid for this reason (as opposed
+       to ones the user hid manually via the eye icon) so clearing the search
+       or the toggle can restore exactly those, and nothing else. */
+let _sampleListHideNonMatches = true;
+const _filterAutoHidden = new Set();
+
 /* ── Specimen grouping (merge DNA/RNA libraries of one specimen) ──────────
        A "specimen" groups one or more samples (e.g. a separate DNA and RNA
        library from the same swab) into a single biological unit. The grouping

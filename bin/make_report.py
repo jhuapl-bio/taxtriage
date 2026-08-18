@@ -113,6 +113,17 @@ def parse_args(argv=None):
         help="Output HTML file.",
     )
     parser.add_argument(
+        "-x", "--output_xlsx",
+        metavar="XLSX", default=None,
+        help="Optional: also write the merged data to this XLSX path. NOTE: this is "
+             "NOT what -p/--protein_annotations does -- that flag takes XLSX INPUT "
+             "file(s) to read, it does not produce output. Writes a 'Detections' "
+             "sheet (same rows/columns as the HTML report's table), a 'Metadata' "
+             "sheet when --metadata was loaded, and 'Genus Summary' / 'Per-Gene "
+             "Hits' / 'Sample Overview' / 'AMR Genes' sheets when "
+             "--protein_annotations / --annotate_reports were loaded.",
+    )
+    parser.add_argument(
         "-mc", "--microbial_category", nargs="+",
         default=["all"],
         metavar="CAT",
@@ -1664,6 +1675,42 @@ def main():
         fh.write(html)
 
     print(f"[make_report] Written: {args.output}")
+
+    # ── optional combined XLSX export ─────────────────────────────────────────
+    # Separate from --protein_annotations (-p), which is XLSX *input*. This is
+    # the only flag that makes make_report.py *write* an XLSX file.
+    if args.output_xlsx:
+        def _sheet_df(records, cols=None):
+            if not records:
+                return pd.DataFrame(columns=cols or [])
+            df = pd.DataFrame(records)
+            if cols:
+                # Keep report column order; include any extra keys at the end.
+                extra = [c for c in df.columns if c not in cols]
+                df = df.reindex(columns=list(cols) + extra)
+            return df
+
+        _xlsx_sheets = [("Detections", _sheet_df(rows, all_cols))]
+        if run_metadata_records:
+            _xlsx_sheets.append(("Metadata", _sheet_df(run_metadata_records)))
+        if has_prot:
+            for _key, _sheet_name in (
+                ("genus_summary",   "Genus Summary"),
+                ("per_gene_hits",   "Per-Gene Hits"),
+                ("sample_overview", "Sample Overview"),
+                ("amr_genes",       "AMR Genes"),
+            ):
+                _recs = prot_data.get(_key, [])
+                if _recs:
+                    _xlsx_sheets.append((_sheet_name, _sheet_df(_recs)))
+
+        with pd.ExcelWriter(args.output_xlsx, engine="openpyxl") as writer:
+            for _sheet_name, _df in _xlsx_sheets:
+                # Excel sheet names are capped at 31 characters.
+                _df.to_excel(writer, sheet_name=_sheet_name[:31], index=False)
+
+        print(f"[make_report] Written: {args.output_xlsx} "
+              f"({len(_xlsx_sheets)} sheet(s): {', '.join(n for n, _ in _xlsx_sheets)})")
 
 
 def _is_numeric_str(s):

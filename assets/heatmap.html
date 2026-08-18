@@ -3533,8 +3533,9 @@
               <input
                 id="sample-list-search"
                 type="search"
-                placeholder="Search samples…"
-                aria-label="Search samples in the right panel"
+                placeholder="Search samples… (regex, e.g. A|B)"
+                title="Matches as a case-insensitive regex — e.g. sampleA|sampleB, or ^ctrl"
+                aria-label="Search samples in the right panel (supports regex, e.g. A|B)"
                 style="
                   box-sizing: border-box;
                   width: 100%;
@@ -3567,6 +3568,23 @@
               <option value="100">100</option>
             </select>
           </div>
+          <label
+            for="sample-list-hide-nonmatch"
+            title="When you type a search above, also hide (from charts &amp; tables) every sample that doesn't match — not just from this list"
+            style="
+              display: flex;
+              align-items: center;
+              gap: 0.35em;
+              flex: 1 0 100%;
+              font-size: 0.68em;
+              color: #607d8b;
+              cursor: pointer;
+              user-select: none;
+            "
+          >
+            <input id="sample-list-hide-nonmatch" type="checkbox" checked style="margin: 0; cursor: pointer" />
+            Hide samples that don't match search
+          </label>
           <div style="display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto">
             <button
               id="sample-list-prev"
