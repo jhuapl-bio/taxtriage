@@ -494,7 +494,12 @@ function _refreshMapMarkerColors() {
     window._mgRenderLegend("map-group-legend", { onPick: _mgMapFitVisible });
   }
   // Recompute cluster bubbles (counts / membership may have changed)
-  if (typeof _markerLayer.refreshClusters === "function") _markerLayer.refreshClusters();
+  if (typeof _markerLayer.refreshClusters === "function") {
+    const liveMarkers = Object.values(_markerObjects)
+      .map((obj) => obj && obj.marker)
+      .filter((marker) => marker && _markerLayer.hasLayer(marker));
+    if (liveMarkers.length) _markerLayer.refreshClusters(liveMarkers);
+  }
   // The picker annotates rows with "not in filter"; keep that in step.
   const _pk = document.getElementById("map-sample-picker");
   if (_pk && _pk.open) _mapRenderSampleList();
@@ -576,7 +581,8 @@ function _doInitMap() {
   // Cluster-click behaviour + its toggle control (only when clustering is on).
   if (typeof _markerLayer.on === "function" && typeof L.markerClusterGroup === "function") {
     _markerLayer.on("clusterclick", (a) => {
-      const cluster = a.layer;
+      const cluster = a && a.layer;
+      if (!cluster || typeof cluster.getAllChildMarkers !== "function") return;
       if (_mapClusterMode === "list") {
         // Open the panel listing every sample in the cluster.
         const recs = cluster
