@@ -3,10 +3,8 @@
 [![DOI](https://img.shields.io/badge/doi-10.1093/bioinformatics/btag119-blue)](https://doi.org/10.1093/bioinformatics/btag119)
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 
-
-[![Docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/) 
+[![Docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![Singularity](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
-
 
 ## About TaxTriage
 
@@ -18,23 +16,23 @@ The final analysis output is an **Organism Discovery Report (ODR)** — a single
 
 ## Quick Navigation
 
-| Section | Description |
-|---|---|
-| [Installation](installation.md) | Install Nextflow, Docker, and Singularity |
-| [Quick Start](quick-start.md) | Run your first test pipeline in minutes |
-| [Samplesheet](samplesheet.md) | Format and prepare your input samplesheet |
-| [Running the Pipeline](running-the-pipeline.md) | Commands, profiles, and execution modes |
-| [CLI Parameters](cli-parameters.md) | Full reference for all pipeline parameters |
-| [Pipeline Modules](pipeline-modules.md) | Step-by-step breakdown of the workflow |
-| [Output](output.md) | Understanding output files and directories |
-| [TASS Scoring](tass-scoring.md) | How the confidence score is calculated |
+| Section                                         | Description                                                                        |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [Installation](installation.md)                 | Install Nextflow, Docker, and Singularity                                          |
+| [Quick Start](quick-start.md)                   | Run your first test pipeline in minutes                                            |
+| [Samplesheet](samplesheet.md)                   | Format and prepare your input samplesheet                                          |
+| [Running the Pipeline](running-the-pipeline.md) | Commands, profiles, and execution modes                                            |
+| [CLI Parameters](cli-parameters.md)             | Full reference for all pipeline parameters                                         |
+| [Pipeline Modules](pipeline-modules.md)         | Step-by-step breakdown of the workflow                                             |
+| [Output](output.md)                             | Understanding output files and directories                                         |
+| [TASS Scoring](tass-scoring.md)                 | How the confidence score is calculated                                             |
 | [Microbial Categories](microbial-categories.md) | Primary, Opportunistic, Potential, Commensal — what they mean and how to read them |
-| [In-Silico Simulation](in-silico.md) | Simulated read validation |
-| [Cloud & Seqera](cloud-and-seqera.md) | Running on AWS with Nextflow Tower / Seqera |
-| [Geneious Plugin](geneious-plugin.md) | Geneious Prime integration |
-| [Troubleshooting](troubleshooting.md) | FAQ and common errors |
-| [Contributing](contributing.md) | How to contribute to TaxTriage |
-| [Citations](citations.md) | Tools and publications to cite |
+| [In-Silico Simulation](in-silico.md)            | Simulated read validation                                                          |
+| [Cloud & Seqera](cloud-and-seqera.md)           | Running on AWS with Nextflow Tower / Seqera                                        |
+| [Geneious Plugin](geneious-plugin.md)           | Geneious Prime integration                                                         |
+| [Troubleshooting](troubleshooting.md)           | FAQ and common errors                                                              |
+| [Contributing](contributing.md)                 | How to contribute to TaxTriage                                                     |
+| [Citations](citations.md)                       | Tools and publications to cite                                                     |
 
 ---
 

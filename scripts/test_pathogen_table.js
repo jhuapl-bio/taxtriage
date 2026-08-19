@@ -14,9 +14,7 @@ const { JSDOM } = require("jsdom");
 const ROOT = path.resolve(__dirname, "..");
 // The page fetches this from raw.githubusercontent at runtime; for tests we
 // use a local checkout of the pipeline repo so the suite stays offline.
-const CSV =
-  process.env.PATHOGEN_CSV ||
-  path.resolve(ROOT, "..", "taxtriage", "assets", "pathogen_sheet.csv");
+const CSV = process.env.PATHOGEN_CSV || path.resolve(ROOT, "..", "taxtriage", "assets", "pathogen_sheet.csv");
 const SCRIPT = path.join(ROOT, "docs", "javascripts", "pathogen_table.js");
 
 let failures = 0;
@@ -42,20 +40,33 @@ const csvText = fs.readFileSync(CSV, "utf8");
 // test, so a parser bug cannot make the assertions agree with themselves.
 function refParse(text) {
   const out = [];
-  let row = [], field = "", q = false;
+  let row = [],
+    field = "",
+    q = false;
   text = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (q) {
-      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
-      else if (c === '"') q = false;
+      if (c === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (c === '"') q = false;
       else field += c;
     } else if (c === '"') q = true;
-    else if (c === ",") { row.push(field); field = ""; }
-    else if (c === "\n") { row.push(field); field = ""; if (row.length > 1 || row[0] !== "") out.push(row); row = []; }
-    else field += c;
+    else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      field = "";
+      if (row.length > 1 || row[0] !== "") out.push(row);
+      row = [];
+    } else field += c;
   }
-  if (field !== "" || row.length) { row.push(field); if (row.length > 1 || row[0] !== "") out.push(row); }
+  if (field !== "" || row.length) {
+    row.push(field);
+    if (row.length > 1 || row[0] !== "") out.push(row);
+  }
   return { cols: out[0].map((h) => h.trim()), rows: out.slice(1) };
 }
 
@@ -63,17 +74,23 @@ const parsed = refParse(csvText);
 const col = (n) => parsed.cols.indexOf(n);
 const payload = {
   cols: parsed.cols,
-  rows: parsed.rows.map((cells) =>
-    parsed.cols.map((c, i) => {
-      const v = (cells[i] || "").trim();
-      if (["pathogenic_sites", "commensal_sites", "alternative_names"].includes(c))
-        return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
-      if (c === "high_consequence") return v.toUpperCase() === "TRUE";
-      if (c === "status")
-        return { estbalished: "established", etsablished: "established" }[v] || v;
-      return v;
-    })
-  ).filter((r) => r[parsed.cols.indexOf("name")]),
+  rows: parsed.rows
+    .map((cells) =>
+      parsed.cols.map((c, i) => {
+        const v = (cells[i] || "").trim();
+        if (["pathogenic_sites", "commensal_sites", "alternative_names"].includes(c))
+          return v
+            ? v
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [];
+        if (c === "high_consequence") return v.toUpperCase() === "TRUE";
+        if (c === "status") return { estbalished: "established", etsablished: "established" }[v] || v;
+        return v;
+      }),
+    )
+    .filter((r) => r[parsed.cols.indexOf("name")]),
 };
 
 /* ── ground truth computed independently from the raw payload ─────────── */
@@ -83,21 +100,19 @@ const truth = {
   primary: payload.rows.filter((r) => r[col("general_classification")] === "primary").length,
   highConsequence: payload.rows.filter((r) => r[col("high_consequence")] === true).length,
   bloodSite: payload.rows.filter((r) => r[col("pathogenic_sites")].includes("blood")).length,
-  rnaPrimary: payload.rows.filter(
-    (r) => r[col("mol_type")] === "rna" && r[col("general_classification")] === "primary"
-  ).length,
-  primaryOrCommensal: payload.rows.filter((r) =>
-    ["primary", "commensal"].includes(r[col("general_classification")])
-  ).length,
+  rnaPrimary: payload.rows.filter((r) => r[col("mol_type")] === "rna" && r[col("general_classification")] === "primary")
+    .length,
+  primaryOrCommensal: payload.rows.filter((r) => ["primary", "commensal"].includes(r[col("general_classification")]))
+    .length,
   established: payload.rows.filter((r) => r[col("status")] === "established").length,
 };
 
 async function mount(text, opts) {
   opts = opts || {};
-  const dom = new JSDOM(
-    `<!doctype html><html><body><div class="pt-app" id="pathogen-app"></div></body></html>`,
-    { url: "https://example.org/pathogen-sheet/", runScripts: "outside-only" }
-  );
+  const dom = new JSDOM(`<!doctype html><html><body><div class="pt-app" id="pathogen-app"></div></body></html>`, {
+    url: "https://example.org/pathogen-sheet/",
+    runScripts: "outside-only",
+  });
   const { window } = dom;
   const fetched = [];
   if (opts.docsRef) window.TAXTRIAGE_DOCS = opts.docsRef;
@@ -118,15 +133,14 @@ async function mount(text, opts) {
 }
 
 async function main() {
-  const dom = new JSDOM(
-    `<!doctype html><html><body><div class="pt-app" id="pathogen-app"></div></body></html>`,
-    { url: "https://example.org/pathogen-sheet/", runScripts: "outside-only" }
-  );
+  const dom = new JSDOM(`<!doctype html><html><body><div class="pt-app" id="pathogen-app"></div></body></html>`, {
+    url: "https://example.org/pathogen-sheet/",
+    runScripts: "outside-only",
+  });
   const { window } = dom;
 
   // Minimal shims for the browser APIs the widget touches.
-  window.fetch = () =>
-    Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(csvText) });
+  window.fetch = () => Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(csvText) });
   const downloads = [];
   window.URL.createObjectURL = (blob) => {
     downloads.push(blob);
@@ -144,7 +158,13 @@ async function main() {
   const $$ = (s) => Array.from(doc.querySelectorAll(s));
 
   const countText = () => $(".pt-count").textContent;
-  const shownTotal = () => parseInt(countText().replace(/,/g, "").match(/(\d+) of/)[1], 10);
+  const shownTotal = () =>
+    parseInt(
+      countText()
+        .replace(/,/g, "")
+        .match(/(\d+) of/)[1],
+      10,
+    );
   const bodyRows = () => $$(".pt-table tbody tr[data-name]").length;
 
   const fire = (el, type) => el.dispatchEvent(new window.Event(type, { bubbles: true }));
@@ -196,7 +216,7 @@ async function main() {
   eq(
     "excluding-self count unchanged by own selection",
     optionCount("general_classification", "primary"),
-    truth.primary
+    truth.primary,
   );
   reset();
 
@@ -207,7 +227,7 @@ async function main() {
   eq(
     "cross-facet count narrows",
     optionCount("mol_type", "rna"),
-    payload.rows.filter((r) => r[col("general_classification")] === "primary" && r[col("mol_type")] === "rna").length
+    payload.rows.filter((r) => r[col("general_classification")] === "primary" && r[col("mol_type")] === "rna").length,
   );
   reset();
   eq("reset restores everything", shownTotal(), truth.total);
@@ -220,14 +240,26 @@ async function main() {
   console.log("\nsearch");
   await search("mycobacterium");
   const mycoExpected = payload.rows.filter((r) =>
-    ["name", "alternative_names", "taxid", "genus", "family", "order", "class", "phylum", "kingdom", "pathology", "assembly_accession"]
+    [
+      "name",
+      "alternative_names",
+      "taxid",
+      "genus",
+      "family",
+      "order",
+      "class",
+      "phylum",
+      "kingdom",
+      "pathology",
+      "assembly_accession",
+    ]
       .map((c) => {
         const v = r[col(c)];
         return Array.isArray(v) ? v.join(", ") : String(v == null ? "" : v);
       })
       .join(" ")
       .toLowerCase()
-      .includes("mycobacterium")
+      .includes("mycobacterium"),
   ).length;
   eq("free-text search", shownTotal(), mycoExpected);
   ok("matches are highlighted", $$(".pt-mark").length > 0);
@@ -235,7 +267,19 @@ async function main() {
   console.log("\nsearch + facet compose");
   toggle("general_classification", "primary");
   const both = payload.rows.filter((r) => {
-    const blob = ["name", "alternative_names", "taxid", "genus", "family", "order", "class", "phylum", "kingdom", "pathology", "assembly_accession"]
+    const blob = [
+      "name",
+      "alternative_names",
+      "taxid",
+      "genus",
+      "family",
+      "order",
+      "class",
+      "phylum",
+      "kingdom",
+      "pathology",
+      "assembly_accession",
+    ]
       .map((c) => {
         const v = r[col(c)];
         return Array.isArray(v) ? v.join(", ") : String(v == null ? "" : v);
@@ -254,27 +298,23 @@ async function main() {
   ok("class starts disabled", $('.pt-tax select[data-rank="class"]').disabled);
   phylumSel.value = "Bacillota";
   fire(phylumSel, "change");
-  eq(
-    "phylum filter applied",
-    shownTotal(),
-    payload.rows.filter((r) => r[col("phylum")] === "Bacillota").length
-  );
+  eq("phylum filter applied", shownTotal(), payload.rows.filter((r) => r[col("phylum")] === "Bacillota").length);
   ok("class now enabled", !$('.pt-tax select[data-rank="class"]').disabled);
   const classSel = $('.pt-tax select[data-rank="class"]');
-  const classOpts = Array.from(classSel.options).slice(1).map((o) => o.value);
+  const classOpts = Array.from(classSel.options)
+    .slice(1)
+    .map((o) => o.value);
   ok(
     "class options constrained to phylum",
-    classOpts.every((c) =>
-      payload.rows.some((r) => r[col("phylum")] === "Bacillota" && r[col("class")] === c)
-    ),
-    classOpts.join(",")
+    classOpts.every((c) => payload.rows.some((r) => r[col("phylum")] === "Bacillota" && r[col("class")] === c)),
+    classOpts.join(","),
   );
   classSel.value = classOpts[0];
   fire(classSel, "change");
   eq(
     "class narrows further",
     shownTotal(),
-    payload.rows.filter((r) => r[col("phylum")] === "Bacillota" && r[col("class")] === classOpts[0]).length
+    payload.rows.filter((r) => r[col("phylum")] === "Bacillota" && r[col("class")] === classOpts[0]).length,
   );
   // Changing the parent must clear the child. Re-query first: every filter
   // change re-renders the facet rail, so earlier references are detached.
@@ -295,13 +335,11 @@ async function main() {
   eq("aria-sort reflects direction", nameTh.getAttribute("aria-sort"), "descending");
   const taxTh = $$(".pt-table thead th").find((t) => t.dataset.key === "taxid");
   taxTh.click();
-  const ids = $$(".pt-table tbody tr").map((tr) =>
-    Number(tr.children[1].textContent.trim())
-  );
+  const ids = $$(".pt-table tbody tr").map((tr) => Number(tr.children[1].textContent.trim()));
   ok(
     "taxid sorts numerically",
     ids.every((v, i) => i === 0 || ids[i - 1] <= v),
-    ids.slice(0, 5).join(",")
+    ids.slice(0, 5).join(","),
   );
 
   console.log("\npagination");
@@ -342,7 +380,6 @@ async function main() {
   eq("no matches", shownTotal(), 0);
   ok("empty message shown", $(".pt-table tbody .pt-empty") !== null);
 
-
   /* ── schema tolerance ──────────────────────────────────────────────────
    * The live sheet may not carry every column. A missing column must read as
    * blank and drop its facet, not break the page.
@@ -357,56 +394,49 @@ async function main() {
     const q = (v) => (/[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
     const reparsed = refParse(csvText);
     const noStatus =
-      drop(reparsed.cols).map(q).join(",") +
-      "\n" +
-      reparsed.rows.map((r) => drop(r).map(q).join(",")).join("\n");
+      drop(reparsed.cols).map(q).join(",") + "\n" + reparsed.rows.map((r) => drop(r).map(q).join(",")).join("\n");
 
     const w = await mount(noStatus);
     const d = w.document;
     const total = parseInt(
-      d.querySelector(".pt-count").textContent.replace(/,/g, "").match(/(\d+) of/)[1],
-      10
+      d
+        .querySelector(".pt-count")
+        .textContent.replace(/,/g, "")
+        .match(/(\d+) of/)[1],
+      10,
     );
     eq("all rows still load without `status`", total, truth.total);
-    ok(
-      "status facet is hidden",
-      !d.querySelector('.pt-facet[data-key="status"]'),
-      "facet still rendered"
-    );
+    ok("status facet is hidden", !d.querySelector('.pt-facet[data-key="status"]'), "facet still rendered");
     ok(
       "other facets still render",
       !!d.querySelector('.pt-facet[data-key="general_classification"]'),
-      "classification facet missing"
+      "classification facet missing",
     );
     const statusIdx = 3; // Organism, Tax ID, Class., Status
     const firstRowCells = d.querySelectorAll(".pt-table tbody tr td");
     eq("status cell renders blank", firstRowCells[statusIdx].textContent.trim(), "");
-    ok(
-      "table still has all 11 columns",
-      d.querySelectorAll(".pt-table thead th").length === 11
-    );
+    ok("table still has all 11 columns", d.querySelectorAll(".pt-table thead th").length === 11);
   }
 
   console.log("\nCSV parsing edge cases");
   {
     const tricky =
-      'name,taxid,general_classification,pathogenic_sites,reference\n' +
+      "name,taxid,general_classification,pathogenic_sites,reference\n" +
       '"Smith, John et al.",99,primary,"blood, gut","He said ""hello"", loudly"\n' +
       'Plain organism,100,commensal,skin,"line one\nline two"\n';
     const w = await mount(tricky);
     const d = w.document;
     const total = parseInt(
-      d.querySelector(".pt-count").textContent.replace(/,/g, "").match(/(\d+) of/)[1],
-      10
+      d
+        .querySelector(".pt-count")
+        .textContent.replace(/,/g, "")
+        .match(/(\d+) of/)[1],
+      10,
     );
     eq("two records despite embedded newline", total, 2);
-    const names = Array.from(d.querySelectorAll(".pt-table tbody tr .pt-name")).map((e) =>
-      e.textContent.trim()
-    );
+    const names = Array.from(d.querySelectorAll(".pt-table tbody tr .pt-name")).map((e) => e.textContent.trim());
     ok("comma inside quotes kept in one field", names.includes("Smith, John et al."), names.join(" | "));
-    const sitesCell = d.querySelectorAll(".pt-table tbody tr")[
-      names.indexOf("Smith, John et al.")
-    ].children[5];
+    const sitesCell = d.querySelectorAll(".pt-table tbody tr")[names.indexOf("Smith, John et al.")].children[5];
     eq("multi-value split on comma", sitesCell.textContent.trim(), "blood, gut");
   }
 
@@ -417,7 +447,6 @@ async function main() {
     ok("shows an error message", /Could not load/.test(html));
     ok("offers a direct GitHub link", /github\.com\/jhuapl-bio\/taxtriage/.test(html));
   }
-
 
   /* ── version pinning ───────────────────────────────────────────────────
    * Versioned docs must read the pathogen sheet from the ref that shipped with
@@ -430,11 +459,14 @@ async function main() {
     ok(
       "fetches from the pinned tag",
       url === "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/v3.3.8/assets/pathogen_sheet.csv",
-      url
+      url,
     );
     const total = parseInt(
-      w.document.querySelector(".pt-count").textContent.replace(/,/g, "").match(/(\d+) of/)[1],
-      10
+      w.document
+        .querySelector(".pt-count")
+        .textContent.replace(/,/g, "")
+        .match(/(\d+) of/)[1],
+      10,
     );
     eq("still loads normally when pinned", total, truth.total);
   }
@@ -443,7 +475,7 @@ async function main() {
     ok(
       "falls back to main when unpinned",
       w.__fetched[0] === "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/assets/pathogen_sheet.csv",
-      w.__fetched[0]
+      w.__fetched[0],
     );
   }
   {

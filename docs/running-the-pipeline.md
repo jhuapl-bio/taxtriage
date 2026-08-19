@@ -114,30 +114,30 @@ Profiles control resource allocation and container runtime. Multiple profiles ca
 
 ### Container Profiles
 
-| Profile | Description |
-|---|---|
-| `docker` | Use Docker for all containers |
+| Profile       | Description                        |
+| ------------- | ---------------------------------- |
+| `docker`      | Use Docker for all containers      |
 | `singularity` | Use Singularity for all containers |
 
 ### Execution Profiles
 
-| Profile | Description |
-|---|---|
-| `local` | Reduced resource limits for laptops/workstations |
-| `test` | Minimal test dataset (pulls from GitHub) |
-| `test_viral` | Test dataset with the viral Kraken2 database |
-| `mce` | Uses the pathogen FASTA sheet for alignment (no Kraken2) |
+| Profile      | Description                                              |
+| ------------ | -------------------------------------------------------- |
+| `local`      | Reduced resource limits for laptops/workstations         |
+| `test`       | Minimal test dataset (pulls from GitHub)                 |
+| `test_viral` | Test dataset with the viral Kraken2 database             |
+| `mce`        | Uses the pathogen FASTA sheet for alignment (no Kraken2) |
 
 ---
 
 ## Key Execution Flags
 
-| Flag | Description |
-|---|---|
-| `-resume` | Resume from the last successful step (uses Nextflow's cache) |
-| `-latest` | Pull the latest commit from the specified branch |
+| Flag      | Description                                                        |
+| --------- | ------------------------------------------------------------------ |
+| `-resume` | Resume from the last successful step (uses Nextflow's cache)       |
+| `-latest` | Pull the latest commit from the specified branch                   |
 | `-r main` | Use the `main` branch (or `stable`, or a version tag like `1.3.1`) |
-| `-bg` | Run Nextflow in the background, detached from the terminal |
+| `-bg`     | Run Nextflow in the background, detached from the terminal         |
 
 ---
 
@@ -159,6 +159,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 ```
 
 Three files are required locally:
+
 1. A Kraken2 database directory (or use `--skip_kraken2` with a local FASTA)
 2. A reference FASTA file (`--reference_fasta`)
 3. An NCBI assembly summary text file (`--assembly`)

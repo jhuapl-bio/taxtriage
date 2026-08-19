@@ -4,7 +4,7 @@ TaxTriage can start from reads you have already aligned yourself, instead of fro
 
 This is the right entry point when you already have an alignment you trust, when you want to re-score an old run under different TASS weights without re-aligning, or when your alignment came from a tool or reference set TaxTriage would not have chosen on its own.
 
-> The one thing to get right is the reference. TaxTriage needs to know what your BAM was aligned *against*, and a BAM header does not carry that information in full. See [What TaxTriage needs the reference for](#what-taxtriage-needs-the-reference-for) below.
+> The one thing to get right is the reference. TaxTriage needs to know what your BAM was aligned _against_, and a BAM header does not carry that information in full. See [What TaxTriage needs the reference for](#what-taxtriage-needs-the-reference-for) below.
 
 ---
 
@@ -45,11 +45,11 @@ In a mixed sheet the FASTQ rows run the full pipeline as normal and only the pre
 
 ### Accepted formats
 
-| Extension | Handling |
-|---|---|
-| `.bam` | Used as-is |
-| `.sam` | Compressed to BAM first |
-| `.cram` | Decoded to BAM first. Needs a reference, see [CRAM](#cram) |
+| Extension | Handling                                                   |
+| --------- | ---------------------------------------------------------- |
+| `.bam`    | Used as-is                                                 |
+| `.sam`    | Compressed to BAM first                                    |
+| `.cram`   | Decoded to BAM first. Needs a reference, see [CRAM](#cram) |
 
 Your file does **not** need to be sorted or indexed beforehand. `PREPARE_BAM` reads the `@HD SO:` header tag and coordinate-sorts the file only if it is not already in coordinate order, then writes a `.csi` index. Both are required by `samtools coverage` and by the read-count indexing in `match_paths.py`.
 
@@ -97,15 +97,15 @@ sequence from the alignment (samtools consensus).
 
 The consensus is run with `-a`, so every reference stays at full length with uncovered positions written as `N`. That matters because the shared-window sketching slides fixed windows along these sequences and would otherwise be comparing mismatched coordinates. References whose consensus comes back almost entirely `N`, meaning nothing in the BAM header that no read actually supports, are dropped rather than passed on as empty sketches that would drag every ANI comparison toward zero.
 
-> ⚠️ **A consensus is not as good as the real reference, and it biases TASS in a specific direction.** It only covers positions that have aligned reads, so absent regions look like absent sequence rather than unsequenced sequence. More importantly, a multi-mapping read contributes to *every* reference it was placed on, which makes related organisms look more similar to each other than they are. Since the ANI and shared-window numbers drive conflict-based read removal, that inflated similarity makes removal **more aggressive** than it should be. Pass `--reference_fasta` whenever the true reference is available.
+> ⚠️ **A consensus is not as good as the real reference, and it biases TASS in a specific direction.** It only covers positions that have aligned reads, so absent regions look like absent sequence rather than unsequenced sequence. More importantly, a multi-mapping read contributes to _every_ reference it was placed on, which makes related organisms look more similar to each other than they are. Since the ANI and shared-window numbers drive conflict-based read removal, that inflated similarity makes removal **more aggressive** than it should be. Pass `--reference_fasta` whenever the true reference is available.
 
 ### Controlling it
 
-| Value | Behaviour |
-|---|---|
+| Value                             | Behaviour                                                                                             |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `--bam_consensus` unset (default) | Auto: consensus is derived only when a BAM sample has no `--reference_fasta` and no `--get_pathogens` |
-| `--bam_consensus true` | Always derive a consensus, even alongside a supplied reference |
-| `--bam_consensus false` | Never derive one |
+| `--bam_consensus true`            | Always derive a consensus, even alongside a supplied reference                                        |
+| `--bam_consensus false`           | Never derive one                                                                                      |
 
 Setting `--bam_consensus false` with no reference available is a valid choice, but it leaves the run with no bases at all, so sourmash/ANI comparison and conflict-based read removal are both disabled. TaxTriage warns you and suggests rebalancing:
 
@@ -119,12 +119,12 @@ Take that advice seriously. Minhash carries one of the three largest default wei
 
 ### Consensus tuning
 
-| Parameter | Default | Description |
-|---|---|---|
-| `--consensus_min_depth <int>` | `1` | `samtools consensus -d`: minimum read depth to call a base |
-| `--consensus_min_bases <int>` | `500` | Drop consensus records with fewer than this many non-`N` bases |
-| `--consensus_min_mapq <int>` | unset | `samtools consensus --min-MQ` |
-| `--consensus_mode <simple\|bayesian>` | `simple` | `samtools consensus -m` |
+| Parameter                             | Default  | Description                                                    |
+| ------------------------------------- | -------- | -------------------------------------------------------------- |
+| `--consensus_min_depth <int>`         | `1`      | `samtools consensus -d`: minimum read depth to call a base     |
+| `--consensus_min_bases <int>`         | `500`    | Drop consensus records with fewer than this many non-`N` bases |
+| `--consensus_min_mapq <int>`          | unset    | `samtools consensus --min-MQ`                                  |
+| `--consensus_mode <simple\|bayesian>` | `simple` | `samtools consensus -m`                                        |
 
 ---
 
@@ -154,17 +154,17 @@ If you do want a filter applied, set `--bam_minmapq <int>` and it is passed to `
 
 ## Parameter summary
 
-| Parameter | Description |
-|---|---|
-| `--bam <path>` | Pre-aligned `.bam`, `.cram` or `.sam`. Single-sample shortcut; the samplesheet equivalent is a `bam` column |
-| `--reference_fasta <path>` | The reference the alignment was made against. Strongly recommended |
-| `--bam_minmapq <int>` | Optional MAPQ filter on pre-aligned input. Unset means take the file as given |
-| `--cram_reference <path>` | Reference used to decode CRAM, when different from `--reference_fasta` |
-| `--bam_consensus <bool>` | Recover reference sequence from the alignment. Auto when no reference is supplied |
-| `--consensus_min_depth <int>` | Minimum depth to call a consensus base (default `1`) |
-| `--consensus_min_bases <int>` | Minimum non-`N` bases to keep a consensus record (default `500`) |
-| `--consensus_min_mapq <int>` | Minimum MAPQ for consensus calling |
-| `--consensus_mode <str>` | `simple` (default) or `bayesian` |
+| Parameter                     | Description                                                                                                 |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--bam <path>`                | Pre-aligned `.bam`, `.cram` or `.sam`. Single-sample shortcut; the samplesheet equivalent is a `bam` column |
+| `--reference_fasta <path>`    | The reference the alignment was made against. Strongly recommended                                          |
+| `--bam_minmapq <int>`         | Optional MAPQ filter on pre-aligned input. Unset means take the file as given                               |
+| `--cram_reference <path>`     | Reference used to decode CRAM, when different from `--reference_fasta`                                      |
+| `--bam_consensus <bool>`      | Recover reference sequence from the alignment. Auto when no reference is supplied                           |
+| `--consensus_min_depth <int>` | Minimum depth to call a consensus base (default `1`)                                                        |
+| `--consensus_min_bases <int>` | Minimum non-`N` bases to keep a consensus record (default `500`)                                            |
+| `--consensus_min_mapq <int>`  | Minimum MAPQ for consensus calling                                                                          |
+| `--consensus_mode <str>`      | `simple` (default) or `bayesian`                                                                            |
 
 ---
 

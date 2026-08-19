@@ -13,7 +13,7 @@ same artifact the pipeline writes to `multiqc/heatmap.html` at the end of a run.
 Nothing is uploaded and nothing is computed server-side; the whole report is a
 single self-contained HTML file carrying its own data.
 
-[Open in a new tab :material-open-in-new:](demo/index.html){ .md-button .md-button--primary target=_blank }
+[Open in a new tab :material-open-in-new:](demo/index.html){ .md-button .md-button--primary target=\_blank }
 [Read the report guide](interactive-report.md){ .md-button }
 
 <!-- Raw HTML is not path-rewritten by MkDocs the way Markdown links are, and
@@ -24,15 +24,15 @@ single self-contained HTML file carrying its own data.
 
 ## What you're looking at
 
-| Tab | Shows |
-|---|---|
-| **Summary** | Per-sample overview with the top-scoring organisms and QC flags |
-| **Heatmap** | Organism × sample matrix; switch the cell value between TASS, abundance, coverage and depth |
-| **TASS** | Score decomposition — how each component contributed to the final confidence |
-| **Coverage** | Per-reference coverage tracks with the conflict regions marked |
-| **Sunburst** | Taxonomic composition, drillable from kingdom down to species |
-| **Proteins / VF-AMR** | Virulence factor and antimicrobial resistance gene hits |
-| **Explore** | Free-form filtering across every metric in the run |
+| Tab                   | Shows                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| **Summary**           | Per-sample overview with the top-scoring organisms and QC flags                             |
+| **Heatmap**           | Organism × sample matrix; switch the cell value between TASS, abundance, coverage and depth |
+| **TASS**              | Score decomposition — how each component contributed to the final confidence                |
+| **Coverage**          | Per-reference coverage tracks with the conflict regions marked                              |
+| **Sunburst**          | Taxonomic composition, drillable from kingdom down to species                               |
+| **Proteins / VF-AMR** | Virulence factor and antimicrobial resistance gene hits                                     |
+| **Explore**           | Free-form filtering across every metric in the run                                          |
 
 Full documentation of each panel lives in [Interactive Report](interactive-report.md),
 and the scoring behind the heatmap values is described in [TASS Scoring](tass-scoring.md).

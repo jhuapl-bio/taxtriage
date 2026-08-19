@@ -10,11 +10,11 @@ pull requests, so docs and code review together.
 
 ## Versions
 
-| Version | Built from | Trigger |
-|---|---|---|
-| `3.3`, `3.2`, … | the release tag | publishing a GitHub Release |
-| `latest` | alias for the newest release | publishing a GitHub Release |
-| `bleeding-edge` | `main` | every push to `main` |
+| Version         | Built from                   | Trigger                     |
+| --------------- | ---------------------------- | --------------------------- |
+| `3.3`, `3.2`, … | the release tag              | publishing a GitHub Release |
+| `latest`        | alias for the newest release | publishing a GitHub Release |
+| `bleeding-edge` | `main`                       | every push to `main`        |
 
 Releasing `v3.3.9` publishes as **`3.3`**, overwriting `v3.3.8`'s docs. Patch
 releases update their minor series in place, so the version selector stays
@@ -33,17 +33,17 @@ and `main` without deploying, so breakage is caught in review.
 
 ## The three tabs
 
-| Tab | Source | Refreshes |
-|---|---|---|
-| Documentation | `docs/*.md` | on deploy |
-| Demo Report | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy |
-| Pathogen Sheet | `assets/pathogen_sheet.csv` | **on every page load** |
+| Tab            | Source                                                  | Refreshes              |
+| -------------- | ------------------------------------------------------- | ---------------------- |
+| Documentation  | `docs/*.md`                                             | on deploy              |
+| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              |
+| Pathogen Sheet | `assets/pathogen_sheet.csv`                             | **on every page load** |
 
 The demo dist and the pinned-ref file are generated at build time and
 gitignored (`docs/demo/`, `docs/javascripts/docs_ref.js`).
 
 The pathogen sheet is not bundled at all — the browser fetches it from GitHub
-when the page opens. `scripts/write_docs_ref.py` pins *which ref* it reads, so
+when the page opens. `scripts/write_docs_ref.py` pins _which ref_ it reads, so
 the 3.1 docs show the sheet that shipped with 3.1 and `bleeding-edge` shows
 `main`. That file is loaded before the table widget and sets
 `window.TAXTRIAGE_DOCS`.

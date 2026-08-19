@@ -1,6 +1,6 @@
 # Novelty Detection (Reference-Free / Open-Set)
 
-TaxTriage's closed-set core scores organisms against the references you pull into the run (see [TASS Scoring](tass-scoring.md)). But a sample almost always contains reads that align to **no** reference, either because the right genome was never in the panel or because the organism is too divergent to match one. The reads left over after alignment are called the **residual**, and the **novelty branch** characterises it. It tells you *how much* of the sample is unexplained and *what taxa* a reference-free translated search can still place, down to the genus-or-higher level.
+TaxTriage's closed-set core scores organisms against the references you pull into the run (see [TASS Scoring](tass-scoring.md)). But a sample almost always contains reads that align to **no** reference, either because the right genome was never in the panel or because the organism is too divergent to match one. The reads left over after alignment are called the **residual**, and the **novelty branch** characterises it. It tells you _how much_ of the sample is unexplained and _what taxa_ a reference-free translated search can still place, down to the genus-or-higher level.
 
 This is exactly the situation in a limited-reference or mock run, for example when you align only against EBV genomes but the sample contains many other genera. The closed-set table will be nearly empty, but the novelty branch (backed by a broad database such as Kalamari) recovers the higher-rank signal.
 
@@ -12,7 +12,7 @@ This is exactly the situation in a limited-reference or mock run, for example wh
 
 ![Novelty branch flow](images/svgs/novelty_flow.svg)
 
-The branch is **assembly-first with a pluggable backend** (`subworkflows/local/novelty.nf`). It classifies the **de novo assembly built from all post-QC reads**, which is the same set of contigs handed to the annotation branch, rather than only the unmapped residual. This means the search can report organisms that *did* align to a pulled reference (e.g. targeted Ebola) alongside anything novel. By default a Pyrodigal ORF-prediction step runs first and the backends classify the **predicted genes** (see [Gene mode](#gene-mode-default-on)); pass `--disable_gene` to classify the whole contigs directly instead.
+The branch is **assembly-first with a pluggable backend** (`subworkflows/local/novelty.nf`). It classifies the **de novo assembly built from all post-QC reads**, which is the same set of contigs handed to the annotation branch, rather than only the unmapped residual. This means the search can report organisms that _did_ align to a pulled reference (e.g. targeted Ebola) alongside anything novel. By default a Pyrodigal ORF-prediction step runs first and the backends classify the **predicted genes** (see [Gene mode](#gene-mode-default-on)); pass `--disable_gene` to classify the whole contigs directly instead.
 
 1. **Account for the reads.** `EXTRACT_UNMAPPED` computes the per-sample denominators the score needs: total, reference-aligned, reference-unaligned, and kraken2-classified counts. (It does not extract a read stream for taxonomy; the assembly is the query.)
 2. **Pick the query.** By default Pyrodigal-predicted genes from the de novo contigs are the query. With `--disable_gene`, the whole contigs are used instead. With `--microbert`, the shared MicrobeRT cluster representatives are used. Either way the query is nucleotide FASTA, so the same backends apply.
@@ -25,22 +25,22 @@ The collector `bin/novelty_collect.py` merges every sample's summary + candidate
 
 Choose with `--novelty` and point `--novelty_db` at the matching database. All three classify the de novo contigs:
 
-| `--novelty` | Tool & method | `--novelty_db` accepts | DB cache |
-|---|---|---|---|
-| `mmseqs2` | `MMSEQS_TAXONOMY`, a translated-search LCA (MMseqs extracts ORFs from the contigs internally). | MMseqs seqTaxDB **name** (e.g. `Kalamari`, `UniProtKB`) or a local seqTaxDB directory. | `--novelty_db_cache` (default `dbs/mmseqs`) |
-| `kaiju` | `KAIJU`, a protein-level translated search (self-translates the contigs). Run mode is `greedy` or `mem` via `--novelty_kaiju_mode`. | A kaiju index **alias** (`test`, `viruses`/`viral`, `nr`, `nr_euk`, `refseq`, `refseq_nr`, `refseq_ref`, `progenomes`, `fungi`, `plasmids`, `rvdb`), an exact `*.tgz`, a URL, or a local dir. | `--novelty_kaiju_db_cache` (default `dbs/kaiju`) |
-| `bracken` | `KRAKEN2_NOVELTY` → `BRACKEN`, meaning kraken2 over the contigs, then bracken re-estimates count-weighted abundance. | A kraken2/bracken index **alias** (`standard`/`standard_8gb`/`standard_16gb`, `viral`, `minusb`, `pluspf[_8gb\|_16gb]`, `pluspfp[_8gb\|_16gb]`, `core_nt`, `gtdb`, `eupathdb`, `ncbi_reference`; `k2_` prefix optional), an exact `*.tar.gz`, a URL, or a local dir. | `--novelty_kraken2_db_cache` (default `dbs/kraken2`) |
+| `--novelty` | Tool & method                                                                                                                       | `--novelty_db` accepts                                                                                                                                                                                                                                               | DB cache                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `mmseqs2`   | `MMSEQS_TAXONOMY`, a translated-search LCA (MMseqs extracts ORFs from the contigs internally).                                      | MMseqs seqTaxDB **name** (e.g. `Kalamari`, `UniProtKB`) or a local seqTaxDB directory.                                                                                                                                                                               | `--novelty_db_cache` (default `dbs/mmseqs`)          |
+| `kaiju`     | `KAIJU`, a protein-level translated search (self-translates the contigs). Run mode is `greedy` or `mem` via `--novelty_kaiju_mode`. | A kaiju index **alias** (`test`, `viruses`/`viral`, `nr`, `nr_euk`, `refseq`, `refseq_nr`, `refseq_ref`, `progenomes`, `fungi`, `plasmids`, `rvdb`), an exact `*.tgz`, a URL, or a local dir.                                                                        | `--novelty_kaiju_db_cache` (default `dbs/kaiju`)     |
+| `bracken`   | `KRAKEN2_NOVELTY` → `BRACKEN`, meaning kraken2 over the contigs, then bracken re-estimates count-weighted abundance.                | A kraken2/bracken index **alias** (`standard`/`standard_8gb`/`standard_16gb`, `viral`, `minusb`, `pluspf[_8gb\|_16gb]`, `pluspfp[_8gb\|_16gb]`, `core_nt`, `gtdb`, `eupathdb`, `ncbi_reference`; `k2_` prefix optional), an exact `*.tar.gz`, a URL, or a local dir. | `--novelty_kraken2_db_cache` (default `dbs/kraken2`) |
 
-Aliases are auto-downloaded from the configured buckets (`--novelty_kaiju_db_baseurl`, `--novelty_kraken2_db_baseurl`) into the per-backend `storeDir` cache so they persist and are reused across runs. The kaiju `test` alias is a tiny git-LFS-hosted index for CI and `-profile test`. It is *not* cached to `dbs/`; it lives in `work/` like any other test download. The bracken backend additionally honours `--novelty_bracken_readlen` (default `100`, the kmer-distribution read length) and `--novelty_bracken_level` (default `S` = species).
+Aliases are auto-downloaded from the configured buckets (`--novelty_kaiju_db_baseurl`, `--novelty_kraken2_db_baseurl`) into the per-backend `storeDir` cache so they persist and are reused across runs. The kaiju `test` alias is a tiny git-LFS-hosted index for CI and `-profile test`. It is _not_ cached to `dbs/`; it lives in `work/` like any other test download. The bracken backend additionally honours `--novelty_bracken_readlen` (default `100`, the kmer-distribution read length) and `--novelty_bracken_level` (default `S` = species).
 
 #### Kaiju run mode (`--novelty_kaiju_mode`)
 
 Kaiju can be run two ways, and the choice changes how divergent or conserved contigs resolve:
 
-| Mode | Kaiju flags | Behaviour |
-|---|---|---|
-| `greedy` *(default)* | `-a greedy -e 5` | Allows up to 5 substitutions and picks a nearest-neighbour match even on **divergent** contigs. More sensitive, and better at placing genuinely novel sequence, at the cost of occasional over-reach. |
-| `mem` | `-a mem` | Exact maximum-exact-matches only (no `-e`). Avoids long **conserved** contigs collapsing to a coarse genus-level LCA on tied protein matches. More conservative/precise. |
+| Mode                 | Kaiju flags      | Behaviour                                                                                                                                                                                             |
+| -------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `greedy` _(default)_ | `-a greedy -e 5` | Allows up to 5 substitutions and picks a nearest-neighbour match even on **divergent** contigs. More sensitive, and better at placing genuinely novel sequence, at the cost of occasional over-reach. |
+| `mem`                | `-a mem`         | Exact maximum-exact-matches only (no `-e`). Avoids long **conserved** contigs collapsing to a coarse genus-level LCA on tied protein matches. More conservative/precise.                              |
 
 If a run reports surprisingly coarse (genus-only) calls on contigs you expect to resolve to species, try `--novelty_kaiju_mode mem`; if novel contigs are going dark, `greedy` is the more sensitive choice.
 
@@ -56,11 +56,11 @@ By default Pyrodigal predicts ORFs on the contigs first and the predicted nucleo
 
 The summary score is a weighted sum of three z-scored signals (weights set by `--novelty_weights`, default `0.5,0.3,0.2`):
 
-| Signal | Meaning |
-|---|---|
-| `dark_fraction` | Reads explained by **nothing**: not kraken2-classified, not reference-aligned, not MMseqs-placed. The core "unknown" mass. |
+| Signal                   | Meaning                                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dark_fraction`          | Reads explained by **nothing**: not kraken2-classified, not reference-aligned, not MMseqs-placed. The core "unknown" mass.                      |
 | `highrank_only_fraction` | Reads MMseqs could place, but only at **genus or higher** (no species call). This is the hallmark of a divergent or missing-reference organism. |
-| `lowident_tail_mass` | Fraction of best hits below the amino-acid identity cutoff (`--novelty_idnt_cut`, default 50%). |
+| `lowident_tail_mass`     | Fraction of best hits below the amino-acid identity cutoff (`--novelty_idnt_cut`, default 50%).                                                 |
 
 A sample is **flagged** when the score crosses `--novelty_flag_z` (default 2.0, i.e. ~2σ above the run baseline).
 
@@ -86,10 +86,10 @@ The effect: a deep 117k-read Illumina sample keeps an effective cutoff of ~12 (a
 
 Each candidate row carries:
 
-| Column | Meaning |
-|---|---|
-| `reads` | Hit count at this taxon (ORF/contig units). |
-| `frac_of_sample` | Share of total sample reads (small for ORF-level counting; kept for continuity). |
+| Column             | Meaning                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reads`            | Hit count at this taxon (ORF/contig units).                                                                                                           |
+| `frac_of_sample`   | Share of total sample reads (small for ORF-level counting; kept for continuity).                                                                      |
 | `frac_of_highrank` | Share of all placeable genus+ hits. This is the honest "how dominant is this genus among what MMseqs placed" number that the comparison views key on. |
 
 ### Domain vs. superkingdom
@@ -112,13 +112,13 @@ A per-sample stacked bar that accounts for the whole sample across five **disjoi
 
 ![Method coverage](images/svgs/novelty_method_coverage.svg)
 
-| Bucket | Colour | Meaning |
-|---|---|---|
-| Aligned to reference (TASS) | blue | Reads that mapped to a pulled reference. This is the closed-set TASS basis. |
-| Kraken2-classified only | grey | Classified by kraken2 but not aligned and not MMseqs-placed (known taxon, no reference in the run). |
-| MMseqs → species | green | Residual reads/ORFs placed at species-or-finer. |
-| MMseqs → genus+ (rescued) | orange | Residual placed only above species. This is the rescue bucket the candidate table lists. |
-| Dark matter | near-black | Explained by nothing. |
+| Bucket                      | Colour     | Meaning                                                                                             |
+| --------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| Aligned to reference (TASS) | blue       | Reads that mapped to a pulled reference. This is the closed-set TASS basis.                         |
+| Kraken2-classified only     | grey       | Classified by kraken2 but not aligned and not MMseqs-placed (known taxon, no reference in the run). |
+| MMseqs → species            | green      | Residual reads/ORFs placed at species-or-finer.                                                     |
+| MMseqs → genus+ (rescued)   | orange     | Residual placed only above species. This is the rescue bucket the candidate table lists.            |
+| Dark matter                 | near-black | Explained by nothing.                                                                               |
 
 This is the direct answer to "what fraction was **hit** by alignment/TASS vs. what was **rescued** by MMseqs vs. what stayed dark." All samples render together so you can compare, e.g., an Illumina run against a Nanopore run side by side. Hover any segment for its exact percentage and read count.
 
@@ -130,9 +130,9 @@ A genus-by-genus cross-check joining the closed-set TASS rollup with the MMseqs 
 
 Each genus is tagged by where the evidence comes from:
 
-- **Both**: aligned to a reference *and* placed by MMseqs.
+- **Both**: aligned to a reference _and_ placed by MMseqs.
 - **Aligned only**: a reference hit, but MMseqs placed nothing there.
-- **Rescued (mmseqs)**: MMseqs found it but the reference set never aligned it. This is the limited-reference / mock case made explicit: e.g. *Monkeypox* at TASS 86 with 74% coverage on the left, versus its MMseqs placement share on the right.
+- **Rescued (mmseqs)**: MMseqs found it but the reference set never aligned it. This is the limited-reference / mock case made explicit: e.g. _Monkeypox_ at TASS 86 with 74% coverage on the left, versus its MMseqs placement share on the right.
 
 Sparkbars and hover tooltips appear throughout. A toggle in the tab switches between **Method coverage** and **Genus: TASS vs MMseqs**.
 
@@ -144,21 +144,21 @@ Whichever backend you pick, scoring is identical, so the artifacts read the same
 
 ### `novelty/<sample>.novelty.summary.tsv`: one row per sample
 
-| Column | How to read it |
-|---|---|
-| `sample` | Sample id. |
-| `classifier` | Backend that produced the row (`mmseqs2`, `kaiju`, or `bracken`). Report headers and tooltips track this name. |
-| `gene_mode` | `1` = Pyrodigal predicted-gene queries (the default), `0` = whole contigs were classified (`--disable_gene`). |
-| `total_reads` | Denominator for every fraction below. |
-| `dark_fraction` | Share of reads explained by **nothing** (not aligned, not kraken2-classified, not placed). High → genuine dark matter / missing reference. |
-| `highrank_only_fraction` | Share the backend could place, but only at **genus or higher**. The hallmark of a divergent or absent-reference organism. |
-| `lowident_tail_mass` | Share of best hits below `--novelty_idnt_cut`. High → weak, distant protein matches. |
-| `z_dark`, `z_highrank`, `z_lowident` | Each raw signal as a z-score against the run baseline. |
-| `novelty_score` | Weighted sum of the three z-scores (`--novelty_weights`). |
-| `novelty_flag` | `1` when `novelty_score` ≥ `--novelty_flag_z` (default 2.0). |
-| `ref_aligned`, `k2_classified`, `mmseqs_assigned` | Read/contig counts behind the method-coverage buckets. `mmseqs_assigned` is the backend's total placed count regardless of which tool ran. |
-| `mmseqs_assigned_species`, `mmseqs_assigned_highrank` | Of the placed count, how many resolved to species vs. genus+ only. |
-| `ref_aligned_frac`, `k2_frac`, `mmseqs_frac` | The same as fractions of `total_reads`. |
+| Column                                                | How to read it                                                                                                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sample`                                              | Sample id.                                                                                                                                 |
+| `classifier`                                          | Backend that produced the row (`mmseqs2`, `kaiju`, or `bracken`). Report headers and tooltips track this name.                             |
+| `gene_mode`                                           | `1` = Pyrodigal predicted-gene queries (the default), `0` = whole contigs were classified (`--disable_gene`).                              |
+| `total_reads`                                         | Denominator for every fraction below.                                                                                                      |
+| `dark_fraction`                                       | Share of reads explained by **nothing** (not aligned, not kraken2-classified, not placed). High → genuine dark matter / missing reference. |
+| `highrank_only_fraction`                              | Share the backend could place, but only at **genus or higher**. The hallmark of a divergent or absent-reference organism.                  |
+| `lowident_tail_mass`                                  | Share of best hits below `--novelty_idnt_cut`. High → weak, distant protein matches.                                                       |
+| `z_dark`, `z_highrank`, `z_lowident`                  | Each raw signal as a z-score against the run baseline.                                                                                     |
+| `novelty_score`                                       | Weighted sum of the three z-scores (`--novelty_weights`).                                                                                  |
+| `novelty_flag`                                        | `1` when `novelty_score` ≥ `--novelty_flag_z` (default 2.0).                                                                               |
+| `ref_aligned`, `k2_classified`, `mmseqs_assigned`     | Read/contig counts behind the method-coverage buckets. `mmseqs_assigned` is the backend's total placed count regardless of which tool ran. |
+| `mmseqs_assigned_species`, `mmseqs_assigned_highrank` | Of the placed count, how many resolved to species vs. genus+ only.                                                                         |
+| `ref_aligned_frac`, `k2_frac`, `mmseqs_frac`          | The same as fractions of `total_reads`.                                                                                                    |
 
 A useful first read: **a high `novelty_flag` with a high `highrank_only_fraction` and a populated candidate table = a real organism the reference panel missed.** A high flag driven mostly by `dark_fraction` with an empty candidate table = unplaceable dark matter, or simply too little residual depth (see Troubleshooting).
 
@@ -172,13 +172,13 @@ The taxa that cleared the candidate gate, each carrying `reads` (hit count in OR
 
 The Novelty tab links the raw artifacts, all written to `report/`:
 
-| File | Contents |
-|---|---|
-| `all.novelty.json` | Combined feed (all samples) the report is built from. |
-| `all.novelty.xlsx` | Combined workbook: Summary + Candidates sheets. |
-| `<sample>.novelty.json` / `.xlsx` | Per-sample summary + candidates. |
-| `novelty/<sample>.novelty.summary.tsv` | Per-sample score + read-accounting columns. |
-| `novelty/<sample>.novelty.candidates.tsv` | Per-sample genus+ candidate taxa. |
+| File                                      | Contents                                              |
+| ----------------------------------------- | ----------------------------------------------------- |
+| `all.novelty.json`                        | Combined feed (all samples) the report is built from. |
+| `all.novelty.xlsx`                        | Combined workbook: Summary + Candidates sheets.       |
+| `<sample>.novelty.json` / `.xlsx`         | Per-sample summary + candidates.                      |
+| `novelty/<sample>.novelty.summary.tsv`    | Per-sample score + read-accounting columns.           |
+| `novelty/<sample>.novelty.candidates.tsv` | Per-sample genus+ candidate taxa.                     |
 
 ---
 
@@ -186,24 +186,24 @@ The Novelty tab links the raw artifacts, all written to `report/`:
 
 See [CLI Parameters → Novelty Detection](cli-parameters.md#novelty-detection-reference-free--open-set) for the full table. The essentials:
 
-| Parameter | Default | Purpose |
-|---|---|---|
-| `--novelty` | `false` | Master switch **and** backend selector: `mmseqs2`, `kaiju`, or `bracken`. |
-| `--disable_gene` | `false` | Skip the default Pyrodigal step and classify the whole contigs instead of predicted genes. See [Gene mode](#gene-mode-default-on). |
-| `--novelty_db` | `Kalamari` | Database for the chosen backend, given as a name/alias (auto-downloaded) or a local path. See the [Backends](#backends) table for what each accepts. |
-| `--novelty_db_cache` | `dbs/mmseqs` | `storeDir` cache for the mmseqs2 download. |
-| `--novelty_kaiju_db_cache` | `dbs/kaiju` | `storeDir` cache for the kaiju download. |
-| `--novelty_kraken2_db_cache` | `dbs/kraken2` | `storeDir` cache for the bracken/kraken2 download. |
-| `--novelty_kaiju_db_baseurl` | kaiju S3 bucket | Index bucket kaiju aliases are fetched from. |
-| `--novelty_kraken2_db_baseurl` | genome-idx S3 bucket | Index bucket kraken2/bracken aliases are fetched from. |
-| `--novelty_kaiju_mode` | `greedy` | Kaiju run mode: `greedy` (sensitive) or `mem` (precise). See [Kaiju run mode](#kaiju-run-mode---novelty_kaiju_mode). |
-| `--use_denovo` | `false` | Build the de novo assembly the novelty branch classifies. |
-| `--novelty_weights` | `0.5,0.3,0.2` | `w_dark,w_rank,w_idnt` for the novelty score. |
-| `--novelty_flag_z` | `2.0` | Score threshold for flagging a sample. |
-| `--novelty_idnt_cut` | `50.0` | Amino-acid % identity below which a hit counts toward the low-identity tail (mmseqs2 pident). |
-| `--novelty_min_reads` | `2` | Candidate floor: min hits to report a taxon (contigs for kaiju/mmseqs2, reads for bracken). `1` disables the depth-scaled cutoff. |
-| `--novelty_bracken_readlen` | `100` | bracken `-r` read length (kmer distribution to use). |
-| `--novelty_bracken_level` | `S` | bracken `-l` rank level (S = species). |
+| Parameter                      | Default              | Purpose                                                                                                                                              |
+| ------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--novelty`                    | `false`              | Master switch **and** backend selector: `mmseqs2`, `kaiju`, or `bracken`.                                                                            |
+| `--disable_gene`               | `false`              | Skip the default Pyrodigal step and classify the whole contigs instead of predicted genes. See [Gene mode](#gene-mode-default-on).                   |
+| `--novelty_db`                 | `Kalamari`           | Database for the chosen backend, given as a name/alias (auto-downloaded) or a local path. See the [Backends](#backends) table for what each accepts. |
+| `--novelty_db_cache`           | `dbs/mmseqs`         | `storeDir` cache for the mmseqs2 download.                                                                                                           |
+| `--novelty_kaiju_db_cache`     | `dbs/kaiju`          | `storeDir` cache for the kaiju download.                                                                                                             |
+| `--novelty_kraken2_db_cache`   | `dbs/kraken2`        | `storeDir` cache for the bracken/kraken2 download.                                                                                                   |
+| `--novelty_kaiju_db_baseurl`   | kaiju S3 bucket      | Index bucket kaiju aliases are fetched from.                                                                                                         |
+| `--novelty_kraken2_db_baseurl` | genome-idx S3 bucket | Index bucket kraken2/bracken aliases are fetched from.                                                                                               |
+| `--novelty_kaiju_mode`         | `greedy`             | Kaiju run mode: `greedy` (sensitive) or `mem` (precise). See [Kaiju run mode](#kaiju-run-mode---novelty_kaiju_mode).                                 |
+| `--use_denovo`                 | `false`              | Build the de novo assembly the novelty branch classifies.                                                                                            |
+| `--novelty_weights`            | `0.5,0.3,0.2`        | `w_dark,w_rank,w_idnt` for the novelty score.                                                                                                        |
+| `--novelty_flag_z`             | `2.0`                | Score threshold for flagging a sample.                                                                                                               |
+| `--novelty_idnt_cut`           | `50.0`               | Amino-acid % identity below which a hit counts toward the low-identity tail (mmseqs2 pident).                                                        |
+| `--novelty_min_reads`          | `2`                  | Candidate floor: min hits to report a taxon (contigs for kaiju/mmseqs2, reads for bracken). `1` disables the depth-scaled cutoff.                    |
+| `--novelty_bracken_readlen`    | `100`                | bracken `-r` read length (kmer distribution to use).                                                                                                 |
+| `--novelty_bracken_level`      | `S`                  | bracken `-l` rank level (S = species).                                                                                                               |
 
 The lower bound of the candidate gate is the top-level `--novelty_min_reads` (passed straight through by the `NOVELTY_SCORE` module). The depth-scaling fraction (`--min-cand-frac`, default `0.002`) is a `novelty_score.py` default and is not exposed as a pipeline flag; the module forces it to `0` (disabling depth scaling) whenever `--novelty_min_reads ≤ 1`. To use a different fraction, edit the module/script. For very shallow residuals, prefer `--novelty_min_reads 1`.
 
@@ -238,4 +238,4 @@ Aligning only against EBV means the closed-set table is sparse, while the novelt
 
 ---
 
-*See also: [Interactive Report](interactive-report.md) · [TASS Scoring](tass-scoring.md) · [Output](output.md) · [CLI Parameters](cli-parameters.md)*
+_See also: [Interactive Report](interactive-report.md) · [TASS Scoring](tass-scoring.md) · [Output](output.md) · [CLI Parameters](cli-parameters.md)_

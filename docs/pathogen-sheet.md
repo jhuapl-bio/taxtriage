@@ -33,22 +33,22 @@ currently carry are left blank.
 
 ## Column reference
 
-| Column | Meaning |
-|---|---|
-| `name` | Organism name, matched against the taxonomic classification output |
-| `taxid` | NCBI Taxonomy identifier |
-| `general_classification` | `primary`, `opportunistic`, `potential`, or `commensal` — see [Microbial Categories](microbial-categories.md) |
-| `status` | `established` where the pathogen–site association is well documented, `putative` where it is suggested but not confirmed |
-| `high_consequence` | Flags organisms warranting immediate escalation regardless of abundance |
-| `pathogenic_sites` | Body sites where detection is considered clinically meaningful |
-| `commensal_sites` | Body sites where the organism is expected flora, which down-weights its score |
-| `alternative_names` | Synonyms and former names, also searched during matching |
-| `pathology` | Free-text disease association |
-| `host_organism` | Host the annotation applies to |
-| `kingdom` … `genus` | Lineage, used for genus-level rollups |
-| `mol_type` | `dna` or `rna`, which determines the alignment path |
-| `reference` | Literature supporting the annotation |
-| `assembly_accession` | Default reference assembly downloaded for alignment |
+| Column                   | Meaning                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `name`                   | Organism name, matched against the taxonomic classification output                                                       |
+| `taxid`                  | NCBI Taxonomy identifier                                                                                                 |
+| `general_classification` | `primary`, `opportunistic`, `potential`, or `commensal` — see [Microbial Categories](microbial-categories.md)            |
+| `status`                 | `established` where the pathogen–site association is well documented, `putative` where it is suggested but not confirmed |
+| `high_consequence`       | Flags organisms warranting immediate escalation regardless of abundance                                                  |
+| `pathogenic_sites`       | Body sites where detection is considered clinically meaningful                                                           |
+| `commensal_sites`        | Body sites where the organism is expected flora, which down-weights its score                                            |
+| `alternative_names`      | Synonyms and former names, also searched during matching                                                                 |
+| `pathology`              | Free-text disease association                                                                                            |
+| `host_organism`          | Host the annotation applies to                                                                                           |
+| `kingdom` … `genus`      | Lineage, used for genus-level rollups                                                                                    |
+| `mol_type`               | `dna` or `rna`, which determines the alignment path                                                                      |
+| `reference`              | Literature supporting the annotation                                                                                     |
+| `assembly_accession`     | Default reference assembly downloaded for alignment                                                                      |
 
 ## Contributing an organism
 

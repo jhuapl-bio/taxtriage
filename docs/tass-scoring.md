@@ -371,8 +371,8 @@ The pipeline inverts the classical Gini coefficient so that **uniform coverage �
 
 **Coverage distribution examples:**
 
-| Low Confidence (clumped) | Medium | High Confidence (uniform) |
-|:---:|:---:|:---:|
+|   Low Confidence (clumped)    |              Medium               |   High Confidence (uniform)   |
+| :---------------------------: | :-------------------------------: | :---------------------------: |
 | ![cv_0](images/svgs/cv_0.svg) | ![cv_0.5](images/svgs/cv_0.5.svg) | ![cv_1](images/svgs/cv_1.svg) |
 
 ### 6.2 Step-by-Step Computation
@@ -551,7 +551,7 @@ At the group (species/genus) levels the gate is the product of three factors, **
 \text{gate} = \text{depth\_conc\_penalty} \times \text{contig\_penalty} \times \text{breadth\_sigmoid}(c)
 ```
 
-Note that `breadth_sigmoid(c)` here uses the **same** $c$ as the breadth component, so an inflated group coverage does not just raise breadth. It simultaneously unlocks the minhash term, and the two are the two largest weights in the default profile. This coupling is why a single bad coverage value moves TASS so far; see [11.3](#113-size-eligibility-for-the-representative-coverage-maximum) for the guard and the worked *P. vivax* example.
+Note that `breadth_sigmoid(c)` here uses the **same** $c$ as the breadth component, so an inflated group coverage does not just raise breadth. It simultaneously unlocks the minhash term, and the two are the two largest weights in the default profile. This coupling is why a single bad coverage value moves TASS so far; see [11.3](#113-size-eligibility-for-the-representative-coverage-maximum) for the guard and the worked _P. vivax_ example.
 
 ### 7.4 Low-Read Penalty with Coverage Bypass
 
@@ -577,11 +577,11 @@ and `cov_conf = breadth_sigmoid(coverage)`.
 
 **Effect at different coverage levels (with mapq_norm = 0, i.e. low MAPQ):**
 
-| `cov_conf`          | $w_{\text{pen}}$ | Penalty at `rpm_weight=0.1` | Meaning                              |
-| ------------------- | ---------------- | --------------------------- | ------------------------------------ |
+| `cov_conf`          | $w_{\text{pen}}$ | Penalty at `rpm_weight=0.1` | Meaning                             |
+| ------------------- | ---------------- | --------------------------- | ----------------------------------- |
 | 0.95 (100% breadth) | 0.017            | ×0.998 (≈ none)             | Dominant organism, penalty bypassed |
-| 0.50 (moderate)     | 0.175            | ×0.843 (−16%)               | Moderate dampening                   |
-| 0.10 (sparse)       | 0.315            | ×0.717 (−28%)               | Full penalty applies                 |
+| 0.50 (moderate)     | 0.175            | ×0.843 (−16%)               | Moderate dampening                  |
+| 0.10 (sparse)       | 0.315            | ×0.717 (−28%)               | Full penalty applies                |
 
 When `mapq_norm = 1.0` (MAPQ 60), the effective coverage bypass is raised by 0.20, reducing $w_{\text{pen}}$ further at every coverage level.
 
@@ -1000,19 +1000,19 @@ At each level, metrics are either summed (`numreads`, `covered_bases`), averaged
 
 ### 11.1 LCA-aware read removal (species/genus)
 
-`match_paths.py` resolves alignment conflicts (Section 3.6) at the **strain** level: a read that maps about equally well to two references is assigned to one and removed from the other. For organisms with several near-identical strains in the database, this is too aggressive once you move above the strain rank. The canonical case is three closely related *Salmonella* strains in a dilution series. A read that could have come from any of the three is genuinely ambiguous *about which strain*, but it is not ambiguous at all *about the species*, since all three candidates are the same species. Strain-level removal does not know that, so the strains end up eating into each other's numbers: every ambiguous read is subtracted from all but one of them. Each strain's coverage and read count drops, and all three can land below the reporting cutoff even though the species is obviously present.
+`match_paths.py` resolves alignment conflicts (Section 3.6) at the **strain** level: a read that maps about equally well to two references is assigned to one and removed from the other. For organisms with several near-identical strains in the database, this is too aggressive once you move above the strain rank. The canonical case is three closely related _Salmonella_ strains in a dilution series. A read that could have come from any of the three is genuinely ambiguous _about which strain_, but it is not ambiguous at all _about the species_, since all three candidates are the same species. Strain-level removal does not know that, so the strains end up eating into each other's numbers: every ambiguous read is subtracted from all but one of them. Each strain's coverage and read count drops, and all three can land below the reporting cutoff even though the species is obviously present.
 
-To fix this, `match_paths.py` now builds **accession → species (`subkey`)** and **accession → genus (`toplevelkey`)** rollup maps from the taxdump *before* conflict removal runs, and passes them into `determine_conflicts`. Reads that are ambiguous only among members of the same species (or genus) are **kept** at that level. This is called LCA-aware removal, after the *lowest common ancestor*: the deepest point in the taxonomy that every one of a read's candidate references sits underneath. If that point is at or below the rank being scored, the read is not ambiguous about that rank, so it stays. For each accession the conflict step emits, alongside the strain-level numbers, covered bases and surviving read counts under species-LCA and genus-LCA removal (`Covered BP Subkey/Toplevelkey`, `Pass Filtered Reads Subkey/Toplevelkey`). These per-taxid removal numbers are written to `alignment/<sample>_removal_stats_by_taxid.xlsx`.
+To fix this, `match_paths.py` now builds **accession → species (`subkey`)** and **accession → genus (`toplevelkey`)** rollup maps from the taxdump _before_ conflict removal runs, and passes them into `determine_conflicts`. Reads that are ambiguous only among members of the same species (or genus) are **kept** at that level. This is called LCA-aware removal, after the _lowest common ancestor_: the deepest point in the taxonomy that every one of a read's candidate references sits underneath. If that point is at or below the rank being scored, the read is not ambiguous about that rank, so it stays. For each accession the conflict step emits, alongside the strain-level numbers, covered bases and surviving read counts under species-LCA and genus-LCA removal (`Covered BP Subkey/Toplevelkey`, `Pass Filtered Reads Subkey/Toplevelkey`). These per-taxid removal numbers are written to `alignment/<sample>_removal_stats_by_taxid.xlsx`.
 
 ### 11.2 Species/genus roll-up score overrides
 
 When the strain rows are aggregated to species and genus, the strain-removal coverage would still understate the group. The aggregation therefore applies three overrides built from the LCA-aware columns:
 
-- **Union breadth.** Species/genus breadth is measured as the union of member coverage (Σ covered-bp ÷ Σ reference length under same-rank-LCA removal), so it reflects how well the species can be told apart from *other species*, not how its own strains compete with each other. This overrides the strain-derived `Breadth New` / `Δ⁻¹ Breadth` feeding the minhash score.
+- **Union breadth.** Species/genus breadth is measured as the union of member coverage (Σ covered-bp ÷ Σ reference length under same-rank-LCA removal), so it reflects how well the species can be told apart from _other species_, not how its own strains compete with each other. This overrides the strain-derived `Breadth New` / `Δ⁻¹ Breadth` feeding the minhash score.
 - **Representative (best-strain) coverage.** Because near-identical conspecific strains are essentially the same genome, the group's coverage is taken as the **maximum** per-member breadth fraction (and the max against each strain's actual post-removal coverage), not the length-weighted pool. This prevents one divergent or poorly covered member reference from diluting an otherwise ~100 % species call. It also guards against conserved cross-species regions (rRNA, housekeeping genes) being stripped by species-LCA removal and making the representative fraction look artificially low. **This maximum is restricted to accessions large enough to represent the genome**; see [11.3](#113-size-eligibility-for-the-representative-coverage-maximum) below.
-- **Pre-MAPQ read count.** Strain-level `numreads` only counts reads with MAPQ ≥ `--minmapq` (default 7). For near-identical strains most reads have MAPQ 0, meaning they are ambiguous about *which strain* but not about the species. Species and genus RPM/abundance therefore use the pre-MAPQ count instead (reads surviving species-LCA removal regardless of MAPQ), summed per group without double counting.
+- **Pre-MAPQ read count.** Strain-level `numreads` only counts reads with MAPQ ≥ `--minmapq` (default 7). For near-identical strains most reads have MAPQ 0, meaning they are ambiguous about _which strain_ but not about the species. Species and genus RPM/abundance therefore use the pre-MAPQ count instead (reads surviving species-LCA removal regardless of MAPQ), summed per group without double counting.
 
-The combined effect is "MAPQ relief": e.g. in the *Salmonella* test, species-level effective minhash factor rises from 0.134 to 0.682, so a real species/genus call survives even when no single strain does. In the [interactive report](interactive-report.md#roll-up-rescue-markers) these are surfaced as the orange (species) / purple (genus) roll-up rescue markers.
+The combined effect is "MAPQ relief": e.g. in the _Salmonella_ test, species-level effective minhash factor rises from 0.134 to 0.682, so a real species/genus call survives even when no single strain does. In the [interactive report](interactive-report.md#roll-up-rescue-markers) these are surfaced as the orange (species) / purple (genus) roll-up rescue markers.
 
 A related fix injects each reference's mean conflict MAPQ into the shared-windows cluster-dominance record so the dominant-organism gate floor in `optimize_weights.py` activates on that path too (previously a missing value silently forced the floor to 0).
 
@@ -1020,20 +1020,20 @@ A related fix injects each reference's mean conflict MAPQ into the shared-window
 
 ### 11.3 Size eligibility for the representative-coverage maximum
 
-The representative-coverage override in 11.2 takes a **maximum across members**. The subtlety is what counts as a member: `comparison_df` is indexed **per accession**, and an accession is one BAM reference, which means **one contig** and not necessarily one genome. For a chromosome-level assembly those are the same thing (the single accession *is* the whole genome), and the maximum behaves exactly as intended. For a **scaffold-level draft assembly** they do not.
+The representative-coverage override in 11.2 takes a **maximum across members**. The subtlety is what counts as a member: `comparison_df` is indexed **per accession**, and an accession is one BAM reference, which means **one contig** and not necessarily one genome. For a chromosome-level assembly those are the same thing (the single accession _is_ the whole genome), and the maximum behaves exactly as intended. For a **scaffold-level draft assembly** they do not.
 
 The failure mode this creates:
 
-> *Plasmodium vivax* is distributed as ~2,700 unplaced scaffolds of ~1 kb each, totalling 27 Mb. A handful of stray ONT reads land on 5 scaffolds. One ~850 bp read covers 848 bp of a **906 bp scaffold** → that accession's breadth fraction is **0.936**. The maximum promotes 0.936 to the coverage of the entire species, even though true species breadth is 5,060 ÷ 27,013,691 = **0.019 %**.
+> _Plasmodium vivax_ is distributed as ~2,700 unplaced scaffolds of ~1 kb each, totalling 27 Mb. A handful of stray ONT reads land on 5 scaffolds. One ~850 bp read covers 848 bp of a **906 bp scaffold** → that accession's breadth fraction is **0.936**. The maximum promotes 0.936 to the coverage of the entire species, even though true species breadth is 5,060 ÷ 27,013,691 = **0.019 %**.
 
 That single value is not confined to the breadth term. `agg['coverage']` is consumed four separate times in `calculate_normalized_groups`, so one inflated number cascades:
 
-| Consumer | With true breadth (0.019 %) | With the scaffold maximum (93.6 %) |
-|---|---|---|
-| `breadth_log_score` (5.4) | 0.000 | 1.000 |
-| minhash `_breadth_gate` (7.3) | 0.000 — gate shut | 1.000 — gate open, minhash 0 → 0.958 |
-| `_depth_conc_penalty` (6) | crushed | efficiency looks ideal |
-| dominant-organism gate floor (7.4) | — | raised |
+| Consumer                           | With true breadth (0.019 %) | With the scaffold maximum (93.6 %)   |
+| ---------------------------------- | --------------------------- | ------------------------------------ |
+| `breadth_log_score` (5.4)          | 0.000                       | 1.000                                |
+| minhash `_breadth_gate` (7.3)      | 0.000 — gate shut           | 1.000 — gate open, minhash 0 → 0.958 |
+| `_depth_conc_penalty` (6)          | crushed                     | efficiency looks ideal               |
+| dominant-organism gate floor (7.4) | —                           | raised                               |
 
 Species TASS lands at **~89** for an organism that is not present. The strain-level rows are unaffected and score correctly (2.6–5.0), which is the diagnostic signature: **a species scoring 80+ while every one of its strains scores below 10 is this bug.**
 
@@ -1045,26 +1045,26 @@ Species TASS lands at **~89** for an organism that is not present. The strain-le
 
 where $f$ = `--rep_breadth_min_frac` (default 0.01, i.e. 1 % of the group's total reference length) and $L_{\min}$ = `--rep_breadth_min_len` (default 50,000 bp). If **no** accession in a group qualifies, the group receives no representative override at all and falls back to the pooled Σ covered ÷ Σ length. Setting both to `0` restores the pre-guard behaviour.
 
-The bars are deliberately loose. A 4.6 Mb *E. coli* chromosome clears both by orders of magnitude and still sets the maximum; its 5 kb plasmid at 100 % coverage does not. The three-strain *Salmonella* case from 11.2 is byte-for-byte unchanged (coverage 0.99, TASS 92.85 before and after).
+The bars are deliberately loose. A 4.6 Mb _E. coli_ chromosome clears both by orders of magnitude and still sets the maximum; its 5 kb plasmid at 100 % coverage does not. The three-strain _Salmonella_ case from 11.2 is byte-for-byte unchanged (coverage 0.99, TASS 92.85 before and after).
 
-**Interaction with the contig-utilisation penalty.** The Gini contig-utilisation penalty (6, step "Fix 1") exists precisely to catch "reads on 5 of 2,700 contigs", and it also multiplies into the minhash coverage gate. It was silently inert at the species and genus levels: it counted `len(entries)`, and at those levels `entries` are **strain** records, and there is usually only one of them, so the group saw `1/1` contigs and applied no penalty. It now sums the `n_contigs_total` / `n_contigs_covered` stamped onto each member by the strain-level aggregation, falling back to `len(entries)` only when members carry no such annotation (i.e. at the strain level itself, where `entries` genuinely *are* contigs). *P. vivax* now presents as `5/2700` → penalty ≈ 0.09.
+**Interaction with the contig-utilisation penalty.** The Gini contig-utilisation penalty (6, step "Fix 1") exists precisely to catch "reads on 5 of 2,700 contigs", and it also multiplies into the minhash coverage gate. It was silently inert at the species and genus levels: it counted `len(entries)`, and at those levels `entries` are **strain** records, and there is usually only one of them, so the group saw `1/1` contigs and applied no penalty. It now sums the `n_contigs_total` / `n_contigs_covered` stamped onto each member by the strain-level aggregation, falling back to `len(entries)` only when members carry no such annotation (i.e. at the strain level itself, where `entries` genuinely _are_ contigs). _P. vivax_ now presents as `5/2700` → penalty ≈ 0.09.
 
 The two guards are independent and complementary: size eligibility stops the fabricated coverage value at the source, and the contig-utilisation penalty catches groups where a large accession is genuinely eligible but the reads are still concentrated on a tiny slice of it.
 
-**Verification.** `bin/test_rep_breadth_scaffold_fp.py` reproduces the case above from the observed contig lengths and asserts both guards, the score collapse, and the *E. coli* / *Salmonella* non-regressions:
+**Verification.** `bin/test_rep_breadth_scaffold_fp.py` reproduces the case above from the observed contig lengths and asserts both guards, the score collapse, and the _E. coli_ / _Salmonella_ non-regressions:
 
-| | before | after |
-|---|---|---|
-| representative override | 0.9360 | none — no eligible accession |
-| `coverage` | 0.9360 | 0.000187 |
-| `breadth_log_score` | 1.0000 | 0.0000 |
-| `minhash_reduction` | 0.9580 | 0.0000 |
-| contig fraction | 1/1 | 5/2700 |
-| **species TASS** | **87.86** | **6.11** |
+|                         | before    | after                        |
+| ----------------------- | --------- | ---------------------------- |
+| representative override | 0.9360    | none — no eligible accession |
+| `coverage`              | 0.9360    | 0.000187                     |
+| `breadth_log_score`     | 1.0000    | 0.0000                       |
+| `minhash_reduction`     | 0.9580    | 0.0000                       |
+| contig fraction         | 1/1       | 5/2700                       |
+| **species TASS**        | **87.86** | **6.11**                     |
 
 ### 11.4 Why ambiguity is rank-dependent
 
-Several references with similar read counts can mean very different things: multiple strains are genuinely present; one strain is present but its reads cross-map to relatives; the reads come from sequence conserved across the species or genus; a small conserved locus is generating a false-positive genome hit; or the database simply contains redundant near-identical references. Raw aligned-read count cannot distinguish these, which is why TASS scores *coherence* of evidence rather than its volume.
+Several references with similar read counts can mean very different things: multiple strains are genuinely present; one strain is present but its reads cross-map to relatives; the reads come from sequence conserved across the species or genus; a small conserved locus is generating a false-positive genome hit; or the database simply contains redundant near-identical references. Raw aligned-read count cannot distinguish these, which is why TASS scores _coherence_ of evidence rather than its volume.
 
 The key observation is that a read can be ambiguous at one rank and unambiguous at the next one up:
 
@@ -1077,28 +1077,28 @@ Read R maps equally well to:
 
 At the strain level, R cannot identify the correct strain. At the species level every mapping agrees on **Species X**, so R is perfectly good species evidence. This is why `determine_conflicts` builds three removal sets rather than one (11.1): a read is removed only when its ambiguity **crosses the boundary of the rank being scored**.
 
-The intended outcome is a statement like *"the exact strain is unresolved, but the species is strongly supported"*, or, when the ambiguity spans several species of one genus, *"the species is unresolved, but the genus is strongly supported."*
+The intended outcome is a statement like _"the exact strain is unresolved, but the species is strongly supported"_, or, when the ambiguity spans several species of one genus, _"the species is unresolved, but the genus is strongly supported."_
 
 **Dominance-aware removal at the strain level.** Within a single rank, the two sides of a conflict are not treated as equals (Section 3.6). When two references compete for the same ambiguous reads, the pipeline does not split those reads down the middle. It works out which reference is the more likely true source and takes the reads away from the other one. The reference with the most support in a shared region is treated as that likely source. Weaker references lose a larger share of their ambiguous reads, and a reference that clearly dominates is protected from being whittled away by many small removals in a row. Without this asymmetry, a single organism that really is present would generate a cloud of relatives that all look equally confident, and every one of those relatives would be a false positive.
 
-*Conceptual poxvirus example.* One poxvirus is present, but conserved reads align to several related poxvirus references:
+_Conceptual poxvirus example._ One poxvirus is present, but conserved reads align to several related poxvirus references:
 
-| Reference | Raw reads | Expected interpretation after conflict handling |
-|---|---:|---|
-| Strain A | 1,100 | broad, coherent coverage; most support retained |
-| Strain B | 420 | much of the support lies in sequence shared with A |
-| Strain C | 390 | much of the support lies in sequence shared with A |
-| Strain D | 360 | narrow coverage in conserved loci |
-| Strain E | 330 | narrow coverage in conserved loci |
-| Strain F | 310 | narrow coverage in conserved loci |
+| Reference | Raw reads | Expected interpretation after conflict handling    |
+| --------- | --------: | -------------------------------------------------- |
+| Strain A  |     1,100 | broad, coherent coverage; most support retained    |
+| Strain B  |       420 | much of the support lies in sequence shared with A |
+| Strain C  |       390 | much of the support lies in sequence shared with A |
+| Strain D  |       360 | narrow coverage in conserved loci                  |
+| Strain E  |       330 | narrow coverage in conserved loci                  |
+| Strain F  |       310 | narrow coverage in conserved loci                  |
 
 Strain A should retain the strongest breadth, evenness and read support; B–F should lose confidence to the extent their support sits in shared regions. If no reference has convincing strain-specific evidence, every strain score may stay modest even while the parent taxon is well supported. None of this is poxvirus-specific. It falls out of the general shared-sequence, dominance, breadth and rank-aware logic described above.
 
-**Parent scores are recalculated, not inherited.** After strain-level processing, `match_paths.py` groups strains into species (`subkey`) and genus (`toplevelkey`) records; `calculate_normalized_groups()` reconstructs aggregate evidence and the group then passes through `calculate_aggregate_scores()` and `compute_tass_score()`. A parent score is therefore *not* `mean(child TASS)` and *not* `max(child TASS)`. It is `TASS(reconstructed parent-level evidence)`, computed from parent-level retained reads, breadth, Gini, minhash retention, MAPQ reliability, abundance and sibling disparity. This is the reason weak strain resolution does not imply weak species or genus detection.
+**Parent scores are recalculated, not inherited.** After strain-level processing, `match_paths.py` groups strains into species (`subkey`) and genus (`toplevelkey`) records; `calculate_normalized_groups()` reconstructs aggregate evidence and the group then passes through `calculate_aggregate_scores()` and `compute_tass_score()`. A parent score is therefore _not_ `mean(child TASS)` and _not_ `max(child TASS)`. It is `TASS(reconstructed parent-level evidence)`, computed from parent-level retained reads, breadth, Gini, minhash retention, MAPQ reliability, abundance and sibling disparity. This is the reason weak strain resolution does not imply weak species or genus detection.
 
 ### 11.5 Conditional MAPQ relief at the parent rank
 
-Low MAPQ normally reduces confidence, and rightly so, because it means the aligner could not decide where the read belonged. But at the species or genus level, low MAPQ is often caused by *redundant members of the same valid group*: the uncertainty is about which **reference copy** the read came from, not about which **organism**. Crushing parent breadth by that MAPQ wrongly tanks a species that is confidently present.
+Low MAPQ normally reduces confidence, and rightly so, because it means the aligner could not decide where the read belonged. But at the species or genus level, low MAPQ is often caused by _redundant members of the same valid group_: the uncertainty is about which **reference copy** the read came from, not about which **organism**. Crushing parent breadth by that MAPQ wrongly tanks a species that is confidently present.
 
 `calculate_normalized_groups()` therefore lifts the effective high-MAPQ fraction toward 1.0, but only when all three conditions hold:
 
@@ -1118,7 +1118,7 @@ Low MAPQ normally reduces confidence, and rightly so, because it means the align
 
 where $h$ is the raw `highmapq_fraction` and $h_{\text{eff}}$ is stored as `highmapq_fraction_effective` and used in place of $h$ in the breadth MAPQ scaling of Section 5.3. Redundancy is 0.5 at two members, 0.67 at three and 0.75 at four, so the relief grows slowly as the group gets larger and never exceeds what minhash independently supports.
 
-This is not a blanket rescue. A single-member group gets **no** relief at all, and a group with weak minhash support gets almost none. It is the mechanism behind the *Salmonella* result quoted in 11.2 (`highmapq_fraction` 0.13, coverage 1.0, minhash 1.0 → species TASS unstuck from ~77).
+This is not a blanket rescue. A single-member group gets **no** relief at all, and a group with weak minhash support gets almost none. It is the mechanism behind the _Salmonella_ result quoted in 11.2 (`highmapq_fraction` 0.13, coverage 1.0, minhash 1.0 → species TASS unstuck from ~77).
 
 ### 11.6 ANI-aware score-power scaling
 
@@ -1132,7 +1132,7 @@ Grouping is ANI-first. When an ANI matrix is available, any two organisms whose 
 p_{\text{eff}} = 1 - (1 - p)\cdot\text{score\ power\ scale}
 ```
 
-where $p$ = `score_power`. Reading off the endpoints: a scale of 1 gives the full transform ($p_{\text{eff}} = p$), a scale of 0 makes it a no-op ($p_{\text{eff}} = 1$). So a sole organism in its ANI group gets the full recalibration, while one of five near-identical *Shigella* gets almost none.
+where $p$ = `score_power`. Reading off the endpoints: a scale of 1 gives the full transform ($p_{\text{eff}} = p$), a scale of 0 makes it a no-op ($p_{\text{eff}} = 1$). So a sole organism in its ANI group gets the full recalibration, while one of five near-identical _Shigella_ gets almost none.
 
 Important implications:
 
@@ -1160,20 +1160,20 @@ Strain 3: 100 reads      Strain 6:  97 reads
 
 ### 11.8 Interpreting discordant rank scores
 
-| Pattern | Typical interpretation |
-|---|---|
-| High strain, high species, high genus | Strong evidence extending to the exact reference or strain |
-| Low strain, high species, high genus | Species is supported, but strain assignment is ambiguous |
-| Low strain, low/moderate species, high genus | Genus is supported, but species resolution is weak |
-| Similar moderate scores across many strains | Redundant references or unresolved cross-mapping |
-| High read count, low breadth/evenness, low TASS | Conserved-region or localized false-positive pattern |
-| One dominant strain broad; siblings low | Likely true strain with cross-mapped minor references |
-| Species 80+ while every strain scores < 10 | Diagnostic signature of the scaffold-breadth artefact; see [11.3](#113-size-eligibility-for-the-representative-coverage-maximum) |
-| All ranks low | Insufficient or incoherent evidence |
+| Pattern                                         | Typical interpretation                                                                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| High strain, high species, high genus           | Strong evidence extending to the exact reference or strain                                                                       |
+| Low strain, high species, high genus            | Species is supported, but strain assignment is ambiguous                                                                         |
+| Low strain, low/moderate species, high genus    | Genus is supported, but species resolution is weak                                                                               |
+| Similar moderate scores across many strains     | Redundant references or unresolved cross-mapping                                                                                 |
+| High read count, low breadth/evenness, low TASS | Conserved-region or localized false-positive pattern                                                                             |
+| One dominant strain broad; siblings low         | Likely true strain with cross-mapped minor references                                                                            |
+| Species 80+ while every strain scores < 10      | Diagnostic signature of the scaffold-breadth artefact; see [11.3](#113-size-eligibility-for-the-representative-coverage-maximum) |
+| All ranks low                                   | Insufficient or incoherent evidence                                                                                              |
 
 **Limitations.** A parent score is not guaranteed to be high merely because several child references received reads. Species or genus TASS may legitimately stay low when ambiguity crosses the rank boundary; coverage is confined to a small conserved region; minhash support is weak; aggregate coverage is sparse or highly concentrated; a fragmented assembly offers no eligible representative accession (11.3); classifier or abundance evidence conflicts with alignment evidence; the configured weights emphasise metrics that remain weak; ANI links several nominal parent taxa into one ambiguity group; or too few strains survive the minimum-read filter.
 
-The design goal is **not** "always promote ambiguous strains to a high parent score." It is: *re-evaluate ambiguous evidence at the highest taxonomic rank where it is coherent, and score that rank from its own evidence.*
+The design goal is **not** "always promote ambiguous strains to a high parent score." It is: _re-evaluate ambiguous evidence at the highest taxonomic rank where it is coherent, and score that rank from its own evidence._
 
 ---
 
@@ -1264,4 +1264,4 @@ Common math symbols you'll see in the doc:
 
 - [Original TaxTriage paper](https://doi.org/10.1093/bioinformatics/btag119)
 - [TASS scoring source code](https://github.com/jhuapl-bio/taxtriage/tree/main/bin)
-- [Gini coefficient in biology (Cell Systems)](https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf)
+- [Gini coefficient in biology (Cell Systems)](<https://www.cell.com/cell-systems/pdf/S2405-4712(18)30003-6.pdf>)

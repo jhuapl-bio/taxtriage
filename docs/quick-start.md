@@ -17,7 +17,6 @@ Make sure you have installed:
 
 This command pulls test data from GitHub and runs the full pipeline. It takes approximately **10–15 minutes**.
 
-
 ```bash
 nextflow run https://github.com/jhuapl-bio/taxtriage \
   -r main -latest \
@@ -26,6 +25,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 ```
 
 Replace `docker` with `singularity` if running on an HPC:
+
 > ```bash
 > -profile test,singularity
 > ```
@@ -76,6 +76,7 @@ nextflow run ./main.nf -profile test,docker -resume
 ```
 
 > ⚠️ If you get an error about uncommitted changes when pulling from the remote URL, run:
+>
 > ```bash
 > nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 > ```
@@ -86,12 +87,12 @@ nextflow run ./main.nf -profile test,docker -resume
 
 If no internet is available, provide local copies of the 4 required files/folders:
 
-| File | Parameter | Source |
-|---|---| --- |
-| Kraken2 database directory | `--db ./k2_viral` | [K2 Indices](https://benlangmead.github.io/aws-indexes/k2) |
-| Reference FASTA | `--reference_fasta ./refer.fasta` | |
-| NCBI assembly summary | `--assembly ./assembly_summary_refseq.txt` | [NCBI Assembly Summary](https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt) |
-| Taxdump | `--taxdump ./taxdump` | [NCBI Taxdump](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz) |
+| File                       | Parameter                                  | Source                                                                                           |
+| -------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Kraken2 database directory | `--db ./k2_viral`                          | [K2 Indices](https://benlangmead.github.io/aws-indexes/k2)                                       |
+| Reference FASTA            | `--reference_fasta ./refer.fasta`          |                                                                                                  |
+| NCBI assembly summary      | `--assembly ./assembly_summary_refseq.txt` | [NCBI Assembly Summary](https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt) |
+| Taxdump                    | `--taxdump ./taxdump`                      | [NCBI Taxdump](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz)                         |
 
 Example command:
 
@@ -113,13 +114,13 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 
 ## Available Databases for `--download_db`
 
-| Name | Size | Notes |
-|---|---|---|
-| `viral` | 553 MB | Good for quick viral screening |
-| `standard8` | 7.5 GB | Standard 8 GB Kraken2 |
-| `flukraken2` | 180 MB | Influenza-focused |
-| `minikraken2` | 7.5 GB | Standard (alternate mirror) |
-| `test` | 112 MB | Minimal test database |
+| Name          | Size   | Notes                          |
+| ------------- | ------ | ------------------------------ |
+| `viral`       | 553 MB | Good for quick viral screening |
+| `standard8`   | 7.5 GB | Standard 8 GB Kraken2          |
+| `flukraken2`  | 180 MB | Influenza-focused              |
+| `minikraken2` | 7.5 GB | Standard (alternate mirror)    |
+| `test`        | 112 MB | Minimal test database          |
 
 For the full database list, see [CLI Parameters → Databases](cli-parameters.md#taxonomic-classification-and-databases).
 

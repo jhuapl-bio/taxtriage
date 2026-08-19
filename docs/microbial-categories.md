@@ -1,6 +1,6 @@
 # Microbial Categories
 
-Every organism TaxTriage reports carries a **microbial category**, which is one of `Primary`, `Opportunistic`, `Potential`, `Commensal`, or `Unknown`. The category is the pipeline's answer to *"if this organism is really here, does it matter?"*, and it is deliberately kept separate from [TASS](tass-scoring.md), which answers *"is this organism really here?"*
+Every organism TaxTriage reports carries a **microbial category**, which is one of `Primary`, `Opportunistic`, `Potential`, `Commensal`, or `Unknown`. The category is the pipeline's answer to _"if this organism is really here, does it matter?"_, and it is deliberately kept separate from [TASS](tass-scoring.md), which answers _"is this organism really here?"_
 
 > **The single most important thing to know:** the category never changes the TASS score. TASS is computed from breadth, Gini, minhash, disparity and HMP components only. Category controls **visibility, colour, ordering and triage priority** in the report. A `Commensal` with TASS 0.95 is a confident detection of something usually unremarkable; a `Primary` with TASS 0.08 is a weak signal for something that would matter if real. Read both columns together, always.
 
@@ -22,43 +22,43 @@ flowchart LR
 
 Three columns in the sheet drive this:
 
-| Column | Role |
-|---|---|
-| `general_classification` | The default category, used when the sample site gives no better information |
-| `pathogenic_sites` | Sites where this organism causes disease; a hit at one of these sites is promoted to `Primary` |
-| `commensal_sites` | Sites where this organism is normal flora; a hit at one of these sites is demoted to `Commensal` |
+| Column                   | Role                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `general_classification` | The default category, used when the sample site gives no better information                      |
+| `pathogenic_sites`       | Sites where this organism causes disease; a hit at one of these sites is promoted to `Primary`   |
+| `commensal_sites`        | Sites where this organism is normal flora; a hit at one of these sites is demoted to `Commensal` |
 
 Current contents of the shipped sheet (1,702 rows):
 
 | `general_classification` | Rows | Rows that also list `commensal_sites` |
-|---|---|---|
-| `potential` | 557 | 46 |
-| `opportunistic` | 541 | 98 |
-| `primary` | 452 | 3 |
-| `commensal` | 152 | 143 |
+| ------------------------ | ---- | ------------------------------------- |
+| `potential`              | 557  | 46                                    |
+| `opportunistic`          | 541  | 98                                    |
+| `primary`                | 452  | 3                                     |
+| `commensal`              | 152  | 143                                   |
 
 ---
 
 ## 2. The five categories
 
-### Primary: *a recognised cause of disease in its own right*
+### Primary: _a recognised cause of disease in its own right_
 
-An organism that causes disease in an immunocompetent host without needing a breach, a device, or immunosuppression. Finding it is meaningful regardless of how much of it there is. Examples: *Mycobacterium tuberculosis*, *Bacillus anthracis*, *Salmonella enterica*, *Neisseria meningitidis*, most reportable viruses.
+An organism that causes disease in an immunocompetent host without needing a breach, a device, or immunosuppression. Finding it is meaningful regardless of how much of it there is. Examples: _Mycobacterium tuberculosis_, _Bacillus anthracis_, _Salmonella enterica_, _Neisseria meningitidis_, most reportable viruses.
 
 - **Always shown** in the PDF. There is no `--show_primary` flag, because Primary is never hidden.
-- Rendered **crimson** (`#E85F50`) when the sample site matches the organism's `pathogenic_sites` (`annClass = Direct`), and **orange** (`#E67E22`) when it is Primary only by general classification for a different site (`annClass = Derived`). The legend calls the orange case *"Primary Pathogen (Other Sample Type)"*.
+- Rendered **crimson** (`#E85F50`) when the sample site matches the organism's `pathogenic_sites` (`annClass = Direct`), and **orange** (`#E67E22`) when it is Primary only by general classification for a different site (`annClass = Derived`). The legend calls the orange case _"Primary Pathogen (Other Sample Type)"_.
 - **Interpretation:** treat as actionable. If TASS is above the sample-type cutoff, this is your headline finding. If TASS is low, the organism still appears in the report. Check breadth of coverage and Gini before dismissing it, since Primary organisms at very low abundance are exactly the case TaxTriage is designed not to drop.
 
-### Opportunistic: *causes disease given the right opening*
+### Opportunistic: _causes disease given the right opening_
 
-Pathogenic in a compromised host, at a normally sterile site, or in the presence of a device or wound, but frequently harmless elsewhere. Examples: *Pseudomonas aeruginosa*, *Candida albicans*, *Staphylococcus epidermidis*, *Enterococcus faecium*, *Acinetobacter baumannii*.
+Pathogenic in a compromised host, at a normally sterile site, or in the presence of a device or wound, but frequently harmless elsewhere. Examples: _Pseudomonas aeruginosa_, _Candida albicans_, _Staphylococcus epidermidis_, _Enterococcus faecium_, _Acinetobacter baumannii_.
 
 - Hidden by default; shown with `--show_opportunistics`.
 - Rendered **pale amber** (`#ffe6a8`).
 - 98 of the 541 opportunistic rows also carry `commensal_sites`, which is what lets the same organism read as "flora" in a stool sample and as "pathogen" in blood.
-- **Interpretation:** the sample type is doing most of the work here. *S. epidermidis* in blood at high TASS is either a real line infection or a skin-contamination event, and TaxTriage tags it `[skin flora]` so you know which possibility to weigh. The same organism in a skin swab is background.
+- **Interpretation:** the sample type is doing most of the work here. _S. epidermidis_ in blood at high TASS is either a real line infection or a skin-contamination event, and TaxTriage tags it `[skin flora]` so you know which possibility to weigh. The same organism in a skin swab is background.
 
-### Potential: *reported in the literature, weak or context-dependent evidence*
+### Potential: _reported in the literature, weak or context-dependent evidence_
 
 The widest bucket (557 rows). These are organisms with published case reports or plausible pathogenic capacity but no established role as a routine agent of disease. The `status` column separates the evidence tiers: `established` (1,339 rows across all categories) vs. `putative` (363 rows).
 
@@ -66,16 +66,16 @@ The widest bucket (557 rows). These are organisms with published case reports or
 - Rendered **light blue** (`#ADD8E6`).
 - **Interpretation:** hypothesis-generating, not conclusive. Useful when the Primary/Opportunistic tables come back empty and you need candidates. Cross-check `status`, the `reference` column, and the sample's clinical context before acting on one.
 
-### Commensal: *normal flora at this site*
+### Commensal: _normal flora at this site_
 
-Organisms expected in a healthy microbiome at the sampled site. Examples: *Thomasclavelia ramosa* (gut), *Cutibacterium acnes* (skin), most oral *Streptococcus* and *Veillonella*.
+Organisms expected in a healthy microbiome at the sampled site. Examples: _Thomasclavelia ramosa_ (gut), _Cutibacterium acnes_ (skin), most oral _Streptococcus_ and _Veillonella_.
 
 - Hidden by default; shown with `--show_commensals`.
 - Rendered **light green** (`#90EE90`).
 - Can be removed from the candidate list entirely before alignment with `--remove_commensal` (see §5).
-- **Interpretation:** normally noise. But a commensal at high abundance in a *sterile* sample is the opposite of noise. It is either a genuine translocation or infection, or a contamination event during collection. TaxTriage handles that case explicitly (§4).
+- **Interpretation:** normally noise. But a commensal at high abundance in a _sterile_ sample is the opposite of noise. It is either a genuine translocation or infection, or a contamination event during collection. TaxTriage handles that case explicitly (§4).
 
-### Unknown: *not in the sheet*
+### Unknown: _not in the sheet_
 
 Anything detected that has no row in the pathogen sheet, and no annotated ancestor in its taxonomic lineage. `is_annotated = No`.
 
@@ -85,13 +85,13 @@ Anything detected that has no row in the pathogen sheet, and no annotated ancest
 
 ### Summary
 
-| Category | Sheet value | Rows | Colour | Shown by default | Severity rank | Reading |
-|---|---|---|---|---|---|---|
-| Primary | `primary` | 452 | 🟥 `#E85F50` / 🟧 `#E67E22` | ✅ always | 4 | Act on it |
-| Opportunistic | `opportunistic` | 541 | 🟨 `#ffe6a8` | ❌ `--show_opportunistics` | 3 | Depends on site & host |
-| Potential | `potential` | 557 | 🟦 `#ADD8E6` | ❌ `--show_potentials` | 2 | Investigate further |
-| Unknown | *(absent)* | — | ⬜ `#FFFFFF` | ❌ `--show_unidentified` | 1 | Un-curated; check manually |
-| Commensal | `commensal` | 152 | 🟩 `#90EE90` | ❌ `--show_commensals` | 0 | Expected background |
+| Category      | Sheet value     | Rows | Colour                      | Shown by default           | Severity rank | Reading                    |
+| ------------- | --------------- | ---- | --------------------------- | -------------------------- | ------------- | -------------------------- |
+| Primary       | `primary`       | 452  | 🟥 `#E85F50` / 🟧 `#E67E22` | ✅ always                  | 4             | Act on it                  |
+| Opportunistic | `opportunistic` | 541  | 🟨 `#ffe6a8`                | ❌ `--show_opportunistics` | 3             | Depends on site & host     |
+| Potential     | `potential`     | 557  | 🟦 `#ADD8E6`                | ❌ `--show_potentials`     | 2             | Investigate further        |
+| Unknown       | _(absent)_      | —    | ⬜ `#FFFFFF`                | ❌ `--show_unidentified`   | 1             | Un-curated; check manually |
+| Commensal     | `commensal`     | 152  | 🟩 `#90EE90`                | ❌ `--show_commensals`     | 0             | Expected background        |
 
 The **severity rank** (`_category_severity()` in `create_report.py`) is what breaks ties when a species roll-up has to choose one label for several strains, and what orders rows within a table. Note that `Unknown` outranks `Commensal`, because an un-curated organism is treated as more interesting than a confirmed normal-flora one.
 
@@ -120,13 +120,13 @@ flowchart TD
     style J fill:#E67E22
 ```
 
-`annClass` is the provenance flag that tells you *how* the category was reached:
+`annClass` is the provenance flag that tells you _how_ the category was reached:
 
-| `annClass` | Meaning | How to read it |
-|---|---|---|
-| **Direct** | The sample site matched this organism's `pathogenic_sites` or `commensal_sites` | Strongest annotation: the sheet has site-specific evidence for exactly this scenario |
-| **Derived** | No site match; fell back to `general_classification`, or the label came from a *parent taxon* via lineage traversal | Weaker: the label is about the organism in general, not about this body site |
-| **Mixed** | A species/genus roll-up whose member strains resolved to more than one category | Expand the group; the roll-up shows the highest-severity member |
+| `annClass`  | Meaning                                                                                                             | How to read it                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Direct**  | The sample site matched this organism's `pathogenic_sites` or `commensal_sites`                                     | Strongest annotation: the sheet has site-specific evidence for exactly this scenario |
+| **Derived** | No site match; fell back to `general_classification`, or the label came from a _parent taxon_ via lineage traversal | Weaker: the label is about the organism in general, not about this body site         |
+| **Mixed**   | A species/genus roll-up whose member strains resolved to more than one category                                     | Expand the group; the roll-up shows the highest-severity member                      |
 
 ### Lineage fallback
 
@@ -144,7 +144,7 @@ flowchart LR
     G -->|No| I["<b>Unknown</b><br/>is_annotated = No"]
 ```
 
-**Interpretation:** a `Primary` call with `matched_rank = genus` means *"something in this genus is a primary pathogen"*, not *"this species is"*. Check `matched_taxid` in the JSON/TSV before treating a Derived call as a species-level finding.
+**Interpretation:** a `Primary` call with `matched_rank = genus` means _"something in this genus is a primary pathogen"_, not _"this species is"_. Check `matched_taxid` in the JSON/TSV before treating a Derived call as a species-level finding.
 
 ---
 
@@ -152,7 +152,7 @@ flowchart LR
 
 Two separate mechanisms handle sterile specimens, and they pull in opposite directions on purpose.
 
-**Everything is pathogenic at a sterile site.** When the normalized sample type is `sterile` (peritoneal, pleural, synovial, CSF, and friends), `match_paths.py` rewrites every sheet entry's `callclass` to `primary (sterile)`, and `should_include_strain()` shows *any* annotated organism regardless of category. Nothing is supposed to be growing there, so nothing is filtered out. `--remove_commensal` is also disabled for sterile sites.
+**Everything is pathogenic at a sterile site.** When the normalized sample type is `sterile` (peritoneal, pleural, synovial, CSF, and friends), `match_paths.py` rewrites every sheet entry's `callclass` to `primary (sterile)`, and `should_include_strain()` shows _any_ annotated organism regardless of category. Nothing is supposed to be growing there, so nothing is filtered out. `--remove_commensal` is also disabled for sterile sites.
 
 **But flora at a sterile site is flagged as a likely contaminant.** For sterile-adjacent types (`sterile`, `blood`, `csf`, `serum`), any organism carrying `commensal_sites` gets:
 
@@ -204,14 +204,14 @@ Before any alignment happens, the sheet is filtered to rows whose `pathogenic_si
 
 ### Flags that control category behaviour
 
-| Flag | Effect |
-|---|---|
-| `--show_opportunistics` | Show Opportunistic rows in the PDF |
-| `--show_potentials` | Show Potential rows in the PDF |
-| `--show_commensals` | Show Commensal rows in the PDF |
-| `--show_unidentified` | Show Unknown (un-annotated) rows in the PDF |
-| `--remove_commensal` | Drop commensal taxids from candidates *before* download/alignment (ignored for sterile sites) |
-| `--pathogens <path>` | Use a custom sheet with your own `general_classification` values |
+| Flag                    | Effect                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| `--show_opportunistics` | Show Opportunistic rows in the PDF                                                            |
+| `--show_potentials`     | Show Potential rows in the PDF                                                                |
+| `--show_commensals`     | Show Commensal rows in the PDF                                                                |
+| `--show_unidentified`   | Show Unknown (un-annotated) rows in the PDF                                                   |
+| `--remove_commensal`    | Drop commensal taxids from candidates _before_ download/alignment (ignored for sterile sites) |
+| `--pathogens <path>`    | Use a custom sheet with your own `general_classification` values                              |
 
 Hidden categories are listed by name in the report legend so a reader knows what was suppressed. **Nothing is ever hidden from the tabular outputs**: `<sample>.odr.txt` and `<sample>.odr.xlsx` always contain every organism in every category, regardless of the flags. If a category is missing from the PDF, it is still in the spreadsheet.
 
@@ -225,17 +225,17 @@ The separate `high_consequence` column (179 of 1,702 rows: select agents, catego
 
 ## 6. Worked examples
 
-| Organism | `general_classification` | `pathogenic_sites` | `commensal_sites` | Sample type | Resolved category | `annClass` | Why |
-|---|---|---|---|---|---|---|---|
-| *Salmonella enterica* | `primary` | `stool, blood` | — | stool | **Primary** | Direct | Site matches `pathogenic_sites` |
-| *Salmonella enterica* | `primary` | `stool, blood` | — | nasal | **Primary** | Derived | No site evidence; general class applies |
-| *Cutibacterium acnes* | `commensal` | `blood` | `skin` | skin | **Commensal** | Direct | Site matches `commensal_sites` |
-| *Cutibacterium acnes* | `commensal` | `blood` | `skin` | blood | **Primary (sterile-ish)** + `[skin flora]` tag | Direct | Sterile-site rule promotes; flora tag warns of contamination |
-| *Thomasclavelia ramosa* | `commensal` | `blood` | `gut, stool` | stool | **Commensal** | Direct | gut↔stool equivalence |
-| *Escherichia coli* | `opportunistic` | `urine, blood` | `gut` | urine | **Primary** | Direct | `pathogenic_sites` match promotes to Primary |
-| *Escherichia coli* | `opportunistic` | `urine, blood` | `gut` | stool | **Commensal** | Direct | gut↔stool equivalence demotes |
-| Un-curated *Rhodococcus* sp. | *(absent)* | — | — | sputum | **Opportunistic** | Derived | Genus row matched via lineage walk |
-| Un-curated environmental sp. | *(absent)* | — | — | any | **Unknown** | Direct | No row, no annotated ancestor |
+| Organism                     | `general_classification` | `pathogenic_sites` | `commensal_sites` | Sample type | Resolved category                              | `annClass` | Why                                                          |
+| ---------------------------- | ------------------------ | ------------------ | ----------------- | ----------- | ---------------------------------------------- | ---------- | ------------------------------------------------------------ |
+| _Salmonella enterica_        | `primary`                | `stool, blood`     | —                 | stool       | **Primary**                                    | Direct     | Site matches `pathogenic_sites`                              |
+| _Salmonella enterica_        | `primary`                | `stool, blood`     | —                 | nasal       | **Primary**                                    | Derived    | No site evidence; general class applies                      |
+| _Cutibacterium acnes_        | `commensal`              | `blood`            | `skin`            | skin        | **Commensal**                                  | Direct     | Site matches `commensal_sites`                               |
+| _Cutibacterium acnes_        | `commensal`              | `blood`            | `skin`            | blood       | **Primary (sterile-ish)** + `[skin flora]` tag | Direct     | Sterile-site rule promotes; flora tag warns of contamination |
+| _Thomasclavelia ramosa_      | `commensal`              | `blood`            | `gut, stool`      | stool       | **Commensal**                                  | Direct     | gut↔stool equivalence                                       |
+| _Escherichia coli_           | `opportunistic`          | `urine, blood`     | `gut`             | urine       | **Primary**                                    | Direct     | `pathogenic_sites` match promotes to Primary                 |
+| _Escherichia coli_           | `opportunistic`          | `urine, blood`     | `gut`             | stool       | **Commensal**                                  | Direct     | gut↔stool equivalence demotes                               |
+| Un-curated _Rhodococcus_ sp. | _(absent)_               | —                  | —                 | sputum      | **Opportunistic**                              | Derived    | Genus row matched via lineage walk                           |
+| Un-curated environmental sp. | _(absent)_               | —                  | —                 | any         | **Unknown**                                    | Direct     | No row, no annotated ancestor                                |
 
 ---
 
@@ -252,7 +252,7 @@ A practical triage order for the PDF and the [Interactive Report](interactive-re
 
 Two failure modes worth naming:
 
-- **Reading category as confidence.** It isn't. Sort by TASS *within* a category, not across categories.
+- **Reading category as confidence.** It isn't. Sort by TASS _within_ a category, not across categories.
 - **Reading Derived as species-specific.** Check `matched_rank`, because a genus-level match says much less than a species-level one.
 
 ---

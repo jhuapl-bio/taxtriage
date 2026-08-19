@@ -22,13 +22,9 @@
   // a plain cross-origin GET with no proxy needed.
   var REF = (window.TAXTRIAGE_DOCS && window.TAXTRIAGE_DOCS.ref) || "main";
   var CSV_URL =
-    "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/" +
-    encodeURIComponent(REF) +
-    "/assets/pathogen_sheet.csv";
+    "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/" + encodeURIComponent(REF) + "/assets/pathogen_sheet.csv";
   var CSV_HUMAN_URL =
-    "https://github.com/jhuapl-bio/taxtriage/blob/" +
-    encodeURIComponent(REF) +
-    "/assets/pathogen_sheet.csv";
+    "https://github.com/jhuapl-bio/taxtriage/blob/" + encodeURIComponent(REF) + "/assets/pathogen_sheet.csv";
 
   // Facets rendered as checkbox lists: [key, label, isMultiValue, searchable]
   var FACETS = [
@@ -226,9 +222,12 @@
 
           if (LIST_COLS.indexOf(c) !== -1) {
             o[c] = raw
-              ? raw.split(",").map(function (s) {
-                  return s.trim();
-                }).filter(Boolean)
+              ? raw
+                  .split(",")
+                  .map(function (s) {
+                    return s.trim();
+                  })
+                  .filter(Boolean)
               : [];
           } else if (c === "high_consequence") {
             o[c] = raw.toUpperCase() === "TRUE";
@@ -415,8 +414,7 @@
       });
 
       // Taxonomy: each level's options are constrained by the level above.
-      html +=
-        '<details class="pt-facet pt-tax" open><summary>Taxonomy</summary><div class="pt-facet-body">';
+      html += '<details class="pt-facet pt-tax" open><summary>Taxonomy</summary><div class="pt-facet-body">';
       TAXONOMY.forEach(function (rank, i) {
         var parentChosen = i === 0 || state.tax[TAXONOMY[i - 1]];
         var counts = countValues(filter(rank), rank, false);
@@ -464,7 +462,7 @@
               esc(f[1]) +
               ": " +
               esc(v) +
-              "</button>"
+              "</button>",
           );
         });
       });
@@ -477,7 +475,7 @@
               esc(rank) +
               ": " +
               esc(state.tax[rank]) +
-              "</button>"
+              "</button>",
           );
         }
       });
@@ -632,7 +630,7 @@
       el.drawer.innerHTML =
         '<button class="pt-drawer-close" aria-label="Close">✕</button><h3>' +
         esc(row.name) +
-        "</h3><dl class=\"pt-dl\">" +
+        '</h3><dl class="pt-dl">' +
         body +
         "</dl>";
       el.drawer.classList.add("is-open");
@@ -656,7 +654,7 @@
               var v = displayValue(row[c]);
               return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
             })
-            .join(",")
+            .join(","),
         );
       });
       var blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });

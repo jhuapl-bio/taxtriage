@@ -46,28 +46,28 @@ When both are enabled, each produces a separate insilico sample per non control 
 
 When `--sim_subsample` is set, TaxTriage generates a single **master** synthetic dataset per sample (via ISS/NanoSim as above) and then derives a **series of smaller datasets** from it, each with a defined read count. Only the derived datasets flow downstream as analysed samples; the master is the source pool.
 
-| Parameter                    | Default        | Type    | Description                                                                                                                                     |
-| ---------------------------- | -------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--sim_subsample`            | `false`        | Boolean | Enable subsampling of the master synthetic dataset into a read-count series                                                                     |
-| `--sim_subsample_mode`       | `'randomized'` | String  | `consistent` = nested prefixes (dataset _n+1_ contains all reads of dataset _n_); `randomized` = each dataset independently sampled             |
-| `--sim_series_counts`        | none           | String  | Explicit read-count list, e.g. `'100,500,1000,5000,10000'`. One dataset per value                                                               |
-| `--sim_series_start`         | none           | Integer | Generator (alternative to the list): first read count                                                                                          |
-| `--sim_series_step`          | none           | Integer | Generator: increment between datasets                                                                                                           |
-| `--sim_series_n`             | none           | Integer | Generator: number of datasets                                                                                                                   |
-| `--sim_series_replicates`    | `1`            | Integer | Dilution series: number of datasets (`x`) produced **per read count** (randomized mode only)                                                    |
-| `--sim_subsample_seed`       | `42`           | Integer | RNG seed for reproducible randomized subsampling                                                                                                |
-| `--sim_keep_subsampled_fastq`| `false`        | Boolean | If `false`, only the read-index files + manifest are published; the FASTQs live only in the work dir and can be reconstructed on demand         |
+| Parameter                     | Default        | Type    | Description                                                                                                                             |
+| ----------------------------- | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--sim_subsample`             | `false`        | Boolean | Enable subsampling of the master synthetic dataset into a read-count series                                                             |
+| `--sim_subsample_mode`        | `'randomized'` | String  | `consistent` = nested prefixes (dataset _n+1_ contains all reads of dataset _n_); `randomized` = each dataset independently sampled     |
+| `--sim_series_counts`         | none           | String  | Explicit read-count list, e.g. `'100,500,1000,5000,10000'`. One dataset per value                                                       |
+| `--sim_series_start`          | none           | Integer | Generator (alternative to the list): first read count                                                                                   |
+| `--sim_series_step`           | none           | Integer | Generator: increment between datasets                                                                                                   |
+| `--sim_series_n`              | none           | Integer | Generator: number of datasets                                                                                                           |
+| `--sim_series_replicates`     | `1`            | Integer | Dilution series: number of datasets (`x`) produced **per read count** (randomized mode only)                                            |
+| `--sim_subsample_seed`        | `42`           | Integer | RNG seed for reproducible randomized subsampling                                                                                        |
+| `--sim_keep_subsampled_fastq` | `false`        | Boolean | If `false`, only the read-index files + manifest are published; the FASTQs live only in the work dir and can be reconstructed on demand |
 
 ### Natural background dilution series (real reads)
 
 Instead of — or alongside — synthetic reads, you can dilute a **real FASTQ**. Point `--background_reads` (and `--background_reads2` for paired-end) at a background/mock-community sample and it is added to the run as a normal sample: host-filtered, classified, and reference-prepped **once**, then subsampled into the same read-count series using the same knobs (`--sim_subsample_mode`, `--sim_series_counts` / generator, `--sim_series_replicates`, `--sim_subsample_seed`). Every subsample shares the full-depth references (fast path — it tests alignment/scoring sensitivity to depth, not classification).
 
-| Parameter               | Default                        | Type   | Description                                                                                          |
-| ----------------------- | ------------------------------ | ------ | --------------------------------------------------------------------------------------------------- |
-| `--background_reads`    | none                           | Path   | Background FASTQ (R1 / single-end). Providing this enables the natural-background dilution series.   |
-| `--background_reads2`   | none                           | Path   | Background R2 FASTQ for paired-end input; omit for single-end.                                       |
-| `--background_platform` | ILLUMINA if paired, else OXFORD | String | `ILLUMINA` / `OXFORD` / `PACBIO`.                                                                    |
-| `--background_name`     | `background`                   | String | Sample id for the background source (prefix for its subsample dataset ids).                          |
+| Parameter               | Default                         | Type   | Description                                                                                        |
+| ----------------------- | ------------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| `--background_reads`    | none                            | Path   | Background FASTQ (R1 / single-end). Providing this enables the natural-background dilution series. |
+| `--background_reads2`   | none                            | Path   | Background R2 FASTQ for paired-end input; omit for single-end.                                     |
+| `--background_platform` | ILLUMINA if paired, else OXFORD | String | `ILLUMINA` / `OXFORD` / `PACBIO`.                                                                  |
+| `--background_name`     | `background`                    | String | Sample id for the background source (prefix for its subsample dataset ids).                        |
 
 Because a real sample has no known ground truth, the **truth set is the organisms detected at full depth** (the deepest subsample). The suite then measures how much of that full-depth call set each shallower dilution recovers — i.e. precision / recall / F1 vs read depth, and a per-organism limit of detection. The datasets appear in the **In-Silico** report tab as a "Natural background (real reads)" group, and — for paired-end input — counts are expressed in read pairs exactly as for ISS.
 

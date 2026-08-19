@@ -2,7 +2,7 @@
 
 TaxTriage hides low-confidence detections by default: an organism whose [TASS score](tass-scoring.md) falls below the cutoff is dropped from the tables, charts, and heatmap so the report stays readable. But "below the cutoff" is not the same as "absent" — a sub-threshold organism may still have reference reads aligned, carry virulence/AMR genes, or be placed by the reference-free [novelty](novelty-detection.md) branch.
 
-**Rescue** is the set of mechanisms that bring those suppressed-but-supported detections back into view *without* changing any score. Every rescue is opt-in or clearly badged, lives only in the detection tables (the Summary tab's Detections view and the full Table tab), and never alters the KPIs, charts, or heatmap, which stay restricted to passing detections.
+**Rescue** is the set of mechanisms that bring those suppressed-but-supported detections back into view _without_ changing any score. Every rescue is opt-in or clearly badged, lives only in the detection tables (the Summary tab's Detections view and the full Table tab), and never alters the KPIs, charts, or heatmap, which stay restricted to passing detections.
 
 This page covers the three rescue toggles, the differentiating UI each uses, and the related surfacing updates to the interactive report. For the upstream novelty workflow itself (backends, databases, params) see [Novelty Detection](novelty-detection.md).
 
@@ -12,15 +12,15 @@ This page covers the three rescue toggles, the differentiating UI each uses, and
 
 All three live in the report sidebar under the filter controls. They are independent and can be combined; rows surfaced by more than one are de-duplicated.
 
-| Toggle (sidebar label) | Default | What it surfaces |
-|---|---|---|
-| **Roll up threshold** (`filter-rollup`) | off | A strain kept visible when its parent **species or genus aggregate** passes the cutoff, even though the strain's own score does not. |
-| **Show below-cutoff organisms with VF/AMR hits** (`filter-below-vfamr`) | off | A below-cutoff organism whose **genus has a Virulence-Factor or AMR gene hit** in the same sample. Requires `--annotate`. |
-| **Show sub-threshold & novelty-supported organisms** (`filter-novelty-sub`) | off | Below-cutoff organisms that still have **reference alignments**, and no-alignment organisms with a **genus/species novelty hit** in the same sample. Shown whenever novelty data is present. |
+| Toggle (sidebar label)                                                      | Default | What it surfaces                                                                                                                                                                             |
+| --------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Roll up threshold** (`filter-rollup`)                                     | off     | A strain kept visible when its parent **species or genus aggregate** passes the cutoff, even though the strain's own score does not.                                                         |
+| **Show below-cutoff organisms with VF/AMR hits** (`filter-below-vfamr`)     | off     | A below-cutoff organism whose **genus has a Virulence-Factor or AMR gene hit** in the same sample. Requires `--annotate`.                                                                    |
+| **Show sub-threshold & novelty-supported organisms** (`filter-novelty-sub`) | off     | Below-cutoff organisms that still have **reference alignments**, and no-alignment organisms with a **genus/species novelty hit** in the same sample. Shown whenever novelty data is present. |
 
 ### 1. Threshold roll-up
 
-A high-confidence call at the genus or species level can vanish simply because no single strain underneath it cleared the cutoff. With roll-up on, a strain is kept visible when its parent species *or* genus aggregate passes — so a strong genus call is never erased by strain-level dilution. Rescued rows are tagged with a coloured **↑ rollup** badge naming the level that rescued them (`↑ Species` / `↑ Genus`), and an amber bar in the charts.
+A high-confidence call at the genus or species level can vanish simply because no single strain underneath it cleared the cutoff. With roll-up on, a strain is kept visible when its parent species _or_ genus aggregate passes — so a strong genus call is never erased by strain-level dilution. Rescued rows are tagged with a coloured **↑ rollup** badge naming the level that rescued them (`↑ Species` / `↑ Genus`), and an amber bar in the charts.
 
 ### 2. Below-cutoff VF/AMR
 
@@ -28,12 +28,12 @@ When protein annotation is enabled (`--annotate`) and one or more VF or AMR gene
 
 ### 3. Sub-threshold & novelty-supported organisms
 
-This rescue handles the case the other two miss: a sample that *does* have passing detections but also contains rows with sub-threshold or alignment-free signal. Consider a sample with three organisms — one above cutoff with alignments, one below cutoff with alignments, and one with no alignments at all that the novelty classifier nonetheless places at the genus/species level. The first is already shown; this toggle surfaces the other two:
+This rescue handles the case the other two miss: a sample that _does_ have passing detections but also contains rows with sub-threshold or alignment-free signal. Consider a sample with three organisms — one above cutoff with alignments, one below cutoff with alignments, and one with no alignments at all that the novelty classifier nonetheless places at the genus/species level. The first is already shown; this toggle surfaces the other two:
 
-| Surfaced row | Condition | Badge | Rail |
-|---|---|---|---|
-| **Sub-threshold, aligned** (`__belowCutoffAligned`) | Below the cutoff, but `# Reads Aligned > 0`. | <span>↓ sub-threshold (aligned)</span> (blue) | blue |
-| **Novelty, no alignment** (`__noveltyNoAlign`) | `# Reads Aligned = 0`, but the active novelty backend placed this organism's **genus or species** in the same sample. | ✦ novelty, no alignment (orange) | orange |
+| Surfaced row                                        | Condition                                                                                                             | Badge                                         | Rail   |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------ |
+| **Sub-threshold, aligned** (`__belowCutoffAligned`) | Below the cutoff, but `# Reads Aligned > 0`.                                                                          | <span>↓ sub-threshold (aligned)</span> (blue) | blue   |
+| **Novelty, no alignment** (`__noveltyNoAlign`)      | `# Reads Aligned = 0`, but the active novelty backend placed this organism's **genus or species** in the same sample. | ✦ novelty, no alignment (orange)              | orange |
 
 The novelty match reuses the same per-row logic as the Novelty column, so the badge and the column's signal always agree. Rows already shown by the VF/AMR toggle are skipped to avoid duplicates, and all the usual sidebar filters (text, category, High-Consequence, molecular type, view level) apply. The badge tooltip explains exactly why each row is visible (its TASS, aligned-read count, or the novelty rank that backs it).
 
@@ -43,7 +43,7 @@ The novelty match reuses the same per-row logic as the Novelty column, so the ba
 
 ## Annotation of unaligned samples
 
-VF/AMR annotation (`--annotate`) runs on the **de novo contigs** of every sample, producing `annotate/<sample>.annotate_report.tsv`. Previously these hits only reached the comparison report when they could be attached to an *aligned* organism, so a sample with **no reference alignment** (e.g. a shallow dilution that assembled contigs but mapped nothing) lost its annotation entirely — the Novelty tab showed signal, but the Summary tab's Annotation Summary and the VF/AMR views were blank for that sample.
+VF/AMR annotation (`--annotate`) runs on the **de novo contigs** of every sample, producing `annotate/<sample>.annotate_report.tsv`. Previously these hits only reached the comparison report when they could be attached to an _aligned_ organism, so a sample with **no reference alignment** (e.g. a shallow dilution that assembled contigs but mapped nothing) lost its annotation entirely — the Novelty tab showed signal, but the Summary tab's Annotation Summary and the VF/AMR views were blank for that sample.
 
 The standalone `annotate_report.tsv` files are now plumbed directly into the comparison report:
 
@@ -76,4 +76,4 @@ The cross-sample views moved their numbers off the plot and onto hover to cut cl
 
 ---
 
-*See also: [Novelty Detection](novelty-detection.md) · [TASS Scoring](tass-scoring.md) · [Interactive Report](interactive-report.md) · [CLI Parameters](cli-parameters.md)*
+_See also: [Novelty Detection](novelty-detection.md) · [TASS Scoring](tass-scoring.md) · [Interactive Report](interactive-report.md) · [CLI Parameters](cli-parameters.md)_
