@@ -1,0 +1,75 @@
+name: Docs check
+
+# Builds and tests the documentation site without deploying it. Runs on pull
+# requests into dev and main so doc breakage is caught in review rather than
+# after a merge triggers a deploy.
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+      - "scripts/write_docs_ref.py"
+      - "scripts/inline_boot_json.py"
+      - "scripts/test_pathogen_table.js"
+      - "scripts/test_built_links.py"
+      - "assets/heatmap.html"
+      - "assets/pages.js"
+      - "assets/heatmap_boot.js"
+      - "assets/pathogen_sheet.csv"
+      - ".github/workflows/docs*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install documentation dependencies
+        run: pip install -r requirements-docs.txt
+
+      # Read data from the PR's own head, so a PR that changes the pathogen
+      # sheet is validated against its own version of the file.
+      - name: Pin data ref
+        run: |
+          python scripts/write_docs_ref.py \
+            --ref "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --version "pr-${{ github.event.pull_request.number || 'manual' }}"
+
+      - name: Build interactive report dist
+        run: |
+          python scripts/inline_boot_json.py
+          test -s _site/index.html
+          mkdir -p docs/demo
+          cp _site/index.html docs/demo/index.html
+
+      - name: Test pathogen sheet table
+        run: |
+          npm install --no-fund --no-audit --no-save jsdom
+          node scripts/test_pathogen_table.js
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      - name: Check built links
+        run: python scripts/test_built_links.py --site site

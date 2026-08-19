@@ -10,9 +10,14 @@ hide:
 
 Every organism TaxTriage can flag, with the annotations that drive
 [Microbial Categories](microbial-categories.md) and the
-[TASS confidence score](tass-scoring.md). This is a live view of
+[TASS confidence score](tass-scoring.md).
+
+This table reads
 [`assets/pathogen_sheet.csv`](https://github.com/jhuapl-bio/taxtriage/blob/main/assets/pathogen_sheet.csv)
-in the pipeline repo, rebuilt on every deploy.
+straight from the `main` branch of the pipeline repository **when the page
+loads** — it is not bundled into this site. Merge a change to that CSV and it
+shows up here on the next refresh, with no redeploy. Columns the sheet does not
+currently carry are left blank.
 
 !!! tip "Using this table"
 

@@ -4,14 +4,16 @@ assets/mce.js
 docs/index.html
 _site/
 
-# Documentation site: build output and artifacts generated from the repo
-# at deploy time (see .github/workflows/deploy-pages.yml).
+# Documentation site: build output and artifacts generated at build time.
+# The rendered site is published to the gh-pages branch by mike; nothing here
+# is ever committed.
 site/
 docs/demo/
-docs/data/pathogen_sheet.json
+docs/javascripts/docs_ref.js
 node_modules/
 package-lock.json
 package.json
+
 file
 test/*
 examples/test.csv

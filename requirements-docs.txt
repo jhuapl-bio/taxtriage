@@ -3,3 +3,4 @@ mkdocs-material==9.5.49
 pymdown-extensions==10.14
 mkdocs-glightbox==0.4.0
 mkdocs-minify-plugin==0.8.0
+mike==2.1.3

@@ -14,20 +14,21 @@
 (function () {
   "use strict";
 
-  // Pages are served at directory URLs (/pathogen-sheet/), so a bare relative
-  // path would resolve inside the page directory rather than the site root.
-  // MkDocs rewrites this script's own src per page, so derive the data URL from
-  // it — correct at any nesting depth and under any base path.
-  var self =
-    document.currentScript || document.querySelector('script[src*="pathogen_table.js"]');
-  var DATA_URL = "data/pathogen_sheet.json";
-  if (self && self.src) {
-    var derived = self.src.replace(
-      /javascripts\/pathogen_table\.js(\?.*)?$/,
-      "data/pathogen_sheet.json"
-    );
-    if (derived !== self.src) DATA_URL = derived;
-  }
+  // The sheet is read from the repository at page load rather than bundled into
+  // the site, so it is never a stale copy. The ref is pinned per docs version
+  // by scripts/write_docs_ref.py (a release tag for versioned docs, `main` for
+  // bleeding-edge), so the 3.1 docs show the 3.1 sheet.
+  // raw.githubusercontent.com sends Access-Control-Allow-Origin: *, so this is
+  // a plain cross-origin GET with no proxy needed.
+  var REF = (window.TAXTRIAGE_DOCS && window.TAXTRIAGE_DOCS.ref) || "main";
+  var CSV_URL =
+    "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/" +
+    encodeURIComponent(REF) +
+    "/assets/pathogen_sheet.csv";
+  var CSV_HUMAN_URL =
+    "https://github.com/jhuapl-bio/taxtriage/blob/" +
+    encodeURIComponent(REF) +
+    "/assets/pathogen_sheet.csv";
 
   // Facets rendered as checkbox lists: [key, label, isMultiValue, searchable]
   var FACETS = [
@@ -58,6 +59,30 @@
     ["host_organism", "Host"],
   ];
 
+  // Canonical column set. Anything the CSV omits reads as empty.
+  var ALL_COLS = [
+    "name",
+    "taxid",
+    "general_classification",
+    "alternative_names",
+    "pathogenic_sites",
+    "commensal_sites",
+    "status",
+    "high_consequence",
+    "pathology",
+    "host_organism",
+    "kingdom",
+    "phylum",
+    "class",
+    "order",
+    "family",
+    "genus",
+    "mol_type",
+    "reference",
+    "Additional references",
+    "assembly_accession",
+  ];
+
   var DETAIL_COLS = [
     ["taxid", "Tax ID"],
     ["general_classification", "Classification"],
@@ -79,6 +104,14 @@
     ["reference", "Reference"],
     ["Additional references", "Additional references"],
   ];
+
+  // Columns split on commas into multiple values.
+  var LIST_COLS = ["pathogenic_sites", "commensal_sites", "alternative_names"];
+
+  // Known upstream typos, folded so the filter list stays clean.
+  var VALUE_FIXES = {
+    status: { estbalished: "established", etsablished: "established" },
+  };
 
   var SEARCH_COLS = [
     "name",
@@ -107,47 +140,144 @@
     return v == null ? "" : String(v);
   }
 
+  /* ── CSV ────────────────────────────────────────────────────────────────
+   * RFC 4180 parser. The pathogen sheet's `reference` column contains commas,
+   * doubled quotes and occasional newlines inside quoted fields, so splitting
+   * on commas is not an option.
+   */
+  function parseCsv(text) {
+    // Strip BOM and normalise line endings before scanning.
+    text = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+
+    var rows = [];
+    var row = [];
+    var field = "";
+    var inQuotes = false;
+
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += c;
+        }
+        continue;
+      }
+
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ",") {
+        row.push(field);
+        field = "";
+      } else if (c === "\n") {
+        row.push(field);
+        field = "";
+        // Skip blank lines rather than emitting empty records.
+        if (row.length > 1 || row[0] !== "") rows.push(row);
+        row = [];
+      } else {
+        field += c;
+      }
+    }
+    // Trailing field/record with no closing newline.
+    if (field !== "" || row.length) {
+      row.push(field);
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+    }
+
+    if (!rows.length) return { cols: [], rows: [] };
+    var header = rows[0].map(function (h) {
+      return h.trim();
+    });
+    return { cols: header, rows: rows.slice(1) };
+  }
+
+  /* Turn parsed CSV into row objects.
+   *
+   * Deliberately tolerant of schema drift: any column the sheet does not carry
+   * (today that is `status`) simply reads as empty rather than breaking the
+   * page. Facets with nothing in them are hidden by the renderer.
+   */
+  function normalise(parsed) {
+    var index = {};
+    parsed.cols.forEach(function (c, i) {
+      index[c] = i;
+    });
+
+    var present = {};
+    ALL_COLS.forEach(function (c) {
+      present[c] = Object.prototype.hasOwnProperty.call(index, c);
+    });
+
+    var rows = parsed.rows
+      .map(function (cells) {
+        var o = {};
+        ALL_COLS.forEach(function (c) {
+          var raw = present[c] ? (cells[index[c]] || "").trim() : "";
+          var fix = VALUE_FIXES[c];
+          if (fix && Object.prototype.hasOwnProperty.call(fix, raw)) raw = fix[raw];
+
+          if (LIST_COLS.indexOf(c) !== -1) {
+            o[c] = raw
+              ? raw.split(",").map(function (s) {
+                  return s.trim();
+                }).filter(Boolean)
+              : [];
+          } else if (c === "high_consequence") {
+            o[c] = raw.toUpperCase() === "TRUE";
+          } else {
+            o[c] = raw;
+          }
+        });
+        o.__blob = SEARCH_COLS.map(function (c) {
+          return displayValue(o[c]);
+        })
+          .join(" ")
+          .toLowerCase();
+        return o;
+      })
+      .filter(function (o) {
+        return o.name; // drop stray blank records
+      });
+
+    return { rows: rows, present: present };
+  }
+
   function init(root) {
     if (!root || root.dataset.ptReady === "1") return;
     root.dataset.ptReady = "1";
 
-    fetch(DATA_URL)
+    fetch(CSV_URL, { cache: "no-cache" })
       .then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
+        return r.text();
       })
-      .then(function (payload) {
-        build(root, payload);
+      .then(function (text) {
+        var data = normalise(parseCsv(text));
+        if (!data.rows.length) throw new Error("the sheet parsed to zero rows");
+        build(root, data);
       })
       .catch(function (err) {
         root.innerHTML =
-          '<div class="pt-empty">Could not load the pathogen sheet (' +
+          '<div class="pt-empty"><p>Could not load the pathogen sheet from the pipeline repository (' +
           esc(err.message) +
-          ").</div>";
+          ").</p><p>You can open it directly on GitHub: " +
+          '<a href="' +
+          CSV_HUMAN_URL +
+          '" target="_blank" rel="noopener">assets/pathogen_sheet.csv</a></p></div>';
       });
   }
 
-  function build(root, payload) {
-    var cols = payload.cols;
-    var idx = {};
-    cols.forEach(function (c, i) {
-      idx[c] = i;
-    });
-
-    // Rows as objects keyed by column name, plus a precomputed lowercase blob
-    // for search so we aren't re-joining strings on every keystroke.
-    var rows = payload.rows.map(function (r) {
-      var o = {};
-      cols.forEach(function (c, i) {
-        o[c] = r[i];
-      });
-      o.__blob = SEARCH_COLS.map(function (c) {
-        return displayValue(o[c]);
-      })
-        .join(" ")
-        .toLowerCase();
-      return o;
-    });
+  function build(root, data) {
+    var rows = data.rows;
+    var present = data.present;
 
     var state = {
       q: "",
@@ -239,6 +369,9 @@
         var entries = Array.from(counts.entries()).sort(function (a, b) {
           return b[1] - a[1] || a[0].localeCompare(b[0]);
         });
+        // A column the sheet does not carry (or one that is entirely blank)
+        // gets no facet at all rather than an empty expander.
+        if (!entries.length && !sel.size) return;
         var open = sel.size > 0 || FACETS.indexOf(f) < 3;
 
         html +=
@@ -512,9 +645,9 @@
     /* ── export ───────────────────────────────────────────────────────── */
 
     function exportCsv() {
-      var header = cols.filter(function (c) {
-        return c !== "__blob";
-      });
+      // Export the canonical schema so downstream consumers get a stable shape
+      // even when the upstream sheet is missing a column.
+      var header = ALL_COLS;
       var lines = [header.join(",")];
       currentRows.forEach(function (row) {
         lines.push(
