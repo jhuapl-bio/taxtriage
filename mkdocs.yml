@@ -25,8 +25,8 @@ exclude_docs: |
 theme:
   name: material
   language: en
-  logo: images/taxtriage_logo_light.png
-  favicon: images/taxtriage_logo_light.png
+  logo: images/logo.svg
+  favicon: images/favicon.svg
   icon:
     repo: fontawesome/brands/github
   palette:

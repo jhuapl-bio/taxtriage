@@ -131,12 +131,12 @@ Connected components (found with a breadth-first search, or BFS) define **confli
 
 For each read with multi-reference alignments, `build_removed_ids_best_alignment()` keeps the alignment with the highest composite score and schedules the rest for removal. The score combines four terms:
 
-```math
+$$
 \text{score} = \text{MAPQ}
              + w_{AS} \cdot AS
              - w_{pen} \cdot N_{\text{alt}}
              + w_{ani} \cdot \Omega_{\text{ani}}
-```
+$$
 
 Where:
 
@@ -149,9 +149,9 @@ Where:
 
 Before the BAM is scanned, `_count_reads_per_ref()` builds a fast index of the pre-removal read count for every reference from the BAM index statistics. For each competing reference that shares a high-ANI window with the current contig, we measure how much more (or less) support our contig has:
 
-```math
+$$
 \Omega_{\text{ani}} = \sum_{\text{alt} \in A} J_{\max}(\text{contig},\, \text{alt}) \cdot \log_2\!\left(\frac{N_{\text{contig}}}{N_{\text{alt}}}\right)
-```
+$$
 
 Where:
 
@@ -305,9 +305,9 @@ A **sigmoid** is an S-shaped curve that smoothly converts any input value into a
 
 Defined in `breadth_score_sigmoid()`:
 
-```math
+$$
 \text{breadth\_sigmoid}(c) = \frac{1}{1 + e^{-s \cdot (c - m)}}
-```
+$$
 
 Where:
 
@@ -322,17 +322,17 @@ Where:
 
 Low mapping quality (MAPQ ≈ 0) suggests reads are aligning ambiguously. The aligner found more than one place each read fits about equally well, so we cannot be confident it came from this organism rather than one of the others. When most reads have low MAPQ, we scale the breadth score down to reflect that uncertainty:
 
-```math
+$$
 \text{mapq\_scale} = (\text{highmapq\_fraction})^{p}
-```
+$$
 
 Where $p$ (the exponent) = `mapq_breadth_power` (default: 2.0). Squaring the high-MAPQ fraction means that if, say, only 70% of reads are high-quality, the penalty is 0.7² = 0.49, which is a meaningful reduction. This makes the score more conservative when read quality is mixed.
 
 ### 5.4 Final Breadth Log Score
 
-```math
+$$
 \boxed{\text{breadth\_log\_score} = \text{breadth\_sigmoid}(c, m, s) \times (\text{highmapq\_fraction})^{p}}
-```
+$$
 
 **Example:** Coverage = 15%, midpoint = 0.01, steepness = 12,000, 90% of reads have high MAPQ:
 
@@ -383,9 +383,9 @@ The full computation lives in `getGiniCoeff()` and has five sub-steps.
 
 Each region's depth is log-transformed to reduce the effect of extreme outliers. Imagine one region has a depth of 10,000 while most are around 10. Without the log transform, that one outlier would dominate the calculation. The log squashes those extremes:
 
-```math
+$$
 d'_i = \log_{10}(1 + d_i)
-```
+$$
 
 Here, $d_i$ is the raw depth at position $i$, and $d'_i$ is the transformed (compressed) version. The "+1" inside the log prevents taking log of zero (which is undefined). Uncovered bases get $\log_{10}(1 + 0) = 0$.
 
@@ -401,15 +401,15 @@ To calculate it:
 2. Build a **Lorenz curve**, which is a line that shows "what fraction of total coverage is accounted for by the bottom X% of genome positions?" In a perfectly equal world, the bottom 50% of positions would hold 50% of coverage. In practice, low-coverage positions hold very little.
 3. Measure the area under the Lorenz curve ($A_L$) using a standard trapezoid method:
 
-```math
+$$
 A_L = \sum_{i} \frac{(x_{i+1} - x_i)(y_i + y_{i+1})}{2}
-```
+$$
 
 Here $(x_i, y_i)$ are the Lorenz curve points, where $x_i$ is the cumulative fraction of bases and $y_i$ is the cumulative fraction of total coverage at that point.
 
-```math
+$$
 G_{\text{raw}} = 1 - 2 A_L
-```
+$$
 
 $G_{\text{raw}}$ falls in the range [0, 1]: 0 means perfectly uniform coverage, 1 means maximally unequal (all reads in one spot).
 
@@ -417,9 +417,9 @@ $G_{\text{raw}}$ falls in the range [0, 1]: 0 means perfectly uniform coverage, 
 
 Since a low raw Gini means uniform coverage (which is a _good_ sign), we flip and scale it so that uniform coverage gives a _high_ score:
 
-```math
+$$
 G_{\text{transformed}} = \text{clamp}\!\Big(\alpha \cdot \sqrt{1 - G_{\text{raw}}},\; 0,\; 1\Big)
-```
+$$
 
 Where $\alpha$ (alpha) is a scaling multiplier set to 1.8 by default. Setting it above 1.0 means that even moderately uniform distributions can reach the maximum score of 1.0. The square root softens the transformation so that small improvements in uniformity still get meaningful credit. The `clamp(…, 0, 1)` at the end ensures the result never goes below 0 or above 1. Examples:
 
@@ -430,9 +430,9 @@ Where $\alpha$ (alpha) is a scaling multiplier set to 1.8 by default. Setting it
 
 Larger genomes need more reads to achieve uniform coverage, so it's harder to get a good Gini score for a big genome. To compensate, we give a bonus that scales with genome size. We use a log scale so the bonus grows gradually rather than exploding for very large genomes:
 
-```math
+$$
 S_{\text{length}} = 1 + R \cdot \log_{10}\!\Big(\max\!\big(\frac{\min(L, L_{\max})}{L_{\text{base}}},\; 1\big)\Big)
-```
+$$
 
 Where:
 
@@ -445,13 +445,13 @@ Where:
 
 This measures how spread out the covered regions are physically along the genome. Even if the depth of coverage is uniform, we want reads scattered across many different locations and not all clumped in one contiguous block. Think of it like this: if you're checking whether someone actually read a whole book, you'd be more convinced if they could talk about many passages from every chapter with general detail instead of having a highly detailed summary of just one chapter.
 
-```math
+$$
 \bar{m} = \frac{1}{n}\sum_{i=1}^{n} \frac{s_i + e_i}{2}
 \qquad
 \sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(m_i - \bar{m})^2
 \qquad
 D = \sqrt{\frac{\sigma^2}{L^2 / 12}}
-```
+$$
 
 Breaking this down:
 
@@ -463,9 +463,9 @@ Breaking this down:
 
 #### Step 6: Final Gini Score
 
-```math
+$$
 \boxed{\text{gini\_coefficient} = \min\!\Big(1.0,\;\; G_{\text{transformed}} \times S_{\text{length}} \times (1 + \beta \cdot D)\Big)}
-```
+$$
 
 Where $\beta$ (beta) is the **dispersion weight** (default: 0.5). It controls how much the positional spread of reads (the $D$ factor from Step 5) influences the final Gini score. At 0.5, if regions are perfectly spread out ($D = 1.0$), the score gets a 50% boost (multiplied by 1.5). If $\beta$ were 0, dispersion would be ignored entirely. If $\beta$ were 1.0, perfect dispersion would double the score. The default of 0.5 strikes a balance: spatial spread matters, but it's not the dominant factor.
 
@@ -500,9 +500,9 @@ The raw minhash score blends two retention signals, breadth retention and read r
 - **`Δ⁻¹ Breadth`** ($B_r$): fraction of genome breadth surviving conflict removal (0–1).
 - **Read retention** ($R_r$): fraction of reads surviving conflict removal, i.e. `Pass Filtered Reads / Total Reads`.
 
-```math
+$$
 \text{minhash\_score} = \min\!\big(1.0,\;\; 0.30 \cdot B_r + 0.70 \cdot R_r\big)
-```
+$$
 
 Read retention is weighted more heavily (70%) because it differentiates conflict-group members much more cleanly: the dominant true-positive organism retains most of its reads during removal, while false-positive relatives lose the majority of theirs.
 
@@ -519,37 +519,37 @@ Both organisms have the same $B_r$ (they share similar genome breadth reduction 
 
 When conflict comparison data isn't available, we fall back to a simpler estimate based on how many reads the organism has relative to the total:
 
-```math
+$$
 \text{minhash\_score}_{\text{fallback}} = \text{rpm\_confidence} \times 0.5
-```
+$$
 
 Where `rpm_confidence` is a sigmoid over the fraction of total reads ($f_{\text{reads}}$). The very steep sigmoid (steepness = 50,000) acts almost like a switch: if the organism has more than a tiny fraction of reads (above 0.01%), confidence jumps to ~1.0; below that, it drops to ~0:
 
-```math
+$$
 \text{rpm\_confidence} = \frac{1}{1 + e^{-50000 \cdot (f_{\text{reads}} - 0.0001)}}
-```
+$$
 
 ### 7.3 Confidence Gating
 
 Before the minhash score is used, it's "gated" by a coverage confidence factor. Think of a gate as a checkpoint: if an organism doesn't have enough genome coverage, we don't trust its minhash score regardless of how good it looks. This prevents organisms with very sparse coverage from getting artificially inflated scores:
 
-```math
+$$
 \text{conf} = w_b \cdot \text{breadth\_sigmoid}(c) + w_g \cdot G_{\text{score}}
-```
+$$
 
 Here $w_b$ and $w_g$ are weights that control how much the breadth sigmoid vs. the Gini score contribute to the gate. By default $w_b = 1.0$ and $w_g = 0.0$, so gating is based purely on breadth (genome coverage).
 
-```math
+$$
 \boxed{\text{minhash\_reduction} = \text{clamp}(\text{conf},\; 0,\; 1)}
-```
+$$
 
 > **Note:** The value stored as `minhash_reduction` is the _confidence_ value, not the raw minhash score itself. This means the minhash component represents how confident we are that the organism's alignment signal is real, and that confidence is driven mainly by whether the organism has meaningful genome breadth.
 
 At the group (species/genus) levels the gate is the product of three factors, **all** of which must be healthy for minhash to survive:
 
-```math
+$$
 \text{gate} = \text{depth\_conc\_penalty} \times \text{contig\_penalty} \times \text{breadth\_sigmoid}(c)
-```
+$$
 
 Note that `breadth_sigmoid(c)` here uses the **same** $c$ as the breadth component, so an inflated group coverage does not just raise breadth. It simultaneously unlocks the minhash term, and the two are the two largest weights in the default profile. This coupling is why a single bad coverage value moves TASS so far; see [11.3](#113-size-eligibility-for-the-representative-coverage-maximum) for the guard and the worked _P. vivax_ example.
 
@@ -557,21 +557,21 @@ Note that `breadth_sigmoid(c)` here uses the **same** $c$ as the breadth compone
 
 Organisms with very few reads relative to the total are more likely to be false positives, so their `minhash_confidence` is scaled down by a coverage-aware penalty. Rather than applying the penalty at full strength regardless of coverage evidence, it is **faded out when the organism has solid genome breadth**. This keeps a well-covered dominant organism from being dragged down by the global read-fraction sigmoid:
 
-```math
+$$
 w_{\text{pen}} = 0.35 \times \bigl(1 - \min\!\bigl(1.0,\; \text{cov\_conf} + 0.20 \times \text{mapq\_norm}\bigr)\bigr)
-```
+$$
 
 where `mapq_norm` $= \min(1.0, \text{meanmapq} / 60)$. The additional MapQ bypass term (`0.20 × mapq_norm`) fades the penalty further when reads are high-quality. A high-MAPQ organism with few reads, such as a rare pathogen in a sterile-site sample, should not be penalised as harshly as a low-MAPQ scatter hit.
 
-```math
+$$
 \text{minhash\_confidence} \mathrel{*}= \big(1 - w_{\text{pen}}\big) + \big(w_{\text{pen}} \times \text{rpm\_weight}\big)
-```
+$$
 
 Where `rpm_weight` is a steep sigmoid over the fraction of total reads:
 
-```math
+$$
 \text{rpm\_weight} = \frac{1}{1 + e^{-50000 \cdot (f_{\text{reads}} - 0.0001)}}
-```
+$$
 
 and `cov_conf = breadth_sigmoid(coverage)`.
 
@@ -595,13 +595,13 @@ Within each parent group (organisms sharing the same `toplevelkey`, i.e. the sam
 
 A single organism in its group gets an **exclusivity boost**: the gap between its current `minhash_reduction` and the coverage-gate ceiling is partially filled, proportional to `rpm_confidence_weight`:
 
-```math
+$$
 \text{gap} = \max(0,\; \text{minhash\_confidence} - \text{raw\_minhash})
 \qquad
 \text{boost} = \text{gap} \times 0.9 \times \text{rpm\_weight}
 \qquad
 \text{adjusted} = \min(\text{minhash\_confidence},\; \text{raw\_minhash} + \text{boost})
-```
+$$
 
 The `minhash_confidence` ceiling ensures a low-coverage solo organism can't inflate itself beyond what its coverage evidence supports.
 
@@ -609,13 +609,13 @@ The `minhash_confidence` ceiling ensures a low-coverage solo organism can't infl
 
 The member with the highest RPM in the group is **boosted toward its coverage-gate ceiling** rather than scaled down. This is the key change for high-ANI groups like O104:H4 vs Shigella:
 
-```math
+$$
 \text{gap} = \max(0,\; \text{minhash\_confidence} - \text{raw\_minhash})
 \qquad
 \text{boost} = \text{gap} \times \text{rpm\_share}
 \qquad
 \text{adjusted} = \min(\text{minhash\_confidence},\; \text{raw\_minhash} + \text{boost})
-```
+$$
 
 Where `rpm_share` $= \text{rpm}_{\text{this}} / \sum_{\text{group}} \text{rpm}$.
 
@@ -633,21 +633,21 @@ All non-dominant members are penalised using a two-part multiplicative scale:
 
 **Part 1, the RPM-share floor:**
 
-```math
+$$
 \text{base\_scale} = \underbrace{0.10}_{\text{floor}} + 0.90 \times \text{rpm\_share}
-```
+$$
 
 The floor of 0.10 (reduced from the previous 0.30) prevents partial false positives from retaining an inflated minhash score. With a 10% floor, Shigella at 8% RPM share gets a base scale of ≈ 0.17.
 
 **Part 2, the coverage-ratio penalty:**
 
-```math
+$$
 r_{\text{cov}} = \min\!\Big(1.0,\; \frac{c_{\text{this}}}{c_{\text{dominant}}}\Big)
 \qquad
 \text{cov\_scale} = 0.25 + 0.75 \times r_{\text{cov}}
 \qquad
 \text{scale} = \text{base\_scale} \times \text{cov\_scale}
-```
+$$
 
 If the dominant organism has 20% genome coverage and this organism only has 4%, the coverage ratio is 0.20, giving `cov_scale = 0.25 + 0.75×0.20 = 0.40`. This extra penalty captures the case where a low-coverage organism has a similar RPM share simply because its reads all piled into one conserved region.
 
@@ -674,13 +674,13 @@ The combined effect is that in a high-ANI conflict group, the organism with the 
 
 This compares the observed abundance to what the Human Microbiome Project found for this organism at the relevant body site. If an organism is at typical abundance for that site, it gets a neutral score. Unusually high or low abundance is flagged.
 
-```math
+$$
 f_{\text{obs}} = \frac{\text{numreads}}{\text{total\_reads}}
 \qquad
 z = \frac{f_{\text{obs}} - \mu_{\text{HMP}}}{\sigma_{\text{HMP}}}
 \qquad
 P_{\text{base}} = \Phi(z)
-```
+$$
 
 Breaking this down:
 
@@ -705,28 +705,28 @@ Within each species, strains are compared by their plasmid coverage. Calc. in `m
 
 **Absolute quality** (does this plasmid have good coverage?):
 
-```math
+$$
 Q = \sqrt{B_{\text{plasmid}} \times G_{\text{plasmid}}}
-```
+$$
 
 Where $B_{\text{plasmid}}$ is the breadth sigmoid score for the plasmid's coverage and $G_{\text{plasmid}}$ is the Gini coefficient for the plasmid's depth distribution. The square root of this product is called a **geometric mean**. It is a way of averaging two values that requires _both_ of them to be decent. The reason we use the geometric mean is because it accounts for means in extreme value scenarios i.e. there is a more likely scenario that a small plasmid will either have no coverage or super good coverage. If either breadth or uniformity is near zero, the geometric mean is poor. You can't fake a good plasmid score with good breadth of coverage but terrible uniformity, or vice versa.
 
 **Relative disparity** (how does this strain compare to others in the same species?):
 
-```math
+$$
 D_{\text{rel}} = \begin{cases}
 \min\!\big(1.0,\; 0.7 \cdot \frac{c_{\text{strain}}}{c_{\max}} + 0.3 \cdot \frac{r_{\text{strain}}}{r_{\max}}\big) & \text{if multiple strains have plasmids} \\
 1.0 & \text{if this is the only strain with a plasmid}
 \end{cases}
-```
+$$
 
 In other terms: when there are multiple strains of the same species (matched from their shared species level taxid), we compare each strain's plasmid coverage ($c_{\text{strain}}$) and read count ($r_{\text{strain}}$) against the best strain in the group ($c_{\max}$ and $r_{\max}$). Coverage gets 70% of the weight and read count gets 30%. If this is the only strain with a plasmid, there's nothing to compare against, so it gets a 1.0.
 
 **Final plasmid score:**
 
-```math
+$$
 \text{plasmid\_score} = \min(1.0,\;\; Q \times D_{\text{rel}})
-```
+$$
 
 Strains with no plasmid accessions receive `plasmid_score = 0`. This is not a penalty so that we don't strains/species that lack plasmids in the database/references.
 
@@ -734,13 +734,13 @@ Strains with no plasmid accessions receive `plasmid_score = 0`. This is not a pe
 
 This is a sigmoid curve applied in log₁₀-RPM space that gives credit to organisms that have a meaningful number of reads per million, even when the absolute read count is small. It's especially useful for sterile-site or blood samples where you don't expect many reads from any organism, but even a few reads can be clinically significant.
 
-```math
+$$
 \text{RPM} = \frac{\text{numreads}}{\text{total\_reads}} \times 10^6
-```
+$$
 
-```math
+$$
 \text{abundance\_confidence} = \frac{1}{1 + e^{-s \cdot (\log_{10}(\text{RPM}) - \log_{10}(m))}}
-```
+$$
 
 Where $s$ = steepness (default: 2.0) and $m$ = RPM midpoint (default: 5.0).
 
@@ -760,28 +760,28 @@ Average amino acid identity from a DIAMOND BLASTX protein alignment, weighted by
 
 Computed in `compute_tass_score()`. The final score is simply a **weighted sum**: each component score ($x_i$) is multiplied by its relative weight ($w_i$), and then they're all added together and clamped between 0 and 1. Components with higher weights have more influence on the final result:
 
-```math
+$$
 \boxed{
 \text{TASS}_{\text{base}} = \sum_{i} w_i \cdot x_i
 }
-```
+$$
 
 Expanded:
 
-```math
+$$
 \text{TASS}_{\text{base}} = w_b \cdot \text{breadth\_log\_score}
 \;+\; w_m \cdot \text{minhash\_reduction}
 \;+\; w_g \cdot \text{gini\_coefficient}
 \;+\; w_h \cdot \text{hmp\_percentile}
-```
+$$
 
-```math
+$$
 \;+\; w_d \cdot \text{disparity}
 \;+\; w_q \cdot \text{mapq\_score}
 \;+\; w_{k2} \cdot \text{k2\_disparity\_score}
 \;+\; w_{di} \cdot \text{diamond\_identity}
 \;+\; w_{ac} \cdot \text{abundance\_confidence}
-```
+$$
 
 ### 9.2 Default Weights
 
@@ -803,9 +803,9 @@ Expanded:
 
 **Plasmid bonus** (applied after the base sum):
 
-```math
+$$
 \text{TASS}_1 = \text{TASS}_{\text{base}} + w_{\text{plasmid}} \times \text{plasmid\_score}
-```
+$$
 
 Where $w_{\text{plasmid}}$ = `plasmid_bonus_weight` (default: 0.0, which disables it).
 
@@ -815,9 +815,9 @@ This can also work with additional additive modifiers to be added in the future.
 
 When `--abundance_gate` (not recommended for most samples) is enabled, the full score is multiplied by the abundance confidence sigmoid. This collapses scores for organisms with very low read fractions:
 
-```math
+$$
 \text{TASS}_2 = \text{TASS}_1 \times \text{abundance\_confidence}
-```
+$$
 
 **Note:** This is exclusive with the additive `plasmid_bonus_weight` approach.
 
@@ -825,9 +825,9 @@ When `--abundance_gate` (not recommended for most samples) is enabled, the full 
 
 When `score_power` isn't set to the default of 1.0, a power transform reshapes the score distribution. This is useful for adjusting how "generous" or "strict" the final scores are. A power less than 1 rises low scores (making the system more lax), while a power greater than 1 would push low scores even lower (more conservative):
 
-```math
+$$
 \text{TASS}_3 = (\text{clamp}(\text{TASS}_2, 0, 1))^{p}
-```
+$$
 
 Where $p$ = `score_power`. Some examples:
 
@@ -839,9 +839,9 @@ The transform is **not** applied uniformly across organisms: a per-record `score
 
 ### 9.6 Final Clamping
 
-```math
+$$
 \boxed{\text{TASS}_{\text{final}} = \text{clamp}(\text{TASS}_3,\; 0,\; 1)}
-```
+$$
 
 **Full score formula diagram:**
 
@@ -1039,9 +1039,9 @@ Species TASS lands at **~89** for an organism that is not present. The strain-le
 
 **The guard.** An accession may set its group's maximum only if it is large enough to plausibly stand in for the whole genome. It has to clear **either** of these two bars:
 
-```math
+$$
 \text{len}_{\text{acc}} \geq f \cdot \sum_{\text{group}} \text{len} \quad\textbf{or}\quad \text{len}_{\text{acc}} \geq L_{\min}
-```
+$$
 
 where $f$ = `--rep_breadth_min_frac` (default 0.01, i.e. 1 % of the group's total reference length) and $L_{\min}$ = `--rep_breadth_min_len` (default 50,000 bp). If **no** accession in a group qualifies, the group receives no representative override at all and falls back to the pooled Σ covered ÷ Σ length. Setting both to `0` restores the pre-guard behaviour.
 
@@ -1106,15 +1106,15 @@ Low MAPQ normally reduces confidence, and rightly so, because it means the align
 2. the group has more than one member, so multimapping is expected;
 3. minhash **independently** confirms the genome is present (aggregated `minhash_score` > 0).
 
-```math
+$$
 \text{redundancy} = 1 - \frac{1}{n_{\text{members}}}
 \qquad
 \text{relief} = \text{clamp}\big(\text{minhash} \times \text{redundancy},\; 0,\; 1\big)
-```
+$$
 
-```math
+$$
 \boxed{h_{\text{eff}} = h + (1 - h)\cdot\text{relief}}
-```
+$$
 
 where $h$ is the raw `highmapq_fraction` and $h_{\text{eff}}$ is stored as `highmapq_fraction_effective` and used in place of $h$ in the breadth MAPQ scaling of Section 5.3. Redundancy is 0.5 at two members, 0.67 at three and 0.75 at four, so the relief grows slowly as the group gets larger and never exceeds what minhash independently supports.
 
@@ -1126,11 +1126,11 @@ The optional power transform of Section 9.5 does not apply uniformly. `match_pat
 
 Grouping is ANI-first. When an ANI matrix is available, any two organisms whose ANI is at or above `--ani_threshold` are placed in the same group, and membership is transitive: if A is close to B and B is close to C, then A, B and C all end up in one group even if A and C were never similar enough to be linked directly. (Internally this is a union-find structure, which is just a fast way of merging sets as edges are discovered.) When no ANI matrix is available, the code falls back to grouping by `toplevelkey`. Within each group:
 
-```math
+$$
 \text{score\ power\ scale} = \frac{\text{reads}_{\text{this}}}{\sum_{\text{group}} \text{reads}}
 \qquad
 p_{\text{eff}} = 1 - (1 - p)\cdot\text{score\ power\ scale}
-```
+$$
 
 where $p$ = `score_power`. Reading off the endpoints: a scale of 1 gives the full transform ($p_{\text{eff}} = p$), a scale of 0 makes it a no-op ($p_{\text{eff}} = 1$). So a sole organism in its ANI group gets the full recalibration, while one of five near-identical _Shigella_ gets almost none.
 
@@ -1208,35 +1208,35 @@ Lastly, outside of the scope of this document, we've collected various clinical 
 
 ### Breadth Log Score
 
-```math
+$$
 \text{breadth\_log\_score} = \frac{1}{1 + e^{-s(c-m)}} \times (\text{highmapq\_fraction})^p
-```
+$$
 
 ### Gini Coefficient Score
 
-```math
+$$
 \text{gini\_coefficient} = \min\!\Big(1,\; \alpha\sqrt{1-G} \;\times\; \big(1 + R\log_{10}\tfrac{L}{L_b}\big) \;\times\; (1+\beta D)\Big)
-```
+$$
 
 ### Minhash Score (raw)
 
-```math
+$$
 \text{minhash\_score} = \min\!\big(1.0,\;\; 0.30 \cdot B_r + 0.70 \cdot R_r\big)
-```
+$$
 
 ### Minhash Reduction (confidence-gated)
 
-```math
+$$
 \text{minhash\_reduction} = \text{clamp}\!\big(w_b \cdot \text{breadth\_sigmoid}(c) + w_g \cdot G_{\text{score}},\; 0,\; 1\big)
-```
+$$
 
 further adjusted by the low-read penalty (Section 7.4) using a MAPQ-aware coverage bypass.
 
 ### TASS Score
 
-```math
+$$
 \text{TASS} = \text{clamp}\!\bigg(\Big[\sum_i w_i x_i + w_{\text{plasm}} \cdot P\Big] \times \text{gate}^{[ab\_gate]}\bigg)^{p}
-```
+$$
 
 In words: add up all the weighted component scores, toss in the plasmid bonus, optionally multiply by the abundance gate (if enabled; otherwise it's just ×1.0 which does nothing), raise to the power $p$ (which is 1.0 by default, meaning no change), and clamp the result to [0, 1].
 

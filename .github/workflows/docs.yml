@@ -19,8 +19,12 @@ name: Docs
 # numbered copy.
 
 on:
+  # `edited` matters as much as `published`: retargeting a release at a newer
+  # commit fires `edited`, and the docs for that version must be rebuilt from
+  # the tag's new commit. mike overwrites the existing version directory, so
+  # re-running simply replaces it.
   release:
-    types: [published]
+    types: [published, edited]
   push:
     branches: [main]
     # Only rebuild when something that affects the site changes.
@@ -39,7 +43,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version label to deploy (blank = latest)"
+        description: "Version to (re)deploy, e.g. 3.3.9. Blank = latest, built from main."
+        required: false
+        default: ""
+      ref:
+        description: "Git ref to build from. Blank = v<version> for a version, else main."
         required: false
         default: ""
 
@@ -60,12 +68,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # mike needs the gh-pages branch and tag history.
-          fetch-depth: 0
-
+      # Resolved before checkout so the checkout can target the tag directly.
+      # Uses only event context, so it needs no repository contents.
       - name: Resolve version and data ref
         id: v
         run: |
@@ -74,23 +78,41 @@ jobs:
             TAG="${{ github.event.release.tag_name }}"
             # v3.3.9 -> 3.3.9 (exact patch; no minor alias)
             VERSION="${TAG#v}"
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-              echo "::error::Tag '$TAG' is not vX.Y.Z; refusing to publish docs for it."
-              exit 1
-            fi
             REF="$TAG"
           else
             VERSION="${{ github.event.inputs.version }}"
             VERSION="${VERSION:-latest}"
-            REF="main"
+            REF="${{ github.event.inputs.ref }}"
+            if [ -z "$REF" ]; then
+              # Rebuilding a numbered version manually must build from that
+              # version's tag, not from main.
+              if [ "$VERSION" = "latest" ]; then REF="main"; else REF="v$VERSION"; fi
+            fi
           fi
-          if [ "$VERSION" = "latest" ] && [ "${{ github.event_name }}" = "release" ]; then
+
+          if [ "$VERSION" != "latest" ]; then
+            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+              echo "::error::'$VERSION' is not X.Y.Z; refusing to publish docs for it."
+              exit 1
+            fi
+          elif [ "${{ github.event_name }}" = "release" ]; then
             echo "::error::Refusing to publish a release as 'latest'; that name tracks main."
             exit 1
           fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "ref=$REF"         >> "$GITHUB_OUTPUT"
-          echo "Deploying docs version '$VERSION' reading data from '$REF'"
+          echo "Deploying docs version '$VERSION' built from '$REF'"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Build the ref itself, so retargeting a release at a newer commit
+          # rebuilds from that commit rather than from whatever the event
+          # happened to point at. fetch-depth 0 also gives mike the gh-pages
+          # branch and full tag history.
+          ref: ${{ steps.v.outputs.ref }}
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:

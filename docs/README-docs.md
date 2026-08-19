@@ -10,10 +10,10 @@ pull requests, so docs and code review together.
 
 ## Versions
 
-| Version             | Built from      | Trigger                     |
-| ------------------- | --------------- | --------------------------- |
-| `latest`            | `main`          | every push to `main`        |
-| `3.3.9`, `3.3.8`, … | the release tag | publishing a GitHub Release |
+| Version             | Built from      | Trigger                             |
+| ------------------- | --------------- | ----------------------------------- |
+| `latest`            | `main`          | every push to `main`                |
+| `3.3.9`, `3.3.8`, … | the release tag | publishing **or editing** a Release |
 
 `latest` tracks `main` and is the default, so the site root redirects there.
 Releasing `v3.3.9` publishes version **`3.3.9`** — the exact patch, so the
@@ -29,6 +29,24 @@ Every deploy prunes entries left over from earlier versioning schemes:
 `bleeding-edge`, and any bare `X.Y` minor entry. Matching on shape rather than
 a hard-coded list means a stale entry cannot linger; `X.Y.Z` is never matched,
 so real release docs are safe.
+
+### Rebuilding a version
+
+Retargeting a GitHub Release at a newer commit fires `release: edited`, which
+the workflow listens for — it rebuilds that version from the tag's new commit
+and overwrites the existing directory in place. No duplicate entry is created.
+
+Force-moving a tag with `git push -f` alone does **not** fire a release event.
+To rebuild in that case (or any other), run the Docs workflow manually:
+
+| Input     | Value                                                  |
+| --------- | ------------------------------------------------------ |
+| `version` | `3.3.9` (blank rebuilds `latest` from `main`)          |
+| `ref`     | blank uses `v<version>`; set it to pin a commit or ref |
+
+Because `edited` covers every release edit — including title and body — a
+cosmetic tweak also triggers a rebuild. That is harmless: the deploy is
+idempotent.
 
 `gh-pages` contains **only rendered HTML/CSS/JS** — no source, no `mkdocs.yml`,
 no scripts. It is entirely machine-generated; never commit to it by hand.
@@ -128,6 +146,10 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   and its facet is hidden. Two known upstream typos in `status`
   (`estbalished`, `etsablished`) are folded into `established` in the browser;
   the CSV is never modified.
+- **GitHub ````math` fences do not work here.** They are a GitHub-only
+  extension; Python-Markdown prints them verbatim. Use `$$…$$`, which
+  `pymdownx.arithmatex` renders via MathJax. `scripts/migrate_wiki.py`
+  converts them on import.
 - **`exclude_docs`** keeps `docs/novelty_sketch/` and reference PDFs in the repo
   but out of the published site.
 
