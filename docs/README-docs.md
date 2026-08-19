@@ -16,18 +16,19 @@ pull requests, so docs and code review together.
 | `3.3.9`, `3.3.8`, … | the release tag | publishing a GitHub Release |
 
 `latest` tracks `main` and is the default, so the site root redirects there.
-Releasing `v3.3.9` publishes version **`3.3.9`** and also points the alias
-**`3.3`** at it, so `/3.3/` is a stable URL that always follows the newest
-patch in that series. Aliases are URLs, not dropdown entries, so the selector
-lists exact patch versions only. Releases never move the default.
-
-Prereleases (`v3.3.9-rc1`, marked as prerelease on GitHub) get their own entry
-but do **not** take over the `3.3` alias.
+Releasing `v3.3.9` publishes version **`3.3.9`** — the exact patch, so the
+dropdown shows `3.3.9` rather than `3.3`. There are no minor-series aliases.
+Releases never move the default.
 
 `latest` is a real version, not an alias. mike keeps versions and aliases in a
 single namespace, so a release cannot also claim `latest` as an alias — it
 fails with `alias 'latest' already specified as a version`. The workflow
 guards against a tag that would resolve to `latest` and fails loudly.
+
+Every deploy prunes entries left over from earlier versioning schemes:
+`bleeding-edge`, and any bare `X.Y` minor entry. Matching on shape rather than
+a hard-coded list means a stale entry cannot linger; `X.Y.Z` is never matched,
+so real release docs are safe.
 
 `gh-pages` contains **only rendered HTML/CSS/JS** — no source, no `mkdocs.yml`,
 no scripts. It is entirely machine-generated; never commit to it by hand.
@@ -63,8 +64,7 @@ the nav and old URLs keep working:
 ```
 
 The redirect is relative (`../../latest/<slug>/`), so it survives a move to a
-custom domain. A release directory is ~8 MB rather than ~13 MB, and minor
-aliases like `3.3` are symlinks costing nothing.
+custom domain. A release directory is ~8 MB rather than ~13 MB.
 
 The demo dist and the pinned-ref file are generated at build time and
 gitignored (`docs/demo/`, `docs/javascripts/docs_ref.js`).
