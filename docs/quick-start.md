@@ -8,7 +8,7 @@ This guide walks you through a test run of TaxTriage to verify your installation
 
 Make sure you have installed:
 
-- [Nextflow](installation.md#1-install-nextflow) (`>= 21.10.3`)
+- [Nextflow](installation.md#1-install-nextflow) (`>= 24.04.0`)
 - [Docker](installation.md#a-docker-recommended) or [Singularity](installation.md#b-singularity-hpc)
 
 ---
@@ -45,6 +45,70 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
 ```
 
 > **Tip:** Always use `-profile local,docker` for laptops and workstations before tuning advanced parameters.
+
+---
+
+## Running on a Public SRA Accession
+
+No local reads needed — put a bare accession in `fastq_1` and TaxTriage downloads
+it for you. `SRR13191702` is a small nasal-swab run, which makes it a good first
+real dataset.
+
+Create `srr_samplesheet.csv`:
+
+```
+sample,platform,fastq_1,fastq_2,sequencing_summary,trim,type
+covid_run,,SRR13191702,,,FALSE,nasal
+```
+
+Then run it:
+
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  --input srr_samplesheet.csv \
+  --outdir ./results_srr \
+  --db "viral" --download_db \
+  -profile local,docker \
+  -resume
+```
+
+Leave `platform` blank and the instrument platform is taken from the archive.
+Paired-end is detected from the files themselves, so nothing needs declaring.
+Downloads land in `<outdir>/sra_downloads/<run_accession>/` and are skipped on
+later runs — see [Samplesheet](samplesheet.md#sra--ena-accessions) for accession
+types and caching.
+
+---
+
+## Starting from a BAM You Already Have
+
+If reads are already aligned, skip straight to the scoring stages by supplying
+the alignment and the reference it was aligned against:
+
+```bash
+nextflow run https://github.com/jhuapl-bio/taxtriage \
+  --bam my_sample.bam \
+  --reference_fasta refs.fasta \
+  --sample my_sample \
+  --type stool \
+  --outdir ./results_bam \
+  -profile local,docker \
+  -resume
+```
+
+For more than one alignment, use a samplesheet with a `bam` column instead of
+`fastq_1`:
+
+```
+sample,platform,bam,type
+prealigned_a,ILLUMINA,/data/prealigned_a.bam,stool
+prealigned_b,OXFORD,/data/prealigned_b.cram,nasal
+```
+
+CRAM works the same way. A sheet needs **either** `fastq_1` or `bam`; if both
+columns exist, a row that fills in `bam` is treated as pre-aligned. See
+[Pre-Aligned Input](pre-aligned-input.md) for mixing both styles and for what
+the pipeline skips.
 
 ---
 
