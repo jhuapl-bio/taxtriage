@@ -41,7 +41,12 @@ on:
         default: ""
 
 permissions:
-  contents: write # mike pushes the built site to gh-pages
+  contents: write # mike pushes the built site to the pages branch
+
+env:
+  # Branch mike commits the rendered site to. It is machine-owned: only built
+  # HTML/CSS/JS lives there, never source. Must match Settings -> Pages -> Source.
+  PAGES_BRANCH: gh-pages
 
 # Serialise deployments: two concurrent mike runs would race on gh-pages.
 concurrency:
@@ -136,7 +141,7 @@ jobs:
       - name: Deploy version
         run: |
           set -euo pipefail
-          ARGS=(--push --update-aliases "${{ steps.v.outputs.version }}")
+          ARGS=(--push --branch "$PAGES_BRANCH" --update-aliases "${{ steps.v.outputs.version }}")
           if [ -n "${{ steps.v.outputs.alias }}" ]; then
             ARGS+=("${{ steps.v.outputs.alias }}")
           fi
@@ -146,7 +151,7 @@ jobs:
       # to main never makes bleeding-edge the landing page.
       - name: Point default at latest
         if: github.event_name == 'release'
-        run: mike set-default --push latest
+        run: mike set-default --push --branch "$PAGES_BRANCH" latest
 
       - name: Summary
         run: |
