@@ -84,6 +84,25 @@
   display: none;
 }
 
+/* The request CTA is an anchor, not a button — keep it visually identical. */
+a.pt-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+a.pt-btn.pt-request {
+  border-color: var(--pt-accent);
+  color: var(--pt-accent);
+}
+
+a.pt-btn.pt-request:hover {
+  background: var(--md-accent-fg-color--transparent);
+}
+
+.pt-empty p {
+  margin: 0;
+}
+
 /* ── layout ──────────────────────────────────────────────────────────── */
 .pt-body {
   display: grid;
