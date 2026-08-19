@@ -22,6 +22,11 @@ body:
         [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
         before filing, to avoid duplicates.
 
+        **Requesting several organisms?** This form covers one. Use the
+        **Request organisms** button on the
+        [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
+        to queue any number and open a single issue with a paste-ready CSV block.
+
   - type: input
     id: organism
     attributes:

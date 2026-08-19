@@ -52,9 +52,15 @@ currently carry are left blank.
 
 ## Contributing an organism
 
-The sheet is a plain CSV — additions are pull requests against the pipeline repo.
-See [Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet) for
-the required fields and review expectations.
+Use **Request organisms** above to queue one or more entries and open a single
+issue — it collects the same fields as the CSV and includes paste-ready rows for
+a maintainer. Searching for something that is missing also offers to request it
+directly from the empty result.
+
+The sheet is a plain CSV, so additions can equally be pull requests against the
+pipeline repo. See
+[Contributing](contributing.md#adding-organisms-to-the-pathogen-sheet) for the
+required fields and review expectations.
 
 To run with your own sheet instead of the bundled one:
 

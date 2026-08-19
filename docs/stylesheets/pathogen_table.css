@@ -84,19 +84,133 @@
   display: none;
 }
 
-/* The request CTA is an anchor, not a button — keep it visually identical. */
+/* The request CTA is an anchor in some places, a button in others — keep both
+   visually identical. */
 a.pt-btn {
   display: inline-block;
   text-decoration: none;
 }
 
-a.pt-btn.pt-request {
+.pt-btn.pt-request {
   border-color: var(--pt-accent);
   color: var(--pt-accent);
 }
 
-a.pt-btn.pt-request:hover {
+.pt-btn.pt-request:hover {
   background: var(--md-accent-fg-color--transparent);
+}
+
+/* ── request builder ─────────────────────────────────────────────────── */
+.pt-request-drawer {
+  width: min(34rem, 94vw);
+}
+
+.pt-rq-intro,
+.pt-rq-alt {
+  font-size: 0.68rem;
+  color: var(--pt-muted);
+}
+
+.pt-rq-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+  margin: 1rem 0 0.75rem;
+}
+
+.pt-rq-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.66rem;
+  color: var(--pt-muted);
+}
+
+.pt-rq-field.pt-rq-wide {
+  grid-column: 1 / -1;
+}
+
+.pt-rq-field em {
+  color: var(--md-typeset-color);
+  font-style: normal;
+}
+
+.pt-rq-field input,
+.pt-rq-field select,
+.pt-rq-field textarea {
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.7rem;
+  font-family: inherit;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--pt-border);
+  border-radius: 3px;
+}
+
+.pt-rq-field input:focus,
+.pt-rq-field select:focus,
+.pt-rq-field textarea:focus {
+  outline: none;
+  border-color: var(--pt-accent);
+}
+
+.pt-rq-field select[multiple] {
+  padding: 0.2rem;
+}
+
+.pt-rq-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.pt-rq-error {
+  margin: 0 0 0.6rem;
+  font-size: 0.68rem;
+  color: #c62828;
+}
+
+[data-md-color-scheme="slate"] .pt-rq-error {
+  color: #ef9a9a;
+}
+
+.pt-rq-error[hidden] {
+  display: none;
+}
+
+.pt-rq-list {
+  margin: 0 0 1rem;
+  padding-left: 1.1rem;
+  font-size: 0.7rem;
+}
+
+.pt-rq-list li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+}
+
+.pt-rq-del {
+  flex: none;
+  padding: 0 0.3rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--pt-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.pt-rq-del:hover {
+  color: #c62828;
+}
+
+.pt-rq-empty {
+  font-size: 0.68rem;
+  color: var(--pt-muted);
 }
 
 .pt-empty p {

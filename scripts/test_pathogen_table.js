@@ -126,6 +126,12 @@ async function mount(text, opts) {
   window.URL.createObjectURL = () => "blob:stub";
   window.URL.revokeObjectURL = () => {};
   window.HTMLAnchorElement.prototype.click = function () {};
+  const opened = [];
+  window.open = (u) => {
+    opened.push(u);
+    return null;
+  };
+  window.__opened = opened;
   window.eval(fs.readFileSync(SCRIPT, "utf8"));
   window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
   await new Promise((r) => setTimeout(r, 80));
@@ -489,56 +495,161 @@ async function main() {
    * frozen release docs must not, since the request would apply to a sheet
    * that version does not track.
    */
-  console.log("\nrequest an organism");
+  console.log("\nrequest entry points");
   {
     const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
     const d = w.document;
-    const btn = d.querySelector(".pt-toolbar a.pt-request");
-    ok("shown in latest", !!btn, "no request button");
+    const btn = d.querySelector(".pt-toolbar button.pt-request");
+    ok("toolbar button shown in latest", !!btn, "no request button");
+    btn.dispatchEvent(new w.Event("click", { bubbles: true }));
+    const alt = d.querySelector(".pt-request-drawer .pt-rq-alt a");
     ok(
-      "links to the issue form",
-      btn && /\/issues\/new\?.*template=add_organism\.yml/.test(btn.getAttribute("href")),
-      btn && btn.getAttribute("href"),
+      "builder still offers the guided single-organism form",
+      alt && /\/issues\/new\?.*template=add_organism\.yml/.test(alt.getAttribute("href")),
+      alt && alt.getAttribute("href"),
     );
-    ok("opens in a new tab safely", btn && btn.rel === "noopener" && btn.target === "_blank");
+    ok("guided form opens in a new tab safely", alt && alt.rel === "noopener" && alt.target === "_blank");
   }
   {
     const w = await mount(csvText, { docsRef: { ref: "v3.3.9", version: "3.3.9" } });
     ok(
       "hidden in a frozen release version",
-      !w.document.querySelector("a.pt-request"),
-      "request button leaked into a release build",
+      !w.document.querySelector(".pt-request"),
+      "request entry point leaked into a release build",
     );
   }
   {
-    // Local `mkdocs serve` reports the branch name; treat that as current.
     const w = await mount(csvText, { docsRef: { ref: "dev", version: "dev" } });
-    ok("shown for a branch-named build", !!w.document.querySelector("a.pt-request"));
+    ok("shown for a branch-named build", !!w.document.querySelector(".pt-toolbar button.pt-request"));
+  }
+
+  console.log("\nrequest builder: staging multiple organisms");
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    const fire = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+    const drawer = () => d.querySelector(".pt-request-drawer");
+
+    d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
+    ok("builder opens", drawer().classList.contains("is-open"));
+    ok("has an Add another control", !!drawer().querySelector(".pt-rq-add"));
+
+    const set = (id, val) => {
+      const n = drawer().querySelector(`[data-f="${id}"]`);
+      n.value = val;
+      fire(n, "change");
+    };
+    const selectSites = (id, vals) => {
+      const n = drawer().querySelector(`[data-f="${id}"]`);
+      Array.from(n.options).forEach((o) => {
+        o.selected = vals.includes(o.value);
+      });
+      fire(n, "change");
+    };
+    const click = (sel) =>
+      drawer()
+        .querySelector(sel)
+        .dispatchEvent(new w.Event("click", { bubbles: true }));
+
+    // Required-field validation must block, not silently proceed.
+    set("name", "Testium unum");
+    click(".pt-rq-add");
+    const err = drawer().querySelector(".pt-rq-error");
+    ok("blocks on missing required fields", !err.hidden, "no error shown");
+    eq("nothing staged yet", drawer().querySelectorAll(".pt-rq-list li").length, 0);
+
+    set("taxid", "not-a-number");
+    set("general_classification", "primary");
+    set("reference", "Doe J. Journal 2020. doi:10/x");
+    click(".pt-rq-add");
+    ok("rejects a non-numeric tax ID", /numeric/i.test(drawer().querySelector(".pt-rq-error").textContent));
+
+    set("taxid", "1313");
+    selectSites("pathogenic_sites", ["blood", "resp"]);
+    click(".pt-rq-add");
+    eq("first organism staged", drawer().querySelectorAll(".pt-rq-list li").length, 1);
+    eq("form cleared for the next", drawer().querySelector('[data-f="name"]').value, "");
+
+    set("name", "Testium duo");
+    set("taxid", "999");
+    set("general_classification", "commensal");
+    set("reference", "Roe R. Journal 2021.");
+    click(".pt-rq-add");
+    eq("second organism staged", drawer().querySelectorAll(".pt-rq-list li").length, 2);
+
+    // Remove one, then re-add a third.
+    drawer()
+      .querySelector(".pt-rq-del")
+      .dispatchEvent(new w.Event("click", { bubbles: true }));
+    eq("staged entry removable", drawer().querySelectorAll(".pt-rq-list li").length, 1);
+
+    set("name", "Testium tria");
+    set("taxid", "555");
+    set("general_classification", "potential");
+    set("reference", "Poe P. Journal 2022.");
+    click(".pt-rq-add");
+    eq("back to two staged", drawer().querySelectorAll(".pt-rq-list li").length, 2);
+
+    click(".pt-rq-open");
+    eq("one issue opened", w.__opened.length, 1);
+    const url = w.__opened[0];
+    const body = decodeURIComponent(new URL(url).searchParams.get("body"));
+    const title = new URL(url).searchParams.get("title");
+    ok("title reflects the count", /Add 2 organisms/.test(decodeURIComponent(title)), title);
+    ok("body lists both organisms", body.includes("Testium duo") && body.includes("Testium tria"), body.slice(0, 200));
+    ok("removed organism is absent", !body.includes("Testium unum"));
+    ok(
+      "body carries a paste-ready CSV block",
+      body.includes("```csv") && body.includes("name,taxid,general_classification"),
+    );
+    ok("issue is labelled", url.includes("labels=pathogen-sheet"));
+
+    const csvLines = body.split("```csv")[1].split("```")[0].trim().split("\n");
+    eq("CSV block has header + 2 rows", csvLines.length, 3);
+    eq("CSV columns match the sheet", csvLines[0].split(",").length, 20);
+  }
+
+  console.log("\nrequest builder: single organism without staging");
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    const drawer = () => d.querySelector(".pt-request-drawer");
+    const fire = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+    d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
+    const set = (id, val) => {
+      const n = drawer().querySelector(`[data-f="${id}"]`);
+      n.value = val;
+      fire(n, "change");
+    };
+    set("name", "Solo organism");
+    set("taxid", "42");
+    set("general_classification", "primary");
+    set("reference", "Solo S. Journal 2023.");
+    drawer()
+      .querySelector(".pt-rq-open")
+      .dispatchEvent(new w.Event("click", { bubbles: true }));
+    eq("opens without pressing Add another", w.__opened.length, 1);
+    const t = decodeURIComponent(new URL(w.__opened[0]).searchParams.get("title"));
+    eq("singular title", t, "Add organism: Solo organism");
+  }
+
+  console.log("\nrequest builder: gating and prefill");
+  {
+    const w = await mount(csvText, { docsRef: { ref: "v3.3.9", version: "3.3.9" } });
+    ok("no builder button in a frozen release", !w.document.querySelector(".pt-toolbar .pt-request"));
   }
   {
     const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
     const d = w.document;
-    d.querySelector(".pt-search input").value = "Nocardia zzz nonexistent";
+    d.querySelector(".pt-search input").value = "Nocardia zzz";
     d.querySelector(".pt-search input").dispatchEvent(new w.Event("input", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 220));
-    const cta = d.querySelector(".pt-empty a.pt-request");
-    ok("empty state offers to request the search term", !!cta, d.querySelector(".pt-empty").textContent.trim());
-    const href = cta && cta.getAttribute("href");
-    ok(
-      "prefills organism and title from the query",
-      href &&
-        href.includes("organism=Nocardia%20zzz%20nonexistent") &&
-        href.includes("title=Add%20organism%3A%20Nocardia%20zzz%20nonexistent"),
-      href,
-    );
-  }
-  {
-    const w = await mount(csvText, { docsRef: { ref: "v3.1.0", version: "3.1.0" } });
-    const d = w.document;
-    d.querySelector(".pt-search input").value = "zzz nonexistent";
-    d.querySelector(".pt-search input").dispatchEvent(new w.Event("input", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 220));
-    ok("empty-state CTA also hidden in a release", !d.querySelector(".pt-empty a.pt-request"));
+    const cta = d.querySelector(".pt-empty .pt-request");
+    ok("empty state offers the builder", !!cta);
+    cta.dispatchEvent(new w.Event("click", { bubbles: true }));
+    const drawer = d.querySelector(".pt-request-drawer");
+    ok("builder opens from the empty state", drawer.classList.contains("is-open"));
+    eq("organism name prefilled from the query", drawer.querySelector('[data-f="name"]').value, "Nocardia zzz");
   }
 
   console.log(`\n${checks - failures}/${checks} checks passed`);

@@ -118,7 +118,7 @@ mike deploy 0.0-test && mike serve
 ```bash
 mkdocs build --strict                     # Markdown links, nav, anchors
 python scripts/test_built_links.py        # raw-HTML src paths in the built site
-node scripts/test_pathogen_table.js       # 68 checks, real widget in jsdom
+node scripts/test_pathogen_table.js       # 89 checks, real widget in jsdom
 python scripts/docs_release_stub.py --check   # release build can still redirect
 ```
 
@@ -150,7 +150,13 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   extension; Python-Markdown prints them verbatim. Use `$$…$$`, which
   `pymdownx.arithmatex` renders via MathJax. `scripts/migrate_wiki.py`
   converts them on import.
-- **The "Request an organism" link is version-gated.** It appears only when
+- **Batch requests are built in the page, not the issue form.** GitHub issue
+  forms are static — they cannot repeat a field group, so "Add another" is
+  impossible in `add_organism.yml`. The builder in `pathogen_table.js` stages
+  entries and opens one issue prefilled via `?body=`, capped at `MAX_URL` so a
+  long batch fails loudly instead of being silently truncated. `REQUEST_FIELDS`
+  drives the form, the issue body and the CSV block from one spec.
+- **The request entry points are version-gated.** It appears only when
   the docs version is not a numbered `X.Y.Z` release — so `latest`, PR previews
   and local `mkdocs serve` show it, frozen releases do not. Gating lives in
   `pathogen_table.js` (`IS_CURRENT`), not in the build, so there is one place to
