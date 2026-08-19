@@ -10,9 +10,35 @@
   margin: 1rem 0 0;
 }
 
-/* Let the widget escape the prose column without touching global layout. */
-.pt-wide .md-content__inner {
+/* ── full-width page ─────────────────────────────────────────────────────
+   The sheet has 13 columns and a facet rail; the default prose column wastes
+   most of the viewport. `pt-fullwidth` is toggled on <body> by the widget, so
+   only this page is affected and normal pages keep their reading measure. */
+.pt-fullwidth .md-grid {
   max-width: none;
+}
+
+.pt-fullwidth .md-main__inner {
+  margin-top: 0;
+}
+
+.pt-fullwidth .md-content {
+  max-width: none;
+}
+
+.pt-fullwidth .md-content__inner {
+  margin: 0;
+  padding: 0 0.8rem 1rem;
+}
+
+/* Pull the heading and intro to the same left edge as the table. */
+.pt-fullwidth .md-content__inner > * {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.pt-fullwidth .md-content__inner::before {
+  display: none;
 }
 
 /* ── toolbar ─────────────────────────────────────────────────────────── */
@@ -163,6 +189,12 @@ a.pt-btn {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
+}
+
+.pt-rq-note {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.66rem;
+  color: var(--pt-muted);
 }
 
 .pt-rq-error {
@@ -481,6 +513,22 @@ table.pt-table tbody tr:hover {
 .pt-sites {
   color: var(--pt-muted);
   min-width: 8rem;
+}
+
+.pt-acc {
+  white-space: nowrap;
+}
+
+/* Full citations would otherwise dominate the row height. Clamp to two lines;
+   the title attribute and the detail drawer carry the full text. */
+.pt-ref {
+  min-width: 16rem;
+  max-width: 28rem;
+  color: var(--pt-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* ── pager ───────────────────────────────────────────────────────────── */

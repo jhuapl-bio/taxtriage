@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TaxTriage">
   <!-- Favicon: same mark as logo.svg, but on a filled tile so it stays legible
-       against light and dark browser tab backgrounds. Teal matches the theme's
-       primary palette. -->
-  <rect width="64" height="64" rx="14" fill="#00897b" />
+       against light and dark browser tab backgrounds. Matches the theme's
+       primary colour (#007aff). -->
+  <rect width="64" height="64" rx="14" fill="#007aff" />
   <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round">
     <line x1="14" y1="21" x2="38" y2="21" />
     <line x1="14" y1="32" x2="32" y2="32" />

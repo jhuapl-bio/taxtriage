@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TaxTriage">
-  <!-- Header mark. Drawn in currentColor/white so it reads on the teal header
+  <!-- Header mark. Drawn in white so it reads on the coloured header
        bar in both colour schemes. Deliberately simple: it is rendered at ~24px.
        Motif: ranked detections, with the top hit flagged. -->
   <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round">

@@ -4,6 +4,22 @@
   --md-text-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* Brand colour. Material's named palettes have no #007aff, so the theme uses
+   `primary: custom` and the values are defined here. White on #007aff is
+   4.02:1 — a little better than the teal it replaces (3.67:1). */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #007aff;
+  --md-primary-fg-color--light: #3395ff;
+  --md-primary-fg-color--dark: #0062cc;
+  --md-primary-bg-color: #fff;
+  --md-primary-bg-color--light: rgb(255 255 255 / 70%);
+}
+
+/* On the dark scheme the same blue is too dark for body links, so lift it. */
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-typeset-a-color: #4da3ff;
+}
+
 /* Wider content column: several reference pages have big parameter tables. */
 .md-grid {
   max-width: 68rem;
