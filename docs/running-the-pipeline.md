@@ -244,7 +244,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   -profile docker
 ```
 
-Version numbers are logged in all reports. Find releases at the [GitHub releases page](https://github.com/nf-core/taxtriage/releases).
+Version numbers are logged in all reports. Find releases at the [GitHub releases page](https://github.com/jhuapl-bio/taxtriage/releases).
 
 ---
 

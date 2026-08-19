@@ -1,4 +1,4 @@
-# nf-core/taxtriage: Citations
+# jhuapl-bio/taxtriage: Citations
 
 ## [nf-core](https://pubmed.ncbi.nlm.nih.gov/32055031/)
 

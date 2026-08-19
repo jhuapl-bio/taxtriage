@@ -1,6 +1,6 @@
 {
-    "name": "nf-core/taxtriage",
-    "homePage": "https://github.com/nf-core/taxtriage",
+    "name": "jhuapl-bio/taxtriage",
+    "homePage": "https://github.com/jhuapl-bio/taxtriage",
     "repos": {
         "https://github.com/nf-core/modules.git": {
             "modules": {

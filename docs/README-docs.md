@@ -41,19 +41,33 @@ and `main` without deploying, so breakage is caught in review.
 
 ## The three tabs
 
-| Tab            | Source                                                  | Refreshes              |
-| -------------- | ------------------------------------------------------- | ---------------------- |
-| Documentation  | `docs/*.md`                                             | on deploy              |
-| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              |
-| Pathogen Sheet | `assets/pathogen_sheet.csv`                             | **on every page load** |
+| Tab            | Source                                                  | Refreshes              | Published in  |
+| -------------- | ------------------------------------------------------- | ---------------------- | ------------- |
+| Documentation  | `docs/*.md`                                             | on deploy              | every version |
+| Pathogen Sheet | `assets/pathogen_sheet.csv`                             | **on every page load** | every version |
+| Demo Report    | `assets/heatmap.html` via `scripts/inline_boot_json.py` | on deploy              | `latest` only |
+
+The **Pathogen Sheet** ships in every version. The CSV is fetched from GitHub
+when the page opens rather than bundled, and `scripts/write_docs_ref.py` pins
+which ref it reads — so the `3.3.9` docs show the sheet that shipped in v3.3.9
+while `latest` shows `main`. Costs nothing to publish per version.
+
+The **Demo Report** is `latest`-only: its ~4.5 MB dist would add megabytes to
+`gh-pages` per release, and it illustrates the report UI rather than documenting
+release-specific behaviour. In a versioned build
+`scripts/docs_release_stub.py` replaces it with a redirect, so the tab stays in
+the nav and old URLs keep working:
+
+```
+/taxtriage/3.3.9/demo-report/  ->  /taxtriage/latest/demo-report/
+```
+
+The redirect is relative (`../../latest/<slug>/`), so it survives a move to a
+custom domain. A release directory is ~8 MB rather than ~13 MB, and minor
+aliases like `3.3` are symlinks costing nothing.
 
 The demo dist and the pinned-ref file are generated at build time and
 gitignored (`docs/demo/`, `docs/javascripts/docs_ref.js`).
-
-The pathogen sheet is not bundled at all — the browser fetches it from GitHub
-when the page opens. `scripts/write_docs_ref.py` pins _which ref_ it reads, so
-the `3.1` docs show the sheet that shipped with 3.1 while `latest` shows `main`.
-That file is loaded before the table widget and sets `window.TAXTRIAGE_DOCS`.
 
 ## Local preview
 
@@ -84,10 +98,15 @@ mike deploy 0.0-test && mike serve
 ## Checks
 
 ```bash
-mkdocs build --strict                 # Markdown links, nav, anchors
-python scripts/test_built_links.py    # raw-HTML src paths in the built site
-node scripts/test_pathogen_table.js   # 60 checks, real widget in jsdom
+mkdocs build --strict                     # Markdown links, nav, anchors
+python scripts/test_built_links.py        # raw-HTML src paths in the built site
+node scripts/test_pathogen_table.js       # 60 checks, real widget in jsdom
+python scripts/docs_release_stub.py --check   # release build can still redirect
 ```
+
+CI builds both shapes (`latest` and `release`) on every docs PR. The release
+shape is otherwise only exercised when a release is published, which is the
+worst time to find out it is broken.
 
 `test_built_links.py` exists because `--strict` only validates Markdown links.
 Raw HTML (`<img src>`, `<iframe src>`) and JS-built URLs are invisible to it,

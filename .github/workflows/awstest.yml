@@ -7,7 +7,9 @@ on:
 jobs:
   run-tower:
     name: Run AWS tests
-    if: github.repository == 'nf-core/taxtriage'
+    # Disabled: nf-core AWS test infrastructure, not used by this fork.
+    # Already inert before this change; kept for reference.
+    if: false
     runs-on: ubuntu-latest
     steps:
       # Launch workflow using Tower CLI tool action

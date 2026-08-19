@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema",
     "$id": "https://raw.githubusercontent.com/jhuapl-bio/taxtriage/main/nextflow_schema.json",
-    "title": "nf-core/taxtriage pipeline parameters",
+    "title": "jhuapl-bio/taxtriage pipeline parameters",
     "description": "APHL pipeline for triage classification reports.",
     "type": "object",
     "definitions": {
