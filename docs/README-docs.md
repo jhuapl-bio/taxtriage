@@ -118,7 +118,7 @@ mike deploy 0.0-test && mike serve
 ```bash
 mkdocs build --strict                     # Markdown links, nav, anchors
 python scripts/test_built_links.py        # raw-HTML src paths in the built site
-node scripts/test_pathogen_table.js       # 60 checks, real widget in jsdom
+node scripts/test_pathogen_table.js       # 68 checks, real widget in jsdom
 python scripts/docs_release_stub.py --check   # release build can still redirect
 ```
 
@@ -150,6 +150,12 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   extension; Python-Markdown prints them verbatim. Use `$$…$$`, which
   `pymdownx.arithmatex` renders via MathJax. `scripts/migrate_wiki.py`
   converts them on import.
+- **The "Request an organism" link is version-gated.** It appears only when
+  the docs version is not a numbered `X.Y.Z` release — so `latest`, PR previews
+  and local `mkdocs serve` show it, frozen releases do not. Gating lives in
+  `pathogen_table.js` (`IS_CURRENT`), not in the build, so there is one place to
+  change it. It targets `.github/ISSUE_TEMPLATE/add_organism.yml`, whose fields
+  map onto the CSV columns; CI checks that file still exists.
 - **`exclude_docs`** keeps `docs/novelty_sketch/` and reference PDFs in the repo
   but out of the published site.
 

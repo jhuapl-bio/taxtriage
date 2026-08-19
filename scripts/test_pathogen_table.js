@@ -484,6 +484,63 @@ async function main() {
     ok("error link points at the pinned ref", /blob\/v3\.1\.0\/assets/.test(html), html.slice(0, 200));
   }
 
+  /* ── request-an-organism CTA ────────────────────────────────────────────
+   * Only current docs (`latest`, PR previews, local serve) may invite edits;
+   * frozen release docs must not, since the request would apply to a sheet
+   * that version does not track.
+   */
+  console.log("\nrequest an organism");
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    const btn = d.querySelector(".pt-toolbar a.pt-request");
+    ok("shown in latest", !!btn, "no request button");
+    ok(
+      "links to the issue form",
+      btn && /\/issues\/new\?.*template=add_organism\.yml/.test(btn.getAttribute("href")),
+      btn && btn.getAttribute("href"),
+    );
+    ok("opens in a new tab safely", btn && btn.rel === "noopener" && btn.target === "_blank");
+  }
+  {
+    const w = await mount(csvText, { docsRef: { ref: "v3.3.9", version: "3.3.9" } });
+    ok(
+      "hidden in a frozen release version",
+      !w.document.querySelector("a.pt-request"),
+      "request button leaked into a release build",
+    );
+  }
+  {
+    // Local `mkdocs serve` reports the branch name; treat that as current.
+    const w = await mount(csvText, { docsRef: { ref: "dev", version: "dev" } });
+    ok("shown for a branch-named build", !!w.document.querySelector("a.pt-request"));
+  }
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    d.querySelector(".pt-search input").value = "Nocardia zzz nonexistent";
+    d.querySelector(".pt-search input").dispatchEvent(new w.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 220));
+    const cta = d.querySelector(".pt-empty a.pt-request");
+    ok("empty state offers to request the search term", !!cta, d.querySelector(".pt-empty").textContent.trim());
+    const href = cta && cta.getAttribute("href");
+    ok(
+      "prefills organism and title from the query",
+      href &&
+        href.includes("organism=Nocardia%20zzz%20nonexistent") &&
+        href.includes("title=Add%20organism%3A%20Nocardia%20zzz%20nonexistent"),
+      href,
+    );
+  }
+  {
+    const w = await mount(csvText, { docsRef: { ref: "v3.1.0", version: "3.1.0" } });
+    const d = w.document;
+    d.querySelector(".pt-search input").value = "zzz nonexistent";
+    d.querySelector(".pt-search input").dispatchEvent(new w.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 220));
+    ok("empty-state CTA also hidden in a release", !d.querySelector(".pt-empty a.pt-request"));
+  }
+
   console.log(`\n${checks - failures}/${checks} checks passed`);
   if (failures) {
     console.log(`${failures} FAILED`);

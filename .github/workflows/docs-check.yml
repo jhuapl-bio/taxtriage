@@ -91,6 +91,19 @@ jobs:
           npm install --no-fund --no-audit --no-save jsdom
           node scripts/test_pathogen_table.js
 
+      # The Pathogen Sheet renders a "Request an organism" link pointing at an
+      # issue form. The link is built in JS, so a renamed template would only
+      # surface as a 404 for a user — check the referenced file exists.
+      - name: Verify issue template referenced by the site exists
+        run: |
+          set -euo pipefail
+          TMPL="$(sed -nE 's/.*ISSUE_TEMPLATE = "([^"]+)".*/\1/p' docs/javascripts/pathogen_table.js)"
+          test -n "$TMPL" || { echo "::error::could not find ISSUE_TEMPLATE in pathogen_table.js"; exit 1; }
+          test -f ".github/ISSUE_TEMPLATE/$TMPL" \
+            || { echo "::error::.github/ISSUE_TEMPLATE/$TMPL is missing"; exit 1; }
+          python -c "import sys,yaml; yaml.safe_load(open('.github/ISSUE_TEMPLATE/$TMPL'))"
+          echo "Issue form $TMPL present and valid."
+
       - name: Build site
         run: mkdocs build --strict
 

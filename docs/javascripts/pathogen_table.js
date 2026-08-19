@@ -26,6 +26,25 @@
   var CSV_HUMAN_URL =
     "https://github.com/jhuapl-bio/taxtriage/blob/" + encodeURIComponent(REF) + "/assets/pathogen_sheet.csv";
 
+  // Requesting an organism only makes sense against the current sheet, so the
+  // call to action is hidden in frozen release docs. Anything that is not a
+  // numbered X.Y.Z version — `latest`, PR previews, local `mkdocs serve` — is
+  // treated as current and shows it.
+  var DOCS_VERSION = (window.TAXTRIAGE_DOCS && window.TAXTRIAGE_DOCS.version) || "latest";
+  var IS_CURRENT = !/^\d+\.\d+(\.\d+)?/.test(DOCS_VERSION);
+
+  var ISSUE_TEMPLATE = "add_organism.yml";
+
+  // GitHub issue forms prefill from query params keyed by field id.
+  function requestUrl(name) {
+    var params = ["template=" + encodeURIComponent(ISSUE_TEMPLATE)];
+    if (name) {
+      params.push("title=" + encodeURIComponent("Add organism: " + name));
+      params.push("organism=" + encodeURIComponent(name));
+    }
+    return "https://github.com/jhuapl-bio/taxtriage/issues/new?" + params.join("&");
+  }
+
   // Facets rendered as checkbox lists: [key, label, isMultiValue, searchable]
   var FACETS = [
     ["general_classification", "Classification", false, false],
@@ -546,8 +565,23 @@
         "<strong>" + total.toLocaleString() + "</strong> of " + rows.length.toLocaleString() + " organisms";
 
       if (!total) {
+        // A search that finds nothing is the most likely moment someone wants
+        // an organism added, so offer it here with the query prefilled.
+        var q = state.q.trim();
+        var cta =
+          IS_CURRENT && q
+            ? '<p style="margin-top:0.75rem"><a class="pt-btn pt-request" href="' +
+              requestUrl(q) +
+              '" target="_blank" rel="noopener">Request &ldquo;' +
+              esc(q) +
+              "&rdquo;</a></p>"
+            : "";
         el.tbody.innerHTML =
-          '<tr><td colspan="' + TABLE_COLS.length + '" class="pt-empty">No organisms match these filters.</td></tr>';
+          '<tr><td colspan="' +
+          TABLE_COLS.length +
+          '" class="pt-empty"><p>No organisms match these filters.</p>' +
+          cta +
+          "</td></tr>";
       } else {
         el.tbody.innerHTML = slice
           .map(function (row) {
@@ -790,6 +824,11 @@
       '<span class="pt-count"></span>' +
       '<button class="pt-btn pt-reset" hidden>Clear filters</button>' +
       '<button class="pt-btn pt-export">Export CSV</button>' +
+      (IS_CURRENT
+        ? '<a class="pt-btn pt-request" href="' +
+          requestUrl("") +
+          '" target="_blank" rel="noopener">Request an organism</a>'
+        : "") +
       "</div>" +
       '<div class="pt-chips"></div>' +
       '<div class="pt-body">' +
