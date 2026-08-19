@@ -21,7 +21,7 @@ searchable and filterable.
 
 TaxTriage is a flexible, containerized bioinformatics pipeline designed to identify pathogens within complex samples (e.g., respiratory swabs, lesion swabs, whole blood) using untargeted DNA or RNA sequencing data. It supports short-read (Illumina) and long-read (ONT, PacBio) platforms, incorporating quality control, organism classification, read mapping, and a unified confidence metric for all identified organisms.
 
-The final analysis output is an **Organism Discovery Report (ODR)** — a single PDF with summaries of all intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is **not** intended as a standalone diagnostic capability.
+The final analysis output is an **Organism Discovery Report (ODR)** — 2 files (a PDF and an interactive HTML) with summaries of all intermediate data supporting pathogen identification. TaxTriage is designed for broad deployment and early-stage outbreak investigations and is **not** intended as a standalone diagnostic capability.
 
 ---
 
