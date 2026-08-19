@@ -5,15 +5,18 @@ name: Docs
 # Version scheme (managed by `mike`, which commits the *rendered site only* to
 # the gh-pages branch — no source ever lands there):
 #
-#   latest       built from main on every push. This is the default, so the
-#                site root redirects here.
-#   3.3, 3.2, …  one entry per minor series, cut from the release tag.
-#                Releasing v3.3.9 overwrites the "3.3" docs, so the selector
-#                stays short.
+#   latest             built from main on every push. This is the default, so
+#                      the site root redirects here.
+#   3.3.9, 3.3.8, …    one entry per release, cut from the release tag.
+#
+# Each release also gets a minor alias (v3.3.9 -> version "3.3.9", alias "3.3")
+# so /3.3/ is a stable URL that always follows the newest patch in that series.
+# Aliases are URLs, not separate dropdown entries, so the selector lists exact
+# patch versions only.
 #
 # NOTE: `latest` is a real version here, not an alias, because it tracks main.
 # mike keeps versions and aliases in one namespace, so releases must not also
-# claim `latest` — they publish their minor series only.
+# claim `latest`.
 #
 # Branch model: work happens on `dev` via PRs, then `dev` merges into `main`.
 # Merging to main refreshes `latest`; publishing a GitHub Release cuts a
@@ -73,25 +76,34 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
-            # v3.3.8 -> 3.3   (minor series; patches update in place)
-            VERSION="$(echo "$TAG" | sed -E 's/^v//; s/^([0-9]+)\.([0-9]+).*/\1.\2/')"
-            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+$'; then
-              echo "::error::Could not derive a minor version from tag '$TAG' (expected vX.Y.Z)"
+            # v3.3.9 -> version 3.3.9, alias 3.3
+            VERSION="${TAG#v}"
+            if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+              echo "::error::Tag '$TAG' is not vX.Y.Z; refusing to publish docs for it."
               exit 1
             fi
-            if [ "$VERSION" = "latest" ]; then
-              echo "::error::Refusing to publish a release as 'latest'; that name tracks main."
-              exit 1
+            ALIAS="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')"
+            # A prerelease still gets its own entry, but must not take over the
+            # stable /3.3/ URL from the released patch.
+            if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+              echo "Prerelease: publishing '$VERSION' without moving the '$ALIAS' alias"
+              ALIAS=""
             fi
             REF="$TAG"
           else
             VERSION="${{ github.event.inputs.version }}"
             VERSION="${VERSION:-latest}"
+            ALIAS=""
             REF="main"
           fi
+          if [ "$VERSION" = "latest" ] && [ "${{ github.event_name }}" = "release" ]; then
+            echo "::error::Refusing to publish a release as 'latest'; that name tracks main."
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "alias=$ALIAS"     >> "$GITHUB_OUTPUT"
           echo "ref=$REF"         >> "$GITHUB_OUTPUT"
-          echo "Deploying docs version '$VERSION' reading data from '$REF'"
+          echo "Deploying docs version '$VERSION' (alias '${ALIAS:-none}') reading data from '$REF'"
 
       - uses: actions/setup-python@v5
         with:
@@ -145,14 +157,31 @@ jobs:
 
       - name: Deploy version
         run: |
-          mike deploy --push --branch "$PAGES_BRANCH" --update-aliases \
-            "${{ steps.v.outputs.version }}"
+          set -euo pipefail
+          ARGS=(--push --branch "$PAGES_BRANCH" --update-aliases "${{ steps.v.outputs.version }}")
+          if [ -n "${{ steps.v.outputs.alias }}" ]; then
+            ARGS+=("${{ steps.v.outputs.alias }}")
+          fi
+          mike deploy "${ARGS[@]}"
 
-      # The site root redirects here. Idempotent, so it is safe to reassert on
-      # every main push; releases never move it.
+      # The site root redirects here. Without this the root 404s. Idempotent, so
+      # it is safe to reassert on every main push; releases never move it.
       - name: Point default at latest
         if: steps.v.outputs.version == 'latest'
         run: mike set-default --push --branch "$PAGES_BRANCH" latest
+
+      # One-time migration: the retired `bleeding-edge` version predates the
+      # switch to `latest`. Safe to delete this step once it has run and the
+      # entry is gone from the dropdown.
+      - name: Remove retired bleeding-edge version
+        run: |
+          set -euo pipefail
+          if mike list --branch "$PAGES_BRANCH" 2>/dev/null | grep -qx 'bleeding-edge'; then
+            echo "Deleting retired 'bleeding-edge' docs version"
+            mike delete --push --branch "$PAGES_BRANCH" bleeding-edge
+          else
+            echo "No 'bleeding-edge' version present; nothing to do"
+          fi
 
       - name: Summary
         run: |

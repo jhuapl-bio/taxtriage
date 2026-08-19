@@ -10,15 +10,19 @@ pull requests, so docs and code review together.
 
 ## Versions
 
-| Version         | Built from      | Trigger                     |
-| --------------- | --------------- | --------------------------- |
-| `latest`        | `main`          | every push to `main`        |
-| `3.3`, `3.2`, … | the release tag | publishing a GitHub Release |
+| Version             | Built from      | Trigger                     |
+| ------------------- | --------------- | --------------------------- |
+| `latest`            | `main`          | every push to `main`        |
+| `3.3.9`, `3.3.8`, … | the release tag | publishing a GitHub Release |
 
 `latest` tracks `main` and is the default, so the site root redirects there.
-Releasing `v3.3.9` publishes as **`3.3`**, overwriting `v3.3.8`'s docs — patch
-releases update their minor series in place, so the version selector stays
-short. Releases never move the default.
+Releasing `v3.3.9` publishes version **`3.3.9`** and also points the alias
+**`3.3`** at it, so `/3.3/` is a stable URL that always follows the newest
+patch in that series. Aliases are URLs, not dropdown entries, so the selector
+lists exact patch versions only. Releases never move the default.
+
+Prereleases (`v3.3.9-rc1`, marked as prerelease on GitHub) get their own entry
+but do **not** take over the `3.3` alias.
 
 `latest` is a real version, not an alias. mike keeps versions and aliases in a
 single namespace, so a release cannot also claim `latest` as an alias — it
@@ -113,3 +117,15 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
 Settings → Pages → Source → **Deploy from a branch** → `gh-pages` / `/ (root)`.
 The `gh-pages` branch appears after the first successful deploy, so run the
 workflow once (or push to `main`) before setting this.
+
+Only tags cut _after_ the docs landed in the repo can be published: older tags
+predate `docs/` and `mkdocs.yml`, so there is nothing to build. The version
+selector therefore fills in going forward rather than being backfilled.
+
+If a version ever needs removing by hand:
+
+```bash
+pip install -r requirements-docs.txt
+mike list   --branch gh-pages
+mike delete --branch gh-pages --push <version>
+```
