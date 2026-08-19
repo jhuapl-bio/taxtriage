@@ -34,15 +34,128 @@
   var IS_CURRENT = !/^\d+\.\d+(\.\d+)?/.test(DOCS_VERSION);
 
   var ISSUE_TEMPLATE = "add_organism.yml";
+  var ISSUES_NEW = "https://github.com/jhuapl-bio/taxtriage/issues/new";
 
-  // GitHub issue forms prefill from query params keyed by field id.
-  function requestUrl(name) {
+  // GitHub issue forms are static — they cannot repeat a field group, so
+  // requesting several organisms at once has to be assembled here and handed
+  // over as a single prefilled issue body. The guided single-organism form
+  // remains for people who start from the Issues tab instead.
+  function templateUrl(name) {
     var params = ["template=" + encodeURIComponent(ISSUE_TEMPLATE)];
     if (name) {
       params.push("title=" + encodeURIComponent("Add organism: " + name));
       params.push("organism=" + encodeURIComponent(name));
     }
-    return "https://github.com/jhuapl-bio/taxtriage/issues/new?" + params.join("&");
+    return ISSUES_NEW + "?" + params.join("&");
+  }
+
+  // Canonical body sites. Constrained rather than free text because the sheet
+  // already carries both "abscess" and "abcess" from hand entry.
+  var SITES = [
+    "blood",
+    "resp",
+    "lung",
+    "sputum",
+    "nasal",
+    "sinus",
+    "oral",
+    "teeth",
+    "gut",
+    "stool",
+    "feces",
+    "urine",
+    "vaginal",
+    "skin",
+    "abscess",
+    "ear",
+    "eye",
+    "ocular",
+    "cornea",
+    "csf",
+    "bile",
+    "mucus",
+  ];
+
+  // One spec drives the form, the issue body and the CSV block, so they cannot
+  // drift apart. `id` matches the pathogen sheet column name.
+  var REQUEST_FIELDS = [
+    { id: "name", label: "Organism name", type: "text", required: true, ph: "Streptococcus pneumoniae" },
+    { id: "taxid", label: "NCBI tax ID", type: "text", required: true, ph: "1313" },
+    {
+      id: "general_classification",
+      label: "Microbial category",
+      type: "select",
+      required: true,
+      options: ["primary", "opportunistic", "potential", "commensal"],
+    },
+    { id: "status", label: "Evidence status", type: "select", options: ["established", "putative"] },
+    { id: "pathogenic_sites", label: "Pathogenic sites", type: "sites" },
+    { id: "commensal_sites", label: "Commensal sites", type: "sites" },
+    { id: "high_consequence", label: "High consequence", type: "select", options: ["FALSE", "TRUE"] },
+    { id: "mol_type", label: "Molecule type", type: "select", options: ["dna", "rna"] },
+    { id: "host_organism", label: "Host organism", type: "text", ph: "human" },
+    { id: "assembly_accession", label: "Assembly accession", type: "text", ph: "GCF_000006885.1" },
+    { id: "alternative_names", label: "Synonyms", type: "text" },
+    { id: "pathology", label: "Disease association", type: "text" },
+    { id: "reference", label: "Supporting reference", type: "textarea", required: true },
+  ];
+
+  // GitHub truncates very long prefilled bodies, and browsers cap URL length.
+  // Warn before we get near it rather than silently losing entries.
+  var MAX_URL = 6000;
+
+  function csvCell(v) {
+    v = v == null ? "" : String(v);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+
+  function requestBody(entries) {
+    var lines = [
+      "### Organisms requested",
+      "",
+      "Assembled from the [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/).",
+      "Taxonomic lineage is omitted — it is derived from the tax ID.",
+      "",
+    ];
+
+    entries.forEach(function (e, i) {
+      lines.push("#### " + (i + 1) + ". " + (e.name || "(unnamed)"), "");
+      REQUEST_FIELDS.forEach(function (f) {
+        if (f.id === "name") return;
+        var v = e[f.id];
+        if (!v) return;
+        lines.push("- **" + f.label + ":** " + v);
+      });
+      lines.push("");
+    });
+
+    // A paste-ready block in pathogen_sheet.csv column order.
+    lines.push("### Draft CSV rows", "", "```csv");
+    lines.push(ALL_COLS.join(","));
+    entries.forEach(function (e) {
+      lines.push(
+        ALL_COLS.map(function (c) {
+          return csvCell(e[c] || "");
+        }).join(","),
+      );
+    });
+    lines.push("```", "");
+    return lines.join("\n");
+  }
+
+  function requestIssueUrl(entries) {
+    var title =
+      entries.length === 1
+        ? "Add organism: " + entries[0].name
+        : "Add " + entries.length + " organisms to the pathogen sheet";
+    return (
+      ISSUES_NEW +
+      "?labels=pathogen-sheet" +
+      "&title=" +
+      encodeURIComponent(title) +
+      "&body=" +
+      encodeURIComponent(requestBody(entries))
+    );
   }
 
   // Facets rendered as checkbox lists: [key, label, isMultiValue, searchable]
@@ -323,6 +436,7 @@
       reset: root.querySelector(".pt-reset"),
       exportBtn: root.querySelector(".pt-export"),
       drawer: root.querySelector(".pt-drawer"),
+      request: root.querySelector(".pt-request-drawer"),
     };
 
     /* ── filtering ────────────────────────────────────────────────────── */
@@ -570,11 +684,11 @@
         var q = state.q.trim();
         var cta =
           IS_CURRENT && q
-            ? '<p style="margin-top:0.75rem"><a class="pt-btn pt-request" href="' +
-              requestUrl(q) +
-              '" target="_blank" rel="noopener">Request &ldquo;' +
+            ? '<p style="margin-top:0.75rem"><button class="pt-btn pt-request" data-name="' +
               esc(q) +
-              "&rdquo;</a></p>"
+              '">Request &ldquo;' +
+              esc(q) +
+              "&rdquo;</button></p>"
             : "";
         el.tbody.innerHTML =
           '<tr><td colspan="' +
@@ -675,6 +789,224 @@
       el.drawer.classList.remove("is-open");
     }
 
+    /* ── request builder ──────────────────────────────────────────────────
+     * Stages one or more organisms, then hands them to GitHub as a single
+     * prefilled issue. Lives here rather than in the issue form because issue
+     * forms cannot repeat a field group.
+     */
+
+    var staged = [];
+
+    function fieldControl(f) {
+      var req = f.required ? " required" : "";
+      if (f.type === "select") {
+        return (
+          '<select data-f="' +
+          f.id +
+          '"' +
+          req +
+          '><option value="">—</option>' +
+          f.options
+            .map(function (o) {
+              return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
+            })
+            .join("") +
+          "</select>"
+        );
+      }
+      if (f.type === "sites") {
+        return (
+          '<select data-f="' +
+          f.id +
+          '" multiple size="4">' +
+          SITES.map(function (o) {
+            return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
+          }).join("") +
+          "</select>"
+        );
+      }
+      if (f.type === "textarea") {
+        return '<textarea data-f="' + f.id + '" rows="2"' + req + "></textarea>";
+      }
+      return '<input type="text" data-f="' + f.id + '" placeholder="' + esc(f.ph || "") + '"' + req + ">";
+    }
+
+    function renderRequest() {
+      var fields = REQUEST_FIELDS.map(function (f) {
+        return (
+          '<label class="pt-rq-field' +
+          (f.type === "textarea" || f.type === "sites" ? " pt-rq-wide" : "") +
+          '"><span>' +
+          esc(f.label) +
+          (f.required ? ' <em aria-hidden="true">*</em>' : "") +
+          "</span>" +
+          fieldControl(f) +
+          "</label>"
+        );
+      }).join("");
+
+      var list = staged.length
+        ? '<ol class="pt-rq-list">' +
+          staged
+            .map(function (e, i) {
+              return (
+                "<li><span><strong>" +
+                esc(e.name) +
+                "</strong> — taxid " +
+                esc(e.taxid) +
+                ", " +
+                esc(e.general_classification) +
+                '</span><button type="button" class="pt-rq-del" data-i="' +
+                i +
+                '" aria-label="Remove ' +
+                esc(e.name) +
+                '">✕</button></li>'
+              );
+            })
+            .join("") +
+          "</ol>"
+        : '<p class="pt-rq-empty">Nothing staged yet. Fill the fields above and choose <strong>Add another</strong> to queue more than one.</p>';
+
+      el.request.innerHTML =
+        '<button class="pt-drawer-close" aria-label="Close">✕</button>' +
+        "<h3>Request organisms</h3>" +
+        '<p class="pt-rq-intro">Queue as many as you like, then open a single issue. Fields marked <em>*</em> are required; the rest help but can be left blank.</p>' +
+        '<div class="pt-rq-form">' +
+        fields +
+        "</div>" +
+        '<p class="pt-rq-error" role="alert" hidden></p>' +
+        '<div class="pt-rq-actions">' +
+        '<button type="button" class="pt-btn pt-rq-add">Add another</button>' +
+        '<button type="button" class="pt-btn pt-rq-open">Open issue' +
+        (staged.length ? " (" + staged.length + ")" : "") +
+        "</button>" +
+        "</div>" +
+        "<h4>Staged</h4>" +
+        list +
+        '<p class="pt-rq-alt">Prefer GitHub\'s guided form for a single organism? <a href="' +
+        templateUrl("") +
+        '" target="_blank" rel="noopener">Use the issue template</a>.</p>';
+    }
+
+    function readForm() {
+      var entry = {};
+      REQUEST_FIELDS.forEach(function (f) {
+        var node = el.request.querySelector('[data-f="' + f.id + '"]');
+        if (!node) return;
+        if (f.type === "sites") {
+          entry[f.id] = Array.prototype.filter
+            .call(node.options, function (o) {
+              return o.selected;
+            })
+            .map(function (o) {
+              return o.value;
+            })
+            .join(", ");
+        } else {
+          entry[f.id] = (node.value || "").trim();
+        }
+      });
+      return entry;
+    }
+
+    function showError(msg) {
+      var p = el.request.querySelector(".pt-rq-error");
+      p.textContent = msg;
+      p.hidden = !msg;
+    }
+
+    // Returns the entry, or null after reporting what is missing.
+    function takeEntry() {
+      var entry = readForm();
+      var missing = REQUEST_FIELDS.filter(function (f) {
+        return f.required && !entry[f.id];
+      });
+      if (missing.length) {
+        showError(
+          "Fill in " +
+            missing
+              .map(function (f) {
+                return f.label.toLowerCase();
+              })
+              .join(", ") +
+            " first.",
+        );
+        return null;
+      }
+      if (!/^\d+$/.test(entry.taxid)) {
+        showError("Tax ID should be numeric, e.g. 1313.");
+        return null;
+      }
+      showError("");
+      return entry;
+    }
+
+    function openRequest(prefillName) {
+      renderRequest();
+      if (prefillName) {
+        var n = el.request.querySelector('[data-f="name"]');
+        if (n) n.value = prefillName;
+      }
+      el.request.classList.add("is-open");
+      var first = el.request.querySelector("input,select,textarea");
+      if (first && first.focus) first.focus();
+    }
+
+    el.request.addEventListener("click", function (e) {
+      if (e.target.closest(".pt-drawer-close")) {
+        el.request.classList.remove("is-open");
+        return;
+      }
+
+      var del = e.target.closest(".pt-rq-del");
+      if (del) {
+        staged.splice(Number(del.dataset.i), 1);
+        var keep = readForm();
+        renderRequest();
+        REQUEST_FIELDS.forEach(function (f) {
+          var node = el.request.querySelector('[data-f="' + f.id + '"]');
+          if (node && f.type !== "sites" && keep[f.id]) node.value = keep[f.id];
+        });
+        return;
+      }
+
+      if (e.target.closest(".pt-rq-add")) {
+        var entry = takeEntry();
+        if (!entry) return;
+        staged.push(entry);
+        renderRequest(); // clears the form, ready for the next one
+        return;
+      }
+
+      if (e.target.closest(".pt-rq-open")) {
+        var list = staged.slice();
+        // Include whatever is currently typed, so a single request does not
+        // require pressing "Add another" first.
+        var current = readForm();
+        if (
+          REQUEST_FIELDS.some(function (f) {
+            return f.required && current[f.id];
+          })
+        ) {
+          var last = takeEntry();
+          if (!last) return;
+          list.push(last);
+        }
+        if (!list.length) {
+          showError("Add at least one organism first.");
+          return;
+        }
+        var url = requestIssueUrl(list);
+        if (url.length > MAX_URL) {
+          showError(
+            "That is too much for one issue (" + list.length + " organisms). Open this batch, then start another.",
+          );
+          return;
+        }
+        window.open(url, "_blank", "noopener");
+      }
+    });
+
     /* ── export ───────────────────────────────────────────────────────── */
 
     function exportCsv() {
@@ -774,6 +1106,12 @@
 
     el.exportBtn.addEventListener("click", exportCsv);
 
+    root.addEventListener("click", function (e) {
+      var btn = e.target.closest(".pt-request");
+      if (!btn || el.request.contains(btn)) return;
+      openRequest(btn.dataset.name || "");
+    });
+
     el.thead.addEventListener("click", function (e) {
       var th = e.target.closest("th");
       if (!th || !th.dataset.key) return;
@@ -793,7 +1131,9 @@
     });
 
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closeDrawer();
+      if (e.key !== "Escape") return;
+      closeDrawer();
+      el.request.classList.remove("is-open");
     });
 
     el.pager.addEventListener("click", function (e) {
@@ -824,11 +1164,7 @@
       '<span class="pt-count"></span>' +
       '<button class="pt-btn pt-reset" hidden>Clear filters</button>' +
       '<button class="pt-btn pt-export">Export CSV</button>' +
-      (IS_CURRENT
-        ? '<a class="pt-btn pt-request" href="' +
-          requestUrl("") +
-          '" target="_blank" rel="noopener">Request an organism</a>'
-        : "") +
+      (IS_CURRENT ? '<button class="pt-btn pt-request">Request organisms</button>' : "") +
       "</div>" +
       '<div class="pt-chips"></div>' +
       '<div class="pt-body">' +
@@ -841,7 +1177,8 @@
       "</tr></thead><tbody></tbody></table></div>" +
       '<div class="pt-pager"></div>' +
       "</div></div>" +
-      '<div class="pt-drawer"></div>'
+      '<div class="pt-drawer"></div>' +
+      '<div class="pt-drawer pt-request-drawer"></div>'
     );
   }
 
