@@ -1,5 +1,16 @@
 name: Deploy GitHub Pages
 
+# Publishes the documentation site (MkDocs Material) to
+# https://jhuapl-bio.github.io/taxtriage/
+#
+# The site has three tabs:
+#   Documentation  — docs/*.md
+#   Demo Report    — built from assets/heatmap.html by scripts/inline_boot_json.py
+#   Pathogen Sheet — built from assets/pathogen_sheet.csv
+#
+# The last two are generated at build time and are gitignored, so they can
+# never drift from what is in the repo.
+
 on:
   push:
     branches: ["main"]
@@ -24,11 +35,51 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Build _site/index.html from heatmap.html + pages.js
-        run: python scripts/inline_boot_json.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      # inline_boot_json.py evaluates the boot JS with Node to produce JSON.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install documentation dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Build interactive report demo
+        run: |
+          python scripts/inline_boot_json.py
+          test -s _site/index.html
+          mkdir -p docs/demo
+          cp _site/index.html docs/demo/index.html
+          echo "demo size: $(du -h docs/demo/index.html | cut -f1)"
+
+      - name: Build pathogen sheet data
+        run: python scripts/build_pathogen_data.py
+
+      # Runs the real table widget in jsdom against the freshly generated data,
+      # so a schema change to the pathogen sheet fails the build rather than
+      # silently shipping an empty or mis-faceted table.
+      - name: Test pathogen sheet table
+        run: |
+          npm install --no-fund --no-audit --no-save jsdom
+          node scripts/test_pathogen_table.js
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      # Catches broken raw-HTML and runtime-fetch paths, which mkdocs --strict
+      # does not see because it only validates Markdown links.
+      - name: Check built links
+        run: python scripts/test_built_links.py --site site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
   deploy:
     environment:
@@ -39,4 +90,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

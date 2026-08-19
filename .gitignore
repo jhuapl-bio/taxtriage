@@ -3,6 +3,15 @@ dbs
 assets/mce.js
 docs/index.html
 _site/
+
+# Documentation site: build output and artifacts generated from the repo
+# at deploy time (see .github/workflows/deploy-pages.yml).
+site/
+docs/demo/
+docs/data/pathogen_sheet.json
+node_modules/
+package-lock.json
+package.json
 file
 test/*
 examples/test.csv

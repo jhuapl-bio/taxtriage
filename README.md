@@ -3,8 +3,8 @@
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A524.0-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 [![Docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![Singularity](https://img.shields.io/badge/run%20with-SingularityCE%20v4%2B-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
-[![Wiki](https://img.shields.io/badge/wiki-documentation-red)](https://github.com/jhuapl-bio/taxtriage/wiki)
-[![Interactive report](https://img.shields.io/badge/live-interactive%20report-red)](https://jhuapl-bio.github.io/taxtriage/)
+[![Docs](https://img.shields.io/badge/docs-documentation-red)](https://jhuapl-bio.github.io/taxtriage/)
+[![Interactive report](https://img.shields.io/badge/live-interactive%20report-red)](https://jhuapl-bio.github.io/taxtriage/demo-report/)
 
 # TaxTriage
 
@@ -19,7 +19,7 @@ Many metagenomic Nextflow workflows end with tool-specific files and a MultiQC s
 
 > TaxTriage is intended for research, surveillance, and early-stage outbreak investigation. It is not intended for use as a standalone diagnostic capability.
 
-[**Open the interactive report demonstration**](https://jhuapl-bio.github.io/taxtriage/) · [**Read the TASS scoring documentation**](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring) · [**Browse the full wiki**](https://github.com/jhuapl-bio/taxtriage/wiki)
+[**Open the interactive report demonstration**](https://jhuapl-bio.github.io/taxtriage/demo-report/) · [**Read the TASS scoring documentation**](https://jhuapl-bio.github.io/taxtriage/tass-scoring/) · [**Browse the full documentation**](https://jhuapl-bio.github.io/taxtriage/)
 
 ## What TaxTriage contributes
 
@@ -47,7 +47,7 @@ Depending on enabled options, the score can incorporate:
 - **Mapping quality, abundance, classifier agreement, body-site context, protein identity, and plasmid evidence**.
 - **Species- and genus-level rollups**, allowing evidence split among near-identical strains to be interpreted at an appropriate taxonomic level.
 
-TASS is not a renamed Kraken2 confidence value or a single coverage cutoff. It is a post-alignment synthesis of multiple evidence types with configurable weights, transformations, and thresholds. The equations, default weights, conflict-resolution logic, and optimization approach are documented in the [TASS Scoring wiki](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring).
+TASS is not a renamed Kraken2 confidence value or a single coverage cutoff. It is a post-alignment synthesis of multiple evidence types with configurable weights, transformations, and thresholds. The equations, default weights, conflict-resolution logic, and optimization approach are documented in the [TASS scoring documentation](https://jhuapl-bio.github.io/taxtriage/tass-scoring/).
 
 ![TASS confidence metric overview](assets/confidence_metric.png)
 
@@ -133,7 +133,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   -resume
 ```
 
-See the [wiki](https://github.com/jhuapl-bio/taxtriage/wiki) for samplesheet preparation, database setup, cloud execution, offline operation, and the complete parameter reference.
+See the [documentation site](https://jhuapl-bio.github.io/taxtriage/) for samplesheet preparation, database setup, cloud execution, offline operation, and the complete parameter reference.
 
 ## Installation
 
@@ -187,7 +187,7 @@ nextflow run https://github.com/jhuapl-bio/taxtriage \
   -resume
 ```
 
-For current options, use the [CLI parameter reference](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters).
+For current options, use the [CLI parameter reference](https://jhuapl-bio.github.io/taxtriage/cli-parameters/).
 
 ## Pre-aligned (BAM/CRAM) input
 
@@ -273,7 +273,7 @@ cd taxtriage
 nextflow run ./main.nf -profile test,docker -resume
 ```
 
-The interactive report can be built for offline viewing. See the [Interactive Report documentation](https://github.com/jhuapl-bio/taxtriage/wiki/Interactive-Report) for `--offline_report` and `--offline_report_files`.
+The interactive report can be built for offline viewing. See the [Interactive Report documentation](https://jhuapl-bio.github.io/taxtriage/interactive-report/) for `--offline_report` and `--offline_report_files`.
 
 When Nextflow reports conflicting uncommitted changes in a remotely cached pipeline:
 
@@ -297,7 +297,7 @@ nextflow drop -f https://github.com/jhuapl-bio/taxtriage
 
 Pre-aligned (BAM/CRAM) samples enter at stage 7; stages 1–6 and 10 are skipped for them.
 
-Detailed descriptions are available in [Pipeline Modules](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules).
+Detailed descriptions are available in [Pipeline Modules](https://jhuapl-bio.github.io/taxtriage/pipeline-modules/).
 
 ## Important outputs
 
@@ -312,7 +312,7 @@ Detailed descriptions are available in [Pipeline Modules](https://github.com/jhu
 | MultiQC report              | Pipeline and tool-level QC summaries                    |
 | Conflict-comparison outputs | Evidence changes after ambiguous support is addressed   |
 
-See [Output](https://github.com/jhuapl-bio/taxtriage/wiki/Output) for exact locations and file naming.
+See [Output](https://jhuapl-bio.github.io/taxtriage/output/) for exact locations and file naming.
 
 ## Metadata-aware analysis
 
@@ -338,15 +338,17 @@ Dave O'Connor's laboratory at the University of Wisconsin–Madison developed a 
 
 ## Documentation
 
-- [Installation](https://github.com/jhuapl-bio/taxtriage/wiki/Installation)
-- [Running the pipeline](https://github.com/jhuapl-bio/taxtriage/wiki/Running-the-Pipeline)
-- [Samplesheet and metadata](https://github.com/jhuapl-bio/taxtriage/wiki/Samplesheet)
-- [CLI parameters](https://github.com/jhuapl-bio/taxtriage/wiki/CLI-Parameters)
-- [Pipeline modules](https://github.com/jhuapl-bio/taxtriage/wiki/Pipeline-Modules)
-- [TASS scoring](https://github.com/jhuapl-bio/taxtriage/wiki/TASS-Scoring)
-- [Interactive report](https://github.com/jhuapl-bio/taxtriage/wiki/Interactive-Report)
-- [Output files](https://github.com/jhuapl-bio/taxtriage/wiki/Output)
-- [Troubleshooting](https://github.com/jhuapl-bio/taxtriage/wiki/Troubleshooting)
+- [Installation](https://jhuapl-bio.github.io/taxtriage/installation/)
+- [Running the pipeline](https://jhuapl-bio.github.io/taxtriage/running-the-pipeline/)
+- [Samplesheet and metadata](https://jhuapl-bio.github.io/taxtriage/samplesheet/)
+- [CLI parameters](https://jhuapl-bio.github.io/taxtriage/cli-parameters/)
+- [Pipeline modules](https://jhuapl-bio.github.io/taxtriage/pipeline-modules/)
+- [TASS scoring](https://jhuapl-bio.github.io/taxtriage/tass-scoring/)
+- [Interactive report](https://jhuapl-bio.github.io/taxtriage/interactive-report/)
+- [Output files](https://jhuapl-bio.github.io/taxtriage/output/)
+- [Troubleshooting](https://jhuapl-bio.github.io/taxtriage/troubleshooting/)
+- [Pathogen annotation sheet](https://jhuapl-bio.github.io/taxtriage/pathogen-sheet/) — searchable, filterable table of every annotated organism
+- [Interactive report demo](https://jhuapl-bio.github.io/taxtriage/demo-report/) — live example report
 
 ## Contributions and support
 
