@@ -773,19 +773,24 @@ async function main() {
     d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
 
     const sel = drawer().querySelector('[data-f="request_type"]');
-    ok("builder offers a request type picker", !!sel);
+    ok("builder shows the request type", !!sel);
+    ok("control is display-only, not a choice", sel && sel.disabled, "select is editable");
     const apl = Array.from(sel.options).find((o) => o.value === "APL-derived");
     ok("APL-derived is visible in the list", !!apl);
-    ok("APL-derived cannot be chosen", apl && apl.disabled, "option is selectable");
-    ok(
-      "the other two are selectable",
+    ok("APL-derived is marked unavailable", apl && apl.disabled, "option is selectable");
+    eq(
+      "full vocabulary is shown",
       Array.from(sel.options)
-        .filter((o) => !o.disabled)
         .map((o) => o.value)
-        .join(",") === "git-tracked,external-local",
-      Array.from(sel.options)
-        .map((o) => o.value + (o.disabled ? "(disabled)" : ""))
         .join(","),
+      "APL-derived,git-tracked,external-local",
+    );
+    ok(
+      "the rule is explained next to the field",
+      /Open issue[\s\S]*git-tracked[\s\S]*Download[\s\S]*external-local/.test(
+        drawer().querySelector("#pt-rq-type-note").textContent,
+      ),
+      drawer().querySelector("#pt-rq-type-note").textContent,
     );
 
     const set = (id, val) => {
@@ -797,8 +802,8 @@ async function main() {
     set("taxid", "12");
     set("general_classification", "primary");
     set("reference", "Ref 2024.");
-    // Deliberately pick the wrong route, then download: the file must win.
-    set("request_type", "git-tracked");
+    // Force a conflicting value past the disabled control; the route must win.
+    drawer().querySelector('[data-f="request_type"]').value = "git-tracked";
     fire(drawer().querySelector(".pt-rq-download"), "click");
     const text = await w.__files[0].blob.text();
     ok("download stamps external-local", /external-local/.test(text), text.slice(0, 300));
@@ -819,7 +824,7 @@ async function main() {
     set("taxid", "13");
     set("general_classification", "primary");
     set("reference", "Ref 2024.");
-    set("request_type", "external-local");
+    drawer().querySelector('[data-f="request_type"]').value = "external-local";
     fire(drawer().querySelector(".pt-rq-open"), "click");
     const body = decodeURIComponent(new w.URL(w.__opened[0]).searchParams.get("body"));
     ok("issue stamps git-tracked", /git-tracked/.test(body), body.slice(0, 300));

@@ -19,7 +19,6 @@ exclude_docs: |
   novelty_sketch/
   similarity_metrics_v2.pdf
   images/Cloud_AWS_NFTower_only/
-  images/*.pdf
   README-docs.md
 
 theme:

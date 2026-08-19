@@ -98,13 +98,14 @@
     { id: "alternative_names", label: "Synonyms", type: "text" },
     { id: "pathology", label: "Disease association", type: "text" },
     { id: "reference", label: "Supporting reference", type: "textarea", required: true },
-    { id: "request_type", label: "Request type", type: "request_type" },
+    { id: "request_type", label: "Request type (set automatically)", type: "request_type" },
   ];
 
-  // Provenance of each row. External requesters may not claim APL-derived —
-  // it is shown in the picker but disabled, so the vocabulary is visible
-  // without being selectable. The value is stamped from the route actually
-  // used at submit time, so it always reflects how the request really arrived.
+  // Provenance of each row, standardised on the submission route rather than
+  // chosen: Open issue -> git-tracked, Download -> external-local. APL-derived
+  // is shown so the full vocabulary is visible, but is reserved for entries the
+  // maintainers curate. The whole control is display-only; the value is stamped
+  // at submit time, so it always reflects how the request actually arrived.
   var REQUEST_TYPES = [
     { value: "APL-derived", label: "APL-derived (maintainers only)", disabled: true },
     { value: "git-tracked", label: "git-tracked — filed as a GitHub issue" },
@@ -857,10 +858,12 @@
         );
       }
       if (f.type === "request_type") {
+        // Display-only: the value is standardised on the submission route, so
+        // an editable control would imply a choice that is then overwritten.
         return (
           '<select data-f="' +
           f.id +
-          '">' +
+          '" disabled aria-describedby="pt-rq-type-note">' +
           REQUEST_TYPES.map(function (o) {
             return (
               '<option value="' +
@@ -944,10 +947,15 @@
         "</button>" +
         '<button type="button" class="pt-btn pt-rq-download">Download</button>' +
         "</div>" +
-        '<p class="pt-rq-note">A public GitHub issue is the fastest route. If the ' +
+        '<p class="pt-rq-note" id="pt-rq-type-note">A public GitHub issue is the fastest route. If the ' +
         "request is sensitive, <strong>Download</strong> saves the same content as a " +
-        "file you can email privately instead. <code>request_type</code> is recorded " +
-        "automatically from whichever you use.</p>" +
+        "file you can email privately instead.<br>" +
+        "<code>request_type</code> follows whichever you choose — " +
+        "<strong>Open issue</strong> records <code>" +
+        TYPE_FOR_ISSUE +
+        "</code>, <strong>Download</strong> records <code>" +
+        TYPE_FOR_FILE +
+        "</code>.</p>" +
         "<h4>Staged</h4>" +
         list +
         '<p class="pt-rq-alt">Prefer GitHub\'s guided form for a single organism? <a href="' +

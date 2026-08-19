@@ -1,10 +1,21 @@
-# TaxTriage Wiki
+# TaxTriage Documentation
 
 [![DOI](https://img.shields.io/badge/doi-10.1093/bioinformatics/btag119-blue)](https://doi.org/10.1093/bioinformatics/btag119)
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A521.10.3-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)
 
 [![Docker](https://img.shields.io/badge/install%20run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 [![Singularity](https://img.shields.io/badge/install%20run%20with-singularity-1d355c.svg?labelColor=000000)](https://sylabs.io/docs/)
+
+## See it first
+
+[Interactive report demo](demo-report.md){ .md-button .md-button--primary }
+[Example ODR (PDF)](images/pathogens.report.example.pdf){ .md-button }
+[Pathogen sheet](pathogen-sheet.md){ .md-button }
+
+The **demo** is a live report built from the example dataset — the same artifact
+the pipeline writes at the end of a run. The **ODR** is the static PDF
+deliverable. The **pathogen sheet** is every organism TaxTriage can flag,
+searchable and filterable.
 
 ## About TaxTriage
 

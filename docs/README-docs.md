@@ -118,7 +118,7 @@ mike deploy 0.0-test && mike serve
 ```bash
 mkdocs build --strict                     # Markdown links, nav, anchors
 python scripts/test_built_links.py        # raw-HTML src paths in the built site
-node scripts/test_pathogen_table.js       # 118 checks, real widget in jsdom
+node scripts/test_pathogen_table.js       # 120 checks, real widget in jsdom
 python scripts/docs_release_stub.py --check   # release build can still redirect
 ```
 
@@ -156,12 +156,12 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   else derives from it (`--pt-accent` in the table widget included), so the
   colour is changed in one place. The classification tag colours are a data
   encoding, not theme styling, and stay as they are.
-- **`request_type` is stamped from the route, not chosen.** The builder shows
-  a picker with `APL-derived` present but `disabled`, so the vocabulary is
-  visible without external requesters being able to claim it. Whichever value
-  is showing, the submit action overwrites it: _Open issue_ records
-  `git-tracked`, _Download_ records `external-local`. The picker is a preview;
-  the route is the truth.
+- **`request_type` is standardised on the submission route.** _Open issue_
+  records `git-tracked`, _Download_ records `external-local`, and `APL-derived`
+  is reserved for maintainer-curated entries. The builder shows the full
+  vocabulary in a **disabled** control so the values are visible without
+  implying a choice, and the value is stamped at submit time — a conflicting
+  value forced past the control is overwritten. Tests cover both routes.
 - **Requests can be downloaded instead of filed.** The builder's **Download**
   button writes the same content as the issue body to a `.md` file, for cases
   where the request should not be public.
