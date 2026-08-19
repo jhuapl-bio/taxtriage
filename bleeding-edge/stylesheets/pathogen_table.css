@@ -1,0 +1,412 @@
+/* Interactive pathogen annotation sheet browser.
+   Everything is expressed in Material's CSS custom properties so the widget
+   follows the site's light/dark palette without a second theme to maintain. */
+
+.pt-app {
+  --pt-border: var(--md-default-fg-color--lightest);
+  --pt-muted: var(--md-default-fg-color--light);
+  --pt-accent: var(--md-primary-fg-color);
+  font-size: 0.72rem;
+  margin: 1rem 0 0;
+}
+
+/* Let the widget escape the prose column without touching global layout. */
+.pt-wide .md-content__inner {
+  max-width: none;
+}
+
+/* ── toolbar ─────────────────────────────────────────────────────────── */
+.pt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.pt-search {
+  position: relative;
+  flex: 1 1 18rem;
+  min-width: 12rem;
+}
+
+.pt-search input {
+  width: 100%;
+  padding: 0.45rem 0.6rem 0.45rem 2rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--pt-border);
+  border-radius: 4px;
+}
+
+.pt-search input:focus {
+  outline: none;
+  border-color: var(--pt-accent);
+}
+
+.pt-search::before {
+  position: absolute;
+  top: 50%;
+  left: 0.65rem;
+  content: "⌕";
+  font-size: 0.95rem;
+  color: var(--pt-muted);
+  transform: translateY(-50%);
+}
+
+.pt-count {
+  color: var(--pt-muted);
+  white-space: nowrap;
+}
+
+.pt-count strong {
+  color: var(--md-default-fg-color);
+}
+
+.pt-btn {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--md-default-fg-color);
+  cursor: pointer;
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--pt-border);
+  border-radius: 4px;
+}
+
+.pt-btn:hover {
+  border-color: var(--pt-accent);
+  color: var(--pt-accent);
+}
+
+.pt-btn[hidden] {
+  display: none;
+}
+
+/* ── layout ──────────────────────────────────────────────────────────── */
+.pt-body {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media screen and (max-width: 76.1875em) {
+  .pt-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── facets ──────────────────────────────────────────────────────────── */
+.pt-facets {
+  position: sticky;
+  top: 4rem;
+  max-height: calc(100vh - 6rem);
+  padding-right: 0.35rem;
+  overflow-y: auto;
+}
+
+@media screen and (max-width: 76.1875em) {
+  .pt-facets {
+    position: static;
+    max-height: none;
+  }
+}
+
+.pt-facet {
+  border-bottom: 1px solid var(--pt-border);
+}
+
+.pt-facet > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pt-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.pt-facet > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pt-facet > summary::after {
+  content: "+";
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.pt-facet[open] > summary::after {
+  content: "–";
+}
+
+.pt-facet-body {
+  padding-bottom: 0.6rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.pt-opt {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  padding: 0.18rem 0;
+  cursor: pointer;
+  line-height: 1.35;
+}
+
+.pt-opt input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--pt-accent);
+}
+
+.pt-opt-label {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.pt-opt-n {
+  flex: none;
+  font-size: 0.62rem;
+  color: var(--pt-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-opt.is-zero {
+  opacity: 0.4;
+}
+
+.pt-tax select {
+  width: 100%;
+  margin-bottom: 0.3rem;
+  padding: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--pt-border);
+  border-radius: 3px;
+}
+
+.pt-tax select:disabled {
+  opacity: 0.45;
+}
+
+/* ── active filter chips ─────────────────────────────────────────────── */
+.pt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.pt-chip {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.63rem;
+  color: var(--md-primary-bg-color);
+  background: var(--pt-accent);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.pt-chip::after {
+  content: "✕";
+  font-size: 0.6rem;
+  opacity: 0.75;
+}
+
+/* ── table ───────────────────────────────────────────────────────────── */
+.pt-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--pt-border);
+  border-radius: 4px;
+}
+
+table.pt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.68rem;
+}
+
+table.pt-table th,
+table.pt-table td {
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--pt-border);
+}
+
+table.pt-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  white-space: nowrap;
+  font-size: 0.63rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--pt-muted);
+  background: var(--md-default-bg-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+table.pt-table thead th:hover {
+  color: var(--pt-accent);
+}
+
+table.pt-table thead th[aria-sort="ascending"]::after {
+  content: " ▲";
+}
+
+table.pt-table thead th[aria-sort="descending"]::after {
+  content: " ▼";
+}
+
+table.pt-table tbody tr {
+  cursor: pointer;
+}
+
+table.pt-table tbody tr:hover {
+  background: var(--md-accent-fg-color--transparent);
+}
+
+.pt-name {
+  font-weight: 600;
+  font-style: italic;
+  min-width: 12rem;
+}
+
+.pt-mark {
+  background: var(--md-accent-fg-color--transparent);
+  border-radius: 2px;
+}
+
+/* Classification / status pills. */
+.pt-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+  border-radius: 3px;
+  border: 1px solid currentcolor;
+}
+
+.pt-tag[data-v="primary"] { color: #c62828; }
+.pt-tag[data-v="opportunistic"] { color: #ef6c00; }
+.pt-tag[data-v="potential"] { color: #6a1b9a; }
+.pt-tag[data-v="commensal"] { color: #2e7d32; }
+.pt-tag[data-v="established"] { color: var(--pt-muted); }
+.pt-tag[data-v="putative"] { color: var(--pt-muted); border-style: dashed; }
+
+[data-md-color-scheme="slate"] .pt-tag[data-v="primary"] { color: #ef9a9a; }
+[data-md-color-scheme="slate"] .pt-tag[data-v="opportunistic"] { color: #ffcc80; }
+[data-md-color-scheme="slate"] .pt-tag[data-v="potential"] { color: #ce93d8; }
+[data-md-color-scheme="slate"] .pt-tag[data-v="commensal"] { color: #a5d6a7; }
+
+.pt-hc {
+  color: #c62828;
+  font-weight: 700;
+}
+
+[data-md-color-scheme="slate"] .pt-hc {
+  color: #ef9a9a;
+}
+
+.pt-sites {
+  color: var(--pt-muted);
+  min-width: 8rem;
+}
+
+/* ── pager ───────────────────────────────────────────────────────────── */
+.pt-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 0.6rem;
+  color: var(--pt-muted);
+}
+
+.pt-pager select {
+  padding: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--pt-border);
+  border-radius: 3px;
+}
+
+.pt-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--pt-muted);
+}
+
+/* ── detail drawer ───────────────────────────────────────────────────── */
+.pt-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 20;
+  width: min(30rem, 92vw);
+  height: 100%;
+  padding: 1.5rem;
+  overflow-y: auto;
+  background: var(--md-default-bg-color);
+  border-left: 1px solid var(--pt-border);
+  box-shadow: -4px 0 24px rgb(0 0 0 / 18%);
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+}
+
+.pt-drawer.is-open {
+  transform: translateX(0);
+}
+
+.pt-drawer h3 {
+  margin: 0 2rem 0.2rem 0;
+  font-style: italic;
+}
+
+.pt-drawer-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--pt-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.pt-dl {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.3rem 0.75rem;
+  margin-top: 1rem;
+  font-size: 0.7rem;
+}
+
+.pt-dl dt {
+  font-weight: 600;
+  color: var(--pt-muted);
+}
+
+.pt-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
