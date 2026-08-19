@@ -3,6 +3,17 @@ dbs
 assets/mce.js
 docs/index.html
 _site/
+
+# Documentation site: build output and artifacts generated at build time.
+# The rendered site is published to the gh-pages branch by mike; nothing here
+# is ever committed.
+site/
+docs/demo/
+docs/javascripts/docs_ref.js
+node_modules/
+package-lock.json
+package.json
+
 file
 test/*
 examples/test.csv
@@ -18,6 +29,13 @@ nf-core/*
 tmp*
 test_*
 test_output/
+
+# The broad `test_*` rule above also swallows checked-in test scripts under
+# scripts/. These two are required by the docs workflows, so un-ignore them.
+# NOTE: the other scripts/test_*.{js,py} files in this repo are still ignored
+# and therefore untracked — likely unintentional, worth a separate look.
+!scripts/test_pathogen_table.js
+!scripts/test_built_links.py
 ./nf-core
 tmp*
 ./nf-core
