@@ -2,9 +2,8 @@
 title: Pathogen Sheet
 hide:
   - toc
+  - navigation
 ---
-
-<style>.md-content__inner{max-width:none}</style>
 
 # Pathogen Annotation Sheet
 

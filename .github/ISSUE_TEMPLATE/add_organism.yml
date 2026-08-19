@@ -22,6 +22,11 @@ body:
         [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)
         before filing, to avoid duplicates.
 
+        Anything added from this form is recorded with
+        `request_type: git-tracked`, since the request itself lives in git
+        history. Requests sent privately are recorded as `external-local`, and
+        `APL-derived` is reserved for entries curated by the maintainers.
+
         **Requesting several organisms?** This form covers one. Use the
         **Request organisms** button on the
         [Pathogen Sheet](https://jhuapl-bio.github.io/taxtriage/latest/pathogen-sheet/)

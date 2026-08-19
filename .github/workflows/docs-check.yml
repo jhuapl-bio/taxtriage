@@ -104,6 +104,21 @@ jobs:
           python -c "import sys,yaml; yaml.safe_load(open('.github/ISSUE_TEMPLATE/$TMPL'))"
           echo "Issue form $TMPL present and valid."
 
+      # MkDocs serves extra_javascript/extra_css at stable filenames, so a
+      # browser will reuse the previous deploy's copy and readers see stale
+      # behaviour. Stamp them with the commit so each deploy is a fresh URL.
+      - name: Stamp assets for cache busting
+        run: |
+          set -euo pipefail
+          V="${GITHUB_SHA::12}"
+          {
+            echo "DOCS_JS_REF=javascripts/docs_ref.js?v=$V"
+            echo "DOCS_JS_TABLE=javascripts/pathogen_table.js?v=$V"
+            echo "DOCS_CSS_EXTRA=stylesheets/extra.css?v=$V"
+            echo "DOCS_CSS_TABLE=stylesheets/pathogen_table.css?v=$V"
+          } >> "$GITHUB_ENV"
+          echo "Assets stamped with ?v=$V"
+
       - name: Build site
         run: mkdocs build --strict
 

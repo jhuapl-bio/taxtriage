@@ -118,7 +118,7 @@ mike deploy 0.0-test && mike serve
 ```bash
 mkdocs build --strict                     # Markdown links, nav, anchors
 python scripts/test_built_links.py        # raw-HTML src paths in the built site
-node scripts/test_pathogen_table.js       # 89 checks, real widget in jsdom
+node scripts/test_pathogen_table.js       # 118 checks, real widget in jsdom
 python scripts/docs_release_stub.py --check   # release build can still redirect
 ```
 
@@ -150,12 +150,33 @@ themselves. Override the input with `PATHOGEN_CSV=/path/to/sheet.csv`.
   extension; Python-Markdown prints them verbatim. Use `$$…$$`, which
   `pymdownx.arithmatex` renders via MathJax. `scripts/migrate_wiki.py`
   converts them on import.
+- **Brand colour is `primary: custom`.** Material has no named palette for
+  `#007aff`, so `mkdocs.yml` sets `primary: custom` and `extra.css` defines
+  `--md-primary-fg-color` under `[data-md-color-primary=custom]`. Everything
+  else derives from it (`--pt-accent` in the table widget included), so the
+  colour is changed in one place. The classification tag colours are a data
+  encoding, not theme styling, and stay as they are.
+- **`request_type` is stamped from the route, not chosen.** The builder shows
+  a picker with `APL-derived` present but `disabled`, so the vocabulary is
+  visible without external requesters being able to claim it. Whichever value
+  is showing, the submit action overwrites it: _Open issue_ records
+  `git-tracked`, _Download_ records `external-local`. The picker is a preview;
+  the route is the truth.
+- **Requests can be downloaded instead of filed.** The builder's **Download**
+  button writes the same content as the issue body to a `.md` file, for cases
+  where the request should not be public.
 - **Batch requests are built in the page, not the issue form.** GitHub issue
   forms are static — they cannot repeat a field group, so "Add another" is
   impossible in `add_organism.yml`. The builder in `pathogen_table.js` stages
   entries and opens one issue prefilled via `?body=`, capped at `MAX_URL` so a
   long batch fails loudly instead of being silently truncated. `REQUEST_FIELDS`
   drives the form, the issue body and the CSV block from one spec.
+- **Site JS/CSS are cache-busted in CI.** MkDocs serves `extra_javascript` and
+  `extra_css` at stable filenames, so browsers reuse the previous deploy's copy
+  and readers see stale behaviour. `mkdocs.yml` reads those paths from `!ENV`
+  vars that CI stamps with `?v=<sha>`; the defaults leave them clean locally.
+  If a change is deployed but not visible, check for a stale asset before
+  assuming the deploy failed.
 - **The request entry points are version-gated.** It appears only when
   the docs version is not a numbered `X.Y.Z` release — so `latest`, PR previews
   and local `mkdocs serve` show it, frozen releases do not. Gating lives in

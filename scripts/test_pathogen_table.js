@@ -123,9 +123,20 @@ async function mount(text, opts) {
       : Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(text) });
   };
   window.__fetched = fetched;
-  window.URL.createObjectURL = () => "blob:stub";
+  const files = [];
+  let pendingBlob = null;
+  window.URL.createObjectURL = (b) => {
+    pendingBlob = b;
+    return "blob:stub";
+  };
   window.URL.revokeObjectURL = () => {};
-  window.HTMLAnchorElement.prototype.click = function () {};
+  window.HTMLAnchorElement.prototype.click = function () {
+    if (pendingBlob) {
+      files.push({ name: this.download, blob: pendingBlob });
+      pendingBlob = null;
+    }
+  };
+  window.__files = files;
   const opened = [];
   window.open = (u) => {
     opened.push(u);
@@ -202,7 +213,12 @@ async function main() {
   ok("widget mounted", !!$(".pt-table"), "no table found");
   eq("all rows counted", shownTotal(), truth.total);
   eq("first page is 50 rows", bodyRows(), 50);
-  eq("column headers", $$(".pt-table thead th").length, 11);
+  eq("column headers", $$(".pt-table thead th").length, 14);
+  {
+    const heads = $$(".pt-table thead th").map((t) => t.dataset.key);
+    ok("assembly column present", heads.includes("assembly_accession"), heads.join(","));
+    ok("reference column present", heads.includes("reference"), heads.join(","));
+  }
 
   console.log("\nfacet counts (unfiltered)");
   eq("classification: primary", optionCount("general_classification", "primary"), truth.primary);
@@ -421,7 +437,7 @@ async function main() {
     const statusIdx = 3; // Organism, Tax ID, Class., Status
     const firstRowCells = d.querySelectorAll(".pt-table tbody tr td");
     eq("status cell renders blank", firstRowCells[statusIdx].textContent.trim(), "");
-    ok("table still has all 11 columns", d.querySelectorAll(".pt-table thead th").length === 11);
+    ok("table still has all 14 columns", d.querySelectorAll(".pt-table thead th").length === 14);
   }
 
   console.log("\nCSV parsing edge cases");
@@ -606,7 +622,7 @@ async function main() {
 
     const csvLines = body.split("```csv")[1].split("```")[0].trim().split("\n");
     eq("CSV block has header + 2 rows", csvLines.length, 3);
-    eq("CSV columns match the sheet", csvLines[0].split(",").length, 20);
+    eq("CSV columns match the sheet", csvLines[0].split(",").length, 21);
   }
 
   console.log("\nrequest builder: single organism without staging");
@@ -650,6 +666,167 @@ async function main() {
     const drawer = d.querySelector(".pt-request-drawer");
     ok("builder opens from the empty state", drawer.classList.contains("is-open"));
     eq("organism name prefilled from the query", drawer.querySelector('[data-f="name"]').value, "Nocardia zzz");
+  }
+
+  console.log("\nassembly and reference columns");
+  {
+    const w = await mount(csvText);
+    const d = w.document;
+    const heads = Array.from(d.querySelectorAll(".pt-table thead th")).map((t) => t.dataset.key);
+    const accIdx = heads.indexOf("assembly_accession");
+    const refIdx = heads.indexOf("reference");
+
+    // Find a row that actually carries both, so the assertions are meaningful.
+    const rows = Array.from(d.querySelectorAll(".pt-table tbody tr"));
+    const withAcc = rows.find((r) => r.children[accIdx].textContent.trim());
+    ok("some row shows an assembly accession", !!withAcc);
+    const link = withAcc && withAcc.children[accIdx].querySelector("a");
+    ok(
+      "assembly links to NCBI datasets",
+      link && /ncbi\.nlm\.nih\.gov\/datasets\/genome\//.test(link.getAttribute("href")),
+      link && link.getAttribute("href"),
+    );
+
+    const withRef = rows.find((r) => r.children[refIdx].textContent.trim());
+    ok("some row shows a reference", !!withRef);
+    ok(
+      "reference cell keeps the full text in a title",
+      withRef && withRef.children[refIdx].getAttribute("title").length > 0,
+    );
+    ok("reference cell is clamped for layout", withRef && withRef.children[refIdx].classList.contains("pt-ref"));
+
+    // Export must still emit the canonical schema regardless of table columns.
+    d.querySelector(".pt-export").dispatchEvent(new w.Event("click", { bubbles: true }));
+  }
+
+  console.log("\nfull-width page");
+  {
+    const w = await mount(csvText);
+    ok("body marked full width on this page", w.document.body.classList.contains("pt-fullwidth"));
+  }
+
+  console.log("\nrequest builder: download for private sharing");
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    const fire = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+    const drawer = () => d.querySelector(".pt-request-drawer");
+    d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
+    ok("download button offered alongside the issue", !!drawer().querySelector(".pt-rq-download"));
+
+    const set = (id, val) => {
+      const n = drawer().querySelector(`[data-f="${id}"]`);
+      n.value = val;
+      fire(n, "change");
+    };
+    set("name", "Private organism");
+    set("taxid", "77");
+    set("general_classification", "primary");
+    set("reference", "Confidential source 2024.");
+    fire(drawer().querySelector(".pt-rq-add"), "click");
+    set("name", "Second private");
+    set("taxid", "78");
+    set("general_classification", "potential");
+    set("reference", "Another source 2024.");
+    fire(drawer().querySelector(".pt-rq-download"), "click");
+
+    eq("a file was produced", w.__files.length, 1);
+    eq("sensible filename", w.__files[0].name, "taxtriage-organism-request.md");
+    const text = await w.__files[0].blob.text();
+    ok(
+      "contains both organisms",
+      text.includes("Private organism") && text.includes("Second private"),
+      text.slice(0, 120),
+    );
+    ok("contains the paste-ready CSV block", text.includes("```csv"));
+    eq("no issue was opened", w.__opened.length, 0);
+  }
+  {
+    // Downloading with nothing entered must report, not emit an empty file.
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
+    d.querySelector(".pt-rq-download").dispatchEvent(new w.Event("click", { bubbles: true }));
+    eq("no empty file written", w.__files.length, 0);
+    ok("explains why", !d.querySelector(".pt-rq-error").hidden);
+  }
+
+  /* ── provenance (request_type) ──────────────────────────────────────────
+   * Every existing row is APL-derived. New requests are stamped from the route
+   * actually used, and external requesters may not claim APL-derived.
+   */
+  console.log("\nrequest_type provenance");
+  {
+    const w = await mount(csvText);
+    const d = w.document;
+    const heads = Array.from(d.querySelectorAll(".pt-table thead th")).map((t) => t.dataset.key);
+    ok("request_type is a table column", heads.includes("request_type"), heads.join(","));
+    ok("request_type is a facet", !!d.querySelector('.pt-facet[data-key="request_type"]'));
+    const opts = Array.from(d.querySelectorAll('.pt-facet[data-key="request_type"] input')).map((i) => i.value);
+    eq("existing sheet is uniformly APL-derived", JSON.stringify(opts), JSON.stringify(["APL-derived"]));
+  }
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    const fire = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+    const drawer = () => d.querySelector(".pt-request-drawer");
+    d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
+
+    const sel = drawer().querySelector('[data-f="request_type"]');
+    ok("builder offers a request type picker", !!sel);
+    const apl = Array.from(sel.options).find((o) => o.value === "APL-derived");
+    ok("APL-derived is visible in the list", !!apl);
+    ok("APL-derived cannot be chosen", apl && apl.disabled, "option is selectable");
+    ok(
+      "the other two are selectable",
+      Array.from(sel.options)
+        .filter((o) => !o.disabled)
+        .map((o) => o.value)
+        .join(",") === "git-tracked,external-local",
+      Array.from(sel.options)
+        .map((o) => o.value + (o.disabled ? "(disabled)" : ""))
+        .join(","),
+    );
+
+    const set = (id, val) => {
+      const n = drawer().querySelector(`[data-f="${id}"]`);
+      n.value = val;
+      fire(n, "change");
+    };
+    set("name", "Route test");
+    set("taxid", "12");
+    set("general_classification", "primary");
+    set("reference", "Ref 2024.");
+    // Deliberately pick the wrong route, then download: the file must win.
+    set("request_type", "git-tracked");
+    fire(drawer().querySelector(".pt-rq-download"), "click");
+    const text = await w.__files[0].blob.text();
+    ok("download stamps external-local", /external-local/.test(text), text.slice(0, 300));
+    ok("download does not record git-tracked", !/git-tracked/.test(text));
+  }
+  {
+    const w = await mount(csvText, { docsRef: { ref: "main", version: "latest" } });
+    const d = w.document;
+    const fire = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+    const drawer = () => d.querySelector(".pt-request-drawer");
+    d.querySelector(".pt-toolbar .pt-request").dispatchEvent(new w.Event("click", { bubbles: true }));
+    const set = (id, val) => {
+      const n = drawer().querySelector(`[data-f="${id}"]`);
+      n.value = val;
+      fire(n, "change");
+    };
+    set("name", "Issue route");
+    set("taxid", "13");
+    set("general_classification", "primary");
+    set("reference", "Ref 2024.");
+    set("request_type", "external-local");
+    fire(drawer().querySelector(".pt-rq-open"), "click");
+    const body = decodeURIComponent(new w.URL(w.__opened[0]).searchParams.get("body"));
+    ok("issue stamps git-tracked", /git-tracked/.test(body), body.slice(0, 300));
+    ok("issue does not record external-local", !/external-local/.test(body));
+    const csvLines = body.split("```csv")[1].split("```")[0].trim().split("\n");
+    eq("CSV block carries the new column", csvLines[0].split(",").length, 21);
+    ok("last CSV field is the provenance", csvLines[1].trim().endsWith("git-tracked"), csvLines[1]);
   }
 
   console.log(`\n${checks - failures}/${checks} checks passed`);
