@@ -1,9 +1,9 @@
 /* Interactive browser for assets/pathogen_sheet.csv.
  *
- * Data is fetched once as docs/data/pathogen_sheet.json (columnar arrays) and
- * everything after that is client side: full-text search, multi-select facets,
- * a dependent taxonomy drilldown, sorting, pagination and CSV export of the
- * current selection.
+ * The CSV is fetched once from the pipeline repository on GitHub at page load
+ * (see REF below) and everything after that is client side: full-text search,
+ * multi-select facets, a dependent taxonomy drilldown, sorting, pagination and
+ * CSV export of the current selection.
  *
  * Facet counts are computed "excluding self" — the counts shown next to the
  * options of facet X reflect every active filter *except* X. That is what makes
@@ -17,7 +17,7 @@
   // The sheet is read from the repository at page load rather than bundled into
   // the site, so it is never a stale copy. The ref is pinned per docs version
   // by scripts/write_docs_ref.py (a release tag for versioned docs, `main` for
-  // bleeding-edge), so the 3.1 docs show the 3.1 sheet.
+  // `latest`), so the 3.1 docs show the 3.1 sheet.
   // raw.githubusercontent.com sends Access-Control-Allow-Origin: *, so this is
   // a plain cross-origin GET with no proxy needed.
   var REF = (window.TAXTRIAGE_DOCS && window.TAXTRIAGE_DOCS.ref) || "main";
@@ -198,8 +198,9 @@
   /* Turn parsed CSV into row objects.
    *
    * Deliberately tolerant of schema drift: any column the sheet does not carry
-   * (today that is `status`) simply reads as empty rather than breaking the
-   * page. Facets with nothing in them are hidden by the renderer.
+   * simply reads as empty rather than breaking the page, and facets with
+   * nothing in them are hidden by the renderer. This matters because the CSV is
+   * read live from a branch or tag that can change independently of the site.
    */
   function normalise(parsed) {
     var index = {};

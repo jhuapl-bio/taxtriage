@@ -10,16 +10,20 @@ pull requests, so docs and code review together.
 
 ## Versions
 
-| Version         | Built from                   | Trigger                     |
-| --------------- | ---------------------------- | --------------------------- |
-| `3.3`, `3.2`, … | the release tag              | publishing a GitHub Release |
-| `latest`        | alias for the newest release | publishing a GitHub Release |
-| `bleeding-edge` | `main`                       | every push to `main`        |
+| Version         | Built from      | Trigger                     |
+| --------------- | --------------- | --------------------------- |
+| `latest`        | `main`          | every push to `main`        |
+| `3.3`, `3.2`, … | the release tag | publishing a GitHub Release |
 
-Releasing `v3.3.9` publishes as **`3.3`**, overwriting `v3.3.8`'s docs. Patch
+`latest` tracks `main` and is the default, so the site root redirects there.
+Releasing `v3.3.9` publishes as **`3.3`**, overwriting `v3.3.8`'s docs — patch
 releases update their minor series in place, so the version selector stays
-short. `latest` is the default, so the site root redirects to the newest
-release; pushing to `main` only ever refreshes `bleeding-edge`.
+short. Releases never move the default.
+
+`latest` is a real version, not an alias. mike keeps versions and aliases in a
+single namespace, so a release cannot also claim `latest` as an alias — it
+fails with `alias 'latest' already specified as a version`. The workflow
+guards against a tag that would resolve to `latest` and fails loudly.
 
 `gh-pages` contains **only rendered HTML/CSS/JS** — no source, no `mkdocs.yml`,
 no scripts. It is entirely machine-generated; never commit to it by hand.
@@ -44,9 +48,8 @@ gitignored (`docs/demo/`, `docs/javascripts/docs_ref.js`).
 
 The pathogen sheet is not bundled at all — the browser fetches it from GitHub
 when the page opens. `scripts/write_docs_ref.py` pins _which ref_ it reads, so
-the 3.1 docs show the sheet that shipped with 3.1 and `bleeding-edge` shows
-`main`. That file is loaded before the table widget and sets
-`window.TAXTRIAGE_DOCS`.
+the `3.1` docs show the sheet that shipped with 3.1 while `latest` shows `main`.
+That file is loaded before the table widget and sets `window.TAXTRIAGE_DOCS`.
 
 ## Local preview
 

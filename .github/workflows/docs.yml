@@ -5,15 +5,19 @@ name: Docs
 # Version scheme (managed by `mike`, which commits the *rendered site only* to
 # the gh-pages branch — no source ever lands there):
 #
-#   3.3, 3.2, …    one entry per minor series. Releasing v3.3.9 overwrites the
-#                  "3.3" docs, so the selector stays short.
-#   latest         alias pointing at the most recent release. This is the
-#                  default, so the site root redirects here.
-#   bleeding-edge  built from main on every push.
+#   latest       built from main on every push. This is the default, so the
+#                site root redirects here.
+#   3.3, 3.2, …  one entry per minor series, cut from the release tag.
+#                Releasing v3.3.9 overwrites the "3.3" docs, so the selector
+#                stays short.
+#
+# NOTE: `latest` is a real version here, not an alias, because it tracks main.
+# mike keeps versions and aliases in one namespace, so releases must not also
+# claim `latest` — they publish their minor series only.
 #
 # Branch model: work happens on `dev` via PRs, then `dev` merges into `main`.
-# Merging to main refreshes bleeding-edge; publishing a GitHub Release cuts a
-# versioned copy.
+# Merging to main refreshes `latest`; publishing a GitHub Release cuts a
+# numbered copy.
 
 on:
   release:
@@ -36,7 +40,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version label to deploy (blank = bleeding-edge)"
+        description: "Version label to deploy (blank = latest)"
         required: false
         default: ""
 
@@ -63,7 +67,7 @@ jobs:
           # mike needs the gh-pages branch and tag history.
           fetch-depth: 0
 
-      - name: Resolve version, alias and data ref
+      - name: Resolve version and data ref
         id: v
         run: |
           set -euo pipefail
@@ -75,18 +79,19 @@ jobs:
               echo "::error::Could not derive a minor version from tag '$TAG' (expected vX.Y.Z)"
               exit 1
             fi
-            ALIAS="latest"
+            if [ "$VERSION" = "latest" ]; then
+              echo "::error::Refusing to publish a release as 'latest'; that name tracks main."
+              exit 1
+            fi
             REF="$TAG"
           else
             VERSION="${{ github.event.inputs.version }}"
-            VERSION="${VERSION:-bleeding-edge}"
-            ALIAS=""
+            VERSION="${VERSION:-latest}"
             REF="main"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "alias=$ALIAS"     >> "$GITHUB_OUTPUT"
           echo "ref=$REF"         >> "$GITHUB_OUTPUT"
-          echo "Deploying docs version '$VERSION' (alias '${ALIAS:-none}') reading data from '$REF'"
+          echo "Deploying docs version '$VERSION' reading data from '$REF'"
 
       - uses: actions/setup-python@v5
         with:
@@ -140,17 +145,13 @@ jobs:
 
       - name: Deploy version
         run: |
-          set -euo pipefail
-          ARGS=(--push --branch "$PAGES_BRANCH" --update-aliases "${{ steps.v.outputs.version }}")
-          if [ -n "${{ steps.v.outputs.alias }}" ]; then
-            ARGS+=("${{ steps.v.outputs.alias }}")
-          fi
-          mike deploy "${ARGS[@]}"
+          mike deploy --push --branch "$PAGES_BRANCH" --update-aliases \
+            "${{ steps.v.outputs.version }}"
 
-      # The root of the site redirects here. Only releases move it, so pushing
-      # to main never makes bleeding-edge the landing page.
+      # The site root redirects here. Idempotent, so it is safe to reassert on
+      # every main push; releases never move it.
       - name: Point default at latest
-        if: github.event_name == 'release'
+        if: steps.v.outputs.version == 'latest'
         run: mike set-default --push --branch "$PAGES_BRANCH" latest
 
       - name: Summary
@@ -159,7 +160,6 @@ jobs:
             echo "### Docs deployed"
             echo ""
             echo "- **Version:** \`${{ steps.v.outputs.version }}\`"
-            echo "- **Alias:** \`${{ steps.v.outputs.alias || 'none' }}\`"
             echo "- **Data ref:** \`${{ steps.v.outputs.ref }}\`"
             echo "- **URL:** https://jhuapl-bio.github.io/taxtriage/${{ steps.v.outputs.version }}/"
           } >> "$GITHUB_STEP_SUMMARY"
