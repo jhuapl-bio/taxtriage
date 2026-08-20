@@ -440,6 +440,11 @@ body {
   font-weight: 400;
   opacity: 0.85;
 }
+#banner .banner-logo {
+  width: 1.3em;
+  height: 1.3em;
+  flex-shrink: 0;
+}
 
 /* ── tab bar ── */
 #tabbar {
@@ -5488,7 +5493,14 @@ body.report-pdf-printing #cov-legend-chips {
     </div>
 
     <div id="banner">
-      <i class="fas fa-bacteria"></i>
+      <svg class="banner-logo" viewBox="0 0 64 64" role="img" aria-label="TaxTriage logo">
+        <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round">
+          <line x1="10" y1="18" x2="40" y2="18" />
+          <line x1="10" y1="32" x2="32" y2="32" />
+          <line x1="10" y1="46" x2="24" y2="46" />
+        </g>
+        <circle cx="52" cy="18" r="7" fill="#ffffff" />
+      </svg>
       TaxTriage Multi-Run Analysis
       <span class="sub" id="banner-sub"></span>
       <button id="pipeline-info-btn" type="button" aria-label="Show pipeline run metadata">
