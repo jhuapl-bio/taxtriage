@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo-badge.svg" width="72" alt="TaxTriage logo" />
+</p>
+
 [![DOI](https://img.shields.io/badge/doi-10.1093/bioinformatics/btag119-blue)](https://doi.org/10.1093/bioinformatics/btag119)
 [![Zenodo](https://img.shields.io/badge/doi-10.5281/zenodo.17081353-red)](https://doi.org/10.5281/zenodo.17081353)
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A524.0-23aa62.svg?labelColor=000000)](https://www.nextflow.io/)

@@ -81,6 +81,11 @@ body {
   font-weight: 400;
   opacity: 0.85;
 }
+#banner .banner-logo {
+  width: 1.3em;
+  height: 1.3em;
+  flex-shrink: 0;
+}
 
 /* ── tab bar ── */
 #tabbar {
