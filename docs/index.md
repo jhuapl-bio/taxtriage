@@ -13,9 +13,10 @@
 [Pathogen sheet](pathogen-sheet.md){ .md-button }
 
 The **demo** is a live report built from the example dataset — the same artifact
-the pipeline writes at the end of a run. The **ODR** is the static PDF
-deliverable. The **pathogen sheet** is every organism TaxTriage can flag,
-searchable and filterable.
+the pipeline writes at the end of a run, complete with live filters and sample
+QC flags you can edit in the browser. The **ODR** is the static PDF deliverable.
+The **pathogen sheet** is every organism TaxTriage can flag, searchable and
+filterable.
 
 ## About TaxTriage
 

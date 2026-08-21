@@ -1439,10 +1439,16 @@ function populateTable() {
       const gtd = document.createElement("td");
       gtd.colSpan = visibleCols.length;
       const _mergedBadge = typeof _mergedSampleBadgeHTML === "function" ? _mergedSampleBadgeHTML(row) : "";
+      const _flagBadge = typeof _flagBadgeHTML === "function" ? _flagBadgeHTML(row) : "";
+      const _flagSt = typeof ttFlagStateFor === "function" ? ttFlagStateFor(row) : null;
+      if (_flagSt && _flagSt.flagged) {
+        gr.classList.add("flagged-sample");
+        if (_flagSt.hide) gr.classList.add("flag-hidden-sample");
+      }
       gtd.innerHTML = `<i class="fas fa-vial"></i> ${String(_lastGrp)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")}${_mergedBadge}`;
+        .replace(/>/g, "&gt;")}${_mergedBadge}${_flagBadge}`;
       gr.appendChild(gtd);
       frag.appendChild(gr);
     }

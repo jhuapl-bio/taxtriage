@@ -140,7 +140,9 @@ See [TASS Scoring](tass-scoring.md) for full definitions of each metric.
 
 ### Interactive Comparison Report (`report/all.odr.html`)
 
-A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
+A self-contained, browser-based report that compares every sample in the run side by side, with a TASS heatmap, summary table, coverage/sunburst/explore views, a per-sample-type TASS cutoff slider, species/genus roll-up views, whole-sample QC flags, and a built-in Export-to-PDF button. No server is required — the file can be emailed or hosted as-is. See the dedicated [Interactive Report](interactive-report.md) page for a full walkthrough.
+
+Samples flagged by a QC rule (`--report_flag_*`, or rules added in the report itself) are marked here, not removed: the file still carries every sample's data, so clearing a rule brings a hidden sample straight back. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
 
 ### Microbial Sheet (`report/<sample>.odr.txt`)
 

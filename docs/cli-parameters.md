@@ -360,6 +360,63 @@ They appear in the [Interactive Report](interactive-report.md) **Table** tab (vi
 
 ---
 
+## Report Sample-QC Flags
+
+Whole-**sample** criteria that seed the interactive report's **Sample QC / Flags** rule set. These are report _defaults only_: every sample still runs through the full workflow and appears in every output. A sample that matches is marked in the Heatmap, Table, Metadata & Mapping and Summary tabs and, with `--report_flag_action hide`, also removed from those views (reversibly — the report keeps a one-click toggle). Users can edit, add to or delete every rule live in the report.
+
+| Parameter                             | Description                                                                                                                                                                                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--report_flag_min_reads <n>`         | Flag any sample with fewer than `n` total reads.                                                                                                                                                                                                                                           |
+| `--report_flag_min_aligned_reads <n>` | Flag any sample with fewer than `n` aligned reads. Set to `1` to catch samples that produced no alignments at all.                                                                                                                                                                         |
+| `--report_flag_min_organisms <n>`     | Flag any sample with fewer than `n` **distinct** organisms scoring at or above `--report_flag_organism_tass`.                                                                                                                                                                              |
+| `--report_flag_organism_tass <tass>`  | TASS cutoff (0–100) used by `--report_flag_min_organisms`. Defaults to `--min_conf` when set, else `75`.                                                                                                                                                                                   |
+| `--report_flag_min_detections <n>`    | Flag any sample with fewer than `n` detections passing their own threshold.                                                                                                                                                                                                                |
+| `--report_flag_metadata <spec>`       | Metadata criteria, `;`-separated. Each clause is `field:op:value` (or the shorthand `field=value`, meaning equals). Operators: `==` `!=` `contains` `!contains` `regex` `empty` `!empty` `<` `<=` `>` `>=`. The field is looked up in the run metadata first, then in the sample metadata. |
+| `--report_flag_logic <any\|all>`      | Flag when **any** criterion matches (default) or only when **all** of them do.                                                                                                                                                                                                             |
+| `--report_flag_action <flag\|hide>`   | What happens to a matching sample: `flag` marks it but keeps it visible (default); `hide` also removes it from every chart and table.                                                                                                                                                      |
+| `--report_flag_missing`               | Treat a missing or blank value as a match. Off by default, so a criterion can never flag a sample purely because the field was never populated.                                                                                                                                            |
+| `--report_flag_rules <file.json>`     | A JSON file holding a full rule list. Replaces every other `--report_flag_*` parameter.                                                                                                                                                                                                    |
+
+Example — flag anything shallow, uninformative, or missing its collection site:
+
+```bash
+nextflow run . -profile docker \
+    --input samplesheet.csv \
+    --report_flag_min_reads 500000 \
+    --report_flag_min_organisms 1 --report_flag_organism_tass 75 \
+    --report_flag_metadata "environmental_site:empty:;host_disease:contains:influenza"
+```
+
+### Rules file format
+
+`--report_flag_rules` takes either a bare list of rule objects or an object with `logic`, `missing_fails` and `rules`:
+
+```json
+{
+  "logic": "any",
+  "missing_fails": false,
+  "rules": [
+    { "source": "meta", "field": "total_reads", "op": "<", "value": 500000, "action": "hide" },
+    { "source": "derived", "field": "unique_taxids_above_tass", "op": "<", "value": 1, "tass": 75, "action": "flag" },
+    { "source": "runmeta", "field": "sample_origin_country", "op": "empty", "value": "", "action": "flag" },
+    { "source": "data", "field": "Coverage", "agg": "max", "op": "<", "value": 10, "action": "flag" }
+  ]
+}
+```
+
+`source` is one of:
+
+| Source    | Reads                                                                                                                                                                                                     |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `meta`    | A per-sample pipeline metric: `total_reads`, `aligned_reads`, `total_organism_reads`, `num_keys`, `num_subkeys`, `num_species_groups`, `platform`, `sample_type`, `control_type`, …                       |
+| `derived` | A count computed from the detections: `unique_taxids_above_tass` (with `tass`), `unique_taxids`, `passing_detections`, `detections`, `high_consequence`, `unique_genera`, `max_tass`, `reads_aligned_sum` |
+| `runmeta` | Any metadata column (run metadata first, sample metadata as a fallback)                                                                                                                                   |
+| `data`    | Any numeric detection column, rolled up per sample by `agg` (`max`, `min`, `mean`, `sum`, `count`)                                                                                                        |
+
+A malformed rule is reported on stderr and skipped rather than failing the run. See [Interactive Report → Sample QC flags](interactive-report.md#sample-qc-flags).
+
+---
+
 ## Deprecated Parameters
 
 These parameters are no longer actively supported:

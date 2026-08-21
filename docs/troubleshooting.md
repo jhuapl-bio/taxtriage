@@ -219,6 +219,33 @@ See [TASS Scoring 11.3](tass-scoring.md#113-size-eligibility-for-the-representat
 
 ---
 
+## A Sample Is Missing From the Interactive Report
+
+The report can hide a sample for three different reasons, and they undo in
+different places. Check them in this order:
+
+| Cause                                                   | How you can tell                                                                                                            | Fix                                                                                                                                        |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| A **sample QC rule** with a _flag & hide_ action        | The **Sample QC / Flags** panel in the right sidebar reports a flagged / hidden count; open the dialog to see which samples | Open **Filters & flags…**, then either untick **Hide all flagged samples**, change the rule's action back to _flag it_, or delete the rule |
+| Hidden **by hand**, via the eye icon on its sidebar row | Its row in the Samples list is dimmed with a crossed-out eye                                                                | Click the eye icon again, or use **Hide All / Show All**                                                                                   |
+| The **sidebar search** auto-hide                        | A query is present in the Samples search box and **Hide filtered-out samples** is ticked                                    | Clear the search box, or untick that option                                                                                                |
+
+None of these delete anything — the sample's data is still in the file, and the
+Metadata & Mapping table keeps listing it as part of the run inventory. Only the
+red **trash icon** on a sidebar row actually removes a sample from the loaded
+dataset, and even that leaves the file on disk untouched.
+
+If the sample is missing from the **Samples list itself**, it never reached the
+report: check that its `<sample>.paths.json` was produced by the run, and see
+[Interactive Report](interactive-report.md) for what a sample with no
+alignments looks like.
+
+If the flags were not something you configured, they came from the pipeline —
+see [Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags) for the
+`--report_flag_*` parameters that seed them.
+
+---
+
 ## Debugging a Specific Step
 
 When a module fails, you can inspect and rerun its exact command:

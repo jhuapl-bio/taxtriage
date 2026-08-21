@@ -1125,6 +1125,79 @@
                     "default": "S"
                 }
             }
+        },
+        "report_sample_flags": {
+            "title": "Report sample QC flags",
+            "type": "object",
+            "fa_icon": "fas fa-flag",
+            "description": "Whole-sample criteria that seed the HTML report's Sample QC / Flags rule set. These are report DEFAULTS only - every sample still runs through the full workflow and appears in every output. A matching sample is marked in the Heatmap, Table, Metadata & Mapping and Summary tabs, and (with --report_flag_action hide) removed from those views. Every rule can be edited, added to or deleted live in the report.",
+            "properties": {
+                "report_flag_min_reads": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many total reads.",
+                    "hint": "Reads the sample's total_reads metric. Typical values are 1e5-1e6 depending on assay; leave unset to skip this criterion.",
+                    "fa_icon": "fas fa-arrow-down-1-9"
+                },
+                "report_flag_min_aligned_reads": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many aligned reads.",
+                    "hint": "Set to 1 to flag samples that produced no alignments at all.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "report_flag_min_organisms": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many DISTINCT organisms at or above --report_flag_organism_tass.",
+                    "hint": "Counts unique taxids among strain-level detections whose TASS score clears the cutoff. Useful for spotting samples where nothing scored convincingly.",
+                    "fa_icon": "fas fa-bacteria"
+                },
+                "report_flag_organism_tass": {
+                    "type": ["number", "null"],
+                    "description": "TASS cutoff used by --report_flag_min_organisms (0-100).",
+                    "hint": "Defaults to --min_conf when that is set, otherwise 75, so 'organisms above TASS' means the same thing as the report's opening slider position.",
+                    "fa_icon": "fas fa-file-signature"
+                },
+                "report_flag_min_detections": {
+                    "type": ["number", "null"],
+                    "description": "Flag any sample with fewer than this many detections passing their own threshold.",
+                    "fa_icon": "fas fa-list-check"
+                },
+                "report_flag_metadata": {
+                    "type": ["string", "null"],
+                    "description": "Metadata criteria, ';'-separated. Each clause is 'field:op:value' (or the shorthand 'field=value', meaning equals).",
+                    "hint": "Operators: == != contains !contains regex empty !empty < <= > >=. Example: sample_type:==:nasal;host_disease:contains:influenza;site:!empty: . The field is looked up in the run metadata first, then in the sample metadata.",
+                    "fa_icon": "fas fa-table-list"
+                },
+                "report_flag_logic": {
+                    "type": "string",
+                    "default": "any",
+                    "enum": ["any", "all"],
+                    "description": "Flag a sample when ANY criterion matches (default) or only when ALL of them do.",
+                    "fa_icon": "fas fa-code-branch"
+                },
+                "report_flag_action": {
+                    "type": "string",
+                    "default": "flag",
+                    "enum": ["flag", "hide"],
+                    "description": "What happens to a matching sample: 'flag' marks it but keeps it fully visible; 'hide' also removes it from every chart and table.",
+                    "hint": "Hiding is reversible inside the report - the sample is never deleted, just hidden the same way the sidebar eye icon hides one.",
+                    "fa_icon": "fas fa-eye-slash"
+                },
+                "report_flag_missing": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Treat a missing or blank value as a match.",
+                    "hint": "Off by default, so a criterion can never flag a sample purely because the field was never populated.",
+                    "fa_icon": "fas fa-question"
+                },
+                "report_flag_rules": {
+                    "type": ["string", "null"],
+                    "format": "file-path",
+                    "mimetype": "application/json",
+                    "description": "JSON file holding a full sample-QC rule list. Replaces every other report_flag_* parameter.",
+                    "hint": "Either a bare list of rule objects, or an object with logic / missing_fails / rules keys. A rule is {source, field, op, value[, agg, tass, action]} with source one of meta | derived | runmeta | data.",
+                    "fa_icon": "fas fa-file-code"
+                }
+            }
         }
     },
     "allOf": [
@@ -1168,6 +1241,9 @@
                     "anyOf": "When --skip_kraken2 is true, provide at least one of --reference_fasta, --organisms, or --organisms_file."
                 }
             }
+        },
+        {
+            "$ref": "#/definitions/report_sample_flags"
         }
     ]
 }

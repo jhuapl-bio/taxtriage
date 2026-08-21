@@ -443,8 +443,9 @@ function _applyFilterAutoHide(matchedIds) {
         }
       } else if (_filterAutoHidden.has(id)) {
         // Matches again (query changed) — restore it, but only because we
-        // were the one who hid it.
-        sampleHidden[id] = false;
+        // were the one who hid it, and only if a sample QC rule with a
+        // "hide" action isn't holding it down as well.
+        if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
         _filterAutoHidden.delete(id);
         changed = true;
       }
@@ -453,7 +454,7 @@ function _applyFilterAutoHide(matchedIds) {
     // Toggle switched off, or the search box was cleared — give back
     // visibility to everything we auto-hid.
     _filterAutoHidden.forEach((id) => {
-      sampleHidden[id] = false;
+      if (typeof _flagAutoHidden === "undefined" || !_flagAutoHidden.has(id)) sampleHidden[id] = false;
     });
     _filterAutoHidden.clear();
     changed = true;
@@ -582,6 +583,14 @@ function buildSampleList() {
   _sampleOrder = _sampleOrder.filter((id) => rawSamples.includes(id));
   _ttPushAll(_sampleOrder, newOnes);
 
+  //  Sample QC verdicts are derived from DATA + metadata, so they have to be
+  //  re-applied whenever the sample inventory changes — an upload, a delete,
+  //  or a whole-dataset swap (the GitHub Pages "Start empty" / state-load
+  //  paths all land here). Without this the row icons below and the sidebar
+  //  summary keep showing the previous dataset's verdict. The evaluation
+  //  itself is memoized, so this is a cache hit whenever nothing changed.
+  const _flagHideChanged = typeof ttFlagApplyHide === "function" ? ttFlagApplyHide() : false;
+
   const cont = document.getElementById("sample-list");
   if (!cont) return;
   cont.innerHTML = "";
@@ -697,6 +706,29 @@ function buildSampleList() {
     // Surfaced for samples with few reads or no alignment hits so the user
     // knows their plots/scores may be unreliable. Uses the app's instant
     // tooltip (showTip/moveTip/hideTip) to explain the caveat on hover.
+    // ── Sample QC flag icon ────────────────────────────────────────
+    // Set by the rule engine in 41_sample_flags.js. Hovering lists every
+    // rule the sample tripped; clicking opens the rule builder.
+    const _flagState = typeof ttFlagStateFor === "function" ? ttFlagStateFor(id) : null;
+    let flagIcon = null;
+    if (_flagState && _flagState.flagged) {
+      flagIcon = document.createElement("i");
+      flagIcon.className =
+        "fas " +
+        (_flagState.hide ? "fa-eye-slash" : "fa-flag") +
+        " sample-flag-icon" +
+        (_flagState.hide ? " hides" : "");
+      flagIcon.addEventListener("mouseover", (ev) => showTip(ttFlagTipHTML(id), ev));
+      flagIcon.addEventListener("mousemove", moveTip);
+      flagIcon.addEventListener("mouseout", hideTip);
+      flagIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hideTip();
+        if (typeof ttFlagOpenModal === "function") ttFlagOpenModal();
+      });
+    }
+    div.classList.toggle("flagged-sample", !!(_flagState && _flagState.flagged));
+
     const _warn = _sampleDataWarning(id);
     let warnIcon = null;
     if (_warn.warn) {
@@ -816,6 +848,7 @@ function buildSampleList() {
 
     div.appendChild(colorIn);
     div.appendChild(span);
+    if (flagIcon) div.appendChild(flagIcon);
     if (warnIcon) div.appendChild(warnIcon);
     div.appendChild(editBtn);
     div.appendChild(rescaleBtn);
@@ -833,6 +866,8 @@ function buildSampleList() {
   buildPerTypeTassUI();
   // Update the sidebar legend (sample swatches + TASS cutoffs)
   _updateSidebarLegend();
+  // Sample QC summary line + chips, re-rendered from the verdict applied above.
+  if (typeof ttFlagRenderSummary === "function") ttFlagRenderSummary();
   if (window.specimenMerge && typeof window.specimenMerge.refreshBar === "function") {
     window.specimenMerge.refreshBar();
   }
@@ -840,7 +875,7 @@ function buildSampleList() {
   // push that out to the charts/tables. redraw() is safe to call here even
   // though buildSampleList() is itself sometimes called FROM redraw()'s
   // callers, because this only fires when visibility actually changed.
-  if (_hideToggleChanged && typeof redraw === "function") redraw();
+  if ((_hideToggleChanged || _flagHideChanged) && typeof redraw === "function") redraw();
 }
 
 /** Rebuild the sidebar legend: sample color swatches + active TASS cutoffs.

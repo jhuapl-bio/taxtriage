@@ -240,6 +240,29 @@ The table itself is editable in-browser: **Add column**, **Rows for all samples*
 
 Any other column you add is still shown in the table and is available for display/filtering; it just does not feed a dedicated chart.
 
+### Grouping and picker controls
+
+Wherever the report lets you pick from a list that can grow with the run — the
+**Group by** legend (shared bar, map, Group Heatmap, Group Network) and the
+**Longitudinal Analysis** organism picker — the control is a collapsed dropdown
+with a search box rather than a row of chips. One line high whatever the run
+size, and you can type to find an entry instead of scanning a wrapped block.
+
+For the group picker every group starts **ticked** (visible), and it keeps the
+three states the chips had:
+
+| Action              | Effect                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Untick the checkbox | **Hidden** — the group drops out of every grouped view and off the map                                                               |
+| Click the row       | Cycles **normal → highlight → hidden**; highlight emphasises that group, fades the rest, and draws its similarity network on the map |
+| Shift-click the row | Steps **backwards** through the cycle                                                                                                |
+| Alt-click the row   | **Solo** — show only that group (alt-click again to restore)                                                                         |
+| **All** / **None**  | Show or hide every group at once                                                                                                     |
+| **Reset (n)**       | Appears beside the dropdown once anything is off-default; returns all groups to normal                                               |
+
+All four group pickers share one state, so hiding a group in the Group Heatmap
+is reflected immediately in the bar, the map and the network.
+
 ### Analysis sub-tabs
 
 The Run Metadata tab exposes four sub-tabs. Each shows an explanatory warning (instead of an empty chart) when the metadata it needs is absent:
@@ -256,6 +279,44 @@ All four respect the sidebar filters and recompute live, so they reflect the cur
 ## TASS Cutoff (per sample type)
 
 The TASS cutoff is **per sample type**, not a single global value. The cutoff slider is pre-populated from the `best_cutoffs` recorded in the input data (the most conservative recommended threshold across loaded samples), drawn from `assets/sampletype_best_thresholds.json` (matched on platform and body site). Moving the slider re-filters every tab live. See [CLI Parameters → `--thresholds_json`](cli-parameters.md#reference-selection-and-assemblies).
+
+---
+
+## Sample QC flags
+
+Every other filter in the report narrows **detections**. Sample QC narrows **samples**: a small rule engine that answers "does this whole sample look usable?" — enough reads, enough distinct organisms above a TASS cutoff, the right metadata — and marks the ones that fail.
+
+The **Sample QC / Flags** block in the right-hand sidebar reports how many samples are flagged and opens the rule builder; the dialog itself lists exactly which samples tripped which rule. Each rule is one `{field} {operator} {value}` clause drawn from four sources:
+
+| Source                            | Examples                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sample metrics**                | Total reads, aligned reads, organism-assigned reads, species/strain key counts, platform, sample type, control type                       |
+| **Detection counts**              | Distinct organisms above a TASS cutoff, detections passing threshold, high-consequence organisms, distinct genera, highest TASS           |
+| **Metadata column**               | Any column in the Metadata & Mapping table, including ones added or uploaded in the report — `equals`, `contains`, `regex`, `is empty`, … |
+| **Detection column (aggregated)** | Any numeric detection column (Coverage, Mean Depth, RPM …) rolled up per sample by max / min / mean / sum / count                         |
+
+Rules combine with **any** (flag when one matches) or **all** (flag only when every rule matches), and each carries its own action:
+
+- **flag it** — the sample stays fully visible and is marked everywhere.
+- **flag & hide it** — the sample is additionally removed from every chart and table, exactly as the sidebar eye icon hides one. Nothing is deleted: clearing the rule, or the **Hide flagged** checkbox, brings it straight back.
+
+A **Missing values count as a match** switch decides whether a sample with no value at all for a field trips the rule; it is off by default, so a criterion can never flag a sample purely because the field was never populated.
+
+### Where flags appear
+
+| Tab                    | Marker                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Heatmap**            | The sample's column is outlined in dashed amber with a solid cap under the axis, and its header carries a ⚑ glyph. The cell colours are left untouched, since they _are_ the data. |
+| **Table**              | The sample's group header is tinted, carries a left rule and a `flagged` badge (grouped view).                                                                                     |
+| **Metadata & Mapping** | The sample's row is tinted and its name carries the badge.                                                                                                                         |
+| **Summary**            | A **Flagged Samples** KPI card (hover for the per-sample reasons), plus the same tinted group headers.                                                                             |
+| **Right sidebar**      | A flag icon on each sample row — hover for the reasons, click to open the rule builder.                                                                                            |
+
+Hovering any marker lists exactly which rules the sample tripped and what its actual values were.
+
+### Defaults from the pipeline
+
+Rules can ship with the run: the `--report_flag_*` parameters are baked into the report so it opens with them already applied. **Reset to pipeline defaults** in the dialog restores that set at any time. Live edits are saved with the exported session state, so a saved-and-reloaded report comes back with your rules, not the pipeline's. See [CLI Parameters → Report Sample-QC Flags](cli-parameters.md#report-sample-qc-flags).
 
 ---
 

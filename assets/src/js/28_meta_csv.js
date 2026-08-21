@@ -356,6 +356,11 @@ function __ttRunInit() {
   const runmetaBtn = document.getElementById("runmeta-tab-btn");
   if (runmetaBtn) runmetaBtn.classList.remove("hidden");
 
+  // Seed the sample QC rules from the pipeline defaults and apply any
+  // "hide" actions BEFORE the first sample list / redraw, so the very first
+  // paint already reflects them (no flash of unfiltered samples).
+  if (typeof ttFlagsInit === "function") ttFlagsInit();
+
   buildHmValueSel();
   buildSampleList();
   _computeBslLevels(); // inject BSL Level into DATA + ALL_COLS before table is built
