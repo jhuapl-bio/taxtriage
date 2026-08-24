@@ -122,7 +122,11 @@ const flaggedNames = (v) =>
 let ctx = makeCtx();
 
 let v = verdict(ctx, [{ source: "meta", field: "total_reads", op: "<", value: "10000" }]);
-ck("meta: total_reads < 10000 catches only the shallow sample", JSON.stringify(flaggedNames(v)) === '["S1"]', flaggedNames(v));
+ck(
+  "meta: total_reads < 10000 catches only the shallow sample",
+  JSON.stringify(flaggedNames(v)) === '["S1"]',
+  flaggedNames(v),
+);
 ck("meta: a sample with NO total_reads does not trip by default", v.S3.flagged === false);
 
 v = verdict(ctx, [{ source: "derived", field: "unique_taxids_above_tass", op: "<", value: "2", tass: 95 }]);
@@ -162,7 +166,11 @@ ck("data: max(Coverage) — S1 max is 45, S2 max is 49.5", JSON.stringify(flagge
 // S1 means 42.5 (45, 40); S2 means 41.17 (49.5, 49, 25). max picks S1, mean
 // picks S2 — the aggregation genuinely changes the answer.
 v = verdict(ctx, [{ source: "data", field: "Coverage", agg: "mean", op: "<", value: "42" }]);
-ck("data: mean(Coverage) selects a different sample than max", JSON.stringify(flaggedNames(v)) === '["S2"]', flaggedNames(v));
+ck(
+  "data: mean(Coverage) selects a different sample than max",
+  JSON.stringify(flaggedNames(v)) === '["S2"]',
+  flaggedNames(v),
+);
 
 // ── 2. combining rules ────────────────────────────────────────────────────
 const twoRules = [
@@ -210,7 +218,9 @@ ck("a manually hidden sample stays hidden after the rules are cleared", ctx.samp
 
 // TT_FLAG_HIDE_ALL promotes every flag to a hide.
 ctx = makeCtx();
-v = verdict(ctx, [{ source: "meta", field: "total_reads", op: "<", value: "10000", action: "flag" }], { hideAll: true });
+v = verdict(ctx, [{ source: "meta", field: "total_reads", op: "<", value: "10000", action: "flag" }], {
+  hideAll: true,
+});
 ck("hide-all promotes a flag-only rule to a hide", v.S1.hide === true);
 v = verdict(ctx, [{ source: "meta", field: "total_reads", op: "<", value: "10000", action: "flag" }]);
 ck("without hide-all a flag-only rule does not hide", v.S1.hide === false);
@@ -230,7 +240,10 @@ ctx.ttFlagLoadConfig({
 ck("loadConfig keeps only the valid rule", ctx.__ttGet().rules.length === 1, ctx.__ttGet().rules.length);
 ck("loadConfig carries logic and missing_fails", ctx.__ttGet().logic === "all" && ctx.__ttGet().missingFails === true);
 const captured = ctx.ttFlagCaptureConfig();
-ck("captureConfig round-trips", captured.rules.length === 1 && captured.logic === "all" && captured.missing_fails === true);
+ck(
+  "captureConfig round-trips",
+  captured.rules.length === 1 && captured.logic === "all" && captured.missing_fails === true,
+);
 ctx.ttFlagLoadConfig(null);
 ck("loadConfig(null) clears the rule set", ctx.__ttGet().rules.length === 0);
 ctx.ttFlagLoadConfig(captured);
@@ -282,16 +295,35 @@ ck(
 );
 ck("badge renders for a flagged sample", ctx._flagBadgeHTML("S1").includes("tt-flag-badge"));
 ck("badge is empty for a clean sample", ctx._flagBadgeHTML("S2") === "");
-ck("reasons list the actual value", ctx.ttFlagPlainReasons("S1").includes("actual: 5,000"), ctx.ttFlagPlainReasons("S1"));
+ck(
+  "reasons list the actual value",
+  ctx.ttFlagPlainReasons("S1").includes("actual: 5,000"),
+  ctx.ttFlagPlainReasons("S1"),
+);
 
 // ── 8. field catalogue ────────────────────────────────────────────────────
 const fields = ctx.ttFlagFields();
-ck("catalogue exposes all four sources", ["meta", "derived", "runmeta", "data"].every((k) => Array.isArray(fields[k])));
-ck("data fields are numeric detection columns only", JSON.stringify(fields.data.map((f) => f.key)) ===
-  '["TASS Score","Coverage","# Reads Aligned"]', fields.data.map((f) => f.key));
-ck("runmeta catalogue includes the RUN_META column", fields.runmeta.some((f) => f.key === "site"));
-ck("runmeta catalogue also offers sample_type from SAMPLE_META", fields.runmeta.some((f) => f.key === "sample_type"));
-ck("meta catalogue keeps structural keys out", !fields.meta.some((f) => f.key === "weights" || f.key === "best_cutoffs"));
+ck(
+  "catalogue exposes all four sources",
+  ["meta", "derived", "runmeta", "data"].every((k) => Array.isArray(fields[k])),
+);
+ck(
+  "data fields are numeric detection columns only",
+  JSON.stringify(fields.data.map((f) => f.key)) === '["TASS Score","Coverage","# Reads Aligned"]',
+  fields.data.map((f) => f.key),
+);
+ck(
+  "runmeta catalogue includes the RUN_META column",
+  fields.runmeta.some((f) => f.key === "site"),
+);
+ck(
+  "runmeta catalogue also offers sample_type from SAMPLE_META",
+  fields.runmeta.some((f) => f.key === "sample_type"),
+);
+ck(
+  "meta catalogue keeps structural keys out",
+  !fields.meta.some((f) => f.key === "weights" || f.key === "best_cutoffs"),
+);
 
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nAll checks passed");
 process.exit(fails ? 1 : 0);
